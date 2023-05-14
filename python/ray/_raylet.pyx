@@ -741,8 +741,7 @@ cdef store_task_errors(
         CTaskType task_type,
         proctitle,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_string* application_error,
-        const CAddress &caller_address):
+        c_string* application_error):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -786,8 +785,7 @@ cdef store_task_errors(
         errors.append(failure_object)
     num_errors_stored = core_worker.store_task_outputs(
         worker, errors,
-        returns,
-        caller_address)
+        returns)
 
     ray._private.utils.push_error_to_driver(
         worker,
@@ -797,160 +795,6 @@ cdef store_task_errors(
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise RayActorError.from_task_error(failure_object)
     return num_errors_stored
-
-
-cdef execute_streaming_generator(
-        generator,
-        const CObjectID &generator_id,
-        CTaskType task_type,
-        const CAddress &caller_address,
-        TaskID task_id,
-        const c_string &serialized_retry_exception_allowlist,
-        function_name,
-        function_descriptor,
-        title,
-        actor,
-        actor_id,
-        c_bool *is_retryable_error,
-        c_string *application_error):
-    """Execute a given generator and streaming-report the
-        result to the given caller_address.
-
-    The output from the generator will be stored to the in-memory
-    or plasma object store. The generated return objects will be
-    reported to the owner of the task as soon as they are generated.
-
-    It means when this method is used, the result of each generator
-    will be reported and available from the given "caller address"
-    before the task is finished.
-
-    Args:
-        generator: The generator to run.
-        generator_id: The object ref id of the generator task.
-        task_type: The type of the task. E.g., actor task, normal task.
-        caller_address: The address of the caller. By our protocol,
-            the caller of the streaming generator task is always
-            the owner, so we can also call it "owner address".
-        task_id: The task ID of the generator task.
-        serialized_retry_exception_allowlist: A list of
-            exceptions that are allowed to retry this generator task.
-        function_name: The name of the generator function. Used for
-            writing an error message.
-        function_descriptor: The function descriptor of
-            the generator function. Used for writing an error message.
-        title: The process title of the generator task. Used for
-            writing an error message.
-        actor: The instance of the actor created in this worker.
-            It is used to write an error message.
-        actor_id: The ID of the actor. It is used to write an error message.
-        is_retryable_error(out): It is set to True if the generator
-            raises an exception, and the error is retryable.
-        application_error(out): It is set if the generator raises an
-            application error.
-    """
-    worker = ray._private.worker.global_worker
-    cdef:
-        CoreWorker core_worker = worker.core_worker
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
-
-    generator_index = 0
-    assert inspect.isgenerator(generator), (
-        "execute_generator's first argument must be a generator."
-    )
-
-    while True:
-        try:
-            output = next(generator)
-        except StopIteration:
-            break
-        except Exception as e:
-            # Report the error if the generator failed to execute.
-            is_retryable_error[0] = determine_if_retryable(
-                e,
-                serialized_retry_exception_allowlist,
-                function_descriptor,
-            )
-
-            if (
-                is_retryable_error[0]
-                and core_worker.get_current_task_retry_exceptions()
-            ):
-                logger.debug("Task failed with retryable exception:"
-                             " {}.".format(task_id), exc_info=True)
-                # Raise an exception directly and halt the execution
-                # because there's no need to set the exception
-                # for the return value when the task is retryable.
-                raise e
-
-            logger.debug("Task failed with unretryable exception:"
-                         " {}.".format(task_id), exc_info=True)
-
-            error_id = (CCoreWorkerProcess.GetCoreWorker()
-                        .AllocateDynamicReturnId(caller_address))
-            intermediate_result.push_back(
-                    c_pair[CObjectID, shared_ptr[CRayObject]](
-                        error_id, shared_ptr[CRayObject]()))
-
-            store_task_errors(
-                        worker, e,
-                        True,  # task_exception
-                        actor,  # actor
-                        actor_id,  # actor id
-                        function_name, task_type, title,
-                        &intermediate_result, application_error, caller_address)
-
-            CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
-                intermediate_result.back(),
-                generator_id, caller_address, generator_index, False)
-
-            if intermediate_result.size() > 0:
-                intermediate_result.pop_back()
-            generator_index += 1
-            break
-        else:
-            # Report the intermediate result if there was no error.
-            return_id = (
-                CCoreWorkerProcess.GetCoreWorker().AllocateDynamicReturnId(
-                    caller_address))
-            intermediate_result.push_back(
-                    c_pair[CObjectID, shared_ptr[CRayObject]](
-                        return_id, shared_ptr[CRayObject]()))
-
-            core_worker.store_task_outputs(
-                worker, [output],
-                &intermediate_result,
-                caller_address,
-                generator_id)
-            logger.debug(
-                "Writes to a ObjectRefStream of an "
-                "index {}".format(generator_index))
-            assert intermediate_result.size() == 1
-            del output
-
-            CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
-                intermediate_result.back(),
-                generator_id,
-                caller_address,
-                generator_index,
-                False)
-
-            if intermediate_result.size() > 0:
-                intermediate_result.pop_back()
-            generator_index += 1
-
-    # All the intermediate result has to be popped and reported.
-    assert intermediate_result.size() == 0
-    # Report the owner that there's no more objects.
-    logger.debug(
-        "Writes EoF to a ObjectRefStream "
-        "of an index {}".format(generator_index))
-    CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
-        c_pair[CObjectID, shared_ptr[CRayObject]](
-            CObjectID.Nil(), shared_ptr[CRayObject]()),
-        generator_id,
-        caller_address,
-        generator_index,
-        True)  # finished.
 
 
 cdef execute_dynamic_generator_and_store_task_outputs(
@@ -964,8 +808,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         c_bool is_reattempt,
         function_name,
         function_descriptor,
-        title,
-        const CAddress &caller_address):
+        title):
     worker = ray._private.worker.global_worker
     cdef:
         CoreWorker core_worker = worker.core_worker
@@ -974,7 +817,6 @@ cdef execute_dynamic_generator_and_store_task_outputs(
         core_worker.store_task_outputs(
             worker, generator,
             dynamic_returns,
-            caller_address,
             generator_id)
     except Exception as error:
         is_retryable_error[0] = determine_if_retryable(
@@ -1002,7 +844,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                 # generate one additional ObjectRef. This last
                 # ObjectRef will contain the error.
                 error_id = (CCoreWorkerProcess.GetCoreWorker()
-                            .AllocateDynamicReturnId(caller_address))
+                            .AllocateDynamicReturnId())
                 dynamic_returns[0].push_back(
                         c_pair[CObjectID, shared_ptr[CRayObject]](
                             error_id, shared_ptr[CRayObject]()))
@@ -1016,7 +858,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         None,  # actor
                         None,  # actor id
                         function_name, task_type, title,
-                        dynamic_returns, application_error, caller_address)
+                        dynamic_returns, application_error)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -1053,8 +895,7 @@ cdef void execute_task(
         c_bool is_reattempt,
         execution_info,
         title,
-        task_name,
-        c_bool is_streaming_generator) except *:
+        task_name) except *:
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
@@ -1212,35 +1053,6 @@ cdef void execute_task(
                             ray.util.pdb.set_trace(
                                 breakpoint_uuid=debugger_breakpoint)
                         outputs = function_executor(*args, **kwargs)
-
-                        if is_streaming_generator:
-                            # Streaming generator always has a single return value
-                            # which is the generator task return.
-                            assert returns[0].size() == 1
-
-                            if not inspect.isgenerator(outputs):
-                                raise ValueError(
-                                        "Functions with "
-                                        "@ray.remote(num_returns=\"streaming\" "
-                                        "must return a generator")
-
-                            execute_streaming_generator(
-                                    outputs,
-                                    returns[0][0].first,  # generator object ID.
-                                    task_type,
-                                    caller_address,
-                                    task_id,
-                                    serialized_retry_exception_allowlist,
-                                    function_name,
-                                    function_descriptor,
-                                    title,
-                                    actor,
-                                    actor_id,
-                                    is_retryable_error,
-                                    application_error)
-                            # Streaming generator output is not used, so set it to None.
-                            outputs = None
-
                         next_breakpoint = (
                             ray._private.worker.global_worker.debugger_breakpoint)
                         if next_breakpoint != b"":
@@ -1325,9 +1137,7 @@ cdef void execute_task(
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
-                # TODO(sang): Remove it once we use streaming generator
-                # by default.
-                if dynamic_returns != NULL and not is_streaming_generator:
+                if dynamic_returns != NULL:
                     if not inspect.isgenerator(outputs):
                         raise ValueError(
                                 "Functions with "
@@ -1346,8 +1156,7 @@ cdef void execute_task(
                             is_reattempt,
                             function_name,
                             function_descriptor,
-                            title,
-                            caller_address)
+                            title)
 
                     task_exception = False
                     dynamic_refs = []
@@ -1365,12 +1174,11 @@ cdef void execute_task(
                 # all generator tasks, both static and dynamic.
                 core_worker.store_task_outputs(
                     worker, outputs,
-                    returns,
-                    caller_address)
+                    returns)
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
-                    task_type, title, returns, application_error, caller_address)
+                    task_type, title, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -1397,8 +1205,7 @@ cdef execute_task_with_cancellation_handler(
         # the concurrency groups of this actor.
         const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
         const c_string c_name_of_concurrency_group_to_execute,
-        c_bool is_reattempt,
-        c_bool is_streaming_generator):
+        c_bool is_reattempt):
 
     is_retryable_error[0] = False
 
@@ -1483,8 +1290,7 @@ cdef execute_task_with_cancellation_handler(
                      application_error,
                      c_defined_concurrency_groups,
                      c_name_of_concurrency_group_to_execute,
-                     is_reattempt, execution_info, title, task_name,
-                     is_streaming_generator)
+                     is_reattempt, execution_info, title, task_name)
 
         # Check for cancellation.
         PyErr_CheckSignals()
@@ -1511,8 +1317,7 @@ cdef execute_task_with_cancellation_handler(
                 task_type, title, returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
-                NULL,
-                caller_address)
+                NULL)
     finally:
         with current_task_id_lock:
             current_task_id = None
@@ -1557,8 +1362,7 @@ cdef CRayStatus task_execution_handler(
         c_string *application_error,
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
-        c_bool is_reattempt,
-        c_bool is_streaming_generator) nogil:
+        c_bool is_reattempt) nogil:
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -1582,8 +1386,7 @@ cdef CRayStatus task_execution_handler(
                         application_error,
                         defined_concurrency_groups,
                         name_of_concurrency_group_to_execute,
-                        is_reattempt,
-                        is_streaming_generator)
+                        is_reattempt)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -3140,7 +2943,6 @@ cdef class CoreWorker:
                             worker, outputs,
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
                             *returns,
-                            const CAddress &caller_address,
                             CObjectID ref_generator_id=CObjectID.Nil()):
         cdef:
             CObjectID return_id
@@ -3180,11 +2982,9 @@ cdef class CoreWorker:
                 raise ValueError(
                     "Task returned more than num_returns={} objects.".format(
                         num_returns))
-            # TODO(sang): Remove it when the streaming generator is
-            # enabled by default.
             while i >= returns[0].size():
                 return_id = (CCoreWorkerProcess.GetCoreWorker()
-                             .AllocateDynamicReturnId(caller_address))
+                             .AllocateDynamicReturnId())
                 returns[0].push_back(
                         c_pair[CObjectID, shared_ptr[CRayObject]](
                             return_id, shared_ptr[CRayObject]()))

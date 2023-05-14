@@ -143,7 +143,6 @@ cdef class CoreWorker:
             self,
             worker, outputs,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-            const CAddress &caller_address,
             CObjectID ref_generator_id=*)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle)

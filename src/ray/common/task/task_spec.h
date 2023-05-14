@@ -262,8 +262,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool ReturnsDynamic() const;
 
-  bool IsStreamingGenerator() const;
-
   std::vector<ObjectID> DynamicReturnIds() const;
 
   void AddDynamicReturnId(const ObjectID &dynamic_return_id);

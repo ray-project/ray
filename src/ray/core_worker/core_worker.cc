@@ -1850,16 +1850,6 @@ void CoreWorker::BuildCommonTaskSpec(
     // is a generator of ObjectRefs.
     num_returns = 1;
   }
-  // TODO(sang): Remove this and integrate it to
-  // nun_returns == -1 once migrating to streaming
-  // generator.
-  bool is_streaming_generator = num_returns == -2;
-  if (is_streaming_generator) {
-    num_returns = 1;
-    // We are using the dynamic return if
-    // the streaming generator is used.
-    returns_dynamic = true;
-  }
   RAY_CHECK(num_returns >= 0);
   builder.SetCommonTaskSpec(
       task_id,
@@ -1876,7 +1866,6 @@ void CoreWorker::BuildCommonTaskSpec(
       address,
       num_returns,
       returns_dynamic,
-      is_streaming_generator,
       required_resources,
       required_placement_resources,
       debugger_breakpoint,
@@ -2673,8 +2662,7 @@ Status CoreWorker::ExecuteTask(
       application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
-      /*is_reattempt=*/task_spec.AttemptNumber() > 0,
-      /*is_streaming_generator*/ task_spec.IsStreamingGenerator());
+      /*is_reattempt=*/task_spec.AttemptNumber() > 0);
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2842,12 +2830,13 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   }
 }
 
-ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address) {
+ObjectID CoreWorker::AllocateDynamicReturnId() {
   const auto &task_spec = worker_context_.GetCurrentTask();
   const auto return_id =
       ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
-  reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
+  reference_counter_->AddBorrowedObject(
+      return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
   return return_id;
 }
 
@@ -3268,11 +3257,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     // counter so that we know that it exists.
     const auto generator_id = ObjectID::FromBinary(message.generator_id());
     RAY_CHECK(!generator_id.IsNil());
-    if (task_manager_->ObjectRefStreamExists(generator_id)) {
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
-    } else {
-      reference_counter_->AddDynamicReturn(object_id, generator_id);
-    }
+    reference_counter_->AddDynamicReturn(object_id, generator_id);
   }
 
   // Returns true if the object was present and the callback was added. It might have
@@ -3406,11 +3391,7 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // object. Add the dynamically created object to our ref counter so that we
     // know that it exists.
     RAY_CHECK(!generator_id->IsNil());
-    if (task_manager_->ObjectRefStreamExists(*generator_id)) {
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, *generator_id);
-    } else {
-      reference_counter_->AddDynamicReturn(object_id, *generator_id);
-    }
+    reference_counter_->AddDynamicReturn(object_id, *generator_id);
   }
 
   auto reference_exists =
@@ -3438,14 +3419,9 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   // until the task finishes.
   const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
   if (!maybe_generator_id.IsNil()) {
-    if (task_manager_->ObjectRefStreamExists(maybe_generator_id)) {
-      // If the stream exists, it means it is a streaming generator.
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, maybe_generator_id);
-    } else {
-      // The task is a generator and may not have finished yet. Add the internal
-      // ObjectID so that we can update its location.
-      reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
-    }
+    // The task is a generator and may not have finished yet. Add the internal
+    // ObjectID so that we can update its location.
+    reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
     RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
   }
 }
