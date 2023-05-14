@@ -1009,9 +1009,10 @@ def test_log_job(ray_start_with_dashboard):
     # Submit a job
     from ray.job_submission import JobSubmissionClient
 
-    JOB_LOG = "test-job-log\n"
+    JOB_LOG = "test-job-log"
     client = JobSubmissionClient(webui_url)
-    job_id = client.submit_job(entrypoint=f"echo {JOB_LOG}")
+    entrypoint = f"python -c \"print('{JOB_LOG}')\""
+    job_id = client.submit_job(entrypoint=entrypoint)
 
     def job_done():
         jobs = list_jobs(filters=[("submission_id", "=", job_id)])
@@ -1023,7 +1024,7 @@ def test_log_job(ray_start_with_dashboard):
 
     def verify():
         logs = "".join(get_log(job_id=job_id, node_id=node_id))
-        assert JOB_LOG == logs
+        assert JOB_LOG + "\n" == logs
         return True
 
     wait_for_condition(verify)
