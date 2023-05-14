@@ -21,7 +21,7 @@
 
 template <typename Duration>
 std::shared_ptr<boost::asio::deadline_timer> execute_after(
-    instrumented_io_context &io_context,
+    boost::asio::io_context &io_context,
     std::function<void()> fn,
     Duration delay_duration) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(io_context);

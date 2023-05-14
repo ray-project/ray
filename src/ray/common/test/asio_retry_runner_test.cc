@@ -24,7 +24,7 @@ class RetryRunnerTest : public ::testing::Test {
   RetryRunnerTest() {}
   void SetUp() override {
     t = std::make_unique<std::thread>([this]() {
-      boost::asio::executor_work_guard<instrumented_io_context::executor_type> work_guard(
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard(
           io_context.get_executor());
       io_context.run();
     });
@@ -34,7 +34,7 @@ class RetryRunnerTest : public ::testing::Test {
     t->join();
   }
 
-  instrumented_io_context io_context;
+  boost::asio::io_context io_context;
   std::unique_ptr<std::thread> t;
 };
 
@@ -46,24 +46,24 @@ TEST_F(RetryRunnerTest, Basic) {
   };
   // Retry 1 time, wait 5ms between retries.
   ASSERT_FALSE(
-      ray::async_retry(io_context.get_executor(), fn, 1, 5ms, boost::asio::use_future)
+      async_retry_until(io_context.get_executor(), fn, 1, 5ms, boost::asio::use_future)
           .get());
   ASSERT_EQ(2, count);
 
   count = 0;
   // Retry 2 times, wait 5ms between retries.
   ASSERT_TRUE(
-      ray::async_retry(io_context.get_executor(), fn, 2, 5ms, boost::asio::use_future)
+      async_retry_until(io_context.get_executor(), fn, 2, 5ms, boost::asio::use_future)
           .get());
   ASSERT_EQ(3, count);
 
   count = 0;
   // Test default completion token works
-  ASSERT_TRUE(ray::async_retry(io_context.get_executor(), fn, 2, 5ms).get());
+  ASSERT_TRUE(async_retry_until(io_context.get_executor(), fn, 2, 5ms).get());
   ASSERT_EQ(3, count);
 
   count = 0;
   // Test default completion token works
-  ASSERT_TRUE(ray::async_retry(io_context.get_executor(), fn, -1, 5ms).get());
+  ASSERT_TRUE(async_retry_until(io_context.get_executor(), fn, -1, 5ms).get());
   ASSERT_EQ(3, count);
 }
