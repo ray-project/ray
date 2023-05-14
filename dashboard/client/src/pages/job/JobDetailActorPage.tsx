@@ -1,5 +1,5 @@
 import { makeStyles } from "@material-ui/core";
-import React from "react";
+import React, { PropsWithChildren } from "react";
 
 import { Section } from "../../common/Section";
 import ActorList from "../actor/ActorList";
@@ -35,6 +35,31 @@ export const JobDetailActorsPage = () => {
       <Section title="Actors">
         <ActorList jobId={params.id} />
       </Section>
+    </div>
+  );
+};
+
+export const JobDetailActorDetailWrapper = ({
+  children,
+}: PropsWithChildren<{}>) => {
+  const { job } = useJobDetail();
+
+  const pageInfo = job
+    ? {
+        title: "Actors",
+        id: "actors",
+        path: job.job_id ? `/jobs/${job.job_id}/actors` : undefined,
+      }
+    : {
+        title: "Actors",
+        id: "actors",
+        path: undefined,
+      };
+
+  return (
+    <div>
+      <MainNavPageInfo pageInfo={pageInfo} />
+      {children}
     </div>
   );
 };
