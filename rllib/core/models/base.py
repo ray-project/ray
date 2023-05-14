@@ -367,9 +367,13 @@ class ActorCriticEncoder(Encoder):
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
         if self.config.shared:
-            outs = self.encoder(inputs, **kwargs)
-            encoder_out = outs.pop(ENCODER_OUT)
-            return {ENCODER_OUT: {ACTOR: encoder_out, CRITIC: encoder_out}}
+            encoder_outs = self.encoder(inputs, **kwargs)
+            return {
+                ENCODER_OUT: {
+                    ACTOR: encoder_outs[ENCODER_OUT],
+                    CRITIC: encoder_outs[ENCODER_OUT],
+                }
+            }
         else:
             # Encoders should not modify inputs, so we can pass the same inputs
             actor_out = self.actor_encoder(inputs, **kwargs)
