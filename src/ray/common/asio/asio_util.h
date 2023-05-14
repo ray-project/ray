@@ -15,6 +15,8 @@
 #pragma once
 
 #include <boost/asio.hpp>
+#include <boost/asio/coroutine.hpp>
+#include <boost/asio/yield.hpp>
 #include <chrono>
 
 template <typename Duration>
@@ -36,14 +38,15 @@ std::shared_ptr<boost::asio::deadline_timer> execute_after(
   return timer;
 }
 
-typename Fn, typename Ex, typename Duration,
-    typename CompletionToken =
-        boost::asio::use_future_t<> >
-        auto async_retry_until(Ex &&e,
-                               Fn &&fn,
-                               std::optional<int64_t> retry_num,
-                               Duration delay_duration,
-                               CompletionToken &&token = CompletionToken()) {
+template <typename Fn,
+          typename Ex,
+          typename Duration,
+          typename CompletionToken = boost::asio::use_future_t<> >
+auto async_retry_until(Ex &&e,
+                       Fn &&fn,
+                       std::optional<int64_t> retry_num,
+                       Duration delay_duration,
+                       CompletionToken &&token = CompletionToken()) {
   auto delay_timer = std::make_unique<boost::asio::deadline_timer>(e);
   auto delay = boost::posix_time::microseconds(
       std::chrono::duration_cast<std::chrono::microseconds>(delay_duration).count());
@@ -67,7 +70,7 @@ typename Fn, typename Ex, typename Duration,
                   return;
                 }
               }
-              delay_timer->expires_from_now(boost::posix_time::milliseconds(delay));
+              delay_timer->expires_from_now(delay);
               yield delay_timer->async_wait(std::move(self));
             }
           }

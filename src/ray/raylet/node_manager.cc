@@ -39,6 +39,8 @@
 #include "ray/util/sample.h"
 #include "ray/util/util.h"
 
+using namespace std::chrono_literals;
+
 namespace {
 
 #define RAY_CHECK_ENUM(x, y) \
@@ -1570,7 +1572,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       [proc]() { return proc.IsAlive() == false; },
       std::nullopt,
       100ms,
-      [this]() {
+      [this, worker_failure_data_ptr](bool ret) {
+        RAY_CHECK(ret);
         RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(
             worker_failure_data_ptr, nullptr));
       });
