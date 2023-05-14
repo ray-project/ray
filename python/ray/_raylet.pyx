@@ -201,21 +201,24 @@ class ObjectRefGenerator:
 
 class StreamingObjectRefGenerator:
     def __init__(self, generator_ref, worker):
+        # The reference to a generator task.
         self._generator_ref = generator_ref
+        # The last time generator task has completed.
         self._generator_task_completed_time = None
+        # The exception raised from a generator task.
         self._generator_task_exception = None
+        # Ray's worker class. ray._private.worker.global_worker
         self.worker = worker
         assert hasattr(worker, "core_worker")
-        worker.core_worker.create_object_ref_stream(self._generator_ref)
+        self.worker.core_worker.create_object_ref_stream(self._generator_ref)
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        """Wait until the next ref is available to the
-            generator and return the object ref.
+        """Waits until a next ref is available and returns the object ref.
 
-        The API will raise StopIteration if there's no more objects
+        Raises StopIteration if there's no more objects
         to generate.
 
         The object ref will contain an exception if the task fails.
@@ -223,7 +226,42 @@ class StreamingObjectRefGenerator:
         up to N + 1 objects (if there's a system failure, the
         last object will contain a system level exception).
         """
+        return self._next()
+
+    def _next(
+            self,
+            timeout_s: float = -1,
+            sleep_interval_s: float = 0.0001,
+            unexpected_network_failure_timeout_s: float = 30):
+        """Waits for timeout_s and returns the object ref if available.
+
+        If an object is not available within the given timeout, it
+        returns a nil object reference.
+
+        If -1 timeout is provided, it means it waits infinitely.
+
+        Waiting is implemented as busy waiting. You can control
+        the busy waiting interval via sleep_interval_s.
+
+        Raises StopIteration if there's no more objects
+        to generate.
+
+        The object ref will contain an exception if the task fails.
+        When the generator task returns N objects, it can return
+        up to N + 1 objects (if there's a system failure, the
+        last object will contain a system level exception).
+
+        Args:
+            timeout_s: If the next object is not ready within
+                this timeout, it returns the nil object ref.
+            sleep_interval_s: busy waiting interval.
+            unexpected_network_failure_timeout_s: If the
+                task is finished, but the next ref is not
+                available within this time, it will hard fail
+                the generator.
+        """
         obj = self._handle_next()
+        last_time = time.time()
 
         # The generator ref will be None if the task succeeds.
         # It will contain an exception if the task fails by
@@ -259,21 +297,25 @@ class StreamingObjectRefGenerator:
             # If all the object refs are not reported to the generator
             # within 30 seconds, we consider is as an unreconverable error.
             if self._generator_task_completed_time:
-                if time.time() - self._generator_task_completed_time > 30:
+                if (time.time() - self._generator_task_completed_time
+                        > unexpected_network_failure_timeout_s):
                     # It means the next wasn't reported although the task
                     # has been terminated 30 seconds ago.
+                    self._generator_task_exception = AssertionError
                     assert False, "Unexpected network failure occured."
 
+            if timeout_s != -1 and time.time() - last_time > timeout_s:
+                return ObjectRef.nil()
+
             # 100us busy waiting
-            time.sleep(0.0001)
+            time.sleep(sleep_interval_s)
             obj = self._handle_next()
         return obj
 
     def _handle_next(self):
         try:
-            worker = ray._private.worker.global_worker
-            if hasattr(worker, "core_worker"):
-                obj = worker.core_worker.async_read_object_ref_stream(
+            if hasattr(self.worker, "core_worker"):
+                obj = self.worker.core_worker.async_read_object_ref_stream(
                     self._generator_ref)
                 return obj
             else:
@@ -284,9 +326,11 @@ class StreamingObjectRefGenerator:
             raise StopIteration
 
     def __del__(self):
-        worker = ray._private.worker.global_worker
-        if hasattr(worker, "core_worker"):
-            worker.core_worker.delete_object_ref_stream(self._generator_ref)
+        if hasattr(self.worker, "core_worker"):
+            # NOTE: This can be called multiple times
+            # because python doesn't guarantee __del__ is called
+            # only once.
+            self.worker.core_worker.delete_object_ref_stream(self._generator_ref)
 
     def __getstate__(self):
         raise TypeError(

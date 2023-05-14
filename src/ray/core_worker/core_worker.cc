@@ -1665,44 +1665,6 @@ void CoreWorker::TriggerGlobalGC() {
       });
 }
 
-Status CoreWorker::ReportIntermediateTaskReturn(
-    const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
-    const ObjectID &generator_id,
-    const rpc::Address &caller_address,
-    int64_t idx,
-    bool finished) {
-  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << idx
-                 << " finished: " << finished << ", id: " << dynamic_return_object.first;
-  rpc::ReportIntermediateTaskReturnRequest request;
-  request.mutable_worker_addr()->CopyFrom(rpc_address_);
-  request.set_idx(idx);
-  request.set_finished(finished);
-  request.set_generator_id(generator_id.Binary());
-  auto client = core_worker_client_pool_->GetOrConnect(caller_address);
-
-  if (!dynamic_return_object.first.IsNil()) {
-    RAY_CHECK_EQ(finished, false);
-    auto return_object_proto = request.add_dynamic_return_objects();
-    SerializeReturnObject(
-        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
-    std::vector<ObjectID> deleted;
-    ReferenceCounter::ReferenceTableProto borrowed_refs;
-    reference_counter_->PopAndClearLocalBorrowers(
-        {dynamic_return_object.first}, &borrowed_refs, &deleted);
-    memory_store_->Delete(deleted);
-  }
-
-  client->ReportIntermediateTaskReturn(
-      request,
-      [](const Status &status, const rpc::ReportIntermediateTaskReturnReply &reply) {
-        if (!status.ok()) {
-          // TODO(sang): Handle network error more gracefully.
-          RAY_LOG(ERROR) << "Failed to send the object ref.";
-        }
-      });
-  return Status::OK();
-}
-
 std::string CoreWorker::MemoryUsageString() {
   // Currently only the Plasma store returns a debug string.
   return plasma_store_provider_->MemoryUsageString();
@@ -2889,6 +2851,56 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address) 
   return return_id;
 }
 
+Status CoreWorker::ReportIntermediateTaskReturn(
+    const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+    const ObjectID &generator_id,
+    const rpc::Address &caller_address,
+    int64_t idx,
+    bool finished) {
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << idx
+                 << " finished: " << finished << ", id: " << dynamic_return_object.first;
+  rpc::ReportIntermediateTaskReturnRequest request;
+  request.mutable_worker_addr()->CopyFrom(rpc_address_);
+  request.set_idx(idx);
+  request.set_finished(finished);
+  request.set_generator_id(generator_id.Binary());
+  auto client = core_worker_client_pool_->GetOrConnect(caller_address);
+
+  if (!dynamic_return_object.first.IsNil()) {
+    RAY_CHECK_EQ(finished, false);
+    auto return_object_proto = request.add_dynamic_return_objects();
+    SerializeReturnObject(
+        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+    std::vector<ObjectID> deleted;
+    // When we allocate a dynamic return ID (AllocateDynamicReturnId),
+    // we borrow the object. When the object value is allocatd, the
+    // memory store is updated. We should clear borrowers and memory store
+    // here.
+    ReferenceCounter::ReferenceTableProto borrowed_refs;
+    reference_counter_->PopAndClearLocalBorrowers(
+        {dynamic_return_object.first}, &borrowed_refs, &deleted);
+    memory_store_->Delete(deleted);
+  }
+
+  client->ReportIntermediateTaskReturn(
+      request,
+      [](const Status &status, const rpc::ReportIntermediateTaskReturnReply &reply) {
+        if (!status.ok()) {
+          // TODO(sang): Handle network error more gracefully.
+          RAY_LOG(ERROR) << "Failed to send the object ref.";
+        }
+      });
+  return Status::OK();
+}
+
+void CoreWorker::HandleReportIntermediateTaskReturn(
+    rpc::ReportIntermediateTaskReturnRequest request,
+    rpc::ReportIntermediateTaskReturnReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  task_manager_->HandleReportIntermediateTaskReturn(request);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     const TaskSpecification &task_spec, const ActorID &actor_id) {
   auto resource_ids = std::make_shared<ResourceMappingType>();
@@ -3257,8 +3269,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     const auto generator_id = ObjectID::FromBinary(message.generator_id());
     RAY_CHECK(!generator_id.IsNil());
     if (task_manager_->ObjectRefStreamExists(generator_id)) {
-      reference_counter_->OwnDynamicallyGeneratedStreamingTaskReturn(object_id,
-                                                                     generator_id);
+      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, generator_id);
     }
@@ -3396,8 +3407,7 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // know that it exists.
     RAY_CHECK(!generator_id->IsNil());
     if (task_manager_->ObjectRefStreamExists(*generator_id)) {
-      reference_counter_->OwnDynamicallyGeneratedStreamingTaskReturn(object_id,
-                                                                     *generator_id);
+      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, *generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, *generator_id);
     }
@@ -3430,8 +3440,7 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   if (!maybe_generator_id.IsNil()) {
     if (task_manager_->ObjectRefStreamExists(maybe_generator_id)) {
       // If the stream exists, it means it is a streaming generator.
-      reference_counter_->OwnDynamicallyGeneratedStreamingTaskReturn(object_id,
-                                                                     maybe_generator_id);
+      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, maybe_generator_id);
     } else {
       // The task is a generator and may not have finished yet. Add the internal
       // ObjectID so that we can update its location.
@@ -3465,14 +3474,6 @@ void CoreWorker::ProcessSubscribeObjectLocations(
 
   // Publish the first object location snapshot when subscribed for the first time.
   reference_counter_->PublishObjectLocationSnapshot(object_id);
-}
-
-void CoreWorker::HandleReportIntermediateTaskReturn(
-    rpc::ReportIntermediateTaskReturnRequest request,
-    rpc::ReportIntermediateTaskReturnReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  task_manager_->HandleReportIntermediateTaskReturn(request);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::HandleGetObjectLocationsOwner(

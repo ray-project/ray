@@ -239,8 +239,8 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
   AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
-void ReferenceCounter::OwnDynamicallyGeneratedStreamingTaskReturn(
-    const ObjectID &object_id, const ObjectID &generator_id) {
+void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
+                                                        const ObjectID &generator_id) {
   absl::MutexLock lock(&mutex_);
   // NOTE: The upper layer (the layer that manges the object ref stream)
   // should make sure the generator ref is not GC'ed when the

@@ -219,8 +219,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id The ID of the object that we now own.
   /// \param[in] generator_id The Object ID of the streaming generator task.
-  void OwnDynamicallyGeneratedStreamingTaskReturn(const ObjectID &object_id,
-                                                  const ObjectID &generator_id)
+  void OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
+                                        const ObjectID &generator_id)
       LOCKS_EXCLUDED(mutex_);
 
   /// Update the size of the object.

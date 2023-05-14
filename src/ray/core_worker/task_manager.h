@@ -106,6 +106,10 @@ class ObjectRefStream {
 
   /// Write the object id to the stream of an index idx.
   ///
+  /// If the idx has been already read (by AsyncReadNext),
+  /// the write request will be ignored. If the idx has been
+  /// already written, it will be no-op. It doesn't override.
+  ///
   /// \param[in] object_id The object id that will be read at index idx.
   /// \param[in] idx The index where the object id will be written.
   /// \return True if the idx hasn't been used. False otherwise.
@@ -213,9 +217,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       const rpc::ReportIntermediateTaskReturnRequest &request);
 
   /// Delete the object ref stream.
+  ///
   /// Once the stream is deleted, it will clean up all unconsumed
   /// object references, and all the future intermediate report
   /// will be ignored.
+  ///
+  /// This method is idempotent. It is because the language
+  /// frontend often calls this method upon destructor, but
+  /// not every langauge guarantees the destructor is called
+  /// only once.
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
@@ -590,6 +600,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param task_entry Task entry for the corresponding task attempt
   void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
+
+  Status AsyncReadObjectRefStreamInternal(const ObjectID &generator_id,
+                                          ObjectID *object_id_out)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;

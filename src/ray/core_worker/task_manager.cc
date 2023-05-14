@@ -34,7 +34,8 @@ Status ObjectRefStream::AsyncReadNext(ObjectID *object_id_out) {
   bool is_eof_set = last_ != -1;
   if (is_eof_set && curr_ >= last_) {
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
-                   << "has no more objects.";
+                   << " has no more objects.";
+    *object_id_out = ObjectID::Nil();
     return Status::ObjectRefStreamEoF("");
   }
 
@@ -62,7 +63,7 @@ Status ObjectRefStream::AsyncReadNext(ObjectID *object_id_out) {
 
 bool ObjectRefStream::Write(const ObjectID &object_id, int64_t idx) {
   if (last_ != -1) {
-    RAY_CHECK(curr_ < last_);
+    RAY_CHECK(curr_ <= last_);
   }
 
   if (idx < curr_) {
@@ -70,6 +71,18 @@ bool ObjectRefStream::Write(const ObjectID &object_id, int64_t idx) {
     return false;
   }
 
+  auto it = idx_to_refs_.find(idx);
+  if (it != idx_to_refs_.end()) {
+    // It means the when a task is retried it returns a different object id
+    // for the same index, which means the task was not deterministic.
+    // Fail the owner if it happens.
+    RAY_CHECK_EQ(object_id, it->second)
+        << "The task has been retried with none deterministic task return ids. Previous "
+           "return id: "
+        << it->second << ". New task return id: " << object_id
+        << ". It means a undeterministic task has been retried. Disable the retry "
+           "feature using `max_retries=0` (task) or `max_task_retries=0` (actor).";
+  }
   idx_to_refs_.emplace(idx, object_id);
   return true;
 }
@@ -347,6 +360,7 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 void TaskManager::CreateObjectRefStream(const ObjectID &generator_id) {
+  RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
   absl::MutexLock lock(&mu_);
   auto it = object_ref_streams_.find(generator_id);
   RAY_CHECK(it == object_ref_streams_.end())
@@ -356,40 +370,61 @@ void TaskManager::CreateObjectRefStream(const ObjectID &generator_id) {
 }
 
 void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
-  RAY_LOG(DEBUG) << "Deleting the object ref stream of an id " << generator_id;
-  while (true) {
-    ObjectID object_id;
-    const auto &status = AsyncReadObjectRefStream(generator_id, &object_id);
+  RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
+  std::vector<ObjectID> object_ids_unconsumed;
 
-    // keyError means the stream reaches to EoF.
-    if (status.IsObjectRefStreamEoF()) {
-      break;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = object_ref_streams_.find(generator_id);
+    if (it == object_ref_streams_.end()) {
+      return;
     }
 
-    if (object_id == ObjectID::Nil()) {
-      break;
-    } else {
-      std::vector<ObjectID> deleted;
-      reference_counter_->RemoveLocalReference(object_id, &deleted);
-      RAY_CHECK_EQ(deleted.size(), 1);
+    while (true) {
+      ObjectID object_id;
+      const auto &status = AsyncReadObjectRefStreamInternal(generator_id, &object_id);
+
+      // keyError means the stream reaches to EoF.
+      if (status.IsObjectRefStreamEoF()) {
+        break;
+      }
+
+      if (object_id == ObjectID::Nil()) {
+        // No more objects to obtain. Stop iteration.
+        break;
+      } else {
+        // It means the object hasn't been consumed.
+        // We should remove references since we have 1 reference to this object.
+        object_ids_unconsumed.push_back(object_id);
+      }
     }
+
+    object_ref_streams_.erase(generator_id);
   }
 
-  absl::MutexLock lock(&mu_);
-  object_ref_streams_.erase(generator_id);
+  // When calling RemoveLocalReference, we shouldn't hold a lock.
+  for (const auto &object_id : object_ids_unconsumed) {
+    std::vector<ObjectID> deleted;
+    reference_counter_->RemoveLocalReference(object_id, &deleted);
+    RAY_CHECK(deleted.size() == 1);
+  }
 }
 
-Status TaskManager::AsyncReadObjectRefStream(const ObjectID &generator_id,
-                                             ObjectID *object_id_out) {
-  absl::MutexLock lock(&mu_);
+Status TaskManager::AsyncReadObjectRefStreamInternal(const ObjectID &generator_id,
+                                                     ObjectID *object_id_out) {
   RAY_CHECK(object_id_out != nullptr);
-
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "AsyncReadObjectRefStream API can be used only when the stream has been created "
          "and not removed.";
   const auto &status = stream_it->second.AsyncReadNext(object_id_out);
   return status;
+}
+
+Status TaskManager::AsyncReadObjectRefStream(const ObjectID &generator_id,
+                                             ObjectID *object_id_out) {
+  absl::MutexLock lock(&mu_);
+  return AsyncReadObjectRefStreamInternal(generator_id, object_id_out);
 }
 
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
@@ -438,13 +473,11 @@ void TaskManager::HandleReportIntermediateTaskReturn(
       // TODO(sang): Update the reconstruct ids and task spec
       // when we support retry.
     }
-
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
     // NOTE: If we call this method while holding a lock, it can deadlock.
     if (index_not_used_yet) {
-      reference_counter_->OwnDynamicallyGeneratedStreamingTaskReturn(object_id,
-                                                                     generator_id);
+      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
       // When an object is reported, the object is ready to be fetched.
       // TODO(sang): It is possible this invairant is not true
       // if tasks can be retried. For example, imagine the intermediate
@@ -455,11 +488,11 @@ void TaskManager::HandleReportIntermediateTaskReturn(
       // HandleReportIntermediateTaskReturn is not called after the task
       // CompletePendingTask.
       reference_counter_->UpdateObjectReady(object_id);
+      HandleTaskReturn(object_id,
+                       return_object,
+                       NodeID::FromBinary(request.worker_addr().raylet_id()),
+                       /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
     }
-    HandleTaskReturn(object_id,
-                     return_object,
-                     NodeID::FromBinary(request.worker_addr().raylet_id()),
-                     /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
   }
 }
 

@@ -441,6 +441,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     // TOOD(ilr): better way of keeping an object from being deleted
+    // TODO(sang): This seems bad... We should delete the memory store
+    // properly from reference counter.
     if (!options_.is_local_mode) {
       memory_store_->Delete(deleted);
     }
