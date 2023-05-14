@@ -4395,8 +4395,6 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if sys.meta_path is None:
-            return
         if self._current_executor and ray is not None and ray.is_initialized():
             self._current_executor.shutdown()
 
