@@ -77,9 +77,7 @@ class TorchMLPEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        x = inputs
-        x[ENCODER_OUT] = self.net(inputs[SampleBatch.OBS])
-        return x
+        {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TorchCNNEncoder(TorchModel, Encoder):
@@ -144,9 +142,7 @@ class TorchCNNEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        x = inputs
-        x[ENCODER_OUT] = self.net(inputs[SampleBatch.OBS])
-        return x
+        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TorchGRUEncoder(TorchModel, Encoder):
@@ -217,7 +213,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        x = inputs
+        outputs = {}
 
         # Calculate the output and state of the GRU.
         out = inputs[SampleBatch.OBS].float()
@@ -231,9 +227,9 @@ class TorchGRUEncoder(TorchModel, Encoder):
         out = self.linear(out)
 
         # Insert them into the output dict.
-        x[ENCODER_OUT] = out
-        x[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
-        return x
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
+        return outputs
 
 
 class TorchLSTMEncoder(TorchModel, Encoder):
@@ -316,7 +312,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        x = inputs
+        outputs = {}
 
         # Calculate the output and state of the LSTM cell.
         out = inputs[SampleBatch.OBS].float()
@@ -330,6 +326,6 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         out = self.linear(out)
 
         # Insert them into the output dict.
-        x[ENCODER_OUT] = out
-        x[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
-        return x
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
+        return outputs

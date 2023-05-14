@@ -100,9 +100,7 @@ class TfCNNEncoder(TfModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        x = inputs
-        x[ENCODER_OUT] = self.net(inputs[SampleBatch.OBS])
-        return x
+        {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TfMLPEncoder(Encoder, TfModel):
@@ -143,9 +141,7 @@ class TfMLPEncoder(Encoder, TfModel):
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        x = inputs
-        x[ENCODER_OUT] = self.net(inputs[SampleBatch.OBS])
-        return x
+        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TfGRUEncoder(TfModel, Encoder):
@@ -218,7 +214,7 @@ class TfGRUEncoder(TfModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        x = inputs
+        outputs = {}
 
         # Calculate the output and state of the GRU.
         out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
@@ -237,9 +233,9 @@ class TfGRUEncoder(TfModel, Encoder):
         out = self.linear(out)
 
         # Insert them into the output dict.
-        x[ENCODER_OUT] = out
-        x[STATE_OUT] = {"h": tf.stack(states_out, 1)}
-        return x
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = {"h": tf.stack(states_out, 1)}
+        return outputs
 
 
 class TfLSTMEncoder(TfModel, Encoder):
@@ -325,7 +321,7 @@ class TfLSTMEncoder(TfModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        x = inputs
+        outputs = {}
 
         # Calculate the output and state of the LSTM.
         out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
@@ -346,6 +342,9 @@ class TfLSTMEncoder(TfModel, Encoder):
         out = self.linear(out)
 
         # Insert them into the output dict.
-        x[ENCODER_OUT] = out
-        x[STATE_OUT] = {"h": tf.stack(states_out_h, 1), "c": tf.stack(states_out_c, 1)}
-        return x
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = {
+            "h": tf.stack(states_out_h, 1),
+            "c": tf.stack(states_out_c, 1),
+        }
+        return outputs
