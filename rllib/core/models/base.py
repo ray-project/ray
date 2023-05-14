@@ -442,8 +442,10 @@ class StatefulActorCriticEncoder(Encoder):
             outputs[ENCODER_OUT] = {ACTOR: encoder_out, CRITIC: encoder_out}
             outputs[STATE_OUT] = outs[STATE_OUT]
         else:
-            actor_inputs = inputs
-            critic_inputs = inputs
+            # Shallow copy inputs so that we can add states without modifying
+            # original dict.
+            actor_inputs = inputs.copy()
+            critic_inputs = inputs.copy()
             actor_inputs[STATE_IN] = inputs[STATE_IN][ACTOR]
             critic_inputs[STATE_IN] = inputs[STATE_IN][CRITIC]
 
