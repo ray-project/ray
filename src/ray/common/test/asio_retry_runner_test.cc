@@ -45,12 +45,16 @@ TEST_F(RetryRunnerTest, Basic) {
     return count == 3;
   };
   // Retry 1 time, wait 5ms between retries.
-  ASSERT_FALSE(ray::async_retry(io_context.get_executor(), fn, 1, 5ms, boost::asio::use_future).get());
+  ASSERT_FALSE(
+      ray::async_retry(io_context.get_executor(), fn, 1, 5ms, boost::asio::use_future)
+          .get());
   ASSERT_EQ(2, count);
 
   count = 0;
   // Retry 2 times, wait 5ms between retries.
-  ASSERT_TRUE(ray::async_retry(io_context.get_executor(), fn, 2, 5ms, boost::asio::use_future).get());
+  ASSERT_TRUE(
+      ray::async_retry(io_context.get_executor(), fn, 2, 5ms, boost::asio::use_future)
+          .get());
   ASSERT_EQ(3, count);
 
   count = 0;
