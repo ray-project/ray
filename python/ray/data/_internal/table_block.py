@@ -11,6 +11,7 @@ from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.numpy_support import is_array_like
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import _is_tensor_schema
+from ray.data._internal.numpy_support import convert_udf_returns_to_numpy
 
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT
@@ -119,6 +120,10 @@ class TableBlockBuilder(BlockBuilder):
 
     def build(self) -> Block:
         if self._columns:
+            self._columns = {
+                key: convert_udf_returns_to_numpy(col)
+                for key, col in self._columns.items()
+            }
             tables = [self._table_from_pydict(self._columns)]
         else:
             tables = []
