@@ -8,8 +8,7 @@ from pydantic.main import ModelMetaclass
 
 import ray
 from ray._private.usage import usage_lib
-from ray.serve.deployment import Deployment
-from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
@@ -139,7 +138,7 @@ def _start_controller(
     """
 
     # Initialize ray if needed.
-    ray._private.worker.global_worker.filter_logs_by_job = False
+    ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
@@ -337,19 +336,19 @@ def serve_start(
 
 
 def call_app_builder_with_args_if_necessary(
-    builder: Union[ClassNode, FunctionNode, FunctionType],
+    builder: Union[Application, FunctionType],
     args: Dict[str, Any],
-) -> Union[ClassNode, FunctionNode]:
+) -> Application:
     """Builds a Serve application from an application builder function.
 
-    If a pre-built application (ClassNode or FunctionNode) is passed, this is a no-op.
+    If a pre-built application is passed, this is a no-op.
 
     Else, we validate the signature of the builder, convert the args dictionary to
     the user-annotated Pydantic model if provided, and call the builder function.
 
-    The output of the function is returned (must be a ClassNode or FunctionNode).
+    The output of the function is returned (must be an Application).
     """
-    if isinstance(builder, (ClassNode, FunctionNode)):
+    if isinstance(builder, Application):
         if len(args) > 0:
             raise ValueError(
                 "Arguments can only be passed to an application builder function, "
@@ -379,11 +378,10 @@ def call_app_builder_with_args_if_necessary(
         args = param.annotation.parse_obj(args)
 
     app = builder(args)
-    if not isinstance(app, (ClassNode, FunctionNode)):
+    if not isinstance(app, Application):
         raise TypeError(
-            "Application builder functions must return a `ClassNode` or "
-            "`FunctionNode` returned from `Deployment.bind()`, "
-            f"but got: {type(app)}."
+            "Application builder functions must return an `Application` returned "
+            f"`from `Deployment.bind()`, but got: {type(app)}."
         )
 
     return app

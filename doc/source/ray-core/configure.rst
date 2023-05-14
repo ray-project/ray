@@ -96,7 +96,7 @@ Look :ref:`Logging Directory Structure <logging-directory-structure>` for more d
 
 Ports configurations
 --------------------
-Ray requires bi-directional communication among its nodes in a cluster. Each of node is supposed to open specific ports to receive incoming network requests.
+Ray requires bi-directional communication among its nodes in a cluster. Each node opens specific ports to receive incoming network requests. 
 
 All Nodes
 ~~~~~~~~~
@@ -127,6 +127,7 @@ In addition to ports specified above, the head node needs to open several more p
 - ``--port``: Port of Ray (GCS server). The head node will start a GCS server listening on this port. Default: 6379.
 - ``--ray-client-server-port``: Listening port for Ray Client Server. Default: 10001.
 - ``--redis-shard-ports``: Comma-separated list of ports for non-primary Redis shards. Default: Random values.
+- ``--dashboard-grpc-port``: The gRPC port used by the dashboard. Default: Random value.
 
 - If ``--include-dashboard`` is true (the default), then the head node must open ``--dashboard-port``. Default: 8265.
 
@@ -172,23 +173,99 @@ TLS Authentication
 ------------------
 
 Ray can be configured to use TLS on it's gRPC channels.
-This means that connecting to the Ray client on the head node will
-require an appropriate set of credentials and also that data exchanged between
-various processes (client, head, workers) will be encrypted.
+This means that connecting to the Ray head requires
+an appropriate set of credentials and also that data exchanged between
+various processes (client, head, workers) is encrypted.
 
-Enabling TLS will cause a performance hit due to the extra overhead of mutual
-authentication and encryption.
-Testing has shown that this overhead is large for small workloads and becomes
-relatively smaller for large workloads.
-The exact overhead will depend on the nature of your workload.
+In TLS, the private key and public key are used for encryption and decryption. The
+former is kept secret by the owner and the latter is shared with the other party.
+This pattern ensures that only the intended recipient can read the message.
+
+A Certificate Authority (CA) is a trusted third party that certifies the identity of the
+public key owner. The digital certificate issued by the CA contains the public key itself, 
+the identity of the public key owner, and the expiration date of the certificate. Note that
+if the owner of the public key does not want to obtain a digital certificate from a CA, 
+they can generate a self-signed certificate with some tools like OpenSSL. 
+
+To obtain a digital certificate, the owner of the public key must generate a Certificate Signing
+Request (CSR). The CSR contains information about the owner of the public 
+key and the public key itself. For Ray, some additional steps are required for achieving 
+a successful TLS encryption.
+
+Here is a step-by-step guide for adding TLS Authentication to a static Kubernetes Ray cluster using
+a self-signed certificates:
+
+Step 1: Generate a private key and self-signed certificate for CA
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+  openssl req -x509 \
+              -sha256 -days 3650 \
+              -nodes \
+              -newkey rsa:2048 \
+              -subj "/CN=*.ray.io/C=US/L=San Francisco" \
+              -keyout ca.key -out ca.crt
+
+Use the following command to encode the private key file and the self-signed certificate file,
+then paste encoded strings to the secret.yaml.
+
+.. code-block:: bash
+
+  cat ca.key | base64
+  cat ca.crt | base64
+
+# Alternatively, the command automatically encode and create the secret for the CA keypair.
+kubectl create secret generic ca-tls --from-file=ca.crt=<path-to-ca.crt> --from-file=ca.key=<path-to-ca.key>
+
+Step 2: Generate individual private keys and self-signed certificates for the Ray head and workers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `YAML file
+<https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.tls.yaml>`__, has a ConfigMap named `tls` that
+includes two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts produce the private key
+and self-signed certificate files (`tls.key` and `tls.crt`) for both head and worker Pods in the initContainer
+of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section. 
+
+The scripts perform the following steps: first, a 2048-bit RSA private key is generated and saved as 
+`/etc/ray/tls/tls.key`. Then, a Certificate Signing Request (CSR) is generated using the `tls.key` file
+and the `csr.conf` configuration file. Finally, a self-signed certificate (`tls.crt`) is created using
+the Certificate Authority's (`ca.key and ca.crt`) keypair and the CSR (`ca.csr`).
+
+Step 3: Set the environment variables for both Ray head and worker to enable TLS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 TLS is enabled by setting environment variables.
 
 - ``RAY_USE_TLS``: Either 1 or 0 to use/not-use TLS. If this is set to 1 then all of the environment variables below must be set. Default: 0.
-- ``RAY_TLS_SERVER_CERT``: Location of a `certificate file` which is presented to other endpoints so as to achieve mutual authentication.
-- ``RAY_TLS_SERVER_KEY``: Location of a `private key file` which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate.
-- ``RAY_TLS_CA_CERT``: Location of a `CA certificate file` which allows TLS to decide whether an endpoint's certificate has been signed by the correct authority.
+- ``RAY_TLS_SERVER_CERT``: Location of a `certificate file (tls.crt)`, which is presented to other endpoints to achieve mutual authentication.
+- ``RAY_TLS_SERVER_KEY``: Location of a `private key file (tls.key)`, which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate.
+- ``RAY_TLS_CA_CERT``: Location of a `CA certificate file (ca.crt)`, which allows TLS to decide whether an endpoint's certificate has been signed by the correct authority.
 
+Step 4: Verify TLS authentication
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+  # Log in to the worker Pod
+  kubectl exec -it ${WORKER_POD} -- bash
+  
+  # Since the head Pod has the certificate of the full qualified DNS resolution for the Ray head service, the connection to the worker Pods 
+  # is established successfully
+  ray health-check --address service-ray-head.default.svc.cluster.local:6379
+
+  # Since service-ray-head hasn't added to the alt_names section in the certificate, the connection fails and an error
+  # message similar to the following is displayed: "Peer name service-ray-head is not in peer certificate".
+  ray health-check --address service-ray-head:6379
+
+  # After you add `DNS.3 = service-ray-head` to the alt_names sections and deploy the YAML again, the connection is able to work.
+
+
+Enabling TLS causes a performance hit due to the extra overhead of mutual
+authentication and encryption.
+Testing has shown that this overhead is large for small workloads and becomes
+relatively smaller for large workloads.
+The exact overhead depends on the nature of your workload.
 
 Java Applications
 -----------------

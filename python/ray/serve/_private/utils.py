@@ -44,6 +44,19 @@ class DEFAULT(Enum):
     VALUE = 1
 
 
+class DeploymentOptionUpdateType(str, Enum):
+    # Nothing needs to be done other than setting the target state.
+    LightWeight = "LightWeight"
+    # Each DeploymentReplica instance (tracked in DeploymentState) uses certain options
+    # from the deployment config. These values need to be updated in DeploymentReplica.
+    NeedsReconfigure = "NeedsReconfigure"
+    # Options that are sent to the replica actor. If changed, reconfigure() on the actor
+    # needs to be called to update these values.
+    NeedsActorReconfigure = "NeedsActorReconfigure"
+    # If changed, restart all replicas.
+    HeavyWeight = "HeavyWeight"
+
+
 # Type alias: objects that can be DEFAULT.VALUE have type Default[T]
 T = TypeVar("T")
 Default = Union[DEFAULT, T]
@@ -161,7 +174,7 @@ def get_all_node_ids(gcs_client) -> List[Tuple[str, str]]:
     """
     nodes = gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
     node_ids = [
-        (ray.NodeID.from_binary(node_id).hex(), node["node_name"])
+        (ray.NodeID.from_binary(node_id).hex(), node["node_name"].decode("utf-8"))
         for (node_id, node) in nodes.items()
         if node["state"] == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
     ]

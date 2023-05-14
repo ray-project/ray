@@ -6,38 +6,72 @@ import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
 import shutil
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.air._internal.filelock import TempFileLock
 
 try:
     import fsspec
+    from fsspec.implementations.local import LocalFileSystem
 
 except ImportError:
     fsspec = None
+    LocalFileSystem = object
 
 try:
     import pyarrow
     import pyarrow.fs
 
-    # TODO(krfricke): Remove this once gcsfs > 2022.3.0 is released
-    # (and make sure to pin)
-    class _CustomGCSHandler(pyarrow.fs.FSSpecHandler):
-        """Custom FSSpecHandler that avoids a bug in gcsfs <= 2022.3.0."""
-
-        def create_dir(self, path, recursive):
-            try:
-                # GCSFS doesn't expose `create_parents` argument,
-                # so it is omitted here
-                self.fs.mkdir(path)
-            except FileExistsError:
-                pass
-
 except (ImportError, ModuleNotFoundError):
     pyarrow = None
-    _CustomGCSHandler = None
 
 from ray import logger
+
+
+class _ExcludingLocalFilesystem(LocalFileSystem):
+    """LocalFileSystem wrapper to exclude files according to patterns.
+
+    Args:
+        exclude: List of patterns that are applied to files returned by
+            ``self.find()``. If a file path matches this pattern, it will
+            be excluded.
+
+    """
+
+    def __init__(self, exclude: List[str], **kwargs):
+        super().__init__(**kwargs)
+        self._exclude = exclude
+
+    @property
+    def fsid(self):
+        return "_excluding_local"
+
+    def _should_exclude(self, name: str) -> bool:
+        """Return True if `name` matches any of the `self._exclude` patterns."""
+        alt = None
+        if os.path.isdir(name):
+            # If this is a directory, also test it with trailing slash
+            alt = os.path.join(name, "")
+        for excl in self._exclude:
+            if fnmatch.fnmatch(name, excl):
+                return True
+            if alt and fnmatch.fnmatch(alt, excl):
+                return True
+        return False
+
+    def find(self, path, maxdepth=None, withdirs=False, detail=False, **kwargs):
+        """Call parent find() and exclude from result."""
+        names = super().find(
+            path, maxdepth=maxdepth, withdirs=withdirs, detail=detail, **kwargs
+        )
+        if detail:
+            return {
+                name: out
+                for name, out in names.items()
+                if not self._should_exclude(name)
+            }
+        else:
+            return [name for name in names if not self._should_exclude(name)]
 
 
 def _pyarrow_fs_copy_files(
@@ -125,6 +159,127 @@ def _is_local_windows_path(path: str) -> bool:
     return False
 
 
+def _translate_s3_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
+    """Translate pyarrow s3 query options into s3fs ``storage_kwargs``.
+
+    ``storage_kwargs`` are passed to ``s3fs.S3Filesystem``. They accept
+    ``client_kwargs``, which are passed to ``botocore.session.Session.Client``.
+
+    In this function, we translate query string parameters from an s3 URI
+    (e.g. ``s3://bucket/folder?endpoint_override=somewhere``) into the respective
+    query parameters for the botocore clent.
+
+    S3Filesystem API ref: https://s3fs.readthedocs.io/en/latest/api.html
+
+    Botocore Client API ref: https://boto3.amazonaws.com/v1/documentation/api/latest/
+    reference/core/session.html#boto3.session.Session.client
+
+    """
+    # Map from s3 query keys --> botocore client arguments
+    option_map = {
+        "endpoint_override": "endpoint_url",
+        "region": "region_name",
+        "access_key": "aws_access_key_id",
+        "secret_key": "aws_secret_access_key",
+    }
+
+    client_kwargs = {}
+    for opt, target in option_map.items():
+        if opt in options:
+            client_kwargs[target] = options[opt][0]
+
+    # s3fs directory cache does not work correctly, so we pass
+    # `use_listings_cache` to disable it. See https://github.com/fsspec/s3fs/issues/657
+    # We should keep this for s3fs versions <= 2023.4.0.
+    return {"client_kwargs": client_kwargs, "use_listings_cache": False}
+
+
+def _translate_gcs_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
+    """Translate pyarrow s3 query options into s3fs ``storage_kwargs``.
+
+    ``storage_kwargs`` are passed to ``gcsfs.GCSFileSystem``.
+
+    In this function, we translate query string parameters from an s3 URI
+    (e.g. ``s3://bucket/folder?endpoint_override=somewhere``) into the respective
+    arguments for the gcs filesystem.
+
+    GCSFileSystem API ref: https://gcsfs.readthedocs.io/en/latest/api.html
+
+    """
+    # Map from gcs query keys --> gcsfs kwarg names
+    option_map = {
+        "endpoint_override": "endpoint_url",
+    }
+
+    storage_kwargs = {}
+    for opt, target in option_map.items():
+        if opt in options:
+            storage_kwargs[target] = options[opt][0]
+
+    return storage_kwargs
+
+
+def _has_compatible_gcsfs_version() -> bool:
+    """GCSFS does not work for versions > 2022.7.1 and < 2022.10.0.
+
+    See https://github.com/fsspec/gcsfs/issues/498.
+
+    In that case, and if we can't fallback to native PyArrow's GCS handler,
+    we raise an error.
+    """
+    try:
+        import gcsfs
+
+        # For minimal install that only needs python3-setuptools
+        if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
+            "2022.7.1"
+        ) and packaging.version.parse(gcsfs.__version__) < packaging.version.parse(
+            "2022.10.0"
+        ):
+            # PyArrow's GcsFileSystem was introduced in 9.0.0.
+            if packaging.version.parse(pyarrow.__version__) < packaging.version.parse(
+                "9.0.0"
+            ):
+                raise RuntimeError(
+                    "`gcsfs` versions between '2022.7.1' and '2022.10.0' are not "
+                    f"compatible with pyarrow. You have gcsfs version "
+                    f"{gcsfs.__version__}. Please downgrade or upgrade your gcsfs "
+                    f"version or upgrade PyArrow. See more details in "
+                    f"https://github.com/fsspec/gcsfs/issues/498."
+                )
+            # Returning False here means we fall back to pyarrow.
+            return False
+    except ImportError:
+        return False
+    return True
+
+
+def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
+    parsed = urllib.parse.urlparse(uri)
+
+    storage_kwargs = {}
+    if parsed.scheme in ["s3", "s3a"] and parsed.query:
+        storage_kwargs = _translate_s3_options(urllib.parse.parse_qs(parsed.query))
+    elif parsed.scheme in ["gs", "gcs"] and parsed.query:
+        if not _has_compatible_gcsfs_version():
+            # If gcsfs is incompatible, fallback to pyarrow.fs.
+            return None
+        storage_kwargs = _translate_gcs_options(urllib.parse.parse_qs(parsed.query))
+
+    try:
+        fsspec_fs = fsspec.filesystem(parsed.scheme, **storage_kwargs)
+    except Exception:
+        # ValueError when protocol is not known.
+        # ImportError when protocol is known but package not installed.
+        # Other errors can be raised if args/kwargs are incompatible.
+        # Thus we should except broadly here.
+        return None
+
+    fsspec_handler = pyarrow.fs.FSSpecHandler
+    fs = pyarrow.fs.PyFileSystem(fsspec_handler(fsspec_fs))
+    return fs
+
+
 def get_fs_and_path(
     uri: str,
 ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
@@ -157,68 +312,33 @@ def get_fs_and_path(
         fs = _cached_fs[cache_key]
         return fs, path
 
-    # In case of hdfs filesystem, if uri does not have the netloc part below will
-    # fail with hdfs access error.  For example 'hdfs:///user_folder/...' will
-    # fail, while only 'hdfs://namenode_server/user_foler/...' will work
-    # we consider the two cases of uri: short_hdfs_uri or other_uri,
-    # other_uri includes long hdfs uri and other filesystem uri, like s3 or gcp
-    # filesystem. Two cases of imported module of fsspec: yes or no. So we need
-    # to handle 4 cases:
-    # (uri,             fsspec)
-    # (short_hdfs_uri,  yes) --> use fsspec
-    # (short_hdfs_uri,  no) --> return None and avoid init pyarrow
-    # (other_uri,       yes) --> try pyarrow, if throw use fsspec
-    # (other_uri,       no) --> try pyarrow, if throw return None
-    short_hdfs_uri = parsed.scheme == "hdfs" and parsed.netloc == ""
-    try:
-        if short_hdfs_uri and not fsspec:
-            return None, None
-        if not short_hdfs_uri:
-            fs, path = pyarrow.fs.FileSystem.from_uri(uri)
+    # Prefer fsspec over native pyarrow.
+    if fsspec:
+        fs = _get_fsspec_fs_and_path(uri)
+        if fs:
             _cached_fs[cache_key] = fs
             return fs, path
-    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
-        # Raised when URI not recognized
-        if not fsspec:
-            # Only return if fsspec is not installed
-            return None, None
 
-    # Else, try to resolve protocol via fsspec
-    try:
-        fsspec_fs = fsspec.filesystem(parsed.scheme)
-    except ValueError:
-        # Raised when protocol not known
+    # In case of hdfs filesystem, if uri does not have the netloc part below, it will
+    # fail with hdfs access error. For example 'hdfs:///user_folder/...' will
+    # fail, while only 'hdfs://namenode_server/user_foler/...' will work.
+    # Thus, if fsspec didn't return a filesystem, we return None.
+    hdfs_uri = parsed.scheme == "hdfs"
+    short_hdfs_uri = hdfs_uri and parsed.netloc == ""
+
+    if short_hdfs_uri:
         return None, None
 
-    fsspec_handler = pyarrow.fs.FSSpecHandler
-    if parsed.scheme in ["gs", "gcs"]:
+    # If no fsspec filesystem was found, use pyarrow native filesystem.
+    try:
+        fs, path = pyarrow.fs.FileSystem.from_uri(uri)
+        _cached_fs[cache_key] = fs
+        return fs, path
+    except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
+        # Raised when URI not recognized
+        pass
 
-        # TODO(amogkam): Remove after https://github.com/fsspec/gcsfs/issues/498 is
-        #  resolved.
-        try:
-            import gcsfs
-
-            # For minimal install that only needs python3-setuptools
-            if packaging.version.parse(gcsfs.__version__) > packaging.version.parse(
-                "2022.7.1"
-            ):
-                raise RuntimeError(
-                    "`gcsfs` versions greater than '2022.7.1' are not "
-                    f"compatible with pyarrow. You have gcsfs version "
-                    f"{gcsfs.__version__}. Please downgrade your gcsfs "
-                    f"version. See more details in "
-                    f"https://github.com/fsspec/gcsfs/issues/498."
-                )
-        except ImportError:
-            pass
-
-        # GS doesn't support `create_parents` arg in `create_dir()`
-        fsspec_handler = _CustomGCSHandler
-
-    fs = pyarrow.fs.PyFileSystem(fsspec_handler(fsspec_fs))
-    _cached_fs[cache_key] = fs
-
-    return fs, path
+    return None, None
 
 
 def delete_at_uri(uri: str):
@@ -334,14 +454,33 @@ def upload_to_uri(
     if not exclude:
         _ensure_directory(bucket_path, fs=fs)
         _pyarrow_fs_copy_files(local_path, bucket_path, destination_filesystem=fs)
+    elif fsspec:
+        # If fsspec is available, prefer it because it's more efficient than
+        # calling pyarrow.fs.copy_files multiple times
+        _upload_to_uri_with_exclude_fsspec(
+            local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
+        )
     else:
         # Walk the filetree and upload
-        _upload_to_uri_with_exclude(
+        _upload_to_uri_with_exclude_pyarrow(
             local_path=local_path, fs=fs, bucket_path=bucket_path, exclude=exclude
         )
 
 
-def _upload_to_uri_with_exclude(
+def _upload_to_uri_with_exclude_fsspec(
+    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
+) -> None:
+    local_fs = _ExcludingLocalFilesystem(exclude=exclude)
+    handler = pyarrow.fs.FSSpecHandler(local_fs)
+    source_fs = pyarrow.fs.PyFileSystem(handler)
+
+    _ensure_directory(bucket_path, fs=fs)
+    _pyarrow_fs_copy_files(
+        local_path, bucket_path, source_filesystem=source_fs, destination_filesystem=fs
+    )
+
+
+def _upload_to_uri_with_exclude_pyarrow(
     local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
 ) -> None:
     def _should_exclude(candidate: str) -> bool:

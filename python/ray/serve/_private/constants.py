@@ -29,7 +29,7 @@ DEFAULT_HTTP_PORT = 8000
 DEFAULT_GRPC_PORT = 9000
 
 #: Default Serve application name
-SERVE_DEFAULT_APP_NAME = ""
+SERVE_DEFAULT_APP_NAME = "default"
 
 #: Separator between app name and deployment name when we prepend
 #: the app name to each deployment name. This prepending is currently
@@ -62,10 +62,23 @@ DEFAULT_LATENCY_BUCKET_MS = [
     50,
     100,
     200,
+    300,
+    400,
     500,
     1000,
     2000,
+    # 5 seconds
     5000,
+    # 10 seconds
+    10000,
+    # 60 seconds
+    60000,
+    # 2min
+    120000,
+    # 5 min
+    300000,
+    # 10 min
+    600000,
 ]
 
 #: Name of deployment health check method implemented by user.
@@ -91,6 +104,9 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
+
+# HTTP Proxy health check period
+PROXY_HEALTH_CHECK_PERIOD_S = 10
 
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
@@ -119,6 +135,10 @@ RAY_GCS_RPC_TIMEOUT_S = 3.0
 
 # Env var to control legacy sync deployment handle behavior in DAG.
 SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
+
+# Maximum duration to wait until broadcasting a long poll update if there are
+# still replicas in the RECOVERING state.
+RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
 
 class ServeHandleType(str, Enum):

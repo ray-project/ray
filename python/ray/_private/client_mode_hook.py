@@ -1,7 +1,8 @@
 import os
 import threading
 from contextlib import contextmanager
-from functools import partial, wraps
+from functools import wraps
+from ray._private.auto_init_hook import auto_init_ray
 
 # Attr set on func defs to mark they have been converted to client mode.
 RAY_CLIENT_MODE_ATTR = "__ray_client_mode_key__"
@@ -77,27 +78,20 @@ def enable_client_mode():
         _explicitly_disable_client_mode()
 
 
-def client_mode_hook(func: callable = None, *, auto_init: bool):
+def client_mode_hook(func: callable):
     """Decorator for whether to use the 'regular' ray version of a function,
     or the Ray Client version of that function.
 
     Args:
         func: This function. This is set when this function is used
             as a decorator.
-        auto_init: Whether `ray.init()` should be transparently called when
-            the wrapped function is called. This should be `True` for functions
-            that are *NOT* part of the initialization path (e.g. `init` or
-            `is_initialized`) or for functions that do not require Ray to be
-            initialized (e.g., KV operations, `shutdown`).
     """
-    if func is None:
-        return partial(client_mode_hook, auto_init=auto_init)
 
     @wraps(func)
     def wrapper(*args, **kwargs):
         from ray.util.client import ray
 
-        if client_mode_should_convert(auto_init=auto_init):
+        if client_mode_should_convert():
             # Legacy code
             # we only convert init function if RAY_CLIENT_MODE=1
             if func.__name__ != "init" or is_client_mode_enabled_by_default:
@@ -107,21 +101,8 @@ def client_mode_hook(func: callable = None, *, auto_init: bool):
     return wrapper
 
 
-def client_mode_should_convert(*, auto_init: bool):
-    """Determines if functions should be converted to client mode & if
-    Ray should be auto-initialized.
-
-    NOTE: `auto_init` must happen before we branch into regular ray or client
-    code because the initialization may result in either mode.
-    """
-    if auto_init:
-        import ray
-
-        if (
-            os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0"
-            and not ray.is_initialized()
-        ):
-            ray.init()
+def client_mode_should_convert():
+    """Determines if functions should be converted to client mode."""
 
     # `is_client_mode_enabled_by_default` is used for testing with
     # `RAY_CLIENT_MODE=1`. This flag means all tests run with client mode.
@@ -146,9 +127,10 @@ def client_mode_wrap(func):
     def wrapper(*args, **kwargs):
         from ray.util.client import ray
 
+        auto_init_ray()
         # Directly pass this through since `client_mode_wrap` is for
         # Placement Group APIs
-        if client_mode_should_convert(auto_init=True):
+        if client_mode_should_convert():
             f = ray.remote(num_cpus=0)(func)
             ref = f.remote(*args, **kwargs)
             return ray.get(ref)

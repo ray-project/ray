@@ -18,6 +18,7 @@ from typing import (
 )
 
 from ray._private.storage import _get_storage_uri
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
 from ray.util.annotations import PublicAPI
 from ray.widgets import Template, make_table_html_repr
@@ -550,14 +551,6 @@ class FailureConfig:
         return _repr_dataclass(self)
 
     def _repr_html_(self):
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         return Template("scrollableTable.html.j2").render(
             table=tabulate(
                 {
@@ -608,7 +601,15 @@ class CheckpointConfig:
             This attribute is only supported by trainers that don't take in
             custom training loops. Defaults to True for trainers that support it
             and False for generic function trainables.
-
+        _checkpoint_keep_all_ranks: If True, will save checkpoints from all ranked
+            training workers. If False, only checkpoint from rank 0 worker is kept.
+            NOTE: This API is experimental and subject to change between minor
+            releases.
+        _checkpoint_upload_from_workers: If True, distributed workers
+            will upload their checkpoints to cloud directly. This is to avoid the
+            need for transferring large checkpoint files to the training worker
+            group coordinator for persistence. NOTE: This API is experimental and
+            subject to change between minor releases.
     """
 
     num_to_keep: Optional[int] = None
@@ -616,6 +617,8 @@ class CheckpointConfig:
     checkpoint_score_order: str = MAX
     checkpoint_frequency: int = 0
     checkpoint_at_end: Optional[bool] = None
+    _checkpoint_keep_all_ranks: bool = False
+    _checkpoint_upload_from_workers: bool = False
 
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep <= 0:
@@ -638,14 +641,6 @@ class CheckpointConfig:
         return _repr_dataclass(self)
 
     def _repr_html_(self) -> str:
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         if self.num_to_keep is None:
             num_to_keep_repr = "All"
         else:
@@ -840,14 +835,6 @@ class RunConfig:
         )
 
     def _repr_html_(self) -> str:
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         reprs = []
         if self.failure_config is not None:
             reprs.append(
