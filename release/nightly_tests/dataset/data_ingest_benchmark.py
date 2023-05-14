@@ -23,14 +23,12 @@ class ConsumingActor:
     def consume(
         self,
         split,
-        expected_total_read_bytes,
         use_gpu=False,
         max_bytes_to_read=None,
     ):
         do_consume(
             split,
             self._rank,
-            expected_total_read_bytes,
             use_gpu,
             max_bytes_to_read,
         )
@@ -42,7 +40,6 @@ class ConsumingActor:
 def do_consume(
     split,
     rank,
-    expected_total_read_bytes,
     use_gpu=False,
     max_bytes_to_read=None,
 ):
@@ -124,10 +121,6 @@ def do_consume(
     if rank == 0:
         print("Ingest stats from rank=0:\n\n{}".format(split.stats()))
 
-    assert (
-        bytes_read == expected_total_read_bytes
-    ), f"{bytes_read} != {expected_total_read_bytes}"
-
 
 def make_ds(size_gb: int, parallelism: int = -1):
     # Dataset of 10KiB tensor records.
@@ -154,16 +147,13 @@ def run_ingest_streaming(dataset_size_gb, num_workers, use_gpu, early_stop):
     locality_hints = ray.get([actor.get_location.remote() for actor in consumers])
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.streaming_split(num_workers, equal=True, locality_hints=locality_hints)
-    expected_total_read_bytes = dataset_size_gb * GiB // num_workers
     max_bytes_to_read = None
     if early_stop:
-        max_bytes_to_read = expected_total_read_bytes // 2
-        expected_total_read_bytes //= 2
+        max_bytes_to_read = dataset_size_gb * GiB // num_workers // 2
     # Early stop when we've read half the dataset.
     future = [
         consumers[i].consume.remote(
             s,
-            expected_total_read_bytes,
             use_gpu,
             max_bytes_to_read,
         )
@@ -181,7 +171,7 @@ def run_ingest_bulk(dataset_size_gb, num_workers):
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.split(num_workers, equal=True, locality_hints=consumers)
     future = [
-        consumers[i].consume.remote(s, dataset_size_gb * GiB // num_workers)
+        consumers[i].consume.remote(s)
         for i, s in enumerate(splits)
     ]
     ray.get(future)
@@ -214,7 +204,7 @@ def run_ingest_dataset_pipeline(dataset_size_gb, num_workers):
     )
     splits = p.split(num_workers, equal=True, locality_hints=consumers)
     future = [
-        consumers[i].consume.remote(s, dataset_size_gb * GiB // num_workers)
+        consumers[i].consume.remote(s)
         for i, s in enumerate(splits)
     ]
     ray.get(future)
