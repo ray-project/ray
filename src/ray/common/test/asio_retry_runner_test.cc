@@ -64,6 +64,6 @@ TEST_F(RetryRunnerTest, Basic) {
 
   count = 0;
   // Test default completion token works
-  ASSERT_TRUE(async_retry_until(io_context.get_executor(), fn, -1, 5ms).get());
+  ASSERT_TRUE(async_retry_until(io_context.get_executor(), fn, std::nullopt, 5ms).get());
   ASSERT_EQ(3, count);
 }
