@@ -470,7 +470,7 @@ class JobState(StateSchema, JobDetails):
                 "error_type",
                 "driver_info",
             ]
-        return list(f for f in JobDetails.__fields__)
+        return JobDetails.__fields__
 
     def asdict(self):
         return JobDetails.dict(self)
