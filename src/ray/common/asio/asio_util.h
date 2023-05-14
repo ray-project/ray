@@ -36,7 +36,7 @@ std::shared_ptr<boost::asio::deadline_timer> execute_after(
   return timer;
 }
 
-pename Fn, typename Ex, typename Duration,
+typename Fn, typename Ex, typename Duration,
     typename CompletionToken =
         boost::asio::use_future_t<> >
         auto async_retry_until(Ex &&e,
