@@ -411,8 +411,6 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             interval=req.query.get("interval", None),
             suffix=req.query.get("suffix", "out"),
             attempt_number=req.query.get("attempt_number", 0),
-            ignore_server_stream_error=req.query.get("ignore_server_stream_error", None)
-            == "True",
         )
 
         response = aiohttp.web.StreamResponse()
@@ -438,36 +436,18 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             await response.prepare(req)
             return response
 
-        # NOTE: If not ignore_server_stream_error:
-        # The first byte indicates the success / failure of individual
-        # stream. If the first byte is b"1", it means the stream was successful.
-        # If it is b"0", it means it is failed.
-        # else: we send the raw data in stream directly.
         try:
             async for logs_in_bytes in self._log_api.stream_logs(options):
-                logs_to_stream = bytearray()
-                if not options.ignore_server_stream_error:
-                    logs_to_stream.extend(b"1")
-                logs_to_stream.extend(logs_in_bytes)
+                logs_to_stream = bytearray(logs_in_bytes)
                 await response.write(bytes(logs_to_stream))
             await response.write_eof()
             return response
         except Exception as e:
             logger.exception(e)
-            if not options.ignore_server_stream_error:
-                error_msg = bytearray(b"0")
-                error_msg.extend(
-                    f"Closing HTTP stream due to internal server error.\n{e}".encode()
-                )
-
-                await response.write(bytes(error_msg))
-                await response.write_eof()
-                return response
-            else:
-                # This could happen when the client side closes the connection.
-                # Force close the connection and do no-op.
-                response.force_close()
-                raise
+            # This could happen when the client side closes the connection.
+            # Force close the connection and do no-op.
+            response.force_close()
+            raise
 
     async def _handle_summary_api(
         self,

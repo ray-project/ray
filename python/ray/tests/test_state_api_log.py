@@ -927,8 +927,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         webui_url
         + "/api/v0/logs/file?&lines=-1"
         + "&filename=test.log"
-        + f"&node_id={node_id}"
-        + "&ignore_server_stream_error=True",
+        + f"&node_id={node_id}",
         stream=True,
     )
     assert stream_response.status_code == 200, stream_response.text

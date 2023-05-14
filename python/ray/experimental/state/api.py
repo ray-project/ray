@@ -1207,7 +1207,6 @@ def get_log(
         timeout=timeout,
         suffix=suffix,
         attempt_number=attempt_number,
-        ignore_server_stream_error=None,
     )
     options_dict = options.as_dict_no_none()
 
@@ -1220,16 +1219,9 @@ def get_log(
             raise RayStateApiException(r.reason)
         for bytes in r.iter_content(chunk_size=None):
             bytes = bytearray(bytes)
-            # First byte 1 means success.
-            if bytes.startswith(b"1"):
-                bytes.pop(0)
-                logs = bytes
-                if encoding is not None:
-                    logs = bytes.decode(encoding=encoding, errors=errors)
-            else:
-                assert bytes.startswith(b"0")
-                error_msg = bytes.decode("utf-8")
-                raise RayStateApiException(error_msg)
+            logs = bytes
+            if encoding is not None:
+                logs = bytes.decode(encoding=encoding, errors=errors)
             yield logs
 
 
