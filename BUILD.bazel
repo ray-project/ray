@@ -2632,7 +2632,7 @@ cc_test(
         "//:redis-cli",
         "//:redis-server",
     ],
-    env = {"REDIS_CHAOS":"1"},
+    env = {"REDIS_CHAOS": "1"},
     tags = ["team:core"],
     target_compatible_with = [
         "@platforms//os:linux",
