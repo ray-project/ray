@@ -2206,6 +2206,8 @@ def test_list_get_jobs(shutdown_only):
 
 import ray
 
+ray.init("auto")
+
 @ray.remote
 def f():
     pass
@@ -2216,8 +2218,9 @@ ray.get(f.remote())
 
     def verify():
         jobs = list_jobs(filters=[("type", "=", "DRIVER")])
-        assert len(jobs) == 1
-        assert jobs[0]["driver_info"] is not None
+        assert len(jobs) == 2, "1 test driver + 1 script run above"
+        for driver_job in jobs:
+            assert driver_job["driver_info"] is not None
 
         sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
         assert len(sub_jobs) == 1
