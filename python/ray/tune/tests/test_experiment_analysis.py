@@ -259,7 +259,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 1},
             num_samples=1,
             config={"test": tune.grid_search([[1, 2], [3, 4]])},
-            checkpoint_at_end=True,
+            checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
         )
         logdir = analysis.get_best_logdir(self.metric, mode="max")
         checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
@@ -275,7 +275,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 2},
             num_samples=1,
             config={"test": tune.grid_search([[1, 2], [3, 4]])},
-            checkpoint_at_end=True,
+            checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
         )
         logdir = analysis.get_best_logdir(self.metric, mode="max")
 

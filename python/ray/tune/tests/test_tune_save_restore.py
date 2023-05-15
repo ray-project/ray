@@ -74,7 +74,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             self.MockTrainable,
             name=exp_name,
             stop={"training_iteration": 1},
-            checkpoint_config=CheckpointConfig(checkpoint_freq=1),
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             storage_path=local_dir,
             config={"env": "CartPole-v0", "log_level": "DEBUG"},
         ).trials
