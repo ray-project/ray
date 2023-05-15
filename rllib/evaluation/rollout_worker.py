@@ -40,7 +40,6 @@ from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
-from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.offline import (
     D4RLReader,
     DatasetReader,
@@ -2109,15 +2108,13 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             else:
                 new_policy = policy
 
+            # Maybe torch compile an RLModule.
             if self.config.get("_enable_rl_module_api", False):
-                # All policies that inherit from TorchPolicyV2 or EagerTfPolicyV2
-                # have their model at policy.model.
-                # This is not the case in  RandomPolicy.
                 rl_module = getattr(new_policy, "model", None)
-                if rl_module is not None and isinstance(rl_module, TorchRLModule):
-                    self.config.get_torch_compile_worker_config().compile(
-                        new_policy.model
-                    )
+                if rl_module is not None and self.config.framework_str == "torch":
+                    if self.config.get("torch_compile_rollout_worker"):
+                        compile_config = self.config.get_compile_worker_config()
+                        rl_module.compile(compile_config)
 
             self.policy_map[name] = new_policy
 

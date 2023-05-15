@@ -281,14 +281,11 @@ class AlgorithmConfig(_Config):
             "inter_op_parallelism_threads": 8,
         }
         # Torch compile settings
-        self.torch_compile_learner_forward_train = False
-        self.torch_compile_learner_forward_inference = False
-        self.torch_compile_learner_forward_exploration = False
+        self.torch_compile_learner_forward_train = True
         self.torch_compile_learner_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
         self.torch_compile_learner_dynamo_mode = "reduce-overhead"
-        self.torch_compile_worker_forward_train = False
         self.torch_compile_worker_forward_inference = False
         self.torch_compile_worker_forward_exploration = False
         self.torch_compile_worker_dynamo_backend = (
@@ -1208,11 +1205,8 @@ class AlgorithmConfig(_Config):
         tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         torch_compile_learner_forward_train=NotProvided,
-        torch_compile_learner_forward_exploration=NotProvided,
-        torch_compile_learner_forward_inference=NotProvided,
         torch_compile_learner_dynamo_mode=NotProvided,
         torch_compile_learner_dynamo_backend=NotProvided,
-        torch_compile_worker_forward_train=NotProvided,
         torch_compile_worker_forward_exploration=NotProvided,
         torch_compile_worker_forward_inference=NotProvided,
         torch_compile_worker_dynamo_backend=NotProvided,
@@ -1240,21 +1234,10 @@ class AlgorithmConfig(_Config):
             torch_compile_learner_forward_train: If True, forward_train methods on
                 TorchRLModules on the learner are compiled. If not specified,
                 the default is to compile forward train on the learner.
-            torch_compile_learner_forward_exploration: If True, forward_exploration
-                methods on TorchRLModules on the learner are compiled. If not
-                specified, the default is not to compile forward exploration on the
-                learner.
-            torch_compile_learner_forward_inference: If True, forward_inference
-                methods on TorchRLModules on the learner are compiled. If not
-                specified, the default is not to compile forward inference on the
-                learner.
             torch_compile_learner_dynamo_backend: The torch dynamo backend to use on
                 the learner.
             torch_compile_learner_dynamo_mode: The torch dynamo mode to use on the
                 learner.
-            torch_compile_worker_forward_train: If True, forward_train methods on
-                TorchRLModules on the workers are compiled. If not specified, the
-                default is not to compile forward train on the workers.
             torch_compile_worker_forward_exploration: If True, forward_exploration
                 methods on TorchRLModules on the workers are compiled. If not
                 specified, the default is to not compile forward methods on the
@@ -1292,22 +1275,12 @@ class AlgorithmConfig(_Config):
             self.torch_compile_learner_forward_train = (
                 torch_compile_learner_forward_train
             )
-        if torch_compile_learner_forward_exploration is not NotProvided:
-            self.torch_compile_learner_forward_exploration = (
-                torch_compile_learner_forward_exploration
-            )
-        if torch_compile_learner_forward_inference is not NotProvided:
-            self.torch_compile_learner_forward_inference = (
-                torch_compile_learner_forward_inference
-            )
         if torch_compile_learner_dynamo_backend is not NotProvided:
             self.torch_compile_learner_dynamo_backend = (
                 torch_compile_learner_dynamo_backend
             )
         if torch_compile_learner_dynamo_mode is not NotProvided:
             self.torch_compile_learner_dynamo_mode = torch_compile_learner_dynamo_mode
-        if torch_compile_worker_forward_train is not NotProvided:
-            self.torch_compile_worker_forward_train = torch_compile_worker_forward_train
         if torch_compile_worker_forward_exploration is not NotProvided:
             self.torch_compile_worker_forward_exploration = (
                 torch_compile_worker_forward_exploration

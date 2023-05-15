@@ -60,48 +60,21 @@ class TorchCompileConfig:
     torch_dynamo_mode: str = "reduce-overhead"
     kwargs: dict = field(default_factory=lambda: dict())
 
-    def compile(self, rl_module: "TorchRLModule") -> None:
-        """Compiles the forward methods of the given RLModule according to this config.
-
-        Args:
-            rl_module: The RLModule to compile the forward methods of.
-        """
-        assert isinstance(
-            rl_module, TorchRLModule
-        ), "Only TorchRLModules can be compiled."
-
-        if self.compile_forward_train:
-            rl_module.compile_forward_train(
-                backend=self.torch_dynamo_backend,
-                mode=self.torch_dynamo_mode,
-                **self.kwargs
-            )
-        if self.compile_forward_inference:
-            rl_module.compile_forward_inference(
-                backend=self.torch_dynamo_backend,
-                mode=self.torch_dynamo_mode,
-                **self.kwargs
-            )
-        if self.compile_forward_exploration:
-            rl_module.compile_forward_exploration(
-                backend=self.torch_dynamo_backend,
-                mode=self.torch_dynamo_mode,
-                **self.kwargs
-            )
-
 
 class TorchRLModule(nn.Module, RLModule):
     """A base class for RLlib torch RLModules.
 
     Note that the `_forward` methods of this class can be 'torch.compiled' individually:
-        - TorchRLModule._forward_train()
-        - TorchRLModule._forward_inference()
-        - TorchRLModule._forward_exploration()
-    As a rule of thumb, they should only contain torch-native tensor manipulations, or
-    otherwise they may yield wrong outputs. In particular, the creation of RLlib
-    distributions inside these methods should be avoided when using torch.compile.
-    When in doubt, you can use torch.dynamo.explain() to check whether a compiled
+        - `TorchRLModule._forward_train()`
+        - `TorchRLModule._forward_inference()`
+        - `TorchRLModule._forward_exploration()`
+
+    As a rule of thumb, they should only contain torch-native tensor manipulations,
+    or otherwise they may yield wrong outputs. In particular, the creation of RLlib
+    distributions inside these methods should be avoided when using `torch.compile`.
+    When in doubt, you can use `torch.dynamo.explain()` to check whether a compiled
     method has broken up into multiple sub-graphs.
+
     Compiling these methods can bring speedups under certain conditions.
     """
 
@@ -114,13 +87,42 @@ class TorchRLModule(nn.Module, RLModule):
         # Whether to retrace torch compiled forward methods on set_weights.
         self._retrace_on_set_weights = False
 
+    def compile(self, config: TorchCompileConfig) -> "TorchRLModule":
+        """Compiles the forward methods of this RL Module according to config.
+
+        Args:
+            config: The TorchCompileConfig to use.
+        """
+
+        if config.compile_forward_train:
+            self.compile_forward_train(
+                backend=config.torch_dynamo_backend,
+                mode=config.torch_dynamo_mode,
+                **config.kwargs
+            )
+        if config.compile_forward_inference:
+            self.compile_forward_inference(
+                backend=config.torch_dynamo_backend,
+                mode=config.torch_dynamo_mode,
+                **config.kwargs
+            )
+        if config.compile_forward_exploration:
+            self.compile_forward_exploration(
+                backend=config.torch_dynamo_backend,
+                mode=config.torch_dynamo_mode,
+                **config.kwargs
+            )
+
+        return self
+
     @override(RLModule)
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
         # If this forward method was compiled, we call the compiled version.
         if hasattr(self, "_compiled_forward_inference"):
-            return self._compiled_forward_inference(batch, **kwargs)
+            with torch.no_grad():
+                return self._compiled_forward_inference(batch, **kwargs)
         return self._forward_inference(batch, **kwargs)
 
     @override(RLModule)
@@ -129,19 +131,23 @@ class TorchRLModule(nn.Module, RLModule):
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
-        # If this forward method was compiled, we call the compiled version.
-        if hasattr(self, "_compiled_forward_exploration"):
-            return self._compiled_forward_exploration(batch, **kwargs)
+        # Make sure we don't trace gradients in exploration to avoid potential slowness.
+        with torch.no_grad():
+            # If this forward method was compiled, we call the compiled version.
+            if hasattr(self, "_compiled_forward_exploration"):
+                return self._compiled_forward_exploration(batch, **kwargs)
         return self._forward_exploration(batch, **kwargs)
 
     @override(RLModule)
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        # If this forward method was compiled, we call the compiled version.
-        if hasattr(self, "_compiled_forward_train"):
-            return self._compiled_forward_train(batch, **kwargs)
-        return self._forward_train(batch, **kwargs)
+        # Make sure we don't trace gradients in exploration to avoid potential slowness.
+        with torch.no_grad():
+            # If this forward method was compiled, we call the compiled version.
+            if hasattr(self, "_compiled_forward_train"):
+                return self._compiled_forward_train(batch, **kwargs)
+            return self._forward_train(batch, **kwargs)
 
     def compile_forward_train(
         self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
