@@ -71,6 +71,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
+    validate_compute,
     ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -347,17 +348,7 @@ class Dataset:
                 Call this method to transform batches of data. It's faster and more
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
@@ -571,16 +562,7 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
+        validate_compute(fn, compute)
 
         if fn_constructor_args is not None or fn_constructor_kwargs is not None:
             if compute is None or (
@@ -829,17 +811,7 @@ class Dataset:
                 This method isn't recommended because it's slow; call
                 :meth:`~Dataset.map_batches` instead.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
@@ -891,17 +863,7 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_filter_fn()
