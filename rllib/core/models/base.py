@@ -303,7 +303,7 @@ class Encoder(Model, abc.ABC):
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return [ACTOR, CRITIC]
+        return []
 
     @abc.abstractmethod
     def _forward(self, input_dict: dict, **kwargs) -> dict:
