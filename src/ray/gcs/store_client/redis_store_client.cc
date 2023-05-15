@@ -271,19 +271,23 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
                                     std::vector<std::string> args,
                                     RedisCallback redis_callback) {
   RAY_CHECK(!keys.empty());
-  auto counter = std::make_shared<std::atomic<size_t>>(0);
+  // The number of keys that's ready for this request.
+  // For a query reading or writing multiple keys, we need a counter
+  // to check whether all existing requests for this keys have been
+  // processed.
+  auto num_ready_keys = std::make_shared<std::atomic<size_t>>(0);
   std::function<void()> send_redis = [this,
-                                      counter = counter,
+                                      num_ready_keys = num_ready_keys,
                                       keys,
                                       args = std::move(args),
                                       redis_callback =
                                           std::move(redis_callback)]() mutable {
     {
       absl::MutexLock lock(&mu_);
-      *counter += 1;
-      RAY_CHECK(*counter <= keys.size());
+      *num_ready_keys += 1;
+      RAY_CHECK(*num_ready_keys <= keys.size());
       // There are still pending requets for these keys.
-      if (*counter != keys.size()) {
+      if (*num_ready_keys != keys.size()) {
         return;
       }
     }
@@ -309,11 +313,11 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
 
   {
     absl::MutexLock lock(&mu_);
-    auto added_count = PushToSendingQueue(keys, send_redis);
-    *counter += added_count;
+    auto keys_ready = PushToSendingQueue(keys, send_redis);
+    *num_ready_keys += keys_ready;
     // We should be able to file it directly.
-    if (*counter == keys.size()) {
-      *counter = keys.size() - 1;
+    if (*num_ready_keys == keys.size()) {
+      *num_ready_keys = keys.size() - 1;
     } else {
       send_redis = nullptr;
     }
