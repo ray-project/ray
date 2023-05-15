@@ -284,6 +284,10 @@ LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 LOG_PREFIX_TASK_NAME = ":task_name:"
 # Job ids are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_JOB_ID = ":job_id:"
+# Task attempts magic token marked the beginning of the task logs
+LOG_PREFIX_TASK_ATTEMPT_START = ":task_attempt_start:"
+# Task attempts magic token marked the beginning of the task logs
+LOG_PREFIX_TASK_ATTEMPT_END = ":task_attempt_end:"
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
@@ -378,6 +382,7 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor
 # tasks.
@@ -425,3 +430,6 @@ RAY_ALLOWED_CACHED_PORTS = {
 }
 
 RAY_ENABLE_RECORD_TASK_LOGGING = env_bool("RAY_ENABLE_RECORD_TASK_LOGGING", False)
+
+WORKER_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_SETUP_HOOK_ENV_VAR"
+RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = "RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT"
