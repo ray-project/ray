@@ -119,7 +119,7 @@ class OperatorFusionRule(Rule):
         # (only RandomShuffle and Repartition LogicalOperators are currently supported)
         if not (
             isinstance(up_op, MapOperator) and isinstance(down_op, MapOperator)
-        ) or not (
+        ) and not (
             isinstance(up_op, TaskPoolMapOperator)
             and isinstance(down_op, AllToAllOperator)
         ):
