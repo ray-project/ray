@@ -201,24 +201,29 @@ class ApplicationState:
                 try:
                     ray.get(finished[0])
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
-                except Exception as e:
-                    if isinstance(e, RayTaskError):
-                        # NOTE(zcin): we use str(e) instead of traceback.format_exc()
-                        # here because the full details of the error is not displayed
-                        # properly with traceback.format_exc(). RayTaskError has its own
-                        # custom __str__ function.
-                        self._app_msg = f"Deploying app '{self._name}' failed: {str(e)}"
-                    elif isinstance(e, RuntimeEnvSetupError):
-                        self._app_msg = (
-                            f"Runtime env setup for app '{self._name}' failed:\n"
-                            f"{traceback.format_exc()}"
-                        )
-                    else:
-                        self._app_msg = (
-                            "Unexpected error occured while deploying application "
-                            f"'{self._name}':\n{traceback.format_exc()}"
-                        )
+                except RayTaskError as e:
                     self._status = ApplicationStatus.DEPLOY_FAILED
+                    # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
+                    # here because the full details of the error is not displayed
+                    # properly with traceback.format_exc(). RayTaskError has its own
+                    # custom __str__ function.
+                    self._app_msg = f"Deploying app '{self._name}' failed:\n{str(e)}"
+                    logger.warning(self._app_msg)
+                    return
+                except RuntimeEnvSetupError:
+                    self._status = ApplicationStatus.DEPLOY_FAILED
+                    self._app_msg = (
+                        f"Runtime env setup for app '{self._name}' "
+                        f"failed:\n{traceback.format_exc()}"
+                    )
+                    logger.warning(self._app_msg)
+                    return
+                except Exception:
+                    self._status = ApplicationStatus.DEPLOY_FAILED
+                    self._app_msg = (
+                        "Unexpected error occured while deploying application "
+                        f"'{self._name}':\n{traceback.format_exc()}"
+                    )
                     logger.warning(self._app_msg)
                     return
             deployments_statuses = (
