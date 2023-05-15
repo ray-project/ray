@@ -9,28 +9,30 @@ describe("getStateApiDownloadLogUrl", () => {
         nodeId: "node-id",
         filename: "file.log",
       }),
-    ).toStrictEqual("api/v0/logs/file?node_id=node-id&filename=file.log");
+    ).toStrictEqual(
+      "api/v0/logs/file?node_id=node-id&filename=file.log&lines=-1",
+    );
 
     expect(
       getStateApiDownloadLogUrl({
         taskId: "task-id",
         suffix: "err",
       }),
-    ).toStrictEqual("api/v0/logs/file?task_id=task-id&suffix=err");
+    ).toStrictEqual("api/v0/logs/file?task_id=task-id&suffix=err&lines=-1");
 
     expect(
       getStateApiDownloadLogUrl({
         taskId: "task-id",
         suffix: "out",
       }),
-    ).toStrictEqual("api/v0/logs/file?task_id=task-id&suffix=out");
+    ).toStrictEqual("api/v0/logs/file?task_id=task-id&suffix=out&lines=-1");
 
     expect(
       getStateApiDownloadLogUrl({
         actorId: "actor-id",
         suffix: "err",
       }),
-    ).toStrictEqual("api/v0/logs/file?actor_id=actor-id&suffix=err");
+    ).toStrictEqual("api/v0/logs/file?actor_id=actor-id&suffix=err&lines=-1");
 
     expect(
       getStateApiDownloadLogUrl({

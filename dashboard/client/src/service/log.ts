@@ -84,6 +84,7 @@ export const getStateApiDownloadLogUrl = ({
       ? [`actor_id=${encodeURIComponent(actorId)}`]
       : []),
     ...(suffix !== undefined ? [`suffix=${encodeURIComponent(suffix)}`] : []),
+    "lines=-1",
   ];
 
   return `api/v0/logs/file?${variables.join("&")}`;
