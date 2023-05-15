@@ -788,6 +788,7 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
 # Integration tests
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_task_log_err_empty(ray_start_with_dashboard):
     assert (
         wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])

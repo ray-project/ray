@@ -338,11 +338,8 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         )
 
         if task_attempt_magic_line_offset == -1:
-            # TODO
-            data = f.read()
             raise FileNotFoundError(
-                f"Log for task attempt({task_id},{attempt_number}) not found: \n"
-                f"{data.decode()}"
+                f"Log for task attempt({task_id},{attempt_number}) not found."
             )
         start_offset = task_attempt_magic_line_offset + len(
             task_attempt_start_magic_line
