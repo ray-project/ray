@@ -43,11 +43,6 @@ class RedisStoreClientTest : public StoreClientTestBase {
     auto port = TEST_REDIS_SERVER_PORTS.front();
     TestSetupUtil::FlushRedisServer(port);
     StoreClientTestBase::SetUp();
-    std::promise<void> p;
-    store_client_->AsyncGet("A", "A", [&p] (auto, auto) mutable {
-      p.set_value();
-    });
-    p.get_future().get();
     if(std::getenv("REDIS_CHAOS") != nullptr) {
       t_ = std::make_unique<std::thread>([this, port]() {
         while (!stopped_) {
@@ -60,7 +55,9 @@ class RedisStoreClientTest : public StoreClientTestBase {
 
   void TearDown() override {
     stopped_ = true;
-    t_->join();
+    if(t_) {
+      t_->join();
+    }
     StoreClientTestBase::TearDown();
   }
 
