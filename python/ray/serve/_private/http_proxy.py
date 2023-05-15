@@ -502,6 +502,21 @@ class HTTPProxyActor:
         self.setup_complete = asyncio.Event()
 
         self.app = HTTPProxy(controller_name)
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.middleware import Middleware
+
+        class ASGIMiddleware:
+            def __init__(self, app):
+                self.app = app
+
+            async def __call__(self, scope, receive, send):
+                logger.info("logger print")
+                print("raw print")
+                raise Exception("i am raising exception")
+                await self.app(scope, receive, send)
+
+        http_middlewares.append(Middleware(ASGIMiddleware))
+        # print("middleware added", http_middlewares)
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:
