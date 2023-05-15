@@ -20,7 +20,6 @@ from ray_release.config import (
     DEFAULT_WAIT_FOR_NODES_TIMEOUT,
     RELEASE_PACKAGE_DIR,
     DEFAULT_AUTOSUSPEND_MINS,
-    validate_test,
 )
 from ray_release.template import load_test_cluster_env, load_test_cluster_compute
 from ray_release.exception import (
@@ -83,7 +82,6 @@ def _load_test_configuration(
     smoke_test: bool = False,
     no_terminate: bool = False,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
-    validate_test(test)
     logger.info(f"Test config: {test}")
 
     # Populate result paramaters
