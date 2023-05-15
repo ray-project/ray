@@ -10,8 +10,6 @@ import numpy as np
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-from ray.data._internal.compute import TaskPoolStrategy
-from ray.data.block import CallableClass
 from ray.data.context import DataContext
 from ray._private.utils import _get_pyarrow_version
 
@@ -415,8 +413,12 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
 
 
 def validate_compute(
-    fn: UserDefinedFunction, compute: Optional[Union[str, ComputeStrategy]]
+    fn: "UserDefinedFunction", compute: Optional[Union[str, "ComputeStrategy"]]
 ) -> None:
+    # Lazily import these objects to avoid circular imports.
+    from ray.data._internal.compute import TaskPoolStrategy
+    from ray.data.block import CallableClass
+
     if isinstance(fn, CallableClass) and (
         compute is None or compute == "tasks" or isinstance(compute, TaskPoolStrategy)
     ):
