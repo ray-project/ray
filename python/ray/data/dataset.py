@@ -4430,11 +4430,25 @@ class Schema:
     def __eq__(self, other):
         return isinstance(other, Schema) and other.base_schema == self.base_schema
 
-    def __str__(self):
-        return f"Schema({dict(zip(self.names, self.types))})"
-
     def __repr__(self):
-        return str(self)
+        column_width = max([len(name) for name in self.names] + [len("Column")])
+        padding = 2
+
+        output = "Column"
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "Type\n"
+
+        output += "-" * len("Column")
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "-" * len("Type") + "\n"
+
+        for name, type in zip(self.names, self.types):
+            output += name
+            output += " " * ((column_width + padding) - len(name))
+            output += f"{type}\n"
+
+        output = output.rstrip()
+        return output
 
 
 def _get_size_bytes(block: Block) -> int:
