@@ -323,7 +323,7 @@ class LogsManager:
                 f"\tsuffix: {suffix}\n"
                 f"\tsubmission_id: {submission_id}\n"
             )
-
+        logger.info(f"Resolved log file: {log_filename} on node {node_id}")
         return log_filename, node_id
 
     def _categorize_log_files(self, log_files: List[str]) -> Dict[str, List[str]]:
