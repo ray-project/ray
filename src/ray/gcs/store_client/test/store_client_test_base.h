@@ -77,8 +77,7 @@ class StoreClientTestBase : public ::testing::Test {
     auto delete_calllback = [this](auto) { --pending_count_; };
     for (const auto &[key, _] : key_to_value_) {
       ++pending_count_;
-      RAY_CHECK_OK(
-          store_client_->AsyncDelete(table_name_, key.Hex(), delete_calllback));
+      RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key.Hex(), delete_calllback));
       // Make sure no-op callback is handled well
       RAY_CHECK_OK(store_client_->AsyncDelete(table_name_, key.Hex(), nullptr));
     }

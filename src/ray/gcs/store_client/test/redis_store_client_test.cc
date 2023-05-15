@@ -15,6 +15,7 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <chrono>
+
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
@@ -27,7 +28,7 @@ namespace gcs {
 class RedisStoreClientTest : public StoreClientTestBase {
  public:
   RedisStoreClientTest() {
-    if(std::getenv("REDIS_CHAOS") != nullptr) {
+    if (std::getenv("REDIS_CHAOS") != nullptr) {
       ::RayConfig::instance().num_redis_request_retries() = 1000;
       ::RayConfig::instance().redis_retry_interval_ms() = 10;
     }
@@ -43,7 +44,7 @@ class RedisStoreClientTest : public StoreClientTestBase {
     auto port = TEST_REDIS_SERVER_PORTS.front();
     TestSetupUtil::FlushRedisServer(port);
     StoreClientTestBase::SetUp();
-    if(std::getenv("REDIS_CHAOS") != nullptr) {
+    if (std::getenv("REDIS_CHAOS") != nullptr) {
       t_ = std::make_unique<std::thread>([this, port]() {
         while (!stopped_) {
           TestSetupUtil::ExecuteRedisCmd(port, {"REPLICAOF", "localhost", "1234"});
@@ -55,7 +56,7 @@ class RedisStoreClientTest : public StoreClientTestBase {
 
   void TearDown() override {
     stopped_ = true;
-    if(t_) {
+    if (t_) {
       t_->join();
     }
     StoreClientTestBase::TearDown();

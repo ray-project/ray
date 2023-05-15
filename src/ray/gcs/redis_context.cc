@@ -177,34 +177,35 @@ void RedisRequestContext::Run() {
 
   --pending_retries_;
 
-  auto fn =
-      +[](struct redisAsyncContext *async_context, void *raw_reply, void *privdata) {
-        auto *request_cxt = (RedisRequestContext *)privdata;
-        auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
-        // Error happened.
-        if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
-          RAY_LOG(ERROR) << "Redis request ["
-                         << absl::StrJoin(request_cxt->redis_cmds_, " ") << "]"
-                         << " failed due to error " << async_context->errstr << ". "
-                         << request_cxt->pending_retries_ << " retries left.";
-          // Retry the request after a while.
-          execute_after(
-              request_cxt->io_service_,
-              [request_cxt]() { request_cxt->Run(); },
-              std::chrono::milliseconds(::RayConfig::instance().redis_retry_interval_ms()));
-        } else {
-          auto reply = std::make_shared<CallbackReply>(redis_reply);
-          request_cxt->io_service_.post(
-              [reply, callback = std::move(request_cxt->callback_)]() {
-                callback(std::move(reply));
-              },
-              "RedisRequestContext.Callback");
-          auto end_time = absl::Now();
-          ray::stats::GcsLatency().Record((end_time - request_cxt->start_time_) /
-                                          absl::Milliseconds(1));
-          delete request_cxt;
-        }
-      };
+  auto fn = +[](struct redisAsyncContext *async_context,
+                void *raw_reply,
+                void *privdata) {
+    auto *request_cxt = (RedisRequestContext *)privdata;
+    auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
+    // Error happened.
+    if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
+      RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
+                     << "]"
+                     << " failed due to error " << async_context->errstr << ". "
+                     << request_cxt->pending_retries_ << " retries left.";
+      // Retry the request after a while.
+      execute_after(
+          request_cxt->io_service_,
+          [request_cxt]() { request_cxt->Run(); },
+          std::chrono::milliseconds(::RayConfig::instance().redis_retry_interval_ms()));
+    } else {
+      auto reply = std::make_shared<CallbackReply>(redis_reply);
+      request_cxt->io_service_.post(
+          [reply, callback = std::move(request_cxt->callback_)]() {
+            callback(std::move(reply));
+          },
+          "RedisRequestContext.Callback");
+      auto end_time = absl::Now();
+      ray::stats::GcsLatency().Record((end_time - request_cxt->start_time_) /
+                                      absl::Milliseconds(1));
+      delete request_cxt;
+    }
+  };
 
   Status status = redis_context_->RedisAsyncCommandArgv(
       fn, this, argv_.size(), argv_.data(), argc_.data());
