@@ -1,6 +1,6 @@
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import Dict, List, override
+from typing import Dict, List, Set, override
 
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
@@ -37,7 +37,7 @@ class NodeProvider(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get_nodes_by_id(
+    def get_nodes_by_cloud_id(
         self,
         cloud_instance_ids: List[str],
     ) -> Dict[str, Instance]:
@@ -65,7 +65,12 @@ class NodeProviderAdapter(NodeProvider):
         self._node_launcher = node_launcher
         self._config = instance_config_provider
 
-    def _filter_instances(self, instances, instance_ids_filter, instance_states_filter):
+    def _filter_instances(
+        self,
+        instances: Dict[str, Instance],
+        instance_ids_filter: Set[str],
+        instance_states_filter: Set[int],
+    ) -> Dict[str, Instance]:
         filtered = {}
         for instance_id, instance in instances.items():
             if instance_ids_filter and instance_id not in instance_ids_filter:
@@ -104,8 +109,8 @@ class NodeProviderAdapter(NodeProvider):
         clould_instance_ids = self._provider.non_terminated_nodes()
         return self.get_nodes_by_id(clould_instance_ids)
 
-    @abstractmethod
-    def get_nodes_by_id(
+    @override
+    def get_nodes_by_cloud_id(
         self,
         cloud_instance_ids: List[str],
     ) -> Dict[str, Instance]:
