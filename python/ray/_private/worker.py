@@ -1756,7 +1756,7 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+    should_dedup = data.get("pid") not in ["autoscaler"]
 
     if data["is_err"]:
         if should_dedup:
@@ -1838,14 +1838,14 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
 
     def prefix_for(data: Dict[str, str]) -> str:
         """The PID prefix for this log line."""
-        if data.get("pid") in ["autoscaler", "raylet"]:
+        if data.get("pid") in ["autoscaler", "raylet", "error_event"]:
             return ""
         else:
             res = "pid="
             if data.get("actor_name"):
-                res = data["actor_name"] + " " + res
+                res = f"{data['actor_name']} {res}"
             elif data.get("task_name"):
-                res = data["task_name"] + " " + res
+                res = f"{data['task_name']} {res}"
             return res
 
     def message_for(data: Dict[str, str], line: str) -> str:
@@ -1861,6 +1861,11 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             and ray_constants.LOG_PREFIX_INFO_MESSAGE not in line
         ):
             return colorama.Fore.YELLOW
+        if (
+            data.get("pid") == "error_event"
+            and ray_constants.LOG_PREFIX_INFO_MESSAGE not in line
+        ):
+            return colorama.Fore.MAGENTA
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
                 return colorama.Style.BRIGHT + colorama.Fore.YELLOW
@@ -1996,14 +2001,20 @@ def listen_error_messages(worker, threads_stopped):
                 JobID.nil().binary(),
             ]:
                 continue
-
             error_message = error_data.error_message
             if error_data.type == ray_constants.TASK_PUSH_ERROR:
                 # TODO(ekl) remove task push errors entirely now that we have
                 # the separate unhandled exception handler.
                 pass
             else:
-                logger.warning(error_message)
+                # logger.warning(error_message)
+                print_to_stdstream(
+                    {
+                        "lines": [error_message],
+                        "pid": "error_event",
+                        "is_err": False,
+                    }
+                )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
 

@@ -354,10 +354,13 @@ class LogDeduplicator:
             elif self.skip_re and self.skip_re.search(line):
                 continue
             dedup_key = _canonicalise_log_line(line)
+
             if dedup_key in self.recent:
                 sources = self.recent[dedup_key].sources
                 sources.add(source)
-                if len(sources) > 1:
+                # error_event doesn't report sources.
+                # So we don't have the restriction.
+                if len(sources) > 1 or batch["pid"] == "error_event":
                     state = self.recent[dedup_key]
                     self.recent[dedup_key] = DedupState(
                         state.timestamp,
