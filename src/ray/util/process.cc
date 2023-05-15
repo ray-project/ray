@@ -629,8 +629,12 @@ bool IsProcessAlive(pid_t pid) {
   }
   return false;
 #else
-  int stat;
-  if (pid == waitpid(pid, &stat, WNOHANG)) {
+  if (kill(pid, 0) == -1 && errno == ESRCH) {
+    return false;
+  }
+  // If it's a child, check whether it's zombie
+  int ret = waitpid(pid, nullptr, WNOHANG);
+  if(ret == pid) {
     return false;
   }
   return true;
