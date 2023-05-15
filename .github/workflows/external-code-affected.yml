@@ -21,8 +21,7 @@ jobs:
     - name: Check for changes in tracked files
       run: |
         set -xe
-        # Todo: remove branch checkout once merged
-        git clone -b external-code https://github.com/ray-project/buildkite-ci-pipelines ./pipelines 
+        git clone https://github.com/ray-project/buildkite-ci-pipelines.git ./pipelines 
 
         # Find changed files
         GIT_DIFF=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
