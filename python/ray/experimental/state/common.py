@@ -531,6 +531,10 @@ class JobState(StateSchema, JobDetails):
         return {"job_id", "type", "status", "submission_id"}
 
     @classmethod
+    def humanify(cls, state: dict) -> dict:
+        return state
+
+    @classmethod
     def list_columns(cls, detail: bool = False) -> List[str]:
         if not detail:
             return [
