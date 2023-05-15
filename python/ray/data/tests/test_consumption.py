@@ -256,7 +256,7 @@ def test_schema_repr(ray_start_regular_shared):
         "Column  Type\n"
         "------  ----\n"
         "text    string\n"
-        "number  int64\n"
+        "number  int64"
     )
     # fmt:on
     assert repr(ds.schema()) == expected_repr
@@ -265,7 +265,7 @@ def test_schema_repr(ray_start_regular_shared):
     expected_repr = (
         "Column            Type\n"
         "------            ----\n"
-        "long_column_name  string\n"
+        "long_column_name  string"
     )
     assert repr(ds.schema()) == expected_repr
 

@@ -4481,6 +4481,7 @@ class Schema:
             output += " " * ((column_width + padding) - len(name))
             output += f"{type}\n"
 
+        output = output.rstrip()
         return output
 
 
