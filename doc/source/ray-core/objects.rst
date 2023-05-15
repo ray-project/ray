@@ -18,7 +18,9 @@ Object refs can be created in two ways.
 
     .. tab-item:: Python
 
-      .. code-block:: python
+      .. testcode::
+
+        import ray
 
         # Put an object in Ray's object store.
         y = 1
@@ -61,7 +63,10 @@ If the current node's object store does not contain the object, the object is do
         or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
         Otherwise, we deserialize the object data into a Python object.
 
-        .. code-block:: python
+        .. testcode::
+
+          import ray
+          import time
 
           # Get the value of one object ref.
           obj_ref = ray.put(1)
@@ -84,6 +89,10 @@ If the current node's object store does not contain the object, the object is do
               ray.get(obj_ref, timeout=4)
           except GetTimeoutError:  # You can capture the standard "TimeoutError" instead
               print("`get` timed out.")
+
+        .. testoutput::
+
+          `get` timed out.
 
     .. tab-item:: Java
 
@@ -149,7 +158,17 @@ There are two different ways one can pass an object to a Ray task or method. Dep
 
 The top-level vs not top-level passing convention also applies to actor constructors and actor method calls:
 
-.. code-block:: python
+.. testcode::
+
+    @ray.remote
+    class Actor:
+      def __init__(self, arg):
+        pass
+
+      def method(self, arg):
+        pass
+
+    obj = ray.put(2)
 
     # Examples of passing objects to actor constructors.
     actor_handle = Actor.remote(obj)  # by-value
@@ -171,7 +190,7 @@ Nested Objects
 
 Ray also supports nested object references. This allows you to build composite objects that themselves hold references to further sub-objects.
 
-.. code-block:: python
+.. testcode::
 
     # Objects can be nested within each other. Ray will keep the inner object
     # alive via reference counting until all outer object references are deleted.

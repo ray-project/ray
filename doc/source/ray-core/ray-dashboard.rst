@@ -3,7 +3,7 @@
 Ray Dashboard
 =============
 Ray provides a web-based dashboard for monitoring and debugging Ray applications.
-The dashboard provides a visual representation of the system state, allowing users to track the performance 
+The dashboard provides a visual representation of the system state, allowing users to track the performance
 of their applications and troubleshoot issues.
 
 .. raw:: html
@@ -36,10 +36,22 @@ To use the dashboard, you should use the `ray[default]` installation:
 
 You can access the dashboard through a URL printed when Ray is initialized (the default URL is **http://localhost:8265**) or via the context object returned from `ray.init`.
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  import ray
+  ray.shutdown()
+
+.. testcode::
+
+    import ray
 
     context = ray.init()
     print(context.dashboard_url)
+
+.. testoutput::
+
+   127.0.0.1:8265
 
 .. code-block:: text
 
@@ -47,9 +59,9 @@ You can access the dashboard through a URL printed when Ray is initialized (the 
 
 Ray cluster comes with the dashboard. See :ref:`Cluster Monitoring <monitor-cluster-via-dashboard>` for more details.
 
-.. note:: 
+.. note::
 
-  When using the Ray dashboard, it is highly recommended to also set up Prometheus and Grafana. 
+  When using the Ray dashboard, it is highly recommended to also set up Prometheus and Grafana.
   They are necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
   See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
 
@@ -68,7 +80,7 @@ View the application logs and errors
 
 If the Ray job is submitted by :ref:`Ray job API <jobs-quickstart>`, the job logs are available from the dashboard. The log file follows the following format; ``job-driver-<job_submission_id>.log``.
 
-.. note:: 
+.. note::
 
   If the driver is executed directly on the head node of the Ray cluster (without the job API) or run via :ref:`Ray client <ray-client-ref>`, the driver logs are not accessible from the dashboard. In this case, see the terminal output to view the driver logs.
 
@@ -81,7 +93,7 @@ If the Ray job is submitted by :ref:`Ray job API <jobs-quickstart>`, the job log
     :align: center
 
 Task and actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the log button.
-You can see the worker logs (``worker-[worker_id]-[job_id]-[pid].[out|err]``) that execute the task and actor. ``.out`` (stdout) and ``.err`` (stderr) logs contain the logs emitted from the tasks and actors. 
+You can see the worker logs (``worker-[worker_id]-[job_id]-[pid].[out|err]``) that execute the task and actor. ``.out`` (stdout) and ``.err`` (stderr) logs contain the logs emitted from the tasks and actors.
 The core worker logs (``python-core-worker-[worker_id]_[pid].log``) contain the system-level logs for the corresponding worker.
 
 **Task and Actor Errors**
@@ -89,7 +101,7 @@ The core worker logs (``python-core-worker-[worker_id]_[pid].log``) contain the 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/failed_task_progress-bar.png
     :align: center
 
-You can easily identify failed tasks or actors by looking at the job progress bar, which links to the table. 
+You can easily identify failed tasks or actors by looking at the job progress bar, which links to the table.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/task_error_button.png
     :align: center
@@ -104,8 +116,8 @@ The table displays the name of the failed tasks or actors and provides access to
 Analyze the CPU and memory usage of tasks and actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :ref:`Metrics View <dash-metrics-view>` in the Ray dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each task and actor in the application (as well as system components). 
-This allows users to identify tasks and actors that may be consuming more resources than expected and optimize the performance of the application. 
+The :ref:`Metrics View <dash-metrics-view>` in the Ray dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each task and actor in the application (as well as system components).
+This allows users to identify tasks and actors that may be consuming more resources than expected and optimize the performance of the application.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/node_cpu_by_comp.png
     :align: center
@@ -128,7 +140,7 @@ Additionally, users can see a snapshot of hardware utilization from the :ref:`cl
 View the Resource Utilization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray requires users to specify the number of :ref:`resources <logical-resources>` their tasks and actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``. 
+Ray requires users to specify the number of :ref:`resources <logical-resources>` their tasks and actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
 These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
 
 - You can see the logical and physical resource utilization over time from the :ref:`Metrics View <dash-metrics-view>`.
@@ -191,7 +203,7 @@ A job is a ray workload that uses Ray APIs (e.g., ``ray.init``). It can be submi
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/job_list.png
     :align: center
 
-The job page displays a list of active, finished, and failed jobs, and clicking on an ID allows users to view detailed information about that job. 
+The job page displays a list of active, finished, and failed jobs, and clicking on an ID allows users to view detailed information about that job.
 For more information on Ray jobs, see the Ray Job Overview section.
 
 Job Profiling
@@ -210,7 +222,7 @@ Advanced Task and Actor Breakdown
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/advanced-progress.png
     :align: left
 
-The job page allows you to see tasks and actors broken down by their states. 
+The job page allows you to see tasks and actors broken down by their states.
 Tasks and actors are grouped and nested by default. You can see the nested entries by clicking the expand button.
 
 Tasks and actors are grouped and nested by the following criteria.
@@ -222,7 +234,7 @@ Tasks and actors are grouped and nested by the following criteria.
 - Child actors (actors created within an actor) are nested under their parent actor's row.
 - Actor tasks (remote methods within an actor) are nested under the actor for the corresponding actor method.
 
-.. note:: 
+.. note::
 
   Ray dashboard can only display or retrieve up to 10K tasks at a time. If there are more than 10K tasks from your job,
   they are unaccounted. The number of unaccounted tasks is available from the task breakdown.
@@ -230,7 +242,7 @@ Tasks and actors are grouped and nested by the following criteria.
 Task Timeline
 ~~~~~~~~~~~~~
 
-The :ref:`timeline API <ray-core-timeline>` is available from the dashboard. 
+The :ref:`timeline API <ray-core-timeline>` is available from the dashboard.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/profile-button.png
     :align: center
@@ -245,7 +257,7 @@ Second, you can use tools like ``chrome://tracing`` or the `Perfetto UI <https:/
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/timeline.png
     :align: center
 
-Now, you can see the timeline visualization of Ray tasks and actors. There are Node rows (hardware) and Worker rows (processes). 
+Now, you can see the timeline visualization of Ray tasks and actors. There are Node rows (hardware) and Worker rows (processes).
 Each worker rows display a list of events (e.g., task scheduled, task running, input/output deserialization, etc.) happening from that worker over time.
 
 Ray Status
@@ -256,14 +268,14 @@ Ray Status
 
 The job page displays the output of the CLI tool ``ray status``, which shows the autoscaler status of the Ray cluster.
 
-The left page shows the autoscaling status, including pending, active, and failed nodes. 
+The left page shows the autoscaling status, including pending, active, and failed nodes.
 The right page displays the cluster's demands, which are resources that cannot be scheduled to the cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
 
-.. note:: 
+.. note::
 
   The output shows the aggregated information across the cluster (not by job). If you run more than one job, some of the demands may come from other jobs.
 
-.. _dash-workflow-state-apis:  
+.. _dash-workflow-state-apis:
 
 Task Table, Actor Table, Placement Group Table
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -271,7 +283,7 @@ Task Table, Actor Table, Placement Group Table
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/tables.png
     :align: center
 
-The dashboard shows a table with the status of the job's tasks, actors, and placement groups. 
+The dashboard shows a table with the status of the job's tasks, actors, and placement groups.
 You get the same information from the :ref:`Ray state APIs <state-api-overview-ref>`.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/task-table.png
@@ -383,12 +395,12 @@ Actor Detail Page
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/actor-list-id.png
     :align: center
 
-By clicking the ID, you can also see the detail view of the actor. 
+By clicking the ID, you can also see the detail view of the actor.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/actor-detail.png
     :align: center
 
-From the actor detail page, you can see the metadata, state, and the all tasks that have run from this actor. 
+From the actor detail page, you can see the metadata, state, and the all tasks that have run from this actor.
 
 .. _dash-metrics-view:
 
@@ -407,7 +419,7 @@ Ray exports default metrics which are available from the :ref:`Metrics View <das
 
 See :ref:`System Metrics Page <system-metrics>` for available metrics.
 
-.. note:: 
+.. note::
 
   The metrics view required the Prometheus and Grafana setup. See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
 
@@ -535,9 +547,14 @@ To disable the dashboard, use the following arguments `--include-dashboard`.
 
       **ray.init**
 
-      .. code-block:: python
+      .. testcode::
+        :hide:
 
-          ray.init(include_dashboard=False)
+        ray.shutdown()
+
+      .. testcode::
+
+        ray.init(include_dashboard=False)
 
     .. tab-item:: VM Cluster Launcher
 
