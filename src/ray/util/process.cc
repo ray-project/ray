@@ -629,6 +629,7 @@ bool IsProcessAlive(pid_t pid) {
   }
   return false;
 #else
+  // Check pid is alive or not
   if (kill(pid, 0) == -1 && errno == ESRCH) {
     return false;
   }
