@@ -2,9 +2,9 @@
 
 .. _data:
 
-======================================
-Ray Data: Distributed ML Preprocessing
-======================================
+==================================
+Ray Data: Scalable Datasets for ML
+==================================
 
 .. _data-intro:
 
@@ -202,6 +202,14 @@ If your use case isn't supported, reach out on `Discourse <https://discuss.ray.i
 request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
 our :ref:`guide for implementing a custom datasource <data_custom_datasource>`
 if you're interested in rolling your own integration!
+
+----------
+Learn More
+----------
+
+- `[Blog] Streaming distributed execution across CPUs and GPUs <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__
+- `[Blog] Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`__
+- `[Blog] Using Ray Data to parallelize LangChain inference <https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding>`__
 
 ----------
 Contribute
