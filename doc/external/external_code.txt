@@ -1,0 +1,6 @@
+# Mapping from file to external URI.
+# If the file is touched in a PR, a comment is posted
+# by a bot to remind the user to update the contents at
+# the external URI
+
+# Please keep this as the last line.
