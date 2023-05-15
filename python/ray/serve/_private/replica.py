@@ -19,7 +19,11 @@ from ray.serve import metrics
 from ray._private.async_compat import sync_to_async
 
 from ray.serve._private.autoscaling_metrics import start_metrics_pusher
-from ray.serve._private.common import HEALTH_CHECK_CONCURRENCY_GROUP, ReplicaTag
+from ray.serve._private.common import (
+    HEALTH_CHECK_CONCURRENCY_GROUP,
+    ReplicaTag,
+    ServeComponentType,
+)
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
@@ -76,7 +80,7 @@ def create_replica_wrapper(name: str):
             app_name: str = None,
         ):
             configure_component_logger(
-                component_type="deployment",
+                component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
             )
@@ -521,7 +525,7 @@ class RayServeReplica:
             # handle can pass the correct request context to subsequent replicas.
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(
-                    request.metadata.route, request.metadata.request_id
+                    request.metadata.route, request.metadata.request_id, self.app_name
                 )
             )
 
