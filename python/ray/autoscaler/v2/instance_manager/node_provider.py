@@ -5,7 +5,7 @@ from typing import Dict, List, Set, override
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.tags import TAG_RAY_USER_NODE_TYPE
-from ray.autoscaler.v2.instance_manager.config_provider import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceType
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ class NodeProviderAdapter(NodeProvider):
             instances[cloud_instance_id] = self._get_instance(cloud_instance_id)
         return instances
 
-    def _get_instance(self, cloud_instance_id: str):
+    def _get_instance(self, cloud_instance_id: str) -> Instance:
         instance = Instance()
         instance.cloud_instance_id = cloud_instance_id
         if self._provider.is_running(cloud_instance_id):
