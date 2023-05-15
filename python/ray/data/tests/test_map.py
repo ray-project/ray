@@ -372,7 +372,6 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
 
 
 def test_map_batches_extra_args(shutdown_only, tmp_path):
-    # TODO(scott_optimizer): fix map_batches with CallableClass arg
     ray.shutdown()
     ray.init(num_cpus=3)
 
@@ -691,8 +690,6 @@ def test_map_batches_batch_mutation(
 def test_map_batches_batch_zero_copy(
     ray_start_regular_shared, num_rows, num_blocks, batch_size
 ):
-    # TODO(scott_optimizer): To pass this, we need to implement zero-copy batching
-    # between transform functions in operator_fusion.py?
     # Test that batches are zero-copy read-only views when zero_copy_batch=True.
     def mutate(df):
         # Check that batch is read-only.

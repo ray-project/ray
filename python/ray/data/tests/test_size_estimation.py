@@ -155,8 +155,6 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
 
 
 def test_split_read_parquet(ray_start_regular_shared, tmp_path):
-    # TODO(scott_optimizer): fix block_num_rows() where resulting ds has
-    # multiple blocks after map
     ctx = ray.data.context.DataContext.get_current()
     ctx.block_splitting_enabled = True
 
