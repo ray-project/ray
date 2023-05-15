@@ -1,6 +1,6 @@
 from collections import deque
+from functools import partial
 import pathlib
-import socket
 from typing import (
     Any,
     Callable,
@@ -101,6 +101,9 @@ class LearnerGroup:
 
         self._is_module_trainable = _is_module_trainable
 
+        # How many timesteps had to be dropped due to a full input queue?
+        self._in_queue_ts_dropped = 0
+
         if self._is_local:
             self._learner = learner_class(**learner_spec.get_params_dict())
             self._learner.build()
@@ -125,22 +128,23 @@ class LearnerGroup:
 
             # Run the neural network building code on remote workers.
             ray.get([w.build.remote() for w in self._workers])
-            # Use only 1 max in flight request per worker since training workers have to
-            # be synchronously executed.
+
             self._worker_manager = FaultTolerantActorManager(
                 self._workers,
-                max_remote_requests_in_flight_per_actor=1,
+                # TODO (sven): This probably works even without any restriction
+                #  (allowing for any arbitrary number of requests in-flight). Test with
+                #  3 first, then with unlimited, and if both show the same behavior on
+                #  an async algo, remove this restriction entirely.
+                max_remote_requests_in_flight_per_actor=3,
             )
             self._in_queue = deque(maxlen=max_queue_len)
 
-    @property
-    def in_queue_size(self) -> int:
-        """Returns the number of batches currently in the in queue to be processed.
-
-        If the queue is reaching its max size, then this learner group likely needs
-        more workers to process incoming batches.
-        """
-        return len(self._in_queue)
+    def get_in_queue_stats(self) -> Mapping[str, Any]:
+        """Returns the current stats for the input queue for this learner group."""
+        return {
+            "learner_group_queue_size": len(self._in_queue),
+            "learner_group_queue_ts_dropped": self._in_queue_ts_dropped,
+        }
 
     @property
     def is_local(self) -> bool:
@@ -152,23 +156,25 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
+            _reduce_mean_results
+        ),
         block: bool = True,
-    ) -> List[Mapping[str, Any]]:
-        """Do one gradient based update to the Learner(s).
+    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
+        """Do one or more gradient based updates to the Learner(s) based on given data.
 
         Args:
-            batch: The data to use for the update.
+            batch: The data batch to use for the update.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
-            reduce_fn: A function to reduce the results from a list of Learner Actors
-                into a single result. This can be any arbitrary function that takes a
-                list of dictionaries and returns a single dictionary. For example you
-                can either take an average (default) or concatenate the results (for
-                example for metrics) or be more selective about you want to report back
-                to the algorithm's training_step. If None is passed, the results will
-                not get reduced.
+            reduce_fn: An optional callable to reduce the results from a list of the
+                Learner actors into a single result. This can be any arbitrary function
+                that takes a list of dictionaries and returns a single dictionary. For
+                example you can either take an average (default) or concatenate the
+                results (for example for metrics) or be more selective about you want to
+                report back to the algorithm's training_step. If None is passed, the
+                results will not get reduced.
             block: Whether to block until the update is complete.
 
         Returns:
@@ -205,9 +211,15 @@ class LearnerGroup:
                 block=block,
             )
 
-        # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
-        if reduce_fn is None or not results:
+        # No reduce function -> Return results as is: (possibly empty) list of mappings.
+        if reduce_fn is None:
             return results
+        # If results are empty, don't run them through reduce_fn, but return empty dict.
+        elif not results:
+            return {}
+        # Run results (list of result dicts from our n learner actors) through
+        # reduction function and return single mapping.
+        # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
         return reduce_fn(results)
 
     def _distributed_update(
@@ -216,7 +228,9 @@ class LearnerGroup:
         *,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
+            _reduce_mean_results
+        ),
         block: bool = True,
     ) -> List[Mapping[str, Any]]:
         """Do a gradient based update to the Learners using DDP training.
@@ -230,43 +244,77 @@ class LearnerGroup:
             See `.update()` docstring.
 
         Returns:
-            A list of dictionaries of results from the updates from the Learner(s)
+            A list of dictionaries of results from the updates from the individual
+            Learner(s)
         """
+        # Make sure minibatch size is reduced to the correct number of shards as well
+        # (just like we split each batch into the number of learner workers).
+        if minibatch_size is not None:
+            minibatch_size //= len(self._workers)
+
+        def _learner_update(learner, minibatch):
+            return learner.update(
+                minibatch,
+                minibatch_size=minibatch_size,
+                num_iters=num_iters,
+                reduce_fn=reduce_fn,
+            )
 
         if block:
-            results = self._worker_manager.foreach_actor(
-                [
-                    lambda w: w.update(
-                        b,
-                        minibatch_size=minibatch_size,
-                        num_iters=num_iters,
-                        reduce_fn=reduce_fn,
-                    )
-                    for b in ShardBatchIterator(batch, len(self._workers))
-                ]
-            )
-        else:
-            if batch is not None:
-                self._in_queue.append(batch)
-            results = self._worker_manager.fetch_ready_async_reqs()
-            if self._worker_manager_ready() and self._in_queue:
-                batch = self._in_queue.popleft()
-                self._worker_manager.foreach_actor_async(
+            results = self._get_results(
+                self._worker_manager.foreach_actor(
                     [
-                        lambda w: w.update(
-                            b,
-                            minibatch_size=minibatch_size,
-                            num_iters=num_iters,
-                            reduce_fn=reduce_fn,
-                        )
-                        for b in ShardBatchIterator(batch, len(self._workers))
+                        partial(_learner_update, minibatch=minibatch)
+                        for minibatch in ShardBatchIterator(batch, len(self._workers))
                     ]
                 )
+            )
+        else:
+            # Queue the new batches.
+            # If queue is full, kick out the oldest item (and thus add its
+            # length to the "dropped ts" counter).
+            if len(self._in_queue) == self._in_queue.maxlen:
+                self._in_queue_ts_dropped += len(self._in_queue[0])
 
-        return self._get_results(results)
+            self._in_queue.append(batch)
+
+            # Retrieve all ready results (kicked off by prior calls to this method).
+            results = self._worker_manager.fetch_ready_async_reqs()
+            # Only if there are no more requests in-flight on any of the learners,
+            # we can send in one new batch for sharding and parallel learning.
+            if self._worker_manager_ready():
+                count = 0
+                # TODO (sven): This probably works even without any restriction
+                #  (allowing for any arbitrary number of requests in-flight). Test with
+                #  3 first, then with unlimited, and if both show the same behavior on
+                #  an async algo, remove this restriction entirely.
+                while len(self._in_queue) > 0 and count < 3:
+                    # Pull a single batch from the queue (from the left side, meaning:
+                    # use the oldest one first).
+                    batch = self._in_queue.popleft()
+                    self._worker_manager.foreach_actor_async(
+                        [
+                            partial(_learner_update, minibatch=minibatch)
+                            for minibatch in ShardBatchIterator(
+                                batch, len(self._workers)
+                            )
+                        ]
+                    )
+                    count += 1
+
+            results = self._get_results(results)
+
+        return results
 
     def _worker_manager_ready(self):
-        return self._worker_manager.num_outstanding_async_reqs() == 0
+        # TODO (sven): This probably works even without any restriction (allowing for
+        #  any arbitrary number of requests in-flight). Test with 3 first, then with
+        #  unlimited, and if both show the same behavior on an async algo, remove
+        #  this method entirely.
+        return (
+            self._worker_manager.num_outstanding_async_reqs()
+            <= self._worker_manager.num_actors() * 2
+        )
 
     def _get_results(self, results):
         processed_results = []
@@ -303,7 +351,7 @@ class LearnerGroup:
             return self._learner.additional_update(**kwargs)
         else:
             results = self._worker_manager.foreach_actor(
-                [lambda w: w.additional_update(**kwargs) for worker in self._workers]
+                [lambda w: w.additional_update(**kwargs) for _ in self._workers]
             )
             results = self._get_results(results)
             if reduce_fn is None:
@@ -488,16 +536,15 @@ class LearnerGroup:
             self._learner.load_state(path)
         else:
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            head_node_ip = socket.gethostbyname(socket.gethostname())
+            head_node_ip = ray.util.get_node_ip_address()
             workers = self._worker_manager.healthy_actor_ids()
 
             def _load_state(w):
                 # doing imports here since they might not be imported on the worker
-                import socket
+                import ray
                 import tempfile
 
-                hostname = socket.gethostname()
-                worker_node_ip = socket.gethostbyname(hostname)
+                worker_node_ip = ray.util.get_node_ip_address()
                 # if the worker is on the same node as the head, load the checkpoint
                 # directly from the path otherwise sync the checkpoint from the head
                 # to the worker and load it from there
@@ -539,11 +586,9 @@ class LearnerGroup:
             The address of this process.
 
         """
-        import socket
+        import ray
 
-        hostname = socket.gethostname()
-
-        return socket.gethostbyname(hostname)
+        return ray.util.get_node_ip_address()
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""

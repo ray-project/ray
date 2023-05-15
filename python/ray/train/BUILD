@@ -345,46 +345,6 @@ py_test(
 )
 
 py_test(
-    name = "test_huggingface_checkpoint",
-    size = "small",
-    srcs = ["tests/test_huggingface_checkpoint.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_huggingface_gpu",
-    size = "medium",
-    srcs = ["tests/test_huggingface_gpu.py"],
-    tags = ["team:ml", "exclusive", "gpu_only"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_huggingface_predictor",
-    size = "medium",
-    srcs = ["tests/test_huggingface_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
-    name = "test_huggingface_trainer",
-    size = "large",
-    srcs = ["tests/test_huggingface_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
-    name = "test_huggingface_trainer_steps",
-    size = "large",
-    srcs = ["tests/test_huggingface_trainer_steps.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib"]
-)
-
-py_test(
     name = "test_mosaic_trainer",
     size = "medium",
     srcs = ["tests/test_mosaic_trainer.py"],
@@ -564,6 +524,46 @@ py_test(
     name = "test_training_iterator",
     size = "large",
     srcs = ["tests/test_training_iterator.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_transformers_checkpoint",
+    size = "small",
+    srcs = ["tests/test_transformers_checkpoint.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_transformers_gpu",
+    size = "medium",
+    srcs = ["tests/test_transformers_gpu.py"],
+    tags = ["team:ml", "exclusive", "gpu_only"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_transformers_predictor",
+    size = "medium",
+    srcs = ["tests/test_transformers_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_transformers_trainer_steps",
+    size = "large",
+    srcs = ["tests/test_transformers_trainer_steps.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_transformers_trainer",
+    size = "large",
+    srcs = ["tests/test_transformers_trainer.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )

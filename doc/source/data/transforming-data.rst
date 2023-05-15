@@ -4,10 +4,10 @@
 Transforming Data
 =================
 
-Datastream transforms take in datastreams and produce new datastreams. For example, *map_batches*
+Dataset transforms take in datasets and produce new datasets. For example, *map_batches*
 is a transform that applies a
-:ref:`user-defined function <transform_datastreams_writing_udfs>` on each data record
-and returns a new datastream as the result. Datastream transforms can be composed to
+:ref:`user-defined function <transform_datasets_writing_udfs>` on each data record
+and returns a new dataset as the result. Dataset transforms can be composed to
 express a chain of computations.
 
 --------
@@ -17,9 +17,9 @@ Overview
 There are two main types of supported transforms:
 
 * One-to-one: each input block will contribute to only one output
-  block, such as :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`.
+  block, such as :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`.
 * All-to-all: input blocks can contribute to multiple output blocks,
-  such as :meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle>`.
+  such as :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`.
 
 .. list-table:: Common Ray Data transforms.
    :header-rows: 1
@@ -27,26 +27,26 @@ There are two main types of supported transforms:
    * - Transform
      - Type
      - Description
-   * - :meth:`ds.map() <ray.data.Datastream.map>`
+   * - :meth:`ds.map() <ray.data.Dataset.map>`
      - One-to-one
      - Apply a given function to individual data records.
-   * - :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+   * - :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
      - One-to-one
      - Apply a given function to batches of records.
-   * - :meth:`ds.repartition() <ray.data.Datastream.repartition>`
+   * - :meth:`ds.repartition() <ray.data.Dataset.repartition>`
      - All-to-all
-     - | Repartition the datastream into N blocks.
-   * - :meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle>`
+     - | Repartition the dataset into N blocks.
+   * - :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`
      - All-to-all
-     - | Randomly shuffle the datastream.
-   * -  :meth:`ds.groupby().\<agg\>() <ray.data.Datastream.groupby>`
+     - | Randomly shuffle the dataset.
+   * -  :meth:`ds.groupby().\<agg\>() <ray.data.Dataset.groupby>`
      - All-to-all
      - | Group data by column and aggregate each group.
    * -  :meth:`ds.groupby().map_groups() <ray.data.grouped_data.GroupedData.map_groups>`
      - All-to-all
      - | Group data by column and transform each group.
 
-.. _transform_datastreams_writing_udfs:
+.. _transform_datasets_writing_udfs:
 
 --------------
 Map transforms
@@ -74,12 +74,14 @@ Use ``map_batches`` to efficiently transform records in batches, or ``map`` to t
          :start-after: __map_begin__
          :end-before: __map_end__
 
-Configuring resources
-=====================
+Configuring CPUs and GPUs
+=========================
 
 By default, each task used for  (e.g., `map` or `map_batches`) requests 1 CPU from Ray.
 To increase the resources reserved per task, you can increase the CPU request by specifying
-``.map_batches(..., num_cpus=<N>)``, which will instead reserve ``N`` CPUs per task:
+``.map_batches(..., num_cpus=<N>)``, which will instead reserve ``N`` CPUs per task.
+Increasing the CPUs per task can help with avoiding out of memory (OOM) errors
+for resource intensive tasks.
 
 .. code-block:: python
 
@@ -104,7 +106,7 @@ the resource scheduling of tasks:
 Configuring batch size
 ======================
 
-An important parameter to set for :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+An important parameter to set for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
 is ``batch_size``, which controls the size of the batches provided to the your transform function. The default
 batch size is `4096` for CPU tasks. For GPU tasks, an explicit batch size is always required:
 
@@ -118,12 +120,12 @@ batch size is `4096` for CPU tasks. For GPU tasks, an explicit batch size is alw
 
 Increasing ``batch_size`` can improve performance for transforms that take advantage of vectorization, but will also result in higher memory utilization, which can lead to out-of-memory (OOM) errors. If encountering OOMs, decreasing your ``batch_size`` may help. Note also that if the ``batch_size`` becomes larger than the number of records per block, multiple blocks will be bundled together into a single batch, potentially reducing the parallelism available.
 
-.. _transform_datastreams_batch_formats:
+.. _transform_datasets_batch_formats:
 
 Configuring batch format
 ========================
 
-Customize the format of data batches using the ``batch_format`` argument to :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`. The following are examples in each available batch format.
+Customize the format of data batches using the ``batch_format`` argument to :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. The following are examples in each available batch format.
 
 Transform functions do not have to return data in the same format as the input batch. For example, you could return a ``pd.DataFrame`` even if the input was in NumPy format.
 
@@ -178,8 +180,8 @@ When using actors, you must also specify your transform as a callable class type
 
 .. literalinclude:: ./doc_code/transforming_data.py
    :language: python
-   :start-after: __datastream_compute_strategy_begin__
-   :end-before: __datastream_compute_strategy_end__
+   :start-after: __dataset_compute_strategy_begin__
+   :end-before: __dataset_compute_strategy_end__
 
 Reduce memory usage using generators
 ====================================
@@ -200,8 +202,8 @@ Shuffle transforms change the organization of the data, e.g., increasing the num
 Repartitioning data
 ===================
 
-Call :meth:`Datastream.repartition() <ray.data.Datastream.repartition>` to change the
-number of blocks of the datastream. This may be useful to break up your dataset into small
+Call :meth:`Dataset.repartition() <ray.data.Dataset.repartition>` to change the
+number of blocks of the dataset. This may be useful to break up your dataset into small
 pieces to enable more fine-grained parallelization, or to reduce the number of files
 produced as output of a write operation.
 
@@ -213,14 +215,14 @@ produced as output of a write operation.
 Random shuffle
 ==============
 
-Call :meth:`Datastream.random_shuffle() <ray.data.Datastream.random_shuffle>` to
+Call :meth:`Dataset.random_shuffle() <ray.data.Dataset.random_shuffle>` to
 globally shuffle the order of data records.
 
 .. doctest::
 
     >>> import ray
-    >>> datastream = ray.data.range(10)
-    >>> datastream.random_shuffle().take_batch()  # doctest: +SKIP
+    >>> dataset = ray.data.range(10)
+    >>> dataset.random_shuffle().take_batch()  # doctest: +SKIP
     {'id': array([7, 0, 9, 3, 5, 1, 4, 2, 8, 6])}
 
 For reduced overhead during training ingest, use local shuffles. Read 
@@ -232,7 +234,7 @@ For reduced overhead during training ingest, use local shuffles. Read
 Grouped transforms
 ------------------
 
-Ray Data supports grouping data by column and applying aggregations to each group. This is supported via the :meth:`ds.groupby() <ray.data.Datastream.groupby>` call.
+Ray Data supports grouping data by column and applying aggregations to each group. This is supported via the :meth:`ds.groupby() <ray.data.Dataset.groupby>` call.
 
 Aggregations
 ============
@@ -273,7 +275,7 @@ Note that Ray Data currently only supports grouping by a single column. In order
 Map Groups
 ==========
 
-Arbitrary processing can be applied to each group of records using :meth:`ds.groupby().map_groups() <ray.data.GroupedData.map_groups>`. For example, this could be used to implement custom aggregations, train a model per group, etc.
+Custom processing can be applied to each group of records using :meth:`ds.groupby().map_groups() <ray.data.GroupedData.map_groups>`. For example, this could be used to implement custom aggregations, train a model per group, etc.
 
 .. literalinclude:: ./doc_code/transforming_data.py
   :language: python

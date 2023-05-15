@@ -58,6 +58,7 @@ class ModelConfig(abc.ABC):
         raise NotImplementedError
 
 
+@ExperimentalAPI
 class Model(abc.ABC):
     """Framework-agnostic base class for RLlib models.
 
@@ -225,6 +226,7 @@ class Model(abc.ABC):
         """
 
 
+@ExperimentalAPI
 class Encoder(Model, abc.ABC):
     """The framework-agnostic base class for all RLlib encoders.
 
@@ -333,6 +335,7 @@ class Encoder(Model, abc.ABC):
         raise NotImplementedError
 
 
+@ExperimentalAPI
 class ActorCriticEncoder(Encoder):
     """An encoder that potentially holds two encoders.
 

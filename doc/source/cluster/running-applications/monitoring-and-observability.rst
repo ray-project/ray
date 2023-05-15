@@ -124,7 +124,7 @@ The service discovery file is generated on the :ref:`head node <cluster-head-nod
 Ray will periodically update this file with the addresses of all metrics agents in the cluster.
 
 Ray automatically produces a Prometheus config which scrapes the file for service discovery found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
-You can choose to use this config or modify your own to enable this behavior. The details of the config can be seen below and full documentation can be found at `here <https://prometheus.io/docs/prometheus/latest/configuration/configuration/>`.
+You can choose to use this config or modify your own to enable this behavior. The details of the config can be seen below and full documentation can be found `here <https://prometheus.io/docs/prometheus/latest/configuration/configuration/>`_.
 
 With this config, Prometheus will automatically update the addresses that it scrapes based on the contents of Ray's service discovery file.
 

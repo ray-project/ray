@@ -47,7 +47,10 @@ class TfCNNEncoder(TfModel, Encoder):
         TfModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        layers = []
+        # Add an input layer for the Sequential, created below. This is really
+        # important to be able to derive the model's trainable_variables early on
+        # (inside our Learners).
+        layers = [tf.keras.layers.Input(shape=config.input_dims)]
         # The bare-bones CNN (no flatten, no succeeding dense).
         cnn = TfCNN(
             input_dims=config.input_dims,
@@ -131,8 +134,8 @@ class TfMLPEncoder(Encoder, TfModel):
                 SampleBatch.OBS: TensorSpec(
                     "b, d", d=self.config.input_dims[0], framework="tf2"
                 ),
-                # STATE_IN: None,
-                # SampleBatch.SEQ_LENS: None,
+                STATE_IN: None,
+                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -152,7 +155,7 @@ class TfMLPEncoder(Encoder, TfModel):
         return NestedDict(
             {
                 ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: None,  # inputs[STATE_IN],
+                STATE_OUT: inputs[STATE_IN],
             }
         )
 

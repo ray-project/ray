@@ -19,7 +19,7 @@ from ray._private.usage.usage_lib import (
     record_extra_usage_tag,
 )
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError
+from ray.exceptions import RayActorError, RayError, RayTaskError
 
 from ray.serve._private.autoscaling_metrics import InMemoryMetricsStore
 from ray.serve._private.common import (
@@ -217,12 +217,14 @@ class ActorReplicaWrapper:
 
         self._pid: int = None
         self._actor_id: str = None
+        self._worker_id: str = None
         if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
             self._node_id = scheduling_strategy.node_id
         else:
             # Populated after replica is allocated.
             self._node_id: str = None
         self._node_ip: str = None
+        self._log_file_path: str = None
 
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
@@ -301,6 +303,11 @@ class ActorReplicaWrapper:
         return self._actor_id
 
     @property
+    def worker_id(self) -> Optional[str]:
+        """Returns the worker id, None if not started."""
+        return self._worker_id
+
+    @property
     def node_id(self) -> Optional[str]:
         """Returns the node id of the actor, None if not placed."""
         return self._node_id
@@ -309,6 +316,11 @@ class ActorReplicaWrapper:
     def node_ip(self) -> Optional[str]:
         """Returns the node ip of the actor, None if not placed."""
         return self._node_ip
+
+    @property
+    def log_file_path(self) -> Optional[str]:
+        """Returns the relative log file path of the actor, None if not placed."""
+        return self._log_file_path
 
     def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
         ready, _ = ray.wait([obj_ref], timeout=0)
@@ -482,7 +494,7 @@ class ActorReplicaWrapper:
         else:
             self._ready_obj_ref = self._actor_handle.get_metadata.remote()
 
-    def check_ready(self) -> ReplicaStartupStatus:
+    def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
         Check if current replica has started by making ray API calls on
         relevant actor / object ref.
@@ -499,40 +511,59 @@ class ActorReplicaWrapper:
                     - replica initialization failed.
                 SUCCEEDED:
                     - replica initialization succeeded.
+            error_msg:
+                None:
+                    - for PENDING_ALLOCATION, PENDING_INITIALIZATION or SUCCEEDED states
+                str:
+                    - for FAILED state
         """
 
         # Check whether the replica has been allocated.
         if not self._check_obj_ref_ready(self._allocated_obj_ref):
-            return ReplicaStartupStatus.PENDING_ALLOCATION
+            return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         # Check whether relica initialization has completed.
         replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if not replica_ready:
-            return ReplicaStartupStatus.PENDING_INITIALIZATION
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         else:
             try:
                 # TODO(simon): fully implement reconfigure for Java replicas.
                 if self._is_cross_language:
-                    return ReplicaStartupStatus.SUCCEEDED
+                    return ReplicaStartupStatus.SUCCEEDED, None
 
                 # todo: The replica's userconfig whitch java client created
                 #  is different from the controller's userconfig
                 if not self._deployment_is_cross_language:
                     _, self._version = ray.get(self._ready_obj_ref)
 
-                self._pid, self._actor_id, self._node_id, self._node_ip = ray.get(
-                    self._allocated_obj_ref
-                )
-            except Exception:
+                (
+                    self._pid,
+                    self._actor_id,
+                    self._worker_id,
+                    self._node_id,
+                    self._node_ip,
+                    self._log_file_path,
+                ) = ray.get(self._allocated_obj_ref)
+            except RayTaskError as e:
                 logger.exception(
                     f"Exception in replica '{self._replica_tag}', "
                     "the replica will be stopped."
                 )
-                return ReplicaStartupStatus.FAILED
+                # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
+                # here because the full details of the error is not displayed properly
+                # with traceback.format_exc().
+                return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
+            except Exception as e:
+                logger.exception(
+                    f"Exception in replica '{self._replica_tag}', "
+                    "the replica will be stopped."
+                )
+                return ReplicaStartupStatus.FAILED, repr(e)
 
-        return ReplicaStartupStatus.SUCCEEDED
+        return ReplicaStartupStatus.SUCCEEDED, None
 
     @property
     def actor_resources(self) -> Optional[Dict[str, float]]:
@@ -728,6 +759,12 @@ class DeploymentReplica(VersionedReplica):
         self._replica_tag = replica_tag
         self._start_time = None
         self._prev_slow_startup_warning_time = None
+        self._actor_details = ReplicaDetails(
+            actor_name=self._actor._actor_name,
+            replica_id=self._replica_tag,
+            state=ReplicaState.STARTING,
+            start_time_s=0,
+        )
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
@@ -738,23 +775,9 @@ class DeploymentReplica(VersionedReplica):
             is_cross_language=self._actor.is_cross_language,
         )
 
-    def get_replica_details(self, state: ReplicaState) -> ReplicaDetails:
-        """Get replica details.
-
-        Args:
-            state: The state of the replica, which is not stored within a
-                DeploymentReplica object
-        """
-        return ReplicaDetails(
-            replica_id=self.replica_tag,
-            state=state,
-            pid=self._actor.pid,
-            actor_name=self._actor._actor_name,
-            actor_id=self._actor.actor_id,
-            node_id=self._actor.node_id,
-            node_ip=self._actor.node_ip,
-            start_time_s=self._start_time,
-        )
+    @property
+    def actor_details(self) -> ReplicaDetails:
+        return self._actor_details
 
     @property
     def replica_tag(self) -> ReplicaTag:
@@ -784,6 +807,7 @@ class DeploymentReplica(VersionedReplica):
         self._actor.start(deployment_info, version)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
+        self.update_actor_details(start_time_s=self._start_time)
 
     def reconfigure(self, version: DeploymentVersion) -> bool:
         """
@@ -801,10 +825,9 @@ class DeploymentReplica(VersionedReplica):
         """
         self._actor.recover()
         self._start_time = time.time()
-        # Replica version is fetched from recovered replica dynamically in
-        # check_started() below
+        self.update_actor_details(start_time_s=self._start_time)
 
-    def check_started(self) -> ReplicaStartupStatus:
+    def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """Check if the replica has started. If so, transition to RUNNING.
 
         Should handle the case where the replica has already stopped.
@@ -813,7 +836,16 @@ class DeploymentReplica(VersionedReplica):
             status: Most recent state of replica by
                 querying actor obj ref
         """
-        return self._actor.check_ready()
+        is_ready = self._actor.check_ready()
+        self.update_actor_details(
+            pid=self._actor.pid,
+            node_id=self._actor.node_id,
+            node_ip=self._actor.node_ip,
+            actor_id=self._actor.actor_id,
+            worker_id=self._actor.worker_id,
+            log_file_path=self._actor.log_file_path,
+        )
+        return is_ready
 
     def stop(self, graceful: bool = True) -> None:
         """Stop the replica.
@@ -853,6 +885,15 @@ class DeploymentReplica(VersionedReplica):
         Returns `True` if the replica is healthy, else `False`.
         """
         return self._actor.check_health()
+
+    def update_state(self, state: ReplicaState) -> None:
+        """Updates state in actor details."""
+        self.update_actor_details(state=state)
+
+    def update_actor_details(self, **kwargs) -> None:
+        details_kwargs = self._actor_details.dict()
+        details_kwargs.update(kwargs)
+        self._actor_details = ReplicaDetails(**details_kwargs)
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -895,6 +936,7 @@ class ReplicaStateContainer:
         """
         assert isinstance(state, ReplicaState)
         assert isinstance(replica, VersionedReplica)
+        replica.update_state(state)
         self._replicas[state].append(replica)
 
     def get(
@@ -1046,6 +1088,7 @@ class DeploymentState:
         self._last_retry: float = 0.0
         self._backoff_time_s: int = 1
         self._replica_constructor_retry_counter: int = 0
+        self._replica_constructor_error_msg: Optional[str] = None
         self._replicas: ReplicaStateContainer = ReplicaStateContainer()
         self._curr_status_info: DeploymentStatusInfo = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
@@ -1142,11 +1185,7 @@ class DeploymentState:
         ]
 
     def list_replica_details(self) -> List[ReplicaDetails]:
-        return [
-            replica.get_replica_details(state)
-            for state in ReplicaState
-            for replica in self._replicas.get([state])
-        ]
+        return [replica.actor_details for replica in self._replicas.get()]
 
     def _notify_running_replicas_changed(self):
         self._long_poll_host.notify_changed(
@@ -1543,8 +1582,10 @@ class DeploymentState:
                     message=(
                         f"The Deployment failed to start {failed_to_start_count} times "
                         "in a row. This may be due to a problem with the deployment "
-                        "constructor or the initial health check failing. See logs for "
-                        f"details. Retrying after {self._backoff_time_s} seconds."
+                        "constructor or the initial health check failing. See "
+                        "controller logs for details. Retrying after "
+                        f"{self._backoff_time_s} seconds. Error:\n"
+                        f"{self._replica_constructor_error_msg}"
                     ),
                 )
                 return False, any_replicas_recovering
@@ -1589,7 +1630,7 @@ class DeploymentState:
         transitioned_to_running = False
         replicas_failed = False
         for replica in self._replicas.pop(states=[original_state]):
-            start_status = replica.check_started()
+            start_status, error_msg = replica.check_started()
             if start_status == ReplicaStartupStatus.SUCCEEDED:
                 # This replica should be now be added to handle's replica
                 # set.
@@ -1604,6 +1645,7 @@ class DeploymentState:
                 if self._replica_constructor_retry_counter >= 0:
                     # Increase startup failure counter if we're tracking it
                     self._replica_constructor_retry_counter += 1
+                    self._replica_constructor_error_msg = error_msg
 
                 replicas_failed = True
                 self._stop_replica(replica)
