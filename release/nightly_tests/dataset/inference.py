@@ -46,6 +46,7 @@ ds = (
         "s3://anyscale-data/small-images/",
         parallelism=1000,
         ray_remote_args={"num_cpus": 0.5},
+        mode="RGB"
     )
     .map(preprocess)
     .map_batches(
