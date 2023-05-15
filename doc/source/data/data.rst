@@ -8,16 +8,16 @@ Ray Data: Scalable Datasets for ML
 
 .. _data-intro:
 
-Ray Data aims to solve "last-mile" ML data problems that arise in batch inference
-and distributed training applications, where it is often necessary to combine data
-preprocessing and model computations in the same job. It does this by providing
+Ray Data scales common ML data processing patterns that arise in batch inference
+and distributed training applications. These problems occur when it becomes necessary to
+combine data preprocessing and model computations in the same job. Ray Data does this by providing
 streaming distributed transformations
 such as maps (:meth:`map_batches <ray.data.Dataset.map_batches>`),
 global and grouped aggregations (:class:`GroupedData <ray.data.grouped_data.GroupedData>`), and
 shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,
 :meth:`sort <ray.data.Dataset.sort>`,
 :meth:`repartition <ray.data.Dataset.repartition>`),
-and is compatible with a variety of file formats, data sources, and distributed frameworks.
+and it is compatible with a variety of file formats, data sources, and distributed frameworks.
 
 Read on for an overview of the main use cases and operations supported by Ray Data.
 
