@@ -3,6 +3,7 @@ import { blue, blueGrey, cyan, green, red } from "@material-ui/core/colors";
 import { CSSProperties } from "@material-ui/core/styles/withStyles";
 import classNames from "classnames";
 import React, { ReactNode } from "react";
+import { TaskStatus } from "../pages/job/hook/useJobProgress";
 import { ActorEnum } from "../type/actor";
 import { JobStatus } from "../type/job";
 import { PlacementGroupState } from "../type/placementGroup";
@@ -12,7 +13,6 @@ import {
   ServeHTTPProxyStatus,
   ServeReplicaState,
 } from "../type/serve";
-import { TypeTaskStatus } from "../type/task";
 
 const orange = "#DB6D00";
 const grey = "#5F6469";
@@ -34,13 +34,13 @@ const colorMap = {
     [ActorEnum.RESTARTING]: orange,
   },
   task: {
-    [TypeTaskStatus.FAILED]: red,
-    [TypeTaskStatus.FINISHED]: green,
-    [TypeTaskStatus.RUNNING]: blue,
-    [TypeTaskStatus.SUBMITTED_TO_WORKER]: orange,
-    [TypeTaskStatus.PENDING_NODE_ASSIGNMENT]: orange,
-    [TypeTaskStatus.PENDING_ARGS_AVAIL]: orange,
-    [TypeTaskStatus.NIL]: grey,
+    [TaskStatus.FAILED]: red,
+    [TaskStatus.FINISHED]: green,
+    [TaskStatus.RUNNING]: blue,
+    [TaskStatus.SUBMITTED_TO_WORKER]: orange,
+    [TaskStatus.PENDING_NODE_ASSIGNMENT]: orange,
+    [TaskStatus.PENDING_ARGS_AVAIL]: orange,
+    [TaskStatus.UNKNOWN]: grey,
   },
   job: {
     [JobStatus.PENDING]: orange,
