@@ -149,6 +149,7 @@ class RequestContext:
     route: str = ""
     request_id: str = ""
     app_name: str = ""
+    multiplexed_model_id: str = ""
 
 
 _serve_request_context = contextvars.ContextVar(
