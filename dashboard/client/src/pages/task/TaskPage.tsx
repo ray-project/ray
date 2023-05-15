@@ -8,7 +8,7 @@ import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { generateActorLink, generateNodeLink } from "../../common/links";
 import {
   MultiTabLogViewer,
-  MultiTabLogViewerTab,
+  MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
@@ -220,7 +220,7 @@ const TaskPageContents = ({
         ]}
       />
       <CollapsibleSection title="Logs" startExpanded>
-        <Section>
+        <Section noTopPadding>
           <TaskLogs task={task} />
         </Section>
       </CollapsibleSection>
@@ -240,7 +240,7 @@ const TaskLogs = ({
       ? `Error Type: ${error_type}\n\n${error_message}`
       : undefined;
 
-  const tabs: MultiTabLogViewerTab[] = [
+  const tabs: MultiTabLogViewerTabDetails[] = [
     ...(worker_id !== null && node_id !== null
       ? ([
           {
