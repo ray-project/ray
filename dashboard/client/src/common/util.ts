@@ -1,3 +1,5 @@
+import _ from "lodash";
+
 export const getWeightedAverage = (
   input: {
     weight: number;
@@ -24,3 +26,15 @@ export const filterObj = (obj: Record<string, unknown>, filterFn: any) =>
 
 export const mapObj = (obj: Record<string, unknown>, filterFn: any) =>
   Object.fromEntries(Object.entries(obj).map(filterFn) as any[]);
+
+export const filterRuntimeEnvSystemVariables = (
+  runtime_env: Record<string, any>,
+): Record<string, any> => {
+  const out = _.pickBy(runtime_env, (_, key) => {
+    if (key.startsWith("_")) {
+      return false;
+    }
+    return true;
+  });
+  return out;
+};
