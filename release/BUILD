@@ -522,6 +522,7 @@ py_test(
         exclude = ["ray_release/**/*.yaml"],
     ) + [
         "//python/ray/autoscaler/aws:test_configs",
+        "//python/ray/autoscaler/gcp:test_configs",
     ],
     exec_compatible_with = [":hermetic_python"],
     tags = [
