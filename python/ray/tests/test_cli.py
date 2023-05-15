@@ -364,7 +364,8 @@ def test_ray_start_address_options(cleanup_ray):
         scripts.start,
         [
             "--head",
-            "--node-ip-address", "localhost",
+            "--node-ip-address",
+            "localhost",
         ],
     )
     _die_on_error(result)
@@ -373,7 +374,8 @@ def test_ray_start_address_options(cleanup_ray):
     result = runner.invoke(
         scripts.start,
         [
-            "--node-ip-address", "localhost",
+            "--node-ip-address",
+            "localhost",
         ],
     )
     assert result.exit_code != 0
@@ -382,7 +384,8 @@ def test_ray_start_address_options(cleanup_ray):
         scripts.start,
         [
             "--head",
-            "--address", "localhost:6789",
+            "--address",
+            "localhost:6789",
         ],
     )
     # Is this a valid way to express the HEAD node address?
