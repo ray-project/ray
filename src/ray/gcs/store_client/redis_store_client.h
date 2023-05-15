@@ -111,10 +111,22 @@ class RedisStoreClient : public StoreClient {
     std::shared_ptr<RedisClient> redis_client_;
   };
 
+  // Push a request to the sending queue.
+  //
+  // \param keys The keys impacted by the request.
+  // \param send_request The request to send.
+  //
+  // \return The number of queues newly added. A queue will be added
+  // only when there is no in-flight request for the key.
   size_t PushToSendingQueue(const std::vector<std::string> &keys,
                             std::function<void()> send_request)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Pop requets from the sending queue.
+  //
+  // \param keys The keys to check for next request
+  //
+  // \return The requests to send.
   std::vector<std::function<void()>> PopFromSendingQueue(
       const std::vector<std::string> &keys) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
