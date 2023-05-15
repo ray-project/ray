@@ -311,7 +311,14 @@ class GBDTTrainer(BaseTrainer):
             num_iterations = config.get(
                 self._num_iterations_argument, self._default_num_iterations
             )
-            config[self._num_iterations_argument] = num_iterations - last_iteration
+            new_iterations = num_iterations - last_iteration
+            config[self._num_iterations_argument] = new_iterations
+            warnings.warn(
+                f"Model loaded from checkpoint will train for "
+                f"additional {new_iterations} iterations (trees) in order "
+                "to achieve the target number of iterations "
+                f"({self._num_iterations_argument}={num_iterations})."
+            )
 
         model = self._train(
             params=self.params,

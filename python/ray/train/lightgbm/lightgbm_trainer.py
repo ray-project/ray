@@ -66,7 +66,7 @@ class LightGBMTrainer(GBDTTrainer):
             to ``lightgbm.Dataset`` objects created on each worker. For example, this
             can be used to add sample weights with the ``weights`` parameter.
         num_boost_round: Target number of boosting iterations (trees in the model).
-            Note that differently than in ``lightgbm.train``, this is the target number
+            Note that unlike in ``lightgbm.train``, this is the target number
             of trees, meaning that if you set ``num_boost_round=10`` and pass a model
             that has already been trained for 5 iterations, it will be trained for 5
             iterations more, instead of 10 more.
