@@ -146,7 +146,6 @@ class TorchRLModule(nn.Module, RLModule):
         with torch.no_grad():
             # If this forward method was compiled, we call the compiled version.
             if hasattr(self, "_compiled_forward_exploration"):
-                raise ValueError("meh")
                 return self._compiled_forward_exploration(batch, **kwargs)
             return self._forward_exploration(batch, **kwargs)
 
