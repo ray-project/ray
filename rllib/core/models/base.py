@@ -335,7 +335,7 @@ class Encoder(Model, abc.ABC):
 class ActorCriticEncoder(Encoder):
     """An encoder that potentially holds two stateless encoders.
 
-    This is a special case of encoder that can either enclose a single,
+    This is a special case of Encoder that can either enclose a single,
     shared encoder or two separate encoders: One for the actor and one for the
     critic. The two encoders are of the same type, and we can therefore make the
     assumption that they have the same input and output specs.
@@ -391,7 +391,7 @@ class ActorCriticEncoder(Encoder):
 class StatefulActorCriticEncoder(Encoder):
     """An encoder that potentially holds two potentially stateful encoders.
 
-    This is a special case of encoder that can either enclose a single,
+    This is a special case of Encoder that can either enclose a single,
     shared encoder or two separate encoders: One for the actor and one for the
     critic. The two encoders are of the same type, and we can therefore make the
     assumption that they have the same input and output specs.
