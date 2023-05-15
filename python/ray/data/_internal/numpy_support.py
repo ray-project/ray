@@ -70,7 +70,6 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
             else:
                 udf_return_col = np.array(udf_return_col)
         except Exception as e:
-            raise
             raise ValueError(
                 "Failed to convert column values to numpy array: "
                 f"({_truncated_repr(udf_return_col)}): {e}."
