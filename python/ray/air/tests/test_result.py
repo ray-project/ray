@@ -23,9 +23,10 @@ def test_result_restore(ray_start_4_cpus):
         model = torch.nn.Linear(2, 3)
         for i in range(NUM_ITERATIONS):
             session.report(
-                metric={"metric_a": i, "metric_b": -i},
+                metrics={"metric_a": i, "metric_b": -i},
                 checkpoint=TorchCheckpoint.from_model(model),
             )
+        raise RuntimeError()
 
     trainer = TorchTrainer(
         train_loop_per_worker=worker_loop,
@@ -57,6 +58,9 @@ def test_result_restore(ray_start_4_cpus):
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
     assert best_ckpt_b.id == NUM_ITERATIONS - NUM_CHECKPOINTS
     assert best_ckpt_b.iteration == NUM_ITERATIONS - NUM_CHECKPOINTS + 1
+
+    # Check if we properly restored errors
+    assert isinstance(result.error, RuntimeError)
 
 
 if __name__ == "__main__":

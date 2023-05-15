@@ -226,5 +226,11 @@ EXPR_PROGRESS_FILE = "progress.csv"
 # File that stores results of the trial.
 EXPR_RESULT_FILE = "result.json"
 
+# File that stores the pickled error of the trial
+EXPR_ERROR_PICKLE_FILE = "error.pkl"
+
+# File that stores the error message of the trial
+EXPR_ERROR_FILE = "error.txt"
+
 # Config prefix when using ExperimentAnalysis.
 CONFIG_PREFIX = "config"

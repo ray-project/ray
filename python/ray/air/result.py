@@ -13,6 +13,7 @@ from ray.util.annotations import PublicAPI
 from ray.air.constants import (
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
+    EXPR_ERROR_PICKLE_FILE
     TRAINING_ITERATION,
 )
 
@@ -122,23 +123,37 @@ class Result:
 
     @staticmethod
     def _validate_trial_dir(trial_dir: str):
-        assert os.path.exists(trial_dir), f"Trail directory {trial_dir} doesn't exists!"
+        """Check the validity of the local trial folder."""
+
+        assert os.path.exists(trial_dir), f"Trail folder {trial_dir} doesn't exists!"
+
+        all_files = os.listdir(trial_dir)
         for file in Result._restore_required_files:
-            assert file in os.listdir(trial_dir), f"{file} not found in trial folder!"
+            assert file in all_files, f"{file} not found in the trial folder!"
 
     @classmethod
     def from_path(cls, path: str) -> "Result":
+        """Restore a Result object from local trial directory.
+
+        Args:
+            path: the path to a local trial directory.
+
+        Returns:
+            A :py:class:`Result` object of that trial.
+        """
         # TODO(yunxuanx): support restoration from cloud storage
         local_path = path
 
         cls._validate_trial_dir(local_path)
 
+        # Restore reported metrics
         with open(Path(local_path) / EXPR_RESULT_FILE, "r") as f:
             json_list = [json.loads(line) for line in f if line]
             metrics_df = pd.json_normalize(json_list, sep="/")
 
         metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
 
+        # Restore all checkpoints from checkpoint folders
         ckpt_dirs = [
             os.path.join(local_path, entry)
             for entry in os.listdir(local_path)
@@ -163,20 +178,36 @@ class Result:
         else:
             best_checkpoints = latest_checkpoint = None
 
-        result = Result(
+        # Restore the trial error if it exists
+        error = None
+        error_file_path = Path(local_path) / EXPR_ERROR_PICKLE_FILE
+        if os.path.exists(error_file_path):
+            error = pickle.load(open(error_file_path, 'rb'))
+
+        return Result(
             metrics=metrics,
             checkpoint=latest_checkpoint,
             _local_path=local_path,
             _remote_path=None,
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
-            error=None,
+            error=error,
         )
 
-        return result
-
     @PublicAPI(stability="alpha")
-    def get_best_checkpoint(self, metric: str, mode: str) -> Checkpoint:
+    def get_best_checkpoint(self, metric: str, mode: str) -> Optional[Checkpoint]:
+        """Gets best persistent checkpoint of this trial.
+
+        Any checkpoints without an associated metric value will be filtered out.
+
+        Args:
+            metric: The key for checkpoints to order on.
+            mode: One of ["min", "max"].
+
+        Returns:
+            :class:`Checkpoint <ray.air.Checkpoint>` object, or None if there is
+            no valid checkpoint associated with the metric.
+        """
         assert self.best_checkpoints, "No checkpoint exists in the trial directory!"
 
         assert mode in [
@@ -185,4 +216,12 @@ class Result:
         ], f'Unsupported mode: {mode}. Please choose from ["min", "max"]!'
 
         op = max if mode == "max" else min
-        return op(self.best_checkpoints, key=lambda x: x[1][metric])[0]
+        valid_checkpoints = [
+            ckpt_info for ckpt_info in self.best_checkpoints if metric in ckpt_info[1]
+        ]
+
+        return (
+            op(valid_checkpoints, key=lambda x: x[1][metric])[0]
+            if valid_checkpoints
+            else None
+        )
