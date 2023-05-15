@@ -813,7 +813,7 @@ def _print_log(
     encoding_errors: str = "strict",
     task_id: Optional[str] = None,
     attempt_number: int = 0,
-    job_id: Optional[str] = None,
+    submission_id: Optional[str] = None,
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -842,7 +842,7 @@ def _print_log(
         errors=encoding_errors,
         task_id=task_id,
         attempt_number=attempt_number,
-        job_id=job_id,
+        submission_id=submission_id,
     ):
         print(chunk, end="", flush=True)
 
@@ -1177,7 +1177,7 @@ def log_worker(
 @logs_state_cli_group.command(name="job")
 @click.option(
     "--id",
-    "job_id",
+    "submission_id",
     required=True,
     type=str,
     help=(
@@ -1194,7 +1194,7 @@ def log_worker(
 @PublicAPI(stability="alpha")
 def log_job(
     ctx,
-    job_id: Optional[str],
+    submission_id: Optional[str],
     address: Optional[str],
     follow: bool,
     tail: int,
@@ -1230,7 +1230,7 @@ def log_job(
         follow=follow,
         interval=interval,
         timeout=timeout,
-        job_id=job_id,
+        submission_id=submission_id,
     )
 
 

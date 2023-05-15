@@ -86,7 +86,7 @@ class LogsManager:
             get_actor_fn=DataSource.actors.get,
             timeout=options.timeout,
             suffix=options.suffix,
-            job_id=options.job_id,
+            submission_id=options.submission_id,
         )
 
         keep_alive = options.media_type == "stream"
@@ -145,7 +145,7 @@ class LogsManager:
                 "This is likely a bug. Please file an issue."
             )
 
-        log_filename = JOB_LOGS_PATH_TEMPLATE.format(job_id=sub_job_id)
+        log_filename = JOB_LOGS_PATH_TEMPLATE.format(submission_id=sub_job_id)
         return node_id, log_filename
 
     async def _resolve_worker_file(
@@ -198,7 +198,7 @@ class LogsManager:
         get_actor_fn: Optional[Callable[[str], Dict]] = None,
         timeout: int = DEFAULT_RPC_TIMEOUT,
         suffix: str = "out",
-        job_id: Optional[str] = None,
+        submission_id: Optional[str] = None,
     ) -> Tuple[str, str]:
         """Return the file name given all options.
 
@@ -213,7 +213,7 @@ class LogsManager:
                 specified by `node_id`.
             suffix: Log suffix if no `log_filename` is provided, when
                 resolving by other ids'. Default to "out".
-            job_id: The submission id for a submission job.
+            submission_id: The submission id for a submission job.
         """
         if actor_id:
             if get_actor_fn is None:
@@ -288,11 +288,12 @@ class LogsManager:
                 suffix=suffix,
                 timeout=timeout,
             )
-        elif job_id:
-            node_id, log_filename = await self._resolve_job_filename(job_id)
+        elif submission_id:
+            node_id, log_filename = await self._resolve_job_filename(submission_id)
 
             logger.info(
-                f"Resolving job {job_id} on node {node_id} with filename {log_filename}"
+                f"Resolving job {submission_id} on node {node_id} with "
+                f"filename {log_filename}"
             )
 
         elif pid:
@@ -320,7 +321,7 @@ class LogsManager:
                 f"\task_id: {task_id}\n"
                 f"\tpid: {pid}\n"
                 f"\tsuffix: {suffix}\n"
-                f"\tjob_id: {job_id}\n"
+                f"\tsubmission_id: {submission_id}\n"
             )
 
         return log_filename, node_id

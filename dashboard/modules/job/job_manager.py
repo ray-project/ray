@@ -133,7 +133,7 @@ class JobLogStorageClient:
         """
         return os.path.join(
             ray._private.worker._global_node.get_logs_dir_path(),
-            JOB_LOGS_PATH_TEMPLATE.format(job_id=job_id),
+            JOB_LOGS_PATH_TEMPLATE.format(submission_id=job_id),
         )
 
 

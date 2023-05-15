@@ -1000,7 +1000,9 @@ def test_log_list(ray_start_cluster):
     e.match(f"Given node id {node_id} is not available")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Job submission is failing on windows.")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Job submission is failing on windows."
+)
 def test_log_job(ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -1024,7 +1026,7 @@ def test_log_job(ray_start_with_dashboard):
     wait_for_condition(job_done)
 
     def verify():
-        logs = "".join(get_log(job_id=job_id, node_id=node_id))
+        logs = "".join(get_log(submission_id=job_id, node_id=node_id))
         assert JOB_LOG + "\n" == logs
         return True
 
