@@ -31,7 +31,7 @@ class DummyTrainer(DataParallelTrainer):
         num_epochs: How many many times to iterate through the datasets for.
         prefetch_batches: The number of batches to prefetch ahead of the
             current block during the scan. This is the same as
-            :meth:`~ray.data.Datastream.iter_batches`
+            :meth:`~ray.data.Dataset.iter_batches`
         time_preprocessing_separately: Whether to time the preprocessing separately
             from actual iteration during training. If set to True, preprocessing
             execution is fully executed before training begins and the preprocessing
