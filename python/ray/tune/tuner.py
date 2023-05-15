@@ -153,7 +153,7 @@ class Tuner:
         if self._is_ray_client:
             _run_config = run_config or RunConfig()
             if get_air_verbosity(_run_config.verbose) is not None:
-                logger.warning(
+                logger.info(
                     "[output] This will use the legacy output and progress reporter, "
                     "as Ray client is not supported by the new engine. "
                     "For more information, please see "

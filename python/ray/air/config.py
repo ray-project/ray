@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
     from ray.tune.syncer import SyncConfig
+    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -727,10 +728,10 @@ class RunConfig:
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
         verbose: 0, 1, or 2. Verbosity mode.
-            0 = silent, 1 = default, 2 = verbose.
+            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
             If ``RAY_AIR_NEW_OUTPUT=0``, uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
-            results, 3 = status and detailed results. Defaults to 2.
+            results, 3 = status and detailed results.
         log_to_file: Log stdout and stderr to files in
             trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
@@ -750,7 +751,7 @@ class RunConfig:
     sync_config: Optional["SyncConfig"] = None
     checkpoint_config: Optional[CheckpointConfig] = None
     progress_reporter: Optional["ProgressReporter"] = None
-    verbose: Union[int, "Verbosity"] = 2
+    verbose: Union[int, "AirVerbosity", "Verbosity"] = 1
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated

@@ -102,9 +102,14 @@ class AirVerbosity(IntEnum):
 IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 
-def get_air_verbosity(verbose: Union[int, Verbosity]) -> Optional[AirVerbosity]:
+def get_air_verbosity(
+    verbose: Union[int, AirVerbosity, Verbosity]
+) -> Optional[AirVerbosity]:
     if os.environ.get("RAY_AIR_NEW_OUTPUT", "1") == "0":
         return None
+
+    if isinstance(verbose, AirVerbosity):
+        return verbose
 
     verbose_int = verbose if isinstance(verbose, int) else verbose.value
 

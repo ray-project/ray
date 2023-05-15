@@ -35,6 +35,7 @@ from ray.tune.experimental.output import (
     get_air_verbosity,
     _detect_reporter as _detect_air_reporter,
     IS_NOTEBOOK,
+    AirVerbosity,
 )
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
@@ -256,7 +257,7 @@ def run(
     checkpoint_at_end: bool = False,
     checkpoint_keep_all_ranks: bool = False,
     checkpoint_upload_from_workers: bool = False,
-    verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+    verbose: Union[int, AirVerbosity, Verbosity] = AirVerbosity.VERBOSE,
     progress_reporter: Optional[ProgressReporter] = None,
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
@@ -395,10 +396,10 @@ def run(
         checkpoint_upload_from_workers: Whether to upload checkpoint files
             directly from distributed training workers.
         verbose: 0, 1, or 2. Verbosity mode.
-            0 = silent, 1 = default, 2 = verbose.
+            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
             If ``RAY_AIR_NEW_OUTPUT=0``, uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
-            results, 3 = status and detailed results. Defaults to 3.
+            results, 3 = status and detailed results.
         progress_reporter: Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
@@ -533,7 +534,7 @@ def run(
 
     if _remote:
         if get_air_verbosity(verbose) is not None:
-            logger.warning(
+            logger.info(
                 "[output] This will use the legacy output and progress reporter, "
                 "as Ray client is not supported by the new engine. "
                 "For more information, please see "
@@ -592,7 +593,7 @@ def run(
 
     air_verbosity = get_air_verbosity(verbose)
     if air_verbosity is not None and IS_NOTEBOOK:
-        logger.warning(
+        logger.info(
             "[output] This will use the legacy output and progress reporter, "
             "as Jupyter notebooks are not supported by the new engine, yet. "
             "For more information, please see "
@@ -1096,7 +1097,7 @@ def run_experiments(
     experiments: Union[Experiment, Mapping, Sequence[Union[Experiment, Mapping]]],
     scheduler: Optional[TrialScheduler] = None,
     server_port: Optional[int] = None,
-    verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+    verbose: Union[int, AirVerbosity, Verbosity] = AirVerbosity.VERBOSE,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
@@ -1132,7 +1133,7 @@ def run_experiments(
 
     if _remote:
         if get_air_verbosity(verbose) is not None:
-            logger.warning(
+            logger.info(
                 "[output] This will use the legacy output and progress reporter, "
                 "as Ray client is not supported by the new engine. "
                 "For more information, please see "
