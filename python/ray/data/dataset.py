@@ -71,6 +71,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
+    validate_compute,
     ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -347,17 +348,7 @@ class Dataset:
                 Call this method to transform batches of data. It's faster and more
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
@@ -456,7 +447,7 @@ class Dataset:
             per worker instead of once per inference.
 
             To transform batches with :ref:`actors <actor-guide>`, pass a callable type
-            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy>`.
+            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy`.
 
             In the example below, ``CachedModel`` is called on an autoscaling pool of
             two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
@@ -571,16 +562,7 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
+        validate_compute(fn, compute)
 
         if fn_constructor_args is not None or fn_constructor_kwargs is not None:
             if compute is None or (
@@ -829,17 +811,7 @@ class Dataset:
                 This method isn't recommended because it's slow; call
                 :meth:`~Dataset.map_batches` instead.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
@@ -891,17 +863,7 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_filter_fn()
@@ -3248,7 +3210,7 @@ class Dataset:
 
         .. warning::
             If your dataset contains ragged tensors, this method errors. To prevent
-            errors, :ref:`resize your tensors <transforming_variable_tensors>`.
+            errors, :ref:`resize your tensors <transforming_tensors>`.
 
         Examples:
             >>> import ray
@@ -4127,6 +4089,12 @@ class Dataset:
         """
         return pickle.loads(serialized_ds)
 
+    @property
+    @DeveloperAPI
+    def context(self) -> DataContext:
+        """Return the DataContext used to create this Dataset."""
+        return self._plan._context
+
     def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
         block_list = self._plan.execute()
         left, right = block_list.divide(block_idx)
@@ -4422,8 +4390,6 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if sys.meta_path is None:
-            return
         if self._current_executor and ray is not None and ray.is_initialized():
             self._current_executor.shutdown()
 
@@ -4493,11 +4459,25 @@ class Schema:
     def __eq__(self, other):
         return isinstance(other, Schema) and other.base_schema == self.base_schema
 
-    def __str__(self):
-        return f"Schema({dict(zip(self.names, self.types))})"
-
     def __repr__(self):
-        return str(self)
+        column_width = max([len(name) for name in self.names] + [len("Column")])
+        padding = 2
+
+        output = "Column"
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "Type\n"
+
+        output += "-" * len("Column")
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "-" * len("Type") + "\n"
+
+        for name, type in zip(self.names, self.types):
+            output += name
+            output += " " * ((column_width + padding) - len(name))
+            output += f"{type}\n"
+
+        output = output.rstrip()
+        return output
 
 
 def _get_size_bytes(block: Block) -> int:
