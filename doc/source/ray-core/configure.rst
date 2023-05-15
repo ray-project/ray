@@ -20,7 +20,14 @@ Cluster Resources
 Ray by default detects available resources.
 
 .. testcode::
-  :skipif: True
+  :hide:
+
+  import ray
+  ray.shutdown()
+
+.. testcode::
+
+  import ray
 
   # This automatically detects available resources in the single machine.
   ray.init()
@@ -28,10 +35,21 @@ Ray by default detects available resources.
 If not running cluster mode, you can specify cluster resources overrides through ``ray.init`` as follows.
 
 .. testcode::
-  :skipif: True
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
 
   # If not connecting to an existing cluster, you can specify resources overrides:
   ray.init(num_cpus=8, num_gpus=1)
+
+.. testcode::
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
 
   # Specifying custom resources
   ray.init(num_gpus=1, resources={'Resource1': 4, 'Resource2': 16})

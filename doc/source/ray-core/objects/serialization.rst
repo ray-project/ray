@@ -207,23 +207,25 @@ Below, we demonstrate this behavior on a function with a non-serializable object
 The resulting output is:
 
 .. testoutput::
-    :options: +SKIP
+  :options: +SKIP
 
     =============================================================
-    Checking Serializability of <function test at 0x7f9ca9843950>
+    Checking Serializability of <function test at 0x7ff130697e50>
     =============================================================
-    !!! FAIL serialization: can't pickle _thread.lock objects
+    !!! FAIL serialization: cannot pickle '_thread.lock' object
     Detected 1 global variables. Checking serializability...
-        Serializing 'lock' <unlocked _thread.lock object at 0x7f9cb83fb210>...
-        !!! FAIL serialization: can't pickle _thread.lock objects
-        WARNING: Did not find non-serializable object in <unlocked _thread.lock object at 0x7f9cb83fb210>. This may be an oversight.
+        Serializing 'lock' <unlocked _thread.lock object at 0x7ff1306a9f30>...
+        !!! FAIL serialization: cannot pickle '_thread.lock' object
+        WARNING: Did not find non-serializable object in <unlocked _thread.lock object at 0x7ff1306a9f30>. This may be an oversight.
     =============================================================
     Variable:
 
-        lock [obj=<unlocked _thread.lock object at 0x7f9cb83fb210>, parent=<function test at 0x7f9ca9843950>]
+    	FailTuple(lock [obj=<unlocked _thread.lock object at 0x7ff1306a9f30>, parent=<function test at 0x7ff130697e50>])
 
     was found to be non-serializable. There may be multiple other undetected variables that were non-serializable.
     Consider either removing the instantiation/imports of these variables or moving the instantiation into the scope of the function/class.
+    =============================================================
+    Check https://docs.ray.io/en/master/ray-core/objects/serialization.html#troubleshooting for more information.
     If you have any suggestions on how to improve this error message, please reach out to the Ray developers on github.com/ray-project/ray/issues/
     =============================================================
 
