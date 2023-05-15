@@ -635,7 +635,7 @@ bool IsProcessAlive(pid_t pid) {
   }
   // If it's a child, check whether it's zombie
   int ret = waitpid(pid, nullptr, WNOHANG);
-  if(ret == pid) {
+  if (ret == pid) {
     return false;
   }
   return true;
