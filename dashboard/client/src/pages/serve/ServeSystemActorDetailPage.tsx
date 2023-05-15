@@ -250,24 +250,6 @@ const ServeSystemActorLogs = ({
         ? systemLogFilePath.substring(1)
         : systemLogFilePath,
     },
-    {
-      title: "Actor Logs (stderr)",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.err`,
-    },
-    {
-      title: "Actor Logs (stdout)",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.out`,
-    },
-    {
-      title: "Actor Logs (system)",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `python-core-worker-${workerId}_${pid}.log`,
-    },
   ];
   return <MultiTabLogViewer tabs={tabs} />;
 };
