@@ -694,7 +694,7 @@ def run(
     )
 
     checkpoint_config = checkpoint_config or CheckpointConfig()
-    checkpoint_score_attr = checkpoint_config.checkpoint_score_attribute
+    checkpoint_score_attr = checkpoint_config.checkpoint_score_attribute or ""
     if checkpoint_score_attr.startswith("min-"):
         checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
         checkpoint_config.checkpoint_score_order = "min"
