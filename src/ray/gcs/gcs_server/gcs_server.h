@@ -212,6 +212,8 @@ class GcsServer {
   const StorageType storage_type_;
   /// The main io service to drive event posted from grpc threads.
   instrumented_io_context &main_service_;
+  /// The main io service to drive event posted from grpc threads.
+  instrumented_io_context client_service_;
   /// The io service used by Pubsub, for isolation from other workload.
   instrumented_io_context pubsub_io_service_;
   /// The grpc server

@@ -107,9 +107,6 @@ class GrpcServer {
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
 
-  /// Initialize this server.
-  void Init();
-
   /// Initialize and run this server.
   void Run();
 

@@ -83,7 +83,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// \param instrumented_io_context IO execution service.
   ///
   /// \return Status
-  virtual Status Connect(instrumented_io_context &io_service);
+  virtual Status Connect(instrumented_io_context &io_service,
+                         ClusterID const &cluster_id = ClusterID::Nil());
 
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect();
@@ -162,6 +163,13 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
+  /// For testing purposes only. Get an auth-stamped context.
+  void StampContext(grpc::ClientContext &context) {
+    RAY_CHECK(client_call_manager_)
+        << "Cannot stamp context before initializing client call manager.";
+    client_call_manager_->StampContext(context);
+  }
+
  protected:
   GcsClientOptions options_;
 
@@ -174,6 +182,16 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
+
+  friend class GcsClientTest;
+  FRIEND_TEST(GcsClientTest, TestGcsAuth);
+  FRIEND_TEST(GcsClientTest, TestEvictExpiredDestroyedActors);
+  FRIEND_TEST(GcsClientTest, TestEvictExpiredDeadNodes);
+  FRIEND_TEST(GcsClientTest, TestJobTableResubscribe);
+  FRIEND_TEST(GcsClientTest, TestActorTableResubscribe);
+  FRIEND_TEST(GcsClientTest, TestNodeTableResubscribe);
+  FRIEND_TEST(GcsClientTest, TestWorkerTableResubscribe);
+  FRIEND_TEST(GcsClientTest, TestGcsTableReload);
 
  private:
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();

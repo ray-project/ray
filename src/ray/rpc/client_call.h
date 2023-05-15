@@ -92,6 +92,7 @@ class ClientCallImpl : public ClientCall {
   void SetReturnStatus() override {
     absl::MutexLock lock(&mutex_);
     return_status_ = GrpcStatusToRayStatus(status_);
+    RAY_LOG(INFO) << "return status is ! " << return_status_;
   }
 
   void OnReplyReceived() override {
@@ -99,6 +100,7 @@ class ClientCallImpl : public ClientCall {
     {
       absl::MutexLock lock(&mutex_);
       status = return_status_;
+      RAY_LOG(INFO) << "return status is ! " << return_status_;
     }
     if (callback_ != nullptr) {
       callback_(status, reply_);
@@ -277,6 +279,12 @@ class ClientCallManager {
     auto tag = new ClientCallTag(call);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
+  }
+
+  // For testing purposes only.
+  void StampContext(grpc::ClientContext &context) {
+    RAY_CHECK(cluster_token_.valid()) << "Stamping context with unregistered client.";
+    context.AddMetadata(kClusterIdKey, cluster_token_.get().Hex());
   }
 
   /// Get the main service of this rpc.
