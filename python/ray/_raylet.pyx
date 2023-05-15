@@ -59,6 +59,7 @@ from ray.includes.common cimport (
     CObjectReference,
     CLanguage,
     CObjectReference,
+    CWorkerExitType,
     CRayObject,
     CRayStatus,
     CErrorTableData,
@@ -95,6 +96,10 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
+    WORKER_EXIT_TYPE_USER_ERROR,
+    WORKER_EXIT_TYPE_SYSTEM_ERROR,
+    kResourceUnitScaling,
+    kWorkerSetupHookKeyName,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -176,11 +181,6 @@ current_task_id_lock = threading.Lock()
 
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
-
-cdef extern from "ray/common/constants.h" nogil:
-    cdef int kResourceUnitScaling
-
-RESOURCE_UNIT_SCALING = kResourceUnitScaling
 
 
 class ObjectRefGenerator:
@@ -892,7 +892,16 @@ cdef void execute_task(
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
 
-            worker.record_task_log_start()
+            # Record the task id via magic token in the log file.
+            # This will be used to locate the beginning of logs from a task.
+            attempt_number = core_worker.get_current_task_attempt_number()
+            task_attempt_magic_token = "{}{}-{}\n".format(
+                ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
+                attempt_number)
+            # Print on both .out and .err
+            print(task_attempt_magic_token, end="")
+            print(task_attempt_magic_token, file=sys.stderr, end="")
+
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -943,9 +952,14 @@ cdef void execute_task(
                                      exc_info=True)
                     raise e
                 finally:
-                    # Record the task logs end offsets regardless of
-                    # task execution results.
-                    worker.record_task_log_end()
+                    # Record the end of task via magic token in the log file.
+                    # This will be used to locate the end of logs from a task.
+                    task_attempt_magic_token = "{}{}-{}\n".format(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
+                        attempt_number)
+                    # Print on both .out and .err
+                    print(task_attempt_magic_token, end="")
+                    print(task_attempt_magic_token, file=sys.stderr, end="")
 
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
@@ -1872,15 +1886,16 @@ cdef class CoreWorker:
         self.cgname_to_eventloop_dict = None
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
+        self.current_runtime_env = None
 
     def shutdown(self):
-        with nogil:
-            # If it's a worker, the core worker process should have been
-            # shutdown. So we can't call
-            # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
-            # Instead, we use the cached `is_driver` flag to test if it's a
-            # driver.
-            if self.is_driver:
+        # If it's a worker, the core worker process should have been
+        # shutdown. So we can't call
+        # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
+        # Instead, we use the cached `is_driver` flag to test if it's a
+        # driver.
+        if self.is_driver:
+            with nogil:
                 CCoreWorkerProcess.Shutdown()
 
     def notify_raylet(self):
@@ -1891,6 +1906,28 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.RunTaskExecutionLoop()
 
+    def exit_worker(self, exit_type: str, c_string detail):
+        """
+        Exit the current worker process. This API should only be used by
+        a worker. If this API is called, the worker will finish currently
+        executing task, initiate the shutdown, and stop itself gracefully.
+        The given exit_type and detail will be reported to GCS, and any
+        worker failure error will contain them.
+        """
+        cdef:
+            CWorkerExitType c_exit_type
+            cdef const shared_ptr[LocalMemoryBuffer] null_ptr
+
+        if exit_type == "user":
+            c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
+        if exit_type == "system":
+            c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
+        else:
+            raise ValueError(f"Invalid exit type: {exit_type}")
+        assert not self.is_driver
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
+
     def get_current_task_retry_exceptions(self):
         return CCoreWorkerProcess.GetCoreWorker(
             ).GetCurrentTaskRetryExceptions()
@@ -1898,6 +1935,9 @@ cdef class CoreWorker:
     def get_current_task_id(self):
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
+
+    def get_current_task_attempt_number(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskAttemptNumber()
 
     def get_task_depth(self):
         return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
