@@ -65,7 +65,7 @@ class DreamerV3Catalog(Catalog):
         else:
             from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
-            return MLP(model_dimension=self.model_dimension)
+            return MLP(model_dimension=self.model_dimension, name="vector_encoder")
 
     def build_decoder(self, framework: str) -> Model:
         """Builds the World-Model's decoder network depending on the obs space."""

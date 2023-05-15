@@ -33,12 +33,18 @@ class TestDreamerV3(unittest.TestCase):
                 },
                 _enable_learner_api=True,
             )
+            .resources(
+                num_learner_workers=0,
+                num_cpus_per_learner_worker=1,
+                num_gpus_per_learner_worker=0,
+                num_gpus=0,
+            )
             .rl_module(_enable_rl_module_api=True)
         )
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks="tf2"):#, with_eager_tracing=True):
+        for _ in framework_iterator(config, frameworks="tf2", with_eager_tracing=True):
             for env in ["FrozenLake-v1", "CartPole-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 config.environment(env)

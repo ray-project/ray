@@ -26,7 +26,7 @@ class ConvTransposeAtari(tf.keras.Model):
         cnn_multiplier: Optional[int] = None,
         gray_scaled: bool = True,
     ):
-        super().__init__()
+        super().__init__(name="image_decoder")
 
         cnn_multiplier = get_cnn_multiplier(model_dimension, override=cnn_multiplier)
 

@@ -40,7 +40,7 @@ class DreamerModel(tf.keras.Model):
                 Use None for manually setting the different network sizes.
              action_space: The action space the our environment used.
         """
-        super().__init__()
+        super().__init__(name="dreamer_model")
 
         self.model_dimension = model_dimension
         self.action_space = action_space
@@ -81,15 +81,26 @@ class DreamerModel(tf.keras.Model):
         actions = self.actor(
             h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
         )
+        # Actor (with distribution).
+        _, distr = self.actor(
+            h=results["h_states_BxT"],
+            z=results["z_posterior_states_BxT"],
+            return_distribution=True,
+        )
         # Critic.
         values = self.critic(
             h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
+        )
+        # Critic (EMA).
+        values_ema = self.critic(
+            h=results["h_states_BxT"], z=results["z_posterior_states_BxT"], use_ema=True
         )
 
         return {
             "world_model_fwd": results,
             "actions": actions,
             "values": values,
+            "values_ema": values_ema,
         }
 
     @tf.function
@@ -97,16 +108,26 @@ class DreamerModel(tf.keras.Model):
         """TODO"""
         # Perform one step in the world model (starting from `previous_state` and
         # using the observations to yield a current (posterior) state).
-        states = self.world_model(previous_states, observations, is_first)
+        states = self.world_model.forward_inference(
+            previous_states, observations, is_first
+        )
+        # Compute action using our actor network and the current states.
+        _, distr = self.actor(h=states["h"], z=states["z"], return_distribution=True)
+        # Use the mode of the distribution (Discrete=argmax, Normal=mean).
+        actions = distr.mode()
+        return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
+    @tf.function
+    def forward_exploration(self, previous_states, observations, is_first, training=None):
+        """TODO"""
+        # Perform one step in the world model (starting from `previous_state` and
+        # using the observations to yield a current (posterior) state).
+        states = self.world_model.forward_inference(
+            previous_states, observations, is_first
+        )
         # Compute action using our actor network and the current states.
         actions = self.actor(h=states["h"], z=states["z"])
-
-        return actions, {
-            "h": states["h"],
-            "z": states["z"],
-            "a": actions,
-        }
+        return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
     @tf.function
     def forward_train(self, observations, actions, is_first, training=None):

@@ -735,9 +735,13 @@ class Algorithm(Trainable):
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
+            # TODO (sven): Fix this dependency. How do we do an algo that only has
+            #  a single model, used for sampling and learning?
             # Sync the weights from local rollout worker to individual Learners.
-            weights = local_worker.get_weights()
-            self.learner_group.set_weights(weights)
+            #weights = local_worker.get_weights()
+            #self.learner_group.set_weights(weights)
+            # TODO (sven): DreamerV3 is single-agent only.
+            local_worker.model = self.learner_group._learner.module[DEFAULT_POLICY_ID]
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)

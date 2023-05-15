@@ -26,20 +26,21 @@ class DreamerV3TfRLModule(DreamerV3RLModule, TfRLModule):
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        # TODO (sven): For now, Dreamer always uses exploratory behavior.
-        return self._forward_exploration(batch)
-
-    @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
         actions, next_state = self.dreamer_model.forward_inference(
             previous_states=batch[STATE_IN],
             observations=batch[SampleBatch.OBS],
             is_first=batch["is_first"],
         )
-        return {
-            SampleBatch.ACTIONS: actions,
-            STATE_OUT: next_state,
-        }
+        return {SampleBatch.ACTIONS: actions, STATE_OUT: next_state}
+
+    @override(RLModule)
+    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+        actions, next_state = self.dreamer_model.forward_exploration(
+            previous_states=batch[STATE_IN],
+            observations=batch[SampleBatch.OBS],
+            is_first=batch["is_first"],
+        )
+        return {SampleBatch.ACTIONS: actions, STATE_OUT: next_state}
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict):

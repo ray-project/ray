@@ -10,15 +10,16 @@ https://arxiv.org/pdf/2010.02193.pdf
 import dataclasses
 import gc
 import logging
-import tree  # pip install dm_tree
 from typing import Optional, Union
 
 import gymnasium as gym
+import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamerv3.dreamerv3_catalog import DreamerV3Catalog
 from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import DreamerV3Hyperparameters
+from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     summarize_actor_train_results,
@@ -33,6 +34,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
@@ -378,16 +380,17 @@ class DreamerV3(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         results = {}
+        env_runner = self.workers.local_worker()
 
         # Push enough samples into buffer initially before we start training.
-        env_steps = env_steps_last_sample = 0
+        env_steps = 0
         # TEST: Put only a single row in the buffer and try to memorize it.
         # env_steps_last_sample = 64
         # while iteration == 0:
         # END TEST
 
         if self.training_iteration == 0:
-            print(
+            logger.info(
                 "Filling replay buffer so it contains at least "
                 f"{self.config.batch_size_B * self.config.batch_length_T} timesteps "
                 "(required for a single train batch)."
@@ -399,7 +402,7 @@ class DreamerV3(Algorithm):
         # (batch_size_B x batch_length_T), only then proceeed to the training
         # update step.
         while True:
-            done_episodes, ongoing_episodes = self.env_runner.sample(
+            done_episodes, ongoing_episodes = env_runner.sample(
                 random_actions=False
             )
 
@@ -438,7 +441,7 @@ class DreamerV3(Algorithm):
                     results=results,
                     step=self._counters[NUM_ENV_STEPS_SAMPLED],
                     replay_buffer=self.replay_buffer,
-                    sampler_metrics=self.env_runner.get_metrics(),
+                    sampler_metrics=env_runner.get_metrics(),
                     print_=True,
                 )
                 break
@@ -452,7 +455,7 @@ class DreamerV3(Algorithm):
 
         sub_iter = 0
         while replayed_steps / env_steps_last_sample < self.config.training_ratio:
-            print(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
+            logger.info(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
 
             # Draw a new sample from the replay buffer.
             sample = self.replay_buffer.sample(
@@ -461,26 +464,24 @@ class DreamerV3(Algorithm):
             )
             replayed_steps += self.config.batch_size_B * self.config.batch_length_T
 
-            # Convert samples (numpy) to tensors.
-            # TODO (sven): We shouldn't have any framework-specific code here.
-            #  Figure out, where to put this (post-buffer) logic.
-            if self.config.framework_str == "tf2":
-                sample = tree.map_structure(lambda v: tf.convert_to_tensor(v), sample)
-                # Do some other conversions.
-                sample["is_first"] = tf.cast(sample["is_first"], tf.float32)
-                sample["is_last"] = tf.cast(sample["is_last"], tf.float32)
-                sample["is_terminated"] = tf.cast(sample["is_terminated"], tf.float32)
-                if isinstance(
-                    self.env_runner.env.single_action_space, gym.spaces.Discrete
-                ):
-                    sample["actions_ints"] = sample[SampleBatch.ACTIONS]
-                    sample[SampleBatch.ACTIONS] = tf.one_hot(
-                        sample["actions_ints"],
-                        depth=self.env_runner.env.single_action_space.n,
-                    )
+            # Convert some bool columns to float32 and one-hot actions.
+            sample["is_first"] = sample["is_first"].astype(np.float32)
+            sample["is_last"] = sample["is_last"].astype(np.float32)
+            sample["is_terminated"] = sample["is_terminated"].astype(np.float32)
+            if isinstance(
+                env_runner.env.single_action_space, gym.spaces.Discrete
+            ):
+                sample["actions_ints"] = sample[SampleBatch.ACTIONS]
+                sample[SampleBatch.ACTIONS] = one_hot(
+                    sample["actions_ints"],
+                    depth=env_runner.env.single_action_space.n,
+                )
 
             # Perform the actual update via our learner group.
-            train_results = self.learner_group.update(sample)
+            train_results = self.learner_group.update(
+                # TODO (sven): DreamerV3 is single-agent only.
+                SampleBatch(sample).as_multi_agent()
+            )
 
             if self.config.summary_frequency_train_steps and (
                 self._counters[NUM_GRAD_UPDATES_LIFETIME]
@@ -494,7 +495,7 @@ class DreamerV3(Algorithm):
                     batch_size_B=self.config.batch_size_B,
                     batch_length_T=self.config.batch_length_T,
                     symlog_obs=do_symlog_obs(
-                        self.env_runner.env.single_observation_space,
+                        env_runner.env.single_observation_space,
                         self.config.model.get("symlog_obs", "auto"),
                     ),
                 )
@@ -523,7 +524,7 @@ class DreamerV3(Algorithm):
                 #        include_histograms=self.config.summary_include_histograms,
                 #    )
                 # TODO: Make this work with any renderable env.
-                if self.env_runner.config.env in [
+                if env_runner.config.env in [
                     "CartPoleDebug-v0",
                     "CartPole-v1",
                     "FrozenLake-v1",
@@ -531,8 +532,8 @@ class DreamerV3(Algorithm):
                     summarize_dreamed_trajectory(
                         dream_data=train_results["dream_data"],
                         train_results=train_results,
-                        env=self.env_runner.config.env,
-                        dreamer_model=dreamer_model,
+                        env=env_runner.config.env,
+                        dreamer_model=env_runner.model.dreamer_model,
                         obs_dims_shape=sample[SampleBatch.OBS].shape[2:],
                         desc="for_actor_critic_learning",
                     )

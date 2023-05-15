@@ -20,7 +20,7 @@ class CNNAtari(tf.keras.Model):
         model_dimension: Optional[str] = "XS",
         cnn_multiplier: Optional[int] = None,
     ):
-        super().__init__()
+        super().__init__(name="image_encoder")
 
         cnn_multiplier = get_cnn_multiplier(model_dimension, override=cnn_multiplier)
 

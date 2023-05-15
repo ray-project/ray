@@ -14,37 +14,37 @@ from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import one_hot
 
 
 @ExperimentalAPI
 class DreamerV3RLModule(RLModule, abc.ABC):
-    # def __init__(self, config: RLModuleConfig):
-    #    super().__init__(config)
 
     def setup(self):
-        catalog = self.config.get_catalog()
-
+        # Gather model-relevant settings.
         T = self.config.model_config_dict["batch_length_T"]
-
         symlog_obs = do_symlog_obs(
             self.config.observation_space,
             self.config.model_config_dict.get("symlog_obs", "auto"),
         )
 
         # Build encoder and decoder from catalog.
+        catalog = self.config.get_catalog()
         self.encoder = catalog.build_encoder(framework=self.framework)
         self.decoder = catalog.build_decoder(framework=self.framework)
+
         # Build the world model (containing encoder and decoder).
         self.world_model = WorldModel(
             model_dimension=self.config.model_config_dict["model_dimension"],
             action_space=self.config.action_space,
             batch_length_T=T,
-            #num_gru_units=self.model_config.num_gru_units,
+            # num_gru_units=self.model_config.num_gru_units,
             encoder=self.encoder,
             decoder=self.decoder,
             symlog_obs=symlog_obs,
         )
+
         # Build the final dreamer model (containing the world model).
         self.dreamer_model = DreamerModel(
             model_dimension=self.config.model_config_dict["model_dimension"],
@@ -58,7 +58,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
-        # Perform a test call to force building the dreamer model.
+        # Perform a test `call()` to force building the dreamer model's variables.
         test_obs = np.tile(np.expand_dims(self.config.observation_space.sample(), (0, 1)), reps=(1, T, 1))
         test_actions = np.tile(np.expand_dims(one_hot(self.config.action_space.sample(), depth=self.config.action_space.n), (0, 1)), reps=(1, T, 1))
         self.dreamer_model(
@@ -68,6 +68,13 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
         # This should work now.
         self.dreamer_model.summary(expand_nested=True)
+
+        # Initialize the critic EMA net:
+        self.dreamer_model.critic.init_ema()
+
+    #@override(RLModule)
+    #def get_initial_state(self) -> NestedDict:
+    #    return self.dreamer_model.get_initial_state()
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:

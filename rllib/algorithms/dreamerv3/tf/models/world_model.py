@@ -87,14 +87,13 @@ class WorldModel(tf.keras.Model):
         self.posterior_mlp = MLP(
             model_dimension=self.model_dimension,
             output_layer_size=None,
-            # TODO: In Danijar's code, the posterior predictor only has a single layer,
-            #  no matter the model size.
+            # In Danijar's code, the posterior predictor only has a single layer,
+            # no matter the model size:
             num_dense_layers=1,
             name="posterior_mlp"
         )
         self.posterior_representation_layer = RepresentationLayer(
             model_dimension=self.model_dimension,
-            name="posterior",
         )
 
         # Dynamics (prior) predictor: h -> z^

@@ -279,7 +279,12 @@ class RLModule(abc.ABC):
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
-        self.setup()
+        # Make sure, `setup()` is only called once, no matter what. In some cases
+        # of multiple inheritance (and with our __post_init__ functionality in place,
+        # this might get called twice.
+        if not hasattr(self, "_is_setup") or not self._is_setup:
+            self.setup()
+        self._is_setup = True
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.

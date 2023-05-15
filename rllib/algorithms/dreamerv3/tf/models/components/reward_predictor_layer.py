@@ -43,8 +43,9 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
                 rewards to be as high as 400M. Buckets will be created between
                 `lower_bound` and `upper_bound`.
         """
-        super().__init__(name=f"reward_layer_{self.num_buckets}buckets",)
         self.num_buckets = num_buckets
+        super().__init__(name=f"reward_layer_{self.num_buckets}buckets",)
+
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.reward_buckets_layer = tf.keras.layers.Dense(

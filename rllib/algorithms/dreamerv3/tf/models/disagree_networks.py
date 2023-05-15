@@ -22,7 +22,7 @@ class DisagreeNetworks(tf.keras.Model):
     """
 
     def __init__(self, *, num_networks, model_dimension, intrinsic_rewards_scale):
-        super().__init__()
+        super().__init__(name="disagree_networks")
 
         self.model_dimension = model_dimension
         self.num_networks = num_networks

@@ -37,13 +37,11 @@ class CriticNetwork(tf.keras.Model):
         self.mlp = MLP(
             model_dimension=self.model_dimension,
             output_layer_size=None,
-            name="critic_mlp",
         )
         self.return_layer = RewardPredictorLayer(
             num_buckets=num_buckets,
             lower_bound=lower_bound,
             upper_bound=upper_bound,
-            name="critic"
         )
 
         # Weights-EMA (EWMA) containing networks for critic loss (similar to a
@@ -53,14 +51,12 @@ class CriticNetwork(tf.keras.Model):
             model_dimension=self.model_dimension,
             output_layer_size=None,
             trainable=False,
-            name="critic_mlp_ema",
         )
         self.return_layer_ema = RewardPredictorLayer(
             num_buckets=num_buckets,
             lower_bound=lower_bound,
             upper_bound=upper_bound,
             trainable=False,
-            name="critic_ema",
         )
 
     def call(self, h, z, return_logits=False, use_ema=False):

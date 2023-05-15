@@ -19,7 +19,7 @@ class VectorDecoder(tf.keras.Model):
         model_dimension: Optional[str] = "XS",
         observation_space: gym.Space,
     ):
-        super().__init__()
+        super().__init__(name="vector_decoder")
 
         assert (
             isinstance(observation_space, gym.spaces.Box)

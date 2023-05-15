@@ -21,6 +21,8 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.numpy import one_hot
@@ -171,7 +173,7 @@ class DreamerV3EnvRunner(EnvRunner):
         self.num_envs = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
-        #TODO: Create new model and sync weights or reuse main one? 
+        # TODO: Create new model and sync weights or reuse main one?
         self.model = None
 
         self.needs_initial_reset = True
@@ -226,7 +228,7 @@ class DreamerV3EnvRunner(EnvRunner):
         """
         done_episodes_to_return = []
 
-        # Get initial states for all rows.
+        # Get initial states for all `batch_size_B` rows.
         if self.model is not None:
             initial_states = tree.map_structure(
                 lambda s: tf.repeat(s, self.num_envs, axis=0).numpy(),
@@ -266,36 +268,25 @@ class DreamerV3EnvRunner(EnvRunner):
 
         while True:
             if random_actions:
-                raise NotImplementedError
-                # TODO: hack; right now, our model (a world model) does not have an
-                #  actor head yet. Still perform a forward pass to get the next h-states.
                 actions = self.env.action_space.sample()
-                if self.model is not None:
-                    states = (
-                        self.model.forward_inference(
-                            obs,
-                            actions,
-                            tf.convert_to_tensor(states),
-                        )
-                    ).numpy()
-                else:
-                    states = np.array([1.0] * self.num_envs)
             else:
-                # Sample.
+                batch = {
+                    STATE_IN: tree.map_structure(
+                        lambda s: tf.convert_to_tensor(s), states
+                    ),
+                    SampleBatch.OBS: tf.convert_to_tensor(obs),
+                    "is_first": tf.convert_to_tensor(is_first),
+                }
+
                 if explore:
-                    actions, states = self.model.forward_inference(
-                        tree.map_structure(lambda s: tf.convert_to_tensor(s), states),
-                        tf.convert_to_tensor(obs),
-                        tf.convert_to_tensor(is_first),
-                    )
-                    actions = actions.numpy()
-                    if isinstance(self.env.single_action_space, gym.spaces.Discrete):
-                        actions = np.argmax(actions, axis=-1)
-                    states = tree.map_structure(lambda s: s.numpy(), states)
-                # Greedy.
+                    outs = self.model.forward_exploration(batch)
                 else:
-                    raise NotImplementedError
-                    #actions = np.argmax(action_logits, axis=-1)
+                    outs = self.model.forward_inference(batch)
+
+                actions = outs[SampleBatch.ACTIONS].numpy()
+                if isinstance(self.env.single_action_space, gym.spaces.Discrete):
+                    actions = np.argmax(actions, axis=-1)
+                states = tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
@@ -311,6 +302,8 @@ class DreamerV3EnvRunner(EnvRunner):
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
                 if term or trunc:
+                    # Finish the episode with the actual terminal observation stored in
+                    # the info dict.
                     self.episodes[i].add_timestep(
                         infos["final_observation"][i],
                         a,
@@ -319,12 +312,8 @@ class DreamerV3EnvRunner(EnvRunner):
                         is_terminated=True,
                     )
                     # Reset h-states to all zeros b/c we are starting a new episode.
-                    if self.model is not None:
-                        for k, v in self.model.get_initial_state().items():
-                            states[k][i] = v.numpy()
-                    else:
-                        raise NotImplementedError
-                        #states[i] = 0.0
+                    for k, v in self.model.get_initial_state().items():
+                        states[k][i] = v.numpy()
                     is_first[i] = True
                     done_episodes_to_return.append(self.episodes[i])
 
@@ -415,38 +404,25 @@ class DreamerV3EnvRunner(EnvRunner):
 
         while True:
             if random_actions:
-                raise NotImplementedError
-                # TODO: hack; right now, our model (a world model) does not have an
-                #  actor head yet. Still perform a forward pass to get the next h-states.
                 actions = self.env.action_space.sample()
-                #print(f"took action {actions}")
-                if self.model is not None:
-                    states = (
-                        self.model.forward_inference(
-                            obs,
-                            actions,
-                            tf.convert_to_tensor(states),
-                        )
-                    ).numpy()
-                else:
-                    raise NotImplementedError
-                    #states = np.array([1.0 for _ in range(self.num_envs)])
             else:
-                # Sample.
+                batch = {
+                    STATE_IN: tree.map_structure(
+                        lambda s: tf.convert_to_tensor(s), states
+                    ),
+                    SampleBatch.OBS: tf.convert_to_tensor(obs),
+                    "is_first": tf.convert_to_tensor(is_first),
+                }
+
                 if explore:
-                    actions, states = self.model.forward_inference(
-                        tree.map_structure(lambda s: tf.convert_to_tensor(s), states),
-                        tf.convert_to_tensor(obs),
-                        tf.convert_to_tensor(is_first),
-                    )
-                    actions = actions.numpy()
-                    if isinstance(self.env.single_action_space, gym.spaces.Discrete):
-                        actions = np.argmax(actions, axis=-1)
-                    states = tree.map_structure(lambda s: s.numpy(), states)
-                # Greedy.
+                    outs = self.model.forward_exploration(batch)
                 else:
-                    raise NotImplementedError
-                    #act = np.argmax(action_logits, axis=-1)
+                    outs = self.model.forward_inference(batch)
+
+                actions = outs[SampleBatch.ACTIONS].numpy()
+                if isinstance(self.env.single_action_space, gym.spaces.Discrete):
+                    actions = np.argmax(actions, axis=-1)
+                states = tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             if with_render_data:
