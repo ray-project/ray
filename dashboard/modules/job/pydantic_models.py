@@ -22,7 +22,11 @@ class DriverInfo(BaseModel):
 
 @PublicAPI(stability="beta")
 class JobType(str, Enum):
-    """An enumeration for describing the different job types."""
+    """An enumeration for describing the different job types.
+
+    NOTE:
+        This field is still experimental and may change in the future.
+    """
 
     #: A job that was initiated by the Ray Jobs API.
     SUBMISSION = "SUBMISSION"
