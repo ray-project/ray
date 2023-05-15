@@ -160,3 +160,28 @@ MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
     "config files."
 )
+
+# Jsonify the log messages
+RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
+# Logging format attributes
+SERVE_LOG_REQUEST_ID = "request_id"
+SERVE_LOG_ROUTE = "route"
+SERVE_LOG_APPLICATION = "application"
+SERVE_LOG_DEPLOYMENT = "deployment"
+SERVE_LOG_REPLICA = "replica"
+SERVE_LOG_COMPONENT = "component_name"
+SERVE_LOG_COMPONENT_ID = "component_id"
+SERVE_LOG_MESSAGE = "message"
+# This is a reserved for python logging module attribute, it should not be changed.
+SERVE_LOG_LEVEL_NAME = "levelname"
+SERVE_LOG_TIME = "asctime"
+
+# Logging format with record key to format string dict
+SERVE_LOG_RECORD_FORMAT = {
+    SERVE_LOG_REQUEST_ID: "%(request_id)s",
+    SERVE_LOG_ROUTE: "%(route)s",
+    SERVE_LOG_APPLICATION: "%(application)s",
+    SERVE_LOG_MESSAGE: "%(filename)s:%(lineno)d - %(message)s",
+    SERVE_LOG_LEVEL_NAME: "%(levelname)s",
+    SERVE_LOG_TIME: "%(asctime)s",
+}
