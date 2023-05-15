@@ -125,7 +125,6 @@ class NodeProviderAdapter(NodeProvider):
             instance.state = Instance.INSTANCE_STATUS_UNSPECIFIED
         instance.interal_ip = self._provider.internal_ip(cloud_instance_id)
         instance.external_ip = self._provider.external_ip(cloud_instance_id)
-        instance.instance_type = self._provider.node_tags(cloud_instance_id)[
-            TAG_RAY_USER_NODE_TYPE
-        ]
+        tags = self._provider.node_tags(cloud_instance_id)
+        instance.instance_type = tags[TAG_RAY_USER_NODE_TYPE]
         return instance

@@ -112,47 +112,47 @@ def main(results=None):
         for _ in range(100):
             ray.put(0)
 
-    def put_multi_small():
-        ray.get([do_put_small.remote() for _ in range(10)])
+    # def put_multi_small():
+    #     ray.get([do_put_small.remote() for _ in range(10)])
 
-    arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
+    # arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
 
-    results += timeit("single client get calls (Plasma Store)", get_small)
+    # results += timeit("single client get calls (Plasma Store)", get_small)
 
-    results += timeit("single client put calls (Plasma Store)", put_small)
+    # results += timeit("single client put calls (Plasma Store)", put_small)
 
-    results += timeit("multi client put calls (Plasma Store)", put_multi_small, 1000)
+    # results += timeit("multi client put calls (Plasma Store)", put_multi_small, 1000)
 
-    def put_large():
-        ray.put(arr)
+    # def put_large():
+    #     ray.put(arr)
 
-    results += timeit("single client put gigabytes", put_large, 8 * 0.1)
+    # results += timeit("single client put gigabytes", put_large, 8 * 0.1)
 
-    def small_value_batch():
-        submitted = [small_value.remote() for _ in range(1000)]
-        ray.get(submitted)
-        return 0
+    # def small_value_batch():
+    #     submitted = [small_value.remote() for _ in range(1000)]
+    #     ray.get(submitted)
+    #     return 0
 
-    results += timeit("single client tasks and get batch", small_value_batch)
+    # results += timeit("single client tasks and get batch", small_value_batch)
 
-    @ray.remote
-    def do_put():
-        for _ in range(10):
-            ray.put(np.zeros(10 * 1024 * 1024, dtype=np.int64))
+    # @ray.remote
+    # def do_put():
+    #     for _ in range(10):
+    #         ray.put(np.zeros(10 * 1024 * 1024, dtype=np.int64))
 
-    def put_multi():
-        ray.get([do_put.remote() for _ in range(10)])
+    # def put_multi():
+    #     ray.get([do_put.remote() for _ in range(10)])
 
-    results += timeit("multi client put gigabytes", put_multi, 10 * 8 * 0.1)
+    # results += timeit("multi client put gigabytes", put_multi, 10 * 8 * 0.1)
 
-    obj_containing_ref = create_object_containing_ref.remote()
+    # obj_containing_ref = create_object_containing_ref.remote()
 
-    def get_containing_object_ref():
-        ray.get(obj_containing_ref)
+    # def get_containing_object_ref():
+    #     ray.get(obj_containing_ref)
 
-    results += timeit(
-        "single client get object containing 10k refs", get_containing_object_ref
-    )
+    # results += timeit(
+    #     "single client get object containing 10k refs", get_containing_object_ref
+    # )
 
     def wait_multiple_refs():
         num_objs = 1000

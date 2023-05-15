@@ -15,6 +15,9 @@ from ray.core.generated.instance_manager_pb2 import Instance
 logger = logging.getLogger(__name__)
 
 
+PENDING_INSTANCE_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
+
+
 class InstanceReconciler(InstanceUpdatedSuscriber):
     """InstanceReconciler is responsible for reconciling the difference between
     node provider and instance storage. It is also responsible for launching new
@@ -36,6 +39,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self._ray_installaion_executor = ThreadPoolExecutor(max_workers=50)
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
+        # TODO: we should do reconciliation based on events.
         self._reconciler_executor.submit(self._run_reconcile)
 
     def _run_reconcile(self) -> None:
@@ -169,9 +173,42 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         for instance in instances.values():
             self._reconcile_single_intance(instance, none_terminated_cloud_instances)
 
+        # dealing with leaked intances.
+        self._reconcile_leaked_instances(none_terminated_cloud_instances)
+
     def _reconcile_single_intance(
-        self, instance: Instance, cloud_instance_by_id: Dict[str, Instance]
+        self, storage_instance: Instance, cloud_instance_by_id: Dict[str, Instance]
     ) -> None:
-        # TODO: reconcile instance state with cloud instance state and
-        # update the instance storage.
+        """Reconcile the instance state with the cloud instance state.
+
+        Args:
+            storage_instance: The instance in the storage.
+            cloud_instance_by_id: A dictionary of cloud instances keyed by
+            cloud_instance_id.
+        """
+        # if the instance doesn't have cloud_instance_id, it means it is not
+        # launched yet, or it is already terminated.
+        if not storage_instance.cloud_instance_id:
+            assert storage_instance.state in PENDING_INSTANCE_STATUS
+            return
+
+        cloud_instance = cloud_instance_by_id.pop(
+            storage_instance.cloud_instance_id, None
+        )
+        # if the cloud instance is not found, it means the instance is already
+        if cloud_instance is None:
+            logging.info(f"Instance is not found in cloud provider, {storage_instance}")
+            # TODO: we should log error if the instance is not expected to
+            # be disappeared.
+            self._instance_storage.batch_delete_instances(
+                [storage_instance.instance_id]
+            )
+            return
+
+    def _reconcile_leaked_instances(self, potentially_leaked_instances: List[Instance]):
+        # TODO: after reconciling with the storage, the remaining cloud instances
+        # could either be leaked, or they are just launched and not
+        # stored into the storage yet.
+        #
+        # We are not able to tell the difference between these two cases.
         pass
