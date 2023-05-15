@@ -547,7 +547,7 @@ def record_serve_tag(key: str, value: str):
     record_extra_usage_tag(serve_telemetry_tag_map[key], value)
 
 
-def _extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
+def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
     """Check if this is a method rather than a function.
 
     Does this by checking to see if `func` is the attribute of the first
@@ -558,7 +558,7 @@ def _extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[ob
     Returns the `self` object if it's a method call, else None.
 
     Arguments:
-        args (List[Any]): arguments to the function/method call.
+        args: arguments to the function/method call.
         func: the unbound function that was called.
     """
     if len(args) > 0:

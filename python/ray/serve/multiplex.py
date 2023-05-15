@@ -11,6 +11,20 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class _ModelMultiplexWrapper:
+    """A wrapper class that wraps the model load function and
+    provides the LRU caching functionality.
+
+    The model multiplexer is a wrapper class that wraps the model load function
+    and provides the LRU caching functionality, and the model load function should
+    be a coroutine function that takes the model ID as the first argument and
+    returns the user-constructed model object.
+    The model multiplexer will also ensure that the number of models on the current
+    replica does not exceed the specified limit.
+    The model will be unloaded in the LRU order, the model multiplexer will call the
+    model's __del__ attribute if it exists to clean up the model resources eagerly.
+
+    """
+
     def __init__(
         self,
         model_load_func: Callable[[str], Any],
@@ -18,16 +32,6 @@ class _ModelMultiplexWrapper:
         max_num_models_per_replica: int,
     ):
         """Initialize the model multiplexer.
-
-        The model multiplexer is a wrapper class that wraps the model load function
-        and provides the LRU caching functionality, and the model load function should
-        be a coroutine function that takes the model ID as the first argument and
-        returns the model handle.
-        The model multiplexer will also ensure that the number of models on the current
-        replica does not exceed the specified limit.
-        The model will be unloaded in the LRU order, the model multiplexer will call the
-        model's __del__ attribute if it exists to clean up the model resources eagerly.
-
         Args:
             model_load_func: the model load async function.
             self_arg: self argument when model_load_func is class method.
@@ -41,13 +45,13 @@ class _ModelMultiplexWrapper:
         self.max_num_models_per_replica = max_num_models_per_replica
 
     async def load_model(self, model_id: str) -> Any:
-        """Load the model if it is not loaded yet, and return the model handle.
+        """Load the model if it is not loaded yet, and return the user-constructed model object.
 
         Args:
             model_id: the model ID.
 
         Returns:
-            The model handle.
+            The user-constructed model object.
         """
 
         if type(model_id) != str:

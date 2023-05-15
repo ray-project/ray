@@ -48,7 +48,7 @@ from ray.serve._private.utils import (
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
     record_serve_tag,
-    _extract_self_if_method_call,
+    extract_self_if_method_call,
 )
 
 from ray.serve._private import api as _private_api
@@ -666,18 +666,22 @@ def multiplexed(
     if max_num_models_per_replica != -1 and max_num_models_per_replica <= 0:
         raise ValueError("max_num_models_per_replica must be positive.")
 
-    def _multiplex_decorator(func):
+    def _multiplex_decorator(func: Callable):
         @wraps(func)
         async def _multiplex_wrapper(*args):
             args_check_error_msg = (
-                "The args of the multiplexed function must have at least one "
-                "argument with type `str` as model_id, but got {}"
+                "Functions decorated with `@serve.multiplexed` must take exactly one"
+                "the multiplexed model ID (str), but got {}"
             )
             if not args:
                 raise TypeError(
                     args_check_error_msg.format("no arguments are provided.")
                 )
-            self = _extract_self_if_method_call(args, func)
+            self = extract_self_if_method_call(args, func)
+
+            # User defined multiplexed function can be a standalone function or a
+            # method of a class. If it is a method of a class, the first argument
+            # is self.
             if self is None:
                 if len(args) != 1:
                     raise TypeError(
@@ -694,6 +698,8 @@ def multiplexed(
                 multiplex_object = self
                 model_id = args[1]
             multiplex_attr = f"__serve_multiplex_{func.__name__}"
+            # If the multiplexed function is called for the first time,
+            # create a model multiplex wrapper and cache it in the multiplex object.
             if not hasattr(multiplex_object, multiplex_attr):
                 model_multiplex_wrapper = _ModelMultiplexWrapper(
                     func, self, max_num_models_per_replica

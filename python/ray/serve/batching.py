@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from ray._private.signature import extract_signature, flatten_args, recover_args
 from ray._private.utils import get_or_create_event_loop
 from ray.serve.exceptions import RayServeException
-from ray.serve._private.utils import _extract_self_if_method_call
+from ray.serve._private.utils import extract_self_if_method_call
 from ray.util.annotations import PublicAPI
 
 
@@ -266,7 +266,7 @@ def batch(
     def _batch_decorator(_func):
         @wraps(_func)
         async def batch_wrapper(*args, **kwargs):
-            self = _extract_self_if_method_call(args, _func)
+            self = extract_self_if_method_call(args, _func)
             flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
 
             if self is None:
