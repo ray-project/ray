@@ -56,7 +56,7 @@ export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
               title: "Driver",
               contents:
                 "Driver logs are only available when submitting jobs via the " +
-                "Job Submission API or the `ray job submit` CLI command.",
+                "Job Submission API, SDK or the `ray job submit` CLI command.",
             },
       ]}
       otherLogsLink={link}
