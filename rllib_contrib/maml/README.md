@@ -20,4 +20,4 @@ pip install -e '.[development]'
 
 ## Usage
 
-https://github.com/ray-project/ray/blob/master/rllib_contrib/maml/examples/cartpole_mass_maml.py
+[MAML Example](examples/cartpole_mass_maml.py)

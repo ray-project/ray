@@ -14,4 +14,4 @@ pip install -e '.[development]'
 
 ## Usage
 
-https://github.com/ray-project/ray/blob/master/rllib_contrib/a3c/examples/a3c_cartpole_v1.py
+[A3C Example](examples/a3c_cartpole_v1.py)
