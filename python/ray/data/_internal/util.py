@@ -18,7 +18,8 @@ if TYPE_CHECKING:
     from ray.util.placement_group import PlacementGroup
     import pyarrow
     import pandas
-    from ray.data.block import Block, BlockMetadata
+    from ray.data._internal.compute import ComputeStrategy
+    from ray.data.block import Block, BlockMetadata, UserDefinedFunction
 
 logger = logging.getLogger(__name__)
 
@@ -409,6 +410,23 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
         arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
     ]
     return splits
+
+
+def validate_compute(
+    fn: "UserDefinedFunction", compute: Optional[Union[str, "ComputeStrategy"]]
+) -> None:
+    # Lazily import these objects to avoid circular imports.
+    from ray.data._internal.compute import TaskPoolStrategy
+    from ray.data.block import CallableClass
+
+    if isinstance(fn, CallableClass) and (
+        compute is None or compute == "tasks" or isinstance(compute, TaskPoolStrategy)
+    ):
+        raise ValueError(
+            "``compute`` must be specified when using a CallableClass, and must "
+            f"specify the actor compute strategy, but got: {compute}. "
+            "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
+        )
 
 
 def capfirst(s: str):
