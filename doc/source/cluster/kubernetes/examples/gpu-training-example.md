@@ -55,7 +55,7 @@ kubectl port-forward --address 0.0.0.0 services/raycluster-head-svc 8265:8265
 pip3 install -U "ray[default]"
 
 # Download the Python script
-curl https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/doc_code/pytorch_training_e2e_submit.py -o pytorch_training_e2e_submit.py
+curl https://github.com/ray-project/ray/master/doc/source/cluster/doc_code/pytorch_training_e2e_submit.py -o pytorch_training_e2e_submit.py
 
 # Submit the training job to your ray cluster
 python3 pytorch_training_e2e_submit.py
