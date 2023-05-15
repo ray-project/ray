@@ -520,7 +520,7 @@ py_test(
 
 py_test(
     name = "test_controller_callback_integration",
-    size = "medium",
+    size = "large",
     srcs = ["tests/execution/test_controller_callback_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"]
@@ -528,7 +528,7 @@ py_test(
 
 py_test(
     name = "test_controller_checkpointing_integration",
-    size = "medium",
+    size = "large",
     srcs = ["tests/execution/test_controller_checkpointing_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"]
@@ -536,7 +536,7 @@ py_test(
 
 py_test(
     name = "test_controller_control_integration",
-    size = "medium",
+    size = "large",
     srcs = ["tests/execution/test_controller_control_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"]
@@ -544,7 +544,7 @@ py_test(
 
 py_test(
     name = "test_controller_errors_integration",
-    size = "medium",
+    size = "large",
     srcs = ["tests/execution/test_controller_errors_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"]
@@ -552,7 +552,7 @@ py_test(
 
 py_test(
     name = "test_controller_resources_integration",
-    size = "medium",
+    size = "large",
     srcs = ["tests/execution/test_controller_resources_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"]
@@ -560,7 +560,7 @@ py_test(
 
 py_test(
     name = "test_controller_search_alg_integration",
-    size = "medium",
+    size = "large",
     srcs = ["tests/execution/test_controller_search_alg_integration.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"]
