@@ -2,9 +2,9 @@
 
 .. _data:
 
-======================================
-Ray Data: Distributed ML Preprocessing
-======================================
+==================================
+Ray Data: Scalable Datasets for ML
+==================================
 
 .. _data-intro:
 
@@ -29,8 +29,8 @@ Streaming Batch Inference
 -------------------------
 
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
-powerful :ref:`Dataset <dataset_concept>` primitive. Datasets enable workloads such as
-:ref:`GPU batch inference <ref-use-cases-batch-infer>` to run efficiently on large datasets,
+powerful :ref:`Datastream <datastream_concept>` primitive. Datastreams enable workloads such as
+:doc:`GPU batch inference <batch_inference>` to run efficiently on large datasets,
 maximizing resource utilization by keeping the working data fitting into Ray object store memory.
 
 .. image:: images/stream-example.png
@@ -117,7 +117,7 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
         Learn how to :ref:`load data <loading_data>`, :ref:`save
         data <saving_data>`, :ref:`transform data <transforming_data>`,
         :ref:`access and exchange data <consuming_data>`, or
-        :ref:`work with tensor data <data_tensor_support>`.
+        :ref:`work with tensor data <working_with_tensors>`.
 
         +++
         .. button-ref:: data_user_guide
@@ -202,6 +202,14 @@ If your use case isn't supported, reach out on `Discourse <https://discuss.ray.i
 request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
 our :ref:`guide for implementing a custom datasource <data_custom_datasource>`
 if you're interested in rolling your own integration!
+
+----------
+Learn More
+----------
+
+- `[Blog] Streaming distributed execution across CPUs and GPUs <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__
+- `[Blog] Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`__
+- `[Blog] Using Ray Data to parallelize LangChain inference <https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding>`__
 
 ----------
 Contribute

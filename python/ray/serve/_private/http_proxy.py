@@ -1,5 +1,6 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import json
 import os
 import logging
 import pickle
@@ -32,7 +33,11 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
+from ray.serve._private.logging_utils import (
+    access_log_msg,
+    configure_component_logger,
+    get_component_logger_file_path,
+)
 
 from ray.serve._private.utils import get_random_letters
 
@@ -284,7 +289,7 @@ class HTTPProxy:
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
-            tag_keys=("route", "method", "application"),
+            tag_keys=("route", "method", "application", "status_code"),
         )
 
         self.request_error_counter = metrics.Counter(
@@ -320,6 +325,7 @@ class HTTPProxy:
             tag_keys=(
                 "route",
                 "application",
+                "status_code",
             ),
         )
 
@@ -371,6 +377,7 @@ class HTTPProxy:
                     "route": route_path,
                     "method": scope["method"].upper(),
                     "application": "",
+                    "status_code": "200",
                 }
             )
             return await starlette.responses.JSONResponse(self.route_info)(
@@ -383,6 +390,7 @@ class HTTPProxy:
                     "route": route_path,
                     "method": scope["method"].upper(),
                     "application": "",
+                    "status_code": "200",
                 }
             )
             return await starlette.responses.PlainTextResponse("success")(
@@ -403,16 +411,11 @@ class HTTPProxy:
                     "route": route_path,
                     "method": scope["method"].upper(),
                     "application": "",
+                    "status_code": "404",
                 }
             )
             return await self._not_found(scope, receive, send)
-        self.request_counter.inc(
-            tags={
-                "route": route_path,
-                "method": scope["method"].upper(),
-                "application": app_name,
-            }
-        )
+
         # Modify the path and root path so that reverse lookups and redirection
         # work as expected. We do this here instead of in replicas so it can be
         # changed without restarting the replicas.
@@ -428,9 +431,24 @@ class HTTPProxy:
             )
         )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
+
+        self.request_counter.inc(
+            tags={
+                "route": route_path,
+                "method": scope["method"].upper(),
+                "application": app_name,
+                "status_code": status_code,
+            }
+        )
+
         latency_ms = (time.time() - start_time) * 1000.0
         self.processing_latency_tracker.observe(
-            latency_ms, tags={"route": route_path, "application": app_name}
+            latency_ms,
+            tags={
+                "route": route_path,
+                "application": app_name,
+                "status_code": status_code,
+            },
         )
         logger.info(
             access_log_msg(
@@ -509,9 +527,16 @@ class HTTPProxyActor:
             return_when=asyncio.FIRST_COMPLETED,
         )
 
-        # Return log filepath, or re-throw the exception from self.running_task.
+        # Return metadata, or re-throw the exception from self.running_task.
         if self.setup_complete.is_set():
-            return f"/serve/http_proxy_{ray.util.get_node_ip_address()}.log"
+            # NOTE(zcin): We need to convert the metadata to a json string because
+            # of cross-language scenarios. Java can't deserialize a Python tuple.
+            return json.dumps(
+                [
+                    ray._private.worker.global_worker.worker_id.hex(),
+                    get_component_logger_file_path(),
+                ]
+            )
 
         return await done_set.pop()
 
