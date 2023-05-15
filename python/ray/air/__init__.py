@@ -11,7 +11,6 @@ from ray.air.data_batch_type import DataBatchType
 from ray.air.result import Result
 
 
-
 __all__ = [
     "Checkpoint",
     "DataBatchType",

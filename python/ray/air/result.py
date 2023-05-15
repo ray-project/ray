@@ -13,7 +13,7 @@ from ray.util.annotations import PublicAPI
 from ray.air.constants import (
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
-    EXPR_ERROR_PICKLE_FILE
+    EXPR_ERROR_PICKLE_FILE,
     TRAINING_ITERATION,
 )
 
@@ -182,7 +182,7 @@ class Result:
         error = None
         error_file_path = Path(local_path) / EXPR_ERROR_PICKLE_FILE
         if os.path.exists(error_file_path):
-            error = pickle.load(open(error_file_path, 'rb'))
+            error = pickle.load(open(error_file_path, "rb"))
 
         return Result(
             metrics=metrics,
