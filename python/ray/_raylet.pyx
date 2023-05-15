@@ -99,6 +99,7 @@ from ray.includes.common cimport (
     CChannelType,
     RAY_ERROR_INFO_CHANNEL,
     RAY_LOG_CHANNEL,
+    RAY_PYTHON_FUNCTION_CHANNEL,
     PythonGetLogBatchLines,
 )
 from ray.includes.unique_ids cimport (
@@ -1909,8 +1910,39 @@ cdef class GcsLogSubscriber:
             check_status(self.inner.get().Close())
 
 
-# class GcsFunction
+cdef class GcsFunctionKeySubscriber:
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    cdef:
+        shared_ptr[CPythonGcsSubscriber] inner
 
+    def __cinit__(self, address, worker_id=None):
+        cdef:
+            c_worker_id = worker_id or b""
+        # subscriber_id needs to match the binary format of a random
+        # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
+        subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
+        self.inner.reset(new CPythonGcsSubscriber(address, RAY_PYTHON_FUNCTION_CHANNEL, subscriber_id, c_worker_id))
+        check_status(self.inner.get().Connect())
+
+    def subscribe(self):
+        with nogil:
+            check_status(self.inner.get().Subscribe())
+
+    def poll(self):
+        cdef:
+            CPythonFunction python_function
+            c_string key_id
+
+        check_status(self.inner.get().PollFunctionKey(&key_id, &python_function))
+
+        if python_function.key() == b"":
+            return None
+        else:
+            return python_function.key()
+
+    def close(self):
+        with nogil:
+            check_status(self.inner.get().Close())
 
 cdef class CoreWorker:
 

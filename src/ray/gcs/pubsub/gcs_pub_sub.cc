@@ -354,44 +354,41 @@ Status PythonGcsSubscriber::Subscribe() {
 }
 
 Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
-  grpc::ClientContext context;
-  {
-    absl::MutexLock lock(&mu_);
-    current_polling_context_ = &context;
+  absl::MutexLock lock(&mu_);
+
+  while (queue_.size() == 0) {
     if (closed_) {
       return Status::OK();
     }
+    grpc::ClientContext context;
+    current_polling_context_ = &context;
+    rpc::GcsSubscriberPollRequest request;
+    request.set_subscriber_id(subscriber_id_);
+    request.set_max_processed_sequence_id(max_processed_sequence_id_);
+    request.set_publisher_id(publisher_id_);
+
+    rpc::GcsSubscriberPollReply reply;
+    // Drop the lock while in RPC
+    mu_.Unlock();
+    // TODO: Add error handling
+    grpc::Status status = pubsub_stub_->GcsSubscriberPoll(&context, request, &reply);
+    mu_.Lock();
+
+    current_polling_context_ = nullptr;
+
+    if (publisher_id_ != reply.publisher_id()) {
+      publisher_id_ = reply.publisher_id();
+    }
+    last_batch_size_ = reply.pub_messages().size();
+    for (auto& message : reply.pub_messages()) {
+      max_processed_sequence_id_ = message.sequence_id();
+      // TODO: Drop out of order messages
+      queue_.emplace_back(std::move(message));
+    }
   }
 
-  rpc::GcsSubscriberPollRequest request;
-  request.set_subscriber_id(subscriber_id_);
-  request.set_max_processed_sequence_id(max_processed_sequence_id_);
-  request.set_publisher_id(publisher_id_);
-
-  rpc::GcsSubscriberPollReply reply;
-  // TODO: Add error handling
-  grpc::Status status = pubsub_stub_->GcsSubscriberPoll(&context, request, &reply);
-
-  absl::MutexLock lock(&mu_);
-
-  current_polling_context_ = nullptr;
-
-  if (publisher_id_ != reply.publisher_id()) {
-    publisher_id_ = reply.publisher_id();
-  }
-
-  last_batch_size_ = reply.pub_messages().size();
-
-  for (auto& message : reply.pub_messages()) {
-    max_processed_sequence_id_ = message.sequence_id();
-    // TODO: Drop out of order messages
-    queue_.emplace_back(std::move(message));
-  }
-
-  if (queue_.size() > 0) {
-    *message = queue_.front();
-    queue_.pop_front();
-  }
+  *message = queue_.front();
+  queue_.pop_front();
 
   return Status::OK();
 }
@@ -409,6 +406,14 @@ Status PythonGcsSubscriber::PollLogs(std::string* key_id, rpc::LogBatch* data) {
   RAY_RETURN_NOT_OK(DoPoll(&message));
   *key_id = message.key_id();
   *data = message.log_batch_message();
+  return Status::OK();
+}
+
+Status PythonGcsSubscriber::PollFunctionKey(std::string* key_id, rpc::PythonFunction* data) {
+  rpc::PubMessage message;
+  RAY_RETURN_NOT_OK(DoPoll(&message));
+  *key_id = message.key_id();
+  *data = message.python_function_message();
   return Status::OK();
 }
 

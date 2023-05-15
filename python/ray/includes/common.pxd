@@ -375,6 +375,8 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         CRayStatus PollLogs(c_string* key_id, CLogBatch* data)
 
+        CRayStatus PollFunctionKey(c_string* key_id, CPythonFunction* data)
+
         CRayStatus Close()
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
@@ -384,6 +386,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":
         RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",
         RAY_LOG_CHANNEL "ray::rpc::ChannelType::RAY_LOG_CHANNEL",
+        RAY_PYTHON_FUNCTION_CHANNEL "ray::rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL",
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
@@ -412,6 +415,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)
+        c_string key() const
 
     cdef cppclass CErrorTableData "ray::rpc::ErrorTableData":
         c_string job_id() const

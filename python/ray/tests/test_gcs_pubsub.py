@@ -111,7 +111,7 @@ def test_publish_and_subscribe_function_keys(ray_start_regular):
     address_info = ray_start_regular
     gcs_server_addr = address_info["gcs_address"]
 
-    subscriber = GcsFunctionKeySubscriber(address=gcs_server_addr)
+    subscriber = ray._raylet.GcsFunctionKeySubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
     publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
