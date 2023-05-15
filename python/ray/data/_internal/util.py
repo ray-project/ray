@@ -10,7 +10,8 @@ import numpy as np
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-from ray.data._internal.compute import CallableClass, TaskPoolStrategy
+from ray.data._internal.compute import TaskPoolStrategy
+from ray.data.block import CallableClass
 from ray.data.context import DataContext
 from ray._private.utils import _get_pyarrow_version
 
