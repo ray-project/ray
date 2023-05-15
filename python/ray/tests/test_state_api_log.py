@@ -3,6 +3,7 @@ import os
 import sys
 import asyncio
 from typing import List
+import urllib
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,6 +11,8 @@ from ray.experimental.state.state_cli import logs_state_cli_group
 import requests
 from click.testing import CliRunner
 import grpc
+
+from pathlib import Path
 
 import ray
 from ray._private.test_utils import (
@@ -997,6 +1000,45 @@ def test_log_list(ray_start_cluster):
         list_logs(node_id=node_id)
 
     e.match(f"Given node id {node_id} is not available")
+
+
+def test_log_get_subdir(ray_start_with_dashboard):
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
+    subdir = "test_subdir"
+    file = "test_#file.log"
+    path = Path(log_dir) / subdir / file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("test log")
+
+    # HTTP endpoint
+    def verify():
+        # Direct logs stream
+        response = requests.get(
+            webui_url
+            + f"/api/v0/logs/file?node_id={node_id}"
+            + f"&filename={urllib.parse.quote('test_subdir/test_#file.log')}"
+        )
+        assert response.status_code == 200, response.reason
+        assert "test log" in response.text
+        return True
+
+    wait_for_condition(verify)
+
+    # get log SDK
+    def verify():
+        logs = "".join(get_log(node_id=node_id, filename="test_subdir/test_#file.log"))
+        assert "test log" in logs
+        return True
+
+    wait_for_condition(verify)
 
 
 def test_log_get(ray_start_cluster):

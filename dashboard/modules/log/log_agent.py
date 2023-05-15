@@ -296,7 +296,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
             )
         log_files = []
         for p in path.glob(request.glob_filter):
-            log_files.append(p.name)
+            log_files.append(str(p.relative_to(path)))
         return reporter_pb2.ListLogsReply(log_files=log_files)
 
     @classmethod
@@ -385,8 +385,8 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         lines = request.lines if request.lines else 1000
         task_id = request.task_id if request.HasField("task_id") else None
 
-        filepath = f"{self._dashboard_agent.log_dir}/{request.log_file_name}"
-        if not os.path.isfile(filepath):
+        filepath = Path(self._dashboard_agent.log_dir) / request.log_file_name
+        if not filepath.is_file():
             await context.send_initial_metadata(
                 [[log_consts.LOG_GRPC_ERROR, log_consts.FILE_NOT_FOUND]]
             )

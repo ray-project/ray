@@ -440,11 +440,7 @@ class StateDataSourceClient:
             ),
             timeout=timeout,
         )
-        await self._validate_stream(stream)
-        return stream
-
-    @staticmethod
-    async def _validate_stream(stream):
         metadata = await stream.initial_metadata()
         if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
-            raise ValueError('File "{log_file_name}" not found on node {node_id}')
+            raise ValueError(f'File "{log_file_name}" not found on node {node_id}')
+        return stream
