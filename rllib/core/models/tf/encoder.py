@@ -100,7 +100,7 @@ class TfCNNEncoder(TfModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
+        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TfMLPEncoder(Encoder, TfModel):
