@@ -31,6 +31,8 @@ class RuntimeEnvPlugin(ABC):
     def validate(runtime_env_dict: dict) -> None:
         """Validate user entry for this plugin.
 
+        The method is invoked upon installation of runtime env.
+
         Args:
             runtime_env_dict: the user-supplied runtime environment dict.
 
