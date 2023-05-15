@@ -1,5 +1,6 @@
 import pytest
 
+import ray
 from ray import serve
 from ray.serve.multiplex import _ModelMultiplexWrapper
 
@@ -146,6 +147,14 @@ class TestBasicAPI:
                 @serve.multiplexed
                 def get_model(self):
                     return
+
+    def test_get_multiplexed_model_id(self):
+        """Test get_multiplexed_model_id() API"""
+        assert serve.get_multiplexed_model_id() == ""
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(multiplexed_model_id="1")
+        )
+        assert serve.get_multiplexed_model_id() == "1"
 
 
 if __name__ == "__main__":

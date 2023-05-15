@@ -10,6 +10,7 @@ from starlette.requests import Request
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
+import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
 from ray.util.annotations import Deprecated, PublicAPI
@@ -733,4 +734,5 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
-    raise NotImplementedError("get_multiplexed_model_id API is not supported yet.")
+    _request_context = ray.serve.context._serve_request_context.get()
+    return _request_context.multiplexed_model_id
