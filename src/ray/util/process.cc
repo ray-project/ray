@@ -629,7 +629,8 @@ bool IsProcessAlive(pid_t pid) {
   }
   return false;
 #else
-  if (kill(pid, 0) == -1 && errno == ESRCH) {
+  int stat;
+  if (pid == waitpid(pid, &stat, WNOHANG)) {
     return false;
   }
   return true;
