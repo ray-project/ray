@@ -97,6 +97,7 @@ export type ServeHttpProxy = {
   node_ip: string;
   actor_id: string;
   actor_name: string;
+  worker_id: string;
   status: ServeHTTPProxyStatus;
   log_file_path: string | null;
 };
