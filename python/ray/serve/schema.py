@@ -608,7 +608,26 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
+class ServeActorDetails(BaseModel, frozen=True):
+    node_id: Optional[str] = Field(
+        description="ID of the node that the actor is running on."
+    )
+    node_ip: Optional[str] = Field(
+        description="IP address of the node that the actor is running on."
+    )
+    actor_id: Optional[str] = Field(description="Actor ID.")
+    actor_name: Optional[str] = Field(description="Actor name.")
+    worker_id: Optional[str] = Field(description="Worker ID.")
+    log_file_path: Optional[str] = Field(
+        description=(
+            "The relative path to the Serve actor's log file from the ray logs "
+            "directory."
+        )
+    )
+
+
+@PublicAPI(stability="alpha")
+class ReplicaDetails(ServeActorDetails, frozen=True):
     """Detailed info about a single deployment replica."""
 
     replica_id: str = Field(
@@ -620,25 +639,11 @@ class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
     )
     state: ReplicaState = Field(description="Current state of the replica.")
     pid: Optional[int] = Field(description="PID of the replica actor process.")
-    actor_name: str = Field(description="Name of the replica actor.")
-    actor_id: Optional[str] = Field(description="ID of the replica actor.")
-    node_id: Optional[str] = Field(
-        description="ID of the node that the replica actor is running on."
-    )
-    node_ip: Optional[str] = Field(
-        description="IP address of the node that the replica actor is running on."
-    )
     start_time_s: float = Field(
         description=(
             "The time at which the replica actor was started. If the controller dies, "
             "this is the time at which the controller recovers and retrieves replica "
             "state from the running replica actor."
-        )
-    )
-    log_file_path: Optional[str] = Field(
-        description=(
-            "The relative path to the log file for the replica actor from the ray logs "
-            "directory."
         )
     )
 
@@ -766,20 +771,8 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 
 @PublicAPI(stability="alpha")
-class HTTPProxyDetails(BaseModel):
-    node_id: str = Field(description="ID of the node that the HTTP Proxy is running on")
-    node_ip: str = Field(
-        description="IP address of the node that the HTTP Proxy is running on."
-    )
-    actor_id: str = Field(description="ID of the HTTP Proxy actor.")
-    actor_name: str = Field(description="Name of the HTTP Proxy actor.")
+class HTTPProxyDetails(ServeActorDetails, frozen=True):
     status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
-    log_file_path: Optional[str] = Field(
-        description=(
-            "The relative path to the log file for the replica actor from the ray logs "
-            "directory."
-        )
-    )
 
 
 @PublicAPI(stability="alpha")
@@ -791,6 +784,9 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     This is the response JSON schema for v2 REST API `GET /api/serve/applications`.
     """
 
+    controller_info: ServeActorDetails = Field(
+        description="Details about the Serve controller actor."
+    )
     proxy_location: Optional[DeploymentMode] = Field(
         description=(
             "The location of HTTP servers.\n"
@@ -822,7 +818,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         Represents no Serve instance running on the cluster.
         """
 
-        return {"deploy_mode": "UNSET", "applications": {}}
+        return {"deploy_mode": "UNSET", "controller_info": {}, "applications": {}}
 
 
 @PublicAPI(stability="beta")

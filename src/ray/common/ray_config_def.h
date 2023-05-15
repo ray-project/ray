@@ -476,6 +476,10 @@ RAY_CONFIG(uint64_t, task_events_max_buffer_size, 100 * 1000)
 /// the message size, and also the processing work on GCS.
 RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 
+/// Max number of dropped task attempt info to be sent in a single rpc call to
+/// GCS for task events in rpc::TaskEventsData
+RAY_CONFIG(uint64_t, task_events_drop_task_attempt_batch_size, 10 * 1000)
+
 /// Max number of profile events allowed for a single task when sent to GCS.
 /// NOTE: this limit only applies to the profile events per task in a single
 /// report gRPC call. A task could have more profile events in GCS from multiple
