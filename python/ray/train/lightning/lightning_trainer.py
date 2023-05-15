@@ -509,13 +509,6 @@ def _lightning_train_loop_per_worker(config):
     lightning_module = module_class(**module_init_config)
 
     # Prepare Lightning Trainer
-    # Disable the Lightning progress bar to avoid corrupted AIR outputs,
-    # unless users provide a customized progress bar callback.
-    trainer_config["enable_progress_bar"] = any(
-        isinstance(callback, ProgressBarBase)
-        for callback in trainer_config.get("callbacks", [])
-    )
-
     # Setup trainer's parallel devices
     if trainer_config.get("accelerator", None) == "gpu":
         current_device = get_worker_root_device()

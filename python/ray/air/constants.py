@@ -1,3 +1,5 @@
+import os
+
 # Key to denote the preprocessor in the checkpoint dict.
 PREPROCESSOR_KEY = "_preprocessor"
 
@@ -67,8 +69,6 @@ AIR_ENV_VARS = {
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     DISABLE_LAZY_CHECKPOINTING_ENV,
 }
-
-import os
 
 # fmt: off
 # __sphinx_doc_begin__

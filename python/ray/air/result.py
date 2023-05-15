@@ -1,5 +1,6 @@
 import os
 import json
+import pickle
 import pandas as pd
 import warnings
 from typing import TYPE_CHECKING
@@ -16,9 +17,6 @@ from ray.air.constants import (
     EXPR_ERROR_PICKLE_FILE,
     TRAINING_ITERATION,
 )
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 @PublicAPI(stability="beta")
