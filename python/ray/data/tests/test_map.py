@@ -92,7 +92,6 @@ def test_basic_actors(shutdown_only, pipelined):
 
 
 def test_callable_classes(shutdown_only):
-    # TODO(scott_optimizer): fix map with CallableClass arg
     ds = ray.data.range(10, parallelism=10)
 
     class StatefulFn:

@@ -2,6 +2,7 @@ from typing import Iterator, List, Tuple
 
 from ray.data._internal.logical.operators.all_to_all_operator import Repartition
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.actor_pool_map_operator import ActorPoolMapOperator
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
     RandomShuffle,
@@ -224,6 +225,18 @@ class OperatorFusionRule(Rule):
             # TODO(Scott): Add zero-copy batching between transform functions.
             return down_transform_fn(blocks, ctx)
 
+        # Fuse init funcitons.
+        up_init_fn = up_op.get_init_fn() if isinstance(up_op, ActorPoolMapOperator) else None
+        down_init_fn = down_op.get_init_fn() if isinstance(down_op, ActorPoolMapOperator) else None
+        if up_init_fn is None and down_init_fn is None:
+            fused_init_fn = None
+        else:
+            def fused_init_fn():
+                if up_init_fn is not None:
+                    up_init_fn()
+                if down_init_fn is not None:
+                    down_init_fn()
+
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
         compute = None
@@ -240,6 +253,7 @@ class OperatorFusionRule(Rule):
             fused_map_transform_fn,
             input_op,
             name=name,
+            init_fn=fused_init_fn,
             compute_strategy=compute,
             min_rows_per_bundle=target_block_size,
             ray_remote_args=ray_remote_args,
