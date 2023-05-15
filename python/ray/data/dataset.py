@@ -456,10 +456,10 @@ class Dataset:
             per worker instead of once per inference.
 
             To transform batches with :ref:`actors <actor-guide>`, pass a callable type
-            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy>`.
+            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy`.
 
             In the example below, ``CachedModel`` is called on an autoscaling pool of
-            two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
+            two to eight :ref:`actors <actor-guide>`, ea~ch allocated one GPU by Ray.
 
             >>> init_large_model = ... # doctest: +SKIP
             >>> class CachedModel:
