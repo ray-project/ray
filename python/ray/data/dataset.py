@@ -447,7 +447,7 @@ class Dataset:
             per worker instead of once per inference.
 
             To transform batches with :ref:`actors <actor-guide>`, pass a callable type
-            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy>`.
+            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy`.
 
             In the example below, ``CachedModel`` is called on an autoscaling pool of
             two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
@@ -3177,7 +3177,7 @@ class Dataset:
 
         .. warning::
             If your dataset contains ragged tensors, this method errors. To prevent
-            errors, :ref:`resize your tensors <transforming_variable_tensors>`.
+            errors, :ref:`resize your tensors <transforming_tensors>`.
 
         Examples:
             >>> import ray
@@ -4056,6 +4056,12 @@ class Dataset:
         """
         return pickle.loads(serialized_ds)
 
+    @property
+    @DeveloperAPI
+    def context(self) -> DataContext:
+        """Return the DataContext used to create this Dataset."""
+        return self._plan._context
+
     def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
         block_list = self._plan.execute()
         left, right = block_list.divide(block_idx)
@@ -4313,7 +4319,8 @@ class Dataset:
         if ray.util.log_once("dataset_slow_warned"):
             logger.warning(
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
-                "can be very slow. Consider using `.map_batches()` instead."
+                "can be very slow. If you're using a vectorized transformation, "
+                "consider using `.map_batches()` instead."
             )
 
     def _synchronize_progress_bar(self):
@@ -4350,8 +4357,6 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if sys.meta_path is None:
-            return
         if self._current_executor and ray is not None and ray.is_initialized():
             self._current_executor.shutdown()
 
