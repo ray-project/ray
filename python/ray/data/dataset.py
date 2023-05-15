@@ -2212,7 +2212,7 @@ class Dataset:
             >>> # Create dataset from synthetic data.
             >>> ds = ray.data.range(1000)
             >>> ds.columns()
-            ["id"]
+            ['id']
 
         Args:
             fetch_if_missing: If True, synchronously fetch the column names from the
