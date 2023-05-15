@@ -2,11 +2,6 @@ import pathlib
 import sys
 from dataclasses import dataclass, field
 from typing import Any, List, Mapping, Tuple, Union, Type
-
-from ray.rllib.core.models.specs.checker import (
-    check_input_specs,
-    check_output_specs,
-)
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
@@ -15,7 +10,6 @@ from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import NetworkType
-from ray.rllib.utils.typing import SampleBatchType
 
 torch, nn = try_import_torch()
 
@@ -61,6 +55,70 @@ class TorchCompileConfig:
     kwargs: dict = field(default_factory=lambda: dict())
 
 
+def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
+    """A wrapper that compiles the forward methods of a TorchRLModule.
+
+    Possibly replaces the forward methods with compiled versions, depending on
+    compile_config. Note that this also makes it so that exploration and inference
+    do not trace grads because this can lead to memory leaks and slowness.
+    """
+
+    # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
+    if int(torch.__version__[0]) < 2 and (
+        compile_config.compile_forward_train
+        or compile_config.compile_forward_inference
+        or compile_config.compile_forward_exploration
+    ):
+        raise ValueError("torch.compile is only supported from torch 2.0.0")
+
+    if compile_config.compile_forward_train:
+        compiled_forward_train = torch.compile(
+            rl_module._forward_train,
+            backend=compile_config.torch_dynamo_backend,
+            mode=compile_config.torch_dynamo_mode,
+            **compile_config.kwargs
+        )
+
+        def forward_train(*args, **kwargs):
+            # This is a simple pass through.
+            # We only leave this here so that the stack trace is more informative.
+            return compiled_forward_train(*args, **kwargs)
+
+        rl_module._forward_train = forward_train
+
+    if compile_config.compile_forward_inference:
+        compiled_forward_inference = torch.compile(
+            rl_module._forward_inference,
+            backend=compile_config.torch_dynamo_backend,
+            mode=compile_config.torch_dynamo_mode,
+            **compile_config.kwargs
+        )
+
+        def forward_inference(*args, **kwargs):
+            # This is a simple pass through.
+            # We only leave this here so that the stack trace is more informative.
+            return compiled_forward_inference(*args, **kwargs)
+
+        rl_module._forward_inference = forward_inference
+
+    if compile_config.compile_forward_exploration:
+        compiled_forward_exploration = torch.compile(
+            rl_module._forward_exploration,
+            backend=compile_config.torch_dynamo_backend,
+            mode=compile_config.torch_dynamo_mode,
+            **compile_config.kwargs
+        )
+
+        def forward_exploration(*args, **kwargs):
+            # This is a simple pass through.
+            # We only leave this here so that the stack trace is more informative.
+            return compiled_forward_exploration(*args, **kwargs)
+
+        rl_module._forward_exploration = forward_exploration
+
+    return rl_module
+
+
 class TorchRLModule(nn.Module, RLModule):
     """A base class for RLlib torch RLModules.
 
@@ -87,125 +145,6 @@ class TorchRLModule(nn.Module, RLModule):
         # Whether to retrace torch compiled forward methods on set_weights.
         self._retrace_on_set_weights = False
 
-    def compile(self, config: TorchCompileConfig) -> "TorchRLModule":
-        """Compiles the forward methods of this RL Module according to config.
-
-        Args:
-            config: The TorchCompileConfig to use.
-        """
-        # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
-        if (
-            int(torch.__version__[0]) < 2
-            and (
-                self.torch_compile_learner_forward_train
-                or self.torch_compile_worker_forward_inference
-                or self.torch_compile_worker_forward_exploration
-            )
-        ):
-            raise ValueError("torch.compile is only supported from torch 2.0.0")
-        
-        if config.compile_forward_train:
-            self.compile_forward_train(
-                backend=config.torch_dynamo_backend,
-                mode=config.torch_dynamo_mode,
-                **config.kwargs
-            )
-        if config.compile_forward_inference:
-            self.compile_forward_inference(
-                backend=config.torch_dynamo_backend,
-                mode=config.torch_dynamo_mode,
-                **config.kwargs
-            )
-        if config.compile_forward_exploration:
-            self.compile_forward_exploration(
-                backend=config.torch_dynamo_backend,
-                mode=config.torch_dynamo_mode,
-                **config.kwargs
-            )
-
-        return self
-
-    @override(RLModule)
-    @check_input_specs("_input_specs_inference")
-    @check_output_specs("_output_specs_inference")
-    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        # Make sure we don't trace gradients in exploration to avoid potential slowness.
-        with torch.no_grad():
-            # If this forward method was compiled, we call the compiled version.
-            if hasattr(self, "_compiled_forward_inference"):
-                return self._compiled_forward_inference(batch, **kwargs)
-            return self._forward_inference(batch, **kwargs)
-
-    @override(RLModule)
-    @check_input_specs("_input_specs_exploration")
-    @check_output_specs("_output_specs_exploration")
-    def forward_exploration(
-        self, batch: SampleBatchType, **kwargs
-    ) -> Mapping[str, Any]:
-        # Make sure we don't trace gradients in exploration to avoid potential slowness.
-        with torch.no_grad():
-            # If this forward method was compiled, we call the compiled version.
-            if hasattr(self, "_compiled_forward_exploration"):
-                return self._compiled_forward_exploration(batch, **kwargs)
-            return self._forward_exploration(batch, **kwargs)
-
-    @override(RLModule)
-    @check_input_specs("_input_specs_train")
-    @check_output_specs("_output_specs_train")
-    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        # If this forward method was compiled, we call the compiled version.
-        if hasattr(self, "_compiled_forward_train"):
-            return self._compiled_forward_train(batch, **kwargs)
-        return self._forward_train(batch, **kwargs)
-
-    def compile_forward_train(
-        self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
-    ) -> None:
-        """Compiles the forward_train method.
-
-        Args:
-            mode: The torch.dynamo mode to use.
-            backend: The torch.dynamo backend to use.
-            retrace_on_set_weights: Whether to retrace the compiled method on
-                every call of `TorchRLModule.set_state()`.
-        """
-        self._compiled_forward_train = torch.compile(
-            self._forward_train, mode=mode, backend=backend
-        )
-        self._retrace_on_set_weights = retrace_on_set_weights
-
-    def compile_forward_inference(
-        self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
-    ) -> None:
-        """Compiles the forward_inference method.
-
-        Args:
-            mode: The torch.dynamo mode to use.
-            backend: The torch.dynamo backend to use.
-            retrace_on_set_weights: Whether to retrace the compiled method on
-                every call of `TorchRLModule.set_state()`.
-        """
-        self._compiled_forward_inference = torch.compile(
-            self._forward_inference, mode=mode, backend=backend
-        )
-        self._retrace_on_set_weights = retrace_on_set_weights
-
-    def compile_forward_exploration(
-        self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
-    ) -> None:
-        """Compiles the forward_exploration method.
-
-        Args:
-            mode: The torch.dynamo mode to use.
-            backend: The torch.dynamo backend to use.
-            retrace_on_set_weights: Whether to retrace the compiled method on
-                every call of `TorchRLModule.set_state()`.
-        """
-        self._compiled_forward_exploration = torch.compile(
-            self._forward_exploration, mode=mode, backend=backend
-        )
-        self._retrace_on_set_weights = retrace_on_set_weights
-
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         """forward pass of the module.
 
@@ -213,6 +152,17 @@ class TorchRLModule(nn.Module, RLModule):
         be implemented for backpropagation to work.
         """
         return self.forward_train(batch, **kwargs)
+
+    def compile(self, compile_config: TorchCompileConfig):
+        """Compile the forward methods of this module.
+
+        This is a convenience method that calls `compile_wrapper` with the given
+        compile_config.
+
+        Args:
+            compile_config: The compile config to use.
+        """
+        return compile_wrapper(self, compile_config)
 
     @override(RLModule)
     def get_state(self) -> Mapping[str, Any]:
