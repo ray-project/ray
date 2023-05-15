@@ -24,5 +24,5 @@ class CometLoggerCallback(_CometLoggerCallback):
         save_checkpoints: bool = False,
         **experiment_kwargs
     ):
-        logging.warning(callback_deprecation_message)
-        super().__init__(online, tags, save_checkpoints, **experiment_kwargs)
+        # TODO(ml-team): Remove in 2.6.
+        raise DeprecationWarning(callback_deprecation_message)
