@@ -1,13 +1,6 @@
 import click
 import json
 import ray
-from ray._private.ray_constants import (
-    LOG_PREFIX_ACTOR_NAME,
-    LOG_PREFIX_JOB_ID,
-    LOG_PREFIX_TASK_ATTEMPT_END,
-    LOG_PREFIX_TASK_ATTEMPT_START,
-    LOG_PREFIX_TASK_ATTEMPT_MAGIC_TOKEN_TEMPLATE,
-)
 from ray._private.state_api_test_utils import (
     STATE_LIST_LIMIT,
     StateAPIMetric,
