@@ -62,8 +62,6 @@ class TorchMLPEncoder(TorchModel, Encoder):
                 SampleBatch.OBS: TensorSpec(
                     "b, d", d=self.config.input_dims[0], framework="torch"
                 ),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -74,16 +72,12 @@ class TorchMLPEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, d", d=self.config.output_dims[0], framework="torch"
                 ),
-                STATE_OUT: None,
             }
         )
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        return {
-            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-            STATE_OUT: inputs[STATE_IN],
-        }
+        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TorchCNNEncoder(TorchModel, Encoder):
@@ -133,8 +127,6 @@ class TorchCNNEncoder(TorchModel, Encoder):
                     c=self.config.input_dims[2],
                     framework="torch",
                 ),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -145,16 +137,12 @@ class TorchCNNEncoder(TorchModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, d", d=self.config.output_dims[0], framework="torch"
                 ),
-                STATE_OUT: None,
             }
         )
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        return {
-            ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-            STATE_OUT: inputs[STATE_IN],
-        }
+        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TorchGRUEncoder(TorchModel, Encoder):
@@ -225,6 +213,9 @@ class TorchGRUEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
+        outputs = {}
+
+        # Calculate the output and state of the GRU.
         out = inputs[SampleBatch.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
@@ -235,11 +226,10 @@ class TorchGRUEncoder(TorchModel, Encoder):
 
         out = self.linear(out)
 
-        return {
-            ENCODER_OUT: out,
-            # Make states layer-first again.
-            STATE_OUT: tree.map_structure(lambda s: s.transpose(0, 1), states_out),
-        }
+        # Insert them into the output dict.
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
+        return outputs
 
 
 class TorchLSTMEncoder(TorchModel, Encoder):
@@ -322,6 +312,9 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
+        outputs = {}
+
+        # Calculate the output and state of the LSTM cell.
         out = inputs[SampleBatch.OBS].float()
 
         # States are batch-first when coming in. Make them layers-first.
@@ -332,8 +325,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
         out = self.linear(out)
 
-        return {
-            ENCODER_OUT: out,
-            # Make states layer-first again.
-            STATE_OUT: tree.map_structure(lambda s: s.transpose(0, 1), states_out),
-        }
+        # Insert them into the output dict.
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
+        return outputs

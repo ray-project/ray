@@ -2,9 +2,7 @@ import abc
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-from ray.rllib.core.models.specs.checker import convert_to_canonical_format
 from ray.rllib.core.models.specs.specs_base import Spec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
@@ -301,11 +299,11 @@ class Encoder(Model, abc.ABC):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return convert_to_canonical_format([SampleBatch.OBS, STATE_IN])
+        return [SampleBatch.OBS]
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return convert_to_canonical_format([ENCODER_OUT, STATE_OUT])
+        return []
 
     @abc.abstractmethod
     def _forward(self, input_dict: dict, **kwargs) -> dict:
@@ -319,8 +317,8 @@ class Encoder(Model, abc.ABC):
         The output dict contains at minimum the latent and the state of the encoder
         (None for stateless encoders).
         To establish an agreement between the encoder and RLModules, these values
-        have the fixed keys `SampleBatch.OBS` and `STATE_IN` for the `input_dict`,
-        and `STATE_OUT` and `ENCODER_OUT` for the returned dict.
+        have the fixed keys `SampleBatch.OBS` for the `input_dict`,
+        and `ACTOR` and `CRITIC` for the returned dict.
 
         Args:
             input_dict: The input tensors. Must contain at a minimum the keys
@@ -329,25 +327,25 @@ class Encoder(Model, abc.ABC):
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            The output tensors. Must contain at a minimum the keys ENCODER_OUT and
-            STATE_OUT (which might be None for stateless encoders).
+            The output tensors. Must contain at a minimum the key ENCODER_OUT.
         """
-        raise NotImplementedError
 
 
 @ExperimentalAPI
 class ActorCriticEncoder(Encoder):
-    """An encoder that potentially holds two encoders.
+    """An encoder that potentially holds two stateless encoders.
 
-    This is a special case of encoder that can either enclose a single,
+    This is a special case of Encoder that can either enclose a single,
     shared encoder or two separate encoders: One for the actor and one for the
-    critic. The two encoders are of the same type and we can therefore make the
+    critic. The two encoders are of the same type, and we can therefore make the
     assumption that they have the same input and output specs.
     """
 
     framework = None
 
     def __init__(self, config: ModelConfig) -> None:
+        super().__init__(config)
+
         if config.shared:
             self.encoder = config.base_encoder_config.build(framework=self.framework)
         else:
@@ -358,47 +356,75 @@ class ActorCriticEncoder(Encoder):
                 framework=self.framework
             )
 
-        # We need to call Encoder.__init__() after initializing the encoder(s) in
-        # order to build on their specs.
-        super().__init__(config)
-
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        # if self.config.shared:
-        #     state_in_spec = self.encoder.input_specs[STATE_IN]
-        # else:
-        #     state_in_spec = {
-        #         ACTOR: self.actor_encoder.input_specs[STATE_IN],
-        #         CRITIC: self.critic_encoder.input_specs[STATE_IN],
-        #     }
-
-        return SpecDict(
-            {
-                SampleBatch.OBS: None,
-                # STATE_IN: state_in_spec,
-                # SampleBatch.SEQ_LENS: None,
-            }
-        )
+        return [SampleBatch.OBS]
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
+        return [(ENCODER_OUT, ACTOR), (ENCODER_OUT, CRITIC)]
+
+    @override(Model)
+    def _forward(self, inputs: dict, **kwargs) -> dict:
         if self.config.shared:
-            state_out_spec = self.encoder.output_specs[STATE_OUT]
+            encoder_outs = self.encoder(inputs, **kwargs)
+            return {
+                ENCODER_OUT: {
+                    ACTOR: encoder_outs[ENCODER_OUT],
+                    CRITIC: encoder_outs[ENCODER_OUT],
+                }
+            }
         else:
-            state_out_spec = {
-                ACTOR: self.actor_encoder.output_specs[STATE_OUT],
-                CRITIC: self.critic_encoder.output_specs[STATE_OUT],
+            # Encoders should not modify inputs, so we can pass the same inputs
+            actor_out = self.actor_encoder(inputs, **kwargs)
+            critic_out = self.critic_encoder(inputs, **kwargs)
+
+            return {
+                ENCODER_OUT: {
+                    ACTOR: actor_out[ENCODER_OUT],
+                    CRITIC: critic_out[ENCODER_OUT],
+                }
             }
 
-        return SpecDict(
-            {
-                ENCODER_OUT: {
-                    ACTOR: None,
-                    CRITIC: None,
-                },
-                STATE_OUT: state_out_spec,
-            }
-        )
+
+@ExperimentalAPI
+class StatefulActorCriticEncoder(Encoder):
+    """An encoder that potentially holds two potentially stateful encoders.
+
+    This is a special case of Encoder that can either enclose a single,
+    shared encoder or two separate encoders: One for the actor and one for the
+    critic. The two encoders are of the same type, and we can therefore make the
+    assumption that they have the same input and output specs.
+
+    If this encoder wraps a single encoder, state in input- and output dicts
+    is simply stored under the key `STATE_IN` and `STATE_OUT`, respectively.
+    If this encoder wraps two encoders, state in input- and output dicts is
+    stored under the keys `(STATE_IN, ACTOR)` and `(STATE_IN, CRITIC)` and
+    `(STATE_OUT, ACTOR)` and `(STATE_OUT, CRITIC)`, respectively.
+    """
+
+    framework = None
+
+    def __init__(self, config: ModelConfig) -> None:
+        super().__init__(config)
+
+        if config.shared:
+            self.encoder = config.base_encoder_config.build(framework=self.framework)
+        else:
+            self.actor_encoder = config.base_encoder_config.build(
+                framework=self.framework
+            )
+            self.critic_encoder = config.base_encoder_config.build(
+                framework=self.framework
+            )
+
+    @override(Model)
+    def get_input_specs(self) -> Optional[Spec]:
+        return [SampleBatch.OBS, STATE_IN]
+
+    @override(Model)
+    def get_output_specs(self) -> Optional[Spec]:
+        return [(ENCODER_OUT, ACTOR), (ENCODER_OUT, CRITIC), (STATE_OUT,)]
 
     @override(Model)
     def get_initial_state(self):
@@ -412,25 +438,32 @@ class ActorCriticEncoder(Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
+        outputs = {}
+
         if self.config.shared:
             outs = self.encoder(inputs, **kwargs)
-            return {
-                ENCODER_OUT: {ACTOR: outs[ENCODER_OUT], CRITIC: outs[ENCODER_OUT]},
-                STATE_OUT: outs[STATE_OUT],
-            }
+            encoder_out = outs.pop(ENCODER_OUT)
+            outputs[ENCODER_OUT] = {ACTOR: encoder_out, CRITIC: encoder_out}
+            outputs[STATE_OUT] = outs[STATE_OUT]
         else:
-            actor_inputs = inputs  # , **{STATE_IN: inputs[STATE_IN][ACTOR]}})
-            critic_inputs = inputs  # , **{STATE_IN: inputs[STATE_IN][CRITIC]}}
+            # Shallow copy inputs so that we can add states without modifying
+            # original dict.
+            actor_inputs = inputs.copy()
+            critic_inputs = inputs.copy()
+            actor_inputs[STATE_IN] = inputs[STATE_IN][ACTOR]
+            critic_inputs[STATE_IN] = inputs[STATE_IN][CRITIC]
 
             actor_out = self.actor_encoder(actor_inputs, **kwargs)
             critic_out = self.critic_encoder(critic_inputs, **kwargs)
-            return {
-                ENCODER_OUT: {
-                    ACTOR: actor_out[ENCODER_OUT],
-                    CRITIC: critic_out[ENCODER_OUT],
-                },
-                STATE_OUT: {
-                    ACTOR: actor_out[STATE_OUT],
-                    CRITIC: critic_out[STATE_OUT],
-                },
+
+            outputs[ENCODER_OUT] = {
+                ACTOR: actor_out[ENCODER_OUT],
+                CRITIC: critic_out[ENCODER_OUT],
             }
+
+            outputs[STATE_OUT] = {
+                ACTOR: actor_out[STATE_OUT],
+                CRITIC: critic_out[STATE_OUT],
+            }
+
+        return outputs
