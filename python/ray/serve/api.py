@@ -648,6 +648,8 @@ def multiplexed(
                 "The `multiplexed` decorator must be used with a function or method."
             )
 
+        # TODO(Sihan): Make the API accept the sync function as well.
+        # https://github.com/ray-project/ray/issues/35356
         if not inspect.iscoroutinefunction(func):
             raise TypeError(
                 "@serve.multiplexed can only be used to decorate async "

@@ -67,12 +67,14 @@ class _ModelMultiplexWrapper:
         else:
             # If the number of models per replica is specified, check if the number of
             # models on the current replica has reached the limit.
-            if self.max_num_models_per_replica > 0:
-                if len(self.models) >= self.max_num_models_per_replica:
-                    # Unload the least recently used model.
-                    await self.unload_model()
+            if (
+                self.max_num_models_per_replica > 0
+                and len(self.models) >= self.max_num_models_per_replica
+            ):
+                # Unload the least recently used model.
+                await self.unload_model()
             # Load the model.
-            logger.info("Loading model '{}'.".format(model_id))
+            logger.info(f"Loading model '{model_id}'.")
             if self.self_arg is None:
                 self.models[model_id] = await self._func(model_id)
             else:
@@ -82,7 +84,7 @@ class _ModelMultiplexWrapper:
     async def unload_model(self) -> None:
         """Unload the least recently used model."""
         model_id, model = self.models.popitem(last=False)
-        logger.info("Unloading model '{}'.".format(model_id))
+        logger.info(f"Unloading model '{model_id}'.")
 
         # If the model has __del__ attribute, call it.
         # This is to clean up the model resources eagerly.
