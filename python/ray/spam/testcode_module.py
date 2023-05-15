@@ -2,8 +2,7 @@ def should_pass():
     """
     .. testcode::
 
-        x = 3
-"""
+        x = 3"""
 
 
 def should_fail():
@@ -14,8 +13,7 @@ def should_fail():
 
     .. testoutput::
 
-        eggs
-"""
+        eggs"""
 
 
 def check_state():
@@ -24,5 +22,4 @@ def check_state():
 
         import ray
         assert not ray.is_initialized()
-        ray.init()
-"""
+        ray.init()"""
