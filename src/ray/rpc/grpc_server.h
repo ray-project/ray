@@ -113,9 +113,6 @@ class GrpcServer {
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
 
-  /// Initialize this server.
-  void Init();
-
   /// Initialize and run this server.
   void Run();
 
@@ -140,6 +137,9 @@ class GrpcServer {
   std::shared_future<ClusterID> const &GetClusterTokenFuture() { return cluster_token_; }
 
  protected:
+  /// Initialize this server.
+  void Init();
+
   /// This function runs in a background thread. It keeps polling events from the
   /// `ServerCompletionQueue`, and dispaches the event to the `ServiceHandler` instances
   /// via the `ServerCall` objects.

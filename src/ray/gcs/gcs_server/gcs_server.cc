@@ -149,7 +149,6 @@ void GcsServer::Start() {
 
 void GcsServer::CacheAndSetClusterId() {
   static std::string const kTokenNamespace = "cluster";
-  RAY_LOG(DEBUG) << "Caching and setting cluster ID.";
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
     cluster_token_promise_.set_value(ClusterID::FromRandom());
@@ -243,7 +242,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
-
   RecordMetrics();
 
   periodical_runner_.RunFnPeriodically(
@@ -300,8 +298,9 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
+  auto &cluster_id = rpc_server_.GetClusterTokenFuture().get();
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(
-      gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
+      gcs_publisher_, gcs_table_storage_, raylet_client_pool_, cluster_id);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -517,7 +516,7 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
   }
   if (RayConfig::instance().gcs_storage() == kRedisStorage) {
     RAY_CHECK(!config_.redis_address.empty());
-    return StorageType::IN_MEMORY;
+    return StorageType::REDIS_PERSIST;
   }
   RAY_LOG(FATAL) << "Unsupported GCS storage type: "
                  << RayConfig::instance().gcs_storage();
@@ -556,8 +555,13 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ = std::make_unique<UsageStatsClient>(
-      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
+  // Note: We pass in cluster_id here to avoid deadlock during server init.
+  // This can occur since main_service_ is not started, and so the RegisterClient RPC from
+  // GCS client inside the UsageStatsClient will not be answered by GCS server.
+  usage_stats_client_ =
+      std::make_unique<UsageStatsClient>("127.0.0.1:" + std::to_string(GetPort()),
+                                         client_service_,
+                                         rpc_server_.GetClusterTokenFuture().get());
 }
 
 void GcsServer::InitKVManager() {

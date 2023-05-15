@@ -192,15 +192,17 @@ class ServerCallImpl : public ServerCall {
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
-  // The general template implements no auth.
   void HandleRequest() override {
+    bool auth_success = true;
     if constexpr (EnableAuth == AuthType::STRICT) {
       RAY_CHECK(cluster_id_ != nullptr) << "Expected cluster ID in server call!";
       auto &metadata = context_.client_metadata();
       if (auto it = metadata.find(kClusterIdKey);
           it == metadata.end() || it->second != cluster_id_->Hex()) {
-        RAY_LOG(DEBUG) << "Wrong cluster ID token in request!";
-        SendReply(Status::AuthError("WrongClusterToken"));
+        RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
+                       << cluster_id_->Hex() << ", but got: "
+                       << (it == metadata.end() ? "No token!" : it->second);
+        auth_success = false;
       }
     } else if constexpr (EnableAuth == AuthType::LAZY) {
       RAY_CHECK(cluster_id_ != nullptr) << "Expected cluster ID in server call!";
@@ -208,7 +210,7 @@ class ServerCallImpl : public ServerCall {
       if (auto it = metadata.find(kClusterIdKey);
           it != metadata.end() && it->second != cluster_id_->Hex()) {
         RAY_LOG(DEBUG) << "Wrong cluster ID token in request!";
-        SendReply(Status::AuthError("WrongClusterToken"));
+        auth_success = false;
       }
     } else {
       RAY_CHECK(cluster_id_ == nullptr)
@@ -220,16 +222,21 @@ class ServerCallImpl : public ServerCall {
       ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
     }
     if (!io_service_.stopped()) {
-      io_service_.post([this] { HandleRequestImpl(); }, call_name_);
+      io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
+                       call_name_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
       RAY_LOG(DEBUG) << "Handle service has been closed.";
-      SendReply(Status::Invalid("HandleServiceClosed"));
+      if (auth_success) {
+        SendReply(Status::Invalid("HandleServiceClosed"));
+      } else {
+        SendReply(Status::AuthError("WrongClusterToken"));
+      }
     }
   }
 
-  void HandleRequestImpl() {
+  void HandleRequestImpl(bool auth_success) {
     state_ = ServerCallState::PROCESSING;
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
@@ -241,18 +248,24 @@ class ServerCallImpl : public ServerCall {
       // a new request comes in.
       factory.CreateCall();
     }
-    (service_handler_.*handle_request_function_)(
-        std::move(request_),
-        reply_,
-        [this](
-            Status status, std::function<void()> success, std::function<void()> failure) {
-          // These two callbacks must be set before `SendReply`, because `SendReply`
-          // is async and this `ServerCall` might be deleted right after `SendReply`.
-          send_reply_success_callback_ = std::move(success);
-          send_reply_failure_callback_ = std::move(failure);
-          boost::asio::post(GetServerCallExecutor(),
-                            [this, status]() { SendReply(status); });
-        });
+    if (!auth_success) {
+      boost::asio::post(GetServerCallExecutor(),
+                        [this]() { SendReply(Status::AuthError("WrongClusterToken")); });
+    } else {
+      (service_handler_.*handle_request_function_)(
+          std::move(request_),
+          reply_,
+          [this](Status status,
+                 std::function<void()> success,
+                 std::function<void()> failure) {
+            // These two callbacks must be set before `SendReply`, because `SendReply`
+            // is async and this `ServerCall` might be deleted right after `SendReply`.
+            send_reply_success_callback_ = std::move(success);
+            send_reply_failure_callback_ = std::move(failure);
+            boost::asio::post(GetServerCallExecutor(),
+                              [this, status]() { SendReply(status); });
+          });
+    }
   }
 
   void OnReplySent() override {

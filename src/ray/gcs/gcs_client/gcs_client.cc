@@ -81,7 +81,9 @@ void GcsSubscriberClient::PubsubCommandBatch(
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
-Status GcsClient::Connect(instrumented_io_context &io_service) {
+Status GcsClient::Connect(instrumented_io_context &io_service,
+                          ClusterID const &cluster_id) {
+  cluster_token_promise_ = std::promise<ClusterID>();
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
       io_service, cluster_token_promise_.get_future());
@@ -90,11 +92,17 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
 
   // Note: We need to initialize this so we can use the RPC.
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
-  gcs_rpc_client_->RegisterClient(
-      rpc::RegisterClientRequest(),
-      [this](const Status &status, const rpc::RegisterClientReply &reply) {
-        this->cluster_token_promise_.set_value(ClusterID::FromBinary(reply.cluster_id()));
-      });
+  if (cluster_id.IsNil()) {
+    gcs_rpc_client_->RegisterClient(
+        rpc::RegisterClientRequest(),
+        [this](const Status &status, const rpc::RegisterClientReply &reply) {
+          auto cluster_id = ClusterID::FromBinary(reply.cluster_id());
+          RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
+          this->cluster_token_promise_.set_value(cluster_id);
+        });
+  } else {
+    cluster_token_promise_.set_value(cluster_id);
+  }
 
   resubscribe_func_ = [this]() {
     job_accessor_->AsyncResubscribe();
@@ -126,7 +134,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
 
   // Init GCS subscriber instance.
   gcs_subscriber_ = std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
-
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
   node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);

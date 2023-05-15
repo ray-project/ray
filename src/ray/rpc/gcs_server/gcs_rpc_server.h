@@ -320,9 +320,10 @@ class NodeInfoGrpcService : public GrpcService {
       ClusterID const *const cluster_id) override {
     RPC_SERVICE_HANDLER_CUSTOM_AUTH(
         NodeInfoGcsService,
-        RegisterNode,
+        RegisterClient,
         RayConfig::instance().gcs_max_active_rpcs_per_handler(),
         AuthType::LAZY);
+    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);

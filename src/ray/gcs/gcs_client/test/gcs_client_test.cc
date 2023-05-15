@@ -141,12 +141,19 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
       auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
+      bool in_memory =
+          RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage;
       grpc::ClientContext context;
+      if (!in_memory) {
+        gcs_client_->StampContext(context);
+      }
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
       rpc::CheckAliveReply reply;
       auto status = stub->CheckAlive(&context, request, &reply);
-      if (!status.ok()) {
+      // If it is in memory, we don't have the new token until we connect again.
+      if (!((!in_memory && !status.ok()) ||
+            (in_memory && GrpcStatusToRayStatus(status).IsAuthError()))) {
         RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                          << status.error_message();
         continue;
@@ -315,8 +322,10 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
-        node_info, [&promise](Status status) { promise.set_value(status.ok()); }));
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(node_info, [&promise](Status status) {
+      RAY_LOG(INFO) << status;
+      promise.set_value(status.ok());
+    }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -463,6 +472,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";
   {
     grpc::ClientContext context;
+    gcs_client_->StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
@@ -474,6 +484,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   ASSERT_TRUE(RegisterNode(*node_info1));
   {
     grpc::ClientContext context;
+    gcs_client_->StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
