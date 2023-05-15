@@ -4,6 +4,7 @@ import traceback
 from typing import Optional, List, Tuple
 
 from ray_release.alerts.handle import handle_result, require_result
+from ray_release.anyscale_util import get_cluster_name
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
@@ -39,6 +40,7 @@ from ray_release.result import Result, handle_exception
 from ray_release.signal_handling import (
     setup_signal_handling,
     reset_signal_handling,
+    register_handler,
 )
 
 type_str_to_command_runner = {
@@ -225,6 +227,46 @@ def _setup_cluster_environment(
     return prepare_cmd, prepare_timeout, build_timeout, cluster_timeout, command_timeout
 
 
+def _local_environment_information(
+    result: Result,
+    cluster_manager: ClusterManager,
+    command_runner: CommandRunner,
+    build_timeout: int,
+    cluster_timeout: int,
+    no_terminate: bool,
+    cluster_id: Optional[str],
+    cluster_env_id: Optional[str],
+) -> None:
+    if isinstance(cluster_manager, FullClusterManager):
+        if not no_terminate:
+            register_handler(
+                lambda sig, frame: cluster_manager.terminate_cluster(wait=True)
+            )
+
+    # Start cluster
+    if cluster_id:
+        buildkite_group(":rocket: Using existing cluster")
+        # Re-use existing cluster ID for development
+        cluster_manager.cluster_id = cluster_id
+        cluster_manager.cluster_name = get_cluster_name(cluster_id)
+    else:
+        buildkite_group(":gear: Building cluster environment")
+
+        if cluster_env_id:
+            cluster_manager.cluster_env_id = cluster_env_id
+
+        cluster_manager.build_configs(timeout=build_timeout)
+
+        if isinstance(cluster_manager, FullClusterManager):
+            buildkite_group(":rocket: Starting up cluster")
+            cluster_manager.start_cluster(timeout=cluster_timeout)
+        elif isinstance(command_runner, AnyscaleJobRunner):
+            command_runner.job_manager.cluster_startup_timeout = cluster_timeout
+
+    result.cluster_url = cluster_manager.get_cluster_url()
+    result.cluster_id = cluster_manager.cluster_id
+
+
 def _prepare_remote_environment(
     test: Test,
     command_runner: CommandRunner,
@@ -379,6 +421,18 @@ def run_release_test(
             result,
             cluster_manager,
             ray_wheels_url,
+            cluster_env_id,
+        )
+
+        buildkite_group(":bulb: Local environment information")
+        _local_environment_information(
+            result,
+            cluster_manager,
+            command_runner,
+            build_timeout,
+            cluster_timeout,
+            no_terminate,
+            cluster_id,
             cluster_env_id,
         )
 
