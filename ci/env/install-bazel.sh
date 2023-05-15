@@ -97,7 +97,9 @@ fi
 bazel --version
 
 # clear bazelrc
-echo > ~/.bazelrc
+if [[ ! -v BYTED_RAY_BUILD_TAG ]]; then
+  echo > ~/.bazelrc
+fi
 
 if [[ "${TRAVIS-}" == true ]]; then
   echo "build --config=ci-travis" >> ~/.bazelrc
