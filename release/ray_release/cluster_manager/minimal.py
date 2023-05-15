@@ -64,7 +64,7 @@ class MinimalClusterManager(ClusterManager):
                             name=self.cluster_env_name,
                             config_json=dict(
                                 docker_image="anyscale/ray:latest",
-                                ray_version="nightly",
+                                ray_version="2.4.0",
                                 env_vars={},
                             ),
                         )
