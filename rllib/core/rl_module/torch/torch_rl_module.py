@@ -119,11 +119,12 @@ class TorchRLModule(nn.Module, RLModule):
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        # If this forward method was compiled, we call the compiled version.
-        if hasattr(self, "_compiled_forward_inference"):
-            with torch.no_grad():
+        # Make sure we don't trace gradients in exploration to avoid potential slowness.
+        with torch.no_grad():
+            # If this forward method was compiled, we call the compiled version.
+            if hasattr(self, "_compiled_forward_inference"):
                 return self._compiled_forward_inference(batch, **kwargs)
-        return self._forward_inference(batch, **kwargs)
+            return self._forward_inference(batch, **kwargs)
 
     @override(RLModule)
     @check_input_specs("_input_specs_exploration")
@@ -136,18 +137,16 @@ class TorchRLModule(nn.Module, RLModule):
             # If this forward method was compiled, we call the compiled version.
             if hasattr(self, "_compiled_forward_exploration"):
                 return self._compiled_forward_exploration(batch, **kwargs)
-        return self._forward_exploration(batch, **kwargs)
+            return self._forward_exploration(batch, **kwargs)
 
     @override(RLModule)
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
     def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        # Make sure we don't trace gradients in exploration to avoid potential slowness.
-        with torch.no_grad():
-            # If this forward method was compiled, we call the compiled version.
-            if hasattr(self, "_compiled_forward_train"):
-                return self._compiled_forward_train(batch, **kwargs)
-            return self._forward_train(batch, **kwargs)
+        # If this forward method was compiled, we call the compiled version.
+        if hasattr(self, "_compiled_forward_train"):
+            return self._compiled_forward_train(batch, **kwargs)
+        return self._forward_train(batch, **kwargs)
 
     def compile_forward_train(
         self, mode="reduce-overhead", backend="inductor", retrace_on_set_weights=True
