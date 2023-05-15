@@ -36,7 +36,9 @@ GrpcBasedResourceBroadcaster::~GrpcBasedResourceBroadcaster() {}
 
 void GrpcBasedResourceBroadcaster::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &pair : gcs_init_data.Nodes()) {
-    HandleNodeAdded(pair.second);
+    if (pair.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      HandleNodeAdded(pair.second);
+    }
   }
 }
 
