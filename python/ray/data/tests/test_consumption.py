@@ -262,11 +262,13 @@ def test_schema_repr(ray_start_regular_shared):
     assert repr(ds.schema()) == expected_repr
 
     ds = ray.data.from_items([{"long_column_name": "spam"}])
+    # fmt: off
     expected_repr = (
         "Column            Type\n"
         "------            ----\n"
         "long_column_name  string"
     )
+    # fmt: on
     assert repr(ds.schema()) == expected_repr
 
 
