@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <optional>
 #include <string>
 
 #include "gtest/gtest.h"
@@ -66,4 +67,9 @@ TEST_F(RetryRunnerTest, Basic) {
   // Test default completion token works
   ASSERT_TRUE(async_retry_until(io_context.get_executor(), fn, std::nullopt, 5ms).get());
   ASSERT_EQ(3, count);
+}
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

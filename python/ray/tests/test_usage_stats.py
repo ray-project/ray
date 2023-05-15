@@ -251,7 +251,7 @@ def test_worker_crash_increment_stats():
 
         assert "worker_crash_system_error" in result
         assert result["worker_crash_system_error"] == "2"
-
+        print(result)
         assert "worker_crash_oom" in result
         assert result["worker_crash_oom"] == "1"
 
