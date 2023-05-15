@@ -17,7 +17,7 @@ global and grouped aggregations (:class:`GroupedData <ray.data.grouped_data.Grou
 shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,
 :meth:`sort <ray.data.Dataset.sort>`,
 :meth:`repartition <ray.data.Dataset.repartition>`),
-and it is compatible with a variety of file formats, data sources, and distributed frameworks.
+and is compatible with a variety of file formats, data sources, and distributed frameworks.
 
 Read on for an overview of the main use cases and operations supported by Ray Data.
 
