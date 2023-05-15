@@ -786,9 +786,9 @@ def run_learning_tests_from_yaml(
 
             check_eval = should_check_eval(e)
             episode_reward_key = (
-                "episode_reward_mean"
+                "sampler_results/episode_reward_mean"
                 if not check_eval
-                else "evaluation/episode_reward_mean"
+                else "evaluation/sampler_results/episode_reward_mean"
             )
 
             # For smoke-tests, we just run for n min.
