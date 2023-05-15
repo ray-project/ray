@@ -97,6 +97,9 @@ def test_setup_func_failure(shutdown_only):
         pass
 
     a = A.remote()
+    # TODO(sang): Maybe we should raise RuntimeEnvSetupError?
+    # It is pretty difficult now. See
+    # https://github.com/ray-project/ray/pull/34738#discussion_r1189553716
     with pytest.raises(ray.exceptions.RayActorError) as e:
         ray.get(a.__ray_ready__.remote())
     assert "Deserialization not allowed" in str(e.value)

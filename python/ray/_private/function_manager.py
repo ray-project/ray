@@ -27,7 +27,7 @@ from ray._private.utils import (
     format_error_message,
 )
 from ray._private.serialization import pickle_dumps
-from ray._raylet import JobID, PythonFunctionDescriptor
+from ray._raylet import JobID, PythonFunctionDescriptor, WORKER_SETUP_HOOK_KEY_NAME_GCS
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -194,7 +194,8 @@ class FunctionActorManager:
         key = make_function_table_key(
             # This value should match with gcs_function_manager.h.
             # Otherwise, it won't be GC'ed.
-            b"FunctionsToRun",
+            WORKER_SETUP_HOOK_KEY_NAME_GCS.encode(),
+            # b"FunctionsToRun",
             self._worker.current_job_id.binary(),
             function_to_run_id,
         )
