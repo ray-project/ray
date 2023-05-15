@@ -858,10 +858,12 @@ class Checkpoint:
 
     @property
     def id(self) -> int:
+        """Return the 0-based id of the checkpoint."""
         return getattr(self, CHECKPOINT_ID_ATTR)
 
     @property
     def iteration(self) -> int:
+        """Return the 1-based iteration number of the checkpoint."""
         return getattr(self, CHECKPOINT_ID_ATTR) + 1
 
 
