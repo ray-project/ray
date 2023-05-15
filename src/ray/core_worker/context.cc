@@ -146,7 +146,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
                              const JobID &job_id)
     : worker_type_(worker_type),
       worker_id_(worker_id),
-      current_job_id_(job_id),
+      current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
       job_config_(),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),

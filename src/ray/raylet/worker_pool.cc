@@ -812,6 +812,7 @@ void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback)
 }
 
 Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver,
+                                  const JobID &job_id,
                                   const rpc::JobConfig &job_config,
                                   std::function<void(Status, int)> send_reply_callback) {
   int port;
@@ -824,7 +825,7 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   driver->SetAssignedPort(port);
   auto &state = GetStateForLanguage(driver->GetLanguage());
   state.registered_drivers.insert(std::move(driver));
-  const auto job_id = driver->GetAssignedJobId();
+  driver->AssignJobId(job_id);
   HandleJobStarted(job_id, job_config);
 
   if (driver->GetLanguage() == Language::JAVA) {

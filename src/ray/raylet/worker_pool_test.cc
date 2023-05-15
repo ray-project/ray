@@ -265,8 +265,7 @@ class WorkerPoolMock : public WorkerPool {
                                            "worker",
                                            {},
                                            error_message_type_);
-    std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(job_id,
-                                                               runtime_env_hash,
+    std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(runtime_env_hash,
                                                                WorkerID::FromRandom(),
                                                                language,
                                                                worker_type,
@@ -279,6 +278,7 @@ class WorkerPoolMock : public WorkerPool {
     auto rpc_client = std::make_shared<MockWorkerClient>();
     worker->Connect(rpc_client);
     mock_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
+    worker->AssignJobId(job_id);
     if (set_process && !proc.IsNull()) {
       worker->SetProcess(proc);
     }
