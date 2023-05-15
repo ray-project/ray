@@ -3215,7 +3215,7 @@ class Dataset:
 
         .. warning::
             If your dataset contains ragged tensors, this method errors. To prevent
-            errors, :ref:`resize your tensors <transforming_variable_tensors>`.
+            errors, :ref:`resize your tensors <transforming_tensors>`.
 
         Examples:
             >>> import ray
@@ -4093,6 +4093,12 @@ class Dataset:
             A deserialized ``Dataset`` instance.
         """
         return pickle.loads(serialized_ds)
+
+    @property
+    @DeveloperAPI
+    def context(self) -> DataContext:
+        """Return the DataContext used to create this Dataset."""
+        return self._plan._context
 
     def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
         block_list = self._plan.execute()
