@@ -69,15 +69,15 @@ TEST_F(RedisStoreClientTest, BasicSimple) {
               .ok());
     }
   }
-  for(size_t j = 0; j < 20; ++j) {
+  for (size_t j = 0; j < 20; ++j) {
     ASSERT_TRUE(store_client_
-                ->AsyncGet("T",
-                           absl::StrCat("A", std::to_string(j)),
-                           [](auto s, auto r) {
-                             ASSERT_TRUE(r.has_value());
-                             ASSERT_EQ(*r, "99");
-                           })
-                .ok());
+                    ->AsyncGet("T",
+                               absl::StrCat("A", std::to_string(j)),
+                               [](auto s, auto r) {
+                                 ASSERT_TRUE(r.has_value());
+                                 ASSERT_EQ(*r, "99");
+                               })
+                    .ok());
   }
 }
 
