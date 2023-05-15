@@ -30,7 +30,24 @@ from ray.rllib.utils.tf_utils import symlog
 
 
 class WorldModel(tf.keras.Model):
-    """TODO"""
+    """WorldModel component of [1] w/ encoder, decoder, RSSM, reward/cont. predictors.
+
+    See eq. 3 of [1] for all components and their respective in- and outputs.
+    Note that in the paper, the "encoder" includes both the raw encoder plus the
+    "posterior net", which produces posterior z-states from observations and h-states.
+
+    Note: The "internal state" of the world model always consists of:
+    The actions `a` (initially, this is a zeroed-out action), `h`-states, and `z`-states
+    (posterior for world model training, prior for creating dream data).
+    Initial states (`a`, `h`, and `z`) are inserted where ever a new episode starts
+    within a batch row OR at the beginning of each train batch's B rows, regardless of
+    whether there was an actual episode boundary or not. Thus, internal states are not
+    required to be stored in or retrieved from the replay buffer AND retrieved batches
+    from the buffer must not be zero padded.
+    Initial `a` is the zero "one hot" action, e.g. [0.0, 0.0] for Discrete(2), initial
+    `h` is a separate learned variable, and initial `z` are computed by the posterior
+    net (using the reset observation and initial-h).
+    """
 
     def __init__(
         self,
@@ -43,7 +60,7 @@ class WorldModel(tf.keras.Model):
         num_gru_units: Optional[int] = None,
         symlog_obs: bool = True,
     ):
-        """TODO
+        """Initializes a WorldModel instance.
 
         Args:
              model_dimension: The "Model Size" used according to [1] Appendinx B.
@@ -53,16 +70,18 @@ class WorldModel(tf.keras.Model):
                 actual shape of the input data (e.g. rewards) is then: [B, T, ...],
                 where B is the "batch size", T is the "batch length" (this arg) and
                 "..." is the dimension of the data (e.g. (64, 64, 3) for Atari image
-                observations). Note that a single sequence (within a batch) only ever
-                contains continuous time-step data from one episode. Should an
-                episode have ended inside a sequence, the reset of that sequence will be
-                filled with zero-data.
-            encoder: The encoder Model taking symlogged observations as input and
-                outputting a 1D vector that will beused as input into the
-                z-representation generating layer (either together with an h-state
-                (sequence model) or not (dynamics network)).
-            decoder: The decoder Model taking h- and z- states as input and generating
-                a (symlogged) predicted observation.
+                observations). Note that a single row (within a batch) may contain data
+                from different episodes, but an already on-going episode is always
+                finished, before a new one starts within the same row.
+            encoder: The encoder Model taking observations as inputs and
+                outputting a 1D latent vector that will be used as input into the
+                posterior net (z-posterior state generating layer). Inputs are symlogged
+                if inputs are NOT images. For images, we use normalization between -1.0
+                and 1.0 (x / 128 - 1.0)
+            decoder: The decoder Model taking h- and z-states as inputs and generating
+                a (possibly symlogged) predicted observation. Note that for images,
+                the last decoder layer produces the exact, normalized pixel values
+                (not a Gaussian as described in [1]!).
             num_gru_units: The number of GRU units to use. If None, use
                 `model_dimension` to figure out this parameter.
             symlog_obs: Whether to predict decoded observations in symlog space.
@@ -80,32 +99,28 @@ class WorldModel(tf.keras.Model):
         self.symlog_obs = symlog_obs
         self.action_space = action_space
 
-        # Encoder + z-generator (x, h -> z).
+        # Encoder (latent 1D vector generator) (xt -> lt).
         self.encoder = encoder
 
-        # Posterior predictor: [h, encoder-out] -> z
+        # Posterior predictor: ([ht, lt] -> zt).
         self.posterior_mlp = MLP(
             model_dimension=self.model_dimension,
             output_layer_size=None,
             # In Danijar's code, the posterior predictor only has a single layer,
             # no matter the model size:
             num_dense_layers=1,
-            name="posterior_mlp"
+            name="posterior_mlp",
         )
         self.posterior_representation_layer = RepresentationLayer(
             model_dimension=self.model_dimension,
         )
 
-        # Dynamics (prior) predictor: h -> z^
+        # Dynamics (prior) predictor: ht -> z^t
         self.dynamics_predictor = DynamicsPredictor(
             model_dimension=self.model_dimension
         )
 
-        # Initial state learner.
-        self.num_gru_units = get_gru_units(
-            model_dimension=self.model_dimension,
-            override=num_gru_units,
-        )
+        # Initial h-state variable (learnt).
         self.initial_h = tf.Variable(
             tf.zeros(shape=(self.num_gru_units,), dtype=tf.float32),
             trainable=True,
@@ -115,21 +130,25 @@ class WorldModel(tf.keras.Model):
         # Use our Dynamics predictor for initial stochastic state, BUT with greedy
         # (mode) instead of sampling.
 
-        # Sequence Model (h-1, a-1, z-1 -> h).
+        # GRU for the RSSM: [at, ht, zt] -> ht+1
+        self.num_gru_units = get_gru_units(
+            model_dimension=self.model_dimension,
+            override=num_gru_units,
+        )
         self.sequence_model = SequenceModel(
             model_dimension=self.model_dimension,
             action_space=self.action_space,
             num_gru_units=self.num_gru_units,
         )
 
-        # Reward Predictor.
+        # Reward Predictor: [ht, zt] -> rt.
         self.reward_predictor = RewardPredictor(model_dimension=self.model_dimension)
-        # Continue Predictor.
+        # Continue Predictor: [ht, zt] -> ct.
         self.continue_predictor = ContinuePredictor(
             model_dimension=self.model_dimension
         )
 
-        # Decoder (h, z -> x^).
+        # Decoder: [ht, zt] -> x^t.
         self.decoder = decoder
 
     @tf.function

@@ -18,6 +18,12 @@ from ray.rllib.algorithms.dreamerv3.utils import (
 
 
 class MLP(tf.keras.Model):
+    """An MLP primitive used by several DreamerV3 components and described in [1] Fig 5.
+
+    MLP=multi-layer perceptron.
+
+    See Appendix B for the MLP sizes depending on the given `model_dimension`.
+    """
     def __init__(
         self,
         *,
@@ -28,12 +34,20 @@ class MLP(tf.keras.Model):
         trainable: bool = True,
         name: Optional[str] = None
     ):
-        """TODO:
+        """Initializes an MLP instance.
 
         Args:
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
+                Use None for manually setting the different network sizes.
+            num_dense_layers: The number of hidden layers in the MLP. If None,
+                will use `model_dimension` and appendix B to figure out this value.
+            dense_hidden_units: The number of nodes in each hidden layer. If None,
+                will use `model_dimension` and appendix B to figure out this value.
             output_layer_size: The size of an optional linear (no activation) output
                 layer. If None, no output layer will be added on top of the MLP dense
                 stack.
+            trainable: Whether the MLP is trainable (updated by an optimizer) or not.
+            name: An optional name for the MLP keras model.
         """
         super().__init__(name=name or "mlp")
 
@@ -71,7 +85,7 @@ class MLP(tf.keras.Model):
             )
 
     def call(self, input_):
-        """
+        """Performs a forward pass through this MLP.
 
         Args:
             input_: The input tensor for the MLP dense stack.

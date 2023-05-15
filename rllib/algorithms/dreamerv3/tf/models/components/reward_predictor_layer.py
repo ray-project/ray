@@ -44,7 +44,9 @@ class RewardPredictorLayer(tf.keras.layers.Layer):
                 `lower_bound` and `upper_bound`.
         """
         self.num_buckets = num_buckets
-        super().__init__(name=f"reward_layer_{self.num_buckets}buckets",)
+        super().__init__(
+            name=f"reward_layer_{self.num_buckets}buckets",
+        )
 
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound

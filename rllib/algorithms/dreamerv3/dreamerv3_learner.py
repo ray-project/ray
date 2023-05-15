@@ -34,7 +34,7 @@ class DreamerV3Hyperparameters(LearnerHyperparameters):
     gae_lambda: float = None
     entropy_scale: float = None
     return_normalization_decay: float = None
-    #symlog_obs: bool = None
+    # symlog_obs: bool = None
     world_model_lr: float = None
     actor_lr: float = None
     critic_lr: float = None
@@ -46,8 +46,6 @@ class DreamerV3Hyperparameters(LearnerHyperparameters):
     actor_grad_clip_by_global_norm: float = None
     critic_grad_clip_by_global_norm: float = None
     # disagree_grad_clip_by_global_norm: float = None
-
-
 
 
 class DreamerV3Learner(Learner):
@@ -63,6 +61,6 @@ class DreamerV3Learner(Learner):
         )
 
         # Update EMA weights of the critic.
-        self.module[module_id].dreamer_model.critic.update_ema()
+        self.module[module_id].critic.update_ema()
 
         return results

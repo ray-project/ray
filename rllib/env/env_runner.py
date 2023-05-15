@@ -63,6 +63,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             "car_policy2": SampleBatch(...),
             "traffic_light_policy": SampleBatch(...)})
     """
+
     def __init__(self, config):
         self.config = config
 

@@ -93,7 +93,6 @@ class WorkerSet:
         local_worker: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
-
         # deprecated args.
         policy_class=DEPRECATED_VALUE,
         trainer_config=DEPRECATED_VALUE,

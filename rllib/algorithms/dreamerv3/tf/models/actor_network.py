@@ -15,15 +15,33 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
 
 class ActorNetwork(tf.keras.Model):
+    """The `actor` (policy net) of DreamerV3.
+
+    Consists of a simple MLP for Discrete actions and two MLPs for cont. actions (mean
+    and stddev).
+    Also contains two scalar variables to keep track of the percentile-5 and
+    percentile-95 values of the computed value targets within a batch. This is used to
+    compute the "scaled value targets" for actor learning. These two variables decay
+    over time exponentially (see [1] for more details).
+    """
     def __init__(
         self,
         *,
-        action_space: gym.Space,
         model_dimension: Optional[str] = "XS",
+        action_space: gym.Space,
     ):
+        """Initializes an ActorNetwork instance.
+
+        Args:
+             model_dimension: The "Model Size" used according to [1] Appendinx B.
+                Use None for manually setting the different network sizes.
+             action_space: The action space the our environment used.
+        """
         super().__init__(name="actor")
 
         self.model_dimension = model_dimension
+        self.action_space = action_space
+
         # The EMA decay variables used for the [Percentile(R, 95%) - Percentile(R, 5%)]
         # diff to scale value targets for the actor loss.
         self.ema_value_target_pct5 = tf.Variable(
@@ -33,16 +51,15 @@ class ActorNetwork(tf.keras.Model):
             np.nan, dtype=tf.float32, trainable=False, name="value_target_pct95"
         )
 
-        self.action_space = action_space
-
+        # For discrete actions, use a single MLP that computes logits.
         if isinstance(self.action_space, Discrete):
             self.mlp = MLP(
                 model_dimension=self.model_dimension,
                 output_layer_size=self.action_space.n,
                 name="actor_mlp",
             )
+        # For cont. actions, use separate MLPs for Gaussian mean and stddev.
         elif isinstance(action_space, Box):
-            # assert np.all(action_space.low) == 0.0 and np.all(action_space.high) == 1.0
             output_layer_size = np.prod(action_space.shape)
             self.mlp = MLP(
                 model_dimension=self.model_dimension,
@@ -59,12 +76,14 @@ class ActorNetwork(tf.keras.Model):
 
     @tf.function
     def call(self, h, z, return_distribution=False):
-        """TODO
+        """Performs a forward pass through this policy network.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
+            return_distribution: Whether to return (as a second tuple item) the action
+                distribution object created by the policy.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
@@ -79,17 +98,16 @@ class ActorNetwork(tf.keras.Model):
             action_probs = tf.nn.softmax(action_logits)
 
             # Add the unimix weighting (1% uniform) to the probs.
-            # See [1]: "Unimix categoricals: We parameterize the categorical distributions
-            # for the world model representations and dynamics, as well as for the actor
-            # network, as mixtures of 1% uniform and 99% neural network output to ensure
-            # a minimal amount of probability mass on every class and thus keep log
-            # probabilities and KL divergences well behaved."
+            # See [1]: "Unimix categoricals: We parameterize the categorical
+            # distributions for the world model representations and dynamics, as well as
+            # for the actor network, as mixtures of 1% uniform and 99% neural network
+            # output to ensure a minimal amount of probability mass on every class and
+            # thus keep log probabilities and KL divergences well behaved."
             action_probs = 0.99 * action_probs + 0.01 * (1.0 / self.action_space.n)
 
             # Danijar's code does: distr = [Distr class](logits=tf.log(probs)).
             # Not sure why we don't directly use the already available probs instead.
             action_logits = tf.math.log(action_probs)
-
             # Create the distribution object using the unimix'd logits.
             distr = tfp.distributions.OneHotCategorical(logits=action_logits)
 
@@ -107,56 +125,11 @@ class ActorNetwork(tf.keras.Model):
             std_logits = (maxstd - minstd) * tf.sigmoid(std_logits + 2.0) + minstd
             # Compute Normal distribution from action_logits and std_logits
             distr = tfp.distributions.Normal(tf.tanh(action_logits), std_logits)
-            # If action_space is a box with multiple dims, make individual dims independent
+            # If action_space is a box with multiple dims, make individual dims
+            # independent.
             distr = tfp.distributions.Independent(distr, len(self.action_space.shape))
             action = distr.sample()
 
         if return_distribution:
             return action, distr
         return action
-
-
-if __name__ == "__main__":
-    action_space = gym.spaces.Discrete(5)
-    print("action space: ", action_space)
-
-    b_dim = 2
-    h_dim = 8
-    h = np.random.random(size=(b_dim, h_dim))
-    z = np.random.random(size=(b_dim, h_dim, h_dim))
-
-    model = ActorNetwork(action_space=action_space, model_dimension="XS")
-
-    actions = model(h, z)
-    print(actions)
-
-    actions, distr = model(h, z, return_distribution=True)
-    print(actions, distr.sample())
-    print(distr.log_prob(actions))
-    print(distr.logits)
-
-    action_space = gym.spaces.Box(0, 1, (5,))
-    print("action space: ", action_space)
-
-    model = ActorNetwork(action_space=action_space, model_dimension="XS")
-
-    actions = model(h, z)
-    print(actions)
-
-    actions, distr = model(h, z, return_distribution=True)
-    print(actions, distr.sample())
-    print(distr.log_prob(actions))
-    print(distr.distribution.loc, distr.distribution.scale)
-
-    print("Test log_prob computation used in actor_loss.py")
-    h2 = np.random.random(size=(b_dim, h_dim))
-    z2 = np.random.random(size=(b_dim, h_dim, h_dim))
-    actions2, distr2 = model(h, z, return_distribution=True)
-
-    actions = [actions, actions2]
-    distr = [distr, distr2]
-
-    log_probs = tf.stack(
-        [dist.log_prob(action) for dist, action in zip(distr, actions)]
-    )
-    print(log_probs)

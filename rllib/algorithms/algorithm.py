@@ -623,9 +623,9 @@ class Algorithm(Trainable):
             # unpreprocessed spaces).
             # TODO (sven): no relevant for DreamerV3
             #  We shouldn't even override stuff in the config anymore.
-            #self.config["multiagent"][
+            # self.config["multiagent"][
             #    "policies"
-            #] = self.workers.local_worker().policy_dict
+            # ] = self.workers.local_worker().policy_dict
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -726,11 +726,12 @@ class Algorithm(Trainable):
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            #module_spec = local_worker.marl_module_spec
+            # module_spec = local_worker.marl_module_spec
             module_spec = self.config.get_marl_module_spec(
                 policy_dict=self.config.get_multi_agent_setup(
-                    env=self.workers.local_worker().env  #TODO(sven): remove this hack
-                )[0], module_spec=None
+                    env=self.workers.local_worker().env  # TODO(sven): remove this hack
+                )[0],
+                module_spec=None,
             )
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
@@ -738,8 +739,8 @@ class Algorithm(Trainable):
             # TODO (sven): Fix this dependency. How do we do an algo that only has
             #  a single model, used for sampling and learning?
             # Sync the weights from local rollout worker to individual Learners.
-            #weights = local_worker.get_weights()
-            #self.learner_group.set_weights(weights)
+            # weights = local_worker.get_weights()
+            # self.learner_group.set_weights(weights)
             # TODO (sven): DreamerV3 is single-agent only.
             local_worker.model = self.learner_group._learner.module[DEFAULT_POLICY_ID]
 

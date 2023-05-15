@@ -10,7 +10,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 import dataclasses
 import gc
 import logging
-from typing import Optional, Union
+from typing import Optional
 
 import gymnasium as gym
 import numpy as np
@@ -323,7 +323,9 @@ class DreamerV3Config(AlgorithmConfig):
             intrinsic_rewards_scale=self.intrinsic_rewards_scale,
             actor_lr=self.actor_lr,
             critic_lr=self.critic_lr,
-            world_model_grad_clip_by_global_norm=self.world_model_grad_clip_by_global_norm,
+            world_model_grad_clip_by_global_norm=(
+                self.world_model_grad_clip_by_global_norm
+            ),
             actor_grad_clip_by_global_norm=self.actor_grad_clip_by_global_norm,
             critic_grad_clip_by_global_norm=self.critic_grad_clip_by_global_norm,
             **dataclasses.asdict(base_hps),
@@ -367,7 +369,7 @@ class DreamerV3(Algorithm):
         super().setup(config)
 
         # The vectorized gymnasium EnvRunner to collect samples of shape (B, T, ...).
-        #self.env_runner = EnvRunner(model=None, config=self.config)
+        # self.env_runner = EnvRunner(model=None, config=self.config)
         # env_runner_evaluation = EnvRunnerV2(model=None, config=self.config)
 
         # Create a replay buffer for storing actual env samples.
@@ -402,9 +404,7 @@ class DreamerV3(Algorithm):
         # (batch_size_B x batch_length_T), only then proceeed to the training
         # update step.
         while True:
-            done_episodes, ongoing_episodes = env_runner.sample(
-                random_actions=False
-            )
+            done_episodes, ongoing_episodes = env_runner.sample(random_actions=False)
 
             # We took B x T env steps.
             env_steps_last_sample = sum(
@@ -468,9 +468,7 @@ class DreamerV3(Algorithm):
             sample["is_first"] = sample["is_first"].astype(np.float32)
             sample["is_last"] = sample["is_last"].astype(np.float32)
             sample["is_terminated"] = sample["is_terminated"].astype(np.float32)
-            if isinstance(
-                env_runner.env.single_action_space, gym.spaces.Discrete
-            ):
+            if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
                 sample["actions_ints"] = sample[SampleBatch.ACTIONS]
                 sample[SampleBatch.ACTIONS] = one_hot(
                     sample["actions_ints"],
@@ -538,30 +536,33 @@ class DreamerV3(Algorithm):
                         desc="for_actor_critic_learning",
                     )
 
-            # logger.info(
-            #    "\t\tWORLD_MODEL_L_total="
-            #    f"{world_model_train_results['WORLD_MODEL_L_total'].numpy():.5f} ("
-            #    "L_pred="
-            #    f"{world_model_train_results['WORLD_MODEL_L_prediction'].numpy():.5f} ("
-            #    f"dec/obs={world_model_train_results['WORLD_MODEL_L_decoder'].numpy()} "
-            #    f"rew(two-hot)={world_model_train_results['WORLD_MODEL_L_reward'].numpy()} "
-            #    f"cont={world_model_train_results['WORLD_MODEL_L_continue'].numpy()}"
-            #    "); "
-            #    f"L_dyn={world_model_train_results['WORLD_MODEL_L_dynamics'].numpy():.5f}; "
-            #    "L_rep="
-            #    f"{world_model_train_results['WORLD_MODEL_L_representation'].numpy():.5f})"
-            # )
-            # msg = "\t\t"
-            # if self.config.train_actor:
-            #    L_actor = actor_critic_train_results["ACTOR_L_total"]
-            #    msg += f"L_actor={L_actor.numpy() if self.config.train_actor else 0.0:.5f} "
-            # if self.config.train_critic:
-            #    L_critic = actor_critic_train_results["CRITIC_L_total"]
-            #    msg += f"L_critic={L_critic.numpy():.5f} "
-            # if self.config.use_curiosity:
-            #    L_disagree = actor_critic_train_results["DISAGREE_L_total"]
-            #    msg += f"L_disagree={L_disagree.numpy():.5f}"
-            # logger.info(msg)
+            logger.info(
+                "\t\tWORLD_MODEL_L_total="
+                f"{train_results['WORLD_MODEL_L_total'].numpy():.5f} ("
+                "L_pred="
+                f"{train_results['WORLD_MODEL_L_prediction'].numpy():.5f} ("
+                f"dec/obs={train_results['WORLD_MODEL_L_decoder'].numpy()} "
+                f"rew(two-hot)={train_results['WORLD_MODEL_L_reward'].numpy()} "
+                f"cont={train_results['WORLD_MODEL_L_continue'].numpy()}"
+                "); "
+                f"L_dyn={train_results['WORLD_MODEL_L_dynamics'].numpy():.5f}; "
+                "L_rep="
+                f"{train_results['WORLD_MODEL_L_representation'].numpy():.5f})"
+            )
+            msg = "\t\t"
+            if self.config.train_actor:
+                L_actor = train_results["ACTOR_L_total"]
+                msg += (
+                    "L_actor="
+                    f"{L_actor.numpy() if self.config.train_actor else 0.0:.5f} "
+                )
+            if self.config.train_critic:
+                L_critic = train_results["CRITIC_L_total"]
+                msg += f"L_critic={L_critic.numpy():.5f} "
+            if self.config.use_curiosity:
+                L_disagree = train_results["DISAGREE_L_total"]
+                msg += f"L_disagree={L_disagree.numpy():.5f}"
+            logger.info(msg)
 
             sub_iter += 1
             self._counters[NUM_GRAD_UPDATES_LIFETIME] += 1

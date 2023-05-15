@@ -108,17 +108,17 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         if isinstance(episodes, _Episode):
             episodes = [episodes]
 
-    #def add(self, batch: SampleBatchType, **kwargs) -> None:
-        #if isinstance(batch, MultiAgentBatch):
+        # def add(self, batch: SampleBatchType, **kwargs) -> None:
+        # if isinstance(batch, MultiAgentBatch):
         #    raise ValueError(
         #        "`EpisodeReplayBuffer` cannot operate on MultiAgentBatches yet! "
         #        "For single-agent use only."
         #    )
 
-        #episode_slices = batch.split_by_episode()
-        #episodes = [
+        # episode_slices = batch.split_by_episode()
+        # episodes = [
         #    _Episode.from_sample_batch(eps_slice) for eps_slice in episode_slices
-        #]
+        # ]
 
         for eps in episodes:
             self._num_timesteps += len(eps)

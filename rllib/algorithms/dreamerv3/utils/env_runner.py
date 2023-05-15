@@ -51,6 +51,7 @@ class NormalizedImageEnv(gym.ObservationWrapper):
             shape=self.observation_space.shape,
             dtype=np.float32,
         )
+
     # Divide by scale and center around 0.0, such that observations are in the range
     # of -1.0 and 1.0.
     def observation(self, observation):
@@ -139,7 +140,9 @@ class DreamerV3EnvRunner(EnvRunner):
                 wrappers=wrappers,
                 num_envs=self.config.num_envs_per_worker,
                 asynchronous=self.config.remote_worker_envs,
-                make_kwargs=dict(self.config.env_config, **{"render_mode": "rgb_array"}),
+                make_kwargs=dict(
+                    self.config.env_config, **{"render_mode": "rgb_array"}
+                ),
             )
 
         elif self.config.env.startswith("DMC"):
@@ -150,9 +153,9 @@ class DreamerV3EnvRunner(EnvRunner):
             )
             gym.register(
                 "dmc_env-v0",
-                lambda : DMCEnv(
+                lambda: DMCEnv(
                     parts[1], parts[2], from_pixels=True, channels_first=False
-                )
+                ),
             )
             self.env = gym.vector.make(
                 "dmc_env-v0",
@@ -194,10 +197,7 @@ class DreamerV3EnvRunner(EnvRunner):
             raise NotImplementedError
         else:
             return self.sample_timesteps(
-                num_timesteps=(
-                    self.config.rollout_fragment_length
-                    * self.num_envs
-                ),
+                num_timesteps=(self.config.rollout_fragment_length * self.num_envs),
                 explore=explore,
                 random_actions=random_actions,
                 force_reset=False,
@@ -256,10 +256,12 @@ class DreamerV3EnvRunner(EnvRunner):
         else:
             obs = np.stack([eps.observations[-1] for eps in self.episodes])
             states = {
-                k: np.stack([
-                    initial_states[k][i] if eps.states is None else eps.states[k]
-                    for i, eps in enumerate(self.episodes)
-                ])
+                k: np.stack(
+                    [
+                        initial_states[k][i] if eps.states is None else eps.states[k]
+                        for i, eps in enumerate(self.episodes)
+                    ]
+                )
                 for k in initial_states.keys()
             }
             is_first = np.zeros((self.num_envs,), dtype=np.float32)
@@ -291,13 +293,15 @@ class DreamerV3EnvRunner(EnvRunner):
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
 
-            for i, (o, a, r, term, trunc) in enumerate(zip(
-                self._split_by_env(obs),
-                self._split_by_env(actions),
-                self._split_by_env(rewards),
-                self._split_by_env(terminateds),
-                self._split_by_env(truncateds),
-            )):
+            for i, (o, a, r, term, trunc) in enumerate(
+                zip(
+                    self._split_by_env(obs),
+                    self._split_by_env(actions),
+                    self._split_by_env(rewards),
+                    self._split_by_env(terminateds),
+                    self._split_by_env(truncateds),
+                )
+            ):
                 s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
@@ -428,13 +432,15 @@ class DreamerV3EnvRunner(EnvRunner):
             if with_render_data:
                 render_images = [e.render() for e in self.env.envs]
 
-            for i, (o, a, r, term, trunc) in enumerate(zip(
-                self._split_by_env(obs),
-                self._split_by_env(actions),
-                self._split_by_env(rewards),
-                self._split_by_env(terminateds),
-                self._split_by_env(truncateds),
-            )):
+            for i, (o, a, r, term, trunc) in enumerate(
+                zip(
+                    self._split_by_env(obs),
+                    self._split_by_env(actions),
+                    self._split_by_env(rewards),
+                    self._split_by_env(terminateds),
+                    self._split_by_env(truncateds),
+                )
+            ):
                 s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
@@ -516,12 +522,12 @@ class DreamerV3EnvRunner(EnvRunner):
 
     @override(EnvRunner)
     def assert_healthy(self):
-        #TODO
+        # TODO
         pass
 
     @override(EnvRunner)
     def __del__(self):
-        #TODO
+        # TODO
         pass
 
     def _split_by_env(self, inputs):
@@ -531,24 +537,27 @@ class DreamerV3EnvRunner(EnvRunner):
 if __name__ == "__main__":
     config = (
         AlgorithmConfig()
-        .environment("ALE/MsPacman-v5", env_config={
-            # [2]: "We follow the evaluation protocol of Machado et al. (2018) with 200M
-            # environment steps, action repeat of 4, a time limit of 108,000 steps per
-            # episode that correspond to 30 minutes of game play, no access to life
-            # information, full action space, and sticky actions. Because the world model
-            # integrates information over time, DreamerV2 does not use frame stacking.
-            # The experiments use a single-task setup where a separate agent is trained
-            # for each game. Moreover, each agent uses only a single environment instance.
-            "repeat_action_probability": 0.25,  # "sticky actions"
-            "full_action_space": True,  # "full action space"
-            "frameskip": 1,  # already done by MaxAndSkip wrapper: "action repeat" == 4
-        })
+        .environment(
+            "ALE/MsPacman-v5",
+            env_config={
+                # [2]: "We follow the evaluation protocol of Machado et al. (2018) with 200M
+                # environment steps, action repeat of 4, a time limit of 108,000 steps per
+                # episode that correspond to 30 minutes of game play, no access to life
+                # information, full action space, and sticky actions. Because the world model
+                # integrates information over time, DreamerV2 does not use frame stacking.
+                # The experiments use a single-task setup where a separate agent is trained
+                # for each game. Moreover, each agent uses only a single environment instance.
+                "repeat_action_probability": 0.25,  # "sticky actions"
+                "full_action_space": True,  # "full action space"
+                "frameskip": 1,  # already done by MaxAndSkip wrapper: "action repeat" == 4
+            },
+        )
         .rollouts(num_envs_per_worker=2, rollout_fragment_length=64)
     )
     env_runner = DreamerV3EnvRunner(
-        #model=None,
+        # model=None,
         config=config,
-        #_debug_count_env=True,
+        # _debug_count_env=True,
     )
 
     for _ in range(10):
@@ -557,23 +566,27 @@ if __name__ == "__main__":
         )
         for eps in done_episodes:
             assert eps.is_terminated
-            print(f"done episode {eps.id_} obs[0]={eps.observations[0][0][0]} obs[-1]={eps.observations[-1][0][0]}")
+            print(
+                f"done episode {eps.id_} obs[0]={eps.observations[0][0][0]} obs[-1]={eps.observations[-1][0][0]}"
+            )
 
     for _ in range(10):
-        done_episodes, ongoing_episodes = (
-            env_runner.sample(random_actions=True)
-        )
+        done_episodes, ongoing_episodes = env_runner.sample(random_actions=True)
         for eps in done_episodes:
             assert eps.is_terminated
-            print(f"done episode {eps.id_} obs[0]={eps.observations[0][0][0]} obs[-1]={eps.observations[-1][0][0]}")
+            print(
+                f"done episode {eps.id_} obs[0]={eps.observations[0][0][0]} obs[-1]={eps.observations[-1][0][0]}"
+            )
         for eps in ongoing_episodes:
             assert not eps.is_terminated
-            print(f"ongoing episode {eps.id_} obs[0]={eps.observations[0][0][0]} obs[-1]={eps.observations[-1][0][0]}")
+            print(
+                f"ongoing episode {eps.id_} obs[0]={eps.observations[0][0][0]} obs[-1]={eps.observations[-1][0][0]}"
+            )
         print()
 
-    #obs, next_obs, actions, rewards, terminateds, truncateds = (
+    # obs, next_obs, actions, rewards, terminateds, truncateds = (
     #    env_runner.sample_episodes(num_episodes=10, random_actions=True)
-    #)
-    #mean_episode_return = np.mean([np.sum(rets) for rets in rewards])
-    #print(len(obs))
-    #print(f"mean(R)={mean_episode_return}")
+    # )
+    # mean_episode_return = np.mean([np.sum(rets) for rets in rewards])
+    # print(len(obs))
+    # print(f"mean(R)={mean_episode_return}")

@@ -25,7 +25,6 @@ from ray.rllib.core.learner.learner_group_config import (
 )
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -2745,7 +2744,9 @@ class AlgorithmConfig(_Config):
                 env.single_action_space, gym.Space
             ):
                 env_act_space = env.single_action_space
-            elif hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
+            elif hasattr(env, "action_space") and isinstance(
+                env.action_space, gym.Space
+            ):
                 env_act_space = env.action_space
 
         # Last resort: Try getting the env's spaces from the spaces

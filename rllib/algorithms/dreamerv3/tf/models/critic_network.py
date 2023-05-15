@@ -5,7 +5,6 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import numpy as np
 import tensorflow as tf
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
@@ -24,6 +23,34 @@ class CriticNetwork(tf.keras.Model):
         upper_bound: float = 20.0,
         ema_decay: float = 0.98,
     ):
+        """Initializes a CriticNetwork instance.
+
+        Args:
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
+               Use None for manually setting the different network sizes.
+            num_buckets: The number of buckets to create. Note that the number of
+                possible symlog'd outcomes from the used distribution is
+                `num_buckets` + 1:
+                lower_bound --bucket-- o[1] --bucket-- o[2] ... --bucket-- upper_bound
+                o=outcomes
+                lower_bound=o[0]
+                upper_bound=o[num_buckets]
+            lower_bound: The symlog'd lower bound for a possible reward value.
+                Note that a value of -20.0 here already allows individual (actual env)
+                rewards to be as low as -400M. Buckets will be created between
+                `lower_bound` and `upper_bound`.
+            upper_bound: The symlog'd upper bound for a possible reward value.
+                Note that a value of +20.0 here already allows individual (actual env)
+                rewards to be as high as 400M. Buckets will be created between
+                `lower_bound` and `upper_bound`.
+            ema_decay: The weight to use for updating the weights of the critic's copy
+                vs the actual critic. After each training update, the EMA copy of the
+                critic gets updated according to:
+                ema_net=(`ema_decay`*ema_net) + (1.0-`ema_decay`)*critic_net
+                The EMA copy of the critic is used inside the critic loss function only
+                to produce a regularizer term against the current critic's weights, NOT
+                to compute any target values.
+        """
         super().__init__(name="critic")
 
         self.model_dimension = model_dimension
@@ -60,12 +87,16 @@ class CriticNetwork(tf.keras.Model):
         )
 
     def call(self, h, z, return_logits=False, use_ema=False):
-        """TODO
+        """
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
+            return_logits: Whether also return (as a second tuple item) the logits
+                computed by the binned return layer (instead of only the value itself).
+            use_ema: Whether to use the EMA-copy of the critic instead of the actual
+                critic to perform this computation.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
@@ -83,30 +114,24 @@ class CriticNetwork(tf.keras.Model):
             out = self.mlp_ema(out)
             return self.return_layer_ema(out, return_logits=return_logits)
 
-    def init_ema(self):
+    def init_ema(self) -> None:
+        """Initializes the EMA-copy of the critic from the critic's weights.
+
+        After calling this method, the two networks have identical weights.
+        """
         vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
         vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
         assert len(vars) == len(vars_ema)
         for var, var_ema in zip(vars, vars_ema):
             var_ema.assign(var)
 
-    def update_ema(self):
+    def update_ema(self) -> None:
+        """Updates the EMA-copy of the critic according to the update formula:
+
+        ema_net=(`ema_decay`*ema_net) + (1.0-`ema_decay`)*critic_net
+        """
         vars = self.mlp.trainable_variables + self.return_layer.trainable_variables
         vars_ema = self.mlp_ema.variables + self.return_layer_ema.variables
         assert len(vars) == len(vars_ema)
         for var, var_ema in zip(vars, vars_ema):
             var_ema.assign(self.ema_decay * var_ema + (1.0 - self.ema_decay) * var)
-
-
-if __name__ == "__main__":
-    h_dim = 8
-    h = np.random.random(size=(1, 8))
-    z = np.random.random(size=(1, 8, 8))
-
-    model = CriticNetwork(num_buckets=5, lower_bound=-2.0, upper_bound=2.0)
-
-    out = model(h, z)
-    print(out)
-
-    out = model(h, z, return_weighted_values=True)
-    print(out)

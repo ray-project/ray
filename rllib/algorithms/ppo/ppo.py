@@ -139,11 +139,11 @@ class PPOConfig(PGConfig):
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule as RLModule
+                PPOTorchRLModule as RLModule,
             )
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
-                PPOTfRLModule as RLModule
+                PPOTfRLModule as RLModule,
             )
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")

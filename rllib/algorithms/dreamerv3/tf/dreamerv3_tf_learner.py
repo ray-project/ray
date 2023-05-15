@@ -9,6 +9,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from typing import Any, Dict, Mapping, Union
 
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import DreamerV3Learner
@@ -19,6 +20,7 @@ from ray.rllib.core.learner.learner import (
     NamedParamOptimizerPairs,
 )
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
@@ -42,22 +44,31 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         dreamerv3_module = self._module[module_id]
 
         # World Model Optimizer.
-        optim_world_model = tf.keras.optimizers.Adam(learning_rate=self.hps.world_model_lr, epsilon=1e-8)
+        optim_world_model = tf.keras.optimizers.Adam(
+            learning_rate=self.hps.world_model_lr, epsilon=1e-8
+        )
         optim_world_model.build(dreamerv3_module.world_model.trainable_variables)
         ret["world_model"] = (
-            self.get_parameters(dreamerv3_module.world_model), optim_world_model
+            self.get_parameters(dreamerv3_module.world_model),
+            optim_world_model,
         )
         # Actor Optimizer.
-        optim_actor = tf.keras.optimizers.Adam(learning_rate=self.hps.actor_lr, epsilon=1e-5)
-        optim_actor.build(dreamerv3_module.dreamer_model.actor.trainable_variables)
+        optim_actor = tf.keras.optimizers.Adam(
+            learning_rate=self.hps.actor_lr, epsilon=1e-5
+        )
+        optim_actor.build(dreamerv3_module.actor.trainable_variables)
         ret["actor"] = (
-            self.get_parameters(dreamerv3_module.dreamer_model.actor), optim_actor
+            self.get_parameters(dreamerv3_module.actor),
+            optim_actor,
         )
         # Critic Optimizer.
-        optim_critic = tf.keras.optimizers.Adam(learning_rate=self.hps.critic_lr, epsilon=1e-5)
-        optim_critic.build(dreamerv3_module.dreamer_model.critic.trainable_variables)
+        optim_critic = tf.keras.optimizers.Adam(
+            learning_rate=self.hps.critic_lr, epsilon=1e-5
+        )
+        optim_critic.build(dreamerv3_module.critic.trainable_variables)
         ret["critic"] = (
-            self.get_parameters(dreamerv3_module.dreamer_model.critic), optim_critic
+            self.get_parameters(dreamerv3_module.critic),
+            optim_critic,
         )
 
         return ret
@@ -72,9 +83,16 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         """
         ret: ParamDictType = {}
         for name, optim in self._named_optimizers.items():
+            # TODO (sven): DreamerV3 is single-agent only thus far.
+            #  Remove `default_policy_` from name.
+            name = name[len(DEFAULT_POLICY_ID) + 1 :]  # +1 -> trailing underscore
             ret.update(
                 tape.gradient(
-                    loss[name.upper() + "_L_total"], self._optimizer_parameters[optim]
+                    loss[DEFAULT_POLICY_ID][name.upper() + "_L_total"],
+                    {
+                        param_ref: self._params[param_ref]
+                        for param_ref in self._optimizer_parameters[optim]
+                    },
                 )
             )
         return ret
@@ -89,6 +107,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         Note that different grad clip values are used for the 3 components.
         """
         for name, optim in self._named_optimizers.items():
+            # TODO (sven): DreamerV3 is single-agent only thus far.
+            #  Remove `default_policy_` from name.
+            name = name[len(DEFAULT_POLICY_ID) + 1 :]  # +1 -> trailing underscore
             grads_sub_dict = {
                 param_ref: gradients_dict[param_ref]
                 for param_ref in self._optimizer_parameters[optim]
@@ -186,13 +207,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # Add actor loss results.
         if self.hps.train_actor:
             results.update(actor_loss_results)
-            # L_actor = results["ACTOR_L_total"]
 
         # Add computed value targets.
         results["VALUE_TARGETS_H_B"] = value_targets
         # Add our dream data.
         results["dream_data"] = dream_data
-        # L_critic = results["CRITIC_L_total"]
 
         # if self.hps.use_curiosity:
         #    results["DISAGREE_L_total"] = L_disagree
@@ -234,14 +253,25 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 "WORLD_MODEL_L_total_B_T": L_world_model_total_B_T,
                 "WORLD_MODEL_L_total": L_world_model_total,
                 # TODO: Move to grad stats.
-                ## Gradient stats.
+                # # Gradient stats.
                 # "WORLD_MODEL_gradients_maxabs": (
                 #    tf.reduce_max([tf.reduce_max(tf.math.abs(g)) for g in gradients])
                 # ),
                 # "WORLD_MODEL_gradients_clipped_by_glob_norm_maxabs": (
-                #    tf.reduce_max([tf.reduce_max(tf.math.abs(g)) for g in clipped_gradients])
+                #    tf.reduce_max([
+                #        tf.reduce_max(tf.math.abs(g)) for g in clipped_gradients
+                #    ])
                 # ),
             }
+        )
+
+        # Provide total loss key, even though it's not needed by any tape/optimizer.
+        results[self.TOTAL_LOSS_KEY] = (
+            L_world_model_total
+            + critic_loss_results["CRITIC_L_total"]
+            + actor_loss_results["ACTOR_L_total"]
+            if self.hps.train_actor
+            else 0.0
         )
 
         return results
