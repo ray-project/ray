@@ -11,7 +11,7 @@ from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, List
+from ray.data.block import Block, BlockMetadata, CallableClass, List
 from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatasetStats
 from ray.data._internal.stage_impl import (
@@ -22,7 +22,6 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import (
     get_compute,
-    CallableClass,
     ActorPoolStrategy,
 )
 from ray.data._internal.memory_tracing import trace_allocation
