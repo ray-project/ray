@@ -800,9 +800,7 @@ def test_task_log_err_empty(ray_start_with_dashboard):
 
     @ray.remote
     def f():
-        import sys
-
-        print(TEST_LOG, file=sys.stdout, end="")
+        print(TEST_LOG, file=sys.stdout, end="", flush=True)
 
     t = f.remote()
     task_id = t.task_id().hex()
