@@ -424,7 +424,8 @@ service CoreWorkerService {
   /// the caller (subscriber).
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
   // The RPC to report the intermediate task return to the caller.
-  rpc ReportIntermediateTaskReturn(ReportIntermediateTaskReturnRequest) returns (ReportIntermediateTaskReturnReply);
+  rpc ReportIntermediateTaskReturn(ReportIntermediateTaskReturnRequest)
+      returns (ReportIntermediateTaskReturnReply);
   /// The pubsub command batch request used by the subscriber.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
   // Update the batched object location information to the ownership-based object
