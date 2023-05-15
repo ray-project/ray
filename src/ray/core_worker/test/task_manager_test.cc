@@ -1429,8 +1429,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
    */
   // Submit a task.
   rpc::Address caller_address;
-  auto spec =
-      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator*/ true);
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
   auto generator_id = spec.ReturnId(0);
   manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
   // CREATE
@@ -1605,8 +1604,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
   /**
    * Test the case where the task return RPC is received out of order
    */
-  auto spec =
-      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*streaming_generator*/ true);
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
   auto generator_id = spec.ReturnId(0);
   // CREATE
   manager_.CreateObjectRefStream(generator_id);
