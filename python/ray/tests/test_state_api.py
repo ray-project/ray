@@ -8,6 +8,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
+from ray.experimental.state.common import Humanify
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -1694,6 +1695,18 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     # work, otherwise it should have created the 2 prestarted task-only
     # workers prior to https://github.com/ray-project/ray/pull/33623
     assert result.total == 6
+
+
+def test_humanify():
+    raw_bytes = 1024
+    assert Humanify.memory(raw_bytes) == "1.000 KiB"
+    raw_bytes *= 1024
+    assert Humanify.memory(raw_bytes) == "1.000 MiB"
+    raw_bytes *= 1024
+    assert Humanify.memory(raw_bytes) == "1.000 GiB"
+    timestamp = 1610000000
+    assert "1970-01" in Humanify.timestamp(timestamp)
+    assert Humanify.duration(timestamp) == "18 days, 15:13:20"
 
 
 @pytest.mark.asyncio
