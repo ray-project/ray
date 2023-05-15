@@ -125,7 +125,7 @@ class TestSetupUtil {
                                  const std::string &resource,
                                  std::string *store_socket_name);
   static void StopRaylet(const std::string &raylet_socket_name);
-
+  static void ExecuteRedisCmd(int port, std::vector<std::string> cmd);
   static int StartUpRedisServer(int port, bool save = false);
   static void ShutDownRedisServer(int port);
   static void FlushRedisServer(int port);

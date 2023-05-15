@@ -96,6 +96,16 @@ void TestSetupUtil::FlushAllRedisServers() {
   }
 }
 
+void TestSetupUtil::ExecuteRedisCmd(int port, std::vector<std::string> cmd) {
+  std::vector<std::string> cmdargs(
+      {TEST_REDIS_CLIENT_EXEC_PATH, "-p", std::to_string(port)});
+  cmdargs.insert(cmdargs.end(), cmd.begin(), cmd.end());
+  RAY_LOG(INFO) << "Send command to redis: " << CreateCommandLine(cmdargs);
+  if (Process::Call(cmdargs)) {
+    RAY_LOG(WARNING) << "Failed to send request to redis.";
+  }
+}
+
 void TestSetupUtil::FlushRedisServer(int port) {
   std::vector<std::string> cmdargs(
       {TEST_REDIS_CLIENT_EXEC_PATH, "-p", std::to_string(port), "flushall"});

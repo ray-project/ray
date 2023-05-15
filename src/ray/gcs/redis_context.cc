@@ -43,7 +43,7 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     break;
   }
   case REDIS_REPLY_ERROR: {
-    RAY_CHECK(false) << "Got an error in redis reply: " << redis_reply->str;
+    RAY_LOG(FATAL) << "Got an error in redis reply: " << redis_reply->str;
     break;
   }
   case REDIS_REPLY_INTEGER: {
@@ -178,10 +178,11 @@ void RedisRequestContext::Run() {
   --pending_retries_;
 
   auto fn =
-      +[](struct redisAsyncContext *async_context, void *redis_reply, void *privdata) {
+      +[](struct redisAsyncContext *async_context, void *raw_reply, void *privdata) {
         auto *request_cxt = (RedisRequestContext *)privdata;
+        auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
         // Error happened.
-        if (redis_reply == nullptr) {
+        if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
           RAY_LOG(ERROR) << "Redis request ["
                          << absl::StrJoin(request_cxt->redis_cmds_, " ") << "]"
                          << " failed due to error " << async_context->errstr << ". "
@@ -190,10 +191,9 @@ void RedisRequestContext::Run() {
           execute_after(
               request_cxt->io_service_,
               [request_cxt]() { request_cxt->Run(); },
-              ::RayConfig::instance().redis_retry_interval_ms());
+              std::chrono::milliseconds(::RayConfig::instance().redis_retry_interval_ms()));
         } else {
-          auto reply = std::make_shared<CallbackReply>(
-              reinterpret_cast<redisReply *>(redis_reply));
+          auto reply = std::make_shared<CallbackReply>(redis_reply);
           request_cxt->io_service_.post(
               [reply, callback = std::move(request_cxt->callback_)]() {
                 callback(std::move(reply));
