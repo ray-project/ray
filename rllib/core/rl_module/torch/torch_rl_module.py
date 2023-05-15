@@ -95,8 +95,7 @@ class TorchRLModule(nn.Module, RLModule):
         """
         # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
         if (
-            self.framework_str == "torch"
-            and int(torch.__version__[0]) < 2
+            int(torch.__version__[0]) < 2
             and (
                 self.torch_compile_learner_forward_train
                 or self.torch_compile_worker_forward_inference
@@ -104,7 +103,7 @@ class TorchRLModule(nn.Module, RLModule):
             )
         ):
             raise ValueError("torch.compile is only supported from torch 2.0.0")
-
+        
         if config.compile_forward_train:
             self.compile_forward_train(
                 backend=config.torch_dynamo_backend,
@@ -147,6 +146,7 @@ class TorchRLModule(nn.Module, RLModule):
         with torch.no_grad():
             # If this forward method was compiled, we call the compiled version.
             if hasattr(self, "_compiled_forward_exploration"):
+                raise ValueError("meh")
                 return self._compiled_forward_exploration(batch, **kwargs)
             return self._forward_exploration(batch, **kwargs)
 
