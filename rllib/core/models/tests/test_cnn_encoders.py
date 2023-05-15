@@ -15,7 +15,7 @@ class TestCNNEncoders(unittest.TestCase):
     def test_cnn_encoders(self):
         """Tests building CNN encoders properly and checks for correct architecture."""
 
-        # Loop through different combinations of hyperparameters.
+        # Loop through permutations of hyperparameters.
         inputs_dimss = [
             [480, 640, 3],
             [480, 640, 1],
