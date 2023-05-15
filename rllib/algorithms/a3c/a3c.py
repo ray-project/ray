@@ -60,6 +60,7 @@ class A3CConfig(AlgorithmConfig):
     def __init__(self, algo_class=None):
         """Initializes a A3CConfig instance."""
         deprecation_warning(
+            old="rllib/algorithms/a3c/a3c.py",
             new="rllib_contrib/a3c/",
             help=(
                 "This algorithm will be "

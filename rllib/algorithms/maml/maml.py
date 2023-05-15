@@ -295,6 +295,7 @@ class MAML(Algorithm):
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
         deprecation_warning(
+            old="rllib/algorithms/maml/maml.py",
             new="rllib_contrib/maml/",
             help=(
                 "This algorithm will be "
