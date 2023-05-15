@@ -249,6 +249,15 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 0
 
 
+def test_columns(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    assert ds.columns() == ds.schema().names
+    assert ds.columns() == ["id"]
+
+    ds = ds.map(lambda x: x)
+    assert ds.columns(fetch_if_missing=False) is None
+
+
 def test_schema_repr(ray_start_regular_shared):
     ds = ray.data.from_items([{"text": "spam", "number": 0}])
     # fmt: off
