@@ -2,7 +2,12 @@ from typing import Iterator, List, Tuple
 
 from ray.data._internal.logical.operators.all_to_all_operator import Repartition
 from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.actor_pool_map_operator import ActorPoolMapOperator
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
     RandomShuffle,
@@ -110,10 +115,13 @@ class OperatorFusionRule(Rule):
 
         # We currently only support fusing for the following cases:
         # - MapOperator -> MapOperator
-        # - MapOperator -> AllToAllOperator
+        # - TaskPoolMapOperator -> AllToAllOperator
         # (only RandomShuffle and Repartition LogicalOperators are currently supported)
-        if not isinstance(down_op, (MapOperator, AllToAllOperator)) or not isinstance(
-            up_op, MapOperator
+        if not (
+            isinstance(up_op, MapOperator) and isinstance(down_op, MapOperator)
+        ) or not (
+            isinstance(up_op, TaskPoolMapOperator)
+            and isinstance(down_op, AllToAllOperator)
         ):
             return False
 
@@ -226,11 +234,16 @@ class OperatorFusionRule(Rule):
             return down_transform_fn(blocks, ctx)
 
         # Fuse init funcitons.
-        up_init_fn = up_op.get_init_fn() if isinstance(up_op, ActorPoolMapOperator) else None
-        down_init_fn = down_op.get_init_fn() if isinstance(down_op, ActorPoolMapOperator) else None
+        up_init_fn = (
+            up_op.get_init_fn() if isinstance(up_op, ActorPoolMapOperator) else None
+        )
+        down_init_fn = (
+            down_op.get_init_fn() if isinstance(down_op, ActorPoolMapOperator) else None
+        )
         if up_init_fn is None and down_init_fn is None:
             fused_init_fn = None
         else:
+
             def fused_init_fn():
                 if up_init_fn is not None:
                     up_init_fn()
