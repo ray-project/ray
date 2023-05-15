@@ -671,6 +671,12 @@ class TunerInternal:
             ),
             checkpoint_freq=checkpoint_freq,
             checkpoint_at_end=checkpoint_at_end,
+            checkpoint_keep_all_ranks=(
+                self._run_config.checkpoint_config._checkpoint_keep_all_ranks
+            ),
+            checkpoint_upload_from_workers=(
+                self._run_config.checkpoint_config._checkpoint_upload_from_workers
+            ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),
