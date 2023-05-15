@@ -52,9 +52,18 @@ export const getLogDetail = async (url: string) => {
 
 export type StateApiLogInput = {
   nodeId?: string | null;
+  /**
+   * If actorId is provided, nodeId is not necessary
+   */
   actorId?: string | null;
+  /**
+   * If taskId is provided, nodeId is not necessary
+   */
   taskId?: string | null;
   suffix?: string;
+  /**
+   * If filename is provided, suffix is not necessary
+   */
   filename?: string | null;
 };
 
