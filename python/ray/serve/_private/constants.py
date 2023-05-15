@@ -131,7 +131,7 @@ RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE = (
 )
 
 # Timeout for GCS RPC request
-RAY_GCS_RPC_TIMEOUT_S = 3.0
+RAY_GCS_RPC_TIMEOUT_S = 15.0
 
 # Env var to control legacy sync deployment handle behavior in DAG.
 SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
