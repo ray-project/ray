@@ -31,54 +31,69 @@ Concretely, you will learn how to:
 The Ray docs present all the information you need to start running Ray workloads on Kubernetes.
 
 ```{eval-rst}
-.. panels::
-    :container: text-center
-    :column: col-lg-6 px-2 py-2
-    :card:
+.. grid:: 1 2 2 2
+    :gutter: 1
+    :class-container: container pb-3
+    
+    .. grid-item-card::
 
-    **Getting Started**
-    ^^^
+        **Getting Started**
+        ^^^
+    
+        Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
+    
+        +++
+        .. button-ref:: kuberay-quickstart
+            :color: primary
+            :outline:
+            :expand:
 
-    Learn how to start a Ray cluster and deploy Ray applications on Kubernetes.
+            Get Started with Ray on Kubernetes
 
-    +++
-    .. link-button:: kuberay-quickstart
-        :type: ref
-        :text: Get Started with Ray on Kubernetes
-        :classes: btn-outline-info btn-block
-    ---
-    **Examples**
-    ^^^
+    .. grid-item-card::
 
-    Try example Ray workloads on Kubernetes.
+        **Examples**
+        ^^^
+    
+        Try example Ray workloads on Kubernetes.
+    
+        +++
+        .. button-ref:: kuberay-examples
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: kuberay-examples
-        :type: ref
-        :text: Try example workloads
-        :classes: btn-outline-info btn-block
-    ---
-    **User Guides**
-    ^^^
+            Try example workloads
+        
+    .. grid-item-card::
 
-    Learn best practices for configuring Ray clusters on Kubernetes.
+        **User Guides**
+        ^^^
+    
+        Learn best practices for configuring Ray clusters on Kubernetes.
+    
+        +++
+        .. button-ref:: kuberay-guides
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: kuberay-guides
-        :type: ref
-        :text: Read the User Guides
-        :classes: btn-outline-info btn-block
-    ---
-    **API Reference**
-    ^^^
+            Read the User Guides
+    
+    .. grid-item-card::
 
-    Find API references on RayCluster configuration.
+        **API Reference**
+        ^^^
+    
+        Find API references on RayCluster configuration.
+    
+        +++
+        .. button-ref:: kuberay-api-reference
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: kuberay-api-reference
-        :type: ref
-        :text: Check API references
-        :classes: btn-outline-info btn-block
+            Check API references
 ```
 ## About KubeRay
 

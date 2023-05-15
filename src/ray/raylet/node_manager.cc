@@ -240,7 +240,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                     },
                     /*delay_executor*/
                     [this](std::function<void()> fn, int64_t delay_ms) {
-                      RAY_UNUSED(execute_after(io_service_, fn, delay_ms));
+                      RAY_UNUSED(execute_after(
+                          io_service_, fn, std::chrono::milliseconds(delay_ms)));
                     }),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
@@ -398,7 +399,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       std::move(options),
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(io_service_, task, delay_ms);
+        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
       /*runtime_env_agent_factory=*/
       [this](const std::string &ip_address, int port) {
@@ -425,10 +426,44 @@ ray::Status NodeManager::RegisterGcs() {
 
   // If the node resource message is received first and then the node message is received,
   // ForwardTask will throw exception, because it can't get node info.
-  auto on_done = [](Status status) { RAY_CHECK_OK(status); };
+  auto on_node_change_subscribe_done = [this](Status status) {
+    RAY_CHECK_OK(status);
+
+    if (RayConfig::instance().use_ray_syncer()) {
+      // Register resource manager and scheduler
+      ray_syncer_.Register(
+          /* message_type */ syncer::MessageType::RESOURCE_VIEW,
+          /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
+          /* receiver */ this,
+          /* pull_from_reporter_interval_ms */
+          RayConfig::instance().raylet_report_resources_period_milliseconds());
+
+      // Register a commands channel.
+      // It's only used for GC right now.
+      ray_syncer_.Register(
+          /* message_type */ syncer::MessageType::COMMANDS,
+          /* reporter */ this,
+          /* receiver */ this,
+          /* pull_from_reporter_interval_ms */ 0);
+
+      auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
+      ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
+      periodical_runner_.RunFnPeriodically(
+          [this] {
+            auto triggered_by_global_gc = TryLocalGC();
+            // If plasma store is under high pressure, we should try to schedule a global
+            // gc.
+            if (triggered_by_global_gc) {
+              ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
+            }
+          },
+          RayConfig::instance().raylet_check_gc_period_milliseconds(),
+          "NodeManager.CheckGC");
+    }
+  };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
-  RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
+  RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+      on_node_change, on_node_change_subscribe_done));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -493,38 +528,6 @@ ray::Status NodeManager::RegisterGcs() {
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
   }
-
-  if (RayConfig::instance().use_ray_syncer()) {
-    // Register resource manager and scheduler
-    ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::RESOURCE_VIEW,
-        /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
-        /* receiver */ this,
-        /* pull_from_reporter_interval_ms */
-        RayConfig::instance().raylet_report_resources_period_milliseconds());
-
-    // Register a commands channel.
-    // It's only used for GC right now.
-    ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::COMMANDS,
-        /* reporter */ this,
-        /* receiver */ this,
-        /* pull_from_reporter_interval_ms */ 0);
-
-    auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
-    ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
-    periodical_runner_.RunFnPeriodically(
-        [this] {
-          auto triggered_by_global_gc = TryLocalGC();
-          // If plasma store is under high pressure, we should try to schedule a global
-          // gc.
-          if (triggered_by_global_gc) {
-            ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
-          }
-        },
-        RayConfig::instance().raylet_check_gc_period_milliseconds(),
-        "NodeManager.CheckGC");
-  }
   // Raylet periodically check whether it's alive in GCS.
   // For failure cases, GCS might think this raylet dead, but this
   // raylet still think it's alive. This could happen when the cluster setup is wrong,
@@ -548,8 +551,8 @@ ray::Status NodeManager::RegisterGcs() {
                       << "GCS is not backed by a DB and restarted or there is data loss "
                       << "in the DB.";
                 }
-                *checking_ptr = false;
               }
+              *checking_ptr = false;
             },
             /* timeout_ms = */ 30000));
       },
@@ -991,6 +994,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
       [this, node_id](
           Status status,
           const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
+        // TODO: Always use the message from ray syncer.
         if (data) {
           ResourceRequest resources;
           for (auto &resource_entry : *data) {
@@ -999,6 +1003,15 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
           }
           if (ResourceCreateUpdated(node_id, resources)) {
             cluster_task_manager_->ScheduleAndDispatchTasks();
+          }
+        }
+        // Update the resource view if a new message has been sent.
+        if (RayConfig::instance().use_ray_syncer()) {
+          if (auto sync_msg = ray_syncer_.GetSyncMessage(
+                  node_id.Binary(), syncer::MessageType::RESOURCE_VIEW)) {
+            if (sync_msg) {
+              ConsumeSyncMessage(sync_msg);
+            }
           }
         }
       }));
@@ -2490,7 +2503,7 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Report object spilling stats.
-  local_object_manager_.FillObjectSpillingStats(reply);
+  local_object_manager_.FillObjectStoreStats(reply);
   // Report object store stats.
   object_manager_.FillObjectStoreStats(reply);
   // As a result of the HandleGetNodeStats, we are collecting information from all

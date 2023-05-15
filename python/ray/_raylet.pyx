@@ -59,16 +59,20 @@ from ray.includes.common cimport (
     CObjectReference,
     CLanguage,
     CObjectReference,
+    CWorkerExitType,
     CRayObject,
     CRayStatus,
+    CErrorTableData,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
+    CLogBatch,
     CTaskArg,
     CTaskArgByReference,
     CTaskArgByValue,
     CTaskType,
     CPlacementStrategy,
+    CPythonFunction,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
     CNodeAffinitySchedulingStrategy,
@@ -92,6 +96,10 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
+    WORKER_EXIT_TYPE_USER_ERROR,
+    WORKER_EXIT_TYPE_SYSTEM_ERROR,
+    kResourceUnitScaling,
+    kWorkerSetupHookKeyName,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -173,11 +181,6 @@ current_task_id_lock = threading.Lock()
 
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
-
-cdef extern from "ray/common/constants.h" nogil:
-    cdef int kResourceUnitScaling
-
-RESOURCE_UNIT_SCALING = kResourceUnitScaling
 
 
 class ObjectRefGenerator:
@@ -591,6 +594,7 @@ cdef store_task_errors(
         exc,
         task_exception,
         actor,
+        actor_id,
         function_name,
         CTaskType task_type,
         proctitle,
@@ -611,15 +615,22 @@ cdef store_task_errors(
     # Generate the actor repr from the actor class.
     actor_repr = repr(actor) if actor else None
 
+    if actor_id is None or actor_id.is_nil():
+        actor_id = None
+    else:
+        actor_id = actor_id.hex()
+
     if isinstance(exc, RayTaskError):
         # Avoid recursive nesting of RayTaskError.
         failure_object = RayTaskError(function_name, backtrace,
                                       exc.cause, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
     else:
         failure_object = RayTaskError(function_name, backtrace,
                                       exc, proctitle=proctitle,
-                                      actor_repr=actor_repr)
+                                      actor_repr=actor_repr,
+                                      actor_id=actor_id)
 
     # Pass the failure object back to the CoreWorker.
     # We also cap the size of the error message to the last
@@ -703,6 +714,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         worker, error,
                         False,  # task_exception
                         None,  # actor
+                        None,  # actor id
                         function_name, task_type, title,
                         dynamic_returns, application_error)
             if num_errors_stored == 0:
@@ -745,6 +757,7 @@ cdef void execute_task(
     worker = ray._private.worker.global_worker
     manager = worker.function_actor_manager
     actor = None
+    actor_id = None
     cdef:
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
@@ -785,7 +798,8 @@ cdef void execute_task(
         print(task_name_magic_token, end="")
         print(task_name_magic_token, file=sys.stderr, end="")
     else:
-        actor = worker.actors[core_worker.get_actor_id()]
+        actor_id = core_worker.get_actor_id()
+        actor = worker.actors[actor_id]
         class_name = actor.__class__.__name__
         next_title = f"ray::{class_name}"
 
@@ -832,6 +846,7 @@ cdef void execute_task(
             return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
+        task_exception = False
         try:
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
@@ -871,20 +886,26 @@ cdef void execute_task(
                     args, kwargs = ray._private.signature.recover_args(args)
 
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                actor = worker.actors[core_worker.get_actor_id()]
+                actor_id = core_worker.get_actor_id()
+                actor = worker.actors[actor_id]
                 class_name = actor.__class__.__name__
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
 
-            worker.record_task_log_start()
+            # Record the task id via magic token in the log file.
+            # This will be used to locate the beginning of logs from a task.
+            attempt_number = core_worker.get_current_task_attempt_number()
+            task_attempt_magic_token = "{}{}-{}\n".format(
+                ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
+                attempt_number)
+            # Print on both .out and .err
+            print(task_attempt_magic_token, end="")
+            print(task_attempt_magic_token, file=sys.stderr, end="")
+
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    is_exiting = core_worker.is_exiting()
-                    if is_exiting:
-                        title = f"{title}::Exiting"
-                        next_title = f"{next_title}::Exiting"
                     with ray._private.worker._changeproctitle(title, next_title):
                         if debugger_breakpoint != b"":
                             ray.util.pdb.set_trace(
@@ -931,9 +952,14 @@ cdef void execute_task(
                                      exc_info=True)
                     raise e
                 finally:
-                    # Record the task logs end offsets regardless of
-                    # task execution results.
-                    worker.record_task_log_end()
+                    # Record the end of task via magic token in the log file.
+                    # This will be used to locate the end of logs from a task.
+                    task_attempt_magic_token = "{}{}-{}\n".format(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
+                        attempt_number)
+                    # Print on both .out and .err
+                    print(task_attempt_magic_token, end="")
+                    print(task_attempt_magic_token, file=sys.stderr, end="")
 
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
@@ -1010,7 +1036,7 @@ cdef void execute_task(
                     returns)
         except Exception as e:
             num_errors_stored = store_task_errors(
-                    worker, e, task_exception, actor, function_name,
+                    worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
@@ -1144,7 +1170,9 @@ cdef execute_task_with_cancellation_handler(
                 # Task cancellation can happen anytime so we don't really need
                 # to differentiate between mid-task or not.
                 False,  # task_exception
-                actor, execution_info.function_name,
+                actor,
+                actor_id,
+                execution_info.function_name,
                 task_type, title, returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
@@ -1194,7 +1222,6 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
         const c_string name_of_concurrency_group_to_execute,
         c_bool is_reattempt) nogil:
-
     with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
@@ -1732,6 +1759,66 @@ cdef class GcsClient:
             }
         return result
 
+cdef class GcsPublisher:
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
+    cdef:
+        shared_ptr[CPythonGcsPublisher] inner
+
+    def __cinit__(self, address):
+        self.inner.reset(new CPythonGcsPublisher(address))
+        check_status(self.inner.get().Connect())
+
+    def publish_error(self, key_id: bytes, error_type: str, message: str,
+                      job_id=None, num_retries=None):
+        cdef:
+            CErrorTableData error_info
+            int64_t c_num_retries = num_retries if num_retries else -1
+            c_string c_key_id = key_id
+
+        if job_id is None:
+            job_id = ray.JobID.nil()
+        assert isinstance(job_id, ray.JobID)
+        error_info.set_job_id(job_id.binary())
+        error_info.set_type(error_type)
+        error_info.set_error_message(message)
+        error_info.set_timestamp(time.time())
+
+        with nogil:
+            check_status(
+                self.inner.get().PublishError(c_key_id, error_info, c_num_retries))
+
+    def publish_logs(self, log_json: dict):
+        cdef:
+            CLogBatch log_batch
+            c_string c_job_id
+
+        job_id = log_json.get("job")
+        log_batch.set_ip(log_json.get("ip") if log_json.get("ip") else b"")
+        log_batch.set_pid(
+            str(log_json.get("pid")).encode() if log_json.get("pid") else b"")
+        log_batch.set_job_id(job_id.encode() if job_id else b"")
+        log_batch.set_is_error(bool(log_json.get("is_err")))
+        for line in log_json.get("lines", []):
+            log_batch.add_lines(line)
+        actor_name = log_json.get("actor_name")
+        log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
+        task_name = log_json.get("task_name")
+        log_batch.set_task_name(task_name.encode() if task_name else b"")
+
+        c_job_id = job_id.encode() if job_id else b""
+        with nogil:
+            check_status(self.inner.get().PublishLogs(c_job_id, log_batch))
+
+    def publish_function_key(self, key: bytes):
+        cdef:
+            CPythonFunction python_function
+
+        python_function.set_key(key)
+
+        with nogil:
+            check_status(self.inner.get().PublishFunctionKey(python_function))
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -1799,15 +1886,16 @@ cdef class CoreWorker:
         self.cgname_to_eventloop_dict = None
         self.fd_to_cgname_dict = None
         self.eventloop_for_default_cg = None
+        self.current_runtime_env = None
 
     def shutdown(self):
-        with nogil:
-            # If it's a worker, the core worker process should have been
-            # shutdown. So we can't call
-            # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
-            # Instead, we use the cached `is_driver` flag to test if it's a
-            # driver.
-            if self.is_driver:
+        # If it's a worker, the core worker process should have been
+        # shutdown. So we can't call
+        # `CCoreWorkerProcess.GetCoreWorker().GetWorkerType()` here.
+        # Instead, we use the cached `is_driver` flag to test if it's a
+        # driver.
+        if self.is_driver:
+            with nogil:
                 CCoreWorkerProcess.Shutdown()
 
     def notify_raylet(self):
@@ -1818,6 +1906,28 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.RunTaskExecutionLoop()
 
+    def exit_worker(self, exit_type: str, c_string detail):
+        """
+        Exit the current worker process. This API should only be used by
+        a worker. If this API is called, the worker will finish currently
+        executing task, initiate the shutdown, and stop itself gracefully.
+        The given exit_type and detail will be reported to GCS, and any
+        worker failure error will contain them.
+        """
+        cdef:
+            CWorkerExitType c_exit_type
+            cdef const shared_ptr[LocalMemoryBuffer] null_ptr
+
+        if exit_type == "user":
+            c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
+        if exit_type == "system":
+            c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
+        else:
+            raise ValueError(f"Invalid exit type: {exit_type}")
+        assert not self.is_driver
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
+
     def get_current_task_retry_exceptions(self):
         return CCoreWorkerProcess.GetCoreWorker(
             ).GetCurrentTaskRetryExceptions()
@@ -1825,6 +1935,9 @@ cdef class CoreWorker:
     def get_current_task_id(self):
         return TaskID(
             CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskId().Binary())
+
+    def get_current_task_attempt_number(self):
+        return CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskAttemptNumber()
 
     def get_task_depth(self):
         return CCoreWorkerProcess.GetCoreWorker().GetTaskDepth()
@@ -2934,9 +3047,6 @@ cdef class CoreWorker:
             self.current_runtime_env = serialized_env
 
         return self.current_runtime_env
-
-    def is_exiting(self):
-        return CCoreWorkerProcess.GetCoreWorker().IsExiting()
 
     cdef yield_current_fiber(self, CFiberEvent &fiber_event):
         with nogil:

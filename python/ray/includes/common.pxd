@@ -154,6 +154,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CWorkerType "ray::core::WorkerType":
         pass
+    cdef cppclass CWorkerExitType "ray::rpc::WorkerExitType":
+        pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
@@ -204,6 +206,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::core::WorkerType::SPILL_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::core::WorkerType::RESTORE_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_USER_ERROR "ray::rpc::WorkerExitType::USER_ERROR"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_SYSTEM_ERROR "ray::rpc::WorkerExitType::SYSTEM_ERROR"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -346,6 +350,21 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
         const CGcsNodeInfo& node_info)
 
+cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
+
+    cdef cppclass CPythonGcsPublisher "ray::gcs::PythonGcsPublisher":
+
+        CPythonGcsPublisher(const c_string& gcs_address)
+
+        CRayStatus Connect()
+
+        CRayStatus PublishError(
+            const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
+
+        CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
+
+        CRayStatus PublishFunctionKey(const CPythonFunction& python_function)
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
@@ -372,6 +391,29 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_bool is_dead() const
         CJobConfig config() const
 
+    cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
+        void set_key(const c_string &key)
+
+    cdef cppclass CErrorTableData "ray::rpc::ErrorTableData":
+        c_string job_id() const
+        c_string type() const
+        c_string error_message() const
+        double timestamp() const
+
+        void set_job_id(const c_string &job_id)
+        void set_type(const c_string &type)
+        void set_error_message(const c_string &error_message)
+        void set_timestamp(double timestamp)
+
+    cdef cppclass CLogBatch "ray::rpc::LogBatch":
+        void set_ip(const c_string &ip)
+        void set_pid(const c_string &pid)
+        void set_job_id(const c_string &job_id)
+        void set_is_error(c_bool is_error)
+        void add_lines(const c_string &line)
+        void set_actor_name(const c_string &actor_name)
+        void set_task_name(const c_string &task_name)
+
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
@@ -383,3 +425,7 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
         c_string GetName() const
         uint32_t GetMaxConcurrency() const
         c_vector[CFunctionDescriptor] GetFunctionDescriptors() const
+
+cdef extern from "ray/common/constants.h" nogil:
+    cdef const char[] kWorkerSetupHookKeyName
+    cdef int kResourceUnitScaling

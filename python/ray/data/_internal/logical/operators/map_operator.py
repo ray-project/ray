@@ -20,7 +20,7 @@ class AbstractMap(LogicalOperator):
         """
         Args:
             name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Datastream.
+                inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             ray_remote_args: Args to provide to ray.remote.
@@ -50,7 +50,7 @@ class AbstractUDFMap(AbstractMap):
         """
         Args:
             name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Datastream.
+                inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             fn: User-defined function to be called.

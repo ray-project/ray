@@ -1470,35 +1470,39 @@ class Policy(metaclass=ABCMeta):
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
             postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
-        # Switch on lazy to-tensor conversion on `postprocessed_batch`.
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        # Calling loss, so set `is_training` to True.
-        train_batch.set_training(True)
-        if seq_lens is not None:
-            train_batch[SampleBatch.SEQ_LENS] = seq_lens
-        train_batch.count = self._dummy_batch.count
-        # Call the loss function, if it exists.
-        # TODO(jungong) : clean up after all agents get migrated.
-        # We should simply do self.loss(...) here.
-        if self._loss is not None:
-            self._loss(self, self.model, self.dist_class, train_batch)
-        elif (
-            is_overridden(self.loss) or self.config.get("_enable_rl_module_api", False)
-        ) and not self.config["in_evaluation"]:
-            self.loss(self.model, self.dist_class, train_batch)
-        # Call the stats fn, if given.
-        # TODO(jungong) : clean up after all agents get migrated.
-        # We should simply do self.stats_fn(train_batch) here.
-        if stats_fn is not None:
-            stats_fn(self, train_batch)
-        if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
-            self.stats_fn(train_batch)
+
+        if not self.config.get("_enable_learner_api"):
+            # Switch on lazy to-tensor conversion on `postprocessed_batch`.
+            train_batch = self._lazy_tensor_dict(postprocessed_batch)
+            # Calling loss, so set `is_training` to True.
+            train_batch.set_training(True)
+            if seq_lens is not None:
+                train_batch[SampleBatch.SEQ_LENS] = seq_lens
+            train_batch.count = self._dummy_batch.count
+
+            # Call the loss function, if it exists.
+            # TODO(jungong) : clean up after all agents get migrated.
+            # We should simply do self.loss(...) here.
+            if self._loss is not None:
+                self._loss(self, self.model, self.dist_class, train_batch)
+            elif is_overridden(self.loss) and not self.config["in_evaluation"]:
+                self.loss(self.model, self.dist_class, train_batch)
+            # Call the stats fn, if given.
+            # TODO(jungong) : clean up after all agents get migrated.
+            # We should simply do self.stats_fn(train_batch) here.
+            if stats_fn is not None:
+                stats_fn(self, train_batch)
+            if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
+                self.stats_fn(train_batch)
 
         # Re-enable tracing.
         self._no_tracing = False
 
         # Add new columns automatically to view-reqs.
-        if auto_remove_unneeded_view_reqs:
+        if (
+            not self.config.get("_enable_learner_api")
+            and auto_remove_unneeded_view_reqs
+        ):
             # Add those needed for postprocessing and training.
             all_accessed_keys = (
                 train_batch.accessed_keys
