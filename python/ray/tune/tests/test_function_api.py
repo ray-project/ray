@@ -309,9 +309,9 @@ class FunctionApiTest(unittest.TestCase):
             pass
 
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_freq=1)
+            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_frequency=1))
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_at_end=True)
+            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_at_end=True))
 
     def testCheckpointFunctionAtEnd(self):
         def train(config, checkpoint_dir=False):

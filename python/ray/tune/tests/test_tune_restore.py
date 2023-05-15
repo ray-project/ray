@@ -40,7 +40,7 @@ class TuneRestoreTest(unittest.TestCase):
             "PG",
             name=test_name,
             stop={"training_iteration": 1},
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             storage_path=tmpdir,
             config={
                 "env": "CartPole-v0",
@@ -63,7 +63,7 @@ class TuneRestoreTest(unittest.TestCase):
             "PG",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},  # train one more iteration.
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             restore=self.checkpoint_path,  # Restore the checkpoint
             config={
                 "env": "CartPole-v0",
@@ -79,7 +79,7 @@ class TuneRestoreTest(unittest.TestCase):
             "PG",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             checkpoint_config=checkpoint_config,
             restore=self.checkpoint_path,
             config={

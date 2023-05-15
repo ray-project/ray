@@ -98,7 +98,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             scheduler=pbt,
             stop={"training_iteration": 10},
             num_samples=3,
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
             trial_executor=CustomExecutor(reuse_actors=False),
