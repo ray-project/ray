@@ -106,7 +106,7 @@ class FrameworkHyperparameters:
         """
         for module in marl_module._rl_modules.values():
             if isinstance(module, TorchRLModule):
-                self.torch_compile_config.compile(module)
+                module.compile(self.torch_compile_config)
         return marl_module
 
 

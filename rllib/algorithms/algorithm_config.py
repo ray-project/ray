@@ -2993,8 +2993,7 @@ class AlgorithmConfig(_Config):
         """Returns the TorchCompileConfig to use on learners."""
         return TorchCompileConfig(
             compile_forward_train=self.torch_compile_learner_forward_train,
-            compile_forward_exploration=self.torch_compile_learner_forward_exploration,
-            compile_forward_inference=self.torch_compile_learner_forward_inference,
+            compile_forward_exploration=self.torch_compile_worker_forward_exploration,
             torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
             torch_dynamo_mode=self.torch_compile_learner_dynamo_mode,
         )
@@ -3002,7 +3001,6 @@ class AlgorithmConfig(_Config):
     def get_torch_compile_worker_config(self):
         """Returns the TorchCompileConfig to use on workers."""
         return TorchCompileConfig(
-            compile_forward_train=self.torch_compile_worker_forward_train,
             compile_forward_exploration=self.torch_compile_worker_forward_exploration,
             compile_forward_inference=self.torch_compile_worker_forward_inference,
             torch_dynamo_backend=self.torch_compile_worker_dynamo_backend,
