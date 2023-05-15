@@ -11,7 +11,6 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
-from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
@@ -27,10 +26,14 @@ from ray.experimental.state.exception import RayStateApiException
 try:
     from pydantic.dataclasses import dataclass
 
+    from ray.dashboard.modules.job.pydantic_models import JobDetails
+
 except ImportError:
     # pydantic is not available in the dashboard.
     # We will use the dataclass from the standard library.
     from dataclasses import dataclass
+
+    JobDetails = object
 
 
 logger = logging.getLogger(__name__)
@@ -548,6 +551,12 @@ class JobState(StateSchema, JobDetails):
                 "error_type",
                 "driver_info",
             ]
+        if isinstance(JobDetails, object):
+            # We don't have pydantic in the dashboard. This is because
+            # we call this method at module import time, so we need to
+            # check if the class is a pydantic model.
+            return []
+
         return JobDetails.__fields__
 
     def asdict(self):
