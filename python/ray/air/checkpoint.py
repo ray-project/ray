@@ -26,6 +26,7 @@ from ray.air._internal.remote_storage import (
     read_file_from_uri,
     upload_to_uri,
 )
+from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -559,21 +560,22 @@ class Checkpoint:
             if local_path:
                 local_path_pathlib = Path(local_path).resolve()
                 if local_path_pathlib != path_pathlib:
-                    if path_pathlib.exists():
-                        shutil.rmtree(str(path_pathlib.absolute()))
                     # If this exists on the local path, just copy over
                     if move_instead_of_copy:
                         os.makedirs(str(path_pathlib.absolute()), exist_ok=True)
                         self._local_path = str(path_pathlib.absolute())
                         for inner in local_path_pathlib.iterdir():
+                            dest = path_pathlib / inner.name
+                            if dest.exists():
+                                # Ignore files that already exist.
+                                # For example, checkpoints from every rank may all have
+                                # a same .is_checkpoint file.
+                                continue
                             shutil.move(
                                 str(inner.absolute()), str(path_pathlib.absolute())
                             )
                     else:
-                        shutil.copytree(
-                            str(local_path_pathlib.absolute()),
-                            str(path_pathlib.absolute()),
-                        )
+                        _copy_dir_ignore_conflicts(local_path_pathlib, path_pathlib)
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
                 download_from_uri(uri=external_path, local_path=path, filelock=False)

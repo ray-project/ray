@@ -417,6 +417,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         response.content_type = "text/plain"
         await response.prepare(req)
 
+        logger.info(f"Streaming logs with options: {options}")
+
         # NOTE: The first byte indicates the success / failure of individual
         # stream. If the first byte is b"1", it means the stream was successful.
         # If it is b"0", it means it is failed.

@@ -42,6 +42,7 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CSchedulingStrategy,
+    CWorkerExitType,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -269,6 +270,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         void RecordTaskLogEnd(int64_t stdout_end_offset,
                               int64_t stderr_end_offset) const
+
+        void Exit(const CWorkerExitType exit_type,
+                  const c_string &detail,
+                  const shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes)
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
