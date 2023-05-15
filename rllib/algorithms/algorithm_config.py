@@ -281,7 +281,7 @@ class AlgorithmConfig(_Config):
             "inter_op_parallelism_threads": 8,
         }
         # Torch compile settings
-        self.torch_compile_learner_forward_train = True
+        self.torch_compile_learner_forward_train = False
         self.torch_compile_learner_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
@@ -786,6 +786,19 @@ class AlgorithmConfig(_Config):
             _tf1, _tf, _tfv = try_import_tf()
         else:
             _torch, _ = try_import_torch()
+
+        # Check if torch framework supports torch.compile.
+        if (
+            _torch is not None
+            and self.framework_str == "torch"
+            and int(_torch.__version__[0]) < 2
+            and (
+                self.torch_compile_learner_forward_train
+                or self.torch_compile_worker_forward_inference
+                or self.torch_compile_worker_forward_exploration
+            )
+        ):
+            raise ValueError("torch.compile is only supported from torch 2.0.0")
 
         self._check_if_correct_nn_framework_installed(_tf1, _tf, _torch)
         self._resolve_tf_settings(_tf1, _tfv)

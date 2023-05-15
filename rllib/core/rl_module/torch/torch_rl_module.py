@@ -93,6 +93,17 @@ class TorchRLModule(nn.Module, RLModule):
         Args:
             config: The TorchCompileConfig to use.
         """
+        # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
+        if (
+            self.framework_str == "torch"
+            and int(torch.__version__[0]) < 2
+            and (
+                self.torch_compile_learner_forward_train
+                or self.torch_compile_worker_forward_inference
+                or self.torch_compile_worker_forward_exploration
+            )
+        ):
+            raise ValueError("torch.compile is only supported from torch 2.0.0")
 
         if config.compile_forward_train:
             self.compile_forward_train(
