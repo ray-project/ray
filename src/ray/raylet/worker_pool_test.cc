@@ -488,7 +488,7 @@ class WorkerPoolTest : public ::testing::Test {
         std::move(options),
         /*delay_executor=*/
         [this](std::function<void()> task, uint32_t delay_ms) {
-          return execute_after(io_service_, task, delay_ms);
+          return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
         },
         /*runtime_env_agent_factory=*/
         [](const std::string &ip_address, int port) {
