@@ -32,7 +32,7 @@ except ImportError:
     # We will use the dataclass from the standard library.
     from dataclasses import dataclass
 
-    JobDetails = None
+    JobDetails = object
 
 
 logger = logging.getLogger(__name__)
