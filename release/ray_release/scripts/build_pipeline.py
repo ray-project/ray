@@ -246,7 +246,7 @@ def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
     Builds the Anyscale BYOD images for the given tests.
     """
     _ = set(test.get_ray_image() for test, _ in tests)
-    # TODO(aslonnie): Build anyscale boyd images for the given ray images
+    # TODO(aslonnie): Build anyscale byod images for the given ray images
     return
 
 
