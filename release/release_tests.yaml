@@ -3311,7 +3311,6 @@
     byod:
       type: gpu
       pre_run_cmds:
-        - sudo apt-get install curl
         - pip3 install pytest awscli
         - pip3 install 'ray[tune]'
         - pip3 install torch torchvision
