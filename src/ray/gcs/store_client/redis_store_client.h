@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
@@ -122,12 +124,13 @@ class RedisStoreClient : public StoreClient {
                             std::function<void()> send_request)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Pop requets from the sending queue.
+  // Take requests from the sending queue and erase the queue if it's
+  // empty.
   //
   // \param keys The keys to check for next request
   //
   // \return The requests to send.
-  std::vector<std::function<void()>> PopFromSendingQueue(
+  std::vector<std::function<void()>> TakeRequestsFromSendingQueue(
       const std::vector<std::string> &keys) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status DoPut(const std::string &key,
@@ -161,6 +164,7 @@ class RedisStoreClient : public StoreClient {
   // The queue will be poped when the request is processed.
   absl::flat_hash_map<std::string, std::queue<std::function<void()>>>
       pending_redis_request_by_key_ GUARDED_BY(mu_);
+  FRIEND_TEST(RedisStoreClientTest, Random);
 };
 
 }  // namespace gcs

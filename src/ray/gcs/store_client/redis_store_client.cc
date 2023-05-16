@@ -203,6 +203,12 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
                                           std::function<void(int64_t)> callback) {
+  if (keys.empty()) {
+    if (callback) {
+      callback(0);
+    }
+    return Status::OK();
+  }
   std::vector<std::string> redis_keys;
   redis_keys.reserve(keys.size());
   for (auto &key : keys) {
@@ -238,10 +244,13 @@ size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys
       queue_added++;
     }
     if (added) {
-      // There is no in-flight requests for this key which means
-      // in the callback the queue won't be poped. So just push
-      // an entry as placeholder to indicate there is pending
-      // requests.
+      // As an optimization, if there is no in-flight request in this queue, we
+      // don't need to store the actual send_request in the queue but just need
+      // a placeholder (to indicate there are pending requests). This is because either
+      // the send_request will be fired immediately (if all the depending queues are
+      // empty). otherwise the send_request in the last queue with pending in-flight
+      // requests will be called. In either case, the send_request will not be called in
+      // this queue.
       op_iter->second.push(nullptr);
     } else {
       op_iter->second.push(send_request);
@@ -250,13 +259,14 @@ size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys
   return queue_added;
 }
 
-std::vector<std::function<void()>> RedisStoreClient::PopFromSendingQueue(
+std::vector<std::function<void()>> RedisStoreClient::TakeRequestsFromSendingQueue(
     const std::vector<std::string> &keys) {
   std::vector<std::function<void()>> send_requests;
   for (const auto &key : keys) {
     auto [op_iter, added] =
         pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
     RAY_CHECK(added == false) << "Pop from a queue doesn't exist: " << key;
+    RAY_CHECK(op_iter->second.front() == nullptr);
     op_iter->second.pop();
     if (op_iter->second.empty()) {
       pending_redis_request_by_key_.erase(op_iter);
@@ -275,7 +285,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
   // For a query reading or writing multiple keys, we need a counter
   // to check whether all existing requests for this keys have been
   // processed.
-  auto num_ready_keys = std::make_shared<std::atomic<size_t>>(0);
+  auto num_ready_keys = std::make_shared<size_t>(0);
   std::function<void()> send_redis = [this,
                                       num_ready_keys = num_ready_keys,
                                       keys,
@@ -293,29 +303,30 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
     }
     // Send the actual request
     auto cxt = redis_client_->GetShardContext("");
-    cxt->RunArgvAsync(std::move(args),
-                      [this,
-                       keys = std::move(keys),
-                       redis_callback = std::move(redis_callback)](auto reply) {
-                        std::vector<std::function<void()>> requests;
-                        {
-                          absl::MutexLock lock(&mu_);
-                          requests = PopFromSendingQueue(keys);
-                        }
-                        for (auto &request : requests) {
-                          request();
-                        }
-                        if (redis_callback) {
-                          redis_callback(reply);
-                        }
-                      });
+    cxt->RunArgvAsync(
+        std::move(args),
+        [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
+            auto reply) {
+          std::vector<std::function<void()>> requests;
+          {
+            absl::MutexLock lock(&mu_);
+            requests = TakeRequestsFromSendingQueue(keys);
+          }
+          for (auto &request : requests) {
+            request();
+          }
+          if (redis_callback) {
+            redis_callback(reply);
+          }
+        });
   };
 
   {
     absl::MutexLock lock(&mu_);
     auto keys_ready = PushToSendingQueue(keys, send_redis);
     *num_ready_keys += keys_ready;
-    // We should be able to file it directly.
+    // If all queues are empty for each key this request depends on
+    // we are safe to fire the request immediately.
     if (*num_ready_keys == keys.size()) {
       *num_ready_keys = keys.size() - 1;
     } else {
@@ -490,7 +501,7 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
   std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
   std::vector<std::string> args = {"HEXISTS", external_storage_namespace_, redis_key};
   SendRedisCmd(
-      {key},
+      {redis_key},
       std::move(args),
       [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
         bool exists = reply->ReadAsInteger() > 0;
