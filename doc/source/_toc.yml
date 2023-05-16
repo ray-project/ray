@@ -380,7 +380,7 @@ parts:
               - file: cluster/vms/examples/ml-example
             - file: cluster/vms/references/index
           - file: cluster/configure-manage-dashboard
-            title: Applications Guide
+            title: Configuring and Managing the Dashboard
           - file: cluster/running-applications/index
             title: Applications Guide
           - file: cluster/faq
