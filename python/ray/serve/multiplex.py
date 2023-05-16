@@ -70,8 +70,12 @@ class _ModelMultiplexWrapper:
         )
 
         self.models_unload_counter = metrics.Counter(
-            "serve_multiplexed_models_load_counter",
+            "serve_multiplexed_models_unload_counter",
             description="The counter for unloaded models on the current replica.",
+        )
+        self.models_load_counter = metrics.Counter(
+            "serve_multiplexed_models_load_counter",
+            description="The counter for loaded models on the current replica.",
         )
 
         context = get_internal_replica_context()
@@ -125,6 +129,7 @@ class _ModelMultiplexWrapper:
                 self.model_unload_latency_s.set(time.time() - unload_start_time)
             # Load the model.
             logger.info(f"Loading model '{model_id}'.")
+            self.models_load_counter.inc()
             load_start_time = time.time()
             if self.self_arg is None:
                 self.models[model_id] = await self._func(model_id)

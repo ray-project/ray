@@ -783,6 +783,7 @@ def test_multiplexed_metrics(serve_start_shutdown):
         "serve_multiplexed_model_unload_latency_s",
         "serve_num_multiplexed_models",
         "serve_multiplexed_models_load_counter",
+        "serve_multiplexed_models_unload_counter",
     ]
 
     def verify_metrics():
