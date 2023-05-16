@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import os
-from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
+from typing import Any, Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -236,6 +236,8 @@ class TaskContext:
     # The underlying function called in a MapOperator; this is used when fusing
     # an AllToAllOperator with an upstream MapOperator.
     upstream_map_transform_fn: Optional["MapTransformFn"] = None
+
+    upstream_map_ray_remote_args: Dict[str, Any] = None
 
 
 # Block transform function applied by task and actor pools in MapOperator.

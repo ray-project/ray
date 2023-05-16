@@ -37,6 +37,7 @@ def generate_random_shuffle_fn(
         upstream_map_fn = None
         if map_transform_fn:
             upstream_map_fn = lambda block: map_transform_fn(block, ctx)  # noqa: E731
+            ray_remote_args = ctx.upstream_map_ray_remote_args
 
         shuffle_spec = ShuffleTaskSpec(
             random_shuffle=True,

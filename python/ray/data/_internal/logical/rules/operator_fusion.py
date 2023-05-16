@@ -255,7 +255,7 @@ class OperatorFusionRule(Rule):
         compute = None
         if isinstance(down_logical_op, AbstractUDFMap):
             compute = get_compute(down_logical_op._compute)
-        ray_remote_args = down_logical_op._ray_remote_args
+        ray_remote_args = up_logical_op._ray_remote_args
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
@@ -321,6 +321,7 @@ class OperatorFusionRule(Rule):
         up_logical_op: AbstractUDFMap = self._op_map.pop(up_op)
 
         # Fuse transformation functions.
+        ray_remote_args = up_logical_op._ray_remote_args
         down_transform_fn = down_op.get_transformation_fn()
         up_transform_fn = up_op.get_transformation_fn()
 
@@ -331,9 +332,9 @@ class OperatorFusionRule(Rule):
             in the TaskContext so that it may be used by the downstream
             AllToAllOperator's transform function."""
             ctx.upstream_map_transform_fn = up_transform_fn
+            ctx.upstream_map_ray_remote_args = ray_remote_args
             return down_transform_fn(blocks, ctx)
 
-        ray_remote_args = down_logical_op._ray_remote_args
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
