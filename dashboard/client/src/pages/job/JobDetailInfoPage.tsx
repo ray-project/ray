@@ -41,7 +41,7 @@ export const JobDetailInfoPage = () => {
           pageInfo={{
             title: "Info",
             id: "job-info",
-            path: undefined,
+            path: "info",
           }}
         />
         <Loading loading={isLoading} />

@@ -102,29 +102,31 @@ class ObjectRefStream {
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
   /// \return KeyError if it reaches to EoF. Ok otherwise.
-  Status AsyncReadNext(ObjectID *object_id_out);
+  Status TryReadNextItem(ObjectID *object_id_out);
 
-  /// Write the object id to the stream of an index idx.
+  /// Insert the object id to the stream of an index item_index.
   ///
-  /// If the idx has been already read (by AsyncReadNext),
-  /// the write request will be ignored. If the idx has been
+  /// If the item_index has been already read (by TryReadNextItem),
+  /// the write request will be ignored. If the item_index has been
   /// already written, it will be no-op. It doesn't override.
   ///
-  /// \param[in] object_id The object id that will be read at index idx.
-  /// \param[in] idx The index where the object id will be written.
+  /// \param[in] object_id The object id that will be read at index item_index.
+  /// \param[in] item_index The index where the object id will be written.
   /// \return True if the idx hasn't been used. False otherwise.
-  bool Write(const ObjectID &object_id, int64_t idx);
+  bool InsertToStream(const ObjectID &object_id, int64_t item_index);
 
   /// Mark the stream canont be used anymore.
-  void WriteEoF(int64_t idx);
+  ///
+  /// \param[in] The last item index that means the end of stream.
+  void MarkEndOfStream(int64_t item_index);
 
  private:
   const ObjectID generator_id_;
 
-  /// The index -> object reference ids.
-  absl::flat_hash_map<int64_t, ObjectID> idx_to_refs_;
+  /// The item_index -> object reference ids.
+  absl::flat_hash_map<int64_t, ObjectID> item_index_to_refs_;
   /// The last index of the stream.
-  /// idx < last will contain object references.
+  /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
   int64_t last_ = -1;
   /// The current index of the stream.
@@ -213,8 +215,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            bool is_application_error) override;
 
   /// Handle the task return reported before the task terminates.
-  void HandleReportIntermediateTaskReturn(
-      const rpc::ReportIntermediateTaskReturnRequest &request);
+  void HandleReportGeneratorItemReturns(
+      const rpc::ReportGeneratorItemReturnsRequest &request);
 
   /// Delete the object ref stream.
   ///
@@ -259,7 +261,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
   /// \return KeyError if it reaches to EoF. Ok otherwise.
-  Status AsyncReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
+  Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
 
   /// Returns true if task can be retried.
   ///
@@ -601,8 +603,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param task_entry Task entry for the corresponding task attempt
   void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
 
-  Status AsyncReadObjectRefStreamInternal(const ObjectID &generator_id,
-                                          ObjectID *object_id_out)
+  Status TryReadObjectRefStreamInternal(const ObjectID &generator_id,
+                                        ObjectID *object_id_out)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Used to store task results.

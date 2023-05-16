@@ -30,7 +30,7 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-Status ObjectRefStream::AsyncReadNext(ObjectID *object_id_out) {
+Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   bool is_eof_set = last_ != -1;
   if (is_eof_set && curr_ >= last_) {
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
@@ -39,8 +39,8 @@ Status ObjectRefStream::AsyncReadNext(ObjectID *object_id_out) {
     return Status::ObjectRefStreamEoF("");
   }
 
-  auto it = idx_to_refs_.find(curr_);
-  if (it != idx_to_refs_.end()) {
+  auto it = item_index_to_refs_.find(curr_);
+  if (it != item_index_to_refs_.end()) {
     // If the current index has been written,
     // return the object ref.
     // The returned object ref will always have a ref count of 1.
@@ -61,18 +61,18 @@ Status ObjectRefStream::AsyncReadNext(ObjectID *object_id_out) {
   return Status::OK();
 }
 
-bool ObjectRefStream::Write(const ObjectID &object_id, int64_t idx) {
+bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_index) {
   if (last_ != -1) {
     RAY_CHECK(curr_ <= last_);
   }
 
-  if (idx < curr_) {
+  if (item_index < curr_) {
     // Index is already used. Don't write it to the stream.
     return false;
   }
 
-  auto it = idx_to_refs_.find(idx);
-  if (it != idx_to_refs_.end()) {
+  auto it = item_index_to_refs_.find(item_index);
+  if (it != item_index_to_refs_.end()) {
     // It means the when a task is retried it returns a different object id
     // for the same index, which means the task was not deterministic.
     // Fail the owner if it happens.
@@ -83,11 +83,11 @@ bool ObjectRefStream::Write(const ObjectID &object_id, int64_t idx) {
         << ". It means a undeterministic task has been retried. Disable the retry "
            "feature using `max_retries=0` (task) or `max_task_retries=0` (actor).";
   }
-  idx_to_refs_.emplace(idx, object_id);
+  item_index_to_refs_.emplace(item_index, object_id);
   return true;
 }
 
-void ObjectRefStream::WriteEoF(int64_t idx) { last_ = idx; }
+void ObjectRefStream::MarkEndOfStream(int64_t item_index) { last_ = item_index; }
 
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
@@ -382,7 +382,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
 
     while (true) {
       ObjectID object_id;
-      const auto &status = AsyncReadObjectRefStreamInternal(generator_id, &object_id);
+      const auto &status = TryReadObjectRefStreamInternal(generator_id, &object_id);
 
       // keyError means the stream reaches to EoF.
       if (status.IsObjectRefStreamEoF()) {
@@ -410,21 +410,22 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   }
 }
 
-Status TaskManager::AsyncReadObjectRefStreamInternal(const ObjectID &generator_id,
-                                                     ObjectID *object_id_out) {
+Status TaskManager::TryReadObjectRefStreamInternal(const ObjectID &generator_id,
+                                                   ObjectID *object_id_out) {
   RAY_CHECK(object_id_out != nullptr);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
-      << "AsyncReadObjectRefStream API can be used only when the stream has been created "
+      << "TryReadObjectRefStreamInternal API can be used only when the stream has been "
+         "created "
          "and not removed.";
-  const auto &status = stream_it->second.AsyncReadNext(object_id_out);
+  const auto &status = stream_it->second.TryReadNextItem(object_id_out);
   return status;
 }
 
-Status TaskManager::AsyncReadObjectRefStream(const ObjectID &generator_id,
-                                             ObjectID *object_id_out) {
+Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
+                                           ObjectID *object_id_out) {
   absl::MutexLock lock(&mu_);
-  return AsyncReadObjectRefStreamInternal(generator_id, object_id_out);
+  return TryReadObjectRefStreamInternal(generator_id, object_id_out);
 }
 
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
@@ -433,21 +434,21 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
   return it != object_ref_streams_.end();
 }
 
-void TaskManager::HandleReportIntermediateTaskReturn(
-    const rpc::ReportIntermediateTaskReturnRequest &request) {
+void TaskManager::HandleReportGeneratorItemReturns(
+    const rpc::ReportGeneratorItemReturnsRequest &request) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
-  int64_t idx = request.idx();
+  int64_t item_index = request.item_index();
   // Every generated object has the same task id.
-  RAY_LOG(DEBUG) << "Received an intermediate result of index " << idx
+  RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
 
   if (request.finished()) {
     absl::MutexLock lock(&mu_);
-    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << idx;
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << item_index;
     auto stream_it = object_ref_streams_.find(generator_id);
     if (stream_it != object_ref_streams_.end()) {
-      stream_it->second.WriteEoF(idx);
+      stream_it->second.MarkEndOfStream(item_index);
     }
     // The last report should not have any return objects.
     RAY_CHECK(request.dynamic_return_objects_size() == 0);
@@ -468,7 +469,7 @@ void TaskManager::HandleReportIntermediateTaskReturn(
       absl::MutexLock lock(&mu_);
       auto stream_it = object_ref_streams_.find(generator_id);
       if (stream_it != object_ref_streams_.end()) {
-        index_not_used_yet = stream_it->second.Write(object_id, idx);
+        index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
       }
       // TODO(sang): Update the reconstruct ids and task spec
       // when we support retry.
@@ -485,7 +486,7 @@ void TaskManager::HandleReportIntermediateTaskReturn(
       // It is okay now because we don't support retry yet. But when
       // we support retry, we should guarantee it is not called
       // after the task resubmission. We can do it by guaranteeing
-      // HandleReportIntermediateTaskReturn is not called after the task
+      // HandleReportGeneratorItemReturns is not called after the task
       // CompletePendingTask.
       reference_counter_->UpdateObjectReady(object_id);
       HandleTaskReturn(object_id,
