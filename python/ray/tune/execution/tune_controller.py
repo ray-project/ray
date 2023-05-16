@@ -398,7 +398,8 @@ class TuneController(_TuneControllerBase):
 
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
-            # logger.debug("Waiting for actor manager to clean up final state")
+            if _dedup_logs("actor_manager_cleanup", str(start)):
+                logger.debug("Waiting for actor manager to clean up final state")
             self._actor_manager.next(timeout=1)
 
         logger.debug("Force cleanup of remaining actors")
