@@ -760,6 +760,7 @@ class RunConfig:
 
     def __post_init__(self):
         from ray.tune.syncer import SyncConfig, Syncer
+        from ray.tune.utils.log import Verbosity
         from ray.tune.utils.util import _resolve_storage_path
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
