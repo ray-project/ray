@@ -433,10 +433,8 @@ class BlockAccessor:
             import pyarrow as pa
 
             try:
-                return ArrowBlockAccessor.numpy_to_block(
-                    batch, passthrough_arrow_not_implemented_errors=True
-                )
-            except (pa.ArrowNotImplementedError, pa.ArrowInvalid):
+                return ArrowBlockAccessor.numpy_to_block(batch)
+            except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
                 import pandas as pd
 
                 # TODO(ekl) once we support Python objects within Arrow blocks, we
