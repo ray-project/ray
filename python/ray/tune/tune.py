@@ -535,9 +535,9 @@ def run(
     if _remote:
         if get_air_verbosity(verbose) is not None:
             logger.info(
-                "[output] This will use the legacy output and progress reporter, "
+                "[output] This uses the legacy output and progress reporter, "
                 "as Ray client is not supported by the new engine. "
-                "For more information, please see "
+                "For more information, see "
                 "https://docs.ray.io/en/master/ray-air/experimental-features.html"
             )
 
@@ -594,7 +594,7 @@ def run(
     air_verbosity = get_air_verbosity(verbose)
     if air_verbosity is not None and IS_NOTEBOOK:
         logger.info(
-            "[output] This will use the legacy output and progress reporter, "
+            "[output] This uses the legacy output and progress reporter, "
             "as Jupyter notebooks are not supported by the new engine, yet. "
             "For more information, please see "
             "https://docs.ray.io/en/master/ray-air/experimental-features.html"
@@ -1134,9 +1134,9 @@ def run_experiments(
     if _remote:
         if get_air_verbosity(verbose) is not None:
             logger.info(
-                "[output] This will use the legacy output and progress reporter, "
+                "[output] This uses the legacy output and progress reporter, "
                 "as Ray client is not supported by the new engine. "
-                "For more information, please see "
+                "For more information, see "
                 "https://docs.ray.io/en/master/ray-air/experimental-features.html"
             )
         remote_run = ray.remote(num_cpus=0)(run_experiments)

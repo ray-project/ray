@@ -6,21 +6,20 @@ Experimental features in Ray AIR
 
 We're testing a number of experimental features in Ray AIR.
 
-During development and internal dogfooding, the features
+During development, the features
 are disabled per default. You can opt-in by setting a
 feature-specific environment variable.
 
-After some time, we enable the feature per default to gather
-more feedback from the community. In that case, they can still
-be disabled using the same environment variable. This will
-fully revert to the old behavior, should the new behavior
-not suffice your needs.
+After some time, the Ray Team enables the feature by default to gather
+more feedback from the community. In that case, you can still
+disable the feature using the same environment variable to
+fully revert to the old behavior.
 
 If you run into issues with experimental features,
-please `open an issue <https://github.com/ray-project/ray/issues/>`_
-on GitHub and let us know! This will give
-us the chance to incorporate your feedback before we remove
-the old implementation and make the new implementation the
+`open an issue <https://github.com/ray-project/ray/issues/>`_
+on GitHub. The Ray Team considers
+ feedback before removing
+the old implementation and making the new implementation the
 default.
 
 .. note::
@@ -35,29 +34,28 @@ New output engine
 
 .. note::
 
-    This feature is *enabled per default* starting Ray 2.5.
+    This feature is *enabled by default* in Ray 2.5.
 
     To disable, set the environment variable ``RAY_AIR_NEW_OUTPUT=0``.
 
-We've added a new output engine for Ray Train and Ray Tune runs.
+An additional output engine is available for Ray Train and Ray Tune runs.
 
-The new output engine will affect how the training progress
+This output engine affects how the training progress
 is printed in the console.
 
-The new features include:
+The features include:
 
-- Ray Train runs will report status relevant to the single training run.
-  It will not use the default Ray Tune table layout from before.
+- Ray Train runs report status relevant to the single training run.
+  It does not use the default Ray Tune table layout from previous versions.
 - The table format has been updated.
-- We report configurations and observed metrics in a different format
-- The default metrics displayed for e.g. RLlib runs are heavily reduce
-  in the console output.
-- We generally uncluttered a lot of output and made it easier to
-  read.
+- The format of reporting configurations and observed metrics is different from pervious versions.
+- Significant reduction in the default metrics displayed in the console output for runs (e.g., RLlib runs).
+- Decluttered the output to improve readability.
+ 
 
-The new output currently only works for the regular console.
-Notably, it is automatically disabled when Jupyter Notebooks
-or Ray client is used.
+This output feature only works for the regular console.
+It is automatically disabled when you use Jupyter Notebooks
+or Ray client.
 
 
 .. _air-experimental-rich:
@@ -67,24 +65,24 @@ Rich layout (sticky status)
 
 .. note::
 
-    This feature is *disabled per default*.
+    This feature is *disabled by default*.
 
     To enable, set the environment variable ``RAY_AIR_RICH_LAYOUT=1``.
 
-As part of the :ref:`new output engine <air-experimental-new-output>`,
-we've introduced an advanced layout using the
+The :ref:`new output engine <air-experimental-new-output>`,
+has an advanced layout using the
 `rich <https://github.com/Textualize/rich>`_ library.
 
-In the current iteration, the *rich* layout provides a sticky
-status table: The regular console logs will continue to be printed
-as before, but the trial overview table (in Ray Tune) will be stuck to the bottom of the
+The *rich* layout provides a sticky
+status table: The regular console logs are still printed
+as before, but the trial overview table (in Ray Tune) is stuck to the bottom of the
 screen and periodically updated.
 
 This feature is still in development. You can opt-in to try
 it out.
 
-To opt-in, you need to set the ``RAY_AIR_RICH_LAYOUT=1`` environment variable
-and have rich installed (``pip install rich``).
+To opt-in, set the ``RAY_AIR_RICH_LAYOUT=1`` environment variable
+and install rich (``pip install rich``).
 
 .. figure:: images/rich-sticky-status.png
 
@@ -96,24 +94,24 @@ New trial execution engine
 
 .. note::
 
-    This feature is *enabled per default* starting Ray 2.5.
+    This feature is *enabled by default* starting Ray 2.5.
 
     To disable, set the environment variable ``TUNE_NEW_EXECUTION=0``.
 
 
-We've implemented a new trial execution engine in Ray Tune.
-Since Ray Tune is currently also the execution backend for
-Ray Train, this affects both tuning and training runs.
+Ray Tune has an updated trial execution engine.
+Since Ray Tune is also the execution backend for
+Ray Train, the updated engine affects both tuning and training runs.
 
-Technically, we've refactored the :ref:`TrialRunner <trialrunner-docstring>`
-to use a new, generic Ray actor and future manager instead of
-the old ``RayTrialExecutor``.
+The update is a refactor of the :ref:`TrialRunner <trialrunner-docstring>`
+uses a generic Ray actor and future manager instead of
+the previous ``RayTrialExecutor``.
 
 Our CI and release tests all run (and pass) with the new execution engine.
 In most cases, you should not see any change to the previous
 behavior.
 
-However, if you notice any odd behavior, you can try to opt out of
+However, if you notice any odd behavior, you can opt out of
 the new execution engine and see if it resolves your problem.
 
 In that case, please `open an issue <https://github.com/ray-project/ray/issues/>`_
@@ -123,14 +121,14 @@ Things to look out for:
 
 - Less trials are running in parallel than before
 - It takes longer to start new trials (or goes much faster)
-- The tuning run finished, but the script does not exit
+- The tuning run finishes, but the script does not exit
 - The end-to-end runtime is much slower than before
 - The CPU load on the head node is high,
   even though the training jobs don't
   require many resources or don't run on the head node
 - Any exceptions are raised that indicate an error in starting or
-  stopping trials or the experiment.
+  stopping trials or the experiment
 
-Again, we're testing against all these potential regressions, and
+Note that some edge cases may not be captured in the regression tests. Your feedback is welcome.
 mitigated every bug we found. But there are sometimes edge cases
 we don't capture, yet. Your feedback is very welcome here.
