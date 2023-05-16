@@ -33,6 +33,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
+from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -81,9 +82,6 @@ from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
-
-TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
-
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
 under input and input_config keys. E.g.
@@ -1279,9 +1277,7 @@ class AlgorithmConfig(_Config):
             self.local_tf_session_args = local_tf_session_args
 
         if torch_compile_learner is not NotProvided:
-            self.torch_compile_learner = (
-                torch_compile_learner
-            )
+            self.torch_compile_learner = torch_compile_learner
         if torch_compile_learner_dynamo_backend is not NotProvided:
             self.torch_compile_learner_dynamo_backend = (
                 torch_compile_learner_dynamo_backend
