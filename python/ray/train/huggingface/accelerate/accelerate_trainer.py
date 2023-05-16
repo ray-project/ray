@@ -119,7 +119,7 @@ class AccelerateTrainer(TorchTrainer):
 
             import ray
             from ray.air import session, Checkpoint
-            from ray.train.hf_accelerate import AccelerateTrainer
+            from ray.train.huggingface import AccelerateTrainer
             from ray.air.config import ScalingConfig
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig

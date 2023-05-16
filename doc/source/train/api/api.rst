@@ -168,7 +168,7 @@ Accelerate
 .. autosummary::
     :toctree: doc/
 
-    ~train.hf_accelerate.AccelerateTrainer
+    ~train.huggingface.AccelerateTrainer
 
 Scikit-Learn
 ~~~~~~~~~~~~
