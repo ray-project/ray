@@ -2,9 +2,18 @@ from ray._private.async_compat import sync_to_async
 from collections import OrderedDict
 from typing import Any, Callable
 import logging
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
+)
 import inspect
 import asyncio
+from ray.serve.context import (
+    get_global_client,
+    get_internal_replica_context,
+)
+from ray.serve._private.common import MultiplexedReplicaInfo
+from ray._private.utils import run_background_task
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -40,9 +49,19 @@ class _ModelMultiplexWrapper:
                 per replica.
         """
         self.models = OrderedDict()
-        self._func = model_load_func
-        self.self_arg = self_arg
-        self.max_num_models_per_replica = max_num_models_per_replica
+        self._func: Callable = model_load_func
+        self.self_arg: Any = self_arg
+        self.max_num_models_per_replica: int = max_num_models_per_replica
+
+        context = get_internal_replica_context()
+        self._deployment_name: str = context.deployment
+        self._replica_tag: str = context.replica_tag
+
+        # Whether to push the multiplexed replica info to the controller.
+        self._push_multiplexed_replica_info: bool = False
+
+        # Push the model IDs to the controller periodically.
+        run_background_task(self._push_model_ids())
 
     async def load_model(self, model_id: str) -> Any:
         """Load the model if it is not loaded yet, and return the user-constructed model object.
@@ -79,6 +98,7 @@ class _ModelMultiplexWrapper:
                 self.models[model_id] = await self._func(model_id)
             else:
                 self.models[model_id] = await self._func(self.self_arg, model_id)
+            self._push_multiplexed_replica_info = True
         return self.models[model_id]
 
     async def unload_model(self) -> None:
@@ -94,3 +114,21 @@ class _ModelMultiplexWrapper:
             else:
                 await sync_to_async(model.__del__)()
             setattr(model, "__del__", lambda _: None)
+
+    async def _push_model_ids(self):
+        """Push the model IDs to the controller."""
+
+        while True:
+            try:
+                if self._push_multiplexed_replica_info:
+                    get_global_client().record_multiplexed_replica_info(
+                        MultiplexedReplicaInfo(
+                            self._deployment_name, self._replica_tag, self.models.keys()
+                        )
+                    )
+                    self._push_multiplexed_replica_info = False
+            except Exception as e:
+                logger.warning(
+                    f"Failed to push the model IDs to the controller. Error: {e}"
+                )
+            await asyncio.sleep(PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S)

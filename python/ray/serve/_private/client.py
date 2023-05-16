@@ -13,6 +13,7 @@ from ray.serve._private.common import (
     StatusOverview,
     ApplicationStatus,
     DeploymentStatusInfo,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
@@ -526,3 +527,7 @@ class ServeControllerClient:
             f"Deployment '{name}{':'+version if version else ''}' is ready"
             f"{url_part}. {tag}"
         )
+
+    @_ensure_connected
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        self._controller.record_multiplexed_replica_info.remote(info)
