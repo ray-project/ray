@@ -210,7 +210,7 @@ class TransformersPredictor(Predictor):
             >>> import pandas as pd
             >>> from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
             >>> from transformers.pipelines import pipeline
-            >>> from ray.train.hf_transformers import TransformersPredictor
+            >>> from ray.train.huggingface import TransformersPredictor
             >>>
             >>> model_checkpoint = "gpt2"
             >>> tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
