@@ -6,17 +6,12 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import jsonschema
 import yaml
+from ray_release.test import Test
 from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.util import DeferredEnvVar, deep_update
-
-
-class Test(dict):
-    """A class represents a test to run on buildkite"""
-
-    pass
 
 
 class TestDefinition(dict):
@@ -44,9 +39,6 @@ DEFAULT_CLOUD_ID = DeferredEnvVar(
 DEFAULT_ANYSCALE_PROJECT = DeferredEnvVar(
     "RELEASE_DEFAULT_PROJECT",
     "prj_FKRmeV5pA6X72aVscFALNC32",
-)
-DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
 )
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

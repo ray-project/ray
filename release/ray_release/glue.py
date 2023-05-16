@@ -12,8 +12,8 @@ from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
+from ray_release.test import Test
 from ray_release.config import (
-    Test,
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
