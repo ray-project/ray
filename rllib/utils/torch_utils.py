@@ -96,7 +96,7 @@ def clip_gradients(
     *,
     grad_clip: Optional[float] = None,
     grad_clip_by: str = "value",
-) -> None:
+) -> Optional[float]:
     """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
 
     Changes the provided gradient dict in place.
@@ -106,6 +106,10 @@ def clip_gradients(
         grad_clip: The value to clip with. The way gradients are clipped is defined
             by the `grad_clip_by` arg (see below).
         grad_clip_by: One of 'value', 'norm', or 'global_norm'.
+
+    Returns:
+        If `grad_clip_by`="global_norm" and `grad_clip` is not None, returns the global
+        norm of all tensors, otherwise returns None.
     """
     # No clipping, return.
     if grad_clip is None:
@@ -132,7 +136,7 @@ def clip_gradients(
         ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
 
         # Compute the global L2-norm of all the gradient tensors.
-        total_l2_norm = sum(
+        global_norm = sum(
             # `.norm()` is the square root of the sum of all squares.
             # We need to "undo" the square root b/c we want to compute the global
             # norm afterwards -> `** 2`.
@@ -141,13 +145,16 @@ def clip_gradients(
             if t is not None
         )
         # Now we do the square root.
-        total_l2_norm = torch.sqrt(total_l2_norm)
+        global_norm = torch.sqrt(global_norm)
 
         # Clip all the gradients.
-        if total_l2_norm > grad_clip:
+        if global_norm > grad_clip:
             for tensor in gradients_dict.values():
                 if tensor is not None:
-                    tensor.mul_(grad_clip / total_l2_norm)
+                    tensor.mul_(grad_clip / global_norm)
+
+        # Return the computed global norm scalar.
+        return global_norm
 
 
 @PublicAPI

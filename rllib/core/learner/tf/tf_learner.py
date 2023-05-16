@@ -7,9 +7,11 @@ from typing import (
     Any,
     Callable,
     Hashable,
+    List,
     Mapping,
     Optional,
     Sequence,
+    Tuple,
     Union,
 )
 
@@ -103,28 +105,31 @@ class TfLearner(Learner):
     @override(Learner)
     def compute_gradients(
         self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
-    ) -> ParamDictType:
+    ) -> Tuple[ParamDictType, ResultDict]:
         grads = tape.gradient(loss[self.TOTAL_LOSS_KEY], self._params)
-        return grads
+        return grads, {}
 
     @override(Learner)
     def postprocess_gradients(
         self,
         gradients_dict: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        """Postprocesses gradients depending on the optimizer config."""
+    ) -> Tuple[ParamDictType, ResultDict]:
 
         # Perform gradient clipping, if necessary.
-        clip_gradients(
+        clip_by = self._optimizer_config.get("grad_clip_by")
+        global_norm = clip_gradients(
             gradients_dict,
             grad_clip=self._optimizer_config.get("grad_clip"),
-            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
+            grad_clip_by=clip_by,
         )
+        stats = {}
+        if clip_by == "global_norm":
+            stats["gradients_global_norm"] = global_norm
 
-        return gradients_dict
+        return gradients_dict, stats
 
     @override(Learner)
-    def apply_gradients(self, gradients: ParamDictType) -> None:
+    def apply_gradients(self, gradients: ParamDictType) -> ResultDict:
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
@@ -141,6 +146,8 @@ class TfLearner(Learner):
                 if gradients[param_ref] is not None
             ]
             optim.apply_gradients(zip(gradient_list, variable_list))
+
+        return {}
 
     @override(Learner)
     def load_state(
@@ -442,7 +449,7 @@ class TfLearner(Learner):
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         reduce_fn: Callable[[ResultDict], ResultDict] = ...,
-    ) -> Mapping[str, Any]:
+    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         # TODO (Kourosh): The update of learner is vastly differnet than the base
         #  class. So we need to unify them.
         missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
@@ -484,7 +491,7 @@ class TfLearner(Learner):
         batch: MultiAgentBatch,
         _ray_trace_ctx=None,
     ) -> Mapping[str, Any]:
-        # TODO (Avnish): Match this base class's implementation.
+        # TODO (Avnish): Match the base class's implementation.
         def helper(_batch):
             # TODO (Kourosh): We need to go back to NestedDict because that's the
             #  constraint on forward_train and compute_loss APIs. This seems to be
@@ -535,8 +542,8 @@ class TfLearner(Learner):
         # Not sure why we need to do this here besides setting the original
         # tf Variable `self.curr_lr_per_module[module_id]`. But when tf creates the
         # optimizer, it seems to detach its lr value from the given variable.
-        # Updating this variable is NOT sufficient to update the actual optimizer's
-        # learning rate, so we have to explicitly set it here.
+        # Thus, updating this variable is NOT sufficient to update the actual
+        # optimizer's learning rate, so we have to explicitly set it here.
         if self.hps.lr_schedule is not None:
             self._named_optimizers[module_id].lr = new_lr
 

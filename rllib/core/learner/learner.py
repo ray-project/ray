@@ -1096,7 +1096,7 @@ class Learner:
         fwd_out = self._module.forward_train(tensorbatch)
         loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
 
-        gradients = self.compute_gradients(loss)
+        gradients, stats = self.compute_gradients(loss)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
         results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)

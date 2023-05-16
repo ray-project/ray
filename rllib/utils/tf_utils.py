@@ -33,7 +33,7 @@ def clip_gradients(
     *,
     grad_clip: Optional[float] = None,
     grad_clip_by: str = "value",
-) -> None:
+) -> Optional[float]:
     """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
 
     Changes the provided gradient dict in place.
@@ -43,6 +43,10 @@ def clip_gradients(
         grad_clip: The value to clip with. The way gradients are clipped is defined
             by the `grad_clip_by` arg (see below).
         grad_clip_by: One of 'value', 'norm', or 'global_norm'.
+
+    Returns:
+        If `grad_clip_by`="global_norm" and `grad_clip` is not None, returns the global
+        norm of all tensors, otherwise returns None.
     """
     # No clipping, return.
     if grad_clip is None:
@@ -62,11 +66,14 @@ def clip_gradients(
     else:
         assert grad_clip_by == "global_norm"
 
-        clipped_grads, _ = tf.clip_by_global_norm(
+        clipped_grads, global_norm = tf.clip_by_global_norm(
             list(gradients_dict.values()), grad_clip
         )
         for k, v in zip(gradients_dict.copy().keys(), clipped_grads):
             gradients_dict[k] = v
+
+        # Return the computed global norm scalar.
+        return global_norm
 
 
 @PublicAPI
