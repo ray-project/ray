@@ -16,6 +16,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Tuple,
     Type,
     Union,
     TYPE_CHECKING,
@@ -226,6 +227,59 @@ def _ray_auto_init(entrypoint: str):
             "For cluster usage or custom Ray initialization, "
             f"call `ray.init(...)` before `{entrypoint}`."
         )
+
+
+def _resolve_and_validate_storage_path(
+    storage_path: str, local_dir: Optional[str], sync_config: Optional[SyncConfig]
+) -> Tuple[str, str, Optional[str], SyncConfig]:
+    # TODO(ml-team): Simplify/remove this in 2.6 when `local_dir`
+    # and `SyncConfig(upload_dir)` are hard-deprecated.
+    sync_config = sync_config or SyncConfig()
+
+    # Resolve storage_path
+    local_path, remote_path = _resolve_storage_path(
+        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
+    )
+
+    if sync_config.upload_dir:
+        assert remote_path == sync_config.upload_dir
+        warnings.warn(
+            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
+            "in the future. Pass `RunConfig.storage_path` instead."
+        )
+        # Set upload_dir to None to avoid further downstream resolution.
+        # Copy object first to not alter user input.
+        sync_config = copy.copy(sync_config)
+        sync_config.upload_dir = None
+
+    if local_dir:
+        assert local_path == local_dir
+        warnings.warn(
+            "Passing a `local_dir` is deprecated and will be removed "
+            "in the future. Pass `storage_path` instead or set the"
+            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
+        )
+        local_path = local_dir
+
+    if not remote_path:
+        # If no remote path is set, try to get Ray Storage URI
+        remote_path = _get_storage_uri()
+        if remote_path:
+            logger.info(
+                "Using configured Ray storage URI as storage path: " f"{remote_path}"
+            )
+
+    sync_config.validate_upload_dir(remote_path)
+
+    if not local_path:
+        local_path = _get_defaults_results_dir()
+
+    storage_path = storage_path or remote_path or local_path
+
+    if storage_path != local_path and local_path:
+        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+
+    return storage_path, local_path, remote_path, sync_config
 
 
 class _Config(abc.ABC):
@@ -630,50 +684,18 @@ def run(
             f"Got '{type(config)}' instead."
         )
 
-    sync_config = sync_config or SyncConfig()
-
-    # Resolve storage_path
-    local_path, remote_path = _resolve_storage_path(
-        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
+    (
+        storage_path,
+        local_path,
+        remote_path,
+        sync_config,
+    ) = _resolve_and_validate_storage_path(
+        storage_path=storage_path, local_dir=local_dir, sync_config=sync_config
     )
 
-    if sync_config.upload_dir:
-        assert remote_path == sync_config.upload_dir
-        warnings.warn(
-            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
-            "in the future. Pass `RunConfig.storage_path` instead."
-        )
-        # Set upload_dir to None to avoid further downstream resolution.
-        # Copy object first to not alter user input.
-        sync_config = copy.copy(sync_config)
-        sync_config.upload_dir = None
-
-    if local_dir:
-        assert local_path == local_dir
-        warnings.warn(
-            "Passing a `local_dir` is deprecated and will be removed "
-            "in the future. Pass `storage_path` instead or set the"
-            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
-        )
-        local_path = local_dir
-
-    if not remote_path:
-        # If no remote path is set, try to get Ray Storage URI
-        remote_path = _get_storage_uri()
-        if remote_path:
-            logger.info(
-                "Using configured Ray storage URI as storage path: " f"{remote_path}"
-            )
-
-    sync_config.validate_upload_dir(remote_path)
-
-    if not local_path:
-        local_path = _get_defaults_results_dir()
-
-    storage_path = storage_path or remote_path or local_path
-
-    if storage_path != local_path and local_path:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+    air_usage.tag_ray_air_storage_config(
+        local_path=local_path, remote_path=remote_path, sync_config=sync_config
+    )
 
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):
