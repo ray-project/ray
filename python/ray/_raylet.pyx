@@ -315,7 +315,7 @@ class StreamingObjectRefGenerator:
     def _handle_next(self):
         try:
             if hasattr(self.worker, "core_worker"):
-                obj = self.worker.core_worker.async_read_object_ref_stream(
+                obj = self.worker.core_worker.try_read_next_object_ref_stream(
                     self._generator_ref)
                 return obj
             else:
@@ -899,7 +899,7 @@ cdef execute_streaming_generator(
                         function_name, task_type, title,
                         &intermediate_result, application_error, caller_address)
 
-            CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
+            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 intermediate_result.back(),
                 generator_id, caller_address, generator_index, False)
 
@@ -927,7 +927,7 @@ cdef execute_streaming_generator(
             assert intermediate_result.size() == 1
             del output
 
-            CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
+            CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 intermediate_result.back(),
                 generator_id,
                 caller_address,
@@ -944,7 +944,7 @@ cdef execute_streaming_generator(
     logger.debug(
         "Writes EoF to a ObjectRefStream "
         "of an index {}".format(generator_index))
-    CCoreWorkerProcess.GetCoreWorker().ReportIntermediateTaskReturn(
+    CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
         c_pair[CObjectID, shared_ptr[CRayObject]](
             CObjectID.Nil(), shared_ptr[CRayObject]()),
         generator_id,
@@ -3491,13 +3491,13 @@ cdef class CoreWorker:
 
         CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
 
-    def async_read_object_ref_stream(self, ObjectRef generator_id):
+    def try_read_next_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
 
         check_status(
-            CCoreWorkerProcess.GetCoreWorker().AsyncReadObjectRefStream(
+            CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
                 c_generator_id, &c_object_ref))
         return ObjectRef(
             c_object_ref.object_id(),

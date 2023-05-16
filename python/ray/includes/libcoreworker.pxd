@@ -149,7 +149,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID& generator_id)
         void DelObjectRefStream(const CObjectID &generator_id)
         void CreateObjectRefStream(const CObjectID &generator_id)
-        CRayStatus AsyncReadObjectRefStream(
+        CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
         CObjectID AllocateDynamicReturnId(const CAddress &owner_address)

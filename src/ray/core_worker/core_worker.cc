@@ -2789,10 +2789,10 @@ void CoreWorker::DelObjectRefStream(const ObjectID &generator_id) {
   task_manager_->DelObjectRefStream(generator_id);
 }
 
-Status CoreWorker::AsyncReadObjectRefStream(const ObjectID &generator_id,
-                                            rpc::ObjectReference *object_ref_out) {
+Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
+                                          rpc::ObjectReference *object_ref_out) {
   ObjectID object_id;
-  const auto &status = task_manager_->AsyncReadObjectRefStream(generator_id, &object_id);
+  const auto &status = task_manager_->TryReadObjectRefStream(generator_id, &object_id);
   if (!status.ok()) {
     return status;
   }

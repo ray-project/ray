@@ -28,7 +28,7 @@ class MockedWorker:
 @pytest.fixture
 def mocked_worker():
     mocked_core_worker = Mock()
-    mocked_core_worker.async_read_object_ref_stream.return_value = None
+    mocked_core_worker.try_read_next_object_ref_stream.return_value = None
     mocked_core_worker.delete_object_ref_stream.return_value = None
     mocked_core_worker.create_object_ref_stream.return_value = None
     worker = MockedWorker(mocked_core_worker)
@@ -44,7 +44,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
         c = mocked_worker.core_worker
         generator_ref = ray.ObjectRef.from_random()
         generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
-        c.async_read_object_ref_stream.return_value = ray.ObjectRef.nil()
+        c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
         c.create_object_ref_stream.assert_called()
 
         # Test when there's no new ref, it returns a nil.
@@ -55,13 +55,15 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
         # When the new ref is available, next should return it.
         for _ in range(3):
             new_ref = ray.ObjectRef.from_random()
-            c.async_read_object_ref_stream.return_value = new_ref
+            c.try_read_next_object_ref_stream.return_value = new_ref
             ref = generator._next(timeout_s=0)
             assert new_ref == ref
 
-        # When async_read_object_ref_stream raises a
+        # When try_read_next_object_ref_stream raises a
         # ObjectRefStreamEoFError, it should raise a stop iteration.
-        c.async_read_object_ref_stream.side_effect = ObjectRefStreamEoFError("")  # noqa
+        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEoFError(
+            ""
+        )  # noqa
         with pytest.raises(StopIteration):
             ref = generator._next(timeout_s=0)
 
@@ -88,7 +90,7 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
             mocked_ray_wait.return_value = [generator_ref], []
             mocked_ray_get.side_effect = WorkerCrashedError()
 
-            c.async_read_object_ref_stream.return_value = ray.ObjectRef.nil()
+            c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
             ref = generator._next(timeout_s=0)
             # If the generator task fails by a systsem error,
             # meaning the ref will raise an exception
@@ -125,7 +127,7 @@ def test_streaming_object_ref_generator_network_failed_unit(mocked_worker):
             # If StopIteration is not raised within
             # unexpected_network_failure_timeout_s second,
             # it should fail.
-            c.async_read_object_ref_stream.return_value = ray.ObjectRef.nil()
+            c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
             ref = generator._next(timeout_s=0, unexpected_network_failure_timeout_s=1)
             assert ref == ray.ObjectRef.nil()
             time.sleep(1)
@@ -268,7 +270,7 @@ def test_generator_streaming_no_leak_upon_failures(
         # defer for 10s for the second node.
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "CoreWorkerService.grpc_server.ReportIntermediateTaskReturn=100000:1000000",
+            "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=100000:1000000",
         )
         ray.init(num_cpus=1)
 

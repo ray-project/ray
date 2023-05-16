@@ -379,8 +379,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// generated ObjectReference.
   /// \return Status RayKeyError if the stream reaches to EoF.
   /// OK otherwise.
-  Status AsyncReadObjectRefStream(const ObjectID &generator_id,
-                                  rpc::ObjectReference *object_ref_out);
+  Status TryReadObjectRefStream(const ObjectID &generator_id,
+                                rpc::ObjectReference *object_ref_out);
 
   /// Delete the ObjectRefStream of generator_id
   /// created by CreateObjectRefStream.
