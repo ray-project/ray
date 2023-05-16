@@ -1,5 +1,10 @@
 from typing import Dict, Any, Optional, Tuple, TYPE_CHECKING
 
+try:
+    from packaging.version import Version
+except ImportError:
+    from distutils.version import LooseVersion as Version
+
 from ray.air.checkpoint import Checkpoint
 from ray.train.gbdt_trainer import GBDTTrainer
 from ray.util.annotations import PublicAPI
@@ -7,6 +12,7 @@ from ray.train.lightgbm.lightgbm_checkpoint import LightGBMCheckpoint
 
 import lightgbm
 import lightgbm_ray
+import xgboost_ray
 from lightgbm_ray.tune import TuneReportCheckpointCallback, TuneReportCallback
 
 if TYPE_CHECKING:
@@ -50,7 +56,7 @@ class LightGBMTrainer(GBDTTrainer):
             result = trainer.fit()
 
     Args:
-        datasets: Datastreams to use for training and validation. Must include a
+        datasets: Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
@@ -102,3 +108,12 @@ class LightGBMTrainer(GBDTTrainer):
 
     def _model_iteration(self, model: lightgbm.LGBMModel) -> int:
         return model.booster_.current_iteration()
+
+    def preprocess_datasets(self) -> None:
+        super().preprocess_datasets()
+
+        # XGBoost/LightGBM-Ray requires each dataset to have at least as many
+        # blocks as there are workers.
+        # This is only applicable for xgboost-ray<0.1.16
+        if Version(xgboost_ray.__version__) < Version("0.1.16"):
+            self._repartition_datasets_to_match_num_actors()

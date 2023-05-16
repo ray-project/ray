@@ -225,8 +225,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
-  task_event_buffer_ =
-      std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
+      std::move(task_event_gcs_client), worker_context_.GetCurrentJobID());
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     if (!task_event_buffer_->Start().ok()) {
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
@@ -790,8 +790,12 @@ void CoreWorker::Exit(
          detail = std::move(detail),
          creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
-          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           KillChildProcs();
+          // Disconnect should be put close to Shutdown
+          // https://github.com/ray-project/ray/pull/34883
+          // TODO (iycheng) Improve the Process.h and make it able to monitor
+          // process liveness
+          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
         },
         "CoreWorker.Shutdown");
@@ -835,9 +839,13 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
-  Disconnect(exit_type, detail);
 
   KillChildProcs();
+  // Disconnect should be put close to Exit
+  // https://github.com/ray-project/ray/pull/34883
+  // TODO (iycheng) Improve the Process.h and make it able to monitor
+  // process liveness
+  Disconnect(exit_type, detail);
 
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
@@ -3515,6 +3523,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
+  stats->set_num_owned_objects(reference_counter_->NumObjectOwnedByUs());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_pid(getpid());
