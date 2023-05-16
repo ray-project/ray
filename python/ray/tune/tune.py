@@ -1136,6 +1136,11 @@ def run_experiments(
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
         _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
+    if verbose is None:
+        # Default `verbose` value. For new output engine, this is AirVerbosity.VERBOSE.
+        # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+        verbose = get_air_verbosity(AirVerbosity.VERBOSE) or Verbosity.V3_TRIAL_DETAILS
+
     if _remote:
         if get_air_verbosity(verbose) is not None:
             logger.info(
