@@ -122,12 +122,13 @@ class RedisStoreClient : public StoreClient {
                             std::function<void()> send_request)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Pop requets from the sending queue.
+  // Take requests from the sending queue and erase the queue if it's
+  // empty.
   //
   // \param keys The keys to check for next request
   //
   // \return The requests to send.
-  std::vector<std::function<void()>> PopFromSendingQueue(
+  std::vector<std::function<void()>> TakeRequestsFromSendingQueue(
       const std::vector<std::string> &keys) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status DoPut(const std::string &key,

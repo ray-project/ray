@@ -57,23 +57,29 @@ TEST_F(RedisStoreClientTest, AsyncGetAllAndBatchDeleteTest) {
 
 TEST_F(RedisStoreClientTest, BasicSimple) {
   // Send 100 times write and then read
+  auto cnt = std::make_shared<std::atomic<size_t>>(0);
   for (size_t i = 0; i < 100; ++i) {
     for (size_t j = 0; j < 20; ++j) {
-      ASSERT_TRUE(
-          store_client_
-              ->AsyncPut("T",
-                         absl::StrCat("A", std::to_string(j)),
-                         std::to_string(i),
-                         false,
-                         [i](auto r) { ASSERT_TRUE((i == 0 && r) || (i != 0 && !r)); })
-              .ok());
+      ++*cnt;
+      ASSERT_TRUE(store_client_
+                      ->AsyncPut("T",
+                                 absl::StrCat("A", std::to_string(j)),
+                                 std::to_string(i),
+                                 true,
+                                 [i, cnt](auto r) {
+                                   --*cnt;
+                                   ASSERT_TRUE((i == 0 && r) || (i != 0 && !r));
+                                 })
+                      .ok());
     }
   }
   for (size_t j = 0; j < 20; ++j) {
+    ++*cnt;
     ASSERT_TRUE(store_client_
                     ->AsyncGet("T",
                                absl::StrCat("A", std::to_string(j)),
-                               [](auto s, auto r) {
+                               [j, cnt](auto s, auto r) {
+                                 --*cnt;
                                  ASSERT_TRUE(r.has_value());
                                  ASSERT_EQ(*r, "99");
                                })

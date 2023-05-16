@@ -250,13 +250,14 @@ size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys
   return queue_added;
 }
 
-std::vector<std::function<void()>> RedisStoreClient::PopFromSendingQueue(
+std::vector<std::function<void()>> RedisStoreClient::TakeRequestsFromSendingQueue(
     const std::vector<std::string> &keys) {
   std::vector<std::function<void()>> send_requests;
   for (const auto &key : keys) {
     auto [op_iter, added] =
         pending_redis_request_by_key_.emplace(key, std::queue<std::function<void()>>());
     RAY_CHECK(added == false) << "Pop from a queue doesn't exist: " << key;
+    RAY_CHECK(op_iter->second.front() == nullptr);
     op_iter->second.pop();
     if (op_iter->second.empty()) {
       pending_redis_request_by_key_.erase(op_iter);
@@ -275,7 +276,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
   // For a query reading or writing multiple keys, we need a counter
   // to check whether all existing requests for this keys have been
   // processed.
-  auto num_ready_keys = std::make_shared<std::atomic<size_t>>(0);
+  auto num_ready_keys = std::make_shared<size_t>(0);
   std::function<void()> send_redis = [this,
                                       num_ready_keys = num_ready_keys,
                                       keys,
@@ -300,7 +301,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
           std::vector<std::function<void()>> requests;
           {
             absl::MutexLock lock(&mu_);
-            requests = PopFromSendingQueue(keys);
+            requests = TakeRequestsFromSendingQueue(keys);
           }
           for (auto &request : requests) {
             request();
@@ -315,7 +316,8 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
     absl::MutexLock lock(&mu_);
     auto keys_ready = PushToSendingQueue(keys, send_redis);
     *num_ready_keys += keys_ready;
-    // We should be able to file it directly.
+    // If all queues are empty for each key this request depends on
+    // we are safe to fire the request immediately.
     if (*num_ready_keys == keys.size()) {
       *num_ready_keys = keys.size() - 1;
     } else {
