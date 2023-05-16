@@ -1,8 +1,5 @@
 import os
-from ray.air.constants import (
-    TIMESTAMP,
-    TIME_THIS_ITER_S
-)
+from ray.air.constants import TIMESTAMP, TIME_THIS_ITER_S
 
 # fmt: off
 # __sphinx_doc_begin__

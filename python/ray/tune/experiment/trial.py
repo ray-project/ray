@@ -20,10 +20,7 @@ from ray._private.dict import unflatten_dict
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
-from ray.air.constants import (
-    EXPR_ERROR_PICKLE_FILE,
-    EXPR_ERROR_FILE
-)
+from ray.air.constants import EXPR_ERROR_PICKLE_FILE, EXPR_ERROR_FILE
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError

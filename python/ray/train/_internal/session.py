@@ -19,7 +19,7 @@ from ray.air.constants import (
     _RESULT_FETCH_TIMEOUT,
     _ERROR_FETCH_TIMEOUT,
     TIMESTAMP,
-    TIME_THIS_ITER_S
+    TIME_THIS_ITER_S,
 )
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
