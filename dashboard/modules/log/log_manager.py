@@ -2,7 +2,7 @@ import logging
 import re
 
 from collections import defaultdict
-from typing import List, Optional, Dict, AsyncIterable, Callable
+from typing import List, Optional, Dict, AsyncIterable, Callable, Tuple
 
 from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
 from ray.experimental.state.common import (
