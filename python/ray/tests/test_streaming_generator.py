@@ -143,6 +143,38 @@ def test_streaming_object_ref_generator_network_failed_unit(mocked_worker):
                 )
 
 
+@pytest.mark.asyncio
+async def test_streaming_object_ref_generator_unit_async(mocked_worker):
+    """
+    Verify the basic case:
+    create a generator -> read values -> nothing more to read -> delete.
+    """
+    with patch("ray.wait") as mocked_ray_wait:
+        c = mocked_worker.core_worker
+        generator_ref = ray.ObjectRef.from_random()
+        generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
+        c.async_read_object_ref_stream.return_value = ray.ObjectRef.nil()
+        c.create_object_ref_stream.assert_called()
+
+        # Test when there's no new ref, it returns a nil.
+        mocked_ray_wait.return_value = [], [generator_ref]
+        ref = await generator._next_async(timeout_s=0)
+        assert ref.is_nil()
+
+        # When the new ref is available, next should return it.
+        for _ in range(3):
+            new_ref = ray.ObjectRef.from_random()
+            c.async_read_object_ref_stream.return_value = new_ref
+            ref = await generator._next_async(timeout_s=0)
+            assert new_ref == ref
+
+        # When async_read_object_ref_stream raises a
+        # ObjectRefStreamEoFError, it should raise a stop iteration.
+        c.async_read_object_ref_stream.side_effect = ObjectRefStreamEoFError("")  # noqa
+        with pytest.raises(StopAsyncIteration):
+            ref = await generator._next_async(timeout_s=0)
+
+
 def test_generator_basic(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -504,13 +536,6 @@ def test_actor_streaming_generator(shutdown_only, store_in_plasma):
     verify_async_task_executor()
     asyncio.run(verify_sync_task_async_generator())
     asyncio.run(verify_async_task_async_generator())
-
-
-def test_actor_generator_call_stats(shutdown_only):
-    """Verify that the private API _get_actor_call_stats
-    works correctly when the generator is used.
-    """
-    pass
 
 
 def test_streaming_generator_exception(shutdown_only):
