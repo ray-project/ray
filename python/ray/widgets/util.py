@@ -140,7 +140,7 @@ def repr_with_fallback(
         about the status of this issue.
 
     Args:
-        deps: The required dependencies and version for notebook environment.
+        notebook_deps: The required dependencies and version for notebook environment.
 
     Returns:
         A function that returns the usual _repr_mimebundle_, unless any of the 3
