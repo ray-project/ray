@@ -2,7 +2,7 @@ import logging
 import re
 
 from collections import defaultdict
-from typing import List, Optional, Dict, AsyncIterable, Tuple, Callable
+from typing import List, Optional, Dict, AsyncIterable, Callable
 
 from ray.experimental.state.common import (
     GetLogOptions,
@@ -14,11 +14,23 @@ from ray.experimental.state.state_manager import StateDataSourceClient
 
 # TODO(sang): Remove the usage of this class.
 from ray.dashboard.datacenter import DataSource
+from pydantic import BaseModel
 
 
 logger = logging.getLogger(__name__)
 
 WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
+
+
+class ResolvedLogFileInfo(BaseModel):
+    # Node where the file lives
+    node_id: str
+
+    # File name of the log file
+    filename: str
+
+    # Task name if resolved through task id
+    task_name: Optional[str]
 
 
 class LogsManager:
@@ -75,7 +87,7 @@ class LogsManager:
         """
         node_id = options.node_id or self.ip_to_node_id(options.node_ip)
 
-        log_file_name, node_id = await self.resolve_filename(
+        resolved_file = await self.resolve_filename(
             node_id=node_id,
             log_filename=options.filename,
             actor_id=options.actor_id,
@@ -89,8 +101,8 @@ class LogsManager:
 
         keep_alive = options.media_type == "stream"
         stream = await self.client.stream_log(
-            node_id=node_id,
-            log_file_name=log_file_name,
+            node_id=resolved_file.node_id,
+            log_file_name=resolved_file.filename,
             keep_alive=keep_alive,
             lines=options.lines,
             interval=options.interval,
@@ -100,6 +112,7 @@ class LogsManager:
             timeout=options.timeout if not keep_alive else None,
             task_id=options.task_id,
             attempt_number=options.attempt_number,
+            task_name=resolved_file.task_name,
         )
 
         async for streamed_log in stream:
@@ -167,7 +180,7 @@ class LogsManager:
         get_actor_fn: Optional[Callable[[str], Dict]] = None,
         timeout: int = DEFAULT_RPC_TIMEOUT,
         suffix: str = "out",
-    ) -> Tuple[str, str]:
+    ) -> ResolvedLogFileInfo:
         """Return the file name given all options.
 
         Args:
@@ -182,6 +195,8 @@ class LogsManager:
             suffix: Log suffix if no `log_filename` is provided, when
                 resolving by other ids'. Default to "out".
         """
+        task_name = None
+
         if actor_id:
             if get_actor_fn is None:
                 raise ValueError("get_actor_fn needs to be specified for actor_id")
@@ -241,12 +256,14 @@ class LogsManager:
 
             worker_id = task.get("worker_id", None)
             node_id = task.get("node_id", None)
+            task_name = task.get("name", None)
 
-            if worker_id is None or node_id is None:
+            if worker_id is None or node_id is None or task_name is None:
                 raise FileNotFoundError(
                     "Could not find log file for task attempt:"
                     f"{task_id}({attempt_number})."
-                    f"Worker id = {worker_id}, node id = {node_id}"
+                    f"Worker id = {worker_id}, node id = {node_id}, "
+                    f"task name = {task_name}"
                 )
 
             log_filename = await self._resolve_worker_file(
@@ -283,8 +300,12 @@ class LogsManager:
                 f"\tpid: {pid}\n"
                 f"\tsuffix: {suffix}\n"
             )
-        logger.info(f"Resolved log file: {log_filename} on node {node_id}")
-        return log_filename, node_id
+
+        resolved_file = ResolvedLogFileInfo(
+            filename=log_filename, node_id=node_id, task_name=task_name
+        )
+        logger.info(f"Resolved log file: {resolved_file}")
+        return resolved_file
 
     def _categorize_log_files(self, log_files: List[str]) -> Dict[str, List[str]]:
         """Categorize the given log files after filterieng them out using a given glob.
