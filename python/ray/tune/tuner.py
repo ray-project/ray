@@ -154,9 +154,9 @@ class Tuner:
             _run_config = run_config or RunConfig()
             if get_air_verbosity(_run_config.verbose) is not None:
                 logger.info(
-                    "[output] This will use the legacy output and progress reporter, "
+                    "[output] This uses the legacy output and progress reporter, "
                     "as Ray client is not supported by the new engine. "
-                    "For more information, please see "
+                    "For more information, see "
                     "https://docs.ray.io/en/master/ray-air/experimental-features.html"
                 )
 
