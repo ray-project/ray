@@ -54,6 +54,126 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
 
+from ray.tune.trainable.function_trainable import FunctionTrainable
+
+
+class DataParallelTrainable(FunctionTrainable):
+    _dataset_config = {
+        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
+        WILDCARD_KEY: DatasetConfig(split=False),
+    }
+
+    def preprocess_datasets(self, datasets, preprocessor, ingest_spec) -> None:
+        # Evaluate all datasets.
+        datasets = {k: d() if callable(d) else d for k, d in datasets.items()}
+        datasets = ingest_spec.preprocess_datasets(preprocessor, datasets)
+        return datasets
+
+    def _report(self, training_iterator: TrainingIterator) -> None:
+        for results in training_iterator:
+            # TODO(ml-team): add ability to report results from multiple workers.
+            first_worker_results = results[0]
+            session.report(first_worker_results)
+
+    def _trainable_func(self, config, reporter, checkpoint_dir):
+        scaling_config = config.get("scaling_config", ScalingConfig())
+        if isinstance(scaling_config, dict):
+            scaling_config = ScalingConfig(**scaling_config)
+
+        run_config = config.get("run_config", RunConfig())
+        datasets = config.get("datasets", {})
+        backend_config = config.get("backend_config", BackendConfig())
+        preprocessor = config.get("preprocessor")
+        dataset_config = config.get("dataset_config", {})
+        dataset_config = DatasetConfig.validated(
+            DatasetConfig.merge(DataParallelTrainable._dataset_config, dataset_config),
+            datasets,
+        )
+        ingest_spec = DataParallelIngestSpec(
+            dataset_config=dataset_config,
+        )
+
+        datasets = self.preprocess_datasets(datasets, preprocessor, ingest_spec)
+
+        train_loop_per_worker = construct_train_func(
+            config["train_loop_per_worker"],
+            config.get("train_loop_config", {}),
+            fn_arg_name="train_loop_per_worker",
+            discard_returns=True,
+        )
+
+        additional_resources_per_worker = scaling_config.additional_resources_per_worker
+
+        trial_info = TrialInfo(
+            name=session.get_trial_name(),
+            id=session.get_trial_id(),
+            resources=session.get_trial_resources(),
+            logdir=session.get_trial_dir(),
+            driver_ip=ray.util.get_node_ip_address(),
+            experiment_name=session.get_experiment_name(),
+        )
+
+        backend_executor = BackendExecutor(
+            backend_config=backend_config,
+            trial_info=trial_info,
+            num_workers=scaling_config.num_workers,
+            num_cpus_per_worker=scaling_config.num_cpus_per_worker,
+            num_gpus_per_worker=scaling_config.num_gpus_per_worker,
+            additional_resources_per_worker=additional_resources_per_worker,
+            max_retries=0,
+            checkpoint_config=run_config.checkpoint_config,
+        )
+
+        checkpoint_manager = _DataParallelCheckpointManager(preprocessor=preprocessor)
+
+        # Start the remote actors.
+        backend_executor.start(initialization_hook=None)
+
+        # Disable TrainingIterator's CheckpointManager from handling
+        # checkpoints itself by setting num_to_keep to None.
+        # This is important because otherwise Trainer's CheckpointManager
+        # may delete a checkpoint prematurely, before the next checkpoint
+        # has been fully handled by Tune.
+        # TODO(jungong, justinvyu) : Trainer should not own a
+        # CheckpointManager.
+        checkpoint_strategy = copy.deepcopy(run_config.checkpoint_config)
+        checkpoint_strategy.num_to_keep = None
+        checkpoint_strategy.checkpoint_score_attribute = None
+
+        training_iterator = TrainingIterator(
+            backend_executor=backend_executor,
+            backend_config=backend_config,
+            train_func=train_loop_per_worker,
+            dataset_spec=ingest_spec,
+            checkpoint_manager=checkpoint_manager,
+            checkpoint=None,  # todo
+            checkpoint_strategy=checkpoint_strategy,
+            storage_path=run_config.storage_path,
+        )
+
+        self._report(training_iterator)
+
+        # Shutdown workers.
+        backend_executor.shutdown()
+
+        from ray.tune.result import RESULT_DUPLICATE
+
+        reporter(**{RESULT_DUPLICATE: True})
+
+    @classmethod
+    def default_resource_request(cls, config):
+        # `config["scaling_config"] is a dataclass when passed via the
+        # `scaling_config` argument in `Trainer` and is a dict when passed
+        # via the `scaling_config` key of `param_spec`.
+
+        # Conversion logic must be duplicated in `TrainTrainable.__init__`
+        # because this is a class method.
+        updated_scaling_config = config.get("scaling_config", ScalingConfig())
+        if isinstance(updated_scaling_config, dict):
+            updated_scaling_config = ScalingConfig(**updated_scaling_config)
+        return updated_scaling_config.as_placement_group_factory()
+
+
 @DeveloperAPI
 class DataParallelTrainer(BaseTrainer):
     """A Trainer for data parallel training.
