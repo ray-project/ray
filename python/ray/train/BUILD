@@ -329,6 +329,14 @@ py_test(
 )
 
 py_test(
+    name = "test_huggingface",
+    size = "small",
+    srcs = ["tests/test_huggingface.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_torch_fsdp",
     size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
