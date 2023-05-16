@@ -59,9 +59,11 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
             if all(is_valid_udf_return(e) for e in udf_return_col):
                 udf_return_col = [np.array(e) for e in udf_return_col]
             shapes = set()
-            if all(isinstance(e, np.ndarray) for e in udf_return_col):
-                for e in udf_return_col:
-                    shapes.add(e.shape)
+            for e in udf_return_col:
+                if isinstance(e, np.ndarray):
+                    shapes.add((e.dtype, e.shape))
+                else:
+                    shapes.add(type(e))
             if len(shapes) > 1:
                 # This util works around some limitations of np.array(dtype=object).
                 udf_return_col = create_ragged_ndarray(udf_return_col)
