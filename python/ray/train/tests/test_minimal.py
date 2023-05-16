@@ -84,6 +84,13 @@ def test_huggingface(ray_start_4_cpus):
     """Tests that HuggingFace integrations are lazily loaded."""
 
     # Torch is eagerly loaded in ray.train.huggingface.
+    with pytest.raises(ImportError, match="No module named 'torch'"):
+        import ray.train.huggingface  # noqa: F401
+
+    # Reimport ray due to clean up failed import above.
+    import ray
+
+    # Run remaining tests in an environment with torch installed.
     runtime_env = {"pip": ["torch"]}
 
     @ray.remote(runtime_env=runtime_env)
@@ -108,31 +115,31 @@ def test_huggingface(ray_start_4_cpus):
         DUMMY_CHECKPOINT = None
         DUMMY_TRAINER_INIT_PER_WORKER = None
 
-        with pytest.raises(ImportError):
+        with pytest.raises(ImportError, match="No module named 'accelerate'"):
             AccelerateTrainer(DUMMY_TRAIN_LOOP_PER_WORKER)
 
-        with pytest.raises(ImportError):
+        with pytest.raises(ImportError, match="No module named 'transformers'"):
             HuggingFaceCheckpoint.from_model(DUMMY_MODEL, path=DUMMY_PATH)
 
-        with pytest.raises(ImportError):
+        with pytest.raises(ImportError, match="No module named 'transformers'"):
             HuggingFacePredictor(DUMMY_PIPELINE)
 
-        with pytest.raises(ImportError):
+        with pytest.raises(ImportError, match="No module named 'transformers'"):
             HuggingFacePredictor.from_checkpoint(DUMMY_CHECKPOINT)
 
-        with pytest.raises(ImportError):
+        with pytest.raises(ImportError, match="No module named 'transformers'"):
             HuggingFaceTrainer(DUMMY_TRAINER_INIT_PER_WORKER)
 
-        with pytest.raises(ImportError):
+        with pytest.raises(ImportError, match="No module named 'transformers'"):
             TransformersCheckpoint.from_model(DUMMY_MODEL, path=DUMMY_PATH)
 
-        with pytest.raises(ImportError):
+        with pytest.raises(ImportError, match="No module named 'transformers'"):
             TransformersPredictor(DUMMY_PIPELINE)
 
-        with pytest.raises(ImportError):
+        with pytest.raises(ImportError, match="No module named 'transformers'"):
             TransformersPredictor.from_checkpoint(DUMMY_CHECKPOINT)
 
-        with pytest.raises(ImportError):
+        with pytest.raises(ImportError, match="No module named 'transformers'"):
             TransformersTrainer(DUMMY_TRAINER_INIT_PER_WORKER)
 
     ray.get(test_huggingface_task.remote())
