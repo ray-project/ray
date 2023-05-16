@@ -518,6 +518,54 @@ py_test(
     tags = ["team:ml", "exclusive"]
 )
 
+py_test(
+    name = "test_controller_callback_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_callback_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_checkpointing_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_checkpointing_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_control_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_control_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_errors_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_errors_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_resources_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_resources_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_search_alg_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_search_alg_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
 # --------------------------------------------------------------------
 # Examples from the python/ray/tune/examples directory.
 # Please keep these sorted alphabetically.
