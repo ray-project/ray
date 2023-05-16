@@ -510,18 +510,26 @@ class Learner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def compile_results(
         self,
+        *,
         batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
+        loss_or_loss_stats: Union[TensorType, Mapping[str, Any]],
         postprocessed_gradients: Mapping[str, Any],
+        compute_grad_stats: Mapping[str, Any],
+        postprocess_grad_stats: Mapping[str, Any],
+        apply_grad_stats: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Compile results from the update in a numpy-friendly format.
 
         Args:
             batch: The batch that was used for the update.
             fwd_out: The output of the forward train pass.
-            postprocessed_loss: The loss after postprocessing.
+            loss_or_loss_stats: The loss after postprocessing.
             postprocessed_gradients: The gradients after postprocessing.
+            compute_grad_stats: The stats dict returned by `self.compute_gradients()`.
+            postprocess_grad_stats: The stats dict returned by
+                `self.postprocess_gradients()`.
+            apply_grad_stats: The stats dict returned by `self.apply_gradients()`.
 
         Returns:
             A dictionary of results.
@@ -531,7 +539,7 @@ class Learner:
                 f"batch must be a MultiAgentBatch, but got {type(batch)} instead."
             )
 
-        loss_numpy = convert_to_numpy(postprocessed_loss)
+        loss_numpy = convert_to_numpy(loss_or_loss_stats)
 
         # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
         # This matches what the legacy RLlib policies used to return.
@@ -539,17 +547,13 @@ class Learner:
         for module_id in batch.policy_batches.keys():
             module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
 
-        # We put the stats for all modules under the ALL_MODULES key. e.g. average of
-        # the gradients across all modules will go here.
-        mean_abs_grads = [
-            np.mean(np.abs(grad))
-            for grad in convert_to_numpy(postprocessed_gradients.values())
-            if grad is not None
-        ]
-
+        # Simply merge all the compute/postprocess/apply gradient stats dicts together
+        # and store them under the ALL_MODULES key since all these operations are always
+        # done for all modules (no individual per-module calls).
         module_learner_stats[ALL_MODULES] = {
-            "mean_abs_postprocessed_gradients": np.mean(mean_abs_grads),
-            self.TOTAL_LOSS_KEY: loss_numpy[self.TOTAL_LOSS_KEY],
+            **compute_grad_stats,
+            **postprocessed_gradients,
+            **apply_grad_stats,
         }
 
         return dict(module_learner_stats)
@@ -1094,12 +1098,19 @@ class Learner:
         #  NestedDict from the base class.
         tensorbatch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(tensorbatch)
-        loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
+        loss_or_loss_stats = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
 
-        gradients, stats = self.compute_gradients(loss)
-        postprocessed_gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(postprocessed_gradients)
-        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        gradients, compute_grad_stats = self.compute_gradients(loss_or_loss_stats)
+        postprocessed_gradients, postprocess_grad_stats = (
+            self.postprocess_gradients(gradients)
+        )
+        apply_grad_stats = self.apply_gradients(postprocessed_gradients)
+        results = self.compile_results(
+            batch,
+            fwd_out,
+            loss_or_loss_stats,
+            postprocessed_gradients,
+        )
         self._check_result(results)
         return convert_to_numpy(results)
 

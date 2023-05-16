@@ -14,7 +14,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import ResultDict, TensorType
 
 
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
@@ -76,13 +76,23 @@ class ImpalaLearner(Learner):
     @override(Learner)
     def compile_results(
         self,
+        *,
         batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
+        loss_or_loss_stats: Union[TensorType, Mapping[str, Any]],
         postprocessed_gradients: Mapping[str, Any],
+        compute_grad_stats: Mapping[str, Any],
+        postprocess_grad_stats: Mapping[str, Any],
+        apply_grad_stats: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         results = super().compile_results(
-            batch, fwd_out, postprocessed_loss, postprocessed_gradients
+            batch=batch,
+            fwd_out=fwd_out,
+            loss_or_loss_stats=loss_or_loss_stats,
+            postprocessed_gradients=postprocessed_gradients,
+            compute_grad_stats=compute_grad_stats,
+            postprocess_grad_stats=postprocess_grad_stats,
+            apply_grad_stats=apply_grad_stats,
         )
         results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
         results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
