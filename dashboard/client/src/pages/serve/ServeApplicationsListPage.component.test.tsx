@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
+import { getActor } from "../../service/actor";
 import { getServeApplications } from "../../service/serve";
 import {
   ServeApplicationStatus,
@@ -10,13 +11,26 @@ import {
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { ServeApplicationsListPage } from "./ServeApplicationsListPage";
 
+jest.mock("../../service/actor");
 jest.mock("../../service/serve");
 
 const mockGetServeApplications = jest.mocked(getServeApplications);
+const mockGetActor = jest.mocked(getActor);
 
 describe("ServeApplicationsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(14);
+    expect.assertions(16);
+
+    // Mock ServeController actor fetch
+    mockGetActor.mockResolvedValue({
+      data: {
+        data: {
+          detail: {
+            state: "ALIVE",
+          },
+        },
+      },
+    } as any);
 
     mockGetServeApplications.mockResolvedValue({
       data: {
@@ -24,9 +38,13 @@ describe("ServeApplicationsListPage", () => {
         http_proxies: {
           foo: {
             node_id: "node:12345",
-            status: ServeSystemActorStatus.HEALTHY,
+            status: ServeSystemActorStatus.STARTING,
             actor_id: "actor:12345",
           },
+        },
+        controller_info: {
+          node_id: "node:12345",
+          actor_id: "actor:12345",
         },
         proxy_location: ServeDeploymentMode.EveryNode,
         applications: {
@@ -77,6 +95,10 @@ describe("ServeApplicationsListPage", () => {
 
     // HTTP Proxy row
     expect(screen.getByText("HTTPProxyActor:node:12345")).toBeVisible();
+    expect(screen.getByText("STARTING")).toBeVisible();
+
+    // Serve Controller row
+    expect(screen.getByText("Serve Controller")).toBeVisible();
     expect(screen.getByText("HEALTHY")).toBeVisible();
 
     // First row
