@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
@@ -162,6 +164,7 @@ class RedisStoreClient : public StoreClient {
   // The queue will be poped when the request is processed.
   absl::flat_hash_map<std::string, std::queue<std::function<void()>>>
       pending_redis_request_by_key_ GUARDED_BY(mu_);
+  FRIEND_TEST(RedisStoreClientTest, Random);
 };
 
 }  // namespace gcs

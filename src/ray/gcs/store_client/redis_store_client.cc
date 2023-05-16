@@ -203,6 +203,12 @@ Status RedisStoreClient::AsyncDelete(const std::string &table_name,
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
                                           std::function<void(int64_t)> callback) {
+  if (keys.empty()) {
+    if (callback) {
+      callback(0);
+    }
+    return Status::OK();
+  }
   std::vector<std::string> redis_keys;
   redis_keys.reserve(keys.size());
   for (auto &key : keys) {
@@ -498,7 +504,7 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
   std::string redis_key = GenRedisKey(external_storage_namespace_, table_name, key);
   std::vector<std::string> args = {"HEXISTS", external_storage_namespace_, redis_key};
   SendRedisCmd(
-      {key},
+      {redis_key},
       std::move(args),
       [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
         bool exists = reply->ReadAsInteger() > 0;
