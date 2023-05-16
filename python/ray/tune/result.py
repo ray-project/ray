@@ -41,10 +41,6 @@ EPISODES_THIS_ITER = "episodes_this_iter"
 # (Optional/Auto-filled) Accumulated number of episodes for this trial.
 EPISODES_TOTAL = "episodes_total"
 
-# The timestamp of when the result is generated.
-# Default to when the result is processed by tune.
-TIMESTAMP = "timestamp"
-
 # Number of timesteps in this iteration.
 TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 
@@ -143,18 +139,6 @@ JOB_META_FILE = "job_status.json"
 # Meta file about status under each trial directory, can be parsed
 # by automlboard if exists.
 EXPR_META_FILE = "trial_status.json"
-
-# File that stores parameters of the trial.
-EXPR_PARAM_FILE = "params.json"
-
-# Pickle File that stores parameters of the trial.
-EXPR_PARAM_PICKLE_FILE = "params.pkl"
-
-# File that stores the progress of the trial.
-EXPR_PROGRESS_FILE = "progress.csv"
-
-# File that stores results of the trial.
-EXPR_RESULT_FILE = "result.json"
 
 # Config prefix when using ExperimentAnalysis.
 CONFIG_PREFIX = "config"

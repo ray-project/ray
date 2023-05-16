@@ -70,3 +70,25 @@ AIR_ENV_VARS = {
     "RAY_AIR_NEW_OUTPUT",
     "RAY_AIR_RICH_LAYOUT",
 }
+
+# The timestamp of when the result is generated.
+# Default to when the result is processed by tune.
+TIMESTAMP = "timestamp"
+
+# File that stores parameters of the trial.
+EXPR_PARAM_FILE = "params.json"
+
+# Pickle File that stores parameters of the trial.
+EXPR_PARAM_PICKLE_FILE = "params.pkl"
+
+# File that stores the progress of the trial.
+EXPR_PROGRESS_FILE = "progress.csv"
+
+# File that stores results of the trial.
+EXPR_RESULT_FILE = "result.json"
+
+# File that stores the pickled error file
+EXPR_ERROR_PICKLE_FILE = "error.pkl"
+
+# File that stores the error file
+EXPR_ERROR_FILE = "error.txt"
