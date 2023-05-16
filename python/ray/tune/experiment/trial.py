@@ -22,7 +22,6 @@ from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import (
     EXPR_ERROR_PICKLE_FILE,
-    
 )
 
 import ray.cloudpickle as cloudpickle
