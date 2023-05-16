@@ -1,7 +1,7 @@
 .. _observability-configure-manage-dashboard:
 
-Configure and Manage the Dashboard
-==================================
+Configuring and Managing the Dashboard
+======================================
 
 Modify the configuration 
 
@@ -161,6 +161,9 @@ For example, you can view the p95 duration of all requests with this query:
 
 These metrics can be queried via Prometheus or Grafana UI. Instructions on how to set these tools up can be found :ref:`here <ray-metrics>`.
 
+Integrating with Prometheus and Grafana
+---------------------------------------
+
 Setting up Prometheus
 ---------------------
 
@@ -255,13 +258,8 @@ You can then see the default dashboard by going to dashboards -> manage -> Ray -
 
 See :ref:`here <multi-node-metrics-grafana>` for more information on how to set up Grafana on a Ray Cluster.
 
-.. _system-metrics:
-
-Configurations
---------------
-
-Customize prometheus export port
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Customizing the Prometheus export port
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray by default provides the service discovery file, but you can directly scrape metrics from prometheus ports.
 To do that, you may want to customize the port that metrics gets exposed to a pre-defined port.

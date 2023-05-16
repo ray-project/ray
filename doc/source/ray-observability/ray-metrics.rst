@@ -11,6 +11,8 @@ To help monitor Ray applications, Ray
 - Exposes metrics in a Prometheus format. We'll call the endpoint to access these metrics a Prometheus endpoint.
 - Supports custom metrics APIs that resemble Prometheus `metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 
+.. _system-metrics:
+
 System Metrics
 --------------
 Ray exports a number of system metrics, which provide introspection into the state of Ray workloads, as well as hardware utilization statistics. The following table describes the officially supported metrics:
