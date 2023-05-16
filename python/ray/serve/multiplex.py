@@ -71,7 +71,7 @@ class _ModelMultiplexWrapper:
 
         self.models_unload_counter = metrics.Counter(
             "serve_multiplexed_models_load_counter",
-            description="The counter for models loaded on the current replica.",
+            description="The counter for unloaded models on the current replica.",
         )
 
         context = get_internal_replica_context()
