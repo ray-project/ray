@@ -36,7 +36,6 @@ from ray_release.exception import (
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.glue import (
     run_release_test,
-    type_str_to_command_runner,
     command_runner_to_cluster_manager,
 )
 from ray_release.logger import logger
@@ -148,8 +147,10 @@ class GlueTest(unittest.TestCase):
             return self.mock_alert_return
 
         result_to_handle_map["unit_test_alerter"] = (mock_alerter, False)
-
-        type_str_to_command_runner["unit_test"] = MockCommandRunner
+        patch(
+            "ray_release.command_runner.anyscale_job_runner.AnyscaleJobRunner.__init__",
+            side_effect=MockCommandRunner.__init__,
+        ).start()
         command_runner_to_cluster_manager[MockCommandRunner] = MockClusterManager
 
         self.test = Test(

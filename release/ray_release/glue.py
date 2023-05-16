@@ -23,7 +23,6 @@ from ray_release.config import (
 )
 from ray_release.template import load_test_cluster_env, load_test_cluster_compute
 from ray_release.exception import (
-    ReleaseTestConfigError,
     ReleaseTestSetupError,
     CommandError,
     PrepareCommandError,
@@ -42,11 +41,6 @@ from ray_release.signal_handling import (
     reset_signal_handling,
     register_handler,
 )
-
-type_str_to_command_runner = {
-    "job": JobRunner,
-    "anyscale_job": AnyscaleJobRunner,
-}
 
 command_runner_to_cluster_manager = {
     JobRunner: FullClusterManager,
@@ -71,58 +65,22 @@ def _get_extra_tags_from_env() -> dict:
 def _load_test_configuration(
     test: Test,
     anyscale_project: str,
-    result: Result,
-    ray_wheels_url: str,
     smoke_test: bool = False,
     no_terminate: bool = False,
-) -> Tuple[ClusterManager, CommandRunner, str]:
+) -> Tuple[ClusterManager, CommandRunner]:
     logger.info(f"Test config: {test}")
-
-    # Populate result paramaters
-    result.wheels_url = ray_wheels_url
-    result.stable = test.get("stable", True)
-    result.smoke_test = smoke_test
-    buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
-    buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
-    if buildkite_url:
-        buildkite_url += "#" + buildkite_job_id
-    result.buildkite_url = buildkite_url
-    result.buildkite_job_id = buildkite_job_id
 
     # Setting up working directory
     working_dir = test["working_dir"]
     new_wd = os.path.join(RELEASE_PACKAGE_DIR, working_dir)
     os.chdir(new_wd)
 
-    run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
-
     # Workaround while Anyscale Jobs don't support leaving cluster alive
     # after the job has finished.
     # TODO: Remove once we have support in Anyscale
-    if no_terminate and run_type == "anyscale_job":
-        logger.warning(
-            "anyscale_job run type does not support --no-terminate. "
-            "Switching to job (Ray Job) run type."
-        )
-        run_type = "job"
-
-    command_runner_cls = type_str_to_command_runner.get(run_type)
-    if not command_runner_cls:
-        raise ReleaseTestConfigError(
-            f"Unknown command runner type: {run_type}. Must be one of "
-            f"{list(type_str_to_command_runner.keys())}"
-        )
-
+    command_runner_cls = JobRunner if no_terminate else AnyscaleJobRunner
     cluster_manager_cls = command_runner_to_cluster_manager[command_runner_cls]
     logger.info(f"Got command runner cls: {command_runner_cls}")
-    # Extra tags to be set on resources on cloud provider's side
-    extra_tags = _get_extra_tags_from_env()
-    # We don't need other attributes as they can be derived from the name
-    extra_tags["test_name"] = str(test["name"])
-    extra_tags["test_smoke_test"] = str(result.smoke_test)
-    result.extra_tags = extra_tags
-
-    artifact_path = test["run"].get("artifact_path", None)
 
     # Instantiate managers and command runner
     try:
@@ -135,21 +93,21 @@ def _load_test_configuration(
             cluster_manager,
             JobFileManager(cluster_manager=cluster_manager),
             working_dir,
-            artifact_path=artifact_path,
+            artifact_path=test.get_artifact_path(),
         )
     except Exception as e:
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e
 
-    return cluster_manager, command_runner, artifact_path
+    return cluster_manager, command_runner
 
 
 def _setup_cluster_environment(
     test: Test,
-    result: Result,
+    smoke_test: bool,
     cluster_manager: ClusterManager,
     ray_wheels_url: str,
     cluster_env_id: Optional[str],
-) -> Tuple[str, int, int, int, int]:
+) -> Tuple[str, int, int, int, int, dict]:
     setup_signal_handling()
     # Load configs
     cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
@@ -219,16 +177,26 @@ def _setup_cluster_environment(
 
     # Set cluster compute here. Note that this may use timeouts provided
     # above.
+    # Extra tags to be set on resources on cloud provider's side
+    extra_tags = _get_extra_tags_from_env()
+    extra_tags["test_name"] = str(test["name"])
+    extra_tags["test_smoke_test"] = str(smoke_test)
     cluster_manager.set_cluster_compute(
         cluster_compute,
-        extra_tags=result.extra_tags,
+        extra_tags=extra_tags,
     )
 
-    return prepare_cmd, prepare_timeout, build_timeout, cluster_timeout, command_timeout
+    return (
+        prepare_cmd,
+        prepare_timeout,
+        build_timeout,
+        cluster_timeout,
+        command_timeout,
+        extra_tags,
+    )
 
 
 def _local_environment_information(
-    result: Result,
     cluster_manager: ClusterManager,
     command_runner: CommandRunner,
     build_timeout: int,
@@ -262,9 +230,6 @@ def _local_environment_information(
             cluster_manager.start_cluster(timeout=cluster_timeout)
         elif isinstance(command_runner, AnyscaleJobRunner):
             command_runner.job_manager.cluster_startup_timeout = cluster_timeout
-
-    result.cluster_url = cluster_manager.get_cluster_url()
-    result.cluster_id = cluster_manager.cluster_id
 
 
 def _prepare_remote_environment(
@@ -341,12 +306,11 @@ def _running_test_script(
 
 
 def _fetching_results(
-    result: Result,
+    test: Test,
     command_runner: CommandRunner,
-    artifact_path: Optional[str],
     smoke_test: bool,
     start_time_unix: int,
-) -> Tuple[dict, Exception]:
+) -> Tuple[dict, Exception, dict]:
     fetch_result_exception = None
     try:
         command_results = command_runner.fetch_results()
@@ -355,7 +319,7 @@ def _fetching_results(
         command_results = {}
         fetch_result_exception = e
 
-    if artifact_path:
+    if test.get_artifact_path():
         try:
             command_runner.fetch_artifact()
         except Exception as e:
@@ -383,10 +347,7 @@ def _fetching_results(
     if smoke_test:
         command_results["smoke_test"] = True
 
-    result.results = command_results
-    result.status = "finished"
-
-    return metrics, fetch_result_exception
+    return metrics, fetch_result_exception, command_results
 
 
 def run_release_test(
@@ -409,11 +370,9 @@ def run_release_test(
     fetch_result_exception = None
     try:
         buildkite_group(":spiral_note_pad: Loading test configuration")
-        cluster_manager, command_runner, artifact_path = _load_test_configuration(
+        cluster_manager, command_runner = _load_test_configuration(
             test,
             anyscale_project,
-            result,
-            ray_wheels_url,
             smoke_test,
             no_terminate,
         )
@@ -424,6 +383,7 @@ def run_release_test(
             build_timeout,
             cluster_timeout,
             command_timeout,
+            extra_tags,
         ) = _setup_cluster_environment(
             test,
             result,
@@ -463,10 +423,10 @@ def run_release_test(
         )
 
         buildkite_group(":floppy_disk: Fetching results")
-        metrics, fetch_result_exception = _fetching_results(
+        metrics, fetch_result_exception, command_results = _fetching_results(
+            test,
             result,
             command_runner,
-            artifact_path,
             smoke_test,
             start_time_unix,
         )
@@ -476,15 +436,24 @@ def run_release_test(
         pipeline_exception = e
         metrics = {}
 
-    # Obtain the cluster URL again as it is set after the
-    # command was run in case of anyscale jobs
-    if isinstance(command_runner, AnyscaleJobRunner):
-        result.cluster_url = cluster_manager.get_cluster_url()
-        result.cluster_id = cluster_manager.cluster_id
-        result.job_url = command_runner.job_manager.job_url
-        result.job_id = command_runner.job_manager.job_id
-
+    # Populate result paramaters
+    result.wheels_url = ray_wheels_url
+    result.stable = test.get("stable", True)
+    result.smoke_test = smoke_test
+    buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
+    buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
+    if buildkite_url:
+        buildkite_url += "#" + buildkite_job_id
+    result.buildkite_url = buildkite_url
+    result.buildkite_job_id = buildkite_job_id
+    result.cluster_url = cluster_manager.get_cluster_url()
+    result.cluster_id = cluster_manager.cluster_id
+    result.job_url = command_runner.job_manager.job_url
+    result.job_id = command_runner.job_manager.job_id
     result.last_logs = command_runner.get_last_logs() if command_runner else None
+    result.extra_tags = extra_tags
+    result.results = command_results
+    result.status = "finished"
 
     if not no_terminate and cluster_manager:
         buildkite_group(":earth_africa: Terminating cluster")

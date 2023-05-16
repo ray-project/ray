@@ -34,6 +34,9 @@ class Test(dict):
     def get_name(self) -> str:
         return self["name"]
 
+    def get_artifact_path(self) -> Optional[str]:
+        return self["run"].get("artifact_path", None)
+
     def get_python_version(self) -> str:
         """
         Returns the python version to use for this test. If not specified, use
