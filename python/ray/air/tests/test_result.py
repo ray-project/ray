@@ -1,5 +1,5 @@
 import torch
-# import pytest
+import pytest
 
 import ray
 from ray.air import CheckpointConfig, RunConfig, ScalingConfig, session
@@ -65,5 +65,5 @@ def test_result_restore(ray_start_4_cpus):
 
 if __name__ == "__main__":
     import sys
-    test_result_restore(1)
-    # sys.exit(pytest.main(["-v", "-x", __file__]))
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
