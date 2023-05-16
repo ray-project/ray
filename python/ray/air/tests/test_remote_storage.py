@@ -10,6 +10,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
     get_fs_and_path,
+    _is_network_mount,
 )
 from ray.tune.utils.file_transfer import _get_recursive_files_and_stats
 
@@ -213,6 +214,25 @@ def test_get_fs_and_path():
             or "pyarrow and local java libraries required for HDFS" in str_e
         )
         assert find_error
+
+
+def test_is_network_mount(tmp_path, monkeypatch):
+    """Test `_is_network_mount` storage utility."""
+
+    with monkeypatch.context() as m:
+        import ray.air._internal.remote_storage
+
+        m.setattr(
+            ray.air._internal.remote_storage,
+            "_get_network_mounts",
+            lambda: [str(tmp_path)],
+        )
+        assert _is_network_mount(str(tmp_path / "a/b/c"))
+
+    # Local paths should return False
+    assert not _is_network_mount(str(tmp_path / "ray_results"))
+    assert not _is_network_mount("~/ray_results")
+    assert not _is_network_mount("")  # cwd
 
 
 if __name__ == "__main__":
