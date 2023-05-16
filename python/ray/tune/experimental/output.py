@@ -105,7 +105,7 @@ IS_NOTEBOOK = ray.widgets.util.in_notebook()
 def get_air_verbosity(
     verbose: Union[int, AirVerbosity, Verbosity]
 ) -> Optional[AirVerbosity]:
-    if os.environ.get("RAY_AIR_NEW_OUTPUT", "0") == "0":
+    if os.environ.get("RAY_AIR_NEW_OUTPUT", "1") == "0":
         return None
 
     if isinstance(verbose, AirVerbosity):
