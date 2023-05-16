@@ -117,10 +117,11 @@ class OperatorFusionRule(Rule):
         # - TaskPoolMapOperator -> AllToAllOperator (because AllToAllOperator can't run with actor pools).
         # (only RandomShuffle and Repartition LogicalOperators are currently supported)
         if not (
-            isinstance(up_op, MapOperator) and isinstance(down_op, MapOperator)
-        ) and not (
-            isinstance(up_op, TaskPoolMapOperator)
-            and isinstance(down_op, AllToAllOperator)
+            (isinstance(up_op, MapOperator) and isinstance(down_op, MapOperator))
+            or (
+                isinstance(up_op, TaskPoolMapOperator)
+                and isinstance(down_op, AllToAllOperator)
+            )
         ):
             return False
 

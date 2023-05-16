@@ -48,8 +48,11 @@ from ray.data.read_api import (  # noqa: F401
 
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
-_cached_fn = None
-_cached_cls = None
+# Used for caching user-defined callable classes.
+# Key the class, value is the object.
+# see make_callable_class_concurrent in python/ray/data/_internal/execution/util.py.
+# The reason why this is a dict is because we may fuse multiple map operators into one.
+_callable_class_cache = {}
 
 __all__ = [
     "ActorPoolStrategy",
