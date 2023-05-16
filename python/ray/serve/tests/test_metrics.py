@@ -765,7 +765,7 @@ def test_multiplexed_metrics(serve_start_shutdown):
 
     @serve.deployment
     class Model:
-        @serve.multiplexed
+        @serve.multiplexed(max_num_models_per_replica=2)
         async def get_model(self, model_id: str):
             return model_id
 
@@ -779,7 +779,7 @@ def test_multiplexed_metrics(serve_start_shutdown):
     # Trigger model eviction.
     handle.remote("model3")
     expected_metrics = [
-        "serve_multiplexed_request_counter",
+        "serve_multiplexed_model_load_latency_s",
         "serve_multiplexed_model_unload_latency_s",
         "serve_num_multiplexed_models",
         "serve_multiplexed_models_load_counter",
@@ -795,7 +795,11 @@ def test_multiplexed_metrics(serve_start_shutdown):
             assert metric in resp
         return True
 
-    wait_for_condition(verify_metrics, timeout=20)
+    wait_for_condition(
+        verify_metrics,
+        timeout=20,
+        retry_interval_ms=1000,
+    )
 
 
 def test_actor_summary(serve_instance):
