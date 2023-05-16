@@ -344,7 +344,7 @@ class StreamingObjectRefGenerator:
             timeout_s: float,
             unexpected_network_failure_timeout_s: float):
         """Handle the error case of next APIs.
-        
+
         Return None if there's no error. Returns a ref if
         the ref is supposed to be return.
         """
