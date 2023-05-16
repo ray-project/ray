@@ -189,3 +189,27 @@ export const useServeReplicaDetails = (
     error,
   };
 };
+
+export const useServeHTTPProxyDetails = (httpProxyId: string | undefined) => {
+  const { data, error, isLoading } = useSWR(
+    "useServeHTTPProxyDetails",
+    async () => {
+      const rsp = await getServeApplications();
+
+      if (rsp) {
+        return rsp.data;
+      }
+    },
+    { refreshInterval: API_REFRESH_INTERVAL_MS },
+  );
+
+  const httpProxy = httpProxyId ? data?.http_proxies?.[httpProxyId] : undefined;
+
+  // Need to expose loading because it's not clear if undefined values
+  // for application, deployment, or replica means loading or missing data.
+  return {
+    loading: isLoading,
+    httpProxy,
+    error,
+  };
+};
