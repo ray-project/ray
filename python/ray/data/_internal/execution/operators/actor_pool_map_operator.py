@@ -203,16 +203,11 @@ class ActorPoolMapOperator(MapOperator):
         # Kill inactive workers if there's no more work to do.
         self._kill_inactive_workers_if_done()
 
-        while self._autoscaling_policy.should_scale_down(
+        if self._autoscaling_policy.should_scale_down(
             num_total_workers=self._actor_pool.num_total_actors(),
             num_idle_workers=self._actor_pool.num_idle_actors(),
         ):
-            killed = self._actor_pool.kill_inactive_actor()
-            if not killed:
-                # This scaledown is best-effort, only killing an inactive worker if an
-                # inactive worker exists. If there are no inactive workers to kill, we
-                # break out of the scale-down loop.
-                break
+            self._actor_pool.kill_inactive_actor()
 
     def notify_work_completed(
         self, ref: Union[ObjectRef[ObjectRefGenerator], ray.ObjectRef]
