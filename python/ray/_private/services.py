@@ -1332,7 +1332,6 @@ def start_api_server(
                 """Read a log file and return the last 20 lines."""
                 dashboard_log = os.path.join(logdir, filename)
                 # Read last n lines of dashboard log. The log file may be large.
-                lines_to_read = 20
                 lines = []
                 with open(dashboard_log, "rb") as f:
                     with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
@@ -1340,32 +1339,29 @@ def start_api_server(
                         for _ in range(lines_to_read):
                             sep = mm.rfind(b"\n", 0, end - 1)
                             if sep == -1:
+                                if end > 1:
+                                    lines.append(mm[: end - 1].decode("utf-8"))
                                 break
-                            lines.append(mm[sep + 1 : end].decode("utf-8"))
+                            lines.append(mm[sep + 1 : end - 1].decode("utf-8"))
                             end = sep
                 lines.append(
-                    f"The last {lines_to_read} lines of {dashboard_log} "
-                    "(it contains the error message from the dashboard): "
+                    f"The last {len(lines)} lines of {dashboard_log} "
+                    "(it may contain an error message from the dashboard): "
                 )
                 return lines
 
             if logdir:
                 lines_to_read = 20
-                logger.error(
-                    "Error should be written to 'dashboard.log' or "
-                    "'dashboard.err'. We are printing the last "
-                    f"{lines_to_read} lines for you. See "
-                    "'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' "  # noqa
-                    "to find where the log file is."
-                )
                 try:
                     lines = read_log("dashboard.log", lines_to_read=lines_to_read)
                 except Exception as e:
                     logger.error(
-                        f"Couldn't read dashboard.log file. Error: {e}. "
-                        "It means the dashboard is broken even before it "
-                        "initializes the logger (mostly dependency issues). "
-                        "Reading the dashboard.err file which contains stdout/stderr."
+                        "Error should have been written to 'dashboard.log' "
+                        "file, but it could not be read. The dashboard failed "
+                        "before it initialized the logger (probably a "
+                        f"dependency issue). The error was: {e}"
+                        "Reading the dashboard.err file instead which "
+                        "contains stdout/stderr."
                     )
                     # If we cannot read the .log file, we fallback to .err file.
                     # This is the case where dashboard couldn't be started at all
@@ -1380,6 +1376,11 @@ def start_api_server(
                             "Ray github. "
                             "https://github.com/ray-project/ray/issues"
                         )
+                logger.error(
+                    "Error should be written to 'dashboard.log' "
+                    "We are printing the last lines"
+                )
+
                 last_log_str = "\n" + "\n".join(reversed(lines[-lines_to_read:]))
                 raise Exception(last_log_str)
             else:
