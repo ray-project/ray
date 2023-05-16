@@ -58,11 +58,19 @@ export type JobDetail = {
 
 export type JobListRsp = UnifiedJob[];
 
+export enum JobStatus {
+  PENDING = "PENDING",
+  RUNNING = "RUNNING",
+  STOPPED = "STOPPED",
+  SUCCEEDED = "SUCCEEDED",
+  FAILED = "FAILED",
+}
+
 export type UnifiedJob = {
   job_id: string | null;
   submission_id: string | null;
   type: string;
-  status: string;
+  status: JobStatus;
   entrypoint: string;
   message: string | null;
   error_type: string | null;
