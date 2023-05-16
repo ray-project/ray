@@ -1,25 +1,5 @@
 # flake8: noqa
 
-# __begin_no_builder__
-from ray import serve
-
-@serve.deployment
-class HelloWorld:
-    def __init__(self, message: str):
-        self._message = message
-        print("Message:", self._message)
-
-    def __call__(self, request):
-        return self._message
-
-app = HelloWorld.bind("Hello foo")
-# __end_no_builder__
-
-serve.run(app)
-import requests
-resp = requests.get("http://localhost:8000")
-assert resp.text == "Hello foo"
-
 # __begin_untyped_builder__
 from typing import Dict
 
