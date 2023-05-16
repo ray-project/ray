@@ -229,14 +229,14 @@ export const ServeSystemActorDetail = ({
 
 type ServeSystemActorLogsProps = {
   type: "controller" | "httpProxy";
-  actor: Pick<ActorDetail, "address" | "jobId" | "pid">;
+  actor: Pick<ActorDetail, "address" | "actorId" | "pid">;
   systemLogFilePath: string;
 };
 
 const ServeSystemActorLogs = ({
   type,
   actor: {
-    jobId,
+    actorId,
     pid,
     address: { workerId, rayletId },
   },
