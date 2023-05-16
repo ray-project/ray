@@ -7,7 +7,7 @@ from ray._private.test_utils import wait_for_condition
 
 import ray
 from ray._private.test_utils import SignalActor
-from ray.util.state.api import list_actors
+from ray.util.state import list_actors
 
 from ray import serve
 from ray.serve._private.constants import (

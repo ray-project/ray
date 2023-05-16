@@ -1188,7 +1188,7 @@ def get_log(
 
     Examples:
         >>> import ray
-        >>> from ray.util.state.api import get_log # doctest: +SKIP
+        >>> from ray.util.state import get_log # doctest: +SKIP
         # To connect to an existing ray instance if there is
         >>> ray.init("auto") # doctest: +SKIP
         # Node IP could be retrieved from list_nodes() or ray.nodes()

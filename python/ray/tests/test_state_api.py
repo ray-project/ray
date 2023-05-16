@@ -8,7 +8,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
-from ray.util.state.api import get_job
+from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
 from ray._private.gcs_utils import GcsAioClient
@@ -65,7 +65,7 @@ from ray.dashboard.state_aggregator import (
     StateAPIManager,
     _convert_filters_type,
 )
-from ray.util.state.api import (
+from ray.util.state import (
     get_actor,
     get_node,
     get_objects,

@@ -9,7 +9,7 @@ import requests
 import pytest
 
 from ray._private.profiling import chrome_tracing_dump
-from ray.util.state.api import (
+from ray.util.state import (
     get_actor,
     list_tasks,
     list_actors,
@@ -254,7 +254,7 @@ def test_actor_repr_name(shutdown_only):
 
 def test_experimental_import_deprecation():
     with pytest.warns(DeprecationWarning):
-        from ray.util.state.api import list_tasks  # noqa: F401
+        from ray.util.state import list_tasks  # noqa: F401
 
     with pytest.warns(DeprecationWarning):
         from ray.util.state.common import DEFAULT_RPC_TIMEOUT  # noqa: F401

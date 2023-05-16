@@ -22,9 +22,9 @@ Summary APIs
 .. autosummary::
    :toctree: doc/
 
-    ray.util.state.api.summarize_actors
-    ray.util.state.api.summarize_objects
-    ray.util.state.api.summarize_tasks
+    ray.util.state.summarize_actors
+    ray.util.state.summarize_objects
+    ray.util.state.summarize_tasks
 
 List APIs
 ~~~~~~~~~~
@@ -32,14 +32,14 @@ List APIs
 .. autosummary::
    :toctree: doc/
 
-    ray.util.state.api.list_actors
-    ray.util.state.api.list_placement_groups
-    ray.util.state.api.list_nodes
-    ray.util.state.api.list_jobs
-    ray.util.state.api.list_workers
-    ray.util.state.api.list_tasks
-    ray.util.state.api.list_objects
-    ray.util.state.api.list_runtime_envs
+    ray.util.state.list_actors
+    ray.util.state.list_placement_groups
+    ray.util.state.list_nodes
+    ray.util.state.list_jobs
+    ray.util.state.list_workers
+    ray.util.state.list_tasks
+    ray.util.state.list_objects
+    ray.util.state.list_runtime_envs
 
 Get APIs
 ~~~~~~~~~
@@ -47,12 +47,12 @@ Get APIs
 .. autosummary::
    :toctree: doc/
 
-    ray.util.state.api.get_actor
-    ray.util.state.api.get_placement_group
-    ray.util.state.api.get_node
-    ray.util.state.api.get_worker
-    ray.util.state.api.get_task
-    ray.util.state.api.get_objects
+    ray.util.state.get_actor
+    ray.util.state.get_placement_group
+    ray.util.state.get_node
+    ray.util.state.get_worker
+    ray.util.state.get_task
+    ray.util.state.get_objects
 
 Log APIs
 ~~~~~~~~
@@ -60,8 +60,8 @@ Log APIs
 .. autosummary::
    :toctree: doc/
 
-    ray.util.state.api.list_logs
-    ray.util.state.api.get_log
+    ray.util.state.list_logs
+    ray.util.state.get_log
 
 .. _state-api-schema:
 

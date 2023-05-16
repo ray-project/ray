@@ -9,7 +9,7 @@ import yaml
 
 import ray._private.services as services
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.util.state.api import (
+from ray.util.state import (
     StateApiClient,
     get_log,
     list_logs,

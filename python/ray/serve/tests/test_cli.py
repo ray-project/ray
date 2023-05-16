@@ -15,7 +15,7 @@ import yaml
 
 import ray
 from ray import serve
-from ray.util.state.api import list_actors
+from ray.util.state import list_actors
 from ray._private.test_utils import wait_for_condition
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE

@@ -7,7 +7,7 @@ import random
 import sys
 from dataclasses import asdict
 
-from ray.util.state.api import (
+from ray.util.state import (
     summarize_tasks,
     summarize_actors,
     summarize_objects,

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from ray.util.state.state_cli import logs_state_cli_group
-from ray.util.state.api import list_jobs
+from ray.util.state import list_jobs
 import requests
 from click.testing import CliRunner
 import grpc
@@ -46,7 +46,7 @@ from ray.dashboard.modules.log.log_agent import (
 from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.util.state.api import get_log, list_logs, list_nodes, list_workers
+from ray.util.state import get_log, list_logs, list_nodes, list_workers
 from ray.util.state.common import GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.state_manager import StateDataSourceClient

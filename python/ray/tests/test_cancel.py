@@ -18,7 +18,7 @@ from ray.exceptions import (
 )
 from ray._private.utils import DeferSigint
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.util.state.api import list_tasks
+from ray.util.state import list_tasks
 
 
 def valid_exceptions(use_force):

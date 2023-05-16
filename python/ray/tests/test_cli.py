@@ -44,7 +44,7 @@ import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
-from ray.util.state.api import list_nodes
+from ray.util.state import list_nodes
 
 import psutil
 

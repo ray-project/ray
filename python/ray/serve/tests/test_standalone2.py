@@ -13,7 +13,7 @@ import requests
 import ray
 import ray.actor
 import ray._private.state
-from ray.util.state.api import list_actors
+from ray.util.state import list_actors
 
 from ray import serve
 from ray._private.test_utils import (

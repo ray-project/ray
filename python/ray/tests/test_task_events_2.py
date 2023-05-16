@@ -16,7 +16,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.util.state.api import (
+from ray.util.state import (
     StateApiClient,
     list_actors,
     list_tasks,
