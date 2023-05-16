@@ -352,7 +352,7 @@ class Learner:
             pairs.append(pair)
         elif isinstance(pair_or_pairs, dict):
             # pair_or_pairs is a NamedParamOptimizerPairs
-            for name, pair in pairs.items():
+            for name, pair in pair_or_pairs.items():
                 self._check_structure_param_optim_pair(pair)
                 _, optim = pair
                 if not isinstance(name, str):
@@ -425,7 +425,7 @@ class Learner:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def compute_gradients(self, loss: Mapping[str, Any]) -> ParamDictType:
+    def compute_gradients(self, loss: Dict[str, Any]) -> ParamDictType:
         """Computes the gradients based on the loss.
 
         Args:
@@ -435,8 +435,25 @@ class Learner:
             The gradients in teh same format as self._params.
         """
 
+    @OverrideToImplementCustomLogic
+    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
+        """Applies potential postprocessing operations on the gradients.
+
+        This method is called after gradients have been computed, and modifies them
+        before they are applied to the respective module(s).
+        This includes grad clipping by value, norm, or global-norm, or other
+        algorithm specific gradient postprocessing steps.
+
+        Args:
+            gradients_dict: A dictionary of gradients.
+
+        Returns:
+            A dictionary with the updated gradients.
+        """
+        return gradients_dict
+
     @abc.abstractmethod
-    def apply_gradients(self, gradients: ParamDictType) -> None:
+    def apply_gradients(self, gradients_dict: ParamDictType) -> None:
         """Applies the gradients to the MultiAgentRLModule parameters.
 
         Args:
@@ -655,10 +672,10 @@ class Learner:
         `compute_loss_per_module()` should be overriden instead.
         The input "fwd_out" is the output "forward_train" method of the underlying
         MultiAgentRLModule. The input "batch" is the data that was used to compute
-        "fwd_out". The returned dictionary must contain a key called "total_loss",
-        which will be used to compute gradients. It is recommended to not compute any
-        forward passes within this method, and to use the "forward_train" outputs to
-        compute the required tensors for loss calculation.
+        "fwd_out". The returned dictionary must contain a key called
+        `self.TOTAL_LOSS_KEY`, which will be used to compute gradients. It is
+        recommended to not compute any forward passes within this method, and to use the
+        "forward_train" outputs to compute the required tensors for loss calculation.
 
         Args:
             fwd_out: Output from a call to `forward_train` on self._module during
@@ -667,7 +684,7 @@ class Learner:
 
         Returns:
             A dictionary of losses. The dictionary
-            must contain one protected key "total_loss" which will be used for
+            must contain one protected key `self.TOTAL_LOSS_KEY` which will be used for
             computing gradients through.
         """
         loss_total = None
@@ -707,9 +724,8 @@ class Learner:
             fwd_out: The output of the forward pass for this particular module.
 
         Returns:
-            A dictionary of losses. The dictionary
-            must contain one protected key "total_loss" which will be used for
-            computing gradients through.
+            A dictionary of losses. The dictionary must contain one protected key
+            `self.TOTAL_LOSS_KEY` which will be used for computing gradients through.
         """
         raise NotImplementedError
 
@@ -782,26 +798,6 @@ class Learner:
         """
         return {}
 
-    @OverrideToImplementCustomLogic
-    def postprocess_gradients(
-        self,
-        gradients_dict: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        """Applies potential postprocessing operations on the gradients.
-
-        This method is called after gradients have been computed, and modifies them
-        before they are applied to the respective module(s).
-        This includes grad clipping by value, norm, or global-norm, or other
-        algorithm specific gradient postprocessing steps.
-
-        Args:
-            gradients_dict: A dictionary of gradients.
-
-        Returns:
-            A dictionary with the updated gradients.
-        """
-        return gradients_dict
-
     def update(
         self,
         batch: MultiAgentBatch,
@@ -811,7 +807,7 @@ class Learner:
         reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
             _reduce_mean_results
         ),
-    ) -> Mapping[str, Any]:
+    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do `num_iters` minibatch updates given the original batch.
 
         Given a batch of episodes you can use this method to take more

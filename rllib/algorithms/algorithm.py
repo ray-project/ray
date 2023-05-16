@@ -593,11 +593,7 @@ class Algorithm(Trainable):
 
         # Only if user did not override `_init()`:
         if _init is False:
-            # - Create rollout workers here automatically.
-            # - Run the execution plan to create the local iterator to `next()`
-            #   in each training iteration.
-            # This matches the behavior of using `build_trainer()`, which
-            # has been deprecated.
+            # Create a set of env runner actors via a WorkerSet.
             self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
@@ -621,13 +617,6 @@ class Algorithm(Trainable):
                 self.train_exec_impl = self.execution_plan(
                     self.workers, self.config, **self._kwargs_for_execution_plan()
                 )
-
-            # Now that workers have been created, update our policies
-            # dict in config[multiagent] (with the correct original/
-            # unpreprocessed spaces).
-            self.config["multiagent"][
-                "policies"
-            ] = self.workers.local_worker().policy_dict
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -728,13 +717,23 @@ class Algorithm(Trainable):
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            module_spec = local_worker.marl_module_spec
+            # module_spec = local_worker.marl_module_spec
+            module_spec = self.config.get_marl_module_spec(
+                policy_dict=self.config.get_multi_agent_setup(
+                    env=self.workers.local_worker().env  # TODO(sven): remove this hack
+                )[0],
+                module_spec=None,
+            )
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
-            # sync the weights from local rollout worker to trainers
-            weights = local_worker.get_weights()
-            self.learner_group.set_weights(weights)
+            # TODO (sven): Fix this dependency. How do we do an algo that only has
+            #  a single model, used for sampling and learning?
+            # Sync the weights from local rollout worker to individual Learners.
+            # weights = local_worker.get_weights()
+            # self.learner_group.set_weights(weights)
+            # TODO (sven): DreamerV3 is single-agent only.
+            local_worker.model = self.learner_group._learner.module[DEFAULT_POLICY_ID]
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)

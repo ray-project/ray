@@ -20,6 +20,7 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
+    from ray.rllib.core.learner.learner import ParamDictType
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
@@ -92,7 +93,7 @@ def atanh(x: TensorType) -> TensorType:
 
 @PublicAPI
 def clip_gradients(
-    gradients_dict: Dict[str, "torch.Tensor"],
+    gradients_dict: "ParamDictType",
     *,
     grad_clip: Optional[float] = None,
     grad_clip_by: str = "value",

@@ -1,0 +1,25 @@
+frozenlake-4x4-stochastic:
+  env: FrozenLake-v1
+
+  env_config:
+    map_name: 4x4
+    is_slippery: true
+
+  model_dimension: XXS
+
+  training_ratio: 1024
+  batch_size_B: 24
+  batch_length_T: 24
+
+  use_curiosity: true
+  intrinsic_rewards_scale: 10.0
+
+  # Run config.
+  # Summary behavior.
+  summary_frequency_train_steps: 10
+  summary_include_histograms: true
+  # Evaluation runs.
+  evaluation_frequency_main_iters: 1
+  evaluation_num_episodes: 20
+  # Model saving.
+  model_save_frequency_main_iters: 1000
