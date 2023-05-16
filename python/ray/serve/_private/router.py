@@ -7,6 +7,7 @@ import random
 import sys
 from typing import Any, Dict, List, Optional
 import threading
+from collections import defaultdict
 
 import ray
 from ray.actor import ActorHandle
@@ -116,6 +117,12 @@ class ReplicaSet:
             {"deployment": self.deployment_name}
         )
 
+        # A map from multiplexed model id to a list of replicas that have the
+        # model loaded.
+        self.multiplexed_replicas_table: Dict[
+            str, List[RunningReplicaInfo]
+        ] = defaultdict(list)
+
     def _reset_replica_iterator(self):
         """Reset the iterator used to load balance replicas.
 
@@ -126,6 +133,13 @@ class ReplicaSet:
         replicas = list(self.in_flight_queries.keys())
         random.shuffle(replicas)
         self.replica_iterator = itertools.cycle(replicas)
+
+        # Update the multiplexed_replicas_table
+        new_multiplexed_replicas_table = defaultdict(list)
+        for replica in replicas:
+            for mdoel_id in replica.multiplexed_model_ids:
+                new_multiplexed_replicas_table[mdoel_id].append(replica)
+        self.multiplexed_replicas_table = new_multiplexed_replicas_table
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         added, removed, _ = compute_iterable_delta(
@@ -146,73 +160,80 @@ class ReplicaSet:
             self._reset_replica_iterator()
             self.config_updated_event.set()
 
+    def _assign_replica(self, query: Query, replica: RunningReplicaInfo):
+        """Assign query to the replica.
+        Args:
+            query: Query object, containing the request metadata and args.
+            replica: Replica object, containing the actor handle to the replica.
+        Returns: object ref of the requests.
+        """
+
+        logger.debug(
+            f"Assigned query {query.metadata.request_id} "
+            f"to replica {replica.replica_tag}."
+        )
+        if replica.is_cross_language:
+            # Handling requests for Java replica
+            arg = query.args[0]
+            if query.metadata.http_arg_is_pickled:
+                assert isinstance(arg, bytes)
+                loaded_http_input = pickle.loads(arg)
+                query_string = loaded_http_input.scope.get("query_string")
+                if query_string:
+                    arg = query_string.decode().split("=", 1)[1]
+                elif loaded_http_input.body:
+                    arg = loaded_http_input.body.decode()
+            user_ref = JavaActorHandleProxy(replica.actor_handle).handle_request.remote(
+                RequestMetadataProto(
+                    request_id=query.metadata.request_id,
+                    endpoint=query.metadata.endpoint,
+                    call_method=query.metadata.call_method
+                    if query.metadata.call_method != "__call__"
+                    else "call",
+                ).SerializeToString(),
+                [arg],
+            )
+            self.in_flight_queries[replica].add(user_ref)
+        else:
+            # Directly passing args because it might contain an ObjectRef.
+            tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
+                pickle.dumps(query.metadata), *query.args, **query.kwargs
+            )
+            self.in_flight_queries[replica].add(tracker_ref)
+        return user_ref
+
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
         """Try to assign query to a replica, return the object ref if succeeded
         or return None if it can't assign this query to any replicas.
         """
 
-        def _assign_replica(replica: RunningReplicaInfo):
-            """Assign query to a replica."""
-
-            logger.debug(
-                f"Assigned query {query.metadata.request_id} "
-                f"to replica {replica.replica_tag}."
-            )
-            if replica.is_cross_language:
-                # Handling requests for Java replica
-                arg = query.args[0]
-                if query.metadata.http_arg_is_pickled:
-                    assert isinstance(arg, bytes)
-                    loaded_http_input = pickle.loads(arg)
-                    query_string = loaded_http_input.scope.get("query_string")
-                    if query_string:
-                        arg = query_string.decode().split("=", 1)[1]
-                    elif loaded_http_input.body:
-                        arg = loaded_http_input.body.decode()
-                user_ref = JavaActorHandleProxy(
-                    replica.actor_handle
-                ).handle_request.remote(
-                    RequestMetadataProto(
-                        request_id=query.metadata.request_id,
-                        endpoint=query.metadata.endpoint,
-                        call_method=query.metadata.call_method
-                        if query.metadata.call_method != "__call__"
-                        else "call",
-                    ).SerializeToString(),
-                    [arg],
-                )
-                self.in_flight_queries[replica].add(user_ref)
-            else:
-                # Directly passing args because it might contain an ObjectRef.
-                tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
-                    pickle.dumps(query.metadata), *query.args, **query.kwargs
-                )
-                self.in_flight_queries[replica].add(tracker_ref)
-            return user_ref
-
         # Try to find a replica that can handle this query
         # If multiplexed model id is not specified, we can assign the query to
         # any non-overloaded replica.
         # If multiplexed model id is specified, we can try to assign the query
-        # to a replica that is already handling the model and is not overloaded.
+        # to a replica that has the specified model loaded and
+        # is not overloaded with requests.
         # If no such replica exists, we can assign the query to any non-overloaded
         # replica.
-        if query.metadata.multiplexed_model_id:
+        if (
+            query.metadata.multiplexed_model_id
+            and query.metadata.multiplexed_model_id in self.multiplexed_replicas_table
+        ):
             # Try to find the replica that is already handling the model.
-            for _ in range(len(self.in_flight_queries.keys())):
-                replica = next(self.replica_iterator)
+            for replica in self.multiplexed_replicas_table[
+                query.metadata.multiplexed_model_id
+            ]:
                 if (
                     len(self.in_flight_queries[replica])
                     >= replica.max_concurrent_queries
                 ):
+                    # This replica is overloaded, try next one
                     continue
-                if query.metadata.multiplexed_model_id in replica.multiplexed_model_ids:
-                    logger.debug(
-                        f"Assigned query {query.metadata.request_id} "
-                        f"to replica {replica.replica_tag} with "
-                        f"multiplexed model id {query.metadata.multiplexed_model_id}."
-                    )
-                    return _assign_replica(replica)
+                logger.debug(
+                    f"Assigned query {query.metadata.request_id} "
+                    f"to replica {replica.replica_tag}."
+                )
+                return self._assign_replica(replica)
 
         for _ in range(len(self.in_flight_queries.keys())):
             replica = next(self.replica_iterator)
@@ -220,11 +241,19 @@ class ReplicaSet:
                 # This replica is overloaded, try next one
                 continue
 
+            if query.metadata.multiplexed_model_id:
+                # This query has a multiplexed model id, but the model is not
+                # loaded on this replica. Save this replica for future queries
+                # with the same model id.
+                self.multiplexed_replicas_table[
+                    query.metadata.multiplexed_model_id
+                ].append(replica)
+
             logger.debug(
                 f"Assigned query {query.metadata.request_id} "
                 f"to replica {replica.replica_tag}."
             )
-            return _assign_replica(replica)
+            return self._assign_replica(replica)
         return None
 
     @property

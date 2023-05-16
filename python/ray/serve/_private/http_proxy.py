@@ -431,13 +431,10 @@ class HTTPProxy:
             "app_name": app_name,
         }
         start_time = time.time()
-        multiplexed_model_id = None
         for key, value in scope["headers"]:
-            if SERVE_MULTIPLEXED_MODEL_ID == key.decode():
-                multiplexed_model_id = value.decode()
+            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+                request_context_info["multiplexed_model_id"] = value.decode()
                 break
-        if multiplexed_model_id:
-            request_context_info["multiplexed_model_id"] = multiplexed_model_id
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(**request_context_info)
         )
