@@ -238,10 +238,12 @@ size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys
       queue_added++;
     }
     if (added) {
-      // There is no in-flight requests for this key which means
-      // in the callback the queue won't be poped. So just push
-      // an entry as placeholder to indicate there is pending
-      // requests.
+      // As an optimization, if there is no in-flight request in this queue, we
+      // don't need to store the actual send_request in the queue but just need
+      // a placeholder (to indicate there are pending requests). This is because either
+      // the send_request will be fired immediately (if all the depending queues are empty).
+      // otherwise the send_request in the last queue with pending in-flight requests will
+      // be called. In either case, the send_request will not be called in this queue.
       op_iter->second.push(nullptr);
     } else {
       op_iter->second.push(send_request);
