@@ -57,7 +57,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
         for _ in range(3):
             new_ref = ray.ObjectRef.from_random()
             c.try_read_next_object_ref_stream.return_value = new_ref
-            ref = generator._next(timeout_s=0)
+            ref = generator._next_sync(timeout_s=0)
             assert new_ref == ref
 
         # When try_read_next_object_ref_stream raises a
@@ -92,12 +92,10 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
             mocked_ray_get.side_effect = WorkerCrashedError()
 
             c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-            ref = generator._next(timeout_s=0)
+            ref = generator._next_sync(timeout_s=0)
             # If the generator task fails by a systsem error,
             # meaning the ref will raise an exception
             # it should be returned.
-            print(ref)
-            print(generator_ref)
             assert ref == generator_ref
 
             # Once exception is raised, it should always
@@ -129,7 +127,7 @@ def test_streaming_object_ref_generator_network_failed_unit(mocked_worker):
             # unexpected_network_failure_timeout_s second,
             # it should fail.
             c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-            ref = generator._next(timeout_s=0, unexpected_network_failure_timeout_s=1)
+            ref = generator._next_sync(timeout_s=0, unexpected_network_failure_timeout_s=1)
             assert ref == ray.ObjectRef.nil()
             time.sleep(1)
             with pytest.raises(AssertionError):
@@ -624,7 +622,7 @@ def test_threaded_actor_generator(shutdown_only):
     asyncio.run(main())
 
 
-def test_generator_dist_all_gather(ray_start_cluster):
+def test_generator_dist_gather(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0, object_store_memory=1 * 1024 * 1024 * 1024)
     ray.init()
