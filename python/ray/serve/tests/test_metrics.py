@@ -760,6 +760,44 @@ class TestRequestContextMetrics:
         self.verify_metrics(histogram_metrics[0], expected_metrics)
 
 
+def test_multiplexed_metrics(serve_start_shutdown):
+    """Tests multiplexed API corresponding metrics."""
+
+    @serve.deployment
+    class Model:
+        @serve.multiplexed
+        async def get_model(self, model_id: str):
+            return model_id
+
+        async def __call__(self, model_id: str):
+            await self.get_model(model_id)
+            return
+
+    handle = serve.run(Model.bind(), name="app", route_prefix="/app")
+    handle.remote("model1")
+    handle.remote("model2")
+    # Trigger model eviction.
+    handle.remote("model3")
+    expected_metrics = [
+        "serve_multiplexed_request_counter",
+        "serve_multiplexed_model_unload_latency_s",
+        "serve_num_multiplexed_models",
+        "serve_multiplexed_models_load_counter",
+    ]
+
+    def verify_metrics():
+        try:
+            resp = requests.get("http://127.0.0.1:9999").text
+        # Requests will fail if we are crashing the controller
+        except requests.ConnectionError:
+            return False
+        for metric in expected_metrics:
+            assert metric in resp
+        return True
+
+    wait_for_condition(verify_metrics, timeout=20)
+
+
 def test_actor_summary(serve_instance):
     @serve.deployment
     def f():
