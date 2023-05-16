@@ -154,7 +154,7 @@ def test_get_trial_table_data_less_than_20():
         t.set_status(Trial.RUNNING)
         t.last_result = {"episode_reward_mean": 100 + i}
         trials.append(t)
-    table_data = _get_trial_table_data(trials, ["episode_reward_mean"])
+    table_data = _get_trial_table_data(trials, [], ["episode_reward_mean"])
     header = table_data.header
     assert header == ["Trial name", "status", "reward"]
     table_data = table_data.data
@@ -173,7 +173,7 @@ def test_get_trial_table_data_more_than_20():
             t.set_status(status)
             t.last_result = {"episode_reward_mean": 100 + i}
             trials.append(t)
-    table_data = _get_trial_table_data(trials, ["episode_reward_mean"])
+    table_data = _get_trial_table_data(trials, [], ["episode_reward_mean"])
     header = table_data.header
     assert header == ["Trial name", "status", "reward"]
     table_data = table_data.data
