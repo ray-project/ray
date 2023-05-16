@@ -285,7 +285,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
   // For a query reading or writing multiple keys, we need a counter
   // to check whether all existing requests for this keys have been
   // processed.
-  auto num_ready_keys = std::make_shared<size_t>(0) GUARDED_BY(mu_);
+  auto num_ready_keys = std::make_shared<size_t>(0);
   std::function<void()> send_redis = [this,
                                       num_ready_keys = num_ready_keys,
                                       keys,
