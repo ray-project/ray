@@ -1,4 +1,4 @@
-import { ServeApplicationStatus, ServeDeploymentMode } from "../../type/serve";
+import { ServeApplicationStatus } from "../../type/serve";
 
 export const mockServeApplications = {
   applications: {

@@ -418,7 +418,7 @@ Distributed Data Ingest with Ray Data and Ray Train
 -------------------------------------------------------
 
 :ref:`Ray Data <data>` is the recommended way to work with large datasets in Ray Train. Ray Data provides automatic loading, sharding, and streamed ingest of Data across multiple Train workers.
-To get started, pass in one or more datastreams under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
+To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
 
 Here's a simple code overview of the Ray Data integration:
 

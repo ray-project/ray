@@ -1,7 +1,5 @@
 import { Box, makeStyles } from "@material-ui/core";
-import React, { useContext, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { GlobalContext } from "../../App";
+import React, { useRef, useState } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { Section } from "../../common/Section";
 import {
@@ -11,7 +9,7 @@ import {
 import Loading from "../../components/Loading";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
-import { NestedJobProgressLink, UnifiedJob } from "../../type/job";
+import { NestedJobProgressLink } from "../../type/job";
 import ActorList from "../actor/ActorList";
 import { NodeCountCard } from "../overview/cards/NodeCountCard";
 import PlacementGroupList from "../state/PlacementGroup";
@@ -45,7 +43,6 @@ const useStyle = makeStyles((theme) => ({
 export const JobDetailChartsPage = () => {
   const classes = useStyle();
   const { job, msg, isLoading, params } = useJobDetail();
-  const jobId = params.id;
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
   const [taskTableExpanded, setTaskTableExpanded] = useState(false);
@@ -114,34 +111,34 @@ export const JobDetailChartsPage = () => {
       >
         <Section>
           <JobProgressBar
-            jobId={jobId}
+            jobId={job.job_id ? job.job_id : undefined}
             job={job}
             onClickLink={handleClickLink}
           />
         </Section>
       </CollapsibleSection>
 
-      {job.type === "SUBMISSION" && (
+      <CollapsibleSection
+        title="Logs"
+        startExpanded
+        className={classes.section}
+      >
+        <Section noTopPadding>
+          <JobDriverLogs job={job} />
+        </Section>
+      </CollapsibleSection>
+
+      {job.job_id && (
         <CollapsibleSection
-          title="Driver logs"
+          title="Task Timeline (beta)"
           startExpanded
           className={classes.section}
         >
           <Section>
-            <JobDriverLogs job={job} />
+            <TaskTimeline jobId={job.job_id} />
           </Section>
         </CollapsibleSection>
       )}
-
-      <CollapsibleSection
-        title="Task Timeline (beta)"
-        startExpanded
-        className={classes.section}
-      >
-        <Section>
-          <TaskTimeline jobId={jobId} />
-        </Section>
-      </CollapsibleSection>
 
       <CollapsibleSection
         title="Cluster status and autoscaler"
@@ -165,89 +162,55 @@ export const JobDetailChartsPage = () => {
         </Box>
       </CollapsibleSection>
 
-      <CollapsibleSection
-        ref={taskTableRef}
-        title="Task Table"
-        expanded={taskTableExpanded}
-        onExpandButtonClick={() => {
-          setTaskTableExpanded(!taskTableExpanded);
-        }}
-        className={classes.section}
-      >
-        <Section>
-          <TaskList
-            jobId={jobId}
-            filterToTaskId={taskListFilter}
-            onFilterChange={handleTaskListFilterChange}
-          />
-        </Section>
-      </CollapsibleSection>
+      {job.job_id && (
+        <React.Fragment>
+          <CollapsibleSection
+            ref={taskTableRef}
+            title="Task Table"
+            expanded={taskTableExpanded}
+            onExpandButtonClick={() => {
+              setTaskTableExpanded(!taskTableExpanded);
+            }}
+            className={classes.section}
+          >
+            <Section>
+              <TaskList
+                jobId={job.job_id}
+                filterToTaskId={taskListFilter}
+                onFilterChange={handleTaskListFilterChange}
+              />
+            </Section>
+          </CollapsibleSection>
 
-      <CollapsibleSection
-        ref={actorTableRef}
-        title="Actor Table"
-        expanded={actorTableExpanded}
-        onExpandButtonClick={() => {
-          setActorTableExpanded(!actorTableExpanded);
-        }}
-        className={classes.section}
-      >
-        <Section>
-          <ActorList
-            jobId={jobId}
-            filterToActorId={actorListFilter}
-            onFilterChange={handleActorListFilterChange}
-            detailPathPrefix="actors"
-          />
-        </Section>
-      </CollapsibleSection>
+          <CollapsibleSection
+            ref={actorTableRef}
+            title="Actor Table"
+            expanded={actorTableExpanded}
+            onExpandButtonClick={() => {
+              setActorTableExpanded(!actorTableExpanded);
+            }}
+            className={classes.section}
+          >
+            <Section>
+              <ActorList
+                jobId={job.job_id}
+                filterToActorId={actorListFilter}
+                onFilterChange={handleActorListFilterChange}
+                detailPathPrefix="actors"
+              />
+            </Section>
+          </CollapsibleSection>
 
-      <CollapsibleSection
-        title="Placement Group Table"
-        className={classes.section}
-      >
-        <Section>
-          <PlacementGroupList jobId={jobId} />
-        </Section>
-      </CollapsibleSection>
+          <CollapsibleSection
+            title="Placement Group Table"
+            className={classes.section}
+          >
+            <Section>
+              <PlacementGroupList jobId={job.job_id} />
+            </Section>
+          </CollapsibleSection>
+        </React.Fragment>
+      )}
     </div>
   );
-};
-
-type JobLogsLinkProps = {
-  job: Pick<
-    UnifiedJob,
-    | "driver_agent_http_address"
-    | "driver_info"
-    | "job_id"
-    | "submission_id"
-    | "type"
-  >;
-};
-
-export const JobLogsLink = ({
-  job: { driver_agent_http_address, driver_info, job_id, submission_id, type },
-}: JobLogsLinkProps) => {
-  const { ipLogMap } = useContext(GlobalContext);
-
-  let link: string | undefined;
-
-  if (driver_agent_http_address) {
-    link = `/logs/${encodeURIComponent(`${driver_agent_http_address}/logs`)}`;
-  } else if (driver_info && ipLogMap[driver_info.node_ip_address]) {
-    link = `/logs/${encodeURIComponent(ipLogMap[driver_info.node_ip_address])}`;
-  }
-
-  if (link) {
-    link += `?fileName=${
-      type === "DRIVER" ? job_id : `driver-${submission_id}`
-    }`;
-    return (
-      <Link to={link} target="_blank">
-        Log
-      </Link>
-    );
-  }
-
-  return <span>-</span>;
 };

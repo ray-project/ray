@@ -1,4 +1,4 @@
-import { createStyles, Grid, makeStyles } from "@material-ui/core";
+import { createStyles, makeStyles } from "@material-ui/core";
 import classNames from "classnames";
 import React from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
