@@ -64,9 +64,6 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager, make_function_table_key
-from ray._private.gcs_pubsub import (
-    GcsFunctionKeySubscriber,
-)
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
@@ -2229,7 +2226,7 @@ def connect(
     worker.gcs_log_subscriber = ray._raylet.GcsLogSubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
-    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+    worker.gcs_function_key_subscriber = ray._raylet.GcsFunctionKeySubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
 

@@ -1933,7 +1933,8 @@ cdef class GcsFunctionKeySubscriber:
             CPythonFunction python_function
             c_string key_id
 
-        check_status(self.inner.get().PollFunctionKey(&key_id, &python_function))
+        with nogil:
+            check_status(self.inner.get().PollFunctionKey(&key_id, &python_function))
 
         if python_function.key() == b"":
             return None
