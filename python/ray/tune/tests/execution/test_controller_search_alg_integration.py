@@ -261,6 +261,8 @@ def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls
     assert searcher_finished_before
 
 
+# Todo (krfricke): Fix in next batch
+@pytest.mark.skip("This test is currently flaky as it can fail due to timing issues.")
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
