@@ -188,21 +188,19 @@ const ServeReplicaLogs = ({
   const {
     address: { workerId },
     pid,
-    jobId,
+    actorId,
   } = actor;
 
   const tabs: MultiTabLogViewerTabDetails[] = [
     {
       title: "stderr",
-      nodeId: node_id,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.err`,
+      actorId,
+      suffix: "err",
     },
     {
       title: "stdout",
-      nodeId: node_id,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.out`,
+      actorId,
+      suffix: "out",
     },
     {
       title: "system",
