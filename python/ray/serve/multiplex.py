@@ -149,7 +149,7 @@ class _ModelMultiplexWrapper:
             setattr(model, "__del__", lambda _: None)
 
     async def _push_model_ids(self):
-        """Push the model IDs to the controller."""
+        """Push the multiplexed replica info to the controller."""
 
         while True:
             try:
@@ -162,6 +162,7 @@ class _ModelMultiplexWrapper:
                     self._push_multiplexed_replica_info = False
             except Exception as e:
                 logger.warning(
-                    f"Failed to push the model IDs to the controller. Error: {e}"
+                    "Failed to push the multiplexed replica info "
+                    f"to the controller. Error: {e}"
                 )
             await asyncio.sleep(PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S)
