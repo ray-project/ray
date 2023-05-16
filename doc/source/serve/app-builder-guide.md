@@ -7,7 +7,7 @@ This section describes how to pass arguments to your applications using an appli
 When writing an application, there are often parameters that you want to be able to easily change in development or production.
 For example, you might have a path to trained model weights and want to test out a newly trained model.
 In Ray Serve, these parameters are typically passed to the constructor of your deployments using `.bind()`.
-This pattern allows deployments to be configured using ordinary Python code but it requires modifying the code anytime one of the parameters needs to change.
+This pattern allows you to be configure deployments using ordinary Python code but it requires modifying the code anytime one of the parameters needs to change.
 
 To pass arguments without changing the code, define an "application builder" function that takes an arguments dictionary (or [Pydantic object](typed-app-builders)) and returns the built application to be run.
 
@@ -17,7 +17,7 @@ To pass arguments without changing the code, define an "application builder" fun
 :language: python
 ```
 
-This application builder function can be used as the import path in the `serve run` CLI command or the config file (as shown below).
+You can use this application buidler function as the import path in the `serve run` CLI command or the config file (as shown below).
 To avoid writing code to handle type conversions and missing arguments, use a [Pydantic object](typed-app-builders) instead.
 
 ### Passing arguments via `serve run`
@@ -42,7 +42,7 @@ For example, to pass a new message to the `HelloWorld` app defined above (with t
 2023-05-16 10:47:36,131 SUCC scripts.py:424 -- Deployed Serve app successfully.
 ```
 
-Notice that the "Hello from CLI" message was printed from within the deployment constructor.
+Notice that the "Hello from CLI" message is printed from within the deployment constructor.
 
 ### Passing arguments via config file
 
@@ -71,13 +71,13 @@ For example, to pass a new message to the `HelloWorld` app defined above (with t
 (ServeController pid=57109) INFO 2023-05-16 10:49:30,046 controller 57109 application_state.py:202 - Deploy task for app 'MyApp' ran successfully.
 ```
 
-Notice that the "Hello from config" message was printed from within the deployment constructor.
+Notice that the "Hello from config" message is printed from within the deployment constructor.
 
 (typed-app-builders)=
 ### Typing arguments with Pydantic
 
 To avoid writing logic to parse and validate the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) as the single input parameter's type to your application builder function (the parameter must be type annotated).
-Arguments are passed the exact same way, but the resulting dictionary is used to construct the Pydantic model using `model.parse_obj(args_dict)`.
+Arguments are passed the same way, but the resulting dictionary is used to construct the Pydantic model using `model.parse_obj(args_dict)`.
 
 ```{literalinclude} ../serve/doc_code/app_builder.py
 :start-after: __begin_typed_builder__
@@ -100,7 +100,7 @@ Arguments are passed the exact same way, but the resulting dictionary is used to
 
 ### Multiple parametrized applications using the same builder
 
-Application builders can be used to run multiple applications with the same code but different parameters.
+You can use application builders to run multiple applications with the same code but different parameters.
 For example, multiple applications may share preprocessing and HTTP handling logic but use many different trained model weights.
 The same application builder `import_path` can take different arguments to define multiple applications as follows:
 
@@ -122,7 +122,7 @@ applications:
 
 ### Configuring multiple composed deployments
 
-The arguments passed in can be used to configure multiple deployments in a single application.
+You can use the arguments passed to an application builder to configure multiple deployments in a single application.
 For example a model composition application might take weights to two different models as follows:
 
 ```{literalinclude} ../serve/doc_code/app_builder.py
