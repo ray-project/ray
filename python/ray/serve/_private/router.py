@@ -43,6 +43,9 @@ class RequestMetadata:
     # Application Name
     app_name: str = ""
 
+    # Multiplexed model ID
+    multiplexed_model_id: str = ""
+
 
 @dataclass
 class Query:
@@ -141,11 +144,9 @@ class ReplicaSet:
         """Try to assign query to a replica, return the object ref if succeeded
         or return None if it can't assign this query to any replicas.
         """
-        for _ in range(len(self.in_flight_queries.keys())):
-            replica = next(self.replica_iterator)
-            if len(self.in_flight_queries[replica]) >= replica.max_concurrent_queries:
-                # This replica is overloaded, try next one
-                continue
+
+        def _assign_replica(replica: RunningReplicaInfo):
+            """Assign query to a replica."""
 
             logger.debug(
                 f"Assigned query {query.metadata.request_id} "
@@ -182,6 +183,42 @@ class ReplicaSet:
                 )
                 self.in_flight_queries[replica].add(tracker_ref)
             return user_ref
+
+        # Try to find a replica that can handle this query
+        # If multiplexed model id is not specified, we can assign the query to
+        # any non-overloaded replica.
+        # If multiplexed model id is specified, we can try to assign the query
+        # to a replica that is already handling the model and is not overloaded.
+        # If no such replica exists, we can assign the query to any non-overloaded
+        # replica.
+        if query.metadata.multiplexed_model_id:
+            # Try to find the replica that is already handling the model.
+            for _ in range(len(self.in_flight_queries.keys())):
+                replica = next(self.replica_iterator)
+                if (
+                    len(self.in_flight_queries[replica])
+                    >= replica.max_concurrent_queries
+                ):
+                    continue
+                if query.metadata.multiplexed_model_id in replica.multiplexed_model_ids:
+                    logger.debug(
+                        f"Assigned query {query.metadata.request_id} "
+                        f"to replica {replica.replica_tag} with "
+                        f"multiplexed model id {query.metadata.multiplexed_model_id}."
+                    )
+                    return _assign_replica(replica)
+
+        for _ in range(len(self.in_flight_queries.keys())):
+            replica = next(self.replica_iterator)
+            if len(self.in_flight_queries[replica]) >= replica.max_concurrent_queries:
+                # This replica is overloaded, try next one
+                continue
+
+            logger.debug(
+                f"Assigned query {query.metadata.request_id} "
+                f"to replica {replica.replica_tag}."
+            )
+            return _assign_replica(replica)
         return None
 
     @property

@@ -195,6 +195,7 @@ class RayServeHandle:
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
@@ -204,6 +205,13 @@ class RayServeHandle:
         }
         new_options_dict.update(user_modified_options_dict)
         new_options = HandleOptions(**new_options_dict)
+
+        if multiplexed_model_id != DEFAULT.VALUE:
+            # If the user specifies model id, we need to update the RequestContext
+            # to include the model_id.
+            ray.serve.context._set_request_context(
+                multiplexed_model_id=multiplexed_model_id
+            )
 
         return self.__class__(
             self.controller_handle,
@@ -217,6 +225,7 @@ class RayServeHandle:
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -227,9 +236,12 @@ class RayServeHandle:
             # The following two lines are equivalent:
             obj_ref = await handle.other_method.remote(*args)
             obj_ref = await handle.options(method_name="other_method").remote(*args)
-
+            obj_ref = await handle.options(
+                multiplexed_model_id="model:v1").remote(*args)
         """
-        return self._options(method_name=method_name)
+        return self._options(
+            method_name=method_name, multiplexed_model_id=multiplexed_model_id
+        )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
         _request_context = ray.serve.context._serve_request_context.get()
@@ -240,6 +252,7 @@ class RayServeHandle:
             http_arg_is_pickled=self._pickled_http_request,
             route=_request_context.route,
             app_name=_request_context.app_name,
+            multiplexed_model_id=_request_context.multiplexed_model_id,
         )
         self.request_counter.inc(
             tags={
