@@ -634,8 +634,12 @@ bool IsProcessAlive(pid_t pid) {
     return false;
   }
   // If it's a child, check whether it's zombie
-  int ret = waitpid(pid, nullptr, WNOHANG);
+  int status = 0;
+  int ret = waitpid(pid, &status, WNOHANG);
   if (ret == pid) {
+    if (WIFEXITED(status)) {
+      RAY_LOG(DEBUG) << "Child exited with status: " << WEXITSTATUS(status);
+    }
     return false;
   }
   return true;
