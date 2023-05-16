@@ -1022,11 +1022,27 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// object to the task caller and have the resulting ObjectRef be owned by
   /// the caller. This is in contrast to static allocation, where the caller
   /// decides at task invocation time how many returns the task should have.
+  ///
+  /// NOTE: Normally task_id and put_index it not necessary to be specified
+  /// because we can obtain them from the global worker context. However,
+  /// when the async actor uses this API, it cannot find the correct
+  /// worker context due to the implementation limitation.
+  /// In this case, the caller is responsible for providing the correct
+  /// task ID and index.
+  /// See https://github.com/ray-project/ray/issues/10324 for the further details.
+  ///
   /// \param[in] owner_address The address of the owner who will own this
   /// dynamically generated object.
-  ///
-  /// \param[out] The ObjectID that the caller should use to store the object.
-  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address);
+  /// \param[in] task_id The task id of the dynamically generated return ID.
+  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// worker context.
+  /// \param[in] put_index The equivalent of the return value of
+  /// WorkerContext::GetNextPutIndex.
+  /// If -1 is specified, it will deduce the Task ID from the current
+  /// worker context.
+  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
+                                   const TaskID &task_id = TaskID::Nil(),
+                                   ObjectIDIndexType put_index = -1);
 
   /// Get a handle to an actor.
   ///

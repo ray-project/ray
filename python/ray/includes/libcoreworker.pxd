@@ -19,6 +19,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CPlacementGroupID,
     CWorkerID,
+    ObjectIDIndexType,
 )
 
 from ray.includes.common cimport (
@@ -151,7 +152,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus AsyncReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        CObjectID AllocateDynamicReturnId(const CAddress &owner_address)
+        CObjectID AllocateDynamicReturnId(
+            const CAddress &owner_address,
+            const CTaskID &task_id,
+            ObjectIDIndexType put_index)
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
