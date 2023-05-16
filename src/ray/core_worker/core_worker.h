@@ -1562,6 +1562,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Actor title that consists of class name, args, kwargs for actor construction.
   std::string actor_title_ GUARDED_BY(mutex_);
 
+  /// Actor repr name if overrides by the user, empty string if not.
+  std::string actor_repr_name_ GUARDED_BY(mutex_) = "";
+
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;
 

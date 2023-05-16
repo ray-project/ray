@@ -95,6 +95,10 @@ bool TaskStatusEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
         state_update_->task_log_info_.value());
   }
 
+  if (!state_update_->actor_repr_name_.empty()) {
+    dst_state_update->set_actor_repr_name(state_update_->actor_repr_name_);
+  }
+
   return false;
 }
 

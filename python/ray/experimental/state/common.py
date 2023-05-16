@@ -1516,7 +1516,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
         (
             state_updates,
-            ["node_id", "worker_id", "task_log_info"],
+            ["node_id", "worker_id", "task_log_info", "actor_repr_name"],
         ),
     ]
     for src, keys in mappings:
@@ -1565,6 +1565,19 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 error_info.get("error_message", "")
             )
             task_state["error_type"] = error_info.get("error_type", "")
+
+    # Parse actor task name for actor with repr name.
+    if (
+        state_updates.get("actor_repr_name")
+        and task_state["type"] == "ACTOR_TASK"
+        and task_state["name"]
+        == task_state["func_or_class_name"]  # no name option provided.
+    ):
+        # If it's an actor task with no name override, and has repr name defined
+        # for the actor, we override the name.
+        method_name = task_state["name"].split(".")[-1]
+        actor_repr_task_name = f"{state_updates['actor_repr_name']}.{method_name}"
+        task_state["name"] = actor_repr_task_name
 
     return task_state
 

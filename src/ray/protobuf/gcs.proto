@@ -240,6 +240,8 @@ message TaskStateUpdate {
   optional RayErrorInfo error_info = 9;
   // Task logs info.
   optional TaskLogInfo task_log_info = 10;
+  // Actor task repr name.
+  optional string actor_repr_name = 11;
 }
 
 // Represents events and state changes from a single task run.
