@@ -406,6 +406,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             filename=req.query.get("filename", None),
             actor_id=req.query.get("actor_id", None),
             task_id=req.query.get("task_id", None),
+            submission_id=req.query.get("submission_id", None),
             pid=req.query.get("pid", None),
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),
@@ -416,6 +417,8 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
         await response.prepare(req)
+
+        logger.info(f"Streaming logs with options: {options}")
 
         # NOTE: The first byte indicates the success / failure of individual
         # stream. If the first byte is b"1", it means the stream was successful.
