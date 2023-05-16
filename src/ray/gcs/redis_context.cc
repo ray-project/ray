@@ -161,7 +161,7 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                     RayConfig::instance().redis_retry_max_ms()),
       io_service_(io_service),
       redis_context_(context),
-      pending_retries_(RayConfig::instance().num_redis_request_retries()),
+      pending_retries_(RayConfig::instance().num_redis_request_retries() + 1),
       callback_(std::move(callback)),
       start_time_(absl::Now()),
       redis_cmds_(std::move(args)) {
