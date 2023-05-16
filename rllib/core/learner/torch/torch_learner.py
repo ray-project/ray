@@ -257,10 +257,12 @@ class TorchLearner(Learner):
 
         super().build()
 
-        if self._framework_hyperparameters.torch_compile_config is not None:
+        # Maybe torch compile forward methods.
+        compile_config = self._framework_hyperparameters.torch_compile_cfg
+        if compile_config is not None:
             for module in self._module._rl_modules.values():
                 if isinstance(module, TorchRLModule):
-                    module.compile(self._framework_hyperparameters.torch_compile_cfg)
+                    module.compile(compile_config)
 
         self._make_modules_ddp_if_necessary()
 
