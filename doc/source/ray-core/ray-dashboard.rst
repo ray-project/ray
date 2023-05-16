@@ -437,7 +437,7 @@ Logs View
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/logs.png
     :align: center
 
-The logs view lets you view all the ray logs that are in your cluster. It is organized by node and log file name. Many log links in the other pages link to this view and filter the list so the relevant logs appear.
+The logs view lets you view all the Ray logs in your cluster. It is organized by node and log file name. Many log links in the other pages link to this view and filter the list so the relevant logs appear.
 
 To understand the log file structure of Ray, see the :ref:`Logging directory structure page <logging-directory-structure>`.
 
