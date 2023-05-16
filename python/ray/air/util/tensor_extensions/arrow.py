@@ -136,7 +136,7 @@ class ArrowTensorType(pa.PyExtensionType):
 
     def __str__(self) -> str:
         return (
-            f"ArrowTensorType(shape={self.shape}, dtype={self.storage_type.value_type})"
+            f"numpy.ndarray(shape={self.shape}, dtype={self.storage_type.value_type})"
         )
 
     def __repr__(self) -> str:
@@ -604,7 +604,7 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
 
     def __str__(self) -> str:
         dtype = self.storage_type["data"].type.value_type
-        return f"ArrowVariableShapedTensorType(dtype={dtype}, ndim={self.ndim})"
+        return f"numpy.ndarray(ndim={self.ndim}, dtype={dtype})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -673,9 +673,7 @@ class ArrowVariableShapedTensorArray(
         #    underlying scalar data type.
         #  - shape: a variable-sized list array containing the shapes of each tensor
         #    element.
-        if isinstance(arr, Iterable):
-            arr = list(arr)
-        elif not isinstance(arr, (list, tuple)):
+        if not isinstance(arr, (list, tuple, np.ndarray)):
             raise ValueError(
                 "ArrowVariableShapedTensorArray can only be constructed from an "
                 f"ndarray or a list/tuple of ndarrays, but got: {type(arr)}"
@@ -716,13 +714,6 @@ class ArrowVariableShapedTensorArray(
         else:
             np_data_buffer = np.concatenate(raveled)
         dtype = np_data_buffer.dtype
-        if dtype.type is np.object_:
-            types_and_shapes = [(f"dtype={a.dtype}", f"shape={a.shape}") for a in arr]
-            raise ValueError(
-                "ArrowVariableShapedTensorArray only supports heterogeneous-shaped "
-                "tensor collections, not arbitrarily nested ragged tensors. Got "
-                f"arrays: {types_and_shapes}"
-            )
         pa_dtype = pa.from_numpy_dtype(dtype)
         if pa.types.is_string(pa_dtype):
             if dtype.byteorder == ">" or (

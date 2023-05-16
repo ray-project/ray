@@ -2,7 +2,7 @@ halfcheetah-pybullet-sac:
     env: HalfCheetahBulletEnv-v0
     run: SAC
     stop:
-        episode_reward_mean: 800.0
+        sampler_results/episode_reward_mean: 800.0
     config:
         # Works for both torch and tf.
         framework: torch

@@ -21,7 +21,6 @@ from typing import (
 import numpy as np
 
 from ray.air._internal.remote_storage import _is_local_windows_path
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
@@ -29,7 +28,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
@@ -190,7 +189,7 @@ class FileExtensionFilter(PathPartitionFilter):
 
 
 @DeveloperAPI
-class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
+class FileBasedDatasource(Datasource):
     """File-based datasource, for reading and writing files.
 
     This class should not be used directly, and should instead be subclassed
@@ -223,7 +222,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """
         buffer_size = open_args.pop("buffer_size", None)
         if buffer_size is None:
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             buffer_size = ctx.streaming_read_buffer_size
         return filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
 
@@ -427,6 +426,7 @@ class _FileBasedDatasourceReader(Reader):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
 
+        ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
         reader_args = self._reader_args
         partitioning = self._partitioning
@@ -447,9 +447,9 @@ class _FileBasedDatasourceReader(Reader):
             read_paths: List[str],
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
+            DataContext._set_current(ctx)
             logger.debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            ctx = DatasetContext.get_current()
             output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
             )

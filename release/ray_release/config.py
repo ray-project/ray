@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import jsonschema
 import yaml
 from ray_release.anyscale_util import find_cloud_by_name
+from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.util import DeferredEnvVar, deep_update
@@ -50,9 +51,7 @@ DEFAULT_PYTHON_VERSION = tuple(
 
 RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-RELEASE_TEST_SCHEMA_FILE = os.path.join(
-    RELEASE_PACKAGE_DIR, "ray_release", "schema.json"
-)
+RELEASE_TEST_SCHEMA_FILE = bazel_runfile("release/ray_release/schema.json")
 
 
 def read_and_validate_release_test_collection(
@@ -98,7 +97,7 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
             )
             test = copy.deepcopy(test_definition)
             test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
-            test.update(variation)
+            test = deep_update(test, variation)
             tests.append(test)
     return tests
 
@@ -129,6 +128,13 @@ def validate_release_test_collection(
             num_errors += 1
 
         error = validate_test_cluster_compute(test)
+        if error:
+            logger.error(
+                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
+            )
+            num_errors += 1
+
+        error = validate_test_cluster_env(test)
         if error:
             logger.error(
                 f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
@@ -176,6 +182,19 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
         error = validate_aws_config(config)
         if error:
             return error
+
+    return None
+
+
+def validate_test_cluster_env(test: Test) -> Optional[str]:
+    from ray_release.template import get_cluster_env_path
+
+    cluster_env_path = get_cluster_env_path(test)
+
+    if not os.path.exists(cluster_env_path):
+        raise ReleaseTestConfigError(
+            f"Cannot load yaml template from {cluster_env_path}: Path not found."
+        )
 
     return None
 

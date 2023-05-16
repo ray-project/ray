@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import logging
 from datetime import datetime
@@ -27,7 +28,6 @@ from ray.experimental.state.common import (
     StateResource,
     StateSchema,
     SupportedFilterType,
-    TaskState,
     resource_to_schema,
 )
 from ray.experimental.state.exception import RayStateApiException
@@ -115,7 +115,7 @@ def _get_available_resources(
     ]
 
 
-def get_table_output(state_data: List, schema: StateSchema) -> str:
+def get_table_output(state_data: List, schema: StateSchema, detail: bool) -> str:
     """Display the table output.
 
     The table headers are ordered as the order defined in the dataclass of
@@ -142,7 +142,7 @@ def get_table_output(state_data: List, schema: StateSchema) -> str:
     header = "=" * 8 + f" List: {time} " + "=" * 8
     headers = []
     table = []
-    cols = schema.list_columns()
+    cols = schema.list_columns(detail=detail)
     for data in state_data:
         for key, val in data.items():
             if isinstance(val, dict):
@@ -166,19 +166,29 @@ Table:
 
 
 def output_with_format(
-    state_data: List,
+    state_data: List[Dict],
     *,
     schema: Optional[StateSchema],
     format: AvailableFormat = AvailableFormat.DEFAULT,
+    detail: bool = False,
 ) -> str:
+    # humanify all input state data
+    if schema:
+        state_data = [schema.humanify(state) for state in state_data]
     if format == AvailableFormat.DEFAULT:
-        return get_table_output(state_data, schema)
+        return get_table_output(state_data, schema, detail)
     if format == AvailableFormat.YAML:
-        return yaml.dump(state_data, indent=4, explicit_start=True)
+        return yaml.dump(
+            state_data,
+            indent=4,
+            explicit_start=True,
+            # We want to keep the defined ordering of the states, thus sort_keys=False
+            sort_keys=False,
+        )
     elif format == AvailableFormat.JSON:
         return json.dumps(state_data)
     elif format == AvailableFormat.TABLE:
-        return get_table_output(state_data, schema)
+        return get_table_output(state_data, schema, detail)
     else:
         raise ValueError(
             f"Unexpected format: {format}. "
@@ -277,35 +287,33 @@ Table (group by {summary_by})
 
 
 def format_get_api_output(
-    state_data: Optional[Dict],
+    state_data: Optional[StateSchema],
     id: str,
     *,
     schema: StateSchema,
     format: AvailableFormat = AvailableFormat.YAML,
 ) -> str:
-
-    if not state_data or len(state_data) == 0:
+    if not state_data or isinstance(state_data, list) and len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
 
-    return output_with_format(state_data, schema=schema, format=format)
+    if not isinstance(state_data, list):
+        state_data = [state_data]
+
+    state_data = [dataclasses.asdict(state) for state in state_data]
+    return output_with_format(state_data, schema=schema, format=format, detail=True)
 
 
 def format_list_api_output(
-    state_data: List[Dict],
+    state_data: List[StateSchema],
     *,
     schema: StateSchema,
     format: AvailableFormat = AvailableFormat.DEFAULT,
+    detail: bool = False,
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    if schema == TaskState and format == AvailableFormat.YAML:
-        augmented_task_state_data = [
-            {("task_id: " + state["task_id"]): state} for state in state_data
-        ]
-        return output_with_format(
-            augmented_task_state_data, schema=schema, format=format
-        )
-    return output_with_format(state_data, schema=schema, format=format)
+    state_data = [dataclasses.asdict(state) for state in state_data]
+    return output_with_format(state_data, schema=schema, format=format, detail=detail)
 
 
 def _should_explain(format: AvailableFormat) -> bool:
@@ -566,6 +574,7 @@ def ray_list(
             state_data=data,
             schema=resource_to_schema(resource),
             format=format,
+            detail=detail,
         )
     )
 
@@ -746,13 +755,12 @@ log_node_id_option = click.option(
 )
 
 log_suffix_option = click.option(
-    "--suffix",
-    required=False,
-    default="out",
-    type=click.Choice(["out", "err"], case_sensitive=False),
+    "--err",
+    is_flag=True,
+    default=False,
     help=(
-        "The suffix of the log file that denotes the log type, where out refers "
-        "to logs from stdout, and err for logs from stderr "
+        "If supplied, querying stderr files for workers/actors, "
+        "else defaults to stdout files."
     ),
 )
 
@@ -806,9 +814,11 @@ def _print_log(
     tail: int = DEFAULT_LOG_LIMIT,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     interval: Optional[float] = None,
-    suffix: Optional[str] = None,
+    suffix: str = "out",
     encoding: str = "utf-8",
     encoding_errors: str = "strict",
+    task_id: Optional[str] = None,
+    attempt_number: int = 0,
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -835,6 +845,8 @@ def _print_log(
         suffix=suffix,
         encoding=encoding,
         errors=encoding_errors,
+        task_id=task_id,
+        attempt_number=attempt_number,
     ):
         print(chunk, end="", flush=True)
 
@@ -873,6 +885,12 @@ Example:
 
     ```
     ray logs actor --id ABC --follow
+    ```
+
+    [ray logs task] Get the std err generated by a task.
+
+    ```
+    ray logs task --id <TASK_ID> --err
     ```
 """
 
@@ -1042,7 +1060,7 @@ def log_actor(
     tail: int,
     interval: float,
     timeout: int,
-    suffix: str,
+    err: bool,
 ):
     """Get/List logs associated with an actor.
 
@@ -1065,7 +1083,7 @@ def log_actor(
         Get the actor err log file.
 
         ```
-        ray logs actor --id ABC --suffix err
+        ray logs actor --id ABC --err
         ```
 
     Raises:
@@ -1090,7 +1108,7 @@ def log_actor(
         follow=follow,
         interval=interval,
         timeout=timeout,
-        suffix=suffix,
+        suffix="err" if err else "out",
     )
 
 
@@ -1123,7 +1141,7 @@ def log_worker(
     tail: int,
     interval: float,
     timeout: int,
-    suffix: str,
+    err: bool,
 ):
     """Get/List logs associated with a worker process.
 
@@ -1138,7 +1156,7 @@ def log_worker(
         Get the stderr logs from a worker process.
 
         ```
-        ray logs worker --pid ABC --suffix err
+        ray logs worker --pid ABC --err
         ```
 
     Raises:
@@ -1156,5 +1174,74 @@ def log_worker(
         follow=follow,
         interval=interval,
         timeout=timeout,
-        suffix=suffix,
+        suffix="err" if err else "out",
+    )
+
+
+@logs_state_cli_group.command(name="task")
+@click.option(
+    "--id",
+    "task_id",
+    required=True,
+    type=str,
+    help="Retrieves the logs from the task with this task id.",
+)
+@click.option(
+    "--attempt-number",
+    "-a",
+    required=False,
+    type=int,
+    default=0,
+    help="Retrieves the logs from the attempt, default to 0",
+)
+@address_option
+@log_follow_option
+@log_interval_option
+@log_tail_option
+@log_timeout_option
+@log_suffix_option
+@click.pass_context
+@PublicAPI(stability="alpha")
+def log_task(
+    ctx,
+    task_id: Optional[str],
+    attempt_number: int,
+    address: Optional[str],
+    follow: bool,
+    interval: float,
+    tail: int,
+    timeout: int,
+    err: bool,
+):
+    """Get/List logs associated with a task.
+
+    Example:
+
+        Follow the log file from a task with task id.
+
+        ```
+        ray logs tasks --id <task_id> --follow
+        ```
+
+        Get the log from a retry attempt 1 from a task.
+
+        ```
+        ray logs tasks --id <task_id> -a 1
+        ```
+
+    Raises:
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+            if the CLI is failed to query the data.
+        MissingParameter if inputs are missing.
+    """  # noqa: E501
+
+    _print_log(
+        address=address,
+        task_id=task_id,
+        attempt_number=attempt_number,
+        follow=follow,
+        tail=tail,
+        interval=interval,
+        timeout=timeout,
+        suffix="err" if err else "out",
     )

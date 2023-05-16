@@ -49,6 +49,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
         # Check that ready future is returned.
         assert pool.get_pending_actor_refs() == [ready_ref]
 
@@ -65,10 +66,11 @@ class TestActorPool:
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 3
 
     def test_repeated_picking(self, ray_start_regular_shared):
         # Test that we can repeatedly pick the same actor.
-        pool = _ActorPool()
+        pool = _ActorPool(max_tasks_in_flight=999)
         actor = self._add_ready_worker(pool)
         for _ in range(10):
             picked_actor = pool.pick_actor()
@@ -76,7 +78,7 @@ class TestActorPool:
 
     def test_return_actor(self, ray_start_regular_shared):
         # Test that we can return an actor as many times as we've picked it.
-        pool = _ActorPool()
+        pool = _ActorPool(max_tasks_in_flight=999)
         self._add_ready_worker(pool)
         for _ in range(10):
             picked_actor = pool.pick_actor()
@@ -93,13 +95,17 @@ class TestActorPool:
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1  # Actor should now be idle.
+        assert pool.num_free_slots() == 999
 
     def test_pick_max_tasks_in_flight(self, ray_start_regular_shared):
         # Test that we can't pick an actor beyond the max_tasks_in_flight cap.
         pool = _ActorPool(max_tasks_in_flight=2)
         actor = self._add_ready_worker(pool)
+        assert pool.num_free_slots() == 2
         assert pool.pick_actor() == actor
+        assert pool.num_free_slots() == 1
         assert pool.pick_actor() == actor
+        assert pool.num_free_slots() == 0
         # Check that the 3rd pick doesn't return the actor.
         assert pool.pick_actor() is None
 
@@ -183,6 +189,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
 
     def test_kill_inactive_idle_actor(self, ray_start_regular_shared):
         # Test that a idle actor is killed on the kill_inactive_actor() call.
@@ -205,6 +212,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
 
     def test_kill_inactive_active_actor_not_killed(self, ray_start_regular_shared):
         # Test that active actors are NOT killed on the kill_inactive_actor() call.
@@ -249,6 +257,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
+        assert pool.num_free_slots() == 4
 
     def test_kill_all_inactive_pending_actor_killed(self, ray_start_regular_shared):
         # Test that pending actors are killed on the kill_all_inactive_actors() call.
@@ -274,6 +283,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
 
     def test_kill_all_inactive_idle_actor_killed(self, ray_start_regular_shared):
         # Test that idle actors are killed on the kill_all_inactive_actors() call.
@@ -294,6 +304,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
 
     def test_kill_all_inactive_active_actor_not_killed(self, ray_start_regular_shared):
         # Test that active actors are NOT killed on the kill_all_inactive_actors() call.
@@ -336,6 +347,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
 
     def test_kill_all_inactive_mixture(self, ray_start_regular_shared):
         # Test that in a mixture of pending, idle, and active actors, only the pending
@@ -357,6 +369,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 2
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 1
+        assert pool.num_free_slots() == 7
         # Kill inactive actors.
         pool.kill_all_inactive_actors()
         # Check that the active actor is still in the pool.
@@ -385,6 +398,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
 
     def test_all_actors_killed(self, ray_start_regular_shared):
         # Test that all actors are killed after the kill_all_actors() call.
@@ -410,6 +424,7 @@ class TestActorPool:
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
 
     def test_locality_manager_actor_ranking(self):
         pool = _ActorPool(max_tasks_in_flight=2)

@@ -3,7 +3,7 @@ import time
 from typing import Dict, List
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # Resource requests are considered stale after this number of seconds, and
@@ -88,7 +88,7 @@ class AutoscalingRequester:
 
 
 def get_or_create_autoscaling_requester_actor():
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
     # Pin the stats actor to the local node so it fate-shares with the driver.
     # Note: for Ray Client, the ray.get_runtime_context().get_node_id() should
@@ -96,6 +96,7 @@ def get_or_create_autoscaling_requester_actor():
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         ray.get_runtime_context().get_node_id(),
         soft=True,
+        _spill_on_unavailable=True,
     )
     return AutoscalingRequester.options(
         name="AutoscalingRequester",

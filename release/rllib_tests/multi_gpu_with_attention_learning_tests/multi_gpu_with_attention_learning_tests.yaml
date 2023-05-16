@@ -4,7 +4,7 @@ appo-stateless-cartpole-no-vtrace:
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 500000
     stop:
         time_total_s: 600
@@ -38,7 +38,7 @@ appo-stateless-cartpole-vtrace:
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 500000
     stop:
         time_total_s: 600
@@ -71,7 +71,7 @@ impala-stateless-cartpole:
     run: IMPALA
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 500000
     stop:
         time_total_s: 600
@@ -98,7 +98,7 @@ pg-stateless-cartpole:
     run: PG
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 130.0
+        sampler_results/episode_reward_mean: 130.0
         timesteps_total: 500000
     stop:
         time_total_s: 600
@@ -126,7 +126,7 @@ ppo-stateless-cartpole:
     run: PPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 200000
     stop:
         time_total_s: 600
@@ -160,7 +160,7 @@ ppo-stateless-cartpole:
 #     run: R2D2
 #     # Minimum reward and total ts (in given time_total_s) to pass this test.
 #     pass_criteria:
-#         episode_reward_mean: 150.0
+#         sampler_results/episode_reward_mean: 150.0
 #         timesteps_total: 130000
 #     stop:
 #         time_total_s: 1200

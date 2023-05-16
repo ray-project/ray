@@ -476,6 +476,10 @@ RAY_CONFIG(uint64_t, task_events_max_buffer_size, 100 * 1000)
 /// the message size, and also the processing work on GCS.
 RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 
+/// Max number of dropped task attempt info to be sent in a single rpc call to
+/// GCS for task events in rpc::TaskEventsData
+RAY_CONFIG(uint64_t, task_events_drop_task_attempt_batch_size, 10 * 1000)
+
 /// Max number of profile events allowed for a single task when sent to GCS.
 /// NOTE: this limit only applies to the profile events per task in a single
 /// report gRPC call. A task could have more profile events in GCS from multiple
@@ -487,6 +491,11 @@ RAY_CONFIG(int64_t, task_events_max_num_profile_events_for_task, 1000)
 /// Setting this value too smaller might result in some finished tasks marked as failed by
 /// GCS.
 RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_job_done_delay_ms, /*  15 secs */ 1000 * 15)
+
+/// The delay in ms that GCS should mark any running tasks from a dead worker failed.
+/// Setting this value too smaller might result in some finished tasks marked as failed by
+/// GCS since task events data are pushed to GCS asynchronously.
+RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */ 1000 * 1)
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
@@ -519,7 +528,11 @@ RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
 
 /// Whether to enable worker prestarting: https://github.com/ray-project/ray/issues/12052
-RAY_CONFIG(bool, enable_worker_prestart, true)
+RAY_CONFIG(bool, enable_worker_prestart, false)
+
+/// Whether to enable worker prestarting on first driver
+/// TODO(clarng): reconcile with enable_worker_prestart
+RAY_CONFIG(bool, prestart_worker_first_driver, true)
 
 /// The interval of periodic idle worker killing. Value of 0 means worker capping is
 /// disabled.
@@ -791,7 +804,7 @@ RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
 
 // By default, raylet send a self liveness check to GCS every 60s
-RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
 
 // Instruct the CoreWorker to kill its child processes while
 // it exits. This prevents certain classes of resource leaks

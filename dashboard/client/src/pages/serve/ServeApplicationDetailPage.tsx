@@ -105,13 +105,13 @@ export const ServeApplicationDetailPage = () => {
             content: {
               value: Object.values(application.deployments)
                 .map(({ replicas }) => replicas.length)
-                .reduce((acc, curr) => acc + curr)
+                .reduce((acc, curr) => acc + curr, 0)
                 .toString(),
             },
           },
           {
             label: "Application config",
-            content: (
+            content: application.deployed_app_config ? (
               <CodeDialogButton
                 title={
                   application.name
@@ -120,6 +120,8 @@ export const ServeApplicationDetailPage = () => {
                 }
                 code={application.deployed_app_config}
               />
+            ) : (
+              <Typography>-</Typography>
             ),
           },
           {
@@ -137,6 +139,12 @@ export const ServeApplicationDetailPage = () => {
                 startTime={application.last_deployed_time_s * 1000}
               />
             ),
+          },
+          {
+            label: "Import path",
+            content: {
+              value: application?.deployed_app_config?.import_path || "-",
+            },
           },
         ]}
       />
@@ -254,6 +262,7 @@ export const ServeApplicationDetailLayout = () => {
         pageInfo={{
           id: "serveApplicationDetail",
           title: appName,
+          pageTitle: `${appName} | Serve Application`,
           path: `/serve/applications/${appName}`,
         }}
       />

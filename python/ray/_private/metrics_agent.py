@@ -30,7 +30,7 @@ from opencensus.tags import tag_map as tag_map_module
 from opencensus.tags import tag_value as tag_value_module
 
 import ray
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 
 from ray.core.generated.metrics_pb2 import Metric
 

@@ -14,7 +14,8 @@ import ray.experimental.internal_kv as internal_kv
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray.dashboard.utils import DashboardHeadModule
-from ray._private.gcs_utils import GcsClient, GcsAioClient, check_health
+from ray._raylet import GcsClient
+from ray._private.gcs_utils import GcsAioClient, check_health
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
@@ -74,6 +75,8 @@ class DashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
+        node_ip_address: str,
+        grpc_port: int,
         log_dir: str,
         temp_dir: str,
         session_dir: str,
@@ -93,6 +96,7 @@ class DashboardHead:
             minimal: Whether or not it will load the minimal modules.
             serve_frontend: If configured, frontend HTML is
                 served from the dashboard.
+            grpc_port: The port used to listen for gRPC on.
             modules_to_load: A set of module name in string to load.
                 By default (None), it loads all available modules.
                 Note that available modules could be changed depending on
@@ -123,14 +127,13 @@ class DashboardHead:
         self.gcs_aio_client = None
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
-        self.ip = ray.util.get_node_ip_address()
+        self.ip = node_ip_address
         DataOrganizer.head_node_ip = self.ip
-        ip, port = gcs_address.split(":")
 
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, f"{grpc_ip}:0"
+            self.server, f"{grpc_ip}:{grpc_port}"
         )
         logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should
@@ -301,12 +304,21 @@ class DashboardHead:
             logger.info("Initialize the http server.")
             self.http_server = await self._configure_http_server(modules)
             http_host, http_port = self.http_server.get_address()
+            logger.info(f"http server initialized at {http_host}:{http_port}")
         else:
             logger.info("http server disabled.")
+
+        # We need to expose dashboard's node's ip for other worker nodes
+        # if it's listening to all interfaces.
+        dashboard_http_host = (
+            self.ip
+            if self.http_host != ray_constants.DEFAULT_DASHBOARD_IP
+            else http_host
+        )
         await asyncio.gather(
             self.gcs_aio_client.internal_kv_put(
                 ray_constants.DASHBOARD_ADDRESS.encode(),
-                f"{http_host}:{http_port}".encode(),
+                f"{dashboard_http_host}:{http_port}".encode(),
                 True,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             ),

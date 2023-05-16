@@ -1,0 +1,1 @@
+../../03_serving_stable_diffusion/requirements.txt

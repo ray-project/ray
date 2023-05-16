@@ -1,7 +1,7 @@
 import { makeStyles } from "@material-ui/core";
-import React from "react";
+import React, { PropsWithChildren } from "react";
 
-import TitleCard from "../../components/TitleCard";
+import { Section } from "../../common/Section";
 import ActorList from "../actor/ActorList";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobDetail } from "./hook/useJobDetail";
@@ -9,6 +9,7 @@ import { useJobDetail } from "./hook/useJobDetail";
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
+    backgroundColor: "white",
   },
 }));
 
@@ -31,9 +32,34 @@ export const JobDetailActorsPage = () => {
   return (
     <div className={classes.root}>
       <MainNavPageInfo pageInfo={pageInfo} />
-      <TitleCard title="Actors">
+      <Section title="Actors">
         <ActorList jobId={params.id} />
-      </TitleCard>
+      </Section>
+    </div>
+  );
+};
+
+export const JobDetailActorDetailWrapper = ({
+  children,
+}: PropsWithChildren<{}>) => {
+  const { job } = useJobDetail();
+
+  const pageInfo = job
+    ? {
+        title: "Actors",
+        id: "actors",
+        path: job.job_id ? `/jobs/${job.job_id}/actors` : undefined,
+      }
+    : {
+        title: "Actors",
+        id: "actors",
+        path: undefined,
+      };
+
+  return (
+    <div>
+      <MainNavPageInfo pageInfo={pageInfo} />
+      {children}
     </div>
   );
 };

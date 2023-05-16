@@ -1,11 +1,10 @@
 meta:
-  section-titles: false
-  container: container pb-4
-  column: col-md-4 px-1 py-1
-  img-top-cls: p-2 w-75 d-block mx-auto fixed-height-img
+  grid: 1 2 2 3
+  gutter: 1
+  class-container: container pb-3
 
-buttons:
-  classes: btn-outline-info btn-block
+classes:
+  class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
 projects:
   - name: Classy Vision Integration
