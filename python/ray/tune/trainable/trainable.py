@@ -20,6 +20,10 @@ from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
+from ray.air.constants import (
+    TIMESTAMP,
+    TIME_THIS_ITER_S
+)
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -33,9 +37,7 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
     STDERR_FILE,
     STDOUT_FILE,
-    TIME_THIS_ITER_S,
     TIME_TOTAL_S,
-    TIMESTAMP,
     TIMESTEPS_THIS_ITER,
     TIMESTEPS_TOTAL,
     TRAINING_ITERATION,

@@ -1,4 +1,8 @@
 import os
+from ray.air.constants import (
+    TIMESTAMP,
+    TIME_THIS_ITER_S
+)
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -46,10 +50,6 @@ TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 
 # (Auto-filled) Accumulated number of timesteps for this entire trial.
 TIMESTEPS_TOTAL = "timesteps_total"
-
-# (Auto-filled) Time in seconds this iteration took to run.
-# This may be overridden to override the system-computed time difference.
-TIME_THIS_ITER_S = "time_this_iter_s"
 
 # (Auto-filled) Accumulated time in seconds for this entire trial.
 TIME_TOTAL_S = "time_total_s"

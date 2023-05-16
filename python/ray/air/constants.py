@@ -75,6 +75,10 @@ AIR_ENV_VARS = {
 # Default to when the result is processed by tune.
 TIMESTAMP = "timestamp"
 
+# (Auto-filled) Time in seconds this iteration took to run.
+# This may be overridden to override the system-computed time difference.
+TIME_THIS_ITER_S = "time_this_iter_s"
+
 # File that stores parameters of the trial.
 EXPR_PARAM_FILE = "params.json"
 

@@ -22,6 +22,7 @@ from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.constants import (
     EXPR_ERROR_PICKLE_FILE,
+    EXPR_ERROR_FILE
 )
 
 import ray.cloudpickle as cloudpickle
@@ -928,10 +929,10 @@ class Trial:
             self.num_failures += 1
 
         if self.local_path:
-            self.error_filename = "error.txt"
+            self.error_filename = EXPR_ERROR_FILE
             if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
-                self.pickled_error_filename = "error.pkl"
+                self.pickled_error_filename = EXPR_ERROR_PICKLE_FILE
                 with open(self.pickled_error_file, "wb") as f:
                     cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
