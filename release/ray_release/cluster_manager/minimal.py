@@ -49,8 +49,7 @@ class MinimalClusterManager(ClusterManager):
                 if res.name == self.cluster_env_name:
                     self.cluster_env_id = res.id
                     logger.info(
-                        f"Cluster env already exists with ID "
-                        f"{self.cluster_env_id}"
+                        f"Cluster env already exists with ID " f"{self.cluster_env_id}"
                     )
                     break
 
