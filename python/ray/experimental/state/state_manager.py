@@ -1,8 +1,9 @@
+import dataclasses
 import inspect
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import grpc
 from grpc.aio._call import UnaryStreamCall
@@ -46,7 +47,9 @@ from ray.core.generated.runtime_env_agent_pb2 import (
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.datacenter import DataSource
-from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
+from ray.dashboard.modules.job.common import JobInfoStorageClient
+from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
+from ray.dashboard.modules.job.utils import get_driver_jobs
 from ray.dashboard.utils import Dict as Dictionary
 from ray.experimental.state.common import (
     RAY_MAX_LIMIT_FROM_DATA_SOURCE,
@@ -157,6 +160,7 @@ class StateDataSourceClient:
         self._log_agent_stub = {}
         self._job_client = JobInfoStorageClient(gcs_aio_client)
         self._id_id_map = IdToIpMap()
+        self._gcs_aio_client = gcs_aio_client
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
@@ -333,23 +337,30 @@ class StateDataSourceClient:
         )
         return reply
 
-    async def get_job_info(self) -> Optional[Dict[str, JobInfo]]:
+    # TODO(rickyx):
+    # This is currently mirroring dashboard/modules/job/job_head.py::list_jobs
+    # We should eventually unify the logic.
+    async def get_job_info(self, timeout: int = None) -> List[JobDetails]:
         # Cannot use @handle_grpc_network_errors because async def is not supported yet.
-        # TODO(sang): Support timeout & make it async
-        try:
-            return await self._job_client.get_all_jobs()
-        except grpc.aio.AioRpcError as e:
-            if (
-                e.code == grpc.StatusCode.DEADLINE_EXCEEDED
-                or e.code == grpc.StatusCode.UNAVAILABLE
-            ):
-                raise DataSourceUnavailable(
-                    "Failed to query the data source. "
-                    "It is either there's a network issue, or the source is down."
-                )
-            else:
-                logger.exception(e)
-                raise e
+
+        driver_jobs, submission_job_drivers = await get_driver_jobs(
+            self._gcs_aio_client, timeout=timeout
+        )
+        submission_jobs = await self._job_client.get_all_jobs(timeout=timeout)
+        submission_jobs = [
+            JobDetails(
+                **dataclasses.asdict(job),
+                submission_id=submission_id,
+                job_id=submission_job_drivers.get(submission_id).id
+                if submission_id in submission_job_drivers
+                else None,
+                driver_info=submission_job_drivers.get(submission_id),
+                type=JobType.SUBMISSION,
+            )
+            for submission_id, job in submission_jobs.items()
+        ]
+
+        return list(driver_jobs.values()) + submission_jobs
 
     async def get_all_cluster_events(self) -> Dictionary:
         return DataSource.events
