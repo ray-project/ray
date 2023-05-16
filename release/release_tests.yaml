@@ -3336,6 +3336,14 @@
   team: ml
 
   cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        - sudo apt-get install curl
+        - pip3 install pytest awscli
+        - pip3 install 'ray[tune]'
+        - pip3 install torch torchvision
+        - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_TENSORFLOW=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_PYTORCH=1 pip3 install -U horovod
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
