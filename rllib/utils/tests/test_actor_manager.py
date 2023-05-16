@@ -7,7 +7,7 @@ import time
 import unittest
 
 import ray
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray.rllib.utils.actor_manager import FaultAwareApply, FaultTolerantActorManager
 
 

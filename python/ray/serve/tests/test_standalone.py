@@ -40,7 +40,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.schema import ServeApplicationSchema
 
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)

@@ -7,8 +7,8 @@ import urllib
 from unittest.mock import MagicMock
 
 import pytest
-from ray.experimental.state.api import list_jobs
-from ray.experimental.state.state_cli import logs_state_cli_group
+from ray.util.state.state_cli import logs_state_cli_group
+from ray.util.state import list_jobs
 import requests
 from click.testing import CliRunner
 import grpc
@@ -46,10 +46,10 @@ from ray.dashboard.modules.log.log_agent import (
 from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.experimental.state.api import get_log, list_logs, list_nodes, list_workers
-from ray.experimental.state.common import GetLogOptions
-from ray.experimental.state.exception import DataSourceUnavailable
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.util.state import get_log, list_logs, list_nodes, list_workers
+from ray.util.state.common import GetLogOptions
+from ray.util.state.exception import DataSourceUnavailable
+from ray.util.state.state_manager import StateDataSourceClient
 
 if sys.version_info >= (3, 8, 0):
     from unittest.mock import AsyncMock

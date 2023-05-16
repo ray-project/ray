@@ -15,7 +15,7 @@ import yaml
 
 import ray
 from ray import serve
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray._private.test_utils import wait_for_condition
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
@@ -1084,7 +1084,6 @@ TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 @pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
 def test_build(ray_start_stop, node):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-
         print(f'Building node "{node}".')
         # Build an app
         subprocess.check_output(
@@ -1116,7 +1115,6 @@ TestApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_build_multi_app(ray_start_stop):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-
         print('Building nodes "TestApp1Node" and "TestApp2Node".')
         # Build an app
         subprocess.check_output(

@@ -13,19 +13,19 @@ This section contains commands to access the :ref:`live state of Ray resources (
 
 State CLI allows users to access the state of various resources (e.g., actor, task, object).
 
-.. click:: ray.experimental.state.state_cli:task_summary
+.. click:: ray.util.state.state_cli:task_summary
    :prog: ray summary tasks
 
-.. click:: ray.experimental.state.state_cli:actor_summary
+.. click:: ray.util.state.state_cli:actor_summary
    :prog: ray summary actors
 
-.. click:: ray.experimental.state.state_cli:object_summary
+.. click:: ray.util.state.state_cli:object_summary
    :prog: ray summary objects
 
-.. click:: ray.experimental.state.state_cli:ray_list
+.. click:: ray.util.state.state_cli:ray_list
    :prog: ray list
 
-.. click:: ray.experimental.state.state_cli:ray_get
+.. click:: ray.util.state.state_cli:ray_get
    :prog: ray get
 
 .. _ray-logs-api-cli-ref:
@@ -41,5 +41,5 @@ This section contains commands to :ref:`access logs <state-api-log-doc>` from Ra
 Log CLI allows users to access the log from the cluster.
 Note that only the logs from alive nodes are available through this API.
 
-.. click:: ray.experimental.state.state_cli:logs_state_cli_group
+.. click:: ray.util.state.state_cli:logs_state_cli_group
    :prog: ray logs

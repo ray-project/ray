@@ -24,7 +24,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
-import ray.experimental.state.api as state_api
+import ray.util.state as state_api
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 
 import ray

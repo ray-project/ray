@@ -33,7 +33,7 @@ from ray.dashboard.modules.job.utils import (
 )
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
-from ray.experimental.state.api import list_nodes
+from ray.util.state import list_nodes
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient

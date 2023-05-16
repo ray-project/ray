@@ -7,7 +7,7 @@ import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
@@ -1303,7 +1303,7 @@ def test_actor_gc(monkeypatch, shutdown_only):
 
         driver = """
 import ray
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 ray.init("auto")
 
 @ray.remote

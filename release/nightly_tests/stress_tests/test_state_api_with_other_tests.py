@@ -6,7 +6,7 @@ import os
 
 import ray
 
-from ray.experimental.state.api import (
+from ray.util.state import (
     list_actors,
     list_nodes,
     list_objects,
@@ -85,7 +85,6 @@ def run_release_test_in_subprocess(test_file: str, args: List[str]) -> bool:
 
 
 def run_test(test_name: str, test_args: List[str]):
-
     monitor_actor = test_utils.monitor_memory_usage()
 
     start = time.perf_counter()
@@ -110,7 +109,6 @@ def run_test_with_state_api(
     call_interval_s: int = 3,
     print_interval_s: int = 15,
 ) -> Dict:
-
     start_time = time.perf_counter()
 
     # Stage 1: Run with state APIs
@@ -175,7 +173,6 @@ def test(
     test_args,
     call_interval_s,
 ):
-
     # Set up state API calling methods
     def not_none(res):
         return res is not None
