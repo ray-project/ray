@@ -29,7 +29,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
     # Check if torch framework supports torch.compile.
     if (
         torch is not None
-        and version.parse(torch) >= TORCH_COMPILE_REQUIRED_VERSION
+        and version.parse(torch.__version__) >= TORCH_COMPILE_REQUIRED_VERSION
         and (
             compile_config.torch_compile_learner or compile_config.torch_compile_worker
         )
