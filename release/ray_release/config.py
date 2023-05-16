@@ -73,7 +73,7 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
     for test_definition in test_definitions:
         if "variations" not in test_definition:
-            tests.append(test_definition)
+            tests.append(Test(test_definition))
             continue
         variations = test_definition.pop("variations")
         _test_definition_invariant(
