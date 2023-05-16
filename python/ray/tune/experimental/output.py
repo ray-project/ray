@@ -399,7 +399,7 @@ def _get_trial_table_data(
         for metric, formatted in zip(metric_keys, formatted_metric_columns)
     ]
 
-    param_header = [formatted for formatted in formatted_param_columns]
+    param_header = formatted_param_columns
 
     # Map to the abbreviated version if necessary.
     header = ["Trial name", "status"] + param_header + metric_header
