@@ -2427,7 +2427,7 @@ cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 
 try:
-    from ray.experimental.state.state_cli import (
+    from ray.util.state.state_cli import (
         ray_get,
         ray_list,
         logs_state_cli_group,
