@@ -10,7 +10,7 @@ from ray_release.test import (
 )
 
 
-def _stub_test(val: dict) -> Test:
+def _stub_test(val: dict = {}) -> Test:
     test = Test(
         {
             "name": "test",
