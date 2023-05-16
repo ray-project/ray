@@ -11,13 +11,16 @@ export type MainNavPage = {
   pageTitle?: string;
   /**
    * This helps identifies the current page a user is on and highlights the nav bar correctly.
-   * This should be unique per page.
+   * This should be unique per page within an hiearchy. i.e. you should NOT put two pages with the same ID
+   * as parents or children of each other.
    * DO NOT change the pageId of a page. The behavior of the main nav and
    * breadcrumbs is undefined in that case.
    */
   id: string;
   /**
    * URL to link to access this route.
+   * If this begins with a `/`, it is treated as an absolute path.
+   * If not, this is treated as a relative path and the path is appended to the parent breadcrumb's path.
    */
   path?: string;
 };

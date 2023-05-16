@@ -5,6 +5,21 @@ import { GlobalContext } from "../../../App";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { ActorResp, getActor } from "../../../service/actor";
 
+export const useFetchActor = (actorId: string | null) => {
+  return useSWR(
+    actorId ? ["useActorDetail", actorId] : null,
+    async ([_, actorId]) => {
+      const actor_resp = await getActor(actorId);
+      const data: ActorResp = actor_resp?.data;
+      const { data: rspData } = data;
+
+      if (rspData.detail) {
+        return rspData.detail;
+      }
+    },
+  );
+};
+
 export const useActorDetail = () => {
   const params = useParams() as { actorId: string };
   const [msg, setMsg] = useState("Loading the actor infos...");
