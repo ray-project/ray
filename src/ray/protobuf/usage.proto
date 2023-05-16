@@ -143,4 +143,6 @@ enum TagKey {
   // Built-in callbacks, stored in JSON format with callback name -> count.
   // Ex: {"WandbLoggerCallback": 1, "MLflowLoggerCallback": 1}
   AIR_CALLBACKS = 506;
+  // Storage configuration for AIR experiment
+  AIR_STORAGE_CONFIGURATION = 507;
 }

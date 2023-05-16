@@ -9,15 +9,19 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
+import shutil
 from typing import Callable, Dict, Optional, Type, Union
 
 import ray
 from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import _RESULT_FETCH_TIMEOUT, _ERROR_FETCH_TIMEOUT
-from ray.data import Datastream, DatasetPipeline
+from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import (
+    CHECKPOINT_DISTRIBUTED_KEY,
+    CHECKPOINT_METADATA_KEY,
+    CHECKPOINT_RANK_KEY,
     DETAILED_AUTOFILLED_KEYS,
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
@@ -25,11 +29,16 @@ from ray.train.constants import (
     TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TIMESTAMP,
-    CHECKPOINT_METADATA_KEY,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
+from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
+
+
+_INDEX_FILE_EXTENSION = ".files"
+_INDEX_FILE = ".RANK_{0}" + _INDEX_FILE_EXTENSION
 
 
 class TrainingResultType(Enum):
@@ -60,6 +69,7 @@ class TrainingResult:
 
 
 # TODO(xwjiang): This needs a better name.
+@DeveloperAPI
 class _TrainSession:
     """Holds information for training on each worker."""
 
@@ -73,7 +83,7 @@ class _TrainSession:
         world_size: int,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
-        dataset_shard: Optional[Union[Datastream, DatasetPipeline]] = None,
+        dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         checkpoint: Optional[Checkpoint] = None,
         # Deprecated
@@ -83,6 +93,8 @@ class _TrainSession:
         # will send over checkpoint path and metadata instead of
         # the whole checkpoint to avoid unnecessary serialization.
         enable_lazy_checkpointing: bool = True,
+        checkpoint_keep_all_ranks: bool = False,
+        checkpoint_upload_from_workers: bool = False,
     ):
 
         self.dataset_shard = dataset_shard
@@ -96,6 +108,10 @@ class _TrainSession:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         self.loaded_checkpoint = checkpoint
         self.enable_lazy_checkpointing = enable_lazy_checkpointing
+        self.checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
+        self.checkpoint_upload_from_workers = checkpoint_upload_from_workers
+        # Only used if checkpoint_upload_from_workers is True.
+        self.checkpoint_uri = None
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
@@ -281,17 +297,85 @@ class _TrainSession:
         except queue.Empty:
             pass
 
+    def _create_checkpoint_file_list(self, checkpoint: Checkpoint):
+        """Create an index of the folder contents
+
+        So we know which files belong to which rank.
+        """
+        root = checkpoint._local_path
+        ckpt_files = []
+        for dir, _, files in os.walk(root):
+            # Strip the root path from the path though, since
+            # we are only interested in the part relative to
+            # the root of this checkpoint.
+            dir = dir[len(root) :]
+            for fn in files:
+                ckpt_files.append(os.path.join(dir, fn))
+        # Write these files into the index file.
+        with open(os.path.join(root, _INDEX_FILE.format(self.world_rank)), "w") as f:
+            for fn in ckpt_files:
+                f.write(f"{fn}\n")
+
+    def _remove_uploaded_checkpoint_files(self, checkpoint: Checkpoint):
+        """Get rid of already uploaded large checkpoint files.
+
+        This is so they don't get shipped to the driver node.
+        """
+        root = checkpoint._local_path
+        for f in os.listdir(root):
+            if f.endswith(_INDEX_FILE_EXTENSION):
+                # We will leave the index file in there so local
+                # checkpoint has knowledge about the cloud files.
+                continue
+            fp = os.path.join(root, f)
+            if os.path.isfile(fp):
+                os.unlink(fp)
+            elif os.path.isdir(fp):
+                shutil.rmtree(fp)
+
     def checkpoint(self, checkpoint: Checkpoint):
         """Adds kwargs to the queue to be consumed by main thread.
 
         Also stores the checkpoint in ``self.loaded_checkpoint``.
         """
+        checkpoint_type, _ = checkpoint.get_internal_representation()
+
+        if checkpoint_type == "data_dict" and self.checkpoint_keep_all_ranks:
+            if log_once("keep_all_ranks_dict_checkpoint"):
+                logger.warning(
+                    "Saving checkpoints from all ranks does not work with "
+                    "dictionary checkpoints. Set `ray.air.CheckpointConfig"
+                    "(_checkpoint_keep_all_ranks=False)`, or write checkpoints "
+                    "to a directory and report directory checkpoints that "
+                    "contain unique files per worker rank. For example, "
+                    "use filenames that contain the unique rank. You can "
+                    "retrieve the rank with `session.get_world_rank()` within "
+                    "your training loop per worker."
+                )
+
+        upload_from_workers = (
+            checkpoint_type == "local_path"
+            and self.checkpoint_upload_from_workers
+            and self.checkpoint_uri
+        )
+        if upload_from_workers:
+            self._create_checkpoint_file_list(checkpoint)
+            logger.info(
+                f"Uploading checkpoint files from worker rank {self.world_rank} "
+                f"to cloud URI {self.checkpoint_uri}."
+            )
+            # We want to upload the files directly to cloud storage,
+            # so that they won't need to be shipped to the driver node
+            # via object store.
+            checkpoint.to_uri(self.checkpoint_uri)
+            logger.info("Done uploading checkpoint files.")
+            self._remove_uploaded_checkpoint_files(checkpoint)
 
         # Update session checkpoint to latest checkpoint.
         self.loaded_checkpoint = checkpoint
 
         # Only store checkpoints on worker with rank 0.
-        if self.world_rank != 0:
+        if self.world_rank != 0 and not self.checkpoint_keep_all_ranks:
             checkpoint = None
         elif checkpoint:
             checkpoint = self._encode_data_fn(checkpoint)
@@ -307,17 +391,34 @@ class _TrainSession:
             metadata.update({CHECKPOINT_METADATA_KEY: checkpoint._metadata})
             checkpoint = str(checkpoint._local_path)
 
+        # Save the rank of the worker that created this checkpoint.
+        metadata.update(
+            {
+                CHECKPOINT_RANK_KEY: self.world_rank,
+                CHECKPOINT_DISTRIBUTED_KEY: upload_from_workers,
+            }
+        )
+
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,
             data=checkpoint,
             metadata=metadata,
         )
+
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
 
         # Acquire lock to stop the training thread until
         # checkpoint has been processed.
         self.continue_lock.acquire()
+
+    def _set_checkpoint_uri(self, uri: str):
+        """Tell session where to save the next directory checkpoint on the cloud.
+
+        Args:
+            uri: URI to the location where next checkpoint should be saved.
+        """
+        self.checkpoint_uri = uri
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.

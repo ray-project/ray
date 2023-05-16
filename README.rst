@@ -23,7 +23,7 @@ Ray is a unified framework for scaling AI and Python applications. Ray consists 
 
 Learn more about `Ray AIR`_ and its libraries:
 
-- `Data`_: Distributed ML Preprocessing
+- `Data`_: Scalable Datasets for ML
 - `Train`_: Distributed Training
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
@@ -44,7 +44,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
 
 .. _`Serve`: https://docs.ray.io/en/latest/serve/index.html
-.. _`Data`: https://docs.ray.io/en/latest/data/data.html
+.. _`Data`: https://docs.ray.io/en/latest/data/dataset.html
 .. _`Workflow`: https://docs.ray.io/en/latest/workflows/concepts.html
 .. _`Train`: https://docs.ray.io/en/latest/train/train.html
 .. _`Tune`: https://docs.ray.io/en/latest/tune/index.html
