@@ -78,7 +78,7 @@ TEST_F(RedisStoreClientTest, BasicSimple) {
     ASSERT_TRUE(store_client_
                     ->AsyncGet("T",
                                absl::StrCat("A", std::to_string(j)),
-                               [j, cnt](auto s, auto r) {
+                               [cnt](auto s, auto r) {
                                  --*cnt;
                                  ASSERT_TRUE(r.has_value());
                                  ASSERT_EQ(*r, "99");
