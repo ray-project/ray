@@ -3240,7 +3240,7 @@ class AlgorithmConfig(_Config):
             )
             .framework(
                 eager_tracing=self.eager_tracing,
-                torch_compile_learner_config=self.get_torch_compile_learner_config(),
+                torch_compile_cfg=self.get_torch_compile_learner_config(),
             )
         )
 
