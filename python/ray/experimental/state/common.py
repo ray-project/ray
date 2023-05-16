@@ -3,15 +3,14 @@ import json
 import logging
 import sys
 from abc import ABC
-from dataclasses import field, fields
+from dataclasses import asdict, field, fields
 from enum import Enum, unique
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
-from ray.dashboard.modules.job.common import JobInfo
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
@@ -26,10 +25,15 @@ from ray.experimental.state.exception import RayStateApiException
 
 try:
     from pydantic.dataclasses import dataclass
+
+    from ray.dashboard.modules.job.pydantic_models import JobDetails
+
 except ImportError:
     # pydantic is not available in the dashboard.
     # We will use the dataclass from the standard library.
     from dataclasses import dataclass
+
+    JobDetails = object
 
 
 logger = logging.getLogger(__name__)
@@ -300,6 +304,9 @@ class StateSchema(ABC):
         """
         return set(cls.list_columns(detail=True))
 
+    def asdict(self):
+        return asdict(self)
+
     # Allow dict like access on the class directly for backward compatibility.
     def __getitem__(self, key):
         return getattr(self, key)
@@ -355,6 +362,9 @@ class GetLogOptions:
     # The suffix of the log file if file resolution not through filename directly.
     # Default to "out".
     suffix: str = "out"
+    # The job submission id for submission job. This doesn't work for driver job
+    # since Ray doesn't log driver logs to file in the ray logs directory.
+    submission_id: Optional[str] = None
 
     def __post_init__(self):
         if self.pid:
@@ -377,10 +387,16 @@ class GetLogOptions:
                 "Both node_id and node_ip are given. Only one of them can be provided. "
                 f"Given node id: {self.node_id}, given node ip: {self.node_ip}"
             )
-        if not (self.actor_id or self.task_id or self.pid or self.filename):
+        if not (
+            self.actor_id
+            or self.task_id
+            or self.pid
+            or self.filename
+            or self.submission_id
+        ):
             raise ValueError(
-                "None of actor_id, task_id, pid, or filename is provided. "
-                "At least one of them is required to fetch logs."
+                "None of actor_id, task_id, pid, submission_id or filename "
+                "is provided. At least one of them is required to fetch logs."
             )
 
         if self.suffix not in ["out", "err"]:
@@ -504,19 +520,55 @@ class NodeState(StateSchema):
     )
 
 
-@dataclass(init=True)
-class JobState(JobInfo, StateSchema):
-    """The state of the job that's submitted by Ray's Job APIs"""
+# NOTE:
+# Declaring this as dataclass would make __init__ not being called properly.
+class JobState(StateSchema, JobDetails):
+    """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
-    job_id: Optional[str] = state_column(filterable=False, default=None)
+    def __init__(self, **kwargs):
+        JobDetails.__init__(self, **kwargs)
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"status", "entrypoint", "error_type"}
+        # We are not doing any filtering since filtering is currently done
+        # at the backend.
+        return {"job_id", "type", "status", "submission_id"}
 
     @classmethod
-    def list_columns(cls, detail: bool) -> List[str]:
-        return ["job_id"] + [f.name for f in fields(JobInfo)]
+    def humanify(cls, state: dict) -> dict:
+        return state
+
+    @classmethod
+    def list_columns(cls, detail: bool = False) -> List[str]:
+        if not detail:
+            return [
+                "job_id",
+                "submission_id",
+                "entrypoint",
+                "type",
+                "status",
+                "message",
+                "error_type",
+                "driver_info",
+            ]
+        if isinstance(JobDetails, object):
+            # We don't have pydantic in the dashboard. This is because
+            # we call this method at module import time, so we need to
+            # check if the class is a pydantic model.
+            return []
+
+        return JobDetails.__fields__
+
+    def asdict(self):
+        return JobDetails.dict(self)
+
+    @classmethod
+    def schema_dict(cls) -> Dict[str, Any]:
+        schema_types = cls.schema()["properties"]
+        # Get type name to actual type mapping.
+        return {
+            k: v["type"] for k, v in schema_types.items() if v.get("type") is not None
+        }
 
 
 @dataclass(init=True)

@@ -406,6 +406,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             filename=req.query.get("filename", None),
             actor_id=req.query.get("actor_id", None),
             task_id=req.query.get("task_id", None),
+            submission_id=req.query.get("submission_id", None),
             pid=req.query.get("pid", None),
             lines=req.query.get("lines", DEFAULT_LOG_LIMIT),
             interval=req.query.get("interval", None),

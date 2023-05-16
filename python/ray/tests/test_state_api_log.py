@@ -7,6 +7,7 @@ import urllib
 from unittest.mock import MagicMock
 
 import pytest
+from ray.experimental.state.api import list_jobs
 from ray.experimental.state.state_cli import logs_state_cli_group
 import requests
 from click.testing import CliRunner
@@ -1000,6 +1001,40 @@ def test_log_list(ray_start_cluster):
         list_logs(node_id=node_id)
 
     e.match(f"Given node id {node_id} is not available")
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Job submission is failing on windows."
+)
+def test_log_job(ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    # Submit a job
+    from ray.job_submission import JobSubmissionClient
+
+    JOB_LOG = "test-job-log"
+    client = JobSubmissionClient(webui_url)
+    entrypoint = f"python -c \"print('{JOB_LOG}')\""
+    job_id = client.submit_job(entrypoint=entrypoint)
+
+    def job_done():
+        jobs = list_jobs(filters=[("submission_id", "=", job_id)])
+        assert len(jobs) == 1
+        assert jobs[0].status == "SUCCEEDED"
+        return True
+
+    wait_for_condition(job_done)
+
+    def verify():
+        logs = "".join(get_log(submission_id=job_id, node_id=node_id))
+        assert JOB_LOG + "\n" == logs
+
+        return True
+
+    wait_for_condition(verify)
 
 
 def test_log_get_subdir(ray_start_with_dashboard):

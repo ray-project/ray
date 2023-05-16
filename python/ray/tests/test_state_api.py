@@ -8,6 +8,8 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
+from ray.experimental.state.api import get_job
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.experimental.state.common import Humanify
 from ray._private.gcs_utils import GcsAioClient
 import yaml
@@ -1534,8 +1536,14 @@ async def test_state_data_source_client(ray_start_cluster):
         entrypoint="ls",
     )
     result = await client.get_job_info()
-    assert list(result.keys())[0] == job_id
-    assert isinstance(result, dict)
+    assert isinstance(result[0], JobDetails)
+    found_job = False
+    for job in result:
+        if job.type != "DRIVER":
+            assert job.submission_id == job_id
+            found_job = True
+    assert found_job, result
+    assert isinstance(result, list)
 
     """
     Test tasks
@@ -2185,8 +2193,9 @@ def test_list_get_nodes(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_jobs(shutdown_only):
+def test_list_get_jobs(shutdown_only):
     ray.init()
+    # Test submission job
     client = JobSubmissionClient(
         f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
@@ -2198,13 +2207,50 @@ def test_list_jobs(shutdown_only):
     def verify():
         job_data = list_jobs()[0]
         print(job_data)
-        job_id_from_api = job_data["job_id"]
-        correct_state = job_data["status"] == "SUCCEEDED"
-        correct_id = job_id == job_id_from_api
-        return correct_state and correct_id
+        job_id_from_api = job_data["submission_id"]
+        assert job_data["status"] == "SUCCEEDED"
+        assert job_id == job_id_from_api
+        return True
 
     wait_for_condition(verify)
-    print(list_jobs())
+
+    # Test driver jobs
+    script = """
+
+import ray
+
+ray.init("auto")
+
+@ray.remote
+def f():
+    pass
+
+ray.get(f.remote())
+"""
+    run_string_as_driver(script)
+
+    def verify():
+        jobs = list_jobs(filters=[("type", "=", "DRIVER")])
+        assert len(jobs) == 2, "1 test driver + 1 script run above"
+        for driver_job in jobs:
+            assert driver_job["driver_info"] is not None
+
+        sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
+        assert len(sub_jobs) == 1
+        assert sub_jobs[0]["submission_id"] is not None
+        return True
+
+    wait_for_condition(verify)
+
+    # Test GET api
+    def verify():
+        job = get_job(id=job_id)
+        assert job["submission_id"] == job_id
+        assert job["entrypoint"] == "ls"
+        assert job["status"] == "SUCCEEDED"
+        return True
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
