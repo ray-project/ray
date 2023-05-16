@@ -190,14 +190,13 @@ void RedisRequestContext::Run() {
                          << absl::StrJoin(request_cxt->redis_cmds_, " ") << "]"
                          << " failed due to error " << async_context->errstr << ". "
                          << request_cxt->pending_retries_ << " retries left.";
-          auto delay = exp_back_off_.Current();
-          exp_back_off_.Next();
+          auto delay = request_cxt->exp_back_off_.Current();
+          request_cxt->exp_back_off_.Next();
           // Retry the request after a while.
-      execute_after(
-          request_cxt->io_service_,
-          [request_cxt]() {
-        request_cxt->Run(); },
-          std::chrono::milliseconds(delay);
+          execute_after(
+              request_cxt->io_service_,
+              [request_cxt]() { request_cxt->Run(); },
+              std::chrono::milliseconds(delay));
         } else {
           auto reply = std::make_shared<CallbackReply>(redis_reply);
           request_cxt->io_service_.post(
