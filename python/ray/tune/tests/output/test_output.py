@@ -3,6 +3,7 @@ import sys
 
 from freezegun import freeze_time
 
+from ray import tune
 from ray.tune.experimental.output import (
     _get_time_str,
     _get_trials_by_state,
@@ -13,6 +14,7 @@ from ray.tune.experimental.output import (
     _best_trial_str,
     _get_trial_table_data,
     _get_dict_as_table_data,
+    _infer_params,
 )
 from ray.tune.experiment.trial import Trial
 
@@ -135,7 +137,8 @@ def test_get_trial_info():
     t.last_result = LAST_RESULT
     assert _get_trial_info(
         t,
-        [
+        param_keys=[],
+        metric_keys=[
             "episode_reward_mean",
             "episode_reward_max",
             "episode_reward_min",
@@ -152,10 +155,11 @@ def test_get_trial_table_data_less_than_20():
         t.trial_id = str(i)
         t.set_status(Trial.RUNNING)
         t.last_result = {"episode_reward_mean": 100 + i}
+        t.config = {"param": i}
         trials.append(t)
-    table_data = _get_trial_table_data(trials, ["episode_reward_mean"])
+    table_data = _get_trial_table_data(trials, ["param"], ["episode_reward_mean"])
     header = table_data.header
-    assert header == ["Trial name", "status", "reward"]
+    assert header == ["Trial name", "status", "param", "reward"]
     table_data = table_data.data
     assert len(table_data) == 1  # only the running category
     assert len(table_data[0].trial_infos) == 20
@@ -171,10 +175,11 @@ def test_get_trial_table_data_more_than_20():
             t.trial_id = str(i)
             t.set_status(status)
             t.last_result = {"episode_reward_mean": 100 + i}
+            t.config = {"param": i}
             trials.append(t)
-    table_data = _get_trial_table_data(trials, ["episode_reward_mean"])
+    table_data = _get_trial_table_data(trials, ["param"], ["episode_reward_mean"])
     header = table_data.header
-    assert header == ["Trial name", "status", "reward"]
+    assert header == ["Trial name", "status", "param", "reward"]
     table_data = table_data.data
     assert len(table_data) == 3  # only the running category
     for i in range(3):
@@ -182,6 +187,24 @@ def test_get_trial_table_data_more_than_20():
     assert table_data[0].more_info == "5 more RUNNING"
     assert table_data[1].more_info == "5 more TERMINATED"
     assert table_data[2].more_info == "5 more PENDING"
+
+
+def test_infer_params():
+    assert _infer_params({}) == []
+    assert _infer_params({"some": "val"}) == []
+    assert _infer_params({"some": "val", "param": tune.uniform(0, 1)}) == ["param"]
+    assert _infer_params({"some": "val", "param": tune.grid_search([0, 1])}) == [
+        "param"
+    ]
+    assert sorted(
+        _infer_params(
+            {
+                "some": "val",
+                "param": tune.grid_search([0, 1]),
+                "other": tune.choice([0, 1]),
+            }
+        )
+    ) == ["other", "param"]
 
 
 def test_result_table_no_divison():
