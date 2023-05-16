@@ -63,6 +63,9 @@ class NodeState {
     return cluster_view_;
   }
 
+  /// Remove a node from the cluster view.
+  bool RemoveNode(const std::string &node_id);
+
  private:
   /// For local nodes
   std::array<const ReporterInterface *, kComponentArraySize> reporters_ = {nullptr};
