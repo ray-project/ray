@@ -13,7 +13,7 @@ from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
+from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()

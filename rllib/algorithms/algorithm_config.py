@@ -28,7 +28,7 @@ from ray.rllib.core.learner.learner_group_config import (
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
+from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
@@ -1279,7 +1279,9 @@ class AlgorithmConfig(_Config):
             self.local_tf_session_args = local_tf_session_args
 
         if torch_compile_learner is not NotProvided:
-            self.torch_compile_learner = torch_compile_learner
+            self.torch_compile_learner = (
+                torch_compile_learner
+            )
         if torch_compile_learner_dynamo_backend is not NotProvided:
             self.torch_compile_learner_dynamo_backend = (
                 torch_compile_learner_dynamo_backend

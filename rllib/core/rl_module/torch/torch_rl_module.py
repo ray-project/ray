@@ -8,7 +8,7 @@ from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import NetworkType
-from rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
+from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 
 torch, nn = try_import_torch()
 

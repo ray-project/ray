@@ -49,7 +49,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.utils.typing import TensorType, ResultDict
-from rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
+from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
