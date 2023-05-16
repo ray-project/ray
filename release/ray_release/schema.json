@@ -87,6 +87,9 @@
 				},
 				"cloud_name": {
 					"type": "string"
+				},
+				"boyd": {
+					"type": "boolean"
 				}
 			},
 			"required": [
