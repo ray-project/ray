@@ -13,44 +13,6 @@ The rest of this page will focus on how to access these services when running a 
 
 .. _monitor-cluster-via-dashboard:
 
-Monitoring the cluster via the dashboard
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-:ref:`The dashboard <ray-dashboard>` provides detailed information about the state of the cluster,
-including the running jobs, actors, workers, nodes, etc.
-By default, the :ref:`cluster launcher <vm-cluster-quick-start>` and :ref:`KubeRay operator <kuberay-quickstart>` will launch the dashboard, but will
-not publicly expose the port.
-
-.. tab-set::
-
-    .. tab-item:: If using the VM cluster launcher
-
-        You can securely port-forward local traffic to the dashboard via the ``ray
-        dashboard`` command.
-
-        .. code-block:: shell
-
-            $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
-
-        The dashboard will now be visible at ``http://localhost:8265``.
-
-    .. tab-item:: If using Kubernetes
-
-        The KubeRay operator makes the dashboard available via a Service targeting
-        the Ray head pod, named ``<RayCluster name>-head-svc``. You can access the
-        dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
-
-        You can also view the dashboard from outside the Kubernetes cluster by
-        using port-forwarding:
-
-        .. code-block:: shell
-
-            $ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
-
-        For more information about configuring network access to a Ray cluster on
-        Kubernetes, see the :ref:`networking notes <kuberay-networking>`.
-
-
 Using Ray Cluster CLI tools
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
