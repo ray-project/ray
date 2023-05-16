@@ -21,7 +21,7 @@ class Test(dict):
         specified, use the nightly ray image.
         """
         ray_version = os.environ.get("BUILDKITE_COMMIT", "")[:6] or "nightly"
-        python_version = f"py-{self.get_python_version().replace('.',   '')}"
+        python_version = f"py{self.get_python_version().replace('.',   '')}"
         return f"rayproject/ray:{ray_version}-{python_version}"
 
     def get_anyscale_byod_image(self) -> str:
