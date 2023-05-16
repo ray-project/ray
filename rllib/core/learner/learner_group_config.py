@@ -4,7 +4,6 @@ from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
     LearnerHyperparameters,
@@ -59,7 +58,7 @@ class LearnerGroupConfig:
 
         # `self.framework()`
         self.eager_tracing = False
-        self.torch_compile_learner_config = TorchCompileConfig()
+        self.torch_compile_cfg = None
 
     def validate(self) -> None:
 
@@ -87,7 +86,7 @@ class LearnerGroupConfig:
 
         framework_hps = FrameworkHyperparameters(
             eager_tracing=self.eager_tracing,
-            torch_compile_config=self.torch_compile_learner_config,
+            torch_compile_cfg=self.torch_compile_cfg,
         )
 
         learner_spec = LearnerSpec(
@@ -104,14 +103,14 @@ class LearnerGroupConfig:
     def framework(
         self,
         eager_tracing: Optional[bool] = NotProvided,
-        torch_compile_learner_config: Optional[TorchCompileConfig] = NotProvided,
+        torch_compile_cfg: Optional["TorchCompileConfig"] = NotProvided,  # noqa: # F821
     ) -> "LearnerGroupConfig":
 
         if eager_tracing is not NotProvided:
             self.eager_tracing = eager_tracing
 
-        if torch_compile_learner_config is not NotProvided:
-            self.torch_compile_learner_config = torch_compile_learner_config
+        if torch_compile_cfg is not NotProvided:
+            self.torch_compile_cfg = torch_compile_cfg
 
         return self
 

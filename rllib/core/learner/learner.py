@@ -87,7 +87,7 @@ class FrameworkHyperparameters:
     """
 
     eager_tracing: bool = False
-    torch_compile_config: Optional["TorchCompileConfig"] = None  # noqa: F821
+    torch_compile_cfg: Optional["TorchCompileConfig"] = None  # noqa: F821
 
 
 @dataclass
