@@ -103,7 +103,26 @@ def test_repr_fallback_if_colab(kernel):
             assert len(result) == 1
         else:
             assert len(result) == 2
-            assert "fancy/mimetype"
+            assert "fancy/mimetype" in result
+
+
+@mock.patch("ray.widgets.util.in_ipython_shell")
+def test_repr_fallback_if_ipython_shell(mock_in_ipython):
+    mock_in_ipython.return_value = True
+
+    class DummyObject:
+        @repr_with_fallback()
+        def _repr_mimebundle_(self, **kwargs):
+            return {
+                "fancy/mimetype": "A fancy repr",
+                "text/plain": "A simple repr",
+            }
+
+    obj = DummyObject()
+    result = obj._repr_mimebundle_()
+
+    assert "text/plain" in result
+    assert len(result) == 1
 
 
 if __name__ == "__main__":
