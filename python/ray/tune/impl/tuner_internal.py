@@ -616,7 +616,8 @@ class TunerInternal:
                 # If we specifically know this trainable doesn't support the
                 # argument, raise an error
                 raise ValueError(
-                    f"You passed `checkpoint_frequency={checkpoint_freq}` to your "
+                    "You passed `checkpoint_frequency="
+                    f"{checkpoint_config.checkpoint_frequency}` to your "
                     "CheckpointConfig, but this trainer does not support "
                     "this argument. If you passed in an AIR trainer that takes in a "
                     "custom training loop, you will need to "
@@ -638,7 +639,8 @@ class TunerInternal:
             if handle_cp_at_end is False:
                 # If we specifically know we don't support it, raise an error.
                 raise ValueError(
-                    f"You passed `checkpoint_at_end={checkpoint_config.checkpoint_at_end}` "
+                    "You passed `checkpoint_at_end="
+                    f"{checkpoint_config.checkpoint_at_end}` "
                     "to your CheckpointConfig, but this trainer does not support "
                     "this argument. If you passed in an AIR trainer that takes in a "
                     "custom training loop, you should include one last call to "
@@ -666,7 +668,7 @@ class TunerInternal:
             sync_config=self._run_config.sync_config,
             stop=self._run_config.stop,
             max_failures=self._run_config.failure_config.max_failures,
-            checkpoint_config=self._run_config.checkpoint_config,
+            checkpoint_config=checkpoint_config,
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),
