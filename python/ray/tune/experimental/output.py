@@ -98,6 +98,9 @@ class AirVerbosity(IntEnum):
     DEFAULT = 1
     VERBOSE = 2
 
+    def __repr__(self):
+        return str(self.value)
+
 
 IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
