@@ -1,5 +1,9 @@
 import os
-from ray.air.constants import TIMESTAMP, TIME_THIS_ITER_S
+from ray.air.constants import (
+    TIMESTAMP, 
+    TIME_THIS_ITER_S, 
+    TRAINING_ITERATION,
+)
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -51,8 +55,6 @@ TIMESTEPS_TOTAL = "timesteps_total"
 # (Auto-filled) Accumulated time in seconds for this entire trial.
 TIME_TOTAL_S = "time_total_s"
 
-# (Auto-filled) The index of this training iteration.
-TRAINING_ITERATION = "training_iteration"
 # __sphinx_doc_end__
 # fmt: on
 
