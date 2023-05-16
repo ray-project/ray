@@ -1,85 +1,16 @@
-.. _observability-key-concepts:
+.. _observability-getting-started-program:
 
-Key Concepts
-============
+Getting started (programmatically)
+==================================
 
-This section covers a list of key concepts for monitoring and debugging tools and features in Ray.
+Monitoring and debugging capabilities in Ray are available through an API, CLI, or SDK.
 
-Dashboard (Web UI)
-------------------
-Ray supports the web-based dashboard to help users monitor the cluster. When a new cluster is started, the dashboard is available
-through the default address `localhost:8265` (port can be automatically incremented if port 8265 is already occupied).
-
-See :ref:`Ray Dashboard <ray-dashboard>` for more details.
-
-Application Logging
--------------------
-By default, all stdout and stderr of tasks and actors are streamed to the Ray driver (the entrypoint script that calls ``ray.init``).
-
-.. literalinclude:: doc_code/app_logging.py
-  :language: python
-
-All stdout emitted from the ``print`` method is printed to the driver with a ``(the task or actor repr, the process ID, IP address)`` prefix.
-
-.. code-block:: bash
-
-    (pid=45601) task
-    (Actor pid=480956) actor
-
-See :ref:`Logging <ray-logging>` for more details.
-
-Driver logs
-~~~~~~~~~~~
-An entry point of Ray applications that calls ``ray.init()`` is called a driver.
-All the driver logs are handled in the same way as normal Python programs.
-
-Job logs
-~~~~~~~~
-Logs for jobs submitted via the :ref:`Ray Jobs API <jobs-overview>` can be retrieved using the ``ray job logs`` :ref:`CLI command <ray-job-logs-doc>` or using ``JobSubmissionClient.get_logs()`` or ``JobSubmissionClient.tail_job_logs()`` via the :ref:`Python SDK <ray-job-submission-sdk-ref>`.
-The log file consists of the stdout of the entrypoint command of the job.  For the location of the log file on disk, see :ref:`Logging directory structure <logging-directory-structure>`.
-
-.. _ray-worker-logs:
-
-Worker logs
-~~~~~~~~~~~
-Ray's tasks or actors are executed remotely within Ray's worker processes. Ray has special support to improve the visibility of logs produced by workers.
-
-- By default, all of the tasks/actors stdout and stderr are redirected to the worker log files. Check out :ref:`Logging directory structure <logging-directory-structure>` to learn how Ray's logging directory is structured.
-- By default, all of the tasks/actors stdout and stderr that is redirected to worker log files are published to the driver. Drivers display logs generated from its tasks/actors to its stdout and stderr.
-
-Let's look at a code example to see how this works.
-
-.. code-block:: python
-
-    import ray
-    # Initiate a driver.
-    ray.init()
-
-    @ray.remote
-    def task():
-        print("task")
-
-    ray.get(task.remote())
-
-You should be able to see the string `task` from your driver stdout. 
-
-When logs are printed, the process id (pid) and an IP address of the node that executes tasks/actors are printed together. Check out the output below.
-
-.. code-block:: bash
-
-    (pid=45601) task
-
-Actor log messages look like the following by default.
-
-.. code-block:: bash
-
-    (MyActor pid=480956) actor log message
 
 Accessing Ray States
 --------------------
-Starting from Ray 2.0, it supports CLI / Python APIs to query the state of resources (e.g., actor, task, object, etc.).
+Ray 2.0 and later versions support CLI and Python APIs for querying the state of resources (e.g., actor, task, object, etc.)
 
-For example, the following command will summarize the task state of the cluster.
+For example, the following command summarizes the task state of the cluster:
 
 .. code-block:: bash
 
@@ -101,7 +32,7 @@ For example, the following command will summarize the task state of the cluster.
     0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
     1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
 
-The following command will list all the actors from the cluster.
+The following command lists all the actors from the cluster:
 
 .. code-block:: bash
 
@@ -121,81 +52,3 @@ The following command will list all the actors from the cluster.
     1  f36758a9f8871a9ca993b1d201000000  Actor                 96955  ALIVE
 
 See :ref:`Ray State API <state-api-overview-ref>` for more details.
-
-Metrics
--------
-Ray collects and exposes the physical stats (e.g., CPU, memory, GRAM, disk, and network usage of each node),
-internal stats (e.g., number of actors in the cluster, number of worker failures of the cluster),
-and custom metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used
-to monitor the cluster over time.
-
-See :ref:`Ray Metrics <ray-metrics>` for more details.
-
-Exceptions
-----------
-Creating a new task or submitting an actor task generates an object reference. When ``ray.get`` is called on the object reference,
-the API raises an exception if anything goes wrong with a related task, actor or object. For example,
-
-- :class:`RayTaskError <ray.exceptions.RayTaskError>` is raised when there's an error from user code that throws an exception.
-- :class:`RayActorError <ray.exceptions.RayActorError>` is raised when an actor is dead (by a system failure such as node failure or user-level failure such as an exception from ``__init__`` method).
-- :class:`RuntimeEnvSetupError <ray.exceptions.RuntimeEnvSetupError>` is raised when the actor or task couldn't be started because :ref:`a runtime environment <runtime-environments>` failed to be created.
-
-See :ref:`Exceptions Reference <ray-core-exceptions>` for more details.
-
-Debugger
---------
-Ray has a built-in debugger that allows you to debug your distributed applications.
-It allows you to set breakpoints in your Ray tasks and actors, and when hitting the breakpoint, you can
-drop into a PDB session that you can then use to:
-
-- Inspect variables in that context
-- Step within that task or actor
-- Move up or down the stack
-
-See :ref:`Ray Debugger <ray-debugger>` for more details.
-
-Monitoring Cluster State and Resource Demands
----------------------------------------------
-You can monitor cluster usage and auto-scaling status by running (on the head node) a CLI command ``ray status``. It displays
-
-- **Cluster State**: Nodes that are up and running. Addresses of running nodes. Information about pending nodes and failed nodes.
-- **Autoscaling Status**: The number of nodes that are autoscaling up and down.
-- **Cluster Usage**: The resource usage of the cluster. E.g., requested CPUs from all Ray tasks and actors. Number of GPUs that are used.
-
-Here's an example output.
-
-.. code-block:: shell
-
-   $ ray status
-   ======== Autoscaler status: 2021-10-12 13:10:21.035674 ========
-   Node status
-   ---------------------------------------------------------------
-   Healthy:
-    1 ray.head.default
-    2 ray.worker.cpu
-   Pending:
-    (no pending nodes)
-   Recent failures:
-    (no failures)
-
-   Resources
-   ---------------------------------------------------------------
-   Usage:
-    0.0/10.0 CPU
-    0.00/70.437 GiB memory
-    0.00/10.306 GiB object_store_memory
-
-   Demands:
-    (no resource demands)
-
-Profiling
----------
-Ray is compatible with Python profiling tools such as ``CProfile``. It also supports its built-in profiling tool such as :ref:```ray timeline`` <ray-timeline-doc>`.
-
-See :ref:`Profiling <ray-core-profiling>` for more details.
-
-Tracing
--------
-To help debug and monitor Ray applications, Ray supports distributed tracing (integration with OpenTelemetry) across tasks and actors.
-
-See :ref:`Ray Tracing <ray-tracing>` for more details.
