@@ -905,7 +905,8 @@ def run_learning_tests_from_yaml(
                     episode_reward_mean = np.mean(
                         [
                             t.metric_analysis[
-                                "evaluation/sampler_results/episode_reward_mean"]["max"]
+                                "evaluation/sampler_results/episode_reward_mean"
+                            ]["max"]
                             for t in trials_for_experiment
                         ]
                     )
@@ -913,7 +914,8 @@ def run_learning_tests_from_yaml(
                     episode_reward_mean = np.mean(
                         [
                             t.metric_analysis["sampler_results/episode_reward_mean"][
-                                "max"]
+                                "max"
+                            ]
                             for t in trials_for_experiment
                         ]
                     )
