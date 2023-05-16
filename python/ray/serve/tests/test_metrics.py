@@ -8,7 +8,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.utils import block_until_http_ready
-import ray.experimental.state.api as state_api
+import ray.util.state as state_api
 from fastapi import FastAPI
 from ray.serve.metrics import Counter, Histogram, Gauge
 from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
@@ -89,7 +89,6 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
 
 
 def test_http_metrics(serve_start_shutdown):
-
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
