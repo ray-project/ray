@@ -471,7 +471,7 @@ class BlockAccessor:
                     "Standalone Python objects are not "
                     "allowed in Ray 2.5. To use Python objects in a dataset, "
                     "wrap them in a dict of numpy arrays, e.g., "
-                    "return `{'item': np.array(batch)}` instead of just `batch`."
+                    "return `{'item': batch}` instead of just `batch`."
                 )
             return SimpleBlockAccessor(block)
         else:
