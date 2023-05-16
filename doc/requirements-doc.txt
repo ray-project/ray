@@ -5,6 +5,7 @@ accelerate>=0.17.0
 click
 colorama
 colorful
+datasets
 # Newer versions of fairscale do not support Python 3.6 even though they still have wheels for it.
 # Have to manually pin it: https://github.com/facebookresearch/fairscale/issues/962
 fairscale; python_version >= '3.7'
@@ -54,7 +55,6 @@ sphinx-click==3.0.2
 sphinx-copybutton==0.4.0
 sphinxemoji==0.2.0
 sphinx-jsonschema==1.17.2
-sphinx-panels==0.6.0
 sphinx-version-warning==1.1.2
 sphinx-book-theme==0.3.3
 sphinx-external-toc==0.2.4
