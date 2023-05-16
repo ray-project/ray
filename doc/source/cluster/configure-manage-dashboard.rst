@@ -3,7 +3,7 @@
 Configuring and Managing the Dashboard
 ======================================
 
-Modify the configuration 
+Setting up the dashboard may require some configuration depending on your use model and cluster environment. Integrations with Prometheus and Grafana are optional for extending visualization capabilities.
 
 Port forwarding
 ---------------

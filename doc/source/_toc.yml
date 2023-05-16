@@ -389,6 +389,8 @@ parts:
         title: "Monitoring and Debugging"
         sections:
           - file: ray-observability/key-concepts
+          - file: ray-observability/getting-started-dashboard
+          - file: ray-observability/getting-started-program
           - file: ray-observability/user-guides/index
             title: User Guides
             sections:
