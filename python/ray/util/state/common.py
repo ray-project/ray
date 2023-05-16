@@ -1,17 +1,17 @@
+import datetime
 import json
 import logging
 import sys
 from abc import ABC
-from dataclasses import field, fields
+from dataclasses import asdict, field, fields
 from enum import Enum, unique
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
-from ray.dashboard.modules.job.common import JobInfo
-from ray.util.state.custom_types import (
+from ray.experimental.state.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
     TypePlacementGroupStatus,
@@ -21,14 +21,19 @@ from ray.util.state.custom_types import (
     TypeWorkerExitType,
     TypeWorkerType,
 )
-from ray.util.state.exception import RayStateApiException
+from ray.experimental.state.exception import RayStateApiException
 
 try:
     from pydantic.dataclasses import dataclass
+
+    from ray.dashboard.modules.job.pydantic_models import JobDetails
+
 except ImportError:
     # pydantic is not available in the dashboard.
     # We will use the dataclass from the standard library.
     from dataclasses import dataclass
+
+    JobDetails = object
 
 
 logger = logging.getLogger(__name__)
@@ -73,6 +78,43 @@ SupportedFilterType = Union[str, bool, int, float]
 
 
 PredicateType = str  # Literal["=", "!="]
+
+
+class Humanify:
+    """A class containing default methods to
+    convert units into a human readable string."""
+
+    def timestamp(x: float):
+        """Converts miliseconds to a datetime object."""
+        return str(datetime.datetime.fromtimestamp(x / 1000))
+
+    def memory(x: int):
+        """Converts raw bytes to a human readable memory size."""
+        if x >= 2**30:
+            return str(format(x / (2**30), ".3f")) + " GiB"
+        elif x >= 2**20:
+            return str(format(x / (2**20), ".3f")) + " MiB"
+        elif x >= 2**10:
+            return str(format(x / (2**10), ".3f")) + " KiB"
+        return str(format(x, ".3f")) + " B"
+
+    def duration(x: int):
+        """Converts miliseconds to a human readable duration."""
+        return str(datetime.timedelta(milliseconds=x))
+
+    def events(events: List[dict]):
+        """Converts a list of task events into a human readable format."""
+        for event in events:
+            if "created_ms" in event:
+                event["created_ms"] = Humanify.timestamp(event["created_ms"])
+        return events
+
+    def node_resources(resources: dict):
+        """Converts a node's resources into a human readable format."""
+        for resource in resources:
+            if "memory" in resource:
+                resources[resource] = Humanify.memory(resources[resource])
+        return resources
 
 
 @dataclass(init=True)
@@ -144,7 +186,7 @@ class SummaryApiOptions:
     summary_by: Optional[str] = None
 
 
-def state_column(*, filterable: bool, detail: bool = False, **kwargs):
+def state_column(*, filterable: bool, detail: bool = False, format_fn=None, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
 
     The metadata is used to define detail / filterable option of
@@ -155,15 +197,16 @@ def state_column(*, filterable: bool, detail: bool = False, **kwargs):
         filterable: If True, the column can be used for filtering.
         kwargs: The same kwargs for the `dataclasses.field` function.
     """
-    m = {"detail": detail, "filterable": filterable}
-
+    m = {"detail": detail, "filterable": filterable, "format_fn": format_fn}
     # Default for detail field is None since it could be missing.
     if detail and "default" not in kwargs:
         kwargs["default"] = None
 
     if "metadata" in kwargs:
+        # Metadata explicitly specified, so add detail and filterable if missing.
         kwargs["metadata"].update(m)
     else:
+        # Metadata not explicitly specified, so add it.
         kwargs["metadata"] = m
     return field(**kwargs)
 
@@ -193,7 +236,31 @@ class StateSchema(ABC):
     # Returns {"column_a", "column_b"}
     s.columns()
     ```
+
+    In addition, the schema also provides a humanify abstract method to
+    convert the state object into something human readable, ready for printing.
+
+    Subclasses should override this method, providing logic to convert its own fields
+    to something human readable, packaged and returned in a dict.
+
+    Each field that wants to be humanified should include a 'format_fn' key in its
+    metadata dictionary.
     """
+
+    @classmethod
+    def humanify(cls, state: dict) -> dict:
+        """Convert the given state object into something human readable."""
+        for f in fields(cls):
+            if (
+                f.metadata.get("format_fn") is not None
+                and f.name in state
+                and state[f.name] is not None
+            ):
+                try:
+                    state[f.name] = f.metadata["format_fn"](state[f.name])
+                except Exception as e:
+                    logger.error(f"Failed to format {f.name}:{state[f.name]} with {e}")
+        return state
 
     @classmethod
     def list_columns(cls, detail: bool = True) -> List[str]:
@@ -236,6 +303,9 @@ class StateSchema(ABC):
         Detail columns mean columns to return when detail == True.
         """
         return set(cls.list_columns(detail=True))
+
+    def asdict(self):
+        return asdict(self)
 
     # Allow dict like access on the class directly for backward compatibility.
     def __getitem__(self, key):
@@ -292,6 +362,9 @@ class GetLogOptions:
     # The suffix of the log file if file resolution not through filename directly.
     # Default to "out".
     suffix: str = "out"
+    # The job submission id for submission job. This doesn't work for driver job
+    # since Ray doesn't log driver logs to file in the ray logs directory.
+    submission_id: Optional[str] = None
 
     def __post_init__(self):
         if self.pid:
@@ -314,10 +387,16 @@ class GetLogOptions:
                 "Both node_id and node_ip are given. Only one of them can be provided. "
                 f"Given node id: {self.node_id}, given node ip: {self.node_ip}"
             )
-        if not (self.actor_id or self.task_id or self.pid or self.filename):
+        if not (
+            self.actor_id
+            or self.task_id
+            or self.pid
+            or self.filename
+            or self.submission_id
+        ):
             raise ValueError(
-                "None of actor_id, task_id, pid, or filename is provided. "
-                "At least one of them is required to fetch logs."
+                "None of actor_id, task_id, pid, submission_id or filename "
+                "is provided. At least one of them is required to fetch logs."
             )
 
         if self.suffix not in ["out", "err"]:
@@ -426,28 +505,70 @@ class NodeState(StateSchema):
     #: The name of the node if it is given by the name argument.
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
-    resources_total: dict = state_column(filterable=False)
+    resources_total: dict = state_column(
+        filterable=False, format_fn=Humanify.node_resources
+    )
     #: The time when the node (raylet) starts.
-    start_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    start_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
     #: The time when the node exits. The timestamp could be delayed
     #: if the node is dead unexpectedly (could be delayed
     # up to 30 seconds).
-    end_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    end_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
 
 
-@dataclass(init=True)
-class JobState(JobInfo, StateSchema):
-    """The state of the job that's submitted by Ray's Job APIs"""
+# NOTE:
+# Declaring this as dataclass would make __init__ not being called properly.
+class JobState(StateSchema, JobDetails):
+    """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
-    job_id: Optional[str] = state_column(filterable=False, default=None)
+    def __init__(self, **kwargs):
+        JobDetails.__init__(self, **kwargs)
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"status", "entrypoint", "error_type"}
+        # We are not doing any filtering since filtering is currently done
+        # at the backend.
+        return {"job_id", "type", "status", "submission_id"}
 
     @classmethod
-    def list_columns(cls, detail: bool) -> List[str]:
-        return ["job_id"] + [f.name for f in fields(JobInfo)]
+    def humanify(cls, state: dict) -> dict:
+        return state
+
+    @classmethod
+    def list_columns(cls, detail: bool = False) -> List[str]:
+        if not detail:
+            return [
+                "job_id",
+                "submission_id",
+                "entrypoint",
+                "type",
+                "status",
+                "message",
+                "error_type",
+                "driver_info",
+            ]
+        if isinstance(JobDetails, object):
+            # We don't have pydantic in the dashboard. This is because
+            # we call this method at module import time, so we need to
+            # check if the class is a pydantic model.
+            return []
+
+        return JobDetails.__fields__
+
+    def asdict(self):
+        return JobDetails.dict(self)
+
+    @classmethod
+    def schema_dict(cls) -> Dict[str, Any]:
+        schema_types = cls.schema()["properties"]
+        # Get type name to actual type mapping.
+        return {
+            k: v["type"] for k, v in schema_types.items() if v.get("type") is not None
+        }
 
 
 @dataclass(init=True)
@@ -491,17 +612,25 @@ class WorkerState(StateSchema):
     #: -> worker_launched_time_ms (process started).
     #: -> start_time_ms (worker is ready to be used).
     #: -> end_time_ms (worker is destroyed).
-    worker_launch_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    worker_launch_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
     #: The time worker is succesfully launched
     #: -1 if the value doesn't exist.
-    worker_launched_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    worker_launched_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
     #: The time when the worker is started and initialized.
     #: 0 if the value doesn't exist.
-    start_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    start_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
     #: The time when the worker exits. The timestamp could be delayed
     #: if the worker is dead unexpectedly.
     #: 0 if the value doesn't exist.
-    end_time_ms: Optional[int] = state_column(filterable=False, detail=True)
+    end_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
 
 
 @dataclass(init=True)
@@ -569,15 +698,27 @@ class TaskState(StateSchema):
     #: The list of events of the given task.
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
-    events: Optional[List[dict]] = state_column(detail=True, filterable=False)
+    events: Optional[List[dict]] = state_column(
+        detail=True, filterable=False, format_fn=Humanify.events
+    )
     #: The list of profile events of the given task.
     profiling_data: Optional[dict] = state_column(detail=True, filterable=False)
     #: The time when the task is created. A Unix timestamp in ms.
-    creation_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    creation_time_ms: Optional[int] = state_column(
+        detail=True,
+        filterable=False,
+        format_fn=Humanify.timestamp,
+    )
     #: The time when the task starts to run. A Unix timestamp in ms.
-    start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    start_time_ms: Optional[int] = state_column(
+        detail=True,
+        filterable=False,
+        format_fn=Humanify.timestamp,
+    )
     #: The time when the task is finished or failed. A Unix timestamp in ms.
-    end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    end_time_ms: Optional[int] = state_column(
+        detail=True, filterable=False, format_fn=Humanify.timestamp
+    )
     #: The task logs info, e.g. offset into the worker log file when the task
     #: starts/finishes.
     task_log_info: Optional[dict] = state_column(detail=True, filterable=False)
@@ -592,7 +733,7 @@ class ObjectState(StateSchema):
     #: The id of the object.
     object_id: str = state_column(filterable=True)
     #: The size of the object in mb.
-    object_size: int = state_column(filterable=True)
+    object_size: int = state_column(filterable=True, format_fn=Humanify.memory)
     #: The status of the task that creates the object.
     #:
     #: - NIL: We don't have a status for this task because we are not the owner or the
@@ -651,7 +792,9 @@ class RuntimeEnvState(StateSchema):
     success: bool = state_column(filterable=True)
     #: The latency of creating the runtime environment.
     #: Available if the runtime env is successfully created.
-    creation_time_ms: Optional[float] = state_column(filterable=False)
+    creation_time_ms: Optional[float] = state_column(
+        filterable=False, format_fn=Humanify.timestamp
+    )
     #: The node id of this runtime environment.
     node_id: str = state_column(filterable=True)
     #: The number of actors and tasks that use this runtime environment.

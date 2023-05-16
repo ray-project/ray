@@ -13,7 +13,7 @@ from ray.dashboard.utils import (
     get_address_for_submission_client,
     ray_address_to_api_server_url,
 )
-from ray.util.state.common import (
+from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
@@ -35,7 +35,7 @@ from ray.util.state.common import (
     WorkerState,
     dict_to_state,
 )
-from ray.util.state.exception import RayStateApiException, ServerUnavailable
+from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -252,6 +252,7 @@ class StateApiClient(SubmissionClient):
             WorkerState,
             TaskState,
             List[ObjectState],
+            JobState,
         ]
     ]:
         """Get resources states by id
@@ -266,12 +267,13 @@ class StateApiClient(SubmissionClient):
                 latency or failed query information.
 
         Returns:
-            None if not found, and if found, a dictionarified:
+            None if not found, and if found:
             - ActorState for actors
             - PlacementGroupState for placement groups
             - NodeState for nodes
             - WorkerState for workers
             - TaskState for tasks
+            - JobState for jobs
 
             Empty list for objects if not found, or list of ObjectState for objects
 
@@ -294,6 +296,7 @@ class StateApiClient(SubmissionClient):
             StateResource.WORKERS: "worker_id",
             StateResource.TASKS: "task_id",
             StateResource.OBJECTS: "object_id",
+            StateResource.JOBS: "submission_id",
         }
         if resource not in RESOURCE_ID_KEY_NAME:
             raise ValueError(f"Can't get {resource.name} by id.")
@@ -489,6 +492,7 @@ class StateApiClient(SubmissionClient):
             when timeout occurs.
 
         """
+
         endpoint = f"/api/v0/{resource.value}"
         params = self._make_param(options)
         list_api_response = self._make_http_get_request(
@@ -566,10 +570,10 @@ def get_actor(
 
     Returns:
         None if actor not found, or
-        :class:`ActorState <ray.util.state.common.ActorState>`.
+        :class:`ActorState <ray.experimental.state.common.ActorState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
@@ -577,14 +581,36 @@ def get_actor(
     )
 
 
-# TODO(rickyyx:alpha-obs)
 def get_job(
     id: str,
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
 ) -> Optional[JobState]:
-    raise NotImplementedError("Get Job by id is currently not supported")
+    """Get a submission job detail by id.
+
+    Args:
+        id: Submission ID obtained from job API.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout value for the state API requests made.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        None if job not found, or
+        :class:`JobState <ray.experimental.state.common.JobState>`.
+
+    Raises:
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
+            failed to query the data.
+    """  # noqa: E501
+    return StateApiClient(address=address).get(
+        StateResource.JOBS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
 
 
 def get_placement_group(
@@ -605,10 +631,10 @@ def get_placement_group(
 
     Returns:
         None if actor not found, or
-        :class:`~ray.util.state.common.PlacementGroupState`.
+        :class:`~ray.experimental.state.common.PlacementGroupState`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
@@ -637,10 +663,10 @@ def get_node(
 
     Returns:
         None if actor not found, or
-        :class:`NodeState <ray.util.state.common.NodeState>`.
+        :class:`NodeState <ray.experimental.state.common.NodeState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
@@ -669,10 +695,10 @@ def get_worker(
 
     Returns:
         None if actor not found, or
-        :class:`WorkerState <ray.util.state.common.WorkerState>`.
+        :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
@@ -701,11 +727,11 @@ def get_task(
 
     Returns:
         None if task not found, or a list of
-        :class:`~ray.util.state.common.TaskState`
+        :class:`~ray.experimental.state.common.TaskState`
         from the task attempts.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
@@ -737,10 +763,10 @@ def get_objects(
 
     Returns:
         List of
-        :class:`~ray.util.state.common.ObjectState`.
+        :class:`~ray.experimental.state.common.ObjectState`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`  if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`  if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
@@ -771,7 +797,7 @@ def list_actors(
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `ActorState`)
             will be queried and returned. See
-            :class:`ActorState <ray.util.state.common.ActorState>`.
+            :class:`ActorState <ray.experimental.state.common.ActorState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -779,10 +805,10 @@ def list_actors(
 
     Returns:
         List of
-        :class:`ActorState <ray.util.state.common.ActorState>`.
+        :class:`ActorState <ray.experimental.state.common.ActorState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
@@ -818,7 +844,7 @@ def list_placement_groups(
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `PlacementGroupState`)
             will be queried and returned. See
-            :class:`~ray.util.state.common.PlacementGroupState`.
+            :class:`~ray.experimental.state.common.PlacementGroupState`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -826,10 +852,10 @@ def list_placement_groups(
 
     Returns:
         List of dictionarified
-        :class:`~ray.util.state.common.PlacementGroupState`.
+        :class:`~ray.experimental.state.common.PlacementGroupState`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
@@ -862,7 +888,7 @@ def list_nodes(
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `NodeState`)
             will be queried and returned. See
-            :class:`NodeState <ray.util.state.common.NodeState>`.
+            :class:`NodeState <ray.experimental.state.common.NodeState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -870,10 +896,10 @@ def list_nodes(
 
     Returns:
         List of dictionarified
-        :class:`NodeState <ray.util.state.common.NodeState>`.
+        :class:`NodeState <ray.experimental.state.common.NodeState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
@@ -906,7 +932,7 @@ def list_jobs(
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `JobState`)
             will be queried and returned. See
-            :class:`JobState <ray.util.state.common.JobState>`.
+            :class:`JobState <ray.experimental.state.common.JobState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -914,10 +940,10 @@ def list_jobs(
 
     Returns:
         List of dictionarified
-        :class:`JobState <ray.util.state.common.JobState>`.
+        :class:`JobState <ray.experimental.state.common.JobState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
@@ -950,7 +976,7 @@ def list_workers(
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `WorkerState`)
             will be queried and returned. See
-            :class:`WorkerState <ray.util.state.common.WorkerState>`.
+            :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -958,10 +984,10 @@ def list_workers(
 
     Returns:
         List of
-        :class:`WorkerState <ray.util.state.common.WorkerState>`.
+        :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
@@ -994,7 +1020,7 @@ def list_tasks(
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `WorkerState`)
             will be queried and returned. See
-            :class:`WorkerState <ray.util.state.common.WorkerState>`.
+            :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -1002,10 +1028,10 @@ def list_tasks(
 
     Returns:
         List of
-        :class:`TaskState <ray.util.state.common.TaskState>`.
+        :class:`TaskState <ray.experimental.state.common.TaskState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
@@ -1038,7 +1064,7 @@ def list_objects(
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `ObjectState`)
             will be queried and returned. See
-            :class:`ObjectState <ray.util.state.common.ObjectState>`.
+            :class:`ObjectState <ray.experimental.state.common.ObjectState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -1046,10 +1072,10 @@ def list_objects(
 
     Returns:
         List of
-        :class:`ObjectState <ray.util.state.common.ObjectState>`.
+        :class:`ObjectState <ray.experimental.state.common.ObjectState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
@@ -1082,7 +1108,7 @@ def list_runtime_envs(
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `RuntimeEnvState`)
             will be queried and returned. See
-            :class:`RuntimeEnvState <ray.util.state.common.RuntimeEnvState>`.
+            :class:`RuntimeEnvState <ray.experimental.state.common.RuntimeEnvState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -1090,10 +1116,10 @@ def list_runtime_envs(
 
     Returns:
         List of
-        :class:`RuntimeEnvState <ray.util.state.common.RuntimeEnvState>`.
+        :class:`RuntimeEnvState <ray.experimental.state.common.RuntimeEnvState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
@@ -1144,6 +1170,7 @@ def get_log(
     suffix: str = "out",
     encoding: Optional[str] = "utf-8",
     errors: Optional[str] = "strict",
+    submission_id: Optional[str] = None,
     attempt_number: int = 0,
     _interval: Optional[float] = None,
 ) -> Generator[str, None, None]:
@@ -1151,7 +1178,7 @@ def get_log(
 
     Examples:
         >>> import ray
-        >>> from ray.util.state.api import get_log # doctest: +SKIP
+        >>> from ray.experimental.state.api import get_log # doctest: +SKIP
         # To connect to an existing ray instance if there is
         >>> ray.init("auto") # doctest: +SKIP
         # Node IP could be retrieved from list_nodes() or ray.nodes()
@@ -1180,6 +1207,7 @@ def get_log(
             "utf-8". Use None to get binary data directly.
         errors: The error handling scheme to use for decoding errors. Default is
             "strict". See https://docs.python.org/3/library/codecs.html#error-handlers
+        submission_id: Job submission ID if getting log from a submission job.
         attempt_number: The attempt number of the task if getting logs generated by a task.
         _interval: The interval in secs to print new logs when `follow=True`.
 
@@ -1187,7 +1215,7 @@ def get_log(
         A Generator of log line, None for SendType and ReturnType.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
 
@@ -1206,6 +1234,7 @@ def get_log(
         media_type=media_type,
         timeout=timeout,
         suffix=suffix,
+        submission_id=submission_id,
         attempt_number=attempt_number,
     )
     options_dict = {}
@@ -1261,7 +1290,7 @@ def list_logs(
         values are list of log filenames.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data, or ConnectionError if failed to resolve the
             ray address.
     """  # noqa: E501
@@ -1321,10 +1350,10 @@ def summarize_tasks(
 
     Return:
         Dictionarified
-        :class:`~ray.util.state.common.TaskSummaries`
+        :class:`~ray.experimental.state.common.TaskSummaries`
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).summary(
@@ -1354,10 +1383,10 @@ def summarize_actors(
 
     Return:
         Dictionarified
-        :class:`~ray.util.state.common.ActorSummaries`
+        :class:`~ray.experimental.state.common.ActorSummaries`
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).summary(
@@ -1386,10 +1415,10 @@ def summarize_objects(
             failed query information.
 
     Return:
-        Dictionarified :class:`~ray.util.state.common.ObjectSummaries`
+        Dictionarified :class:`~ray.experimental.state.common.ObjectSummaries`
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).summary(

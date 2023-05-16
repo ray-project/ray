@@ -1,4 +1,3 @@
-import dataclasses
 import json
 import logging
 from datetime import datetime
@@ -10,7 +9,7 @@ import yaml
 
 import ray._private.services as services
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.util.state.api import (
+from ray.experimental.state.api import (
     StateApiClient,
     get_log,
     list_logs,
@@ -18,7 +17,7 @@ from ray.util.state.api import (
     summarize_objects,
     summarize_tasks,
 )
-from ray.util.state.common import (
+from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -30,7 +29,7 @@ from ray.util.state.common import (
     SupportedFilterType,
     resource_to_schema,
 )
-from ray.util.state.exception import RayStateApiException
+from ray.experimental.state.exception import RayStateApiException
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -172,6 +171,9 @@ def output_with_format(
     format: AvailableFormat = AvailableFormat.DEFAULT,
     detail: bool = False,
 ) -> str:
+    # humanify all input state data
+    if schema:
+        state_data = [schema.humanify(state) for state in state_data]
     if format == AvailableFormat.DEFAULT:
         return get_table_output(state_data, schema, detail)
     if format == AvailableFormat.YAML:
@@ -292,9 +294,11 @@ def format_get_api_output(
 ) -> str:
     if not state_data or isinstance(state_data, list) and len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
+
     if not isinstance(state_data, list):
         state_data = [state_data]
-    state_data = [dataclasses.asdict(state) for state in state_data]
+    state_data = [state.asdict() for state in state_data]
+
     return output_with_format(state_data, schema=schema, format=format, detail=True)
 
 
@@ -307,7 +311,7 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    state_data = [dataclasses.asdict(state) for state in state_data]
+    state_data = [state.asdict() for state in state_data]
     return output_with_format(state_data, schema=schema, format=format, detail=detail)
 
 
@@ -351,7 +355,7 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def ray_get(
     resource: str,
     id: str,
@@ -365,7 +369,7 @@ def ray_get(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray get tasks <task-id>` is
-    :class:`~ray.util.state.common.TaskState`.
+    :class:`~ray.experimental.state.common.TaskState`.
 
     Usage:
 
@@ -390,7 +394,7 @@ def ray_get(
         id: The id of the resource.
 
     Raises:
-        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     # All resource names use '_' rather than '-'. But users options have '-'
@@ -461,7 +465,7 @@ def ray_get(
 )
 @timeout_option
 @address_option
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def ray_list(
     resource: str,
     format: str,
@@ -478,7 +482,7 @@ def ray_list(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray list tasks` is
-    :class:`~ray.util.state.common.TaskState`.
+    :class:`~ray.experimental.state.common.TaskState`.
 
     Usage:
 
@@ -529,7 +533,7 @@ def ray_list(
         resource: The type of the resource to query.
 
     Raises:
-        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     # All resource names use '_' rather than '-'. But users options have '-'
@@ -576,7 +580,7 @@ def ray_list(
 
 @click.group("summary")
 @click.pass_context
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def summary_state_cli_group(ctx):
     """Return the summarized information of a given resource."""
     pass
@@ -586,7 +590,7 @@ def summary_state_cli_group(ctx):
 @timeout_option
 @address_option
 @click.pass_context
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def task_summary(ctx, timeout: float, address: str):
     """Summarize the task state of the cluster.
 
@@ -594,10 +598,10 @@ def task_summary(ctx, timeout: float, address: str):
     task function names.
 
     The output schema is
-    :class:`~ray.util.state.common.TaskSummaries`.
+    :class:`~ray.experimental.state.common.TaskSummaries`.
 
     Raises:
-        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     print(
@@ -617,7 +621,7 @@ def task_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def actor_summary(ctx, timeout: float, address: str):
     """Summarize the actor state of the cluster.
 
@@ -625,11 +629,11 @@ def actor_summary(ctx, timeout: float, address: str):
     actor class names.
 
     The output schema is
-    :class:`ray.util.state.common.ActorSummaries
-    <ray.util.state.common.ActorSummaries>`.
+    :class:`ray.experimental.state.common.ActorSummaries
+    <ray.experimental.state.common.ActorSummaries>`.
 
     Raises:
-        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     print(
@@ -649,7 +653,7 @@ def actor_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def object_summary(ctx, timeout: float, address: str):
     """Summarize the object state of the cluster.
 
@@ -676,11 +680,11 @@ def object_summary(ctx, timeout: float, address: str):
         ```
 
     The output schema is
-    :class:`ray.util.state.common.ObjectSummaries
-    <ray.util.state.common.ObjectSummaries>`.
+    :class:`ray.experimental.state.common.ObjectSummaries
+    <ray.experimental.state.common.ObjectSummaries>`.
 
     Raises:
-        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     print(
@@ -814,6 +818,7 @@ def _print_log(
     encoding_errors: str = "strict",
     task_id: Optional[str] = None,
     attempt_number: int = 0,
+    submission_id: Optional[str] = None,
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -842,6 +847,7 @@ def _print_log(
         errors=encoding_errors,
         task_id=task_id,
         attempt_number=attempt_number,
+        submission_id=submission_id,
     ):
         print(chunk, end="", flush=True)
 
@@ -925,7 +931,7 @@ logs_state_cli_group = LogCommandGroup(help=LOG_CLI_HELP_MSG)
 @log_encoding_option
 @log_encoding_errors_option
 @click.pass_context
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def log_cluster(
     ctx,
     glob_filter: str,
@@ -971,7 +977,7 @@ def log_cluster(
         ```
 
     Raises:
-        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
             is failed to query the data.
     """  # noqa: E501
 
@@ -1043,7 +1049,7 @@ def log_cluster(
 @log_timeout_option
 @log_suffix_option
 @click.pass_context
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def log_actor(
     ctx,
     id: Optional[str],
@@ -1082,7 +1088,7 @@ def log_actor(
         ```
 
     Raises:
-        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
     """  # noqa: E501
@@ -1125,7 +1131,7 @@ def log_actor(
 @log_timeout_option
 @log_suffix_option
 @click.pass_context
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def log_worker(
     ctx,
     pid: Optional[str],
@@ -1138,7 +1144,7 @@ def log_worker(
     timeout: int,
     err: bool,
 ):
-    """Get/List logs associated with a worker process.
+    """Get logs associated with a worker process.
 
     Example:
 
@@ -1155,7 +1161,7 @@ def log_worker(
         ```
 
     Raises:
-        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
     """  # noqa: E501
@@ -1170,6 +1176,66 @@ def log_worker(
         interval=interval,
         timeout=timeout,
         suffix="err" if err else "out",
+    )
+
+
+@logs_state_cli_group.command(name="job")
+@click.option(
+    "--id",
+    "submission_id",
+    required=True,
+    type=str,
+    help=(
+        "Retrieves the logs from a submission job with submission id,"
+        "i.e. raysubmit_XXX"
+    ),
+)
+@address_option
+@log_follow_option
+@log_tail_option
+@log_interval_option
+@log_timeout_option
+@click.pass_context
+@PublicAPI(stability="alpha")
+def log_job(
+    ctx,
+    submission_id: Optional[str],
+    address: Optional[str],
+    follow: bool,
+    tail: int,
+    interval: float,
+    timeout: int,
+):
+    """Get logs associated with a submission job.
+
+    Example:
+
+        Follow the log file from a submission job with submission id raysumbit_xxx.
+
+        ```
+        ray logs job --id raysubmit_xxx
+        ```
+
+        Follow the submission job log.
+
+        ```
+        ray logs jobs --id raysubmit_xxx --follow
+
+        ```
+
+    Raises:
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+            if the CLI is failed to query the data.
+        MissingParameter if inputs are missing.
+    """  # noqa: E501
+
+    _print_log(
+        address=address,
+        tail=tail,
+        follow=follow,
+        interval=interval,
+        timeout=timeout,
+        submission_id=submission_id,
     )
 
 
@@ -1196,7 +1262,7 @@ def log_worker(
 @log_timeout_option
 @log_suffix_option
 @click.pass_context
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 def log_task(
     ctx,
     task_id: Optional[str],
@@ -1208,7 +1274,7 @@ def log_task(
     timeout: int,
     err: bool,
 ):
-    """Get/List logs associated with a task.
+    """Get logs associated with a task.
 
     Example:
 
@@ -1225,7 +1291,7 @@ def log_task(
         ```
 
     Raises:
-        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
     """  # noqa: E501
