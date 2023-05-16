@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch
 import ray
 
+
 @pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
@@ -20,10 +21,10 @@ def test_huggingface_imports(ray_start_4_cpus):
             import ray.train.huggingface  # noqa: F401
 
     # Mock missing accelerate and transformers imports.
-    with patch.dict("sys.modules", {"accelerate": None,"transformers": None}):
+    with patch.dict("sys.modules", {"accelerate": None, "transformers": None}):
 
         # Verify that importing these modules do not fail due to import errors.
-        import ray.train.huggingface  # noqa: F401
+        import ray.train.huggingface  # noqa: F401, F811
         from ray.train.huggingface import (
             AccelerateTrainer,
             HuggingFaceCheckpoint,
@@ -68,6 +69,7 @@ def test_huggingface_imports(ray_start_4_cpus):
 
         with pytest.raises(ImportError, match="transformers"):
             TransformersTrainer(DUMMY_TRAINER_INIT_PER_WORKER)
+
 
 if __name__ == "__main__":
     import sys
