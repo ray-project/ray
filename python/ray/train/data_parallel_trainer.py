@@ -262,18 +262,32 @@ class DataParallelTrainer(BaseTrainer):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
-        if isinstance(dataset_config, dict) or self._dataset_config is not None:
-            # For backwards compatibility with the legacy dataset config API.
-            logger.warning(
-                "The dict form of `dataset_config` is deprecated. Use the "
-                "DataConfig class instead. Support for this will be dropped "
-                "in a future release."
-            )
-            if isinstance(dataset_config, DataConfig):
-                raise ValueError(
-                    "When the legacy field Trainer._dataset_config is defined, "
-                    "dataset_config must be specified in dict form."
+        if isinstance(dataset_config, dict) or self._dataset_config or preprocessor:
+            # Warn about deprecated cases (will raise error in future).
+            if isinstance(dataset_config, dict):
+                logger.warning(
+                    "The dict form of `dataset_config` is deprecated. Use the "
+                    "DataConfig class instead. Support for this will be dropped "
+                    "in a future release."
                 )
+            elif preprocessor:
+                logger.warning(
+                    "The `preprocessor` argument to Trainer is deprecated. Apply "
+                    "dataset transformations ahead of time instead. Support for this "
+                    "will be dropped in a future release."
+                )
+            # If using the new API, hard-disallow deprecated features.
+            if isinstance(dataset_config, DataConfig):
+                if self._dataset_config:
+                    raise ValueError(
+                        "The new DataConfig class is not supported for use with the "
+                        "legacy Trainer._dataset_config field."
+                    )
+                elif preprocessor:
+                    raise ValueError(
+                        "The new DataConfig class is not supported for use with the "
+                        "legacy preprocessor argument for Trainer."
+                    )
             if self._dataset_config is None:
                 base_dataset_config = {
                     TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
