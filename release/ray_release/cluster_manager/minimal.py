@@ -49,8 +49,7 @@ class MinimalClusterManager(ClusterManager):
                 if res.name == self.cluster_env_name:
                     self.cluster_env_id = res.id
                     logger.info(
-                        f"Cluster env already exists with ID "
-                        f"{self.cluster_env_id}"
+                        f"Cluster env already exists with ID " f"{self.cluster_env_id}"
                     )
                     break
 
@@ -60,13 +59,25 @@ class MinimalClusterManager(ClusterManager):
         if not self.cluster_env_id:
             logger.info("Cluster env not found. Creating new one.")
             try:
-                result = self.sdk.create_cluster_environment(
-                    dict(
-                        name=self.cluster_env_name,
-                        project_id=self.project_id,
-                        config_json=self.cluster_env,
+                if self.test.is_byod_cluster():
+                    result = self.sdk.create_byod_cluster_environment(
+                        dict(
+                            name=self.cluster_env_name,
+                            config_json=dict(
+                                docker_image=self.test.get_anyscale_byod_image(),
+                                ray_version="nightly",
+                                env_vars={},
+                            ),
+                        )
                     )
-                )
+                else:
+                    result = self.sdk.create_cluster_environment(
+                        dict(
+                            name=self.cluster_env_name,
+                            project_id=self.project_id,
+                            config_json=self.cluster_env,
+                        )
+                    )
                 self.cluster_env_id = result.result.id
             except Exception as e:
                 logger.warning(
