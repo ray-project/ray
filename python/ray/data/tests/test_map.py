@@ -92,6 +92,7 @@ def test_basic_actors(shutdown_only, pipelined):
 
 
 def test_callable_classes(shutdown_only):
+    ray.init(num_cpus=2)
     ds = ray.data.range(10, parallelism=10)
 
     class StatefulFn:
@@ -373,7 +374,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
 
 def test_map_batches_extra_args(shutdown_only, tmp_path):
     ray.shutdown()
-    ray.init(num_cpus=3)
+    ray.init(num_cpus=2)
 
     def put(x):
         # We only support automatic deref in the legacy backend.
@@ -724,7 +725,7 @@ def test_map_batches_block_bundling_auto(
 ):
     # Ensure that we test at least 2 batches worth of blocks.
     num_blocks = max(10, 2 * batch_size // block_size)
-    ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks).materialize()
+    ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
     # Confirm that we have the expected number of initial blocks.
     assert ds.num_blocks() == num_blocks
 

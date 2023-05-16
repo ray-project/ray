@@ -1384,7 +1384,7 @@ def test_unsupported_pyarrow_versions_check_disabled(
     # Test Arrow-native creation APIs.
     # Test range_table.
     try:
-        ray.data.range(10).materialize()
+        ray.data.range(10)
     except ImportError as e:
         pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 
@@ -1396,7 +1396,7 @@ def test_unsupported_pyarrow_versions_check_disabled(
 
     # Test read_parquet.
     try:
-        ray.data.read_parquet("example://iris.parquet").materialize()
+        ray.data.read_parquet("example://iris.parquet")
     except ImportError as e:
         pytest.fail(f"_check_pyarrow_version failed unexpectedly: {e}")
 
@@ -1569,7 +1569,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
             parallelism=1,
             paths=path1,
             ray_remote_args={"retry_exceptions": False},
-        ).materialize()
+        )
 
 
 def test_datasource(ray_start_regular):

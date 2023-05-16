@@ -1082,7 +1082,6 @@ def test_groupby_map_groups_for_none_groupkey(ray_start_regular_shared, num_part
         ds.repartition(num_parts)
         .groupby(None)
         .map_groups(lambda x: {"out": np.array([min(x["item"]) + max(x["item"])])})
-        .materialize()
     )
     assert mapped.count() == 1
     assert mapped.take_all() == named_values("out", [99])
@@ -1106,7 +1105,7 @@ def test_groupby_map_groups_perf(ray_start_regular_shared):
     data_list = [x % 100 for x in range(5000000)]
     ds = ray.data.from_pandas(pd.DataFrame({"A": data_list}))
     start = time.perf_counter()
-    ds.groupby("A").map_groups(lambda df: df).materialize()
+    ds.groupby("A").map_groups(lambda df: df)
     end = time.perf_counter()
     # On a t3.2xlarge instance, it ran in about 5 seconds, so expecting it has to
     # finish within about 10x of that time, unless something went wrong.
@@ -1754,7 +1753,6 @@ def test_random_shuffle_with_custom_resource(ray_start_cluster, use_push_based_s
 
 
 def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
-    # TODO(scott_optimizer): fix random shuffle using custom resourcing
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
@@ -1773,7 +1771,7 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
     node1_id = ray.get(get_node_id.options(resources={"bar:1": 1}).remote())
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
-    ds = ray.data.range(100, parallelism=2).random_shuffle().materialize()
+    ds = ray.data.range(100, parallelism=2).random_shuffle()
     blocks = ds.get_internal_block_refs()
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)

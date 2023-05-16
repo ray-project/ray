@@ -237,6 +237,8 @@ class TaskContext:
     # an AllToAllOperator with an upstream MapOperator.
     upstream_map_transform_fn: Optional["MapTransformFn"] = None
 
+    # The Ray remote arguments of the fused upstream MapOperator.
+    # This should be set if upstream_map_transform_fn is set.
     upstream_map_ray_remote_args: Dict[str, Any] = None
 
 

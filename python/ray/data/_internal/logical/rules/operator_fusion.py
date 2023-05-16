@@ -109,13 +109,12 @@ class OperatorFusionRule(Rule):
               the same class AND constructor args are the same for both.
             * They have compatible remote arguments.
         """
-        from ray.data._internal.execution.operators.map_operator import MapOperator
         from ray.data._internal.logical.operators.map_operator import AbstractMap
         from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 
         # We currently only support fusing for the following cases:
         # - MapOperator -> MapOperator
-        # - TaskPoolMapOperator -> AllToAllOperator
+        # - TaskPoolMapOperator -> AllToAllOperator (because AllToAllOperator can't run with actor pools).
         # (only RandomShuffle and Repartition LogicalOperators are currently supported)
         if not (
             isinstance(up_op, MapOperator) and isinstance(down_op, MapOperator)
