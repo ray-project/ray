@@ -4442,7 +4442,7 @@
 - name: microbenchmark_byod
   group: core-daily-test
   team: core
-  frequency: nightly
+  frequency: manual
   working_dir: microbenchmark
 
   python: "3.7"
