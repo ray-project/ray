@@ -257,7 +257,7 @@ def run(
     checkpoint_at_end: bool = False,
     checkpoint_keep_all_ranks: bool = False,
     checkpoint_upload_from_workers: bool = False,
-    verbose: Union[int, AirVerbosity, Verbosity] = AirVerbosity.VERBOSE,
+    verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
@@ -531,6 +531,11 @@ def run(
             "in the future.",
             DeprecationWarning,
         )
+
+    if verbose is None:
+        # Default `verbose` value. For new output engine, this is AirVerbosity.VERBOSE.
+        # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+        verbose = get_air_verbosity(AirVerbosity.VERBOSE) or Verbosity.V3_TRIAL_DETAILS
 
     if _remote:
         if get_air_verbosity(verbose) is not None:
@@ -1097,7 +1102,7 @@ def run_experiments(
     experiments: Union[Experiment, Mapping, Sequence[Union[Experiment, Mapping]]],
     scheduler: Optional[TrialScheduler] = None,
     server_port: Optional[int] = None,
-    verbose: Union[int, AirVerbosity, Verbosity] = AirVerbosity.VERBOSE,
+    verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,

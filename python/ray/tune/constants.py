@@ -5,7 +5,6 @@
 # NOTE: When adding a new environment variable, please track it in this list.
 TUNE_ENV_VARS = {
     "RAY_AIR_LOCAL_CACHE_DIR",
-    "RAY_AIR_FULL_TRACEBACKS",
     "TUNE_DISABLE_AUTO_CALLBACK_LOGGERS",
     "TUNE_DISABLE_AUTO_CALLBACK_SYNCER",
     "TUNE_DISABLE_AUTO_INIT",

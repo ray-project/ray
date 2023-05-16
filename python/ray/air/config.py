@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
     from ray.tune.syncer import SyncConfig
-    from ray.tune.experimental.output import AirVerbosity
+    from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
     from ray.tune.utils.log import Verbosity
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -729,7 +729,8 @@ class RunConfig:
             a Jupyter notebook.
         verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose. Defaults to 1.
-            If the ``RAY_AIR_NEW_OUTPUT=0`` environment variable is set, uses the old verbosity settings:
+            If the ``RAY_AIR_NEW_OUTPUT=0`` environment variable is set,
+            uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
             results, 3 = status and detailed results.
         log_to_file: Log stdout and stderr to files in
@@ -751,7 +752,7 @@ class RunConfig:
     sync_config: Optional["SyncConfig"] = None
     checkpoint_config: Optional[CheckpointConfig] = None
     progress_reporter: Optional["ProgressReporter"] = None
-    verbose: Union[int, "AirVerbosity", "Verbosity"] = 1
+    verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated
@@ -823,6 +824,14 @@ class RunConfig:
         if isinstance(self.sync_config.syncer, Syncer) and not remote_path:
             raise ValueError(
                 "Must specify a remote `storage_path` to use a custom `syncer`."
+            )
+
+        if self.verbose is None:
+            # Default `verbose` value. For new output engine,
+            # this is AirVerbosity.DEFAULT.
+            # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+            self.verbose = (
+                get_air_verbosity(AirVerbosity.DEFAULT) or Verbosity.V3_TRIAL_DETAILS
             )
 
     def __repr__(self):
