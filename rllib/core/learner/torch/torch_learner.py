@@ -28,7 +28,6 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import (
     TorchRLModule,
 )
-from rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,

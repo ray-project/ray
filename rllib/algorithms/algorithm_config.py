@@ -1279,9 +1279,7 @@ class AlgorithmConfig(_Config):
             self.local_tf_session_args = local_tf_session_args
 
         if torch_compile_learner is not NotProvided:
-            self.torch_compile_learner = (
-                torch_compile_learner
-            )
+            self.torch_compile_learner = torch_compile_learner
         if torch_compile_learner_dynamo_backend is not NotProvided:
             self.torch_compile_learner_dynamo_backend = (
                 torch_compile_learner_dynamo_backend
