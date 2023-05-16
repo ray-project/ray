@@ -319,7 +319,7 @@ TEST_F(RedisStoreClientTest, Random) {
   };
 
   std::vector<std::function<void(size_t idx)>> ops{
-      m_delete, m_get, m_exists, m_multi_get, m_puts};
+      m_batch_delete, m_delete, m_get, m_exists, m_multi_get, m_puts};
 
   for (size_t i = 0; i < 10000; ++i) {
     auto idx = std::rand() % ops.size();
