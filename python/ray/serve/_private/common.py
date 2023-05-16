@@ -365,3 +365,15 @@ class ServeDeployMode(str, Enum):
     UNSET = "UNSET"
     SINGLE_APP = "SINGLE_APP"
     MULTI_APP = "MULTI_APP"
+
+
+# Keep in sync with ServeHTTPProxyStatus in
+# python/ray/dashboard/client/src/type/serve.ts
+class HTTPProxyStatus(str, Enum):
+    STARTING = "STARTING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
+
+
+class ServeComponentType(str, Enum):
+    DEPLOYMENT = "deployment"

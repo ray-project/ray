@@ -3,7 +3,6 @@ from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
-    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
@@ -40,14 +39,23 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
-        action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class.from_logits(
+        action_dist_class_train = (
+            self.module[module_id].unwrapped().get_train_action_dist_cls()
+        )
+        action_dist_class_exploration = (
+            self.module[module_id].unwrapped().get_exploration_action_dist_cls()
+        )
+
+        curr_action_dist = action_dist_class_train.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
+        prev_action_dist = action_dist_class_exploration.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = torch.exp(
-            fwd_out[SampleBatch.ACTION_LOGP] - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
+            - batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -62,13 +70,13 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                     "This can happen naturally in deterministic "
                     "environments where the optimal policy has zero mass "
                     "for a specific action. To fix this issue, consider "
-                    "setting the coefficient for the KL loss term to "
-                    "zero or increasing policy entropy."
+                    "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                    "config."
                 )
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
-        curr_entropy = fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()
         mean_entropy = torch.mean(curr_entropy)
 
         surrogate_loss = torch.min(
@@ -93,7 +101,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         total_loss = torch.mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.curr_entropy_coeffs_per_module[module_id] * curr_entropy
+            - self.entropy_coeff_scheduler.get_current_value(module_id) * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
@@ -134,12 +142,5 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         elif sampled_kl < 0.5 * self.hps.kl_target:
             curr_var.data *= 0.5
         results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
-
-        # Update entropy coefficient.
-        value = self.hps.entropy_coeff
-        if self.hps.entropy_coeff_schedule is not None:
-            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
-            self.curr_entropy_coeffs_per_module[module_id].data = torch.tensor(value)
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
 
         return results

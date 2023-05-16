@@ -1,6 +1,8 @@
 from typing import Any, Mapping
 
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
+from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleConfig,
     MultiAgentRLModule,
@@ -31,17 +33,26 @@ class DiscreteBCTorchModule(TorchRLModule):
 
         self.input_dim = input_dim
 
+    def get_train_action_dist_cls(self):
+        return TorchCategorical
+
+    def get_exploration_action_dist_cls(self):
+        return TorchCategorical
+
+    def get_inference_action_dist_cls(self):
+        return TorchCategorical
+
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return ["action_dist"]
+        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
@@ -56,7 +67,7 @@ class DiscreteBCTorchModule(TorchRLModule):
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
         action_logits = self.policy(batch["obs"])
-        return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
+        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
 
 
 class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
@@ -84,6 +95,15 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
             nn.Linear(hidden_dim, action_dim),
         )
 
+    def get_train_action_dist_cls(self):
+        return TorchCategorical
+
+    def get_exploration_action_dist_cls(self):
+        return TorchCategorical
+
+    def get_inference_action_dist_cls(self):
+        return TorchCategorical
+
     @override(RLModule)
     def _default_input_specs(self):
         return [("obs", "global"), ("obs", "local")]
@@ -108,7 +128,7 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
         policy_in = torch.cat([global_enc, obs["local"]], dim=-1)
         action_logits = self.policy_head(policy_in)
 
-        return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
+        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
 
 
 class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):

@@ -240,7 +240,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                     },
                     /*delay_executor*/
                     [this](std::function<void()> fn, int64_t delay_ms) {
-                      RAY_UNUSED(execute_after(io_service_, fn, delay_ms));
+                      RAY_UNUSED(execute_after(
+                          io_service_, fn, std::chrono::milliseconds(delay_ms)));
                     }),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
@@ -398,7 +399,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       std::move(options),
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(io_service_, task, delay_ms);
+        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
       /*runtime_env_agent_factory=*/
       [this](const std::string &ip_address, int port) {
@@ -550,8 +551,8 @@ ray::Status NodeManager::RegisterGcs() {
                       << "GCS is not backed by a DB and restarted or there is data loss "
                       << "in the DB.";
                 }
-                *checking_ptr = false;
               }
+              *checking_ptr = false;
             },
             /* timeout_ms = */ 30000));
       },
@@ -1480,13 +1481,15 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   }
   // Publish the worker failure.
   auto worker_failure_data_ptr =
-      gcs::CreateWorkerFailureData(self_node_id_,
-                                   worker->WorkerId(),
+      gcs::CreateWorkerFailureData(worker->WorkerId(),
                                    time(nullptr),
                                    disconnect_type,
                                    disconnect_detail,
                                    worker->GetProcess().GetId(),
                                    creation_task_exception);
+  RAY_CHECK_OK(
+      gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
+
   if (is_worker) {
     const ActorID &actor_id = worker->GetActorId();
     const TaskID &task_id = worker->GetAssignedTaskId();
@@ -1561,23 +1564,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
 
   local_task_manager_->ClearWorkerBacklog(worker->WorkerId());
   cluster_task_manager_->CancelTaskForOwner(worker->GetAssignedTaskId());
-#ifdef _WIN32
-  // On Windows, when the worker is killed, client async wait won't get notified
-  // somehow.
-  RAY_CHECK_OK(
-      gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr, nullptr));
+
   client->Close();
-#else
-  // ReportWorkerFailure should happen after the worker exit completely.
-  // A better way is to monitor the pid exit. But that needs Process.h
-  // support async operation.
-  // Here we monitor the socket to achieve similar result.
-  // When the worker exited, the pid will be disconnected (local stream socket).
-  client->AsyncWaitTerminated([client, worker_failure_data_ptr, this] {
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
-                                                                 nullptr));
-  });
-#endif
+
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
@@ -2514,7 +2503,7 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Report object spilling stats.
-  local_object_manager_.FillObjectSpillingStats(reply);
+  local_object_manager_.FillObjectStoreStats(reply);
   // Report object store stats.
   object_manager_.FillObjectStoreStats(reply);
   // As a result of the HandleGetNodeStats, we are collecting information from all

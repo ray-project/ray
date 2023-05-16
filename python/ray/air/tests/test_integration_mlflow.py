@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from mlflow.tracking import MlflowClient
 
+from ray._private.dict import flatten_dict
 from ray.train._internal.session import init_session
 from ray.tune.trainable import wrap_function
 from ray.tune.trainable.session import _shutdown as tune_session_shutdown
@@ -367,7 +368,7 @@ class MLflowUtilTest(unittest.TestCase):
             )
 
     def test_log_params(self):
-        params = {"a": "a"}
+        params = {"a": "a", "x": {"y": "z"}}
         self.mlflow_util.setup_mlflow(
             tracking_uri=self.tracking_uri, experiment_name="new_experiment"
         )
@@ -376,21 +377,23 @@ class MLflowUtilTest(unittest.TestCase):
         self.mlflow_util.log_params(params_to_log=params, run_id=run_id)
 
         run = self.mlflow_util._mlflow.get_run(run_id=run_id)
-        assert run.data.params == params
+        assert run.data.params == flatten_dict(params)
 
         params2 = {"b": "b"}
         self.mlflow_util.start_run(set_active=True)
         self.mlflow_util.log_params(params_to_log=params2, run_id=run_id)
         run = self.mlflow_util._mlflow.get_run(run_id=run_id)
-        assert run.data.params == {
-            **params,
-            **params2,
-        }
+        assert run.data.params == flatten_dict(
+            {
+                **params,
+                **params2,
+            }
+        )
 
         self.mlflow_util.end_run()
 
     def test_log_metrics(self):
-        metrics = {"a": 1.0}
+        metrics = {"a": 1.0, "x": {"y": 2.0}}
         self.mlflow_util.setup_mlflow(
             tracking_uri=self.tracking_uri, experiment_name="new_experiment"
         )
@@ -399,15 +402,19 @@ class MLflowUtilTest(unittest.TestCase):
         self.mlflow_util.log_metrics(metrics_to_log=metrics, run_id=run_id, step=0)
 
         run = self.mlflow_util._mlflow.get_run(run_id=run_id)
-        assert run.data.metrics == metrics
+        assert run.data.metrics == flatten_dict(metrics)
 
         metrics2 = {"b": 1.0}
         self.mlflow_util.start_run(set_active=True)
         self.mlflow_util.log_metrics(metrics_to_log=metrics2, run_id=run_id, step=0)
-        assert self.mlflow_util._mlflow.get_run(run_id=run_id).data.metrics == {
-            **metrics,
-            **metrics2,
-        }
+        assert self.mlflow_util._mlflow.get_run(
+            run_id=run_id
+        ).data.metrics == flatten_dict(
+            {
+                **metrics,
+                **metrics2,
+            }
+        )
         self.mlflow_util.end_run()
 
 

@@ -8,18 +8,18 @@ import logging
 from datetime import datetime
 
 import ray
-from ray.data._internal.datastream_logger import DatastreamLogger
+from ray.data._internal.dataset_logger import DatasetLogger
 
 
-def test_datastream_logger(shutdown_only):
+def test_dataset_logger(shutdown_only):
     ray.init()
     log_name, msg = "test_name", "test_message_1234"
-    logger = DatastreamLogger(log_name)
+    logger = DatasetLogger(log_name)
     logger.get_logger().info(msg)
 
     # Read from log file, and parse each component of emitted log row
     session_dir = ray._private.worker._global_node.get_session_dir_path()
-    log_file_path = os.path.join(session_dir, DatastreamLogger.DEFAULT_DATASET_LOG_PATH)
+    log_file_path = os.path.join(session_dir, DatasetLogger.DEFAULT_DATASET_LOG_PATH)
     with open(log_file_path, "r") as f:
         raw_logged_msg = f.read()
     (

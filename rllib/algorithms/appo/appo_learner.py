@@ -1,7 +1,7 @@
 import abc
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping
+from typing import Any, Mapping
 
 from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearner,
@@ -115,7 +115,7 @@ class AppoLearner(ImpalaLearner):
 
     @abc.abstractmethod
     def _update_module_kl_coeff(
-        self, module_id: ModuleID, sampled_kls: Dict[ModuleID, float]
+        self, module_id: ModuleID, sampled_kl: float
     ) -> Mapping[str, Any]:
         """Dynamically update the KL loss coefficients of each module with.
 
@@ -125,7 +125,7 @@ class AppoLearner(ImpalaLearner):
 
         Args:
             module_id: The module whose KL loss coefficient to update.
-            sampled_kls: Mapping from Module ID to this module's KL divergence between
-                the action distributions of the current (most recently updated) module
-                and the old module version.
+            sampled_kl: The computed KL loss for the given Module
+                (KL divergence between the action distributions of the current
+                (most recently updated) module and the old module version).
         """

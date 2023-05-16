@@ -53,14 +53,13 @@ AggType = TypeVar("AggType")
 
 STRICT_MODE_EXPLANATION = (
     colorama.Fore.YELLOW
-    + "[IMPORTANT]: Ray Data strict mode is on by default in Ray 2.5. When in strict "
-    "mode, data schemas are required, standalone Python "
-    "objects are no longer supported, and the default batch format changes to `numpy` "
-    "from `pandas`. To disable strict mode temporarily, set the environment variable "
-    "RAY_DATA_STRICT_MODE=0 on all cluster processes. Strict mode will not be "
-    "possible to disable in future releases.\n\n"
-    "Learn more here: https://docs.ray.io/en/master/data/faq.html#what-is-strict-mode"
-    + colorama.Style.RESET_ALL
+    + "Important: Ray Data requires schemas for all datasets in Ray 2.5. This means "
+    "that standalone Python objects are no longer supported. In addition, the default "
+    "batch format is fixed to NumPy. To revert to legacy behavior temporarily, "
+    "set the "
+    "environment variable RAY_DATA_STRICT_MODE=0 on all cluster processes.\n\n"
+    "Learn more here: https://docs.ray.io/en/master/data/faq.html#"
+    "migrating-to-strict-mode" + colorama.Style.RESET_ALL
 )
 
 
@@ -76,14 +75,14 @@ def _validate_key_fn(
 ) -> None:
     """Check the key function is valid on the given schema."""
     if schema is None:
-        # Datastream is empty/cleared, validation not possible.
+        # Dataset is empty/cleared, validation not possible.
         return
     ctx = ray.data.DataContext.get_current()
     is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
         if is_simple_format:
             raise ValueError(
-                "String key '{}' requires datastream format to be "
+                "String key '{}' requires dataset format to be "
                 "'arrow' or 'pandas', was 'simple'.".format(key)
             )
         if len(schema.names) > 0 and key not in schema.names:
@@ -92,17 +91,17 @@ def _validate_key_fn(
                 "schema '{}'.".format(key, schema)
             )
     elif ctx.strict_mode:
-        raise StrictModeError(f"In strict mode, the key must be a string, was: {key}")
+        raise StrictModeError(f"In Ray 2.5, the key must be a string, was: {key}")
     elif key is None:
         if not is_simple_format:
             raise ValueError(
-                "The `None` key '{}' requires datastream format to be "
+                "The `None` key '{}' requires dataset format to be "
                 "'simple'.".format(key)
             )
     elif callable(key):
         if not is_simple_format:
             raise ValueError(
-                "Callable key '{}' requires datastream format to be "
+                "Callable key '{}' requires dataset format to be "
                 "'simple'".format(key)
             )
     else:
@@ -161,7 +160,7 @@ def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
         if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
             raise StrictModeError(
                 f"The given batch format {given_batch_format} is not allowed "
-                f"in strict mode (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
+                f"in Ray 2.5 (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
             )
     return given_batch_format
 
@@ -424,7 +423,7 @@ class BlockAccessor:
                 raise StrictModeError(
                     f"Error validating {_truncated_repr(batch)}: "
                     "Standalone numpy arrays are not "
-                    "allowed in strict mode. Return a dict of field -> array, "
+                    "allowed in Ray 2.5. Return a dict of field -> array, "
                     "e.g., `{'data': array}` instead of `array`."
                 )
 
@@ -434,10 +433,8 @@ class BlockAccessor:
             import pyarrow as pa
 
             try:
-                return ArrowBlockAccessor.numpy_to_block(
-                    batch, passthrough_arrow_not_implemented_errors=True
-                )
-            except (pa.ArrowNotImplementedError, pa.ArrowInvalid):
+                return ArrowBlockAccessor.numpy_to_block(batch)
+            except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
                 import pandas as pd
 
                 # TODO(ekl) once we support Python objects within Arrow blocks, we
@@ -472,7 +469,7 @@ class BlockAccessor:
                 raise StrictModeError(
                     f"Error validating {_truncated_repr(block)}: "
                     "Standalone Python objects are not "
-                    "allowed in strict mode. To use Python objects in a datastream, "
+                    "allowed in Ray 2.5. To use Python objects in a dataset, "
                     "wrap them in a dict of numpy arrays, e.g., "
                     "return `{'item': np.array(batch)}` instead of just `batch`."
                 )

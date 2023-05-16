@@ -107,7 +107,7 @@ It scales from single machines to large clusters with minimal code changes.
 As a Python-first framework, you can easily express and interactively develop your inference workloads in Ray.
 To learn more about running batch inference with Ray, see the :ref:`batch inference guide<batch_inference_home>`.
 
-.. figure:: batch_inference/images/batch_inference.png
+.. figure:: ../data/images/batch_inference.png
 
 
 .. grid:: 1 2 3 4
@@ -118,25 +118,33 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-link:: https://github.com/ray-project/ray-educational-materials/blob/main/Computer_vision_workloads/Semantic_segmentation/Scaling_batch_inference.ipynb
+        .. button-link:: https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker
 
-            [Tutorial] Architectures for Scalable Batch Inference with Ray
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-link:: https://www.anyscale.com/blog/model-batch-inference-in-ray-actors-actorpool-and-datasets
-
-            [Blog] Batch Inference in Ray: Actors, ActorPool, and Datasets
+            [Blog] Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: /ray-core/examples/batch_prediction
+        .. button-link:: https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus
 
-            [Example] Batch Prediction using Ray Core
+            [Blog] Streaming distributed execution across CPUs and GPUs
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding
+
+            [Blog] Using Ray Data to parallelize LangChain inference
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /data/batch_inference
+
+            [Guide] Batch Prediction using Ray Data
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
