@@ -344,11 +344,12 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             )
 
     def _validate_attributes(self):
-        for key, conf in self._dataset_config.items():
-            if conf.use_stream_api:
-                raise ValueError(
-                    "TransformersTrainer does not support `use_stream_api`."
-                )
+        if self._dataset_config:
+            for key, conf in self._dataset_config.items():
+                if conf.use_stream_api:
+                    raise ValueError(
+                        "TransformersTrainer does not support `use_stream_api`."
+                    )
         gpus_per_worker = self.scaling_config.num_gpus_per_worker
         if gpus_per_worker > 1:
             raise ValueError(
