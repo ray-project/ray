@@ -13,7 +13,7 @@ class Test(dict):
         Returns the python version to use for this test. If not specified, use
         the default python version.
         """
-        return self.get("python", ".".join(DEFAULT_PYTHON_VERSION))
+        return self.get("python", ".".join(str(v) for v in DEFAULT_PYTHON_VERSION))
 
     def get_ray_image(self) -> str:
         """
