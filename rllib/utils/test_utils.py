@@ -786,9 +786,9 @@ def run_learning_tests_from_yaml(
 
             check_eval = should_check_eval(e)
             episode_reward_key = (
-                "episode_reward_mean"
+                "sampler_results/episode_reward_mean"
                 if not check_eval
-                else "evaluation/episode_reward_mean"
+                else "evaluation/sampler_results/episode_reward_mean"
             )
 
             # For smoke-tests, we just run for n min.
@@ -904,14 +904,18 @@ def run_learning_tests_from_yaml(
                 if check_eval:
                     episode_reward_mean = np.mean(
                         [
-                            t.metric_analysis["evaluation/episode_reward_mean"]["max"]
+                            t.metric_analysis[
+                                "evaluation/sampler_results/episode_reward_mean"
+                            ]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 else:
                     episode_reward_mean = np.mean(
                         [
-                            t.metric_analysis["episode_reward_mean"]["max"]
+                            t.metric_analysis["sampler_results/episode_reward_mean"][
+                                "max"
+                            ]
                             for t in trials_for_experiment
                         ]
                     )
