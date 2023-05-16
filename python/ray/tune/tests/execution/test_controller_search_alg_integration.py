@@ -53,11 +53,15 @@ def test_search_alg_notification(ray_start_4_cpus_2_gpus_extra, resource_manager
         resource_manager_factory=lambda: resource_manager_cls(), search_alg=search_alg
     )
 
-    # Run until search alg is finished
+    # Run until trial is running
     while not search_alg.is_finished():
         runner.step()
 
     trials = runner.get_trials()
+
+    # Make sure trial started
+    while trials[0].status != Trial.RUNNING:
+        runner.step()
 
     assert trials[0].status == Trial.RUNNING
     assert search_alg.is_finished()
