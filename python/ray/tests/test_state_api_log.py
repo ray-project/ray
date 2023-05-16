@@ -818,7 +818,7 @@ def test_task_log_err_empty(ray_start_with_dashboard):
             webui_url + f"/api/v0/logs/file?task_id={task_id}&suffix=err&lines=-1"
         )
         assert response.status_code == 200, response.reason
-        assert response.content.decode() == f"1"
+        assert response.content.decode() == "1"
         return True
 
     wait_for_condition(verify)
