@@ -19,7 +19,7 @@ const mockGetActor = jest.mocked(getActor);
 
 describe("ServeApplicationsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(16);
+    expect.assertions(15);
 
     // Mock ServeController actor fetch
     mockGetActor.mockResolvedValue({
@@ -85,11 +85,6 @@ describe("ServeApplicationsListPage", () => {
 
     await screen.findByText("System");
     expect(screen.getByText("System")).toBeVisible();
-    // System tab is hidden at first
-    expect(screen.queryByText("1.2.3.4")).toBeNull();
-    // Expand the system tab
-    await user.click(screen.getByText("System"));
-    await screen.findByText("1.2.3.4");
     expect(screen.getByText("1.2.3.4")).toBeVisible();
     expect(screen.getByText("8000")).toBeVisible();
 

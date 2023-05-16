@@ -65,6 +65,7 @@ export const ServeSystemDetails = ({
   return (
     <CollapsibleSection
       title="System"
+      startExpanded
       icon={
         isUnhealthy ? (
           <RiErrorWarningFill className={classes.errorIcon} />
