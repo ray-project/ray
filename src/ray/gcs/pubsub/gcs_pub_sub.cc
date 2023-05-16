@@ -369,9 +369,18 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
     rpc::GcsSubscriberPollReply reply;
     // Drop the lock while in RPC
     mu_.Unlock();
-    // TODO: Add error handling
     grpc::Status status = pubsub_stub_->GcsSubscriberPoll(current_polling_context_.get(), request, &reply);
     mu_.Lock();
+
+    if (status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
+        status.error_code() == grpc::StatusCode::UNAVAILABLE) {
+      return Status::OK();
+    } else if (status.error_code() == grpc::StatusCode::CANCELLED) {
+      // This channel was shut down via Close()
+      return Status::OK();
+    } else if (status.error_code() != grpc::StatusCode::OK) {
+      return Status::Invalid(status.error_message());
+    }
 
     if (publisher_id_ != reply.publisher_id()) {
       if (publisher_id_ != "") {
