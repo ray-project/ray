@@ -6,12 +6,12 @@ import {
 import { ActorDetail } from "../../type/actor";
 
 export type ActorLogsProps = {
-  actor: Pick<ActorDetail, "address" | "jobId" | "pid">;
+  actor: Pick<ActorDetail, "actorId" | "address" | "pid">;
 };
 
 export const ActorLogs = ({
   actor: {
-    jobId,
+    actorId,
     pid,
     address: { workerId, rayletId },
   },
@@ -19,15 +19,13 @@ export const ActorLogs = ({
   const tabs: MultiTabLogViewerTabDetails[] = [
     {
       title: "stderr",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.err`,
+      actorId,
+      suffix: "err",
     },
     {
       title: "stdout",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.out`,
+      actorId,
+      suffix: "out",
     },
     {
       title: "system",

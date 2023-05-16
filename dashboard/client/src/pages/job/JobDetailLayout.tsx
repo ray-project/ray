@@ -10,20 +10,20 @@ import { SideTabLayout, SideTabRouteLink } from "../layout/SideTabLayout";
 import { useJobDetail } from "./hook/useJobDetail";
 
 export const JobPage = () => {
-  const { job } = useJobDetail();
+  const { job, params } = useJobDetail();
 
   const jobId = job?.job_id ?? job?.submission_id;
-  const pageInfo = job
+  const pageInfo = jobId
     ? {
         title: jobId ?? "Job",
         pageTitle: jobId ? `${jobId} | Job` : undefined,
         id: "job-detail",
-        path: jobId ? `/jobs/${jobId}` : undefined,
+        path: jobId,
       }
     : {
         title: "Job",
         id: "job-detail",
-        path: undefined,
+        path: params.id,
       };
   return (
     <div>

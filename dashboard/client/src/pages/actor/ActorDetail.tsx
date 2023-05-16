@@ -1,5 +1,6 @@
 import { makeStyles } from "@material-ui/core";
 import React from "react";
+import { Outlet } from "react-router-dom";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -39,11 +40,37 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
+export const ActorDetailLayout = () => {
+  const { params, actorDetail } = useActorDetail();
+
+  return (
+    <div>
+      <MainNavPageInfo
+        pageInfo={
+          actorDetail
+            ? {
+                title: `${params.actorId}`,
+                pageTitle: `${params.actorId} | Actor`,
+                id: "actor-detail",
+                path: `${params.actorId}`,
+              }
+            : {
+                id: "actor-detail",
+                title: "Actor",
+                path: `${params.actorId}`,
+              }
+        }
+      />
+      <Outlet />
+    </div>
+  );
+};
+
 const ActorDetailPage = () => {
   const classes = useStyle();
   const { params, actorDetail, msg, isLoading } = useActorDetail();
 
-  if (!actorDetail) {
+  if (isLoading || actorDetail === undefined) {
     return (
       <div className={classes.root}>
         <Loading loading={isLoading} />
@@ -58,15 +85,6 @@ const ActorDetailPage = () => {
 
   return (
     <div className={classes.root}>
-      <MainNavPageInfo
-        pageInfo={{
-          title: `${params.actorId}`,
-          pageTitle: `${params.actorId} | Actor`,
-          id: "actor-detail",
-          path: `/actors/${params.actorId}`,
-        }}
-      />
-
       <MetadataSection
         metadataList={[
           {

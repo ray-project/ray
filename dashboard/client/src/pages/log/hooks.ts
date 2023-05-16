@@ -1,25 +1,24 @@
 import useSWR from "swr";
-import { getStateApiDownloadLogUrl, getStateApiLog } from "../../service/log";
+import {
+  getStateApiDownloadLogUrl,
+  getStateApiLog,
+  StateApiLogInput,
+} from "../../service/log";
 
 export const useStateApiLogs = (
-  driver_node_id?: string | null,
-  filename?: string,
+  props: StateApiLogInput,
+  path: string | undefined,
 ) => {
-  const downloadUrl =
-    driver_node_id && filename
-      ? getStateApiDownloadLogUrl(driver_node_id, filename)
-      : undefined;
+  const downloadUrl = getStateApiDownloadLogUrl(props);
 
   const {
     data: log,
     isLoading,
     mutate,
   } = useSWR(
-    driver_node_id && filename
-      ? ["useDriverLogs", driver_node_id, filename]
-      : null,
-    async ([_, node_id, filename]) => {
-      return getStateApiLog(node_id, filename);
+    downloadUrl ? ["useDriverLogs", downloadUrl] : null,
+    async ([_]) => {
+      return getStateApiLog(props);
     },
   );
 
@@ -27,6 +26,6 @@ export const useStateApiLogs = (
     log: isLoading ? "Loading..." : log,
     downloadUrl,
     refresh: mutate,
-    path: filename,
+    path,
   };
 };

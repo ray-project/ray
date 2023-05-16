@@ -31,7 +31,7 @@ const formatClusterStatus = (title: string, cluster_status: string) => {
   return (
     <div>
       <Box marginBottom={2}>
-        <Typography variant="h6">{title}</Typography>
+        <Typography variant="h3">{title}</Typography>
       </Box>
       {cluster_status_rows.map((i, key) => {
         // Format the output.
@@ -64,9 +64,6 @@ export const NodeStatusCard = ({ cluster_status }: StatusCardProps) => {
         overflow: "hidden",
         overflowY: "scroll",
       }}
-      sx={{ borderRadius: "16px" }}
-      marginLeft={1}
-      marginRight={1}
     >
       {cluster_status?.data
         ? formatNodeStatus(cluster_status?.data.clusterStatus)
@@ -82,9 +79,6 @@ export const ResourceStatusCard = ({ cluster_status }: StatusCardProps) => {
         overflow: "hidden",
         overflowY: "scroll",
       }}
-      sx={{ border: 1, borderRadius: "1", borderColor: "primary.main" }}
-      marginLeft={1}
-      marginRight={1}
     >
       {cluster_status?.data
         ? formatResourcesStatus(cluster_status?.data.clusterStatus)

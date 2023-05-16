@@ -135,14 +135,14 @@ export const ServeSystemActorDetail = ({
 
 type ServeSystemActorLogsProps = {
   type: "controller" | "httpProxy";
-  actor: Pick<ActorDetail, "address" | "jobId" | "pid">;
+  actor: Pick<ActorDetail, "address" | "actorId" | "pid">;
   systemLogFilePath: string;
 };
 
 const ServeSystemActorLogs = ({
   type,
   actor: {
-    jobId,
+    actorId,
     pid,
     address: { workerId, rayletId },
   },
@@ -158,15 +158,13 @@ const ServeSystemActorLogs = ({
     },
     {
       title: "Actor Logs (stderr)",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.err`,
+      actorId,
+      suffix: "err",
     },
     {
       title: "Actor Logs (stdout)",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.out`,
+      actorId,
+      suffix: "out",
     },
     {
       title: "Actor Logs (system)",
