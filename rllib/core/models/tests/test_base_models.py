@@ -13,10 +13,17 @@ from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
+from rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
+
+"""
+TODO(Artur): There are a couple of tests for torch.compile that are outstanding:
+- Loading the states of a compile RLModule to a non-compile RLModule and vica-versa
+- Removing a Compiled and non-compiled module to make sure there is no leak
+- ...
+"""
 
 
 def _dynamo_is_available():
@@ -287,11 +294,10 @@ class TestModelBase(unittest.TestCase):
 
         compile_config = TorchCompileConfig(compile_forward_train=True)
 
-        compile_config.compile(torch_module)
+        torch_module.compile(compile_config)
 
         # We should still be able to call the forward method
         torch_module._forward_train({"obs": torch.randn(1, 32)})
-        self.assertTrue(hasattr(torch_module, "_compiled_forward_train"))
 
         # Compile again with different config and see if everything still works
 
@@ -301,13 +307,11 @@ class TestModelBase(unittest.TestCase):
             compile_forward_exploration=True,
         )
 
-        compile_config.compile(torch_module)
+        torch_module.compile(compile_config)
 
         # We should still be able to call the forward methods
         torch_module._forward_inference({"obs": torch.randn(1, 32)})
-        self.assertTrue(hasattr(torch_module, "_compiled_forward_inference"))
         torch_module._forward_exploration({"obs": torch.randn(1, 32)})
-        self.assertTrue(hasattr(torch_module, "_compiled_forward_exploration"))
 
 
 if __name__ == "__main__":

@@ -27,8 +27,8 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import (
     TorchRLModule,
-    TorchCompileConfig,
 )
+from rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
@@ -60,7 +60,6 @@ class TorchLearner(Learner):
         self,
         *,
         framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
-        torch_compile_config: Optional[Mapping[str, TorchCompileConfig]] = None,
         **kwargs,
     ):
         super().__init__(

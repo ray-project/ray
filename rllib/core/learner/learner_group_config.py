@@ -1,16 +1,16 @@
 from typing import Type, Optional, TYPE_CHECKING, Union, Dict
 
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.learner.learner_group import LearnerGroup
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
     LearnerHyperparameters,
     FrameworkHyperparameters,
 )
+from ray.rllib.core.learner.learner_group import LearnerGroup
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.from_config import NotProvided
-
+from rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner import Learner
@@ -103,7 +103,7 @@ class LearnerGroupConfig:
     def framework(
         self,
         eager_tracing: Optional[bool] = NotProvided,
-        torch_compile_cfg: Optional["TorchCompileConfig"] = NotProvided,  # noqa: # F821
+        torch_compile_cfg: Optional[TorchCompileConfig] = NotProvided,
     ) -> "LearnerGroupConfig":
 
         if eager_tracing is not NotProvided:
