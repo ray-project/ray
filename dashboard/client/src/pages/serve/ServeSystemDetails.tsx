@@ -16,7 +16,7 @@ import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { MetadataSection } from "../../components/MetadataSection";
 import { HelpInfo } from "../../components/Tooltip";
 import { ServeApplicationsRsp, ServeHttpProxy } from "../../type/serve";
-import { ServeHttpProxyRow } from "./ServeSystemDetailRows";
+import { ServeControllerRow, ServeHttpProxyRow } from "./ServeSystemDetailRows";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -34,7 +34,7 @@ const useStyles = makeStyles((theme) =>
 
 export type ServeDetails = Pick<
   ServeApplicationsRsp,
-  "http_options" | "proxy_location"
+  "http_options" | "proxy_location" | "controller_info"
 >;
 
 type ServeSystemDetailsProps = {
@@ -65,6 +65,7 @@ export const ServeSystemDetails = ({
   return (
     <CollapsibleSection
       title="System"
+      startExpanded
       icon={
         isUnhealthy ? (
           <RiErrorWarningFill className={classes.errorIcon} />
@@ -131,6 +132,7 @@ export const ServeSystemDetails = ({
             </TableRow>
           </TableHead>
           <TableBody>
+            <ServeControllerRow controller={serveDetails.controller_info} />
             {httpProxies
               .slice(
                 (page.pageNo - 1) * page.pageSize,
