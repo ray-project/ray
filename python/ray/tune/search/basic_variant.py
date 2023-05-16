@@ -321,6 +321,33 @@ class BasicVariantGenerator(SearchAlgorithm):
     def total_samples(self):
         return self._total_samples
 
+    def _add_configurations(self, param_space, num_samples=1):
+        grid_vals = _count_spec_samples(param_space, num_samples=1)
+        lazy_eval = grid_vals > SERIALIZATION_THRESHOLD
+        if lazy_eval:
+            warnings.warn(
+                f"The number of pre-generated samples ({grid_vals}) "
+                "exceeds the serialization threshold "
+                f"({int(SERIALIZATION_THRESHOLD)}). Resume ability is "
+                "disabled. To fix this, reduce the number of "
+                "dimensions/size of the provided grid search."
+            )
+
+        previous_samples = self._total_samples
+        points_to_evaluate = copy.deepcopy(self._points_to_evaluate)
+        self._total_samples += _count_variants(param_space, points_to_evaluate)
+        self._trial_generator = _TrialIterator(
+            uuid_prefix=self._uuid_prefix,
+            num_samples=num_samples,
+            unresolved_spec=param_space,
+            constant_grid_search=self._constant_grid_search,
+            output_path="testing",
+            points_to_evaluate=points_to_evaluate,
+            lazy_eval=lazy_eval,
+            start=previous_samples,
+            random_state=self._random_state,
+        )
+
     def add_configurations(
         self, experiments: Union["Experiment", List["Experiment"], Dict[str, Dict]]
     ):
