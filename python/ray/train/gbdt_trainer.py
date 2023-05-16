@@ -1,4 +1,5 @@
 import os
+import logging
 import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Type
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
 
 _WARN_REPARTITION_THRESHOLD = 10 * 1024**3
 _DEFAULT_NUM_ITERATIONS = 10
+
+logger = logging.getLogger(__name__)
 
 
 def _convert_scaling_config_to_ray_params(
@@ -313,7 +316,7 @@ class GBDTTrainer(BaseTrainer):
             )
             new_iterations = num_iterations - last_iteration
             config[self._num_iterations_argument] = new_iterations
-            warnings.warn(
+            logger.warning(
                 f"Model loaded from checkpoint will train for "
                 f"additional {new_iterations} iterations (trees) in order "
                 "to achieve the target number of iterations "

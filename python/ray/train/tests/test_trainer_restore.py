@@ -155,9 +155,6 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
             name=exp_name,
             checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
             callbacks=[FailureInjectionCallback(num_iters=2)],
-            # We also use a stopper, since the restored run will go for
-            # another 5 boosting rounds otherwise.
-            stop={"training_iteration": 5},
         ),
         num_boost_round=5,
     )
@@ -167,8 +164,10 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
     result = trainer.fit()
     assert not result.error
-    assert result.metrics["training_iteration"] == 5
-    assert result.metrics["iterations_since_restore"] == 3
+    # We need to add + 1 to iterations since the last iteration is final
+    # checkpoint.
+    assert result.metrics["training_iteration"] == 5 + 1
+    assert result.metrics["iterations_since_restore"] == 3 + 1
     assert tmpdir / exp_name in result.log_dir.parents
 
 
