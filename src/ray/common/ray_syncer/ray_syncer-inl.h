@@ -289,8 +289,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           if (ok) {
             SendNext();
           } else {
-            RAY_LOG_EVERY_MS(ERROR, 1000) << "Failed to send the message to: "
-                                          << NodeID::FromBinary(GetRemoteNodeID());
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to send the message to: "
+                                         << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
           }
         },
@@ -305,8 +305,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
             ReceiveUpdate(std::move(msg));
             StartPull();
           } else {
-            RAY_LOG_EVERY_MS(ERROR, 1000) << "Failed to read the message from: "
-                                          << NodeID::FromBinary(GetRemoteNodeID());
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read the message from: "
+                                         << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
           }
         },
