@@ -12,7 +12,7 @@ There are 2 recommended ways to train PyTorch models on a Ray cluster.
 
 .. note::
 
-    If you're training PyTorch models with PyTorch Lightning, see :ref:`below <air-pytorch-lightning>`
+    If you're training PyTorch models with PyTorch Lightning, see :ref:`below <air-pytorch-lightning-integration>`
     for the available PyTorch Lightning Ray AIR integrations.
 
 See the options |:one:| |:two:| below, along with the usage scenarios and API references for each:
@@ -113,7 +113,7 @@ Use vanilla Tensorflow/Keras with Ray Tune to parallelize model training.
 
 
 |:two:| :class:`~ray.train.tensorflow.TensorflowTrainer`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **Usage Scenario:** Data-parallel training, such as multi-GPU or multi-node training.
 
@@ -146,7 +146,6 @@ and there are many trials (e.g., many hyperparameter configurations). Use vanill
 with these Ray Tune callbacks to parallelize model training.
 
 .. autosummary::
-    :toctree: doc/
 
     ~tune.integration.xgboost.TuneReportCallback
     ~tune.integration.xgboost.TuneReportCheckpointCallback
@@ -196,7 +195,6 @@ and there are many trials (e.g., many hyperparameter configurations). Use vanill
 with these Ray Tune callbacks to parallelize model training.
 
 .. autosummary::
-    :toctree: doc/
 
     ~tune.integration.lightgbm.TuneReportCallback
     ~tune.integration.lightgbm.TuneReportCheckpointCallback
