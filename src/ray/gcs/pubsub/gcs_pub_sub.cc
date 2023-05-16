@@ -418,12 +418,10 @@ Status PythonGcsSubscriber::PollFunctionKey(std::string* key_id, rpc::PythonFunc
 }
 
 Status PythonGcsSubscriber::Close() {
-  {
-    absl::MutexLock lock(&mu_);
-    closed_ = true;
-    if (current_polling_context_) {
-      current_polling_context_->TryCancel();
-    }
+  absl::MutexLock lock(&mu_);
+  closed_ = true;
+  if (current_polling_context_) {
+    current_polling_context_->TryCancel();
   }
 
   grpc::ClientContext context;
