@@ -22,6 +22,7 @@ describe("JobDriverLogs", () => {
     render(
       <JobDriverLogs
         job={{
+          type: "SUBMISSION",
           job_id: "01000000",
           driver_agent_http_address: "127.0.0.1",
           driver_info: {
