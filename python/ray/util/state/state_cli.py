@@ -355,7 +355,7 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def ray_get(
     resource: str,
     id: str,
@@ -465,7 +465,7 @@ def ray_get(
 )
 @timeout_option
 @address_option
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def ray_list(
     resource: str,
     format: str,
@@ -580,7 +580,7 @@ def ray_list(
 
 @click.group("summary")
 @click.pass_context
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def summary_state_cli_group(ctx):
     """Return the summarized information of a given resource."""
     pass
@@ -590,7 +590,7 @@ def summary_state_cli_group(ctx):
 @timeout_option
 @address_option
 @click.pass_context
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def task_summary(ctx, timeout: float, address: str):
     """Summarize the task state of the cluster.
 
@@ -621,7 +621,7 @@ def task_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def actor_summary(ctx, timeout: float, address: str):
     """Summarize the actor state of the cluster.
 
@@ -653,7 +653,7 @@ def actor_summary(ctx, timeout: float, address: str):
 @timeout_option
 @address_option
 @click.pass_context
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def object_summary(ctx, timeout: float, address: str):
     """Summarize the object state of the cluster.
 
@@ -931,7 +931,7 @@ logs_state_cli_group = LogCommandGroup(help=LOG_CLI_HELP_MSG)
 @log_encoding_option
 @log_encoding_errors_option
 @click.pass_context
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def log_cluster(
     ctx,
     glob_filter: str,
@@ -1049,7 +1049,7 @@ def log_cluster(
 @log_timeout_option
 @log_suffix_option
 @click.pass_context
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def log_actor(
     ctx,
     id: Optional[str],
@@ -1131,7 +1131,7 @@ def log_actor(
 @log_timeout_option
 @log_suffix_option
 @click.pass_context
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def log_worker(
     ctx,
     pid: Optional[str],
@@ -1196,7 +1196,7 @@ def log_worker(
 @log_interval_option
 @log_timeout_option
 @click.pass_context
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def log_job(
     ctx,
     submission_id: Optional[str],
@@ -1262,7 +1262,7 @@ def log_job(
 @log_timeout_option
 @log_suffix_option
 @click.pass_context
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 def log_task(
     ctx,
     task_id: Optional[str],

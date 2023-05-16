@@ -13,6 +13,7 @@ from ray.dashboard.utils import (
     get_address_for_submission_client,
     ray_address_to_api_server_url,
 )
+from ray.util.annotations import DeveloperAPI
 from ray.util.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -86,14 +87,6 @@ def warnings_on_slow_request(
 """
 This file contains API client and methods for querying ray state.
 
-NOTE(rickyyx): This is still a work-in-progress API, and subject to changes.
-
-If you have any feedback, you could do so at either way as below:
-  1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46 ,
-  2. Follow up in #ray-state-observability-dogfooding slack channel of Ray:
-    https://tinyurl.com/2pm26m4a"
-
-
 Usage:
     1. [Recommended] With StateApiClient:
     ```
@@ -112,6 +105,7 @@ Usage:
 """
 
 
+@DeveloperAPI
 class StateApiClient(SubmissionClient):
     """State API Client issues REST GET requests to the server for resource states."""
 
@@ -552,6 +546,7 @@ class StateApiClient(SubmissionClient):
         return summary_api_response["result"]["node_id_to_summary"]
 
 
+@DeveloperAPI
 def get_actor(
     id: str,
     address: Optional[str] = None,
@@ -581,6 +576,7 @@ def get_actor(
     )
 
 
+@DeveloperAPI
 def get_job(
     id: str,
     address: Optional[str] = None,
@@ -613,6 +609,7 @@ def get_job(
     )
 
 
+@DeveloperAPI
 def get_placement_group(
     id: str,
     address: Optional[str] = None,
@@ -645,6 +642,7 @@ def get_placement_group(
     )
 
 
+@DeveloperAPI
 def get_node(
     id: str,
     address: Optional[str] = None,
@@ -677,6 +675,7 @@ def get_node(
     )
 
 
+@DeveloperAPI
 def get_worker(
     id: str,
     address: Optional[str] = None,
@@ -709,6 +708,7 @@ def get_worker(
     )
 
 
+@DeveloperAPI
 def get_task(
     id: str,
     address: Optional[str] = None,
@@ -742,6 +742,7 @@ def get_task(
     )
 
 
+@DeveloperAPI
 def get_objects(
     id: str,
     address: Optional[str] = None,
@@ -777,6 +778,7 @@ def get_objects(
     )
 
 
+@DeveloperAPI
 def list_actors(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -824,6 +826,7 @@ def list_actors(
     )
 
 
+@DeveloperAPI
 def list_placement_groups(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -851,8 +854,7 @@ def list_placement_groups(
             failed query information.
 
     Returns:
-        List of dictionarified
-        :class:`~ray.util.state.common.PlacementGroupState`.
+        List of :class:`~ray.util.state.common.PlacementGroupState`.
 
     Raises:
         Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
@@ -868,6 +870,7 @@ def list_placement_groups(
     )
 
 
+@DeveloperAPI
 def list_nodes(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -912,6 +915,7 @@ def list_nodes(
     )
 
 
+@DeveloperAPI
 def list_jobs(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -956,6 +960,7 @@ def list_jobs(
     )
 
 
+@DeveloperAPI
 def list_workers(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1000,6 +1005,7 @@ def list_workers(
     )
 
 
+@DeveloperAPI
 def list_tasks(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1044,6 +1050,7 @@ def list_tasks(
     )
 
 
+@DeveloperAPI
 def list_objects(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1088,6 +1095,7 @@ def list_objects(
     )
 
 
+@DeveloperAPI
 def list_runtime_envs(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1132,6 +1140,7 @@ def list_runtime_envs(
     )
 
 
+@DeveloperAPI
 def list_cluster_events(
     address: Optional[str] = None,
     filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
@@ -1156,6 +1165,7 @@ Log APIs
 """
 
 
+@DeveloperAPI
 def get_log(
     address: Optional[str] = None,
     node_id: Optional[str] = None,
@@ -1265,6 +1275,7 @@ def get_log(
             yield logs
 
 
+@DeveloperAPI
 def list_logs(
     address: Optional[str] = None,
     node_id: Optional[str] = None,
@@ -1331,6 +1342,7 @@ Summary APIs
 """
 
 
+@DeveloperAPI
 def summarize_tasks(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
@@ -1364,6 +1376,7 @@ def summarize_tasks(
     )
 
 
+@DeveloperAPI
 def summarize_actors(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
@@ -1397,6 +1410,7 @@ def summarize_actors(
     )
 
 
+@DeveloperAPI
 def summarize_objects(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
