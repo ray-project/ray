@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
     from ray.tune.syncer import SyncConfig
-    from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
+    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -761,6 +761,7 @@ class RunConfig:
     def __post_init__(self):
         from ray.tune.syncer import SyncConfig, Syncer
         from ray.tune.utils.util import _resolve_storage_path
+        from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
