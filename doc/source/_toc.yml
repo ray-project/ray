@@ -53,6 +53,7 @@ parts:
               - file: ray-air/computer-vision
               - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
+              - file: ray-air/experimental-features
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/opt_deepspeed_batch_inference

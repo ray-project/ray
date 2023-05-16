@@ -35,6 +35,7 @@ from ray.tune.experimental.output import (
     get_air_verbosity,
     _detect_reporter as _detect_air_reporter,
     IS_NOTEBOOK,
+    AirVerbosity,
 )
 
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
@@ -256,7 +257,7 @@ def run(
     checkpoint_at_end: bool = False,
     checkpoint_keep_all_ranks: bool = False,
     checkpoint_upload_from_workers: bool = False,
-    verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+    verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
@@ -394,9 +395,11 @@ def run(
             training workers.
         checkpoint_upload_from_workers: Whether to upload checkpoint files
             directly from distributed training workers.
-        verbose: 0, 1, 2, or 3. Verbosity mode.
-            0 = silent, 1 = only status updates, 2 = status and brief trial
-            results, 3 = status and detailed trial results. Defaults to 3.
+        verbose: 0, 1, or 2. Verbosity mode.
+            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
+            If ``RAY_AIR_NEW_OUTPUT=0``, uses the old verbosity settings:
+            0 = silent, 1 = only status updates, 2 = status and brief
+            results, 3 = status and detailed results.
         progress_reporter: Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
@@ -529,11 +532,18 @@ def run(
             DeprecationWarning,
         )
 
+    if verbose is None:
+        # Default `verbose` value. For new output engine, this is AirVerbosity.VERBOSE.
+        # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+        verbose = get_air_verbosity(AirVerbosity.VERBOSE) or Verbosity.V3_TRIAL_DETAILS
+
     if _remote:
-        if get_air_verbosity() is not None:
-            logger.warning(
-                "Ignoring AIR_VERBOSITY setting, "
-                "as it doesn't support ray client mode yet."
+        if get_air_verbosity(verbose) is not None:
+            logger.info(
+                "[output] This uses the legacy output and progress reporter, "
+                "as Ray client is not supported by the new engine. "
+                "For more information, see "
+                "https://docs.ray.io/en/master/ray-air/experimental-features.html"
             )
 
         remote_run = ray.remote(num_cpus=0)(run)
@@ -586,21 +596,28 @@ def run(
             "must be one of ['min', 'max']"
         )
 
-    air_verbosity = get_air_verbosity()
+    air_verbosity = get_air_verbosity(verbose)
     if air_verbosity is not None and IS_NOTEBOOK:
-        logger.warning(
-            "Ignoring AIR_VERBOSITY setting, "
-            "as it doesn't support JupyterNotebook mode yet."
+        logger.info(
+            "[output] This uses the legacy output and progress reporter, "
+            "as Jupyter notebooks are not supported by the new engine, yet. "
+            "For more information, please see "
+            "https://docs.ray.io/en/master/ray-air/experimental-features.html"
         )
         air_verbosity = None
 
     if air_verbosity is not None:
-        logger.warning(
-            f"Testing new AIR console output flow with verbosity={air_verbosity}. "
-            f"This will also disable the old flow - setting it to 0 now."
+        logger.info(
+            f"[output] This will use the new output engine with verbosity "
+            f"{air_verbosity}. To disable the new output and use the legacy "
+            f"output engine, set the environment variable RAY_AIR_NEW_OUTPUT=0. "
+            f"For more information, please see "
+            f"https://docs.ray.io/en/master/ray-air/experimental-features.html"
         )
+        # Disable old output engine
         set_verbosity(0)
     else:
+        # Use old output engine
         set_verbosity(verbose)
 
     config = config or {}
@@ -979,7 +996,7 @@ def run(
             air_verbosity, search_alg.total_samples, metric=metric, mode=mode
         )
 
-    # rich live context manager has to be called encapsulting
+    # rich live context manager has to be called encapsulating
     # the while loop. For other kind of reporters, no op.
     # `ExitStack` allows us to *conditionally* apply context manager.
     with contextlib.ExitStack() as stack:
@@ -1085,7 +1102,7 @@ def run_experiments(
     experiments: Union[Experiment, Mapping, Sequence[Union[Experiment, Mapping]]],
     scheduler: Optional[TrialScheduler] = None,
     server_port: Optional[int] = None,
-    verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
+    verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     resume: Union[bool, str] = False,
     reuse_actors: Optional[bool] = None,
@@ -1119,11 +1136,18 @@ def run_experiments(
     if not trial_executor or isinstance(trial_executor, RayTrialExecutor):
         _ray_auto_init(entrypoint="tune.run_experiments(...)")
 
+    if verbose is None:
+        # Default `verbose` value. For new output engine, this is AirVerbosity.VERBOSE.
+        # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+        verbose = get_air_verbosity(AirVerbosity.VERBOSE) or Verbosity.V3_TRIAL_DETAILS
+
     if _remote:
-        if get_air_verbosity() is not None:
-            logger.warning(
-                "Ignoring AIR_VERBOSITY setting, "
-                "as it doesn't support ray client mode yet."
+        if get_air_verbosity(verbose) is not None:
+            logger.info(
+                "[output] This uses the legacy output and progress reporter, "
+                "as Ray client is not supported by the new engine. "
+                "For more information, see "
+                "https://docs.ray.io/en/master/ray-air/experimental-features.html"
             )
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
