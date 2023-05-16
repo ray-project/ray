@@ -109,14 +109,13 @@ Ray Train Examples Using Loggers & Callbacks
 
             Logging Training Runs with MLflow
 
-    ---
-    :img-top: /images/pytorch_lightning_small.png
+    .. grid-item-card::
+        :img-top: /images/pytorch_lightning_small.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: lightning_experiment_tracking
-        :type: ref
-        :text: Use LightningTrainer with Wandb, CometML, MLFlow, and Tensorboard
-        :classes: btn-link btn-block stretched-link trackLightning
+        .. button-ref:: lightning_experiment_tracking
+
+            Using Experiment Tracking Tools in LightningTrainer
 
 
 Ray Train & Tune Integration Examples
