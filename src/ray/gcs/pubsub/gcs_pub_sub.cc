@@ -378,8 +378,15 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
     }
     last_batch_size_ = reply.pub_messages().size();
     for (auto& message : reply.pub_messages()) {
+      if (message.sequence_id() <= max_processed_sequence_id_) {
+        RAY_LOG(WARNING) << "Ignoring out of order message " << message.sequence_id();
+        continue;
+      }
       max_processed_sequence_id_ = message.sequence_id();
-      // TODO: Drop out of order messages
+      if (message.channel_type() != channel_type_) {
+        RAY_LOG(WARNING) << "Ignoring message from unsubscribed channel " << message.channel_type();
+        continue;
+      }
       queue_.emplace_back(std::move(message));
     }
   }
