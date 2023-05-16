@@ -3,6 +3,7 @@ import json
 import logging
 import random
 import time
+import traceback
 from typing import Dict, List, Tuple
 
 import ray
@@ -35,6 +36,7 @@ class HTTPProxyState:
     ):
         self._actor_handle = actor_handle
         self._actor_name = actor_name
+        self._node_id = node_id
         self._ready_obj_ref = self._actor_handle.ready.remote()
         self._status = HTTPProxyStatus.STARTING
         self._health_check_obj_ref = None
@@ -77,9 +79,10 @@ class HTTPProxyState:
 
     def update(self):
         if self._status == HTTPProxyStatus.STARTING:
-            try:
-                finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
-                if finished:
+            finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
+            if finished:
+                self._ready_obj_ref = None
+                try:
                     worker_id, log_file_path = json.loads(ray.get(finished[0]))
                     self.set_status(HTTPProxyStatus.HEALTHY)
                     self.update_actor_details(
@@ -87,8 +90,12 @@ class HTTPProxyState:
                         log_file_path=log_file_path,
                         status=self._status,
                     )
-            except Exception:
-                self.set_status(HTTPProxyStatus.UNHEALTHY)
+                except Exception:
+                    self.set_status(HTTPProxyStatus.UNHEALTHY)
+                    logger.warning(
+                        "Unexpected error occured when checking readiness of HTTP "
+                        f"Proxy on node {self._node_id}:\n{traceback.format_exc()}"
+                    )
             return
 
         # Perform periodic health checks

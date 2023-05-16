@@ -197,6 +197,7 @@ class ApplicationState:
                 finished, pending = ray.wait([self._deploy_obj_ref], timeout=0)
                 if pending:
                     return
+                self._deploy_obj_ref = None
                 try:
                     ray.get(finished[0])
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
@@ -207,7 +208,6 @@ class ApplicationState:
                     # properly with traceback.format_exc(). RayTaskError has its own
                     # custom __str__ function.
                     self._app_msg = f"Deploying app '{self._name}' failed:\n{str(e)}"
-                    self._deploy_obj_ref = None
                     logger.warning(self._app_msg)
                     return
                 except RuntimeEnvSetupError:
@@ -216,7 +216,14 @@ class ApplicationState:
                         f"Runtime env setup for app '{self._name}' "
                         f"failed:\n{traceback.format_exc()}"
                     )
-                    self._deploy_obj_ref = None
+                    logger.warning(self._app_msg)
+                    return
+                except Exception:
+                    self._status = ApplicationStatus.DEPLOY_FAILED
+                    self._app_msg = (
+                        "Unexpected error occured while deploying application "
+                        f"'{self._name}':\n{traceback.format_exc()}"
+                    )
                     logger.warning(self._app_msg)
                     return
             deployments_statuses = (
