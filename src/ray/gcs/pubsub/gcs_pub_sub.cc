@@ -374,7 +374,13 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
     mu_.Lock();
 
     if (publisher_id_ != reply.publisher_id()) {
+      if (publisher_id_ != "") {
+        RAY_LOG(DEBUG) << "Replied publisher_id " << reply.publisher_id()
+          << " different from " << publisher_id_ << ", this should only happen"
+          << " during GCS failover.";
+      }
       publisher_id_ = reply.publisher_id();
+      max_processed_sequence_id_ = 0;
     }
     last_batch_size_ = reply.pub_messages().size();
     for (auto& message : reply.pub_messages()) {
