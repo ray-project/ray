@@ -61,9 +61,15 @@ class _VariantIterator:
             current_value = self.next_value
             self._load_value()
             return current_value
-        current_value = self.iterable.pop(0)
+        try:
+            current_value = self.iterable.pop(0)
+        except:
+            raise StopIteration
         self._has_next = bool(self.iterable)
         return current_value
+
+    def __iter__(self):
+        return self
 
 
 class _TrialIterator:
@@ -348,6 +354,29 @@ class BasicVariantGenerator(SearchAlgorithm):
             random_state=self._random_state,
         )
 
+    def next_trial(self):
+        """Provides one Trial object to be queued into the TrialRunner.
+
+        Returns:
+            Trial: Returns a single trial.
+        """
+        if self.is_finished():
+            return None
+        if self.max_concurrent > 0 and len(self._live_trials) >= self.max_concurrent:
+            return None
+        if not self._trial_iter:
+            self._trial_iter = iter(self._trial_generator)
+        try:
+            trial = next(self._trial_iter)
+
+            self._live_trials.add(trial.trial_id)
+            return trial
+        except StopIteration:
+            self._trial_generator = []
+            self._trial_iter = None
+            self.set_finished()
+            return None
+
     def add_configurations(
         self, experiments: Union["Experiment", List["Experiment"], Dict[str, Dict]]
     ):
@@ -389,7 +418,7 @@ class BasicVariantGenerator(SearchAlgorithm):
             self._iterators.append(iterator)
             self._trial_generator = itertools.chain(self._trial_generator, iterator)
 
-    def next_trial(self):
+    def _next_trial(self):
         """Provides one Trial object to be queued into the TrialRunner.
 
         Returns:

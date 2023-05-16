@@ -55,6 +55,20 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
 
 
 from ray.tune.trainable.function_trainable import FunctionTrainable
+from dataclasses import dataclass
+
+
+@dataclass
+class _DataParallelTrainableConfig:
+    train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]]
+    train_loop_config: Optional[Dict] = None
+    backend_config: Optional[BackendConfig] = None
+    scaling_config: Optional[ScalingConfig] = None
+    dataset_config: Optional[Dict[str, DatasetConfig]] = None
+    run_config: Optional[RunConfig] = None
+    datasets: Optional[Dict[str, GenDataset]] = None
+    preprocessor: Optional["Preprocessor"] = None
+    resume_from_checkpoint: Optional[Checkpoint] = None
 
 
 class DataParallelTrainable(FunctionTrainable):
