@@ -4,13 +4,14 @@ import re
 from collections import defaultdict
 from typing import List, Optional, Dict, AsyncIterable, Tuple, Callable
 
-from ray.experimental.state.common import (
+from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
+from ray.util.state.common import (
     GetLogOptions,
     protobuf_to_task_state_dict,
     DEFAULT_RPC_TIMEOUT,
 )
-from ray.experimental.state.exception import DataSourceUnavailable
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.util.state.exception import DataSourceUnavailable
+from ray.util.state.state_manager import StateDataSourceClient
 
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,35 @@ class LogsManager:
             )
         assert node_id is not None
 
+    async def _resolve_job_filename(self, sub_job_id: str) -> Tuple[str, str]:
+        """Return the log file name and node id for a given job submission id.
+
+        Args:
+            sub_job_id: The job submission id.
+
+        Returns:
+            The log file name and node id.
+        """
+        job_infos = await self.client.get_job_info(timeout=DEFAULT_RPC_TIMEOUT)
+        target_job = None
+        for job_info in job_infos:
+            if job_info.submission_id == sub_job_id:
+                target_job = job_info
+                break
+        if target_job is None:
+            logger.info(f"Submission job ID {sub_job_id} not found.")
+            return None, None
+
+        node_id = job_info.driver_node_id
+        if node_id is None:
+            raise ValueError(
+                f"Job {sub_job_id} has no driver node id info. "
+                "This is likely a bug. Please file an issue."
+            )
+
+        log_filename = JOB_LOGS_PATH_TEMPLATE.format(submission_id=sub_job_id)
+        return node_id, log_filename
+
     async def _resolve_worker_file(
         self,
         node_id: str,
@@ -151,6 +181,7 @@ class LogsManager:
         get_actor_fn: Optional[Callable[[str], Dict]] = None,
         timeout: int = DEFAULT_RPC_TIMEOUT,
         suffix: str = "out",
+        submission_id: Optional[str] = None,
     ) -> Tuple[str, str]:
         """Return the file name given all options.
 
@@ -165,6 +196,7 @@ class LogsManager:
                 specified by `node_id`.
             suffix: Log suffix if no `log_filename` is provided, when
                 resolving by other ids'. Default to "out".
+            submission_id: The submission id for a submission job.
         """
         if actor_id:
             if get_actor_fn is None:
@@ -219,7 +251,6 @@ class LogsManager:
                     "Could not find log file for task attempt:"
                     f"{task_id}({attempt_number})"
                 )
-
             # Get the worker id and node id.
             task = protobuf_to_task_state_dict(task_event)
 
@@ -239,6 +270,13 @@ class LogsManager:
                 pid=None,
                 suffix=suffix,
                 timeout=timeout,
+            )
+        elif submission_id:
+            node_id, log_filename = await self._resolve_job_filename(submission_id)
+
+            logger.info(
+                f"Resolving job {submission_id} on node {node_id} with "
+                f"filename {log_filename}"
             )
 
         elif pid:
@@ -266,6 +304,7 @@ class LogsManager:
                 f"\ttask_id: {task_id}\n"
                 f"\tpid: {pid}\n"
                 f"\tsuffix: {suffix}\n"
+                f"\tsubmission_id: {submission_id}\n"
             )
         logger.info(f"Resolved log file: {log_filename} on node {node_id}")
         return log_filename, node_id
