@@ -3,6 +3,7 @@ import torch
 import pytest
 
 import ray
+from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -24,7 +25,7 @@ def assert_structure_equals(a, b):
     assert a.dtype == b.dtype
     assert a.shape == b.shape
     for i in range(len(a)):
-        assert np.array_equiv(a[i], b[i])
+        assert np.array_equiv(a[i], b[i]), (i, a, b)
 
 
 def test_list_of_scalars(ray_start_regular_shared):
@@ -121,6 +122,17 @@ def test_scalar_ragged_array_like(ray_start_regular_shared):
     assert_structure_equals(
         output, np.array([np.array([1, 2, 3]), np.array([1, 2])], dtype=object)
     )
+
+
+# https://github.com/ray-project/ray/issues/35340
+def test_complex_ragged_arrays(ray_start_regular_shared):
+    data = [[{"a": 1}, {"a": 2}, {"a": 3}], [{"b": 1}]]
+    output = do_map_batches(data)
+    assert_structure_equals(output, create_ragged_ndarray(data))
+
+    data = ["hi", 1, None, [[[[]]]], {"a": [[{"b": 2, "c": UserObj()}]]}, UserObj()]
+    output = do_map_batches(data)
+    assert_structure_equals(output, create_ragged_ndarray(data))
 
 
 if __name__ == "__main__":

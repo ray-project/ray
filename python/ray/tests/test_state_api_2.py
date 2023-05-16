@@ -252,6 +252,67 @@ def test_actor_repr_name(shutdown_only):
     wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="inner")
 
 
+def test_actor_task_with_repr_name():
+    @ray.remote
+    class ReprActor:
+        def __init__(self, x) -> None:
+            self.x = x
+
+        def __repr__(self) -> str:
+            return self.x
+
+        def f(self):
+            pass
+
+    a = ReprActor.remote(x="repr-name-a")
+    ray.get(a.f.remote())
+
+    def verify():
+        tasks = list_tasks(detail=True, filters=[("type", "=", "ACTOR_TASK")])
+        assert len(tasks) == 1, tasks
+        assert tasks[0].name == "repr-name-a.f"
+        assert tasks[0].func_or_class_name == "ReprActor.f"
+        return True
+
+    wait_for_condition(verify)
+
+    b = ReprActor.remote(x="repr-name-b")
+    ray.get(b.f.options(name="custom-name").remote())
+
+    def verify():
+        tasks = list_tasks(
+            detail=True,
+            filters=[("actor_id", "=", b._actor_id.hex()), ("type", "=", "ACTOR_TASK")],
+        )
+        assert len(tasks) == 1, tasks
+        assert tasks[0].name == "custom-name"
+        assert tasks[0].func_or_class_name == "ReprActor.f"
+        return True
+
+    wait_for_condition(verify)
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            pass
+
+    c = Actor.remote()
+    ray.get(c.f.remote())
+
+    def verify():
+        tasks = list_tasks(
+            detail=True,
+            filters=[("actor_id", "=", c._actor_id.hex()), ("type", "=", "ACTOR_TASK")],
+        )
+
+        assert len(tasks) == 1, tasks
+        assert tasks[0].name == "Actor.f"
+        assert tasks[0].func_or_class_name == "Actor.f"
+        return True
+
+    wait_for_condition(verify)
+
+
 if __name__ == "__main__":
     import sys
 
