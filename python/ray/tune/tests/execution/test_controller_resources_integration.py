@@ -91,6 +91,7 @@ def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     kwargs = {
         "stopping_criterion": {"training_iteration": 1},
         "placement_group_factory": PlacementGroupFactory([{"GPU": 0.75}]),
+        "sleep": 1,
     }
     trials = [Trial("__fake", **kwargs) for i in range(4)]
     for t in trials:
