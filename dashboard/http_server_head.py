@@ -9,10 +9,7 @@ import time
 from ray._private.utils import get_or_create_event_loop
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -23,7 +20,7 @@ from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 
 
 # Logger for this module. It should be configured at the entry point

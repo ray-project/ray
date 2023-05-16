@@ -4,14 +4,13 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.learner.learner_group import LearnerGroup
-from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHPs
+from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHyperparameters
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
 )
-from ray.rllib.core.rl_module.tests.test_marl_module import DEFAULT_POLICY_ID
 
 
 if TYPE_CHECKING:
@@ -24,6 +23,9 @@ if TYPE_CHECKING:
 
 
 Optimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
+
+
+DEFAULT_POLICY_ID = "default_policy"
 
 
 @DeveloperAPI
@@ -142,17 +144,17 @@ def get_learner_group(
 
     """
     if framework == "tf":
-        learner_hps = FrameworkHPs(eager_tracing=eager_tracing)
+        framework_hps = FrameworkHyperparameters(eager_tracing=eager_tracing)
     else:
-        learner_hps = None
+        framework_hps = None
     learner_spec = LearnerSpec(
         learner_class=get_learner_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
         optimizer_config={"lr": learning_rate},
-        learner_scaling_config=scaling_config,
-        learner_hyperparameters=learner_hps,
+        learner_group_scaling_config=scaling_config,
+        framework_hyperparameters=framework_hps,
     )
     lg = LearnerGroup(learner_spec)
 

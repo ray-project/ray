@@ -2,7 +2,7 @@ multi-agent-cartpole-crashing-pg:
     env: ray.rllib.examples.env.cartpole_crashing.MultiAgentCartPoleCrashing
     run: PG
     stop:
-        evaluation/episode_reward_mean: 300.0
+        evaluation/sampler_results/episode_reward_mean: 300.0
         num_env_steps_sampled: 300000
     config:
         # Works for both torch and tf.

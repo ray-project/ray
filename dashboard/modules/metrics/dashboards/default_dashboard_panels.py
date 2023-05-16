@@ -262,7 +262,7 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="{{Component}}",
             ),
             Target(
-                expr="node_mem_shared_bytes{{{global_filters}}}",
+                expr="sum(ray_node_mem_shared_bytes{{{global_filters}}})",
                 legend="shared_memory",
             ),
             Target(
@@ -393,6 +393,6 @@ default_dashboard_config = DashboardConfig(
     name="DEFAULT",
     default_uid="rayDefaultDashboard",
     panels=DEFAULT_GRAFANA_PANELS,
-    standard_global_filters=['SessionName="$SessionName"'],
+    standard_global_filters=['SessionName=~"$SessionName"'],
     base_json_file_name="default_grafana_dashboard_base.json",
 )

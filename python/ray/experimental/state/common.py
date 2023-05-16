@@ -1,16 +1,16 @@
+import datetime
 import json
 import logging
 import sys
 from abc import ABC
-from dataclasses import dataclass, field, fields
+from dataclasses import asdict, field, fields
 from enum import Enum, unique
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
-from ray.core.generated.gcs_pb2 import TaskEvents, TaskLogInfo
-from ray.dashboard.modules.job.common import JobInfo
+from ray.core.generated.gcs_pb2 import TaskEvents
 from ray.experimental.state.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
@@ -21,6 +21,20 @@ from ray.experimental.state.custom_types import (
     TypeWorkerExitType,
     TypeWorkerType,
 )
+from ray.experimental.state.exception import RayStateApiException
+
+try:
+    from pydantic.dataclasses import dataclass
+
+    from ray.dashboard.modules.job.pydantic_models import JobDetails
+
+except ImportError:
+    # pydantic is not available in the dashboard.
+    # We will use the dataclass from the standard library.
+    from dataclasses import dataclass
+
+    JobDetails = object
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +52,6 @@ RAY_MAX_LIMIT_FROM_API_SERVER = env_integer(
 RAY_MAX_LIMIT_FROM_DATA_SOURCE = env_integer(
     "RAY_MAX_LIMIT_FROM_DATA_SOURCE", 10 * 1000
 )  # 10k
-
-STATE_OBS_ALPHA_FEEDBACK_MSG = [
-    "\n==========ALPHA, FEEDBACK NEEDED ===============",
-    "State Observability APIs is currently in Alpha. ",
-    "If you have any feedback, you could do so at either way as below:",
-    "    1. Report bugs/issues with details: https://forms.gle/gh77mwjEskjhN8G46",
-    "    2. Follow up in #ray-state-observability-dogfooding slack channel of Ray: "
-    "https://tinyurl.com/2pm26m4a",
-    "==========================================================",
-]
 
 
 @unique
@@ -76,6 +80,43 @@ SupportedFilterType = Union[str, bool, int, float]
 PredicateType = str  # Literal["=", "!="]
 
 
+class Humanify:
+    """A class containing default methods to
+    convert units into a human readable string."""
+
+    def timestamp(x: float):
+        """Converts miliseconds to a datetime object."""
+        return str(datetime.datetime.fromtimestamp(x / 1000))
+
+    def memory(x: int):
+        """Converts raw bytes to a human readable memory size."""
+        if x >= 2**30:
+            return str(format(x / (2**30), ".3f")) + " GiB"
+        elif x >= 2**20:
+            return str(format(x / (2**20), ".3f")) + " MiB"
+        elif x >= 2**10:
+            return str(format(x / (2**10), ".3f")) + " KiB"
+        return str(format(x, ".3f")) + " B"
+
+    def duration(x: int):
+        """Converts miliseconds to a human readable duration."""
+        return str(datetime.timedelta(milliseconds=x))
+
+    def events(events: List[dict]):
+        """Converts a list of task events into a human readable format."""
+        for event in events:
+            if "created_ms" in event:
+                event["created_ms"] = Humanify.timestamp(event["created_ms"])
+        return events
+
+    def node_resources(resources: dict):
+        """Converts a node's resources into a human readable format."""
+        for resource in resources:
+            if "memory" in resource:
+                resources[resource] = Humanify.memory(resources[resource])
+        return resources
+
+
 @dataclass(init=True)
 class ListApiOptions:
     # Maximum number of entries to return
@@ -98,24 +139,13 @@ class ListApiOptions:
     # we should apply multiplier so that server side can finish
     # processing a request within timeout. Otherwise,
     # timeout will always lead Http timeout.
-    _server_timeout_multiplier: float = 0.8
+    server_timeout_multiplier: float = 0.8
 
-    # TODO(sang): Use Pydantic instead.
     def __post_init__(self):
-        assert isinstance(self.limit, int)
-        assert isinstance(self.timeout, int)
-        assert isinstance(self.detail, bool)
-        assert isinstance(self.exclude_driver, bool)
-        assert isinstance(self.filters, list) or self.filters is None, (
-            "filters must be a list type. Given filters: "
-            f"{self.filters} type: {type(self.filters)}. "
-            "Provide a list of tuples instead. "
-            "e.g., list_actors(filters=[('name', '=', 'ABC')])"
-        )
         # To return the data to users, when there's a partial failure
         # we need to have a timeout that's smaller than the users' timeout.
         # 80% is configured arbitrarily.
-        self.timeout = int(self.timeout * self._server_timeout_multiplier)
+        self.timeout = int(self.timeout * self.server_timeout_multiplier)
         assert self.timeout != 0, "0 second timeout is not supported."
         if self.filters is None:
             self.filters = []
@@ -156,7 +186,7 @@ class SummaryApiOptions:
     summary_by: Optional[str] = None
 
 
-def state_column(*, filterable: bool, detail: bool = False, **kwargs):
+def state_column(*, filterable: bool, detail: bool = False, format_fn=None, **kwargs):
     """A wrapper around dataclass.field to add additional metadata.
 
     The metadata is used to define detail / filterable option of
@@ -167,10 +197,16 @@ def state_column(*, filterable: bool, detail: bool = False, **kwargs):
         filterable: If True, the column can be used for filtering.
         kwargs: The same kwargs for the `dataclasses.field` function.
     """
-    m = {"detail": detail, "filterable": filterable}
+    m = {"detail": detail, "filterable": filterable, "format_fn": format_fn}
+    # Default for detail field is None since it could be missing.
+    if detail and "default" not in kwargs:
+        kwargs["default"] = None
+
     if "metadata" in kwargs:
+        # Metadata explicitly specified, so add detail and filterable if missing.
         kwargs["metadata"].update(m)
     else:
+        # Metadata not explicitly specified, so add it.
         kwargs["metadata"] = m
     return field(**kwargs)
 
@@ -200,14 +236,42 @@ class StateSchema(ABC):
     # Returns {"column_a", "column_b"}
     s.columns()
     ```
+
+    In addition, the schema also provides a humanify abstract method to
+    convert the state object into something human readable, ready for printing.
+
+    Subclasses should override this method, providing logic to convert its own fields
+    to something human readable, packaged and returned in a dict.
+
+    Each field that wants to be humanified should include a 'format_fn' key in its
+    metadata dictionary.
     """
 
     @classmethod
-    def list_columns(cls) -> List[str]:
+    def humanify(cls, state: dict) -> dict:
+        """Convert the given state object into something human readable."""
+        for f in fields(cls):
+            if (
+                f.metadata.get("format_fn") is not None
+                and f.name in state
+                and state[f.name] is not None
+            ):
+                try:
+                    state[f.name] = f.metadata["format_fn"](state[f.name])
+                except Exception as e:
+                    logger.error(f"Failed to format {f.name}:{state[f.name]} with {e}")
+        return state
+
+    @classmethod
+    def list_columns(cls, detail: bool = True) -> List[str]:
         """Return a list of columns."""
         cols = []
         for f in fields(cls):
-            cols.append(f.name)
+            if detail:
+                cols.append(f.name)
+            elif not f.metadata.get("detail", False):
+                cols.append(f.name)
+
         return cols
 
     @classmethod
@@ -230,11 +294,7 @@ class StateSchema(ABC):
 
         Base columns mean columns to return when detail == False.
         """
-        base = set()
-        for f in fields(cls):
-            if not f.metadata.get("detail", False):
-                base.add(f.name)
-        return base
+        return set(cls.list_columns(detail=False))
 
     @classmethod
     def detail_columns(cls) -> Set[str]:
@@ -242,19 +302,20 @@ class StateSchema(ABC):
 
         Detail columns mean columns to return when detail == True.
         """
-        detail = set()
-        for f in fields(cls):
-            if f.metadata.get("detail", False):
-                detail.add(f.name)
-        return detail
+        return set(cls.list_columns(detail=True))
 
-    def __post_init__(self):
-        for f in fields(self):
-            v = getattr(self, f.name)
-            assert isinstance(getattr(self, f.name), f.type), (
-                f"The field {f.name} has a wrong type {type(v)}. "
-                f"Expected type: {f.type}"
-            )
+    def asdict(self):
+        return asdict(self)
+
+    # Allow dict like access on the class directly for backward compatibility.
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        setattr(self, key, value)
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
 
 
 def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dict:
@@ -287,9 +348,10 @@ class GetLogOptions:
     filename: Optional[str] = None
     # The actor id of the log. It is used only for worker logs.
     actor_id: Optional[str] = None
-    # The task id of the log. It is used only for worker logs.
-    # This is currently not working. TODO(sang): Support task log.
+    # The task id of the log.
     task_id: Optional[str] = None
+    # The attempt number of the task.
+    attempt_number: int = 0
     # The pid of the log. It is used only for worker logs.
     pid: Optional[int] = None
     # Total log lines to return.
@@ -298,7 +360,11 @@ class GetLogOptions:
     # Should be used only when media_type == stream.
     interval: Optional[float] = None
     # The suffix of the log file if file resolution not through filename directly.
-    suffix: Optional[str] = None
+    # Default to "out".
+    suffix: str = "out"
+    # The job submission id for submission job. This doesn't work for driver job
+    # since Ray doesn't log driver logs to file in the ray logs directory.
+    submission_id: Optional[str] = None
 
     def __post_init__(self):
         if self.pid:
@@ -306,9 +372,6 @@ class GetLogOptions:
         if self.interval:
             self.interval = float(self.interval)
         self.lines = int(self.lines)
-
-        if self.task_id:
-            raise NotImplementedError("task_id is not supported yet.")
 
         if self.media_type == "file":
             assert self.interval is None
@@ -324,18 +387,26 @@ class GetLogOptions:
                 "Both node_id and node_ip are given. Only one of them can be provided. "
                 f"Given node id: {self.node_id}, given node ip: {self.node_ip}"
             )
-        if not (self.actor_id or self.task_id or self.pid or self.filename):
+        if not (
+            self.actor_id
+            or self.task_id
+            or self.pid
+            or self.filename
+            or self.submission_id
+        ):
             raise ValueError(
-                "None of actor_id, task_id, pid, or filename is provided. "
-                "At least one of them is required to fetch logs."
+                "None of actor_id, task_id, pid, submission_id or filename "
+                "is provided. At least one of them is required to fetch logs."
             )
-        if self.filename and self.suffix:
-            raise ValueError("suffix should not be provided together with filename.")
+
+        if self.suffix not in ["out", "err"]:
+            raise ValueError(
+                f"Invalid suffix: {self.suffix}. Must be one of 'out' or 'err'."
+            )
 
 
 # See the ActorTableData message in gcs.proto for all potential options that
 # can be included in this class.
-# TODO(sang): Replace it with Pydantic or gRPC schema (once interface is finalized).
 @dataclass(init=True)
 class ActorState(StateSchema):
     """Actor State"""
@@ -368,23 +439,23 @@ class ActorState(StateSchema):
     #: If the actor is restarting, it could be the node id
     #: of the dead actor (and it will be re-updated when
     #: the actor is successfully restarted).
-    node_id: str = state_column(filterable=True)
+    node_id: Optional[str] = state_column(filterable=True)
     #: The pid of the actor. 0 if it is not created yet.
-    pid: int = state_column(filterable=True)
+    pid: Optional[int] = state_column(filterable=True)
     #: The namespace of the actor.
-    ray_namespace: str = state_column(filterable=True)
+    ray_namespace: Optional[str] = state_column(filterable=True)
     #: The runtime environment information of the actor.
-    serialized_runtime_env: str = state_column(filterable=False, detail=True)
+    serialized_runtime_env: Optional[str] = state_column(filterable=False, detail=True)
     #: The resource requirement of the actor.
-    required_resources: dict = state_column(filterable=False, detail=True)
+    required_resources: Optional[dict] = state_column(filterable=False, detail=True)
     #: Actor's death information in detail. None if the actor is not dead yet.
     death_cause: Optional[dict] = state_column(filterable=False, detail=True)
     #: True if the actor is detached. False otherwise.
-    is_detached: bool = state_column(filterable=False, detail=True)
+    is_detached: Optional[bool] = state_column(filterable=False, detail=True)
     #: The placement group id that's associated with this actor.
-    placement_group_id: str = state_column(detail=True, filterable=True)
+    placement_group_id: Optional[str] = state_column(detail=True, filterable=True)
     #: Actor's repr name if a customized __repr__ method exists, else empty string.
-    repr_name: str = state_column(detail=True, filterable=True)
+    repr_name: Optional[str] = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=True)
@@ -409,11 +480,11 @@ class PlacementGroupState(StateSchema):
     #:   bundles are dead because they were on dead nodes.
     state: TypePlacementGroupStatus = state_column(filterable=True)
     #: The bundle specification of the placement group.
-    bundles: dict = state_column(filterable=False, detail=True)
+    bundles: Optional[List[dict]] = state_column(filterable=False, detail=True)
     #: True if the placement group is detached. False otherwise.
-    is_detached: bool = state_column(filterable=True, detail=True)
+    is_detached: Optional[bool] = state_column(filterable=True, detail=True)
     #: The scheduling stats of the placement group.
-    stats: dict = state_column(filterable=False, detail=True)
+    stats: Optional[dict] = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)
@@ -424,6 +495,8 @@ class NodeState(StateSchema):
     node_id: str = state_column(filterable=True)
     #: The ip address of the node.
     node_ip: str = state_column(filterable=True)
+    #: If this is a head node.
+    is_head_node: bool = state_column(filterable=True)
     #: The state of the node.
     #:
     #: ALIVE: The node is alive.
@@ -432,28 +505,70 @@ class NodeState(StateSchema):
     #: The name of the node if it is given by the name argument.
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
-    resources_total: dict = state_column(filterable=False)
+    resources_total: dict = state_column(
+        filterable=False, format_fn=Humanify.node_resources
+    )
     #: The time when the node (raylet) starts.
-    start_time_ms: int = state_column(filterable=False, detail=True)
+    start_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
     #: The time when the node exits. The timestamp could be delayed
     #: if the node is dead unexpectedly (could be delayed
     # up to 30 seconds).
-    end_time_ms: int = state_column(filterable=False, detail=True)
+    end_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
 
 
-class JobState(JobInfo, StateSchema):
-    """The state of the job that's submitted by Ray's Job APIs"""
+# NOTE:
+# Declaring this as dataclass would make __init__ not being called properly.
+class JobState(StateSchema, JobDetails):
+    """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
-    @classmethod
-    def list_columns(cls) -> List[str]:
-        cols = ["job_id"]
-        for f in fields(cls):
-            cols.append(f.name)
-        return cols
+    def __init__(self, **kwargs):
+        JobDetails.__init__(self, **kwargs)
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
-        return {"status", "entrypoint", "error_type"}
+        # We are not doing any filtering since filtering is currently done
+        # at the backend.
+        return {"job_id", "type", "status", "submission_id"}
+
+    @classmethod
+    def humanify(cls, state: dict) -> dict:
+        return state
+
+    @classmethod
+    def list_columns(cls, detail: bool = False) -> List[str]:
+        if not detail:
+            return [
+                "job_id",
+                "submission_id",
+                "entrypoint",
+                "type",
+                "status",
+                "message",
+                "error_type",
+                "driver_info",
+            ]
+        if isinstance(JobDetails, object):
+            # We don't have pydantic in the dashboard. This is because
+            # we call this method at module import time, so we need to
+            # check if the class is a pydantic model.
+            return []
+
+        return JobDetails.__fields__
+
+    def asdict(self):
+        return JobDetails.dict(self)
+
+    @classmethod
+    def schema_dict(cls) -> Dict[str, Any]:
+        schema_types = cls.schema()["properties"]
+        # Get type name to actual type mapping.
+        return {
+            k: v["type"] for k, v in schema_types.items() if v.get("type") is not None
+        }
 
 
 @dataclass(init=True)
@@ -497,27 +612,35 @@ class WorkerState(StateSchema):
     #: -> worker_launched_time_ms (process started).
     #: -> start_time_ms (worker is ready to be used).
     #: -> end_time_ms (worker is destroyed).
-    worker_launch_time_ms: int = state_column(filterable=False, detail=True)
+    worker_launch_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
     #: The time worker is succesfully launched
     #: -1 if the value doesn't exist.
-    worker_launched_time_ms: int = state_column(filterable=False, detail=True)
+    worker_launched_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
     #: The time when the worker is started and initialized.
     #: 0 if the value doesn't exist.
-    start_time_ms: int = state_column(filterable=False, detail=True)
+    start_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
     #: The time when the worker exits. The timestamp could be delayed
     #: if the worker is dead unexpectedly.
     #: 0 if the value doesn't exist.
-    end_time_ms: int = state_column(filterable=False, detail=True)
+    end_time_ms: Optional[int] = state_column(
+        filterable=False, detail=True, format_fn=Humanify.timestamp
+    )
 
 
 @dataclass(init=True)
 class ClusterEventState(StateSchema):
     severity: str = state_column(filterable=True)
-    time: int = state_column(filterable=False)
+    time: str = state_column(filterable=False)
     source_type: str = state_column(filterable=True)
     message: str = state_column(filterable=False)
-    event_id: int = state_column(filterable=True)
-    custom_fields: dict = state_column(filterable=False, detail=True)
+    event_id: str = state_column(filterable=True)
+    custom_fields: Optional[dict] = state_column(filterable=False, detail=True)
 
 
 @dataclass(init=True)
@@ -538,13 +661,9 @@ class TaskState(StateSchema):
     state: TypeTaskStatus = state_column(filterable=True)
     #: The job id of this task.
     job_id: str = state_column(filterable=True)
-    #: Id of the node that runs the task. If the task is retried, it could
-    #: contain the node id of the previous executed task.
-    #: If empty, it means the task hasn't been scheduled yet.
-    node_id: str = state_column(filterable=True)
     #: The actor id that's associated with this task.
     #: It is empty if there's no relevant actors.
-    actor_id: str = state_column(filterable=True)
+    actor_id: Optional[str] = state_column(filterable=True)
     #: The type of the task.
     #:
     #: - NORMAL_TASK: Tasks created by `func.remote()``
@@ -556,37 +675,53 @@ class TaskState(StateSchema):
     #: if the type is a task or an actor task.
     #: It is the name of the class if it is a actor scheduling task.
     func_or_class_name: str = state_column(filterable=True)
-    #: The language of the task. E.g., Python, Java, or Cpp.
-    language: str = state_column(detail=True, filterable=True)
-    #: The required resources to execute the task.
-    required_resources: dict = state_column(detail=True, filterable=False)
-    #: The runtime environment information for the task.
-    runtime_env_info: str = state_column(detail=True, filterable=False)
     #: The parent task id. If the parent is a normal task, it will be the task's id.
     #: If the parent runs in a concurrent actor (async actor or threaded actor),
     #: it will be the actor's creation task id.
     parent_task_id: str = state_column(filterable=True)
-    #: The placement group id that's associated with this task.
-    placement_group_id: str = state_column(detail=True, filterable=True)
+    #: Id of the node that runs the task. If the task is retried, it could
+    #: contain the node id of the previous executed task.
+    #: If empty, it means the task hasn't been scheduled yet.
+    node_id: Optional[str] = state_column(filterable=True)
     #: The worker id that's associated with this task.
-    worker_id: str = state_column(filterable=True)
+    worker_id: Optional[str] = state_column(filterable=True)
+    #: Task error type.
+    error_type: Optional[str] = state_column(filterable=True)
+    #: The language of the task. E.g., Python, Java, or Cpp.
+    language: Optional[str] = state_column(detail=True, filterable=True)
+    #: The required resources to execute the task.
+    required_resources: Optional[dict] = state_column(detail=True, filterable=False)
+    #: The runtime environment information for the task.
+    runtime_env_info: Optional[dict] = state_column(detail=True, filterable=False)
+    #: The placement group id that's associated with this task.
+    placement_group_id: Optional[str] = state_column(detail=True, filterable=True)
     #: The list of events of the given task.
     #: Refer to src/ray/protobuf/common.proto for a detailed explanation of the state
     #: breakdowns and typical state transition flow.
-    events: List[dict] = state_column(detail=True, filterable=False)
+    events: Optional[List[dict]] = state_column(
+        detail=True, filterable=False, format_fn=Humanify.events
+    )
     #: The list of profile events of the given task.
-    profiling_data: List[dict] = state_column(detail=True, filterable=False)
+    profiling_data: Optional[dict] = state_column(detail=True, filterable=False)
     #: The time when the task is created. A Unix timestamp in ms.
-    creation_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    creation_time_ms: Optional[int] = state_column(
+        detail=True,
+        filterable=False,
+        format_fn=Humanify.timestamp,
+    )
     #: The time when the task starts to run. A Unix timestamp in ms.
-    start_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    start_time_ms: Optional[int] = state_column(
+        detail=True,
+        filterable=False,
+        format_fn=Humanify.timestamp,
+    )
     #: The time when the task is finished or failed. A Unix timestamp in ms.
-    end_time_ms: Optional[int] = state_column(detail=True, filterable=False)
+    end_time_ms: Optional[int] = state_column(
+        detail=True, filterable=False, format_fn=Humanify.timestamp
+    )
     #: The task logs info, e.g. offset into the worker log file when the task
     #: starts/finishes.
-    task_log_info: Optional[TaskLogInfo] = state_column(detail=True, filterable=False)
-    #: Task error type.
-    error_type: Optional[str] = state_column(detail=False, filterable=True)
+    task_log_info: Optional[dict] = state_column(detail=True, filterable=False)
     #: Task error detail info.
     error_message: Optional[str] = state_column(detail=True, filterable=False)
 
@@ -598,7 +733,7 @@ class ObjectState(StateSchema):
     #: The id of the object.
     object_id: str = state_column(filterable=True)
     #: The size of the object in mb.
-    object_size: int = state_column(filterable=True)
+    object_size: int = state_column(filterable=True, format_fn=Humanify.memory)
     #: The status of the task that creates the object.
     #:
     #: - NIL: We don't have a status for this task because we are not the owner or the
@@ -652,16 +787,18 @@ class RuntimeEnvState(StateSchema):
     """Runtime Environment State"""
 
     #: The runtime environment spec.
-    runtime_env: str = state_column(filterable=True)
+    runtime_env: dict = state_column(filterable=True)
     #: Whether or not the runtime env creation has succeeded.
     success: bool = state_column(filterable=True)
     #: The latency of creating the runtime environment.
     #: Available if the runtime env is successfully created.
-    creation_time_ms: Optional[float] = state_column(filterable=False)
+    creation_time_ms: Optional[float] = state_column(
+        filterable=False, format_fn=Humanify.timestamp
+    )
     #: The node id of this runtime environment.
     node_id: str = state_column(filterable=True)
     #: The number of actors and tasks that use this runtime environment.
-    ref_cnt: int = state_column(detail=True, filterable=False)
+    ref_cnt: Optional[int] = state_column(detail=True, filterable=False)
     #: The error message if the runtime environment creation has failed.
     #: Available if the runtime env is failed to be created.
     error: Optional[str] = state_column(detail=True, filterable=True)
@@ -728,34 +865,16 @@ class ListApiResponse:
     # Number of resources after filtering
     num_filtered: int
     # Returned data. None if no data is returned.
-    result: List[
-        Union[
-            ActorState,
-            PlacementGroupState,
-            NodeState,
-            JobState,
-            WorkerState,
-            TaskState,
-            ObjectState,
-            RuntimeEnvState,
-        ]
-    ]
+    result: List[Dict]
     # List API can have a partial failure if queries to
     # all sources fail. For example, getting object states
     # require to ping all raylets, and it is possible some of
     # them fails. Note that it is impossible to guarantee high
     # availability of data because ray's state information is
     # not replicated.
-    partial_failure_warning: str = ""
+    partial_failure_warning: Optional[str] = ""
     # A list of warnings to print.
     warnings: Optional[List[str]] = None
-
-    def __post_init__(self):
-        assert self.total is not None
-        assert self.num_after_truncation is not None
-        assert self.num_filtered is not None
-        assert self.result is not None
-        assert isinstance(self.result, list)
 
 
 """
@@ -1296,7 +1415,7 @@ class SummaryApiResponse:
     # Number of resources after filtering
     num_filtered: int
     result: StateSummary = None
-    partial_failure_warning: str = ""
+    partial_failure_warning: Optional[str] = ""
     # A list of warnings to print.
     warnings: Optional[List[str]] = None
 
@@ -1455,3 +1574,19 @@ def remove_ansi_escape_codes(text: str) -> str:
     import re
 
     return re.sub(r"\x1b[^m]*m", "", text)
+
+
+def dict_to_state(d: Dict, state_schema: StateSchema) -> StateSchema:
+    """Convert a dict to a state schema.
+
+    Args:
+        d: a dict to convert.
+        state_schema: a schema to convert to.
+
+    Returns:
+        A state schema.
+    """
+    try:
+        return resource_to_schema(state_schema)(**d)
+    except Exception as e:
+        raise RayStateApiException(f"Failed to convert {d} to StateSchema: {e}") from e

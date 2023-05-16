@@ -5,7 +5,7 @@ Ray Glossary
 
 On this page you find a list of important terminology used throughout the Ray
 documentation, sorted alphabetically. If you're interested in a glossary for
-Ray Data specifically, please see the :ref:`Ray Datasets Glossary<datasets_glossary>`.
+Ray Data specifically, please see the :ref:`Ray Data Glossary<datasets_glossary>`.
 
 .. glossary::
 
@@ -379,7 +379,7 @@ Ray Data specifically, please see the :ref:`Ray Datasets Glossary<datasets_gloss
         on input data with a trained model.
 
     Preprocessor
-        :ref:`An interface used to preprocess a Ray Dataset<air-preprocessor-ref>` for
+        :ref:`An interface used to preprocess a Dataset<air-preprocessor-ref>` for
         training and inference (prediction) with other AIR components. Preprocessors
         can be stateful, as they can be fitted on the training dataset before being
         used to transform the training and evaluation datasets.

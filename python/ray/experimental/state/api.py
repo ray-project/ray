@@ -17,19 +17,23 @@ from ray.experimental.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
+    ClusterEventState,
     GetApiOptions,
     GetLogOptions,
+    JobState,
     ListApiOptions,
     NodeState,
     ObjectState,
     PlacementGroupState,
     PredicateType,
+    RuntimeEnvState,
     StateResource,
     SummaryApiOptions,
     SummaryResource,
     SupportedFilterType,
     TaskState,
     WorkerState,
+    dict_to_state,
 )
 from ray.experimental.state.exception import RayStateApiException, ServerUnavailable
 
@@ -248,6 +252,7 @@ class StateApiClient(SubmissionClient):
             WorkerState,
             TaskState,
             List[ObjectState],
+            JobState,
         ]
     ]:
         """Get resources states by id
@@ -262,12 +267,13 @@ class StateApiClient(SubmissionClient):
                 latency or failed query information.
 
         Returns:
-            None if not found, and if found, a dictionarified:
+            None if not found, and if found:
             - ActorState for actors
             - PlacementGroupState for placement groups
             - NodeState for nodes
             - WorkerState for workers
             - TaskState for tasks
+            - JobState for jobs
 
             Empty list for objects if not found, or list of ObjectState for objects
 
@@ -290,6 +296,7 @@ class StateApiClient(SubmissionClient):
             StateResource.WORKERS: "worker_id",
             StateResource.TASKS: "task_id",
             StateResource.OBJECTS: "object_id",
+            StateResource.JOBS: "submission_id",
         }
         if resource not in RESOURCE_ID_KEY_NAME:
             raise ValueError(f"Can't get {resource.name} by id.")
@@ -312,6 +319,7 @@ class StateApiClient(SubmissionClient):
         if len(result) == 0:
             return None
 
+        result = [dict_to_state(d, resource) for d in result]
         if resource == StateResource.OBJECTS:
             # NOTE(rickyyx):
             # There might be multiple object entries for a single object id
@@ -448,7 +456,19 @@ class StateApiClient(SubmissionClient):
         options: ListApiOptions,
         raise_on_missing_output: bool,
         _explain: bool = False,
-    ) -> List[Dict]:
+    ) -> List[
+        Union[
+            ActorState,
+            JobState,
+            NodeState,
+            TaskState,
+            ObjectState,
+            PlacementGroupState,
+            RuntimeEnvState,
+            WorkerState,
+            ClusterEventState,
+        ]
+    ]:
         """List resources states
 
         Args:
@@ -472,6 +492,7 @@ class StateApiClient(SubmissionClient):
             when timeout occurs.
 
         """
+
         endpoint = f"/api/v0/{resource.value}"
         params = self._make_param(options)
         list_api_response = self._make_http_get_request(
@@ -484,7 +505,7 @@ class StateApiClient(SubmissionClient):
             self._raise_on_missing_output(resource, list_api_response)
         if _explain:
             self._print_api_warning(resource, list_api_response)
-        return list_api_response["result"]
+        return [dict_to_state(d, resource) for d in list_api_response["result"]]
 
     def summary(
         self,
@@ -548,7 +569,7 @@ def get_actor(
             failed query information.
 
     Returns:
-        None if actor not found, or dictionarified
+        None if actor not found, or
         :class:`ActorState <ray.experimental.state.common.ActorState>`.
 
     Raises:
@@ -560,14 +581,36 @@ def get_actor(
     )
 
 
-# TODO(rickyyx:alpha-obs)
 def get_job(
     id: str,
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[Dict]:
-    raise NotImplementedError("Get Job by id is currently not supported")
+) -> Optional[JobState]:
+    """Get a submission job detail by id.
+
+    Args:
+        id: Submission ID obtained from job API.
+        address: Ray bootstrap address, could be `auto`, `localhost:6379`.
+            If None, it will be resolved automatically from an initialized ray.
+        timeout: Max timeout value for the state API requests made.
+        _explain: Print the API information such as API latency or
+            failed query information.
+
+    Returns:
+        None if job not found, or
+        :class:`JobState <ray.experimental.state.common.JobState>`.
+
+    Raises:
+        Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
+            failed to query the data.
+    """  # noqa: E501
+    return StateApiClient(address=address).get(
+        StateResource.JOBS,
+        id,
+        GetApiOptions(timeout=timeout),
+        _explain=_explain,
+    )
 
 
 def get_placement_group(
@@ -575,7 +618,7 @@ def get_placement_group(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[Dict]:
+) -> Optional[PlacementGroupState]:
     """Get a placement group by id.
 
     Args:
@@ -587,7 +630,7 @@ def get_placement_group(
             failed query information.
 
     Returns:
-        None if actor not found, or dictionarified
+        None if actor not found, or
         :class:`~ray.experimental.state.common.PlacementGroupState`.
 
     Raises:
@@ -607,7 +650,7 @@ def get_node(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[Dict]:
+) -> Optional[NodeState]:
     """Get a node by id.
 
     Args:
@@ -619,7 +662,7 @@ def get_node(
             failed query information.
 
     Returns:
-        None if actor not found, or dictionarified
+        None if actor not found, or
         :class:`NodeState <ray.experimental.state.common.NodeState>`.
 
     Raises:
@@ -639,7 +682,7 @@ def get_worker(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[Dict]:
+) -> Optional[WorkerState]:
     """Get a worker by id.
 
     Args:
@@ -651,7 +694,7 @@ def get_worker(
             failed query information.
 
     Returns:
-        None if actor not found, or dictionarified
+        None if actor not found, or
         :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
 
     Raises:
@@ -671,7 +714,7 @@ def get_task(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[Dict]:
+) -> Optional[TaskState]:
     """Get task attempts of a task by id.
 
     Args:
@@ -683,7 +726,7 @@ def get_task(
             failed query information.
 
     Returns:
-        None if task not found, or a list of dictionarified
+        None if task not found, or a list of
         :class:`~ray.experimental.state.common.TaskState`
         from the task attempts.
 
@@ -704,7 +747,7 @@ def get_objects(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> List[Dict]:
+) -> List[ObjectState]:
     """Get objects by id.
 
     There could be more than 1 entry returned since an object could be
@@ -719,7 +762,7 @@ def get_objects(
             failed query information.
 
     Returns:
-        List of dictionarified
+        List of
         :class:`~ray.experimental.state.common.ObjectState`.
 
     Raises:
@@ -742,7 +785,7 @@ def list_actors(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-) -> List[Dict]:
+) -> List[ActorState]:
     """List actors in the cluster.
 
     Args:
@@ -761,7 +804,7 @@ def list_actors(
             failed query information.
 
     Returns:
-        List of dictionarified
+        List of
         :class:`ActorState <ray.experimental.state.common.ActorState>`.
 
     Raises:
@@ -789,7 +832,7 @@ def list_placement_groups(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-) -> List[Dict]:
+) -> List[PlacementGroupState]:
     """List placement groups in the cluster.
 
     Args:
@@ -833,7 +876,7 @@ def list_nodes(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-) -> List[Dict]:
+) -> List[NodeState]:
     """List nodes in the cluster.
 
     Args:
@@ -877,7 +920,7 @@ def list_jobs(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-) -> List[Dict]:
+) -> List[JobState]:
     """List jobs submitted to the cluster by :ref: `ray job submission <jobs-overview>`.
 
     Args:
@@ -921,7 +964,7 @@ def list_workers(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-) -> List[Dict]:
+) -> List[WorkerState]:
     """List workers in the cluster.
 
     Args:
@@ -940,7 +983,7 @@ def list_workers(
             failed query information.
 
     Returns:
-        List of dictionarified
+        List of
         :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
 
     Raises:
@@ -965,7 +1008,7 @@ def list_tasks(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-) -> List[Dict]:
+) -> List[TaskState]:
     """List tasks in the cluster.
 
     Args:
@@ -984,8 +1027,8 @@ def list_tasks(
             failed query information.
 
     Returns:
-        List of dictionarified
-        :class:`WorkerState <ray.experimental.state.common.WorkerState>`.
+        List of
+        :class:`TaskState <ray.experimental.state.common.TaskState>`.
 
     Raises:
         Exceptions: :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
@@ -1009,7 +1052,7 @@ def list_objects(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-) -> List[Dict]:
+) -> List[ObjectState]:
     """List objects in the cluster.
 
     Args:
@@ -1028,7 +1071,7 @@ def list_objects(
             failed query information.
 
     Returns:
-        List of dictionarified
+        List of
         :class:`ObjectState <ray.experimental.state.common.ObjectState>`.
 
     Raises:
@@ -1053,7 +1096,7 @@ def list_runtime_envs(
     detail: bool = False,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-) -> List[Dict]:
+) -> List[RuntimeEnvState]:
     """List runtime environments in the cluster.
 
     Args:
@@ -1072,7 +1115,7 @@ def list_runtime_envs(
             failed query information.
 
     Returns:
-        List of dictionarified
+        List of
         :class:`RuntimeEnvState <ray.experimental.state.common.RuntimeEnvState>`.
 
     Raises:
@@ -1124,9 +1167,11 @@ def get_log(
     follow: bool = False,
     tail: int = -1,
     timeout: int = DEFAULT_RPC_TIMEOUT,
-    suffix: Optional[str] = None,
+    suffix: str = "out",
     encoding: Optional[str] = "utf-8",
     errors: Optional[str] = "strict",
+    submission_id: Optional[str] = None,
+    attempt_number: int = 0,
     _interval: Optional[float] = None,
 ) -> Generator[str, None, None]:
     """Retrieve log file based on file name or some entities ids (pid, actor id, task id).
@@ -1157,11 +1202,13 @@ def get_log(
         tail: Number of lines to get from the end of the log file. Set to -1 for getting
             the entire log.
         timeout: Max timeout for requests made when getting the logs.
-        suffix: The suffix of the log file if query by id of tasks/workers/actors.
+        suffix: The suffix of the log file if query by id of tasks/workers/actors. Default to "out".
         encoding: The encoding used to decode the content of the log file. Default is
             "utf-8". Use None to get binary data directly.
         errors: The error handling scheme to use for decoding errors. Default is
             "strict". See https://docs.python.org/3/library/codecs.html#error-handlers
+        submission_id: Job submission ID if getting log from a submission job.
+        attempt_number: The attempt number of the task if getting logs generated by a task.
         _interval: The interval in secs to print new logs when `follow=True`.
 
     Return:
@@ -1187,11 +1234,13 @@ def get_log(
         media_type=media_type,
         timeout=timeout,
         suffix=suffix,
+        submission_id=submission_id,
+        attempt_number=attempt_number,
     )
     options_dict = {}
     for field in fields(options):
         option_val = getattr(options, field.name)
-        if option_val:
+        if option_val is not None:
             options_dict[field.name] = option_val
 
     with requests.get(

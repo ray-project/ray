@@ -27,7 +27,7 @@ export type Task = {
   state: TypeTaskStatus;
   job_id: string;
   node_id: string;
-  actor_id: string;
+  actor_id: string | null;
   placement_group_id: string | null;
   type: TypeTaskType;
   func_or_class_name: string;

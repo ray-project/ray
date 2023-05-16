@@ -5,6 +5,10 @@ from libcpp.vector cimport vector as c_vector
 from ray.includes.common cimport (
     CObjectLocation,
     CGcsClientOptions,
+    CPythonGcsClient,
+    CPythonGcsPublisher,
+    kWorkerSetupHookKeyName,
+    kResourceUnitScaling,
 )
 
 
@@ -22,3 +26,7 @@ cdef class GcsClientOptions:
 
     cdef CGcsClientOptions* native(self):
         return <CGcsClientOptions*>(self.inner.get())
+
+
+WORKER_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
+RESOURCE_UNIT_SCALING = kResourceUnitScaling

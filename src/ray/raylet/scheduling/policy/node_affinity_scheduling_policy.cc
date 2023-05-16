@@ -22,25 +22,21 @@ scheduling::NodeID NodeAffinitySchedulingPolicy::Schedule(
   RAY_CHECK(options.scheduling_type == SchedulingType::NODE_AFFINITY);
 
   scheduling::NodeID target_node_id = scheduling::NodeID(options.node_affinity_node_id);
-  bool target_feasible =
-      nodes_.contains(target_node_id) && is_node_alive_(target_node_id) &&
-      nodes_.at(target_node_id).GetLocalView().IsFeasible(resource_request);
-
-  if (options.node_affinity_soft) {
-    if (target_feasible &&
-        nodes_.at(target_node_id).GetLocalView().IsAvailable(resource_request)) {
+  if (nodes_.contains(target_node_id) && is_node_alive_(target_node_id) &&
+      nodes_.at(target_node_id).GetLocalView().IsFeasible(resource_request)) {
+    if (!options.node_affinity_spill_on_unavailable) {
       return target_node_id;
-    } else {
-      options.scheduling_type = SchedulingType::HYBRID;
-      return hybrid_policy_.Schedule(resource_request, options);
-    }
-  } else {
-    if (target_feasible) {
+    } else if (nodes_.at(target_node_id).GetLocalView().IsAvailable(resource_request)) {
       return target_node_id;
-    } else {
-      return scheduling::NodeID::Nil();
     }
   }
+
+  if (!options.node_affinity_soft) {
+    return scheduling::NodeID::Nil();
+  }
+
+  options.scheduling_type = SchedulingType::HYBRID;
+  return hybrid_policy_.Schedule(resource_request, options);
 }
 
 }  // namespace raylet_scheduling_policy

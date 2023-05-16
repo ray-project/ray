@@ -114,7 +114,7 @@ Constructor
     :toctree: doc/
 
     MultiAgentRLModule
-    MultiAgentRLModule.build
+    MultiAgentRLModule.setup
     MultiAgentRLModule.as_multi_agent
 
 Modifying the underlying RL modules

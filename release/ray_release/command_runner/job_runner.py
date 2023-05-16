@@ -118,7 +118,7 @@ class JobRunner(CommandRunner):
 
         return time_taken
 
-    def get_last_logs(self, scd_id: Optional[str] = None):
+    def get_last_logs_ex(self, scd_id: Optional[str] = None):
         try:
             return self.job_manager.get_last_logs()
         except Exception as e:

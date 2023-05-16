@@ -35,12 +35,12 @@ document.addEventListener("DOMContentLoaded", function() {
     for (let i = 0; i < navItems.length; i++) {
         let navItem = navItems[i];
         const stringList = [
-            "User Guide", "Examples",
+            "User Guides", "Examples",
             "Ray Core", "Ray Core API",
             "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
             "Applications Guide", "Ray Cluster Management API",
             "Ray AI Runtime (AIR)", "Ray AIR API",
-            "Ray Data", "Ray Datasets API", "Integrations",
+            "Ray Data", "Ray Data API", "Integrations",
             "Ray Train", "Ray Train API",
             "Ray Tune", "Ray Tune Examples", "Ray Tune API",
             "Ray Serve", "Ray Serve API",
@@ -103,22 +103,21 @@ window.onload = function() {
     }
 };
 
-
-let firstLink = document.getElementsByClassName("caption")[0];
-firstLink.classList.add("toctree-l1", "current");
-firstLink.style.textTransform = "none";
-firstLink.style.fontWeight = "normal";
-firstLink.innerText = "";
-
-let home = document.createElement("a");
-home.classList.add("reference", "internal");
-
-const version = window.location.href.split("/")[4];
-const res = (version === "latest" || version === "master") ? version : "latest";
-
-home.href = "https://docs.ray.io/en/" + res + "/index.html";
-home.textContent = "Ray Docs Home";
-
-home.style = firstLink.style;
-home.style.color = "#5a5a5a";
-firstLink.appendChild(home);
+// When the document is fully loaded
+document.addEventListener("DOMContentLoaded", function() {
+    // find all the code blocks' copy buttons
+    let codeButtons = document.querySelectorAll(".copybtn");
+        for (let i = 0; i < codeButtons.length; i++) {
+            const button = codeButtons[i];
+            // and add a click event listener to each one for Google Analytics.
+            button.addEventListener("click", function() {
+                gtag("event", "code_copy_click", {
+                     "send_to": "UA-110413294-1",
+                     "event_category": "ray_docs_copy_code",
+                     "event_label": "URL: " + document.URL
+                         + " Button: " + button.getAttribute("data-clipboard-target"),
+                     "value": 1,
+                });
+            });
+        }
+});

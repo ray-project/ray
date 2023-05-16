@@ -1,8 +1,9 @@
+import dataclasses
 import inspect
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import Dict, List, Optional
+from typing import List, Optional, Tuple
 
 import grpc
 from grpc.aio._call import UnaryStreamCall
@@ -12,8 +13,9 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
-from ray._raylet import JobID
+from ray._raylet import ActorID, JobID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
@@ -45,9 +47,15 @@ from ray.core.generated.runtime_env_agent_pb2 import (
 )
 from ray.core.generated.runtime_env_agent_pb2_grpc import RuntimeEnvServiceStub
 from ray.dashboard.datacenter import DataSource
-from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
+from ray.dashboard.modules.job.common import JobInfoStorageClient
+from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
+from ray.dashboard.modules.job.utils import get_driver_jobs
 from ray.dashboard.utils import Dict as Dictionary
-from ray.experimental.state.common import RAY_MAX_LIMIT_FROM_DATA_SOURCE
+from ray.experimental.state.common import (
+    RAY_MAX_LIMIT_FROM_DATA_SOURCE,
+    PredicateType,
+    SupportedFilterType,
+)
 from ray.experimental.state.exception import DataSourceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -152,6 +160,7 @@ class StateDataSourceClient:
         self._log_agent_stub = {}
         self._job_client = JobInfoStorageClient(gcs_aio_client)
         self._id_id_map = IdToIpMap()
+        self._gcs_aio_client = gcs_aio_client
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
@@ -221,12 +230,32 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_actor_info(
-        self, timeout: int = None, limit: int = None
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllActorInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        if filters is None:
+            filters = []
 
-        request = GetAllActorInfoRequest(limit=limit)
+        req_filters = GetAllActorInfoRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+            if key == "actor_id":
+                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+            elif key == "state":
+                if value not in ActorTableData.ActorState.keys():
+                    raise ValueError(f"Invalid actor state for filtering: {value}")
+                req_filters.state = ActorTableData.ActorState.Value(value)
+            elif key == "job_id":
+                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+
+        request = GetAllActorInfoRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request, timeout=timeout
         )
@@ -237,16 +266,40 @@ class StateDataSourceClient:
         self,
         timeout: int = None,
         limit: int = None,
-        job_id: Optional[str] = None,
-        exclude_driver: bool = True,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+        exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-        if job_id:
-            job_id = JobID(hex_to_binary(job_id)).binary()
-        request = GetTaskEventsRequest(
-            limit=limit, exclude_driver=exclude_driver, job_id=job_id
-        )
+
+        if filters is None:
+            filters = []
+
+        req_filters = GetTaskEventsRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+
+            if key == "actor_id":
+                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+            elif key == "job_id":
+                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+            elif key == "name":
+                req_filters.name = value
+            elif key == "task_id":
+                req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
+            else:
+                continue
+
+            # Remove the filter from the list so that we don't have to
+            # filter it again later.
+            filters.remove(filter)
+
+        req_filters.exclude_driver = exclude_driver
+
+        request = GetTaskEventsRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
         return reply
 
@@ -284,23 +337,30 @@ class StateDataSourceClient:
         )
         return reply
 
-    async def get_job_info(self) -> Optional[Dict[str, JobInfo]]:
+    # TODO(rickyx):
+    # This is currently mirroring dashboard/modules/job/job_head.py::list_jobs
+    # We should eventually unify the logic.
+    async def get_job_info(self, timeout: int = None) -> List[JobDetails]:
         # Cannot use @handle_grpc_network_errors because async def is not supported yet.
-        # TODO(sang): Support timeout & make it async
-        try:
-            return await self._job_client.get_all_jobs()
-        except grpc.aio.AioRpcError as e:
-            if (
-                e.code == grpc.StatusCode.DEADLINE_EXCEEDED
-                or e.code == grpc.StatusCode.UNAVAILABLE
-            ):
-                raise DataSourceUnavailable(
-                    "Failed to query the data source. "
-                    "It is either there's a network issue, or the source is down."
-                )
-            else:
-                logger.exception(e)
-                raise e
+
+        driver_jobs, submission_job_drivers = await get_driver_jobs(
+            self._gcs_aio_client, timeout=timeout
+        )
+        submission_jobs = await self._job_client.get_all_jobs(timeout=timeout)
+        submission_jobs = [
+            JobDetails(
+                **dataclasses.asdict(job),
+                submission_id=submission_id,
+                job_id=submission_job_drivers.get(submission_id).id
+                if submission_id in submission_job_drivers
+                else None,
+                driver_info=submission_job_drivers.get(submission_id),
+                type=JobType.SUBMISSION,
+            )
+            for submission_id, job in submission_jobs.items()
+        ]
+
+        return list(driver_jobs.values()) + submission_jobs
 
     async def get_all_cluster_events(self) -> Dictionary:
         return DataSource.events
@@ -311,7 +371,6 @@ class StateDataSourceClient:
     ) -> Optional[GetTasksInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
@@ -375,6 +434,8 @@ class StateDataSourceClient:
         lines: int,
         interval: Optional[float],
         timeout: int,
+        task_id: Optional[str] = None,
+        attempt_number: Optional[int] = None,
     ) -> UnaryStreamCall:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
@@ -385,14 +446,12 @@ class StateDataSourceClient:
                 log_file_name=log_file_name,
                 lines=lines,
                 interval=interval,
+                task_id=task_id,
+                attempt_number=attempt_number,
             ),
             timeout=timeout,
         )
-        await self._validate_stream(stream)
-        return stream
-
-    @staticmethod
-    async def _validate_stream(stream):
         metadata = await stream.initial_metadata()
         if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
-            raise ValueError('File "{log_file_name}" not found on node {node_id}')
+            raise ValueError(f'File "{log_file_name}" not found on node {node_id}')
+        return stream

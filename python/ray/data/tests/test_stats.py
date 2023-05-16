@@ -8,7 +8,8 @@ import ray
 from ray.data._internal.stats import _StatsActor, DatasetStats
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data.block import BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
+from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
 
 from unittest.mock import patch
@@ -34,7 +35,7 @@ def dummy_map_batches(x):
 
 
 def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     if context.new_execution_backend:
@@ -262,18 +263,12 @@ Dataset iterator time breakdown:
 
 
 def test_dataset__repr__(ray_start_regular_shared):
-    context = DatasetContext.get_current()
-    context.optimize_fuse_stages = True
-
-    n = 4
-    ds = ray.data.range(n).materialize()
+    n = 100
+    ds = ray.data.range(n)
     assert len(ds.take_all()) == n
-    ds2 = ds.map_batches(lambda x: x).materialize()
-    assert len(ds2.take_all()) == n
-    ss = ds._plan.stats().to_summary()
-    ss2 = ds2._plan.stats().to_summary()
+    ds = ds.materialize()
 
-    assert canonicalize(repr(ss)) == (
+    assert canonicalize(repr(ds._plan.stats().to_summary())) == (
         "DatasetStatsSummary(\n"
         "   dataset_uuid=U,\n"
         "   base_name=None,\n"
@@ -298,7 +293,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      get_time=T,\n"
         "      iter_blocks_local=None,\n"
         "      iter_blocks_remote=None,\n"
-        "      iter_unknown_location=N,\n"
+        "      iter_unknown_location=None,\n"
         "      next_time=T,\n"
         "      format_time=T,\n"
         "      user_time=T,\n"
@@ -307,7 +302,10 @@ def test_dataset__repr__(ray_start_regular_shared):
         "   parents=[],\n"
         ")"
     )
-    assert canonicalize(repr(ss2)) == (
+
+    ds2 = ds.map_batches(lambda x: x).materialize()
+    assert len(ds2.take_all()) == n
+    assert canonicalize(repr(ds2._plan.stats().to_summary())) == (
         "DatasetStatsSummary(\n"
         "   dataset_uuid=U,\n"
         "   base_name=MapBatches(<lambda>),\n"
@@ -367,7 +365,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "            get_time=T,\n"
         "            iter_blocks_local=None,\n"
         "            iter_blocks_remote=None,\n"
-        "            iter_unknown_location=N,\n"
+        "            iter_unknown_location=None,\n"
         "            next_time=T,\n"
         "            format_time=T,\n"
         "            user_time=T,\n"
@@ -381,7 +379,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
 
 def test_dataset_stats_shuffle(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
@@ -450,7 +448,7 @@ def test_dataset_stats_zip(ray_start_regular_shared):
 
 def test_dataset_stats_sort(ray_start_regular_shared):
     ds = ray.data.range(1000, parallelism=10)
-    ds = ds.sort()
+    ds = ds.sort("id")
     stats = ds.materialize().stats()
     assert "SortMap" in stats, stats
     assert "SortReduce" in stats, stats
@@ -463,7 +461,7 @@ def test_dataset_stats_from_items(ray_start_regular_shared):
 
 
 def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     ds.write_parquet(str(tmp_path))
@@ -498,10 +496,10 @@ def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
 
 
 def test_dataset_split_stats(ray_start_regular_shared, tmp_path):
-    context = DatasetContext.get_current()
-    ds = ray.data.range(100, parallelism=10).map(lambda x: x + 1)
+    context = DataContext.get_current()
+    ds = ray.data.range(100, parallelism=10).map(column_udf("id", lambda x: x + 1))
     dses = ds.split_at_indices([49])
-    dses = [ds.map(lambda x: x + 1) for ds in dses]
+    dses = [ds.map(column_udf("id", lambda x: x + 1)) for ds in dses]
     for ds_ in dses:
         stats = canonicalize(ds_.materialize().stats())
 
@@ -568,7 +566,7 @@ Stage N Map: N/N blocks executed in T
 
 
 def test_dataset_pipeline_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     if context.new_execution_backend:
@@ -837,7 +835,7 @@ def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
 
 
 def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
     ds = ray.data.range(1000, parallelism=10)
     pipe = ds.repeat(2)
@@ -926,7 +924,7 @@ DatasetPipeline iterator time breakdown:
 
 
 def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
@@ -971,7 +969,7 @@ def test_calculate_blocks_stats(ray_start_regular_shared, stage_two_block):
 
 
 def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
@@ -1053,7 +1051,7 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     `DatasetStats.get_max_wall_time()`,
     `DatasetStats.get_total_cpu_time()`,
     `DatasetStats.get_max_heap_memory()`."""
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
     context.optimize_fuse_stages = True
 
     block_params, block_meta_list = stage_two_block
@@ -1074,11 +1072,11 @@ def test_get_total_stats(ray_start_regular_shared, stage_two_block):
     assert dataset_stats_summary.get_max_heap_memory() == peak_memory_stats.get("max")
 
 
-def test_streaming_stats_full(ray_start_regular_shared, restore_dataset_context):
-    DatasetContext.get_current().new_execution_backend = True
-    DatasetContext.get_current().use_streaming_executor = True
+def test_streaming_stats_full(ray_start_regular_shared, restore_data_context):
+    DataContext.get_current().new_execution_backend = True
+    DataContext.get_current().use_streaming_executor = True
 
-    ds = ray.data.range(5, parallelism=5).map(lambda x: x + 1)
+    ds = ray.data.range(5, parallelism=5).map(column_udf("id", lambda x: x + 1))
     ds.take_all()
     stats = canonicalize(ds.stats())
     assert (

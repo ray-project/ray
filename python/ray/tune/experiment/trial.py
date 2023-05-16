@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
+from ray._private.dict import unflatten_dict
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
@@ -57,6 +58,7 @@ from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
+_DEFAULT_WIN_MAX_PATH_LENGTH = 260
 logger = logging.getLogger(__name__)
 
 
@@ -181,6 +183,13 @@ class _TrialInfo:
     @trial_resources.setter
     def trial_resources(self, new_resources: PlacementGroupFactory):
         self._trial_resources = new_resources
+
+
+def _get_max_path_length() -> int:
+    if hasattr(os, "pathconf"):
+        return os.pathconf("/", "PC_PATH_MAX")
+    # Windows
+    return _DEFAULT_WIN_MAX_PATH_LENGTH
 
 
 def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
@@ -618,6 +627,7 @@ class Trial:
     @last_result.setter
     def last_result(self, val: dict):
         self._last_result = val
+        self.invalidate_json_state()
 
     def get_runner_ip(self) -> Optional[str]:
         if self.location.hostname:
@@ -820,6 +830,14 @@ class Trial:
             )
         assert self.local_path
         logdir_path = Path(self.local_path)
+        max_path_length = _get_max_path_length()
+        if len(str(logdir_path)) >= max_path_length:
+            logger.warning(
+                f"The path to the trial log directory is too long "
+                f"(max length: {max_path_length}. "
+                f"Consider using `trial_dirname_creator` to shorten the path. "
+                f"Path: {logdir_path}"
+            )
         logdir_path.mkdir(parents=True, exist_ok=True)
 
         self.invalidate_json_state()
@@ -971,7 +989,8 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = self.restoring_from.metrics
+        self.last_result = unflatten_dict(self.restoring_from.metrics)
+        self.last_result.setdefault("config", self.config)
         self.restoring_from = None
         self.num_restore_failures = 0
         self.invalidate_json_state()
@@ -1042,7 +1061,8 @@ class Trial:
                         self.metric_analysis[metric][key] = sum(
                             self.metric_n_steps[metric][str(n)]
                         ) / len(self.metric_n_steps[metric][str(n)])
-        self.invalidate_json_state()
+
+        # json state is invalidated in last_result.setter
 
     def get_trainable_cls(self):
         if self.stub:

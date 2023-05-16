@@ -1,5 +1,4 @@
 import collections
-import sys
 from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
 import ray
@@ -21,16 +20,8 @@ from ray.data._internal.block_batching.util import (
 )
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats
-from ray.data.context import DatasetContext
-
-if sys.version_info >= (3, 7):
-    from contextlib import nullcontext
-else:
-    from contextlib import contextmanager
-
-    @contextmanager
-    def nullcontext(enter_result=None):
-        yield enter_result
+from ray.data.context import DataContext
+from contextlib import nullcontext
 
 
 def iter_batches(
@@ -115,7 +106,7 @@ def iter_batches(
     Returns:
         An iterator over record batches.
     """
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
 
     if (
         prefetch_batches > 0
@@ -126,7 +117,7 @@ def iter_batches(
     else:
         prefetcher = WaitBlockPrefetcher()
 
-    eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
+    eager_free = clear_block_after_read and DataContext.get_current().eager_free
 
     def _async_iter_batches(
         block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],

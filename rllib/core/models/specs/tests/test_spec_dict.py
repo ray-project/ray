@@ -1,12 +1,13 @@
 import unittest
 import numpy as np
 
-from ray.rllib.core.models.specs.specs_np import NPTensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     convert_to_canonical_format,
 )
+from ray.rllib.core.models.specs.checker import SpecCheckingError
 
 
 class TypeClass1:
@@ -24,8 +25,8 @@ class TestSpecDict(unittest.TestCase):
         h1, h2 = 3, 4
         spec_1 = SpecDict(
             {
-                "out_tensor_1": NPTensorSpec("b, h", h=h1),
-                "out_tensor_2": NPTensorSpec("b, h", h=h2),
+                "out_tensor_1": TensorSpec("b, h", h=h1, framework="np"),
+                "out_tensor_2": TensorSpec("b, h", h=h2, framework="np"),
                 "out_class_1": TypeClass1,
             }
         )
@@ -76,12 +77,12 @@ class TestSpecDict(unittest.TestCase):
         spec_2 = SpecDict(
             {
                 "encoder": {
-                    "input": NPTensorSpec("b, h", h=h1),
-                    "output": NPTensorSpec("b, h", h=h2),
+                    "input": TensorSpec("b, h", h=h1, framework="np"),
+                    "output": TensorSpec("b, h", h=h2, framework="np"),
                 },
                 "decoder": {
-                    "input": NPTensorSpec("b, h", h=h2),
-                    "output": NPTensorSpec("b, h", h=h1),
+                    "input": TensorSpec("b, h", h=h2, framework="np"),
+                    "output": TensorSpec("b, h", h=h1, framework="np"),
                 },
             }
         )
@@ -160,17 +161,21 @@ class TestSpecDict(unittest.TestCase):
 
             @property
             def spec_with_type_and_tensor_leaves(self):
-                return {"a": TypeClass1, "b": NPTensorSpec("b, h", h=3)}
+                return {"a": TypeClass1, "b": TensorSpec("b, h", h=3, framework="np")}
 
-            @check_input_specs("nested_key_spec")
+            @check_input_specs("nested_key_spec", only_check_on_retry=False)
             def forward_nested_key(self, input_dict):
                 return input_dict
 
-            @check_input_specs("dict_key_spec_with_none_leaves")
+            @check_input_specs(
+                "dict_key_spec_with_none_leaves", only_check_on_retry=False
+            )
             def forward_dict_key_with_none_leaves(self, input_dict):
                 return input_dict
 
-            @check_input_specs("spec_with_type_and_tensor_leaves")
+            @check_input_specs(
+                "spec_with_type_and_tensor_leaves", only_check_on_retry=False
+            )
             def forward_spec_with_type_and_tensor_leaves(self, input_dict):
                 return input_dict
 
@@ -207,10 +212,13 @@ class TestSpecDict(unittest.TestCase):
             },
         }
 
-        self.assertRaises(ValueError, lambda: model.forward_nested_key(input_dict_2))
+        self.assertRaises(
+            SpecCheckingError, lambda: model.forward_nested_key(input_dict_2)
+        )
 
         self.assertRaises(
-            ValueError, lambda: model.forward_dict_key_with_none_leaves(input_dict_2)
+            SpecCheckingError,
+            lambda: model.forward_dict_key_with_none_leaves(input_dict_2),
         )
 
         input_dict_3 = {
@@ -220,7 +228,7 @@ class TestSpecDict(unittest.TestCase):
 
         # should raise shape mismatch
         self.assertRaises(
-            ValueError,
+            SpecCheckingError,
             lambda: model.forward_spec_with_type_and_tensor_leaves(input_dict_3),
         )
 

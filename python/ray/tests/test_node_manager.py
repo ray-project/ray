@@ -13,6 +13,7 @@ from ray.experimental.state.api import list_objects
 import subprocess
 from ray._private.utils import get_num_cpus
 import time
+import sys
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -258,6 +259,9 @@ ds.map(leak_repro, max_retries=0)
     wait_for_condition(no_object_leaks, timeout=10, retry_interval_ms=1000)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="subprocess command only works for unix"
+)
 @pytest.mark.parametrize(
     "call_ray_start",
     ["""ray start --head --system-config={"enable_worker_prestart":true}"""],

@@ -104,7 +104,7 @@ param_space = {
 
 tuner = Tuner(
     trainable=trainer,
-    run_config=RunConfig(name="test_tuner", local_dir="~/ray_results"),
+    run_config=RunConfig(name="test_tuner", storage_path="~/ray_results"),
     param_space=param_space,
     tune_config=tune.TuneConfig(
         mode="min", metric="loss", num_samples=2, max_concurrent_trials=2
@@ -215,14 +215,13 @@ for result in result_grid:
 # __result_grid_inspection_end__
 
 # __run_config_start__
-from ray import air, tune
+from ray import air
 from ray.air.config import RunConfig
 
 run_config = RunConfig(
     name="MyExperiment",
-    local_dir="./your_log_directory/",
+    storage_path="s3://...",
     verbose=2,
-    sync_config=tune.SyncConfig(upload_dir="s3://..."),
     checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2),
 )
 # __run_config_end__

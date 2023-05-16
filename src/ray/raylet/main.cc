@@ -45,6 +45,7 @@ DEFINE_string(worker_port_list,
 DEFINE_int32(num_prestart_python_workers,
              0,
              "Number of prestarted default Python workers on raylet startup.");
+DEFINE_bool(head, false, "Whether this node is a head node.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency.");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
@@ -116,6 +117,7 @@ int main(int argc, char *argv[]) {
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;
   const std::string session_name = FLAGS_session_name;
+  const bool is_head_node = FLAGS_head;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -269,7 +271,8 @@ int main(int argc, char *argv[]) {
                                                        node_manager_config,
                                                        object_manager_config,
                                                        gcs_client,
-                                                       metrics_export_port);
+                                                       metrics_export_port,
+                                                       is_head_node);
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {

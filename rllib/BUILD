@@ -171,6 +171,16 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+py_test(
+    name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole-appo-w-rl-modules-and-learner.yaml"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
 # py_test(
 #    name = "learning_tests_cartpole_appo_vtrace",
 #    main = "tests/run_regression_tests.py",
@@ -590,26 +600,14 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_pendulum_ppo_with_rl_module_torch",
+    name = "learning_tests_pendulum_ppo_with_rl_module",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
-
-# TODO (Kourosh): tf2 is way slower than torch, eager mode is no enabled, I wonder if
-# it would get faster with eager mode once it is enabled.
-# py_test(
-#     name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
-#     main = "tests/run_regression_tests.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "tf2_only", "no_tf_static_graph"],
-#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#     srcs = ["tests/run_regression_tests.py"],
-#     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
-#     args = ["--dir=tuned_examples/ppo"]
-# )
 
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
@@ -807,7 +805,7 @@ py_test(
 py_test(
     name = "test_algorithm_config",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "small",
+    size = "medium",
     srcs = ["algorithms/tests/test_algorithm_config.py"],
 )
 
@@ -931,7 +929,7 @@ py_test(
     name = "test_appo_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/appo/tests/tf/test_appo_learner.py"]
+    srcs = ["algorithms/appo/tests/test_appo_learner.py"]
 )
 
 # ARS
@@ -1677,14 +1675,16 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-sh_test(
-    name = "env/tests/test_local_inference_unity3d",
-    tags = ["team:rllib", "env"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "unity3d", "8850"],
-    data = glob(["examples/serving/*.py"]),
-)
+# Tests with unity 3d and external envs currently don't work
+# see: https://github.com/ray-project/ray/issues/34290 for more details
+# sh_test(
+#     name = "env/tests/test_local_inference_unity3d",
+#     tags = ["team:rllib", "env"],
+#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#     args = ["local", "unity3d", "8850"],
+#     data = glob(["examples/serving/*.py"]),
+# )
 
 py_test(
     name = "env/tests/test_multi_agent_env",
@@ -1720,14 +1720,16 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-sh_test(
-    name = "env/tests/test_remote_inference_unity3d",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "small",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "unity3d", "8860"],
-    data = glob(["examples/serving/*.py"]),
-)
+# Tests with unity 3d and external envs currently don't work
+# see: https://github.com/ray-project/ray/issues/34290 for more details
+# sh_test(
+#     name = "env/tests/test_remote_inference_unity3d",
+#     tags = ["team:rllib", "env", "exclusive"],
+#     size = "small",
+#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#     args = ["remote", "unity3d", "8860"],
+#     data = glob(["examples/serving/*.py"]),
+# )
 
 py_test(
     name = "env/tests/test_remote_worker_envs",
@@ -1864,10 +1866,24 @@ py_test(
 
 # Default Models
 py_test(
+    name = "test_base_models",
+    tags = ["team:rllib", "core"],
+    size = "small",
+    srcs = ["core/models/tests/test_base_models.py"]
+)
+
+py_test(
     name = "test_cnn_encoders",
     tags = ["team:rllib", "core", "models"],
     size = "medium",
     srcs = ["core/models/tests/test_cnn_encoders.py"]
+)
+
+py_test(
+    name = "test_cnn_transpose_heads",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_cnn_transpose_heads.py"]
 )
 
 py_test(
@@ -1882,6 +1898,13 @@ py_test(
     tags = ["team:rllib", "core", "models"],
     size = "medium",
     srcs = ["core/models/tests/test_mlp_heads.py"]
+)
+
+py_test(
+    name = "test_recurrent_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_recurrent_encoders.py"]
 )
 
 # Specs
@@ -1963,6 +1986,13 @@ py_test(
     tags = ["team:rllib", "core", "ray_data"],
     size = "medium",
     srcs = ["core/learner/torch/tests/test_torch_learner.py"]
+)
+
+py_test(
+    name ="tests/test_algorithm_save_load_checkpoint_learner",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
 )
 
 py_test(
@@ -2259,8 +2289,8 @@ py_test(
 
 py_test(
     name = "utils/tests/test_torch_utils",
-    tags = ["team:rllib", "utils"],
-    size = "small",
+    tags = ["team:rllib", "utils", "gpu"],
+    size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"]
 )
 
@@ -2428,6 +2458,16 @@ py_test(
     args = ["TestCheckpointRestorePG"]
 )
 
+
+py_test(
+    name = "tests/test_checkpoint_restore_pg_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
+    size = "large",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePG"]
+)
+
 py_test(
     name = "tests/test_checkpoint_restore_off_policy",
     main = "tests/test_algorithm_checkpoint_restore.py",
@@ -2437,10 +2477,29 @@ py_test(
     args = ["TestCheckpointRestoreOffPolicy"]
 )
 
+
+py_test(
+    name = "tests/test_checkpoint_restore_off_policy_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
+    size = "large",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
+)
+
 py_test(
     name = "tests/test_checkpoint_restore_evolution_algos",
     main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
+    size = "medium",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreEvolutionAlgos"]
+)
+
+py_test(
+    name = "tests/test_checkpoint_restore_evolution_algos_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
     size = "medium",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreEvolutionAlgos"]
@@ -2698,9 +2757,18 @@ py_test(
  )
 
 py_test(
+    name="tests/test_supported_spaces_dqn",
+    main="tests/test_supported_spaces.py",
+    tags=["team:rllib", "tests_dir"],
+    size="large",
+    srcs=["tests/test_supported_spaces.py"],
+    args=["TestSupportedSpacesDQN"]
+)
+
+py_test(
      name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "multi_gpu", "exclusive"],
+     tags = ["team:rllib", "gpu", "no_cpu"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
@@ -3289,6 +3357,14 @@ py_test(
     size = "small",
     srcs = ["examples/eager_execution.py"],
     args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/env/greyscale_env",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "medium",
+    srcs = ["examples/env/greyscale_env.py"],
+    args = ["--stop-iters=1 --as-test --framework torch"]
 )
 
 py_test(

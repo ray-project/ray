@@ -13,9 +13,4 @@ head_node_type:
     instance_type:  m5.16xlarge
     resources: {"cpu": 85}
 
-worker_node_types:
-    - name: worker_node
-      instance_type: m5.4xlarge
-      min_workers: 0
-      max_workers: 0
-      use_spot: false
+worker_node_types: []

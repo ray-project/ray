@@ -12,7 +12,7 @@ from ray.data._internal.stats import DatasetStats
 
 
 def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
-    from ray.data.dataset import Dataset
+    from ray.data.dataset import Dataset, Schema
 
     wrapped_ds = Dataset(
         ExecutionPlan(
@@ -61,6 +61,8 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
     # Schema is safe to fetch here since we have already called
     # get_internal_block_refs and executed the dataset.
     schema = wrapped_ds.schema(fetch_if_missing=True)
+    if isinstance(schema, Schema):
+        schema = schema.base_schema
     # Early-release memory.
     del splits, blocks, wrapped_ds
 

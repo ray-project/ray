@@ -147,32 +147,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        node_table = self.global_state_accessor.get_node_table()
-
-        results = []
-        for node_info_item in node_table:
-            item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
-            node_info = {
-                "NodeID": ray._private.utils.binary_to_hex(item.node_id),
-                "Alive": item.state
-                == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
-                "NodeManagerAddress": item.node_manager_address,
-                "NodeManagerHostname": item.node_manager_hostname,
-                "NodeManagerPort": item.node_manager_port,
-                "ObjectManagerPort": item.object_manager_port,
-                "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name,
-                "MetricsExportPort": item.metrics_export_port,
-                "NodeName": item.node_name,
-            }
-            node_info["alive"] = node_info["Alive"]
-            node_info["Resources"] = (
-                {key: value for key, value in item.resources_total.items()}
-                if node_info["Alive"]
-                else {}
-            )
-            results.append(node_info)
-        return results
+        return self.global_state_accessor.get_node_table()
 
     def job_table(self):
         """Fetch and parse the gcs job table.
@@ -326,6 +301,8 @@ class GlobalState:
                 return "PENDING"
             elif state == gcs_utils.PlacementGroupTableData.CREATED:
                 return "CREATED"
+            elif state == gcs_utils.PlacementGroupTableData.RESCHEDULING:
+                return "RESCHEDULING"
             else:
                 return "REMOVED"
 
@@ -352,6 +329,10 @@ class GlobalState:
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
                 bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
+                for bundle in placement_group_info.bundles
+            },
+            "bundles_to_node_id": {
+                bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
                 for bundle in placement_group_info.bundles
             },
             "strategy": get_strategy(placement_group_info.strategy),
@@ -749,10 +730,9 @@ class GlobalState:
     def get_node_to_connect_for_driver(self, node_ip_address):
         """Get the node to connect for a Ray driver."""
         self._check_connected()
-        node_info_str = self.global_state_accessor.get_node_to_connect_for_driver(
+        return self.global_state_accessor.get_node_to_connect_for_driver(
             node_ip_address
         )
-        return gcs_utils.GcsNodeInfo.FromString(node_info_str)
 
 
 state = GlobalState()
@@ -783,7 +763,7 @@ def next_job_id():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -847,7 +827,7 @@ def actors(actor_id=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
@@ -890,7 +870,7 @@ def object_transfer_timeline(filename=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -905,7 +885,7 @@ def cluster_resources():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def available_resources():
     """Get the current available cluster resources.
 
