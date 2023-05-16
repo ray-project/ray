@@ -510,8 +510,8 @@ Docker images for Python 3.9.
 
     .. group-tab:: ray (Python 3.9)
 
-        .. literalinclude:: ./pip_freeze_ray-py39-cpu.py
+        .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
     .. group-tab:: ray-ml (Python 3.9)
 
-        .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.py
+        .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt
