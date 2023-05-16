@@ -39,7 +39,7 @@ class HTTPProxyState:
         self._status = HTTPProxyStatus.STARTING
         self._health_check_obj_ref = None
         self._last_health_check_time: float = 0
-        self._deleting = False
+        self._shutting_down = False
 
         self._actor_details = HTTPProxyDetails(
             node_id=node_id,
@@ -77,7 +77,7 @@ class HTTPProxyState:
         self._actor_details = HTTPProxyDetails(**details_kwargs)
 
     def update(self):
-        if self._deleting:
+        if self._shutting_down:
             return
 
         if self._status == HTTPProxyStatus.STARTING:
@@ -127,7 +127,7 @@ class HTTPProxyState:
             self._last_health_check_time = time.time()
 
     def shutdown(self):
-        self._deleting = True
+        self._shutting_down = True
         ray.kill(self.actor_handle, no_restart=True)
 
 
