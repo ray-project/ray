@@ -219,7 +219,7 @@ class RAY_EXPORT PythonGcsSubscriber {
   int64_t last_batch_size_;
   std::deque<rpc::PubMessage> queue_;
   bool closed_;
-  grpc::ClientContext *current_polling_context_;
+  std::shared_ptr<grpc::ClientContext> current_polling_context_;
 };
 
 /// Construct the arguments for synchronous gRPC clients

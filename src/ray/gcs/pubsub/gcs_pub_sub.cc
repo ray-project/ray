@@ -360,8 +360,7 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
     if (closed_) {
       return Status::OK();
     }
-    grpc::ClientContext context;
-    current_polling_context_ = &context;
+    current_polling_context_.reset(new grpc::ClientContext());
     rpc::GcsSubscriberPollRequest request;
     request.set_subscriber_id(subscriber_id_);
     request.set_max_processed_sequence_id(max_processed_sequence_id_);
@@ -371,10 +370,8 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
     // Drop the lock while in RPC
     mu_.Unlock();
     // TODO: Add error handling
-    grpc::Status status = pubsub_stub_->GcsSubscriberPoll(&context, request, &reply);
+    grpc::Status status = pubsub_stub_->GcsSubscriberPoll(current_polling_context_.get(), request, &reply);
     mu_.Lock();
-
-    current_polling_context_ = nullptr;
 
     if (publisher_id_ != reply.publisher_id()) {
       publisher_id_ = reply.publisher_id();
@@ -418,8 +415,10 @@ Status PythonGcsSubscriber::PollFunctionKey(std::string* key_id, rpc::PythonFunc
 }
 
 Status PythonGcsSubscriber::Close() {
-  absl::MutexLock lock(&mu_);
-  closed_ = true;
+  {
+    absl::MutexLock lock(&mu_);
+    closed_ = true;
+  }
   if (current_polling_context_) {
     current_polling_context_->TryCancel();
   }
