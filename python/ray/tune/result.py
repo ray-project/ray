@@ -1,7 +1,7 @@
 import os
 from ray.air.constants import (
-    TIMESTAMP, 
-    TIME_THIS_ITER_S, 
+    TIMESTAMP,
+    TIME_THIS_ITER_S,
     TRAINING_ITERATION,
 )
 

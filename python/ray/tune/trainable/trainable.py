@@ -21,7 +21,7 @@ from ray.air.checkpoint import (
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
 from ray.air.constants import (
-    TIMESTAMP, 
+    TIMESTAMP,
     TIME_THIS_ITER_S,
     TRAINING_ITERATION,
 )
