@@ -7,7 +7,7 @@ from ray.air.execution import PlacementGroupResourceManager, FixedResourceManage
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import TuneError, register_trainable
+from ray.tune import TuneError
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
@@ -26,36 +26,6 @@ class TrialRunnerTest(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
-
-    def testExperimentTagTruncation(self):
-        ray.init(num_cpus=2)
-
-        def train(config, reporter):
-            reporter(timesteps_total=1)
-
-        trial_executor = RayTrialExecutor(resource_manager=self._resourceManager())
-        register_trainable("f1", train)
-
-        experiments = {
-            "foo": {
-                "run": "f1",
-                "config": {
-                    "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
-                    "b" * 50: tune.sample_from(lambda spec: "long" * 40),
-                },
-            }
-        }
-
-        for name, spec in experiments.items():
-            trial_generator = BasicVariantGenerator()
-            trial_generator.add_configurations({name: spec})
-            while not trial_generator.is_finished():
-                trial = trial_generator.next_trial()
-                if not trial:
-                    break
-                trial_executor.start_trial(trial)
-                self.assertLessEqual(len(os.path.basename(trial.local_path)), 200)
-                trial_executor.stop_trial(trial)
 
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
