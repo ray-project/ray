@@ -5,8 +5,8 @@ import warnings
 
 import ray
 from ray.air import session
-
 from ray.air._internal.mlflow import _MLflowLoggerUtil
+from ray.air._internal import usage as air_usage
 from ray.tune.logger import LoggerCallback
 from ray.tune.result import TIMESTEPS_TOTAL, TRAINING_ITERATION
 from ray.tune.experiment import Trial
@@ -194,6 +194,10 @@ def setup_mlflow(
         set_active=True,
     )
     mlflow_util.log_params(_config)
+
+    # Record `setup_mlflow` usage when everything has setup successfully.
+    air_usage.tag_setup_mlflow()
+
     return mlflow_util._mlflow
 
 

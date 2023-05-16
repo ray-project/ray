@@ -909,7 +909,11 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
-    # Create syncer callbacks
+    # NOTE: Report callback telemetry before populating the list with default callbacks.
+    # This tracks user-specified callback usage.
+    air_usage.tag_callbacks(callbacks)
+
+    # Create default logging + syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks,
         sync_config=sync_config,

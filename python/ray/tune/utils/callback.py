@@ -46,7 +46,7 @@ def _create_default_callbacks(
     air_verbosity: Optional["AirVerbosity"] = None,
     metric: Optional[str] = None,
     progress_metrics: Optional[Collection[str]] = None,
-):
+) -> List[Callback]:
     """Create default callbacks for `Tuner.fit()`.
 
     This function takes a list of existing callbacks and adds default

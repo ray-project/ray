@@ -135,6 +135,14 @@ enum TagKey {
   // are provided by the user.
   // Ex: ["RAY_AIR_LOCAL_CACHE_DIR", "TUNE_FALLBACK_TO_LATEST_CHECKPOINT"]
   AIR_ENV_VARS = 503;
+  // Fully user-controlled experiment tracking integrations ("1" if used)
+  // NOTE: These tags + the callback metrics can be aggregated to extract
+  // total experiment tracking integration usage.
+  AIR_SETUP_WANDB_INTEGRATION_USED = 504;
+  AIR_SETUP_MLFLOW_INTEGRATION_USED = 505;
+  // Built-in callbacks, stored in JSON format with callback name -> count.
+  // Ex: {"WandbLoggerCallback": 1, "MLflowLoggerCallback": 1}
+  AIR_CALLBACKS = 506;
   // Storage configuration for AIR experiment
   AIR_STORAGE_CONFIGURATION = 507;
 }
