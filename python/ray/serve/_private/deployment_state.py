@@ -1869,7 +1869,7 @@ class DeploymentState:
             running_replicas_changed |= self._check_and_update_replicas()
 
             # Check if the model_id has changed.
-            running_replicas_changed |= self._is_model_ids_updated
+            running_replicas_changed |= self._multiplexed_model_ids_updated
 
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
