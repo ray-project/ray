@@ -135,7 +135,8 @@ def test_get_trial_info():
     t.last_result = LAST_RESULT
     assert _get_trial_info(
         t,
-        [
+        param_keys=[],
+        metric_keys=[
             "episode_reward_mean",
             "episode_reward_max",
             "episode_reward_min",
