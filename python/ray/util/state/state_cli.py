@@ -1067,24 +1067,24 @@ def log_actor(
 
     Example:
 
-        Follow the log file with an actor id ABC.
+        Follow the log file with an actor id ABCDEFG.
 
         ```
-        ray logs actor --id ABC --follow
+        ray logs actor --id ABCDEFG --follow
         ```
 
-        Get the actor log from pid 123, ip ABC.
+        Get the actor log from pid 123, ip x.x.x.x
         Note that this goes well with the driver log of Ray which prints
-        (ip=ABC, pid=123, class_name) logs.
+        (ip=x.x.x.x, pid=123, class_name) logs.
 
         ```
-        ray logs actor --pid=123  —ip=ABC
+        ray logs actor --pid=123  —ip=x.x.x.x
         ```
 
         Get the actor err log file.
 
         ```
-        ray logs actor --id ABC --err
+        ray logs actor --id ABCDEFG --err
         ```
 
     Raises:
@@ -1148,16 +1148,16 @@ def log_worker(
 
     Example:
 
-        Follow the log file from a worker process with pid=ABC.
+        Follow the log file from a worker process with pid=123
 
         ```
-        ray logs worker --pid ABC --follow
+        ray logs worker --pid 123 --follow
         ```
 
         Get the stderr logs from a worker process.
 
         ```
-        ray logs worker --pid ABC --err
+        ray logs worker --pid 123 --err
         ```
 
     Raises:
@@ -1278,16 +1278,16 @@ def log_task(
 
     Example:
 
-        Follow the log file from a task with task id.
+        Follow the log file from a task with task id = ABCDEFG
 
         ```
-        ray logs tasks --id <task_id> --follow
+        ray logs tasks --id ABCDEFG --follow
         ```
 
         Get the log from a retry attempt 1 from a task.
 
         ```
-        ray logs tasks --id <task_id> -a 1
+        ray logs tasks --id ABCDEFG -a 1
         ```
 
     Raises:

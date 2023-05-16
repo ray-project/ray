@@ -13,7 +13,7 @@ Ray state APIs allow users to conveniently access the current state (snapshot) o
 
 .. note::
 
-    State API CLI commands are :ref:`stable <api-stability-stable>`, while python SDKs are still :ref:`DeveloperAPI <developer-api-def>`. CLI usage is recommended over Python SDKs.
+    State API CLI commands are :ref:`stable <api-stability-stable>`, while python SDKs are :ref:`DeveloperAPI <developer-api-def>`. CLI usage is recommended over Python SDKs.
 
 Getting Started
 ---------------
