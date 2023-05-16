@@ -64,8 +64,10 @@ class A3CConfig(AlgorithmConfig):
             new="rllib_contrib/a3c/",
             help=(
                 "This algorithm will be "
-                "deprecated from RLlib in ray 2.8. It is being moved to the "
-                "ray/rllib_contrib directory."
+                "deprecated from RLlib in future releases. It is being moved to the "
+                "ray/rllib_contrib directory. See "
+                "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                "for more details."
             ),
         )
         super().__init__(algo_class=algo_class or A3C)
