@@ -379,8 +379,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// generated ObjectReference.
   /// \return Status RayKeyError if the stream reaches to EoF.
   /// OK otherwise.
-  Status AsyncReadObjectRefStream(const ObjectID &generator_id,
-                                  rpc::ObjectReference *object_ref_out);
+  Status TryReadObjectRefStream(const ObjectID &generator_id,
+                                rpc::ObjectReference *object_ref_out);
 
   /// Delete the ObjectRefStream of generator_id
   /// created by CreateObjectRefStream.
@@ -741,14 +741,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Report the task caller at caller_address that the intermediate
   /// task return. It means if this API is used, the caller will be notified
   /// the task return before the current task is terminated. The caller must
-  /// implement HandleReportIntermediateTaskReturn API endpoint
+  /// implement HandleReportGeneratorItemReturns API endpoint
   /// to handle the intermediate result report.
   /// This API makes sense only for a generator task
   /// (task that can return multiple intermediate
   /// result before the task terminates).
   ///
   /// NOTE: The API doesn't guarantee the ordering of the report. The
-  /// caller is supposed to reorder the report based on the idx.
+  /// caller is supposed to reorder the report based on the item_index.
   ///
   /// \param[in] dynamic_return_object A intermediate ray object to report
   /// to the caller before the task terminates. This object must have been
@@ -757,24 +757,24 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// task.
   /// \param[in] caller_address The address of the caller of the current task
   /// that created a generator_id.
-  /// \param[in] idx The index of the task return. It is used to reorder the
+  /// \param[in] item_index The index of the task return. It is used to reorder the
   /// report from the caller side.
   /// \param[in] finished True indicates there's going to be no more intermediate
   /// task return. When finished is provided dynamic_return_object input will be
   /// ignored.
-  Status ReportIntermediateTaskReturn(
+  Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
-      int64_t idx,
+      int64_t item_index,
       bool finished);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
-  /// it invokes this endpoint via ReportIntermediateTaskReturn RPC.
-  void HandleReportIntermediateTaskReturn(
-      rpc::ReportIntermediateTaskReturnRequest request,
-      rpc::ReportIntermediateTaskReturnReply *reply,
+  /// it invokes this endpoint via ReportGeneratorItemReturns RPC.
+  void HandleReportGeneratorItemReturns(
+      rpc::ReportGeneratorItemReturnsRequest request,
+      rpc::ReportGeneratorItemReturnsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get a string describing object store memory usage for debugging purposes.
@@ -1252,6 +1252,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param stderr_end_offset End offset of the stderr for this task.
   void RecordTaskLogEnd(int64_t stdout_end_offset, int64_t stderr_end_offset) const;
 
+  /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
+  /// exit when it drains all tasks and cleans all owned objects.
+  /// After this method is called, all the tasks in the queue will not be
+  /// executed.
+  ///
+  /// \param exit_type The reason why this worker process is disconnected.
+  /// \param exit_detail The detailed reason for a given exit.
+  /// \param creation_task_exception_pb_bytes It is given when the worker is
+  /// disconnected because the actor is failed due to its exception in its init method.
+  void Exit(const rpc::WorkerExitType exit_type,
+            const std::string &detail,
+            const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
+                nullptr);
+
  private:
   static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
 
@@ -1295,20 +1309,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
-
-  /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
-  /// exit when it drains all tasks and cleans all owned objects.
-  /// After this method is called, all the tasks in the queue will not be
-  /// executed.
-  ///
-  /// \param exit_type The reason why this worker process is disconnected.
-  /// \param exit_detail The detailed reason for a given exit.
-  /// \param creation_task_exception_pb_bytes It is given when the worker is
-  /// disconnected because the actor is failed due to its exception in its init method.
-  void Exit(const rpc::WorkerExitType exit_type,
-            const std::string &detail,
-            const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
-                nullptr);
 
   /// Forcefully exit the worker. `Force` means it will exit actor without draining
   /// or cleaning any resources.
@@ -1652,6 +1652,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Actor title that consists of class name, args, kwargs for actor construction.
   std::string actor_title_ GUARDED_BY(mutex_);
+
+  /// Actor repr name if overrides by the user, empty string if not.
+  std::string actor_repr_name_ GUARDED_BY(mutex_) = "";
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

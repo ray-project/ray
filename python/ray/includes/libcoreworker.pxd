@@ -43,6 +43,7 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CSchedulingStrategy,
+    CWorkerExitType,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -149,7 +150,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID& generator_id)
         void DelObjectRefStream(const CObjectID &generator_id)
         void CreateObjectRefStream(const CObjectID &generator_id)
-        CRayStatus AsyncReadObjectRefStream(
+        CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
         CObjectID AllocateDynamicReturnId(
@@ -244,11 +245,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 int64_t timeout_ms,
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
-        CRayStatus ReportIntermediateTaskReturn(
+        CRayStatus ReportGeneratorItemReturns(
             const pair[CObjectID, shared_ptr[CRayObject]] &dynamic_return_object,
             const CObjectID &generator_id,
             const CAddress &caller_address,
-            int64_t idx,
+            int64_t item_index,
             c_bool finished)
         c_string MemoryUsageString()
 
@@ -283,6 +284,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         void RecordTaskLogEnd(int64_t stdout_end_offset,
                               int64_t stderr_end_offset) const
+
+        void Exit(const CWorkerExitType exit_type,
+                  const c_string &detail,
+                  const shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes)
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type

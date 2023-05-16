@@ -2573,11 +2573,25 @@ Status CoreWorker::ExecuteTask(
 
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  std::string actor_repr_name = "";
+  {
+    absl::MutexLock lock(&mutex_);
+    actor_repr_name = actor_repr_name_;
+  }
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    task_manager_->RecordTaskStatusEvent(
-        task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+    if (task_spec.IsActorTask() && !actor_repr_name.empty()) {
+      task_manager_->RecordTaskStatusEvent(
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::RUNNING,
+          /* include_task_info */ false,
+          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name));
+    } else {
+      task_manager_->RecordTaskStatusEvent(
+          task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+    }
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -2775,10 +2789,10 @@ void CoreWorker::DelObjectRefStream(const ObjectID &generator_id) {
   task_manager_->DelObjectRefStream(generator_id);
 }
 
-Status CoreWorker::AsyncReadObjectRefStream(const ObjectID &generator_id,
-                                            rpc::ObjectReference *object_ref_out) {
+Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
+                                          rpc::ObjectReference *object_ref_out) {
   ObjectID object_id;
-  const auto &status = task_manager_->AsyncReadObjectRefStream(generator_id, &object_id);
+  const auto &status = task_manager_->TryReadObjectRefStream(generator_id, &object_id);
   if (!status.ok()) {
     return status;
   }
@@ -2866,17 +2880,17 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
   return return_id;
 }
 
-Status CoreWorker::ReportIntermediateTaskReturn(
+Status CoreWorker::ReportGeneratorItemReturns(
     const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
-    int64_t idx,
+    int64_t item_index,
     bool finished) {
-  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << idx
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
                  << " finished: " << finished << ", id: " << dynamic_return_object.first;
-  rpc::ReportIntermediateTaskReturnRequest request;
+  rpc::ReportGeneratorItemReturnsRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
-  request.set_idx(idx);
+  request.set_item_index(item_index);
   request.set_finished(finished);
   request.set_generator_id(generator_id.Binary());
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
@@ -2897,9 +2911,9 @@ Status CoreWorker::ReportIntermediateTaskReturn(
     memory_store_->Delete(deleted);
   }
 
-  client->ReportIntermediateTaskReturn(
+  client->ReportGeneratorItemReturns(
       request,
-      [](const Status &status, const rpc::ReportIntermediateTaskReturnReply &reply) {
+      [](const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         if (!status.ok()) {
           // TODO(sang): Handle network error more gracefully.
           RAY_LOG(ERROR) << "Failed to send the object ref.";
@@ -2908,11 +2922,11 @@ Status CoreWorker::ReportIntermediateTaskReturn(
   return Status::OK();
 }
 
-void CoreWorker::HandleReportIntermediateTaskReturn(
-    rpc::ReportIntermediateTaskReturnRequest request,
-    rpc::ReportIntermediateTaskReturnReply *reply,
+void CoreWorker::HandleReportGeneratorItemReturns(
+    rpc::ReportGeneratorItemReturnsRequest request,
+    rpc::ReportGeneratorItemReturnsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  task_manager_->HandleReportIntermediateTaskReturn(request);
+  task_manager_->HandleReportGeneratorItemReturns(request);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -3959,6 +3973,9 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 void CoreWorker::SetActorReprName(const std::string &repr_name) {
   RAY_CHECK(direct_task_receiver_ != nullptr);
   direct_task_receiver_->SetActorReprName(repr_name);
+
+  absl::MutexLock lock(&mutex_);
+  actor_repr_name_ = repr_name;
 }
 
 rpc::JobConfig CoreWorker::GetJobConfig() const {

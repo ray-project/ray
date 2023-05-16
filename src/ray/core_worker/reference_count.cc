@@ -250,6 +250,10 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
     // Generator object already went out of scope.
     // It means the generator is already GC'ed. No need to
     // update the reference.
+    RAY_LOG(DEBUG)
+        << "Ignore OwnDynamicStreamingTaskReturnRef. The dynamic return reference "
+        << object_id << " is registered after the generator id " << generator_id
+        << " went out of scope.";
     return;
   }
   RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
