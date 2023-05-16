@@ -8,9 +8,9 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
-from ray.experimental.state.api import get_job
+from ray.util.state.api import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-from ray.experimental.state.common import Humanify
+from ray.util.state.common import Humanify
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner

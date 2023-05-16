@@ -11,7 +11,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
-from ray.experimental.state.custom_types import (
+from ray.util.state.custom_types import (
     TypeActorStatus,
     TypeNodeStatus,
     TypePlacementGroupStatus,
@@ -21,7 +21,7 @@ from ray.experimental.state.custom_types import (
     TypeWorkerExitType,
     TypeWorkerType,
 )
-from ray.experimental.state.exception import RayStateApiException
+from ray.util.state.exception import RayStateApiException
 
 try:
     from pydantic.dataclasses import dataclass

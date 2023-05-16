@@ -114,7 +114,7 @@ enum TagKey {
   NUM_ACTOR_TASKS = 306;
   NUM_NORMAL_TASKS = 307;
   NUM_DRIVERS = 308;
-  // Experimental state api import usage.
+  // State api import usage.
   EXPERIMENTAL_STATE_API_IMPORT = 309;
 
   // Data

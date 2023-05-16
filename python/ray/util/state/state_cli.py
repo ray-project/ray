@@ -9,7 +9,7 @@ import yaml
 
 import ray._private.services as services
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.experimental.state.api import (
+from ray.util.state.api import (
     StateApiClient,
     get_log,
     list_logs,
@@ -17,7 +17,7 @@ from ray.experimental.state.api import (
     summarize_objects,
     summarize_tasks,
 )
-from ray.experimental.state.common import (
+from ray.util.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_LOG_LIMIT,
     DEFAULT_RPC_TIMEOUT,
@@ -29,7 +29,7 @@ from ray.experimental.state.common import (
     SupportedFilterType,
     resource_to_schema,
 )
-from ray.experimental.state.exception import RayStateApiException
+from ray.util.state.exception import RayStateApiException
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -369,7 +369,7 @@ def ray_get(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray get tasks <task-id>` is
-    :class:`~ray.experimental.state.common.TaskState`.
+    :class:`~ray.util.state.common.TaskState`.
 
     Usage:
 
@@ -394,7 +394,7 @@ def ray_get(
         id: The id of the resource.
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     # All resource names use '_' rather than '-'. But users options have '-'
@@ -482,7 +482,7 @@ def ray_list(
     The output schema is defined at :ref:`State API Schema section. <state-api-schema>`
 
     For example, the output schema of `ray list tasks` is
-    :class:`~ray.experimental.state.common.TaskState`.
+    :class:`~ray.util.state.common.TaskState`.
 
     Usage:
 
@@ -533,7 +533,7 @@ def ray_list(
         resource: The type of the resource to query.
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     # All resource names use '_' rather than '-'. But users options have '-'
@@ -598,10 +598,10 @@ def task_summary(ctx, timeout: float, address: str):
     task function names.
 
     The output schema is
-    :class:`~ray.experimental.state.common.TaskSummaries`.
+    :class:`~ray.util.state.common.TaskSummaries`.
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     print(
@@ -629,11 +629,11 @@ def actor_summary(ctx, timeout: float, address: str):
     actor class names.
 
     The output schema is
-    :class:`ray.experimental.state.common.ActorSummaries
-    <ray.experimental.state.common.ActorSummaries>`.
+    :class:`ray.util.state.common.ActorSummaries
+    <ray.util.state.common.ActorSummaries>`.
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     print(
@@ -680,11 +680,11 @@ def object_summary(ctx, timeout: float, address: str):
         ```
 
     The output schema is
-    :class:`ray.experimental.state.common.ObjectSummaries
-    <ray.experimental.state.common.ObjectSummaries>`.
+    :class:`ray.util.state.common.ObjectSummaries
+    <ray.util.state.common.ObjectSummaries>`.
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
     """  # noqa: E501
     print(
@@ -977,7 +977,7 @@ def log_cluster(
         ```
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>` if the CLI
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
             is failed to query the data.
     """  # noqa: E501
 
@@ -1088,7 +1088,7 @@ def log_actor(
         ```
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
     """  # noqa: E501
@@ -1161,7 +1161,7 @@ def log_worker(
         ```
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
     """  # noqa: E501
@@ -1224,7 +1224,7 @@ def log_job(
         ```
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
     """  # noqa: E501
@@ -1291,7 +1291,7 @@ def log_task(
         ```
 
     Raises:
-        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+        :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
         MissingParameter if inputs are missing.
     """  # noqa: E501
