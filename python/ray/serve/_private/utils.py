@@ -9,7 +9,17 @@ import time
 import traceback
 from enum import Enum
 from functools import wraps
-from typing import Dict, Iterable, List, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Tuple,
+    TypeVar,
+    Union,
+    Optional,
+)
 
 import fastapi.encoders
 import numpy as np
@@ -174,7 +184,7 @@ def get_all_node_ids(gcs_client) -> List[Tuple[str, str]]:
     """
     nodes = gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
     node_ids = [
-        (ray.NodeID.from_binary(node_id).hex(), node["node_name"])
+        (ray.NodeID.from_binary(node_id).hex(), node["node_name"].decode("utf-8"))
         for (node_id, node) in nodes.items()
         if node["state"] == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
     ]
@@ -535,3 +545,27 @@ def record_serve_tag(key: str, value: str):
         )
 
     record_extra_usage_tag(serve_telemetry_tag_map[key], value)
+
+
+def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
+    """Check if this is a method rather than a function.
+
+    Does this by checking to see if `func` is the attribute of the first
+    (`self`) argument under `func.__name__`. Unfortunately, this is the most
+    robust solution to this I was able to find. It would also be preferable
+    to do this check when the decorator runs, rather than when the method is.
+
+    Returns the `self` object if it's a method call, else None.
+
+    Arguments:
+        args: arguments to the function/method call.
+        func: the unbound function that was called.
+    """
+    if len(args) > 0:
+        method = getattr(args[0], func.__name__, False)
+        if method:
+            wrapped = getattr(method, "__wrapped__", False)
+            if wrapped and wrapped == func:
+                return args[0]
+
+    return None

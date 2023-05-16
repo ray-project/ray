@@ -12,7 +12,7 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
-from ray._raylet import ActorID, JobID
+from ray._raylet import ActorID, JobID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.core.generated.gcs_service_pb2 import (
@@ -262,16 +262,40 @@ class StateDataSourceClient:
         self,
         timeout: int = None,
         limit: int = None,
-        job_id: Optional[str] = None,
-        exclude_driver: bool = True,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+        exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-        if job_id:
-            job_id = JobID(hex_to_binary(job_id)).binary()
-        request = GetTaskEventsRequest(
-            limit=limit, exclude_driver=exclude_driver, job_id=job_id
-        )
+
+        if filters is None:
+            filters = []
+
+        req_filters = GetTaskEventsRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+
+            if key == "actor_id":
+                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+            elif key == "job_id":
+                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+            elif key == "name":
+                req_filters.name = value
+            elif key == "task_id":
+                req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
+            else:
+                continue
+
+            # Remove the filter from the list so that we don't have to
+            # filter it again later.
+            filters.remove(filter)
+
+        req_filters.exclude_driver = exclude_driver
+
+        request = GetTaskEventsRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
         return reply
 
@@ -336,7 +360,6 @@ class StateDataSourceClient:
     ) -> Optional[GetTasksInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
@@ -400,6 +423,8 @@ class StateDataSourceClient:
         lines: int,
         interval: Optional[float],
         timeout: int,
+        task_id: Optional[str] = None,
+        attempt_number: Optional[int] = None,
     ) -> UnaryStreamCall:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
@@ -410,14 +435,12 @@ class StateDataSourceClient:
                 log_file_name=log_file_name,
                 lines=lines,
                 interval=interval,
+                task_id=task_id,
+                attempt_number=attempt_number,
             ),
             timeout=timeout,
         )
-        await self._validate_stream(stream)
-        return stream
-
-    @staticmethod
-    async def _validate_stream(stream):
         metadata = await stream.initial_metadata()
         if metadata.get(log_consts.LOG_GRPC_ERROR) == log_consts.FILE_NOT_FOUND:
-            raise ValueError('File "{log_file_name}" not found on node {node_id}')
+            raise ValueError(f'File "{log_file_name}" not found on node {node_id}')
+        return stream

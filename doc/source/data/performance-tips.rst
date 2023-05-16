@@ -3,11 +3,17 @@
 Performance Tips and Tuning
 ===========================
 
+Monitoring your application
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+View the Ray dashboard to monitor your application and troubleshoot issues. To learn
+more about the Ray dashboard, read :ref:`Ray Dashboard <ray-dashboard>`.
+
 Debugging Statistics
 ~~~~~~~~~~~~~~~~~~~~
 
-You can view debug stats for your Datastream executions via :meth:`ds.stats() <ray.data.Datastream.stats>`.
-These stats can be used to understand the performance of your Datastream workload and can help you debug problematic bottlenecks. Note that both execution and iterator statistics are available:
+You can view debug stats for your Dataset executions via :meth:`ds.stats() <ray.data.Dataset.stats>`.
+These stats can be used to understand the performance of your Dataset workload and can help you debug problematic bottlenecks. Note that both execution and iterator statistics are available:
 
 .. code-block:: python
 
@@ -29,7 +35,7 @@ These stats can be used to understand the performance of your Datastream workloa
 
 .. code-block::
 
-    Stage 1 ReadRange->Map->Map: 16/16 blocks executed in 0.37s                                                                                                                                                
+    Stage 1 ReadRange->Map->Map: 16/16 blocks executed in 0.37s
     * Remote wall time: 101.55ms min, 331.39ms max, 135.24ms mean, 2.16s total
     * Remote cpu time: 7.42ms min, 15.88ms max, 11.01ms mean, 176.15ms total
     * Peak heap memory usage (MiB): 157.18 min, 157.73 max, 157 mean
@@ -38,7 +44,7 @@ These stats can be used to understand the performance of your Datastream workloa
     * Tasks per node: 16 min, 16 max, 16 mean; 1 nodes used
     * Extra metrics: {'obj_store_mem_alloc': 3658, 'obj_store_mem_freed': 5000, 'obj_store_mem_peak': 40000}
 
-    Datastream iterator time breakdown:
+    Dataset iterator time breakdown:
     * Total time user code is blocked: 551.67ms
     * Total time in user code: 144.97us
     * Total time overall: 1.01s
@@ -53,8 +59,8 @@ These stats can be used to understand the performance of your Datastream workloa
 Batching Transforms
 ~~~~~~~~~~~~~~~~~~~
 
-Mapping individual records using :meth:`.map(fn) <ray.data.Datastream.map>` can be quite slow.
-Instead, consider using :meth:`.map_batches(batch_fn, batch_format="pandas") <ray.data.Datastream.map_batches>` and writing your ``batch_fn`` to
+Mapping individual records using :meth:`.map(fn) <ray.data.Dataset.map>` can be quite slow.
+Instead, consider using :meth:`.map_batches(batch_fn, batch_format="pandas") <ray.data.Dataset.map_batches>` and writing your ``batch_fn`` to
 perform vectorized pandas operations.
 
 .. _data_format_overheads:
@@ -89,26 +95,26 @@ may incur data copies; which conversions cause data copying is given in the belo
 
 .. note::
   \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
-  represented in the Ray Data tensor extension type (except for bool arrays).
+  represented as ndarrays (except for bool arrays).
 
 
 Parquet Column Pruning
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Current Datastream will read all Parquet columns into memory.
+Current Dataset will read all Parquet columns into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
 explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
 avoid loading unnecessary data (projection pushdown).
 For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"])`` to read
-just two of the five columns of Iris datastream.
+just two of the five columns of Iris dataset.
 
 Parquet Row Pruning
 ~~~~~~~~~~~~~~~~~~~
 
-Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Datastream.read_parquet>` (filter pushdown)
+Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
 which will be applied at the file scan so only rows that match the filter predicate
 will be returned.
-For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pyarrow.datastream.field("sepal.length") > 5.0)``
+For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
 (where ``pyarrow`` has to be imported)
 to read rows with sepal.length greater than 5.0.
 This can be used in conjunction with column pruning when appropriate to get the benefits of both.
@@ -138,16 +144,16 @@ For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25
 Enabling Push-Based Shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Some Datastream operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
-These operations include :meth:`Datastream.random_shuffle <ray.data.Datastream.random_shuffle>`,
-:meth:`Datastream.sort <ray.data.Datastream.sort>` and :meth:`Datastream.groupby <ray.data.Datastream.groupby>`.
-Shuffle can be challenging to scale to large data sizes and clusters, especially when the total datastream size cannot fit into memory.
+Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
+These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
+:meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`.
+Shuffle can be challenging to scale to large data sizes and clusters, especially when the total dataset size cannot fit into memory.
 
-Datastreams provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
-We recommend trying this out if your datastream has more than 1000 blocks or is larger than 1 TB in size.
+Datasets provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
+We recommend trying this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
 
-To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for :meth:`Datastream.random_shuffle <ray.data.Datastream.random_shuffle>` and :meth:`Datastream.sort <ray.data.Datastream.sort>`.
-To get an idea of the performance you can expect, here are some run time results for :meth:`Datastream.random_shuffle <ray.data.Datastream.random_shuffle>` on 1-10TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
+To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` and :meth:`Dataset.sort <ray.data.Dataset.sort>`.
+To get an idea of the performance you can expect, here are some run time results for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1-10TB of data on 20 machines (m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64GB RAM).
 
 .. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
    :align: center
@@ -156,10 +162,10 @@ To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASE
 
 .. code-block:: bash
 
-    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/datastream/sort.py
+    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort.py
     $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort.py --num-partitions=10 --partition-size=1e7
-    # Datastream size: 10 partitions, 0.01GB partition size, 0.1GB total
-    # [datastream]: Run `pip install tqdm` to enable progress reporting.
+    # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
+    # [dataset]: Run `pip install tqdm` to enable progress reporting.
     # 2022-05-04 17:30:28,806	INFO push_based_shuffle.py:118 -- Using experimental push-based shuffle.
     # Finished in 9.571171760559082
     # ...

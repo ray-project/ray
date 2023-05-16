@@ -47,6 +47,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.schedules.scheduler import Scheduler
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -65,6 +66,9 @@ ParamDictType = Dict[ParamRef, ParamType]
 POLICY_LOSS_KEY = "policy_loss"
 VF_LOSS_KEY = "vf_loss"
 ENTROPY_KEY = "entropy"
+
+# Additional update keys
+LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
 
 
 @dataclass
@@ -98,7 +102,10 @@ class LearnerHyperparameters:
     respective AlgorithmConfig class.
     """
 
-    pass
+    # TODO (Sven): Move lr from - currently - optimizer config to only exist here.
+    # lr: float = None
+
+    lr_schedule: Optional[List[List[Union[int, float]]]] = None
 
 
 class Learner:
@@ -238,6 +245,7 @@ class Learner:
         self._module_obj = module
         self._optimizer_config = optimizer_config
         self._hps = learner_hyperparameters or LearnerHyperparameters()
+        self._device = None
 
         # pick the configs that we need for the learner from scaling config
         self._learner_group_scaling_config = (
@@ -614,6 +622,17 @@ class Learner:
             logger.debug("Learner already built. Skipping build.")
             return
         self._is_built = True
+
+        # Build learning rate scheduling tools.
+        # TODO (sven): Move lr from optimizer config to Learner HPs?
+        #  We might not need optimizer config.
+        self.lr_scheduler = Scheduler(
+            fixed_value=self._optimizer_config["lr"],
+            schedule=self.hps.lr_schedule,
+            framework=self.framework,
+            device=self._device,
+        )
+
         self._module = self._make_module()
         for param_seq, optimizer in self.configure_optimizers():
             self._optimizer_parameters[optimizer] = []
@@ -746,10 +765,10 @@ class Learner:
 
         return results_all_modules
 
-    @OverrideToImplementCustomLogic
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def additional_update_per_module(
         self, module_id: ModuleID, **kwargs
-    ) -> Mapping[str, Any]:
+    ) -> Dict[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
         See `additional_update` for more details.
@@ -761,7 +780,7 @@ class Learner:
         Returns:
             A dictionary of results from the update
         """
-        raise NotImplementedError
+        return {}
 
     @OverrideToImplementCustomLogic
     def postprocess_gradients(
@@ -1072,7 +1091,7 @@ class Learner:
     ) -> Mapping[str, Any]:
         """Performs a single update given a batch of data."""
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
-        # NestedDict from the base class.
+        #  NestedDict from the base class.
         tensorbatch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(tensorbatch)
         loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
@@ -1100,6 +1119,26 @@ class Learner:
 
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
+
+    @abc.abstractmethod
+    def _get_tensor_variable(
+        self,
+        value: Any,
+        dtype: Any = None,
+        trainable: bool = False,
+    ) -> TensorType:
+        """Returns a framework-specific tensor variable with the initial given value.
+
+        This is a framework specific method that should be implemented by the
+        framework specific sub-class.
+
+        Args:
+            value: The initial value for the tensor variable variable.
+
+        Returns:
+            The framework specific tensor variable of the given initial value,
+            dtype and trainable/requires_grad property.
+        """
 
 
 @dataclass

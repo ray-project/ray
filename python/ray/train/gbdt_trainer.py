@@ -108,7 +108,7 @@ class GBDTTrainer(BaseTrainer):
     Inherited by XGBoostTrainer and LightGBMTrainer.
 
     Args:
-        datasets: Datastreams to use for training and validation. Must include a
+        datasets: Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``
             is provided and has not already been fit, it will be fit on the training
             dataset. All datasets will be transformed by the ``preprocessor`` if
@@ -170,7 +170,7 @@ class GBDTTrainer(BaseTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-        # Datastreams should always use distributed loading.
+        # Datasets should always use distributed loading.
         for dataset_name in self.datasets.keys():
             dataset_params = self.dmatrix_params.get(dataset_name, {})
             dataset_params["distributed"] = True
@@ -226,12 +226,12 @@ class GBDTTrainer(BaseTrainer):
             scaling_config_dataclass, self._ray_params_cls, self._default_ray_params
         )
 
-    def preprocess_datasets(self) -> None:
-        super().preprocess_datasets()
-
+    def _repartition_datasets_to_match_num_actors(self):
         # XGBoost/LightGBM-Ray requires each dataset to have at least as many
         # blocks as there are workers.
-        # TODO: Move this logic to the respective libraries
+        # This is only applicable for xgboost-ray<0.1.16. The version check
+        # is done in subclasses to ensure that xgboost-ray doesn't need to be
+        # imported here.
         for dataset_key, dataset in self.datasets.items():
             if dataset.num_blocks() < self._ray_params.num_actors:
                 if dataset.size_bytes() > _WARN_REPARTITION_THRESHOLD:

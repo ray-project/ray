@@ -7,6 +7,7 @@ import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
+import traceback
 
 import starlette.responses
 
@@ -18,7 +19,11 @@ from ray.serve import metrics
 from ray._private.async_compat import sync_to_async
 
 from ray.serve._private.autoscaling_metrics import start_metrics_pusher
-from ray.serve._private.common import HEALTH_CHECK_CONCURRENCY_GROUP, ReplicaTag
+from ray.serve._private.common import (
+    HEALTH_CHECK_CONCURRENCY_GROUP,
+    ReplicaTag,
+    ServeComponentType,
+)
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
@@ -30,7 +35,11 @@ from ray.serve._private.constants import (
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import ASGIHTTPSender
-from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
+from ray.serve._private.logging_utils import (
+    access_log_msg,
+    configure_component_logger,
+    get_component_logger_file_path,
+)
 from ray.serve._private.router import Query, RequestMetadata
 from ray.serve._private.utils import (
     parse_import_path,
@@ -71,7 +80,7 @@ def create_replica_wrapper(name: str):
             app_name: str = None,
         ):
             configure_component_logger(
-                component_type="deployment",
+                component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
             )
@@ -220,13 +229,16 @@ def create_replica_wrapper(name: str):
             to PENDING_INITIALIZATION startup state.
 
             Returns:
-                The PID, actor ID, node ID, node IP of the replica.
+                The PID, actor ID, node ID, node IP, and log filepath id of the replica.
             """
+
             return (
                 os.getpid(),
                 ray.get_runtime_context().get_actor_id(),
+                ray._private.worker.global_worker.worker_id.hex(),
                 ray.get_runtime_context().get_node_id(),
                 ray.util.get_node_ip_address(),
+                get_component_logger_file_path(),
             )
 
         async def is_initialized(
@@ -236,21 +248,26 @@ def create_replica_wrapper(name: str):
         ):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
-            await self._initialize_replica()
+            try:
+                await self._initialize_replica()
+                metadata = await self.reconfigure(deployment_config)
 
-            metadata = await self.reconfigure(deployment_config)
-
-            # A new replica should not be considered healthy until it passes an
-            # initial health check. If an initial health check fails, consider
-            # it an initialization failure.
-            await self.check_health()
-            return metadata
+                # A new replica should not be considered healthy until it passes an
+                # initial health check. If an initial health check fails, consider
+                # it an initialization failure.
+                await self.check_health()
+                return metadata
+            except Exception:
+                raise RuntimeError(traceback.format_exc()) from None
 
         async def reconfigure(
             self, deployment_config: DeploymentConfig
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            await self.replica.reconfigure(deployment_config)
-            return await self.get_metadata()
+            try:
+                await self.replica.reconfigure(deployment_config)
+                return await self.get_metadata()
+            except Exception:
+                raise RuntimeError(traceback.format_exc()) from None
 
         async def get_metadata(
             self,
@@ -508,7 +525,7 @@ class RayServeReplica:
             # handle can pass the correct request context to subsequent replicas.
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(
-                    request.metadata.route, request.metadata.request_id
+                    request.metadata.route, request.metadata.request_id, self.app_name
                 )
             )
 
