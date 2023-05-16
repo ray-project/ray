@@ -392,6 +392,7 @@ install_pip_packages() {
   if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
     requirements_packages+=("statsforecast==1.5.0")
     requirements_packages+=("prophet==1.1.1")
+    requirements_packages+=("holidays==0.24") # holidays 0.25 causes `import prophet` to fail.
   fi
 
   # Data processing test dependencies.
