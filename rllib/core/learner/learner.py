@@ -34,8 +34,6 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
@@ -89,25 +87,7 @@ class FrameworkHyperparameters:
     """
 
     eager_tracing: bool = False
-    torch_compile_config: Optional[TorchCompileConfig] = TorchCompileConfig()
-
-    def prepare_rl_module(self, marl_module: MultiAgentRLModule) -> RLModule:
-        """Prepares the RL modules for training.
-
-        This method is called right after the MARL module is created and before it is
-        used for learning. This can be used as a callback to prepare the RL modules
-        for learning, e.g. by torch_compiling some of its forward methods.
-
-        Args:
-            marl_module: The MARL module to prepare.
-
-        Returns:
-            The prepared MARL module.
-        """
-        for module in marl_module._rl_modules.values():
-            if isinstance(module, TorchRLModule):
-                module.compile(self.torch_compile_config)
-        return marl_module
+    torch_compile_config: Optional["TorchCompileConfig"] = None  # noqa: F821
 
 
 @dataclass
@@ -658,11 +638,6 @@ class Learner:
         )
 
         self._module = self._make_module()
-
-        # This is a callback to allow for configuration specific preparation of the
-        # RL Module for training. For example, this can be used to `torch.compile()`
-        # the `RLModule._forward_training()` method.
-        self._framework_hyperparameters.prepare_rl_module(self._module)
 
         for param_seq, optimizer in self.configure_optimizers():
             self._optimizer_parameters[optimizer] = []

@@ -257,6 +257,10 @@ class TorchLearner(Learner):
 
         super().build()
 
+        for module in self._rl_modules.values():
+            if self._framework_hyperparameters.torch_compile_config is not None:
+                module.compile(self._framework_hyperparameters.torch_compile_config)
+
         self._make_modules_ddp_if_necessary()
 
     @OverrideToImplementCustomLogic

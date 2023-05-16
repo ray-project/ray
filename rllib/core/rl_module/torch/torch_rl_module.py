@@ -79,12 +79,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
             **compile_config.kwargs
         )
 
-        def forward_train(*args, **kwargs):
-            # This is a simple pass through.
-            # We only leave this here so that the stack trace is more informative.
-            return compiled_forward_train(*args, **kwargs)
-
-        rl_module._forward_train = forward_train
+        rl_module._forward_train = compiled_forward_train
 
     if compile_config.compile_forward_inference:
         compiled_forward_inference = torch.compile(
@@ -94,12 +89,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
             **compile_config.kwargs
         )
 
-        def forward_inference(*args, **kwargs):
-            # This is a simple pass through.
-            # We only leave this here so that the stack trace is more informative.
-            return compiled_forward_inference(*args, **kwargs)
-
-        rl_module._forward_inference = forward_inference
+        rl_module._forward_inference = compiled_forward_inference
 
     if compile_config.compile_forward_exploration:
         compiled_forward_exploration = torch.compile(
@@ -109,12 +99,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
             **compile_config.kwargs
         )
 
-        def forward_exploration(*args, **kwargs):
-            # This is a simple pass through.
-            # We only leave this here so that the stack trace is more informative.
-            return compiled_forward_exploration(*args, **kwargs)
-
-        rl_module._forward_exploration = forward_exploration
+        rl_module._forward_exploration = compiled_forward_exploration
 
     return rl_module
 
