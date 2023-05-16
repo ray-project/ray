@@ -261,10 +261,11 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
     # Simple 2-stage pipeline.
     ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
 
+    # Read tasks get SPREAD by default, subsequent ones use default policy.
     # Use default policy.
     ctx = DataContext.get_current()
     tasks = sorted(tasks)
-    assert tasks == [ctx.scheduling_strategy] * 4
+    assert tasks == ["DEFAULT", "DEFAULT", "SPREAD", "SPREAD"]
 
 
 def test_scheduling_progress_when_output_blocked(
