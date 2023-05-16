@@ -5,7 +5,7 @@ import ray
 from ray import serve
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.context import get_internal_replica_context
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.common import RunningReplicaInfo
 
 
@@ -39,27 +39,38 @@ class TestMultiplexWrapper:
         multiplexer = _ModelMultiplexWrapper(
             model_load_func, None, max_num_models_per_replica=2
         )
+
+        # Check the replica info pushed
+        def check_info_pushed():
+            return multiplexer._push_multiplexed_replica_info is False
+
         # Load model1
         await multiplexer.load_model("1")
         assert multiplexer.models == {"1": "1"}
+        assert multiplexer._push_multiplexed_replica_info
+        await async_wait_for_condition(check_info_pushed)
+
         # Load model2
         await multiplexer.load_model("2")
-        assert multiplexer._push_multiplexed_replica_info is True
         assert multiplexer.models == {"1": "1", "2": "2"}
+        assert multiplexer._push_multiplexed_replica_info
+        await async_wait_for_condition(check_info_pushed)
 
         # Load model3, model1 should be unloaded
         await multiplexer.load_model("3")
-        assert multiplexer._push_multiplexed_replica_info is True
         assert multiplexer.models == {"2": "2", "3": "3"}
+        assert multiplexer._push_multiplexed_replica_info
+        await async_wait_for_condition(check_info_pushed)
 
         # reload model2, model2 should be moved to the end of the LRU cache
+        # _push_multiplexed_replica_info should be False.
         await multiplexer.load_model("2")
-        assert multiplexer._push_multiplexed_replica_info is True
         assert multiplexer.models == {"3": "3", "2": "2"}
+        assert multiplexer._push_multiplexed_replica_info is False
 
         # Load model4, model3 should be unloaded
         await multiplexer.load_model("4")
-        assert multiplexer._push_multiplexed_replica_info is True
+        assert multiplexer._push_multiplexed_replica_info
         assert multiplexer.models == {"2": "2", "4": "4"}
 
     @pytest.mark.asyncio
