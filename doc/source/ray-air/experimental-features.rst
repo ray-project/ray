@@ -4,7 +4,7 @@
 Experimental features in Ray AIR
 ================================
 
-We're testing a number of experimental features in Ray AIR.
+The Ray Team is testing a number of experimental features in Ray AIR.
 
 During development, the features
 are disabled per default. You can opt-in by setting a
@@ -17,8 +17,7 @@ fully revert to the old behavior.
 
 If you run into issues with experimental features,
 `open an issue <https://github.com/ray-project/ray/issues/>`_
-on GitHub. The Ray Team considers
- feedback before removing
+on GitHub. The Ray Team considers feedback before removing
 the old implementation and making the new implementation the
 default.
 
@@ -29,8 +28,8 @@ default.
 
 .. _air-experimental-new-output:
 
-New output engine
------------------
+Context-aware progress reporting
+--------------------------------
 
 .. note::
 
@@ -38,10 +37,11 @@ New output engine
 
     To disable, set the environment variable ``RAY_AIR_NEW_OUTPUT=0``.
 
-An additional output engine is available for Ray Train and Ray Tune runs.
+A context-aware output engine is available for Ray Train and Ray Tune runs.
 
 This output engine affects how the training progress
-is printed in the console.
+is printed in the console. The output changes depending on the execution
+context: Ray Tune runs will be displayed differently to Ray Train runs.
 
 The features include:
 
@@ -69,8 +69,8 @@ Rich layout (sticky status)
 
     To enable, set the environment variable ``RAY_AIR_RICH_LAYOUT=1``.
 
-The :ref:`new output engine <air-experimental-new-output>`,
-has an advanced layout using the
+The :ref:`context-aware output engine <air-experimental-new-output>`
+exposes an advanced layout using the
 `rich <https://github.com/Textualize/rich>`_ library.
 
 The *rich* layout provides a sticky
@@ -89,8 +89,8 @@ and install rich (``pip install rich``).
 
 .. _air-experimental-execution:
 
-New trial execution engine
---------------------------
+Event-based trial execution engine
+----------------------------------
 
 .. note::
 
@@ -104,15 +104,16 @@ Since Ray Tune is also the execution backend for
 Ray Train, the updated engine affects both tuning and training runs.
 
 The update is a refactor of the :ref:`TrialRunner <trialrunner-docstring>`
-uses a generic Ray actor and future manager instead of
-the previous ``RayTrialExecutor``.
+which uses a generic Ray actor and future manager instead of
+the previous ``RayTrialExecutor``. This manager exposes an
+interface to react to scheduling and task execution events, which makes
+it easier to maintain and develop.
 
-Our CI and release tests all run (and pass) with the new execution engine.
-In most cases, you should not see any change to the previous
-behavior.
+This is a drop-in replacement of an internal class, and you shouldn't see
+any change to the previous behavior.
 
 However, if you notice any odd behavior, you can opt out of
-the new execution engine and see if it resolves your problem.
+the event-based execution engine and see if it resolves your problem.
 
 In that case, please `open an issue <https://github.com/ray-project/ray/issues/>`_
 on GitHub, ideally with a reproducible script.
@@ -130,5 +131,3 @@ Things to look out for:
   stopping trials or the experiment
 
 Note that some edge cases may not be captured in the regression tests. Your feedback is welcome.
-mitigated every bug we found. But there are sometimes edge cases
-we don't capture, yet. Your feedback is very welcome here.
