@@ -530,4 +530,10 @@ class ServeControllerClient:
 
     @_ensure_connected
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """Record multiplexed replica information for replica.
+
+        Args:
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
+        """
         self._controller.record_multiplexed_replica_info.remote(info)

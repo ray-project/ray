@@ -778,8 +778,9 @@ class DeploymentReplica(VersionedReplica):
             multiplexed_model_ids=self.multiplexed_model_ids,
         )
 
-    def record_multiplexed_model_ids(self, model_ids: List[str]):
-        self._multiplexed_model_ids = model_ids
+    def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
+        """Record the multiplexed model ids for this replica."""
+        self._multiplexed_model_ids = multiplexed_model_ids
 
     @property
     def multiplexed_model_ids(self) -> List[str]:
@@ -1885,17 +1886,18 @@ class DeploymentState:
         return deleted, any_replicas_recovering
 
     def record_multiplexed_model_ids(
-        self, replica_name: str, model_ids: List[str]
+        self, replica_name: str, multiplexed_model_ids: List[str]
     ) -> None:
-        """Records the model IDs of a replica.
+        """Records the multiplexed model IDs of a replica.
+
         Args:
             replica_name: Name of the replica.
-            model_ids: List of model IDs.
+            multiplexed_model_ids: List of model IDs that replica is serving.
         """
         # Find the replica
         for replica in self._replicas.get():
             if replica.replica_tag == replica_name:
-                replica.record_multiplexed_model_ids(model_ids)
+                replica.record_multiplexed_model_ids(multiplexed_model_ids)
                 self._multiplexed_model_ids_updated = True
                 break
         logger.warn(f"Replia {replica_name} not found in deployment {self._name}")
@@ -2427,7 +2429,11 @@ class DeploymentStateManager:
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
         """
-        Record model ids for a multiplexed replica.
+        Record multiplexed model ids for a multiplexed replica.
+
+        Args:
+            info: Multiplexed replica info including deployment name,
+                replica tag and model ids.
         """
         if info.deployment_name not in self._deployment_states:
             logger.error(

@@ -1,19 +1,22 @@
-from ray._private.async_compat import sync_to_async
+import asyncio
 from collections import OrderedDict
-from typing import Any, Callable
+import inspect
 import logging
+import time
+from typing import Any, Callable
+
+from ray._private.async_compat import sync_to_async
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
 )
-import inspect
-import asyncio
 from ray.serve.context import (
     get_global_client,
     get_internal_replica_context,
 )
 from ray.serve._private.common import MultiplexedReplicaInfo
 from ray._private.utils import run_background_task
+from ray.serve import metrics
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -53,6 +56,24 @@ class _ModelMultiplexWrapper:
         self.self_arg: Any = self_arg
         self.max_num_models_per_replica: int = max_num_models_per_replica
 
+        self.model_load_latency_s = metrics.Gauge(
+            "serve_multiplexed_model_load_latency_s",
+            description="The time it takes to load a model.",
+        )
+        self.model_unload_latency_s = metrics.Gauge(
+            "serve_multiplexed_model_unload_latency_s",
+            description="The time it takes to unload a model.",
+        )
+        self.num_models = metrics.Gauge(
+            "serve_num_multiplexed_models",
+            description="The number of models loaded on the current replica.",
+        )
+
+        self.models_unload_counter = metrics.Counter(
+            "serve_multiplexed_models_load_counter",
+            description="The counter for models loaded on the current replica.",
+        )
+
         context = get_internal_replica_context()
         self._deployment_name: str = context.deployment
         self._replica_tag: str = context.replica_tag
@@ -79,6 +100,8 @@ class _ModelMultiplexWrapper:
         if not model_id:
             raise ValueError("The model ID cannot be empty.")
 
+        self.num_models.set(len(self.models))
+
         if model_id in self.models:
             # Move the model to the end of the OrderedDict to ensure LRU caching.
             model = self.models.pop(model_id)
@@ -91,14 +114,19 @@ class _ModelMultiplexWrapper:
                 and len(self.models) >= self.max_num_models_per_replica
             ):
                 # Unload the least recently used model.
+                self.models_unload_counter.inc()
+                unload_start_time = time.time()
                 await self.unload_model()
+                self.model_unload_latency_s.set(time.time() - unload_start_time)
             # Load the model.
             logger.info(f"Loading model '{model_id}'.")
+            load_start_time = time.time()
             if self.self_arg is None:
                 self.models[model_id] = await self._func(model_id)
             else:
                 self.models[model_id] = await self._func(self.self_arg, model_id)
             self._push_multiplexed_replica_info = True
+            self.model_load_latency_s.set(time.time() - load_start_time)
         return self.models[model_id]
 
     async def unload_model(self) -> None:

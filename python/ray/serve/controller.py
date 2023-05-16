@@ -798,9 +798,10 @@ class ServeController:
         self.delete_deployments(deployments_to_delete)
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
-        """Record model ids for a replica of deployment
+        """Record multiplexed model ids for a replica of deployment
         Args:
-            data: Tuple of deployment name, replica name, and model ids.
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
         """
         self.deployment_state_manager.record_multiplexed_replica_info(info)
 
