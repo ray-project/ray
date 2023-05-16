@@ -29,7 +29,8 @@ class Test(dict):
         Returns the ray docker image to use for this test. If the commit hash is not
         specified, use the nightly ray image.
         """
-        ray_version = os.environ.get("BUILDKITE_COMMIT", "")[:6] or "nightly"
+        # ray_version = os.environ.get("BUILDKITE_COMMIT", "")[:6] or "nightly"
+        ray_version = "nightly"
         python_version = f"py{self.get_python_version().replace('.',   '')}"
         return f"rayproject/ray:{ray_version}-{python_version}"
 
