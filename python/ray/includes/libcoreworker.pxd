@@ -236,11 +236,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 int64_t timeout_ms,
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
-        CRayStatus ReportIntermediateTaskReturn(
+        CRayStatus ReportGeneratorItemReturns(
             const pair[CObjectID, shared_ptr[CRayObject]] &dynamic_return_object,
             const CObjectID &generator_id,
             const CAddress &caller_address,
-            int64_t idx,
+            int64_t item_index,
             c_bool finished)
         c_string MemoryUsageString()
 

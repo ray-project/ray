@@ -382,7 +382,7 @@ message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
 
-message ReportIntermediateTaskReturnRequest {
+message ReportGeneratorItemReturnsRequest {
   // The intermediate return object that's dynamically
   // generated from the executor side.
   repeated ReturnObject dynamic_return_objects = 1;
@@ -392,7 +392,7 @@ message ReportIntermediateTaskReturnRequest {
   // reorder the intermediate return object
   // because the ordering of this request
   // is not guaranteed.
-  int64 idx = 3;
+  int64 item_index = 3;
   // If true, it means there's going to be no more
   // task return after this request.
   bool finished = 4;
@@ -401,7 +401,7 @@ message ReportIntermediateTaskReturnRequest {
   bytes generator_id = 5;
 }
 
-message ReportIntermediateTaskReturnReply {}
+message ReportGeneratorItemReturnsReply {}
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
@@ -424,8 +424,8 @@ service CoreWorkerService {
   /// the caller (subscriber).
   rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
   // The RPC to report the intermediate task return to the caller.
-  rpc ReportIntermediateTaskReturn(ReportIntermediateTaskReturnRequest)
-      returns (ReportIntermediateTaskReturnReply);
+  rpc ReportGeneratorItemReturns(ReportGeneratorItemReturnsRequest)
+      returns (ReportGeneratorItemReturnsReply);
   /// The pubsub command batch request used by the subscriber.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
   // Update the batched object location information to the ownership-based object
