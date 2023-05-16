@@ -15,6 +15,14 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.representation_layer im
 
 
 class DynamicsPredictor(tf.keras.Model):
+    """The dynamics (or "prior") network described in [1], producing prior z-states.
+
+    The dynamics net is used to:
+    - compute the initial z-state (from the tanh'd initial h-state variable) at the
+    beginning of a sequence.
+    - compute prior-z-states during dream data generation. Note that during dreaming,
+    no actual observations are available and thus no posterior z-states can be computed.
+    """
     def __init__(
         self,
         *,
@@ -22,6 +30,17 @@ class DynamicsPredictor(tf.keras.Model):
         num_categoricals: Optional[int] = None,
         num_classes_per_categorical: Optional[int] = None,
     ):
+        """Initializes a DynamicsPredictor instance.
+
+        Args:
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
+                Use None for manually setting the different parameters.
+            num_categoricals: Overrides the number of categoricals used in the z-states.
+                In [1], 32 is used for any model dimension.
+            num_classes_per_categorical: Overrides the number of classes within each
+                categorical used for the z-states. In [1], 32 is used for any model
+                dimension.
+        """
         super().__init__(name="dynamics_predictor")
 
         self.mlp = MLP(
@@ -31,6 +50,7 @@ class DynamicsPredictor(tf.keras.Model):
             model_dimension=model_dimension,
             output_layer_size=None,
         )
+        # The (prior) z-state generating layer.
         self.representation_layer = RepresentationLayer(
             model_dimension=model_dimension,
             num_categoricals=num_categoricals,
@@ -38,7 +58,7 @@ class DynamicsPredictor(tf.keras.Model):
         )
 
     def call(self, h, return_z_probs=False):
-        """
+        """Performs a forward pass through the dynamics (or "prior") network.
 
         Args:
             h: The deterministic hidden state of the sequence model.

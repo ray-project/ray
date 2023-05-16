@@ -74,7 +74,7 @@ class ActorNetwork(tf.keras.Model):
         else:
             raise ValueError(f"Invalid action space: {action_space}")
 
-    @tf.function
+    #@tf.functionction
     def call(self, h, z, return_distribution=False):
         """Performs a forward pass through this policy network.
 

@@ -7,11 +7,12 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 
 _ALLOWED_MODEL_DIMS = [
-    # Debug sizes.
+    # Debug sizes (not mentioned in [1]).
     "nano",
     "micro",
-    # Regular sizes.
     "XXS",
+
+    # Regular sizes (listed in table B in [1]).
     "XS",
     "S",
     "M",
@@ -149,7 +150,8 @@ def get_num_dense_layers(model_dimension, override=None):
 def do_symlog_obs(observation_space, symlog_obs_user_setting):
     # If our symlog_obs setting is NOT set specifically ("auto"), return True
     # if we don't have an image observation space, otherwise False.
-    # TODO (sven): Fix for mixed observations.
+    # TODO (sven): Support mixed observation spaces.
+
     is_image_space = len(observation_space.shape) in [2, 3]
     return (
         not is_image_space

@@ -14,6 +14,16 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor_layer 
 
 
 class CriticNetwork(tf.keras.Model):
+    """The critic network described in [1], predicting values for policy learning.
+
+    Contains a copy of itself (EMA net) for weight regularization.
+    The EMA net is updated after each train step via EMA (using the `ema_decay`
+    parameter and the actual critic's weights). The EMA net is NOT used for target
+    computations (we use the actual critic for that), its only purpose is to compute a
+    weights regularizer term for the critic's loss such that the actual critic does not
+    move too quickly.
+    """
+
     def __init__(
         self,
         *,
@@ -87,7 +97,7 @@ class CriticNetwork(tf.keras.Model):
         )
 
     def call(self, h, z, return_logits=False, use_ema=False):
-        """
+        """Performs a forward pass through the critic network.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].

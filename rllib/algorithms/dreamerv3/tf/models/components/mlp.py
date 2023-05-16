@@ -22,7 +22,7 @@ class MLP(tf.keras.Model):
 
     MLP=multi-layer perceptron.
 
-    See Appendix B for the MLP sizes depending on the given `model_dimension`.
+    See Appendix B in [1] for the MLP sizes depending on the given `model_dimension`.
     """
     def __init__(
         self,

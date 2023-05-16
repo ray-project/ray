@@ -37,16 +37,20 @@ class WorldModel(tf.keras.Model):
     "posterior net", which produces posterior z-states from observations and h-states.
 
     Note: The "internal state" of the world model always consists of:
-    The actions `a` (initially, this is a zeroed-out action), `h`-states, and `z`-states
-    (posterior for world model training, prior for creating dream data).
-    Initial states (`a`, `h`, and `z`) are inserted where ever a new episode starts
-    within a batch row OR at the beginning of each train batch's B rows, regardless of
-    whether there was an actual episode boundary or not. Thus, internal states are not
-    required to be stored in or retrieved from the replay buffer AND retrieved batches
-    from the buffer must not be zero padded.
+    The actions `a` (initially, this is a zeroed-out action), `h`-states (deterministic,
+    continuous), and `z`-states (stochastic, discrete).
+    There are two versions of z-states: "posterior" for world model training and "prior"
+    for creating the dream data.
+
+    Initial internal state values (`a`, `h`, and `z`) are inserted where ever a new
+    episode starts within a batch row OR at the beginning of each train batch's B rows,
+    regardless of whether there was an actual episode boundary or not. Thus, internal
+    states are not required to be stored in or retrieved from the replay buffer AND
+    retrieved batches from the buffer must not be zero padded.
+
     Initial `a` is the zero "one hot" action, e.g. [0.0, 0.0] for Discrete(2), initial
-    `h` is a separate learned variable, and initial `z` are computed by the posterior
-    net (using the reset observation and initial-h).
+    `h` is a separate learned variable, and initial `z` are computed by the "dynamics"
+    (or "prior") net, using only the initial-h state as input.
     """
 
     def __init__(
@@ -102,7 +106,8 @@ class WorldModel(tf.keras.Model):
         # Encoder (latent 1D vector generator) (xt -> lt).
         self.encoder = encoder
 
-        # Posterior predictor: ([ht, lt] -> zt).
+        # Posterior predictor consisting of an MLP and a RepresentationLayer:
+        # [ht, lt] -> zt.
         self.posterior_mlp = MLP(
             model_dimension=self.model_dimension,
             output_layer_size=None,
@@ -111,30 +116,31 @@ class WorldModel(tf.keras.Model):
             num_dense_layers=1,
             name="posterior_mlp",
         )
+        # The (posterior) z-state generating layer.
         self.posterior_representation_layer = RepresentationLayer(
             model_dimension=self.model_dimension,
         )
 
-        # Dynamics (prior) predictor: ht -> z^t
+        # Dynamics (prior z-state) predictor: ht -> z^t
         self.dynamics_predictor = DynamicsPredictor(
             model_dimension=self.model_dimension
         )
-
-        # Initial h-state variable (learnt).
-        self.initial_h = tf.Variable(
-            tf.zeros(shape=(self.num_gru_units,), dtype=tf.float32),
-            trainable=True,
-            name="initial_h",
-        )
-        # -> tanh(self.initial_h) -> deterministic state
-        # Use our Dynamics predictor for initial stochastic state, BUT with greedy
-        # (mode) instead of sampling.
 
         # GRU for the RSSM: [at, ht, zt] -> ht+1
         self.num_gru_units = get_gru_units(
             model_dimension=self.model_dimension,
             override=num_gru_units,
         )
+        # Initial h-state variable (learnt).
+        # -> tanh(self.initial_h) -> deterministic state
+        # Use our Dynamics predictor for initial stochastic state, BUT with greedy
+        # (mode) instead of sampling.
+        self.initial_h = tf.Variable(
+            tf.zeros(shape=(self.num_gru_units,), dtype=tf.float32),
+            trainable=True,
+            name="initial_h",
+        )
+        # The actual sequence model containing the GRU layer.
         self.sequence_model = SequenceModel(
             model_dimension=self.model_dimension,
             action_space=self.action_space,
@@ -151,8 +157,15 @@ class WorldModel(tf.keras.Model):
         # Decoder: [ht, zt] -> x^t.
         self.decoder = decoder
 
-    @tf.function
+    #@tf.functionction
     def get_initial_state(self):
+        """Returns the (current) initial state of the world model (h- and z-states).
+
+        An initial state is generated using the tanh of the (learned) h-state variable
+        and the dynamics predictor (or "prior net") to compute z^0 from h0. In this last
+        step, it is important that we do NOT sample the z^-state (as we would usually
+        do during dreaming), but rather take the mode (argmax, then one-hot again).
+        """
         h = tf.expand_dims(tf.math.tanh(self.initial_h), 0)
         # Use the mode, NOT a sample for the initial z-state.
         _, z_probs = self.dynamics_predictor(h, return_z_probs=True)
@@ -161,13 +174,13 @@ class WorldModel(tf.keras.Model):
 
         return {"h": h, "z": z}
 
-    @tf.function
+    #@tf.functionction
     def call(self, inputs, *args, **kwargs):
         return self.forward_train(inputs, *args, **kwargs)
 
-    @tf.function  # (experimental_relax_shapes=True)
-    def forward_inference(self, previous_states, observations, is_first, training=None):
-        """Performs a forward step for inference.
+    #@tf.functionction  # (experimental_relax_shapes=True)
+    def forward_inference(self, observations, previous_states, is_first, training=None):
+        """Performs a forward step for inference (e.g. environment stepping).
 
         Works analogous to `forward_train`, except that all inputs are provided
         for a single timestep in the shape of [B, ...] (no time dimension!).
@@ -176,12 +189,10 @@ class WorldModel(tf.keras.Model):
             observations: The batch (B, ...) of observations to be passed through
                 the encoder network to yield the inputs to the representation layer
                 (which then can compute the z-states).
-            actions: The batch (B, ...) of actions to be used in combination with
-                h-states and computed z-states to yield the next h-states.
-            initial_h: The initial h-states (B, ...) (h(t)) to be
-                used in combination with the observations to yield the
-                z-states and then - in combination with the actions and z-states -
-                to yield the next h-states (h(t+1)) via the RSSM.
+            previous_states: A dict with `h`, `z`, and `a` keys mapping to the
+                respective previous states/actions. All of the shape (B, ...), no time
+                rank.
+            is_first: The batch (B) of `is_first` flags.
 
         Returns:
             The next deterministic h-state (h(t+1)) as predicted by the sequence model.
@@ -202,31 +213,36 @@ class WorldModel(tf.keras.Model):
         previous_a = self._mask(previous_states["a"], 1.0 - is_first)
 
         # Compute new states.
-        h = self.sequence_model(z=previous_z, a=previous_a, h=previous_h)
+        h = self.sequence_model(a=previous_a, h=previous_h, z=previous_z)
         z = self.compute_posterior_z(observations=observations, initial_h=h)
 
         return {"h": h, "z": z}
 
-    @tf.function
+    #@tf.functionction
     def forward_train(self, observations, actions, is_first, training=None):
         """Performs a forward step for training.
 
         1) Forwards all observations [B, T, ...] through the encoder network to yield
         o_processed[B, T, ...].
-        2) Uses `initial_h` (h[B, 0, ...]) and o_processed[B, 0, ...] to
-        compute z[B, 0, ...].
-        3) Uses action a[B, 0, ...] and z[B, 0, ...] and h[B, 0, ...] to compute the
-        next h-state (h[B, 1, ...]).
+        2) Uses initial state (h0/z^0/a0[B, 0, ...]) and sequence model (RSSM) to compute
+        the first internal state (h1 and z^1).
+        3) Uses action a[B, 1, ...], z[B, 1, ...] and h[B, 1, ...] to compute the
+        next h-state (h[B, 2, ...]), etc..
         4) Repeats 2) and 3) until t=T.
-        5) Uses all h[B, T, ...] and z[B, T, ...] to compute predicted observations,
-        rewards, and continue signals.
+        5) Uses all h[B, T, ...] and z[B, T, ...] to compute predicted/reconstructed
+        observations, rewards, and continue signals.
         6) Returns predictions from 5) along with all z-states z[B, T, ...] and
         the final h-state (h[B, ...] for t=T).
+
+        Should we encounter is_first=True flags in the middle of a batch row (somewhere
+        within an ongoing sequence of length T), we insert this world model's initial
+        state again (zero-action, learned init h-state, and prior-computed z^) and
+        simply continue (no zero-padding).
 
         Args:
             observations: The batch (B, T, ...) of observations to be passed through
                 the encoder network to yield the inputs to the representation layer
-                (which then can compute the z-states).
+                (which then can compute the posterior z-states).
             actions: The batch (B, T, ...) of actions to be used in combination with
                 h-states and computed z-states to yield the next h-states.
             is_first: The batch (B, T) of `is_first` flags.
@@ -260,7 +276,7 @@ class WorldModel(tf.keras.Model):
         # Make actions and `is_first` time-major.
         actions = tf.transpose(
             actions,
-            perm=[1, 0] + list(range(2, len(actions.shape.as_list()))),
+            perm=[1, 0] + list(range(2, len(actions.shape))), #.as_list() TODO
         )
         is_first = tf.transpose(is_first, perm=[1, 0])
 
@@ -284,7 +300,7 @@ class WorldModel(tf.keras.Model):
             a_tm1 = self._mask(actions[t - 1], 1.0 - is_first[t])
 
             # Perform one RSSM (sequence model) step to get the current h.
-            h_t = self.sequence_model(z=z_tm1, a=a_tm1, h=h_tm1)
+            h_t = self.sequence_model(a=a_tm1, h=h_tm1, z=z_tm1)
             h_t0_to_T.append(h_t)
 
             posterior_mlp_input = tf.concat([encoder_out[t], h_t], axis=-1)
@@ -360,10 +376,10 @@ class WorldModel(tf.keras.Model):
             "z_prior_probs_BxT": z_prior_probs,
         }
 
-    @tf.function
+    #@tf.functionction
     def compute_posterior_z(self, observations, initial_h):
-        # Compute bare encoder outs (not z; this done in next step with involvement of
-        # the previous output (initial_h) of the sequence model).
+        # Compute bare encoder outputs (not including z, which is computed in next step
+        # with involvement of the previous output (initial_h) of the sequence model).
         # encoder_outs=[B, ...]
         if self.symlog_obs:
             observations = symlog(observations)

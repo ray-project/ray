@@ -15,7 +15,15 @@ from ray.rllib.utils.tf_utils import inverse_symlog
 
 
 class DreamerModel(tf.keras.Model):
-    """TODO"""
+    """The main tf-keras model containing all necessary components for DreamerV3.
+
+    Includes:
+    - The world model (with encoder, decoder, sequence-model (RSSM), dynamics
+    (prior z-state generating) model, and "posterior" model) for producing dreamed
+    trajectories.
+    - The actor network (policy).
+    - The critic network for value function prediction.
+    """
 
     def __init__(
         self,
@@ -59,7 +67,7 @@ class DreamerModel(tf.keras.Model):
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 
-    @tf.function
+    #@tf.functionction
     def call(
         self,
         inputs,
@@ -69,9 +77,16 @@ class DreamerModel(tf.keras.Model):
         horizon_H,
         gamma,
         training=None,
-    ):  # previous_states
-        # Forward train passes through all models are enough to build all trainable
-        # variables:
+    ):
+        """Main call method for building this model in order to generate its variables.
+
+        Note: This method should NOT be used by users directly. It's purpose is only to
+        perform all forward passes necessary to define all variables of the DreamerV3.
+        """
+
+        # Forward passes through all models are enough to build all trainable and
+        # non-trainable variables:
+
         # World model.
         results = self.world_model(
             inputs,  # observations
@@ -82,7 +97,7 @@ class DreamerModel(tf.keras.Model):
         actions = self.actor(
             h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
         )
-        # Actor (with distribution).
+        # Actor (with returning distribution).
         _, distr = self.actor(
             h=results["h_states_BxT"],
             z=results["z_posterior_states_BxT"],
@@ -92,12 +107,12 @@ class DreamerModel(tf.keras.Model):
         values = self.critic(
             h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
         )
-        # Critic (EMA).
+        # Critic (EMA copy).
         values_ema = self.critic(
             h=results["h_states_BxT"], z=results["z_posterior_states_BxT"], use_ema=True
         )
 
-        # Dream Data.
+        # Dream pipeline.
         dream_data = self.dream_trajectory(
             start_states={
                 "h": results["h_states_BxT"],
@@ -116,13 +131,28 @@ class DreamerModel(tf.keras.Model):
             "values_ema": values_ema,
         }
 
-    @tf.function
-    def forward_inference(self, previous_states, observations, is_first, training=None):
-        """TODO"""
+    #@tf.functionction
+    def forward_inference(self, observations, previous_states, is_first, training=None):
+        """Performs a (non-exploring) action computation step given obs and states.
+
+        Note that all input data should not have a time rank (only a batch dimension).
+
+        Args:
+            observations: The current environment observation with shape (B, ...).
+            previous_states: Dict with keys `a`, `h`, and `z` used as input to the RSSM
+                to produce the next h-state, from which then to compute the action
+                using the actor network. All values in the dict should have shape
+                (B, ...) (no time rank).
+            is_first: Batch of is_first flags. These should be True if a new episode
+                has been started at the current timestep (meaning `observations` is the
+                reset observation from the environment).
+        """
         # Perform one step in the world model (starting from `previous_state` and
         # using the observations to yield a current (posterior) state).
         states = self.world_model.forward_inference(
-            previous_states, observations, is_first
+            observations=observations,
+            previous_states=previous_states,
+            is_first=is_first,
         )
         # Compute action using our actor network and the current states.
         _, distr = self.actor(h=states["h"], z=states["z"], return_distribution=True)
@@ -130,27 +160,74 @@ class DreamerModel(tf.keras.Model):
         actions = distr.mode()
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
-    @tf.function
+    #@tf.functionction
     def forward_exploration(
-        self, previous_states, observations, is_first, training=None
+        self, observations, previous_states, is_first, training=None
     ):
-        """TODO"""
+        """Performs an exploratory action computation step given obs and states.
+
+        Note that all input data should not have a time rank (only a batch dimension).
+
+        Args:
+            observations: The current environment observation with shape (B, ...).
+            previous_states: Dict with keys `a`, `h`, and `z` used as input to the RSSM
+                to produce the next h-state, from which then to compute the action
+                using the actor network. All values in the dict should have shape
+                (B, ...) (no time rank).
+            is_first: Batch of is_first flags. These should be True if a new episode
+                has been started at the current timestep (meaning `observations` is the
+                reset observation from the environment).
+        """
         # Perform one step in the world model (starting from `previous_state` and
         # using the observations to yield a current (posterior) state).
         states = self.world_model.forward_inference(
-            previous_states, observations, is_first
+            observations=observations,
+            previous_states=previous_states,
+            is_first=is_first,
         )
         # Compute action using our actor network and the current states.
         actions = self.actor(h=states["h"], z=states["z"])
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
-    @tf.function
+    #@tf.functionction
     def forward_train(self, observations, actions, is_first, training=None):
-        """TODO"""
-        return self.world_model.forward_train(observations, actions, is_first)
+        """Performs a training forward pass given observations and actions.
 
-    @tf.function
+        Note that all input data must have a time rank (batch-major: [B, T, ...]).
+
+        Args:
+            observations: The environment observations with shape (B, T, ...). Thus,
+                the batch has B rows of T timesteps each. Note that it's ok to have
+                episode boundaries (is_first=True) within a batch row. DreamerV3 will
+                simply insert an initial state before these locations and continue the
+                sequence modelling (with the RSSM). Hence, there will be no zero
+                padding.
+            actions: The actions actually taken in the environment with shape
+                (B, T, ...). See `observations` docstring for details on how B and T are
+                handled.
+            is_first: Batch of is_first flags. These should be True:
+                - if a new episode has been started at the current timestep (meaning
+                `observations` is the reset observation from the environment).
+                - in each batch row at T=0 (first timestep of each of the B batch
+                rows), regardless of whether the actual env had an episode boundary
+                there or not.
+        """
+        return self.world_model.forward_train(
+            observations=observations,
+            actions=actions,
+            is_first=is_first,
+        )
+
+    #@tf.functionction
     def get_initial_state(self):
+        """Returns the (current) initial state of the dreamer model (a, h-, z-states).
+
+        An initial state is generated using the previous action, the tanh of the
+        (learned) h-state variable and the dynamics predictor (or "prior net") to
+        compute z^0 from h0. In this last step, it is important that we do NOT sample
+        the z^-state (as we would usually do during dreaming), but rather take the mode
+        (argmax, then one-hot again).
+        """
         states = self.world_model.get_initial_state()
 
         action_dim = (
@@ -167,11 +244,11 @@ class DreamerModel(tf.keras.Model):
         )
         return states
 
-    @tf.function
+    #@tf.functionction
     def dream_trajectory(
         self, *, start_states, start_is_terminated, timesteps_H, gamma
     ):
-        """Dreams trajectories from batch of h- and z-states.
+        """Dreams trajectories of length H from batch of h- and z-states.
 
         Note that incoming data will have the shapes (BxT, ...), where the original
         batch- and time-dimensions are already folded together. Beginning from this
@@ -185,7 +262,8 @@ class DreamerModel(tf.keras.Model):
                 in the given batch, we will branch off a dreamed trajectory of len
                 `timesteps_H`.
             start_is_terminated: Float flags of shape (B,) indicating whether the
-                first timesteps of each batch row is already a terminated timestep.
+                first timesteps of each batch row is already a terminated timestep
+                (given by the actual environment).
             timesteps_H: The number of timesteps to dream for.
             gamma: The discount factor gamma.
         """
@@ -213,15 +291,12 @@ class DreamerModel(tf.keras.Model):
             z=tf.stop_gradient(z),
             return_distribution=True,
         )
-        # TEST: Use random actions instead of actor-computed ones.
-        # a = tf.random.uniform(tf.shape(h)[0:1], 0, self.action_space.n, tf.int64)
-        # END TEST: random actions
         a_dreamed_t0_to_H.append(a)
         a_dreamed_distributions_t0_to_H.append(a_dist)
 
         for i in range(timesteps_H):
             # Move one step in the dream using the RSSM.
-            h = self.world_model.sequence_model(z=z, a=a, h=h)
+            h = self.world_model.sequence_model(a=a, h=h, z=z)
             h_states_t0_to_H.append(h)
 
             # Compute prior z using dynamics model.
@@ -234,9 +309,6 @@ class DreamerModel(tf.keras.Model):
                 z=tf.stop_gradient(z),
                 return_distribution=True,
             )
-            # TEST: Use random actions instead of actor-computed ones.
-            # a = tf.random.uniform(tf.shape(h)[0:1], 0, self.action_space.n, tf.int64)
-            # END TEST: random actions
             a_dreamed_t0_to_H.append(a)
             a_dreamed_distributions_t0_to_H.append(a_dist)
 
@@ -282,7 +354,7 @@ class DreamerModel(tf.keras.Model):
             z=z_states_prior_HxB,
         )
         c_dreamed_H_B = tf.reshape(c_dreamed_HxB, [timesteps_H + 1, -1])
-        # Force-set first continue to False iff `start_is_terminated`.
+        # Force-set first `continue` flags to False iff `start_is_terminated`.
         # Note: This will cause the loss-weights for this row in the batch to be
         # completely zero'd out. In general, we don't use dreamed data past any
         # predicted (or actual first) continue=False flags.
@@ -339,21 +411,46 @@ class DreamerModel(tf.keras.Model):
 
         return ret
 
-    @tf.function
+    #@tf.functionction
     def dream_trajectory_with_burn_in(
         self,
         *,
         start_states,
-        timesteps_burn_in,
-        timesteps_H,
+        timesteps_burn_in: int,
+        timesteps_H: int,
         observations,  # [B, >=timesteps_burn_in]
         actions,  # [B, timesteps_burn_in (+timesteps_H)?]
-        use_sampled_actions_in_dream=False,
-        use_random_actions_in_dream=False,
+        use_sampled_actions_in_dream: bool = False,
+        use_random_actions_in_dream: bool = False,
     ):
         """Dreams trajectory from N initial observations and initial states.
 
-        TODO: docstring
+        Note: This is only used for reporting and debugging, not for actual world-model
+        or policy training.
+
+        Args:
+            start_states: The batch of start states (dicts with `a`, `h`, and `z` keys)
+                to begin dreaming with. These are used to compute the first h-state
+                using the sequence model.
+            timesteps_burn_in: For how many timesteps should be use the posterior
+                z-states (computed by the posterior net and actual observations from
+                the env)?
+            timesteps_H: For how many timesteps should we dream using the prior
+                z-states (computed by the dynamics (prior) net and h-states only)?
+                Note that the total length of the returned trajectories will
+                be `timesteps_burn_in` + `timesteps_H`.
+            observations: The batch (B, T, ...) of observations (to be used only during
+                burn-in over `timesteps_burn_in` timesteps).
+            actions: The batch (B, T, ...) of actions to use during a) burn-in over the
+                first `timesteps_burn_in` timesteps and - possibly - b) during
+                actual dreaming, iff use_sampled_actions_in_dream=True.
+            use_sampled_actions_in_dream: If True, instead of using our actor network
+                to compute fresh actions, we will use the one provided via the `actions`
+                argument. Note that in the latter case, the `actions` time dimension
+                must be at least `timesteps_burn_in` + `timesteps_H` long.
+            use_random_actions_in_dream: Whether to use randomly sampled actions in the
+                dream. Note that this does not apply to the burn-in phase, during which
+                we will always use the actions given in the `actions` argument.
         """
         assert not (use_sampled_actions_in_dream and use_random_actions_in_dream)
 
@@ -363,10 +460,10 @@ class DreamerModel(tf.keras.Model):
         # observations:
         states = start_states
         for i in range(timesteps_burn_in):
-            states = self.world_model(
-                states,
-                observations[:, i],
-                tf.fill((B,), 1.0 if i == 0 else 0.0),
+            states = self.world_model.forward_inference(
+                observations=observations[:, i],
+                previous_states=states,
+                is_first=tf.fill((B,), 1.0 if i == 0 else 0.0),
             )
             states["a"] = actions[:, i]
 
@@ -379,9 +476,9 @@ class DreamerModel(tf.keras.Model):
         for j in range(timesteps_H):
             # Compute next h using sequence model.
             h = self.world_model.sequence_model(
-                z=states["z"],
                 a=states["a"],
                 h=states["h"],
+                z=states["z"],
             )
             h_states_t0_to_H.append(h)
             # Compute z from h, using the dynamics model (we don't have an actual
@@ -393,14 +490,22 @@ class DreamerModel(tf.keras.Model):
             if use_sampled_actions_in_dream:
                 a = actions[:, timesteps_burn_in + j]
             elif use_random_actions_in_dream:
-                a = tf.random.randint((B,), 0, self.action_space.n, tf.int64)
-                a = tf.one_hot(a, depth=self.action_space.n)
+                if isinstance(self.action_space, gym.spaces.Discrete):
+                    a = tf.random.randint((B,), 0, self.action_space.n, tf.int64)
+                    a = tf.one_hot(a, depth=self.action_space.n)
+                # TODO: Support cont. action spaces with bound other than 0.0 and 1.0.
+                else:
+                    a = tf.random.uniform(
+                        shape=(B,) + self.action_space.shape,
+                        dtype=self.action_space.dtype,
+                    )
             else:
                 a = self.actor(h=h, z=z)
             a_t0_to_H.append(a)
 
             states = {"h": h, "z": z, "a": a}
 
+        # Fold time-rank for upcoming batch-predictions (no sequences needed anymore).
         h_states_t0_to_H_B = tf.stack(h_states_t0_to_H, axis=0)
         h_states_t0_to_HxB = tf.reshape(
             h_states_t0_to_H_B, shape=[-1] + h_states_t0_to_H_B.shape.as_list()[2:]
@@ -427,21 +532,28 @@ class DreamerModel(tf.keras.Model):
             z=z_states_prior_t0_to_HxB,
         )
 
+        # Return everything as time-major (H, B, ...), where H is the timesteps dreamed
+        # (NOT burn-in'd) and B is a batch dimension (this might or might not include
+        # an original time dimension from the real env, from all of which we then branch
+        # out our dream trajectories).
         ret = {
             "h_states_t0_to_H_B": h_states_t0_to_H_B,
             "z_states_prior_t0_to_H_B": z_states_prior_t0_to_H_B,
+            # Unfold time-ranks in predictions.
             "rewards_dreamed_t0_to_H_B": tf.reshape(r_dreamed_t0_to_HxB, (-1, B)),
             "continues_dreamed_t0_to_H_B": tf.reshape(c_dreamed_t0_to_HxB, (-1, B)),
         }
 
+        # Figure out action key (random, sampled from env, dreamed?).
         if use_sampled_actions_in_dream:
             key = "actions_sampled_t0_to_H_B"
         elif use_random_actions_in_dream:
             key = "actions_random_t0_to_H_B"
         else:
             key = "actions_dreamed_t0_to_H_B"
-
         ret[key] = a_t0_to_H_B
+
+        # Also provide int-actions, if discrete action space.
         if isinstance(self.action_space, gym.spaces.Discrete):
             ret[re.sub("^actions_", "actions_ints_", key)] = tf.argmax(
                 a_t0_to_H_B, axis=-1

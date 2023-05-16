@@ -13,12 +13,25 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
 
 class VectorDecoder(tf.keras.Model):
+    """A simple vector decoder to reproduce non-image (1D vector) observations.
+
+    Wraps an MLP for mean parameter computations and a Gaussian distribution,
+    from which we then sample using these mean values and a fixed stddev of 1.0.
+    """
     def __init__(
         self,
         *,
         model_dimension: Optional[str] = "XS",
         observation_space: gym.Space,
     ):
+        """Initializes a VectorDecoder instance.
+
+        Args:
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
+                Determines the exact size of the underlying MLP.
+            observation_space: The observation space to decode back into. This must
+                be a Box of shape (d,), where d >= 1.
+        """
         super().__init__(name="vector_decoder")
 
         assert (
@@ -32,7 +45,7 @@ class VectorDecoder(tf.keras.Model):
         )
 
     def call(self, h, z):
-        """TODO
+        """Performs a forward pass through the vector encoder.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].

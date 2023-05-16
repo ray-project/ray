@@ -17,20 +17,39 @@ from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
 
 
 class ConvTransposeAtari(tf.keras.Model):
-    # TODO: Un-hard-code all hyperparameters, such as input dims, activation,
-    #  filters, etc..
+    """A Conv2DTranspose decoder to generate Atari images from a latent space.
+
+    Wraps an initial single linear layer with a stack of 4 Conv2DTranspose layers (with
+    layer normalization) and a diag Gaussian, from which we then sample the final image.
+    Sampling is done with a fixed stddev=1.0 and using the mean values coming from the
+    last Conv2DTranspose layer.
+    """
     def __init__(
         self,
         *,
         model_dimension: Optional[str] = "XS",
         cnn_multiplier: Optional[int] = None,
-        gray_scaled: bool = True,
+        gray_scaled: bool,
     ):
+        """Initializes a ConvTransposeAtari instance.
+
+        Args:
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
+                Use None for manually setting the `cnn_multiplier`.
+            cnn_multiplier: Optional override for the additional factor used to multiply
+                the number of filters with each CNN transpose layer. Starting with
+                8 * `cnn_multiplier` filters in the first CNN transpose layer, the
+                number of filters then decreases via `4*cnn_multiplier`, `2*cnn_multiplier`, till
+                `1*cnn_multiplier`.
+            gray_scaled: Whether the last Conv2DTranspose layer's output has only 1
+                color channel (gray_scaled=True) or 3 RGB channels (gray_scaled=False).
+        """
         super().__init__(name="image_decoder")
 
         cnn_multiplier = get_cnn_multiplier(model_dimension, override=cnn_multiplier)
 
         # The shape going into the first Conv2DTranspose layer.
+        # We start with a 4x4 channels=8 "image".
         self.input_dims = (4, 4, 8 * cnn_multiplier)
 
         self.gray_scaled = gray_scaled
@@ -43,7 +62,7 @@ class ConvTransposeAtari(tf.keras.Model):
             activation=None,
             use_bias=True,
         )
-        # Inverse conv2d stack. See cnn_atari.py for Conv2D stack.
+        # Inverse conv2d stack. See cnn_atari.py for corresponding Conv2D stack.
         self.conv_transpose_layers = [
             tf.keras.layers.Conv2DTranspose(
                 filters=4 * cnn_multiplier,
@@ -73,12 +92,10 @@ class ConvTransposeAtari(tf.keras.Model):
                 use_bias=False,
             ),
         ]
-        # Create one LayerNorm layer for each of the Conv2DTranspose.
+        # Create one LayerNorm layer for each of the Conv2DTranspose layers.
         self.layer_normalizations = []
         for _ in range(len(self.conv_transpose_layers)):
             self.layer_normalizations.append(tf.keras.layers.LayerNormalization())
-
-        # .. until output is 64 x 64 x 3.
 
         # Important! No activation or layer norm for last layer as the outputs of
         # this one go directly into the diag-gaussian as parameters.
@@ -90,9 +107,10 @@ class ConvTransposeAtari(tf.keras.Model):
             activation=None,
             use_bias=True,  # Last layer does use bias (b/c has no LayerNorm).
         )
+        # .. until output is 64 x 64 x 3 (or 1 for self.gray_scaled=True).
 
     def call(self, h, z):
-        """TODO
+        """Performs a forward pass through the Conv2D transpose decoder.
 
         Args:
             h: The deterministic hidden state of the sequence model.
@@ -125,7 +143,7 @@ class ConvTransposeAtari(tf.keras.Model):
 
         # Interpret output as means of a diag-Gaussian with std=1.0:
         # From [2]:
-        # "Distributions The image predictor outputs the mean of a diagonal Gaussian
+        # "Distributions: The image predictor outputs the mean of a diagonal Gaussian
         # likelihood with unit variance, ..."
         # Reshape `out` for the diagonal multi-variate Gaussian (each pixel is its own
         # independent (b/c diagonal co-variance matrix) variable).
@@ -138,14 +156,4 @@ class ConvTransposeAtari(tf.keras.Model):
             scale_diag=tf.ones_like(loc),
         )
         pred_obs = distribution.sample()
-        # if return_distribution:
         return pred_obs, distribution
-        # return pred_obs
-
-
-if __name__ == "__main__":
-    # DreamerV2/3 Atari input space: B x 32 (num_categoricals) x 32 (num_classes)
-    inputs = np.random.random(size=(1, 32, 32))
-    model = ConvTransposeAtari()
-    out = model(inputs)
-    print(out.shape)

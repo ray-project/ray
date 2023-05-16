@@ -5,7 +5,6 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -13,17 +12,35 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
 
 class ContinuePredictor(tf.keras.Model):
+    """The world-model network sub-component used to predict the `continue` flags .
+
+    Predicted continue flags are used to produce "dream data" to learn the policy in.
+
+    The continue flags are predicted via a linear output used to parameterize a
+    Bernoulli distribution, from which simply the mode is used (no stochastic
+    sampling!). In other words, if the sigmoid of the output of the linear layer is
+    >0.5, we predict a continuation of the episode, otherwise we predict an episode
+    terminal.
+    """
     def __init__(self, *, model_dimension: Optional[str] = "XS"):
+        """Initializes a ContinuePredictor instance.
+
+        Args:
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
+                Determines the exact size of the underlying MLP.
+        """
         super().__init__(name="continue_predictor")
         self.mlp = MLP(model_dimension=model_dimension, output_layer_size=1)
 
     def call(self, h, z, return_distribution=False):
-        """TODO
+        """Performs a forward pass through the continue predictor.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
+            return_distribution: Whether to return (as a second tuple item) the Bernoulli
+                distribution object created by the underlying MLP.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
@@ -49,17 +66,3 @@ class ContinuePredictor(tf.keras.Model):
         if return_distribution:
             return continue_, bernoulli
         return continue_
-
-
-if __name__ == "__main__":
-    h_dim = 8
-    h = np.random.random(size=(1, 8))
-    z = np.random.random(size=(1, 8, 8))
-
-    model = ContinuePredictor()
-
-    out = model(h, z)
-    print(out)
-
-    out = model(h, z, return_bernoulli_prob=True)
-    print(out)

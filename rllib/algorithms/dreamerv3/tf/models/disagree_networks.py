@@ -48,13 +48,13 @@ class DisagreeNetworks(tf.keras.Model):
         # Optimizer.
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-5)
 
-    @tf.function
+    #@tf.functionction
     def call(self, inputs, z, a, training=None):
-        return self.forward_train(h=inputs, z=z, a=a)
+        return self.forward_train(a=a, h=inputs, z=z)
 
-    @tf.function
+    #@tf.functionction
     def compute_intrinsic_rewards(self, h, z, a):
-        forward_train_outs = self.forward_train(h, z, a)
+        forward_train_outs = self.forward_train(a=a, h=h, z=z)
         B = tf.shape(h)[0]
 
         # Intrinsic rewards are computed as:
@@ -82,8 +82,8 @@ class DisagreeNetworks(tf.keras.Model):
             "forward_train_outs": forward_train_outs,
         }
 
-    @tf.function
-    def forward_train(self, h, z, a):
+    #@tf.functionction
+    def forward_train(self, a, h, z):
         HxB = tf.shape(h)[0]
         # Fold z-dims.
         z = tf.reshape(z, shape=(HxB, -1))

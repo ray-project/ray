@@ -12,14 +12,24 @@ from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
 
 
 class CNNAtari(tf.keras.Model):
-    # TODO: Un-hard-code all hyperparameters, such as input dims, activation,
-    #  filters, etc..
+    """An image encoder mapping 64x64 RGB images via 4 CNN layers into a 1D space."""
     def __init__(
         self,
         *,
         model_dimension: Optional[str] = "XS",
         cnn_multiplier: Optional[int] = None,
     ):
+        """Initializes a CNNAtari instance.
+
+        Args:
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
+                Use None for manually setting the `cnn_multiplier`.
+            cnn_multiplier: Optional override for the additional factor used to multiply
+                the number of filters with each CNN layer. Starting with
+                1 * `cnn_multiplier` filters in the first CNN layer, the number of
+                filters then increases via `2*cnn_multiplier`, `4*cnn_multiplier`, till
+                `8*cnn_multiplier`.
+        """
         super().__init__(name="image_encoder")
 
         cnn_multiplier = get_cnn_multiplier(model_dimension, override=cnn_multiplier)
@@ -29,7 +39,8 @@ class CNNAtari(tf.keras.Model):
         # SiLU as the activation function. For better framework support, we use
         # same-padded convolutions with stride 2 and kernel size 3 instead of
         # valid-padded convolutions with larger kernels ..."
-        # HOWEVER: In the author's DreamerV3 repo, they use kernel size=4.
+        # HOWEVER: In Danijar's DreamerV3 repo, kernel size=4 is used, so we use it
+        # here, too.
         self.conv_layers = [
             tf.keras.layers.Conv2D(
                 filters=1 * cnn_multiplier,
@@ -76,6 +87,11 @@ class CNNAtari(tf.keras.Model):
         self.flatten_layer = tf.keras.layers.Flatten(data_format="channels_last")
 
     def call(self, inputs):
+        """Performs a forward pass through the CNN Atari encoder.
+
+        Args:
+            inputs: The image inputs of shape (B, 64, 64, 3).
+        """
         # [B, h, w] -> grayscale.
         if len(inputs.shape) == 3:
             inputs = tf.expand_dims(inputs, -1)
@@ -84,11 +100,3 @@ class CNNAtari(tf.keras.Model):
             out = tf.nn.silu(layer_norm(inputs=conv_2d(out)))
         assert out.shape[1] == 4 and out.shape[2] == 4
         return self.flatten_layer(out)
-
-
-if __name__ == "__main__":
-    # World Models (and DreamerV2/3) Atari input space: 64 x 64 x 3
-    inputs = np.random.random(size=(1, 64, 64, 3))
-    model = CNNAtari(model_dimension="XS")
-    out = model(inputs)
-    print(out.shape)

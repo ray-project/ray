@@ -20,10 +20,11 @@ from ray.rllib.algorithms.dreamerv3.utils import (
 
 
 class RepresentationLayer(tf.keras.layers.Layer):
-    """A representation (z) generating layer.
+    """A representation (z-state) generating layer.
 
     The value for z is the result of sampling from a categorical distribution with
-    shape B x `num_classes`.
+    shape B x `num_classes`. So a computed z-state consists of `num_categoricals`
+    one-hot vectors, each of size `num_classes_per_categorical`.
     """
 
     def __init__(
@@ -33,6 +34,17 @@ class RepresentationLayer(tf.keras.layers.Layer):
         num_categoricals: Optional[int] = None,
         num_classes_per_categorical: Optional[int] = None,
     ):
+        """Initializes a RepresentationLayer instance.
+
+        Args:
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
+                Use None for manually setting the different parameters.
+            num_categoricals: Overrides the number of categoricals used in the z-states.
+                In [1], 32 is used for any model dimension.
+            num_classes_per_categorical: Overrides the number of classes within each
+                categorical used for the z-states. In [1], 32 is used for any model
+                dimension.
+        """
         self.num_categoricals = get_num_z_categoricals(
             model_dimension, override=num_categoricals
         )
@@ -49,22 +61,22 @@ class RepresentationLayer(tf.keras.layers.Layer):
             activation=None,
         )
 
-    def call(self, input_, return_z_probs=False):
+    def call(self, inputs, return_z_probs=False):
         """Produces a discrete, differentiable z-sample from some 1D input tensor.
 
         Pushes the input_ tensor through our dense layer, which outputs
         32(B=num categoricals)*32(c=num classes) logits. Logits are used to:
 
         1) sample stochastically
-        2) compute probs
-        3) make sure sampling step is differentiable (see [2] Algorithm 1):
+        2) compute probs (via softmax)
+        3) make sure the sampling step is differentiable (see [2] Algorithm 1):
             sample=one_hot(draw(logits))
             probs=softmax(logits)
             sample=sample + probs - stop_grad(probs)
             -> Now sample has the gradients of the probs.
 
         Args:
-            input_: The input to our z-generating layer. This might be a) the combined
+            inputs: The input to our z-generating layer. This might be a) the combined
                 (concatenated) outputs of the (image?) encoder + the last hidden
                 deterministic state, or b) the output of the dynamics predictor MLP
                 network.
@@ -74,7 +86,7 @@ class RepresentationLayer(tf.keras.layers.Layer):
         """
         # Compute the logits (no activation) for our `num_categoricals` Categorical
         # distributions (with `num_classes_per_categorical` classes each).
-        logits = self.z_generating_layer(input_)
+        logits = self.z_generating_layer(inputs)
         # Reshape the logits to [B, num_categoricals, num_classes]
         logits = tf.reshape(
             logits,
