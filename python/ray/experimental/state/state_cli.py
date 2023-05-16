@@ -1,4 +1,3 @@
-import dataclasses
 import json
 import logging
 from datetime import datetime
@@ -172,6 +171,9 @@ def output_with_format(
     format: AvailableFormat = AvailableFormat.DEFAULT,
     detail: bool = False,
 ) -> str:
+    # humanify all input state data
+    if schema:
+        state_data = [schema.humanify(state) for state in state_data]
     if format == AvailableFormat.DEFAULT:
         return get_table_output(state_data, schema, detail)
     if format == AvailableFormat.YAML:
@@ -292,9 +294,11 @@ def format_get_api_output(
 ) -> str:
     if not state_data or isinstance(state_data, list) and len(state_data) == 0:
         return f"Resource with id={id} not found in the cluster."
+
     if not isinstance(state_data, list):
         state_data = [state_data]
-    state_data = [dataclasses.asdict(state) for state in state_data]
+    state_data = [state.asdict() for state in state_data]
+
     return output_with_format(state_data, schema=schema, format=format, detail=True)
 
 
@@ -307,7 +311,7 @@ def format_list_api_output(
 ) -> str:
     if len(state_data) == 0:
         return "No resource in the cluster"
-    state_data = [dataclasses.asdict(state) for state in state_data]
+    state_data = [state.asdict() for state in state_data]
     return output_with_format(state_data, schema=schema, format=format, detail=detail)
 
 
@@ -814,6 +818,7 @@ def _print_log(
     encoding_errors: str = "strict",
     task_id: Optional[str] = None,
     attempt_number: int = 0,
+    submission_id: Optional[str] = None,
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -842,6 +847,7 @@ def _print_log(
         errors=encoding_errors,
         task_id=task_id,
         attempt_number=attempt_number,
+        submission_id=submission_id,
     ):
         print(chunk, end="", flush=True)
 
@@ -1138,7 +1144,7 @@ def log_worker(
     timeout: int,
     err: bool,
 ):
-    """Get/List logs associated with a worker process.
+    """Get logs associated with a worker process.
 
     Example:
 
@@ -1170,6 +1176,66 @@ def log_worker(
         interval=interval,
         timeout=timeout,
         suffix="err" if err else "out",
+    )
+
+
+@logs_state_cli_group.command(name="job")
+@click.option(
+    "--id",
+    "submission_id",
+    required=True,
+    type=str,
+    help=(
+        "Retrieves the logs from a submission job with submission id,"
+        "i.e. raysubmit_XXX"
+    ),
+)
+@address_option
+@log_follow_option
+@log_tail_option
+@log_interval_option
+@log_timeout_option
+@click.pass_context
+@PublicAPI(stability="alpha")
+def log_job(
+    ctx,
+    submission_id: Optional[str],
+    address: Optional[str],
+    follow: bool,
+    tail: int,
+    interval: float,
+    timeout: int,
+):
+    """Get logs associated with a submission job.
+
+    Example:
+
+        Follow the log file from a submission job with submission id raysumbit_xxx.
+
+        ```
+        ray logs job --id raysubmit_xxx
+        ```
+
+        Follow the submission job log.
+
+        ```
+        ray logs jobs --id raysubmit_xxx --follow
+
+        ```
+
+    Raises:
+        :class:`RayStateApiException <ray.experimental.state.exception.RayStateApiException>`
+            if the CLI is failed to query the data.
+        MissingParameter if inputs are missing.
+    """  # noqa: E501
+
+    _print_log(
+        address=address,
+        tail=tail,
+        follow=follow,
+        interval=interval,
+        timeout=timeout,
+        submission_id=submission_id,
     )
 
 
@@ -1208,7 +1274,7 @@ def log_task(
     timeout: int,
     err: bool,
 ):
-    """Get/List logs associated with a task.
+    """Get logs associated with a task.
 
     Example:
 
