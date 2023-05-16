@@ -6,6 +6,7 @@ import pickle
 import random
 import sys
 from typing import Any, Dict, List, Optional
+import threading
 
 import ray
 from ray.actor import ActorHandle
@@ -13,8 +14,11 @@ from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
-from ray.serve._private.common import RunningReplicaInfo
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    HANDLE_METRIC_PUSH_INTERVAL_S,
+)
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
@@ -22,7 +26,9 @@ from ray.serve._private.utils import (
 )
 from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
+    DeploymentRoute,
 )
+from ray.serve._private.autoscaling_metrics import start_metrics_pusher
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -342,6 +348,32 @@ class Router:
             call_in_event_loop=event_loop,
         )
 
+        self.deployment_name = deployment_name
+        deployment_route = DeploymentRoute.FromString(
+            ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
+        )
+        deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
+
+        self._stop_event: Optional[threading.Event] = None
+        self._pusher: Optional[threading.Thread] = None
+        remote_func = controller_handle.record_handle_metrics.remote
+        if deployment_info.deployment_config.autoscaling_config:
+            self._stop_event = threading.Event()
+            self._pusher = start_metrics_pusher(
+                interval_s=HANDLE_METRIC_PUSH_INTERVAL_S,
+                collection_callback=self._collect_handle_queue_metrics,
+                metrics_process_func=remote_func,
+                stop_event=self._stop_event,
+            )
+
+    def _collect_handle_queue_metrics(self) -> Dict[str, int]:
+        return {self.deployment_name: self.get_num_queued_queries()}
+
+    def stop_metrics_pusher(self):
+        if self._stop_event and self._pusher:
+            self._stop_event.set()
+            self._pusher.join()
+
     def get_num_queued_queries(self):
         return self._replica_set.num_queued_queries
 
@@ -363,3 +395,6 @@ class Router:
                 metadata=request_meta,
             )
         )
+
+    def __del__(self):
+        self.stop_metrics_pusher()
