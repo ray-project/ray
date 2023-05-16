@@ -8,6 +8,15 @@ DEFAULT_PYTHON_VERSION = tuple(
 class Test(dict):
     """A class represents a test to run on buildkite"""
 
+    def is_byod_cluster(self) -> bool:
+        """
+        Returns whether this test is running on a BYOD cluster.
+        """
+        return self["cluster"].get("byod", False)
+
+    def get_name(self) -> str:
+        return self["name"]
+
     def get_python_version(self) -> str:
         """
         Returns the python version to use for this test. If not specified, use
