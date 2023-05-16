@@ -24,9 +24,10 @@ from uuid import uuid4
 import numpy as np
 
 import ray
+from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 import ray.cloudpickle as pickle
-from ray._private.usage import usage_lib
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.logical.operators.all_to_all_operator import (
@@ -70,6 +71,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
+    validate_compute,
     ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -133,7 +135,10 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps, fallback_if_colab
+from ray.widgets.util import (
+    ensure_ipywidgets_dep,
+    repr_fallback_if_colab,
+)
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -343,17 +348,7 @@ class Dataset:
                 Call this method to transform batches of data. It's faster and more
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
@@ -452,7 +447,7 @@ class Dataset:
             per worker instead of once per inference.
 
             To transform batches with :ref:`actors <actor-guide>`, pass a callable type
-            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy>`.
+            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy`.
 
             In the example below, ``CachedModel`` is called on an autoscaling pool of
             two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
@@ -567,16 +562,7 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
+        validate_compute(fn, compute)
 
         if fn_constructor_args is not None or fn_constructor_kwargs is not None:
             if compute is None or (
@@ -825,17 +811,7 @@ class Dataset:
                 This method isn't recommended because it's slow; call
                 :meth:`~Dataset.map_batches` instead.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
@@ -887,17 +863,7 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_filter_fn()
@@ -2192,6 +2158,39 @@ class Dataset:
         else:
             return base_schema
 
+    @ConsumptionAPI(
+        if_more_than_read=True,
+        datasource_metadata="schema",
+        extra_condition="or if ``fetch_if_missing=True`` (the default)",
+        pattern="Time complexity:",
+    )
+    def columns(self, fetch_if_missing: bool = True) -> Optional[List[str]]:
+        """Returns the columns of this Dataset.
+
+        Time complexity: O(1)
+
+        Example:
+            >>> import ray
+            >>> # Create dataset from synthetic data.
+            >>> ds = ray.data.range(1000)
+            >>> ds.columns()
+            ['id']
+
+        Args:
+            fetch_if_missing: If True, synchronously fetch the column names from the
+                schema if it's not known. If False, None is returned if the schema is
+                not known. Default is True.
+
+        Returns:
+            A list of the column names for this Dataset or None if schema is not known
+            and `fetch_if_missing` is False.
+
+        """
+        schema = self.schema(fetch_if_missing=fetch_if_missing)
+        if schema is not None:
+            return schema.names
+        return None
+
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
 
@@ -3211,7 +3210,7 @@ class Dataset:
 
         .. warning::
             If your dataset contains ragged tensors, this method errors. To prevent
-            errors, :ref:`resize your tensors <transforming_variable_tensors>`.
+            errors, :ref:`resize your tensors <transforming_tensors>`.
 
         Examples:
             >>> import ray
@@ -4090,6 +4089,12 @@ class Dataset:
         """
         return pickle.loads(serialized_ds)
 
+    @property
+    @DeveloperAPI
+    def context(self) -> DataContext:
+        """Return the DataContext used to create this Dataset."""
+        return self._plan._context
+
     def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
         block_list = self._plan.execute()
         left, right = block_list.divide(block_idx)
@@ -4214,26 +4219,38 @@ class Dataset:
         else:
             return result
 
-    @ensure_notebook_deps(
-        ["ipywidgets", "8"],
-    )
-    @fallback_if_colab
-    def _ipython_display_(self):
-        from ipywidgets import HTML, VBox, Layout
-        from IPython.display import display
+    @ensure_ipywidgets_dep("8")
+    @repr_fallback_if_colab
+    def _repr_mimebundle_(self, **kwargs):
+        """Return a mimebundle with an ipywidget repr and a simple text repr.
 
-        title = HTML(f"<h2>{self.__class__.__name__}</h2>")
+        Depending on the frontend where the data is being displayed,
+        different mimetypes will be used from this bundle.
+        See https://ipython.readthedocs.io/en/stable/config/integrating.html
+        for information about this method, and
+        https://ipywidgets.readthedocs.io/en/latest/embedding.html
+        for more information about the jupyter widget mimetype.
+
+        Returns:
+            A mimebundle containing an ipywidget repr and a simple text repr.
+        """
+        import ipywidgets
+
+        title = ipywidgets.HTML(f"<h2>{self.__class__.__name__}</h2>")
         tab = self._tab_repr_()
+        widget = ipywidgets.VBox([title, tab], layout=ipywidgets.Layout(width="100%"))
 
-        if tab:
-            display(VBox([title, tab], layout=Layout(width="100%")))
+        # Get the widget mime bundle, but replace the plaintext
+        # with the Datastream repr
+        bundle = widget._repr_mimebundle_(**kwargs)
+        bundle.update(
+            {
+                "text/plain": repr(self),
+            }
+        )
+        return bundle
 
-    @ensure_notebook_deps(
-        ["tabulate", None],
-        ["ipywidgets", "8"],
-    )
     def _tab_repr_(self):
-        from ray._private.thirdparty.tabulate.tabulate import tabulate
         from ipywidgets import Tab, HTML
 
         metadata = {
@@ -4335,7 +4352,8 @@ class Dataset:
         if ray.util.log_once("dataset_slow_warned"):
             logger.warning(
                 "The `map`, `flat_map`, and `filter` operations are unvectorized and "
-                "can be very slow. Consider using `.map_batches()` instead."
+                "can be very slow. If you're using a vectorized transformation, "
+                "consider using `.map_batches()` instead."
             )
 
     def _synchronize_progress_bar(self):
@@ -4372,14 +4390,8 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if sys.meta_path is None:
-            return
         if self._current_executor and ray is not None and ray.is_initialized():
             self._current_executor.shutdown()
-
-
-# Backwards compatibility alias.
-Dataset = Dataset
 
 
 @PublicAPI
@@ -4447,11 +4459,25 @@ class Schema:
     def __eq__(self, other):
         return isinstance(other, Schema) and other.base_schema == self.base_schema
 
-    def __str__(self):
-        return f"Schema({dict(zip(self.names, self.types))})"
-
     def __repr__(self):
-        return str(self)
+        column_width = max([len(name) for name in self.names] + [len("Column")])
+        padding = 2
+
+        output = "Column"
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "Type\n"
+
+        output += "-" * len("Column")
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "-" * len("Type") + "\n"
+
+        for name, type in zip(self.names, self.types):
+            output += name
+            output += " " * ((column_width + padding) - len(name))
+            output += f"{type}\n"
+
+        output = output.rstrip()
+        return output
 
 
 def _get_size_bytes(block: Block) -> int:

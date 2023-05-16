@@ -1,16 +1,20 @@
-import { createStyles, Link, makeStyles, Typography } from "@material-ui/core";
-import React, { useContext } from "react";
-import { Link as RouterLink, useParams } from "react-router-dom";
-import { GlobalContext } from "../../App";
+import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import React from "react";
+import { useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { generateActorLink, generateNodeLink } from "../../common/links";
+import {
+  MultiTabLogViewer,
+  MultiTabLogViewerTabDetails,
+} from "../../common/MultiTabLogViewer";
+import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
-import { ServeDeployment, ServeReplica } from "../../type/serve";
+import { ServeReplica } from "../../type/serve";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import TaskList from "../state/task";
 import { useServeReplicaDetails } from "./hook/useServeApplications";
@@ -84,12 +88,6 @@ export const ServeReplicaDetailPage = () => {
             content: <StatusChip type="serveReplica" status={state} />,
           },
           {
-            label: "Logs",
-            content: (
-              <ServeReplicaLogsLink replica={replica} deployment={deployment} />
-            ),
-          },
-          {
             label: "Actor ID",
             content: {
               value: actor_id ? actor_id : "-",
@@ -147,6 +145,11 @@ export const ServeReplicaDetailPage = () => {
           },
         ]}
       />
+      <CollapsibleSection title="Logs" startExpanded>
+        <Section noTopPadding>
+          <ServeReplicaLogs replica={replica} />
+        </Section>
+      </CollapsibleSection>
       <ServeReplicaMetricsSection
         className={classes.section}
         deploymentName={deployment.name}
@@ -163,39 +166,25 @@ export const ServeReplicaDetailPage = () => {
   );
 };
 
-export type ServeReplicaLogsLinkProps = {
-  replica: ServeReplica;
-  deployment: ServeDeployment;
+type ServeReplicaLogsProps = {
+  replica: Pick<ServeReplica, "log_file_path" | "node_id" | "actor_id">;
 };
 
-export const ServeReplicaLogsLink = ({
-  replica: { replica_id, node_ip },
-  deployment: { name: deploymentName },
-}: ServeReplicaLogsLinkProps) => {
-  const { ipLogMap } = useContext(GlobalContext);
-
-  let link: string | undefined;
-
-  if (node_ip && ipLogMap[node_ip]) {
-    // TODO(aguo): Clean up this logic after re-writing the log viewer
-    const logsRoot = ipLogMap[node_ip].endsWith("/logs")
-      ? ipLogMap[node_ip].substring(
-          0,
-          ipLogMap[node_ip].length - "/logs".length,
-        )
-      : ipLogMap[node_ip];
-    // TODO(aguo): Have API return the location of the logs.
-    const path = `/logs/serve/deployment_${deploymentName}_${replica_id}.log`;
-    link = `/logs/${encodeURIComponent(logsRoot)}/${encodeURIComponent(path)}`;
-  }
-
-  if (link) {
-    return (
-      <Link component={RouterLink} to={link} target="_blank" rel="noreferrer">
-        Log
-      </Link>
-    );
-  }
-
-  return <span>-</span>;
+const ServeReplicaLogs = ({
+  replica: { log_file_path, node_id, actor_id },
+}: ServeReplicaLogsProps) => {
+  const tabs: MultiTabLogViewerTabDetails[] = [
+    ...(log_file_path
+      ? [
+          {
+            title: "replica",
+            nodeId: node_id,
+            filename: log_file_path.startsWith("/")
+              ? log_file_path.substring(1)
+              : log_file_path,
+          },
+        ]
+      : []),
+  ];
+  return <MultiTabLogViewer tabs={tabs} />;
 };

@@ -225,8 +225,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
-  task_event_buffer_ =
-      std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
+      std::move(task_event_gcs_client), worker_context_.GetCurrentJobID());
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     if (!task_event_buffer_->Start().ok()) {
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
@@ -790,8 +790,12 @@ void CoreWorker::Exit(
          detail = std::move(detail),
          creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
-          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           KillChildProcs();
+          // Disconnect should be put close to Shutdown
+          // https://github.com/ray-project/ray/pull/34883
+          // TODO (iycheng) Improve the Process.h and make it able to monitor
+          // process liveness
+          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
         },
         "CoreWorker.Shutdown");
@@ -835,9 +839,13 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
-  Disconnect(exit_type, detail);
 
   KillChildProcs();
+  // Disconnect should be put close to Exit
+  // https://github.com/ray-project/ray/pull/34883
+  // TODO (iycheng) Improve the Process.h and make it able to monitor
+  // process liveness
+  Disconnect(exit_type, detail);
 
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
@@ -2554,11 +2562,25 @@ Status CoreWorker::ExecuteTask(
 
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  std::string actor_repr_name = "";
+  {
+    absl::MutexLock lock(&mutex_);
+    actor_repr_name = actor_repr_name_;
+  }
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    task_manager_->RecordTaskStatusEvent(
-        task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+    if (task_spec.IsActorTask() && !actor_repr_name.empty()) {
+      task_manager_->RecordTaskStatusEvent(
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::RUNNING,
+          /* include_task_info */ false,
+          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name));
+    } else {
+      task_manager_->RecordTaskStatusEvent(
+          task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+    }
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -3837,6 +3859,9 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 void CoreWorker::SetActorReprName(const std::string &repr_name) {
   RAY_CHECK(direct_task_receiver_ != nullptr);
   direct_task_receiver_->SetActorReprName(repr_name);
+
+  absl::MutexLock lock(&mutex_);
+  actor_repr_name_ = repr_name;
 }
 
 rpc::JobConfig CoreWorker::GetJobConfig() const {

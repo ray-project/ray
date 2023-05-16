@@ -20,7 +20,6 @@ import { UnifiedJob } from "../../type/job";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
 import { useJobDetail } from "./hook/useJobDetail";
-import { JobLogsLink } from "./JobDetail";
 
 const useStyle = makeStyles((theme) => ({
   root: {
@@ -42,7 +41,7 @@ export const JobDetailInfoPage = () => {
           pageInfo={{
             title: "Info",
             id: "job-info",
-            path: undefined,
+            path: "info",
           }}
         />
         <Loading loading={isLoading} />
@@ -178,8 +177,6 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
           label: "Actions",
           content: (
             <div>
-              <JobLogsLink job={job} />
-              <br />
               <CpuProfilingLink
                 pid={job.driver_info?.pid}
                 ip={job.driver_info?.node_ip_address}
