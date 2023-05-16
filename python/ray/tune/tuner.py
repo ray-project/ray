@@ -150,11 +150,15 @@ class Tuner:
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
-        if self._is_ray_client and get_air_verbosity() is not None:
-            logger.warning(
-                "Ignoring AIR_VERBOSITY setting, "
-                "as it doesn't support ray client mode yet."
-            )
+        if self._is_ray_client:
+            _run_config = run_config or RunConfig()
+            if get_air_verbosity(_run_config.verbose) is not None:
+                logger.info(
+                    "[output] This uses the legacy output and progress reporter, "
+                    "as Ray client is not supported by the new engine. "
+                    "For more information, see "
+                    "https://docs.ray.io/en/master/ray-air/experimental-features.html"
+                )
 
         if _tuner_internal:
             if not self._is_ray_client:
