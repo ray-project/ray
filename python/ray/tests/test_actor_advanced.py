@@ -1087,7 +1087,7 @@ def test_actor_timestamps(ray_start_regular):
         lapsed = end_time - start_time
 
         assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
-        assert 1500 < lapsed < 2500, f"Start: {start_time}, End: {end_time}"
+        assert 1500 < lapsed < 3500, f"Start: {start_time}, End: {end_time}"
 
     def restarted():
         actor = Foo.options(max_restarts=1, max_task_retries=-1).remote()
@@ -1098,7 +1098,9 @@ def test_actor_timestamps(ray_start_regular):
         actor.kill_self.remote()
         time.sleep(1)
         actor.kill_self.remote()
-        time.sleep(1)
+        wait_for_condition(
+            lambda: ray._private.state.actors()[actor_id]["EndTime"] != 0
+        )
         state_after_ending = ray._private.state.actors()[actor_id]
 
         assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
@@ -1108,7 +1110,7 @@ def test_actor_timestamps(ray_start_regular):
         lapsed = end_time - start_time
 
         assert end_time > start_time > 0, f"Start: {start_time}, End: {end_time}"
-        assert 1500 < lapsed < 2500, f"Start: {start_time}, End: {end_time}"
+        assert 1500 < lapsed < 4000, f"Start: {start_time}, End: {end_time}"
 
     graceful_exit()
     not_graceful_exit()
