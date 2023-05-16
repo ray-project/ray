@@ -63,9 +63,17 @@ jobs:
             comment.user.login === 'github-actions[bot]' && comment.body.startsWith(commentHeader)
           );
           
+          let externCodeFileContent;
+          let trackedFilesToURIs;
+          
           // Read and parse external_code.txt file
-          let externCodeFileContent = fs.readFileSync(externalCodeFile, "utf8");
-          let trackedFilesToURIs = parseTrackedFilesToURIs(externCodeFileContent);
+          try {
+            externCodeFileContent = fs.readFileSync(externalCodeFile, "utf8");
+            trackedFilesToURIs = parseTrackedFilesToURIs(externCodeFileContent);
+          } catch (error) {
+            console.error("An error occurred reading the external code file:", error);
+            trackedFilesToURIs = {};
+          }
           
           console.log("trackedFileToURIs");
           console.log(trackedFilesToURIs);
