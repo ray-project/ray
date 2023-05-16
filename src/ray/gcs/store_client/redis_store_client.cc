@@ -74,11 +74,9 @@ std::vector<std::vector<std::string>> GenCommandsBatched(
   for (auto &key : keys) {
     // If it's empty or the last batch is full, add a new batch.
     if (batched_requests.empty() ||
-        batched_requests.back().size() - 1 ==
-            RayConfig::instance().maximum_gcs_storage_operation_batch_size()) {
-      batched_requests.emplace_back(std::vector<std::string>());
-      batched_requests.back().push_back(command);
-      batched_requests.back().push_back(hash_field);
+        batched_requests.back().size() >=
+            RayConfig::instance().maximum_gcs_storage_operation_batch_size() + 2) {
+      batched_requests.emplace_back(std::vector<std::string>{command, hash_field});
     }
     batched_requests.back().push_back(key);
   }

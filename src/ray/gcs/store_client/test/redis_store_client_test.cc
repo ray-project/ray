@@ -325,9 +325,10 @@ TEST_F(RedisStoreClientTest, Random) {
     auto idx = std::rand() % ops.size();
     ops[idx](i);
   }
-  EXPECT_TRUE(WaitForCondition([&counter, this]() { return *counter == 0; }, 5000));
-  ASSERT_TRUE(
-      ((RedisStoreClient *)store_client_.get())->pending_redis_request_by_key_.empty());
+  EXPECT_TRUE(WaitForCondition([&counter]() { return *counter == 0; }, 5000));
+  auto redis_store_client_raw_ptr = (RedisStoreClient *)store_client_.get();
+  absl::MutexLock lock(&redis_store_client_raw_ptr->mu_);
+  ASSERT_TRUE(redis_store_client_raw_ptr->pending_redis_request_by_key_.empty());
 }
 
 }  // namespace gcs
