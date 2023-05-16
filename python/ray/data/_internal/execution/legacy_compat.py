@@ -286,7 +286,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
                 fn_constructor_args = stage.fn_constructor_args or ()
                 fn_constructor_kwargs = stage.fn_constructor_kwargs or {}
 
-                wrapper_class = make_callable_class_concurrent(op._fn)
+                wrapper_class = make_callable_class_concurrent(stage.fn)
 
                 def fn(item: Any) -> Any:
                     assert (
