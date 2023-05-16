@@ -10,10 +10,11 @@ from freezegun import freeze_time
 
 import ray.util
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air.constants import TRAINING_ITERATION
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
-from ray.tune.result import TRAINING_ITERATION, TIME_TOTAL_S
+from ray.tune.result import TIME_TOTAL_S
 from ray.tune.syncer import (
     DEFAULT_SYNC_PERIOD,
     SyncConfig,

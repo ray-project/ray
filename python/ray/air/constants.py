@@ -79,6 +79,9 @@ TIMESTAMP = "timestamp"
 # This may be overridden to override the system-computed time difference.
 TIME_THIS_ITER_S = "time_this_iter_s"
 
+# (Auto-filled) The index of this training iteration.
+TRAINING_ITERATION = "training_iteration"
+
 # File that stores parameters of the trial.
 EXPR_PARAM_FILE = "params.json"
 

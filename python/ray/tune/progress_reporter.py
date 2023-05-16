@@ -19,7 +19,7 @@ from ray._private.dict import flatten_dict
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.tqdm_ray import safe_print
 from ray.air.util.node import _force_on_current_node
-from ray.air.constants import EXPR_ERROR_FILE
+from ray.air.constants import EXPR_ERROR_FILE, TRAINING_ITERATION
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
 from ray.tune.result import (
@@ -34,7 +34,6 @@ from ray.tune.result import (
     PID,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
     TRIAL_ID,
 )
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location

@@ -19,6 +19,7 @@ from ray.air.constants import (
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
     EXPR_PARAM_FILE,
+    TRAINING_ITERATION,
 )
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
@@ -37,7 +38,6 @@ from ray.tune.error import TuneError
 from ray.tune.result import (
     DEFAULT_METRIC,
     CONFIG_PREFIX,
-    TRAINING_ITERATION,
 )
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
