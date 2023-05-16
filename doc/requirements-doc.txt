@@ -5,6 +5,7 @@ accelerate>=0.17.0
 click
 colorama
 colorful
+datasets
 # Newer versions of fairscale do not support Python 3.6 even though they still have wheels for it.
 # Have to manually pin it: https://github.com/facebookresearch/fairscale/issues/962
 fairscale; python_version >= '3.7'
