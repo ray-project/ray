@@ -697,11 +697,17 @@ def run(
     checkpoint_score_attr = (
         # Note(jungong) : we must use _tune_legacy_checkpoint_score_attr
         # here, instead of checkpoint_score_attribute, to make sure we
-        # handle legacy cases correctly (e.g., someone purposefully 
+        # handle legacy cases correctly (e.g., someone purposefully
         # specify checkpoint_score_order="min-loss").
-        checkpoint_config._tune_legacy_checkpoint_score_attr or ""
+        checkpoint_config._tune_legacy_checkpoint_score_attr
+        or ""
     )
     if checkpoint_score_attr.startswith("min-"):
+        logger.warning(
+            "using min- and max- prefixes to specify checkpoint score "
+            "order is deprecated. Please use CheckpointConfig.checkpoint_score_order "
+            "instead"
+        )
         checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
         checkpoint_config.checkpoint_score_order = "min"
     else:
