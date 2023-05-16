@@ -760,7 +760,6 @@ class RunConfig:
 
     def __post_init__(self):
         from ray.tune.syncer import SyncConfig, Syncer
-        from ray.tune.utils.log import Verbosity
         from ray.tune.utils.util import _resolve_storage_path
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
@@ -832,9 +831,8 @@ class RunConfig:
             # Default `verbose` value. For new output engine,
             # this is AirVerbosity.DEFAULT.
             # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
-            self.verbose = (
-                get_air_verbosity(AirVerbosity.DEFAULT) or Verbosity.V3_TRIAL_DETAILS
-            )
+            # Todo (krfricke): Currently uses number to pass test_configs::test_repr
+            self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
 
     def __repr__(self):
         from ray.tune.syncer import SyncConfig
