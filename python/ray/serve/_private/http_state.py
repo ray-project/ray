@@ -101,6 +101,7 @@ class HTTPProxyState:
             if finished:
                 try:
                     ray.get(finished[0])
+                    print("got object ref!")
                     self.set_status(HTTPProxyStatus.HEALTHY)
                 except Exception as e:
                     logger.warning(
