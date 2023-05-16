@@ -1076,7 +1076,9 @@ def test_actor_timestamps(ray_start_regular):
         time.sleep(1)
         actor.kill_self.remote()
         time.sleep(1)
-        wait_for_condition(lambda: ray._private.state.actors()[actor_id]["EndTime"] != 0)
+        wait_for_condition(
+            lambda: ray._private.state.actors()[actor_id]["EndTime"] != 0
+        )
         state_after_ending = ray._private.state.actors()[actor_id]
         assert state_after_starting["StartTime"] == state_after_ending["StartTime"]
 
