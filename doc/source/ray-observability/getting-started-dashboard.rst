@@ -9,24 +9,9 @@ of their applications and troubleshoot issues.
 .. raw:: html
 
     <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-        <iframe src="https://www.youtube.com/embed/VPksEcjACOM" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
+        <iframe src="https://youtu.be/i33b1DYjYRQ" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
     </div>
 
-Common Workflows
-----------------
-
-Here are common workflows when using the Ray dashboard.
-
-- :ref:`View the metrics graphs <dash-metrics-view>`.
-- :ref:`View the progress of your job <dash-workflow-job-progress>`.
-- :ref:`Find the application logs or error messages of failed tasks or actors <dash-workflow-logs>`.
-- :ref:`Profile, trace dump, and visualize the timeline of the Ray jobs, tasks, or actors <dashboard-profiling>`.
-- :ref:`Analyze the CPU and memory usage of the cluster, tasks and actors <dash-workflow-cpu-memory-analysis>`.
-- :ref:`View the individual state of task, actor, placement group <dash-workflow-state-apis>`, and :ref:`nodes (machines from a cluster) <dash-node-view>` which is equivalent to :ref:`Ray state APIs <state-api-overview-ref>`.
-- :ref:`View the hardware utilization (CPU, GPU, memory) <dash-workflow-resource-utilization>`.
-
-Getting Started
----------------
 
 To use the dashboard, you should use the `ray[default]` installation:
 
@@ -65,8 +50,76 @@ Ray cluster comes with the dashboard. See :ref:`Cluster Monitoring <monitor-clus
   They are necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
   See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
 
-How to Guides
--------------
+Jobs View
+---------
+
+.. raw:: html
+
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+        <iframe src="https://youtu.be/CrpXSSs0uaw" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
+    </div>
+
+The Jobs View lets you monitor the different jobs that ran on your Ray cluster.
+
+A job is a ray workload that uses Ray APIs (e.g., ``ray.init``). It can be submitted directly (e.g., by executing a Python script within a head node) or via :ref:`Ray job API <jobs-quickstart>`.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/job_list.png
+    :align: center
+
+The job page displays a list of active, finished, and failed jobs, and clicking on an ID allows users to view detailed information about that job.
+For more information on Ray jobs, see the Ray Job Overview section.
+
+Job Profiling
+~~~~~~~~~~~~~
+
+You can profile Ray jobs by clicking on the “Stack Trace” or “CPU Flame Graph” actions. See the :ref:`Dashboard Profiling <dashboard-profiling>` for more details.
+
+.. _dash-workflow-job-progress:
+
+Advanced Task and Actor Breakdown
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/advanced-progress.png
+    :align: left
+
+The job page allows you to see tasks and actors broken down by their states.
+Tasks and actors are grouped and nested by default. You can see the nested entries by clicking the expand button.
+
+Tasks and actors are grouped and nested by the following criteria.
+
+- All tasks and actors are grouped together, and you can view individual entries by expanding the corresponding row.
+- Tasks are grouped by their ``name`` attribute (e.g., ``task.options(name="<name_here>").remote()``).
+- Child tasks (nested tasks) are nested under their parent task's row.
+- Actors are grouped by their class name.
+- Child actors (actors created within an actor) are nested under their parent actor's row.
+- Actor tasks (remote methods within an actor) are nested under the actor for the corresponding actor method.
+
+.. note::
+
+  Ray dashboard can only display or retrieve up to 10K tasks at a time. If there are more than 10K tasks from your job,
+  they are unaccounted. The number of unaccounted tasks is available from the task breakdown.
+
+Task Timeline
+~~~~~~~~~~~~~
+
+The :ref:`timeline API <ray-core-timeline>` is available from the dashboard.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/profile-button.png
+    :align: center
+
+First, you can download the chrome tracing file by clicking the download button.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/profile_drag.png
+    :align: center
+
+Second, you can use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. We will use the Perfetto as it is the recommendation way to visualize chrome tracing files.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/timeline.png
+    :align: center
+
+Now, you can see the timeline visualization of Ray tasks and actors. There are Node rows (hardware) and Worker rows (processes).
+Each worker rows display a list of events (e.g., task scheduled, task running, input/output deserialization, etc.) happening from that worker over time.
+
 
 .. _dash-workflow-logs:
 
@@ -189,76 +242,6 @@ Two types of events are available.
 - Autoscaler: Events related to the :ref:`Ray autoscaler <cluster-autoscaler>`.
 
 .. _dash-jobs-view:
-
-Jobs View
----------
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/jobs.png
-    :align: center
-
-The Jobs View lets you monitor the different jobs that ran on your Ray cluster.
-
-A job is a ray workload that uses Ray APIs (e.g., ``ray.init``). It can be submitted directly (e.g., by executing a Python script within a head node) or via :ref:`Ray job API <jobs-quickstart>`.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/job_list.png
-    :align: center
-
-The job page displays a list of active, finished, and failed jobs, and clicking on an ID allows users to view detailed information about that job.
-For more information on Ray jobs, see the Ray Job Overview section.
-
-Job Profiling
-~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/profile-job.png
-    :align: center
-
-You can profile Ray jobs by clicking on the “Stack Trace” or “CPU Flame Graph” actions. See the :ref:`Dashboard Profiling <dashboard-profiling>` for more details.
-
-.. _dash-workflow-job-progress:
-
-Advanced Task and Actor Breakdown
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/advanced-progress.png
-    :align: left
-
-The job page allows you to see tasks and actors broken down by their states.
-Tasks and actors are grouped and nested by default. You can see the nested entries by clicking the expand button.
-
-Tasks and actors are grouped and nested by the following criteria.
-
-- All tasks and actors are grouped together, and you can view individual entries by expanding the corresponding row.
-- Tasks are grouped by their ``name`` attribute (e.g., ``task.options(name="<name_here>").remote()``).
-- Child tasks (nested tasks) are nested under their parent task's row.
-- Actors are grouped by their class name.
-- Child actors (actors created within an actor) are nested under their parent actor's row.
-- Actor tasks (remote methods within an actor) are nested under the actor for the corresponding actor method.
-
-.. note::
-
-  Ray dashboard can only display or retrieve up to 10K tasks at a time. If there are more than 10K tasks from your job,
-  they are unaccounted. The number of unaccounted tasks is available from the task breakdown.
-
-Task Timeline
-~~~~~~~~~~~~~
-
-The :ref:`timeline API <ray-core-timeline>` is available from the dashboard.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/profile-button.png
-    :align: center
-
-First, you can download the chrome tracing file by clicking the download button.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/profile_drag.png
-    :align: center
-
-Second, you can use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. We will use the Perfetto as it is the recommendation way to visualize chrome tracing files.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/timeline.png
-    :align: center
-
-Now, you can see the timeline visualization of Ray tasks and actors. There are Node rows (hardware) and Worker rows (processes).
-Each worker rows display a list of events (e.g., task scheduled, task running, input/output deserialization, etc.) happening from that worker over time.
 
 Ray Status
 ~~~~~~~~~~
