@@ -43,18 +43,18 @@ def test_get_ray_image():
         == "rayproject/ray-ml:nightly-py38-gpu"
     )
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
-    assert _stub_test().get_ray_image() == "rayproject/ray:123456-py37"
+    assert _stub_test({}).get_ray_image() == "rayproject/ray:123456-py37"
 
 
 def test_get_anyscale_byod_image():
     os.environ.pop("BUILDKITE_COMMIT", None)
     assert (
-        _stub_test().get_anyscale_byod_image()
+        _stub_test({}).get_anyscale_byod_image()
         == f"{DATAPLANE_ECR_REPO}:ray-nightly-py37"
     )
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
     assert (
-        _stub_test().get_anyscale_byod_image()
+        _stub_test({}).get_anyscale_byod_image()
         == f"{DATAPLANE_ECR_REPO}:ray-123456-py37"
     )
 
