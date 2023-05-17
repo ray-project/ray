@@ -146,11 +146,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 0, 0)
@@ -224,11 +224,11 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 2, 2)
@@ -301,11 +301,11 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 2, 2)
@@ -391,11 +391,11 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 2, 2)
@@ -452,7 +452,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     check_num_computed(ds, 0, 0)
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=6,\n"
         "   schema={two: string, "
@@ -460,7 +460,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         ")"
     ), ds
     assert repr(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=6,\n"
         "   schema={two: string, "
@@ -550,11 +550,11 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={two: string, one: int32})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={two: string, one: int32})"
     ), ds
     check_num_computed(ds, 0, 0)
@@ -691,7 +691,9 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
         ), "estimated data size is not deterministic in multiple calls."
 
         text_output_path = os.path.join(tmp_path, "text")
-        ray.data.range(1000).map(lambda _: "a" * 1000).write_parquet(text_output_path)
+        ray.data.range(1000).map(lambda _: {"text": "a" * 1000}).write_parquet(
+            text_output_path
+        )
         ds = ray.data.read_parquet(text_output_path)
         assert ds.num_blocks() > 1
         data_size = ds.size_bytes()

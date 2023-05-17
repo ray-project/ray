@@ -24,12 +24,12 @@ class TfMLP(tf.keras.Model):
         input_dim: int,
         hidden_layer_dims: List[int],
         hidden_layer_use_layernorm: bool = False,
-        hidden_layer_activation: Union[str, Callable] = "relu",
+        hidden_layer_activation: Optional[Union[str, Callable]] = "relu",
         hidden_layer_weight_initializer: Optional[
             Union[str, Callable]
         ] = "truncate_normal",
         output_dim: Optional[int] = None,
-        output_activation: Union[str, Callable] = "linear",
+        output_activation: Optional[Union[str, Callable]] = "linear",
         output_layer_weight_initializer: Optional[Union[str, Callable]] = None,
         use_bias: bool = True,
     ):
@@ -145,7 +145,7 @@ class TfCNN(tf.keras.Model):
         input_dims: Union[List[int], Tuple[int]],
         cnn_filter_specifiers: List[List[Union[int, List]]],
         cnn_use_layernorm: bool = False,
-        cnn_activation: str = "relu",
+        cnn_activation: Optional[str] = "relu",
         use_bias: bool = True,
     ):
         """Initializes a TfCNN instance.
@@ -221,7 +221,7 @@ class TfCNNTranspose(tf.keras.Model):
         *,
         input_dims: Union[List[int], Tuple[int]],
         cnn_transpose_filter_specifiers: List[List[Union[int, List]]],
-        cnn_transpose_activation: str = "relu",
+        cnn_transpose_activation: Optional[str] = "relu",
         cnn_transpose_use_layernorm: bool = False,
         use_bias: bool = True,
     ):

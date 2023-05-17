@@ -7,9 +7,9 @@ In this guide, we will show you how to train models from various machine learnin
 
 Please see the [Key Concepts](serve-key-concepts) to learn more general information about Ray Serve.
 
+:::::{tab-set} 
 
-::::{tabbed} Keras and Tensorflow
-
+::::{tab-item} Keras and Tensorflow
 
 Let's train and deploy a simple Tensorflow neural net.
 In particular, we will show:
@@ -17,7 +17,7 @@ In particular, we will show:
 - How to train a Tensorflow model and load the model from your file system in your Ray Serve deployment.
 - How to parse the JSON request and make a prediction.
 
-Ray Serve is framework agnostic -- you can use any version of Tensorflow.
+Ray Serve is framework-agnostic -- you can use any version of Tensorflow.
 However, for this tutorial, we will use Tensorflow 2 and Keras. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install Tensorflow 2 and requests by running:
 
 ```console
@@ -38,7 +38,7 @@ Next, let's train a simple MNIST model using Keras.
 :end-before: __doc_train_model_end__
 ```
 
-Next, we define a class `TFMnistModel` that will accept HTTP requests and run the MNIST model that we trained. It is decorated with `@serve.deployment` to make it a deployment object so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
+Next, we define a class `TFMnistModel` that will accept HTTP requests and run the MNIST model that we trained. It is decorated with `@serve.deployment` to make it a deployment object, so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
 
 ```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_define_servable_begin__
@@ -116,7 +116,7 @@ You should get an output like the following (the exact prediction may vary):
 ```
 ::::
 
-::::{tabbed} Pytorch
+::::{tab-item} Pytorch
 
 Let's load and deploy a PyTorch Resnet Model.
 In particular, we will show:
@@ -185,7 +185,7 @@ You should get an output like the following (the exact number may vary):
 ```
 ::::
 
-::::{tabbed} Scikit-Learn
+::::{tab-item} Scikit-Learn
 
 Let's train and deploy a simple Scikit-Learn classifier.
 In particular, we will show:
@@ -193,7 +193,7 @@ In particular, we will show:
 - How to load the Scikit-Learn model from file system in your Ray Serve definition.
 - How to parse the JSON request and make a prediction.
 
-Ray Serve is framework agnostic. You can use any version of sklearn. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install scikit-learn and requests by running:
+Ray Serve is framework-agnostic. You can use any version of sklearn. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install scikit-learn and requests by running:
 
 ```console
 $ pip install scikit-learn requests
@@ -282,4 +282,7 @@ You should get an output like the following (the exact prediction may vary):
 ```python
 {"result": "versicolor"}
 ```
+
 ::::
+
+:::::

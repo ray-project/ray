@@ -53,8 +53,8 @@ def test_strict_map_output(ray_start_regular_shared, enable_strict_mode):
 
     with pytest.raises(StrictModeError):
         ds.map_batches(lambda x: np.array([0]), max_retries=0).materialize()
-    ds.map_batches(lambda x: {"id": np.array([0])}).materialize()
-    ds.map_batches(lambda x: UserDict({"id": np.array([0])})).materialize()
+    ds.map_batches(lambda x: {"id": [0]}).materialize()
+    ds.map_batches(lambda x: UserDict({"id": [0]})).materialize()
 
     with pytest.raises(StrictModeError):
         ds.map(lambda x: np.ones(10), max_retries=0).materialize()
@@ -71,8 +71,8 @@ def test_strict_map_output(ray_start_regular_shared, enable_strict_mode):
         ds.map_batches(lambda x: object(), max_retries=0).materialize()
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: {"x": object()}, max_retries=0).materialize()
-    ds.map_batches(lambda x: {"x": np.array([object()])}).materialize()
-    ds.map_batches(lambda x: UserDict({"x": np.array([object()])})).materialize()
+    ds.map_batches(lambda x: {"x": [object()]}).materialize()
+    ds.map_batches(lambda x: UserDict({"x": [object()]})).materialize()
 
     with pytest.raises(StrictModeError):
         ds.map(lambda x: object(), max_retries=0).materialize()
@@ -86,7 +86,9 @@ def test_strict_convert_map_output(ray_start_regular_shared, enable_strict_mode)
 
     with pytest.raises(ValueError):
         # Strings not converted into array.
-        ray.data.range(1).map_batches(lambda x: {"id": "string"}).materialize()
+        ray.data.range(1).map_batches(
+            lambda x: {"id": "string"}, max_retries=0
+        ).materialize()
 
     class UserObj:
         def __eq__(self, other):
@@ -98,6 +100,23 @@ def test_strict_convert_map_output(ray_start_regular_shared, enable_strict_mode)
         .materialize()
     )
     assert ds.take_batch()["id"].tolist() == [0, 1, 2, UserObj()]
+
+
+def test_strict_convert_map_groups(ray_start_regular_shared, enable_strict_mode):
+    ds = ray.data.read_csv("example://iris.csv")
+
+    def process_group(group):
+        variety = group["variety"][0]
+        count = len(group["variety"])
+
+        # Test implicit list->array conversion here.
+        return {
+            "variety": [variety],
+            "count": [count],
+        }
+
+    ds = ds.groupby("variety").map_groups(process_group)
+    ds.show()
 
 
 def test_strict_default_batch_format(ray_start_regular_shared, enable_strict_mode):
@@ -164,38 +183,37 @@ def test_strict_compute(ray_start_regular_shared, enable_strict_mode):
 
 
 def test_strict_schema(ray_start_regular_shared, enable_strict_mode):
-    import pyarrow
+    import pyarrow as pa
+    from ray.data.extensions.tensor_extension import ArrowTensorType
     from ray.data._internal.pandas_block import PandasBlockSchema
 
     ds = ray.data.from_items([{"x": 2}])
     schema = ds.schema()
-    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
-    assert str(schema) == "Schema({'x': DataType(int64)})"
+    assert isinstance(schema.base_schema, pa.lib.Schema)
+    assert schema.names == ["x"]
+    assert schema.types == [pa.int64()]
 
     ds = ray.data.from_items([{"x": 2, "y": [1, 2]}])
     schema = ds.schema()
-    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
-    assert (
-        str(schema)
-        == "Schema({'x': DataType(int64), 'y': ListType(list<item: int64>)})"
-    )
+    assert isinstance(schema.base_schema, pa.lib.Schema)
+    assert schema.names == ["x", "y"]
+    assert schema.types == [pa.int64(), pa.list_(pa.int64())]
 
     ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
     schema = ds.schema()
-    assert isinstance(schema.base_schema, PandasBlockSchema)
-    assert str(schema) == (
-        "Schema({'x': DataType(int64), 'y': "
-        "<class 'object'>, 'z': <class 'object'>})"
-    )
+    assert schema.names == ["x", "y", "z"]
+    assert schema.types == [pa.int64(), object, object]
 
     ds = ray.data.from_numpy(np.ones((100, 10)))
     schema = ds.schema()
-    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
-    assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
+    assert isinstance(schema.base_schema, pa.lib.Schema)
+    assert schema.names == ["data"]
+    assert schema.types == [ArrowTensorType(shape=(10,), dtype=pa.float64())]
 
     schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
-    assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
     assert isinstance(schema.base_schema, PandasBlockSchema)
+    assert schema.names == ["data"]
+    assert schema.types == [ArrowTensorType(shape=(10,), dtype=pa.float64())]
 
 
 def test_use_raw_dicts(ray_start_regular_shared, enable_strict_mode):

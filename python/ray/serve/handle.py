@@ -78,8 +78,11 @@ class HandleOptions:
 class RayServeHandle:
     """A handle used to make requests from one deployment to another.
 
-    This is used to compose multiple deployments in a single application by binding
-    them together when building the application. For example:
+    This is used to compose multiple deployments into a single application. After
+    building the application, this handle is substituted at runtime for deployments
+    passed as arguments via `.bind()`.
+
+    Example:
 
     .. code-block:: python
 
@@ -133,7 +136,7 @@ class RayServeHandle:
                 "The number of handle.remote() calls that have been "
                 "made on this handle."
             ),
-            tag_keys=("handle", "deployment", "route"),
+            tag_keys=("handle", "deployment", "route", "application"),
         )
         self.request_counter.set_default_tags(
             {"handle": self.handle_tag, "deployment": self.deployment_name}
@@ -236,8 +239,14 @@ class RayServeHandle:
             call_method=handle_options.method_name,
             http_arg_is_pickled=self._pickled_http_request,
             route=_request_context.route,
+            app_name=_request_context.app_name,
         )
-        self.request_counter.inc(tags={"route": _request_context.route})
+        self.request_counter.inc(
+            tags={
+                "route": _request_context.route,
+                "application": _request_context.app_name,
+            }
+        )
         coro = self.router.assign_request(request_metadata, *args, **kwargs)
         return coro
 
@@ -248,7 +257,9 @@ class RayServeHandle:
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
         points to the final result of the request.
 
-        The final result can be retrieved by `await`ing the ObjectRef. Example:
+        The final result can be retrieved by awaiting the ObjectRef.
+
+        Example:
 
         .. code-block:: python
 

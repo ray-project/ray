@@ -12,6 +12,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
+from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -182,29 +183,32 @@ class TorchPolicyV2(Policy):
             self.exploration = None
         else:
             self.exploration = self._create_exploration()
-        self._optimizers = force_list(self.optimizer())
 
-        # Backward compatibility workaround so Policy will call self.loss() directly.
-        # TODO(jungong): clean up after all policies are migrated to new sub-class
-        #  implementation.
-        self._loss = None
+        if not self.config.get("_enable_learner_api", False):
+            self._optimizers = force_list(self.optimizer())
 
-        # Store, which params (by index within the model's list of
-        # parameters) should be updated per optimizer.
-        # Maps optimizer idx to set or param indices.
-        self.multi_gpu_param_groups: List[Set[int]] = []
-        main_params = {p: i for i, p in enumerate(self.model.parameters())}
-        for o in self._optimizers:
-            param_indices = []
-            for pg_idx, pg in enumerate(o.param_groups):
-                for p in pg["params"]:
-                    param_indices.append(main_params[p])
-            self.multi_gpu_param_groups.append(set(param_indices))
+            # Backward compatibility workaround so Policy will call self.loss()
+            # directly.
+            # TODO (jungong): clean up after all policies are migrated to new sub-class
+            #  implementation.
+            self._loss = None
 
-        # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
-        # one with m towers (num_gpus).
-        num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
-        self._loaded_batches = [[] for _ in range(num_buffers)]
+            # Store, which params (by index within the model's list of
+            # parameters) should be updated per optimizer.
+            # Maps optimizer idx to set or param indices.
+            self.multi_gpu_param_groups: List[Set[int]] = []
+            main_params = {p: i for i, p in enumerate(self.model.parameters())}
+            for o in self._optimizers:
+                param_indices = []
+                for pg_idx, pg in enumerate(o.param_groups):
+                    for p in pg["params"]:
+                        param_indices.append(main_params[p])
+                self.multi_gpu_param_groups.append(set(param_indices))
+
+            # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
+            # one with m towers (num_gpus).
+            num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
+            self._loaded_batches = [[] for _ in range(num_buffers)]
 
         # If set, means we are using distributed allreduce during learning.
         self.distributed_world_size = None
@@ -734,14 +738,7 @@ class TorchPolicyV2(Policy):
             )
 
         # 3) Load splits into the given buffer (consisting of n GPUs).
-        if not self.config.get("_load_only_minibatch_onto_device", False):
-            # We usually want to load the full batch onto the device here, which is
-            # much faster than loading the batch slice-by-slice.
-            # However, if the batch is too large, it may be favorable to load the
-            # batch slice-by-slice.
-            slices = [
-                slice.to_device(self.devices[i]) for i, slice in enumerate(slices)
-            ]
+        slices = [slice.to_device(self.devices[i]) for i, slice in enumerate(slices)]
         self._loaded_batches[buffer_index] = slices
 
         # Return loaded samples per-device.
@@ -756,11 +753,7 @@ class TorchPolicyV2(Policy):
 
     @override(Policy)
     @DeveloperAPI
-    def learn_on_loaded_batch(
-        self,
-        offset: int = 0,
-        buffer_index: int = 0,
-    ):
+    def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         if not self._loaded_batches[buffer_index]:
             raise ValueError(
                 "Must call Policy.load_batch_into_buffer() before "
@@ -814,20 +807,8 @@ class TorchPolicyV2(Policy):
             )
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
-        # If `_load_only_minibatch_onto_device` is True, then the main batch always
-        # remains on the CPU (it's probably too big to be fit on the GPU). Thus, in
-        # this case, for each individual update step, we need to copy the freshly
-        # determined sub-slice to the GPU. These sub-slices need to be small enough
-        # then to fit on the GPU.
-        if self.config.get("_load_only_minibatch_onto_device", False):
-            copy_batch_to_device = True
-        else:
-            copy_batch_to_device = False
-
         # Do the (maybe parallelized) gradient calculation step.
-        tower_outputs = self._multi_gpu_parallel_grad_calc(
-            device_batches, copy_batch_to_device=copy_batch_to_device
-        )
+        tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
 
         # Mean-reduce gradients over GPU-towers (do this on CPU: self.device).
         all_grads = []
@@ -1016,7 +997,13 @@ class TorchPolicyV2(Policy):
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
-                optim_state_dict = convert_to_torch_tensor(s, device=self.device)
+                # Torch optimizer param_groups include things like beta, etc. These
+                # parameters should be left as scalar and not converted to tensors.
+                # otherwise, torch.optim.step() will start to complain.
+                optim_state_dict = {"param_groups": s["param_groups"]}
+                optim_state_dict["state"] = convert_to_torch_tensor(
+                    s["state"], device=self.device
+                )
                 o.load_state_dict(optim_state_dict)
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
@@ -1121,24 +1108,30 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
-        extra_fetches = {}
+        extra_fetches = None
         if isinstance(self.model, RLModule):
             if explore:
+                action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)
-            else:
-                fwd_out = self.model.forward_inference(input_dict)
-            # anything but action_dist and state_out is an extra fetch
-            action_dist = fwd_out.pop("action_dist")
-
-            if explore:
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
                 actions = action_dist.sample()
                 logp = action_dist.logp(actions)
             else:
+                action_dist_class = self.model.get_inference_action_dist_cls()
+                fwd_out = self.model.forward_inference(input_dict)
+                action_dist = action_dist_class.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
+                action_dist = action_dist.to_deterministic()
                 actions = action_dist.sample()
                 logp = None
-            state_out = fwd_out.pop("state_out", {})
+
+            # Anything but actions and state_out is an extra fetch.
+            state_out = fwd_out.pop(STATE_OUT, {})
             extra_fetches = fwd_out
-            dist_inputs = None
+            dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         elif is_overridden(self.action_sampler_fn):
             action_dist = None
             actions, logp, dist_inputs, state_out = self.action_sampler_fn(
@@ -1183,7 +1176,7 @@ class TorchPolicyV2(Policy):
             )
 
         # Add default and custom fetches.
-        if not extra_fetches:
+        if extra_fetches is None:
             extra_fetches = self.extra_action_out(
                 input_dict, state_batches, self.model, action_dist
             )
@@ -1202,7 +1195,6 @@ class TorchPolicyV2(Policy):
         return convert_to_numpy((actions, state_out, extra_fetches))
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch, device=None):
-        # TODO: (sven): Keep for a while to ensure backward compatibility.
         if not isinstance(postprocessed_batch, SampleBatch):
             postprocessed_batch = SampleBatch(postprocessed_batch)
         postprocessed_batch.set_get_interceptor(
@@ -1211,9 +1203,7 @@ class TorchPolicyV2(Policy):
         return postprocessed_batch
 
     def _multi_gpu_parallel_grad_calc(
-        self,
-        sample_batches: List[SampleBatch],
-        copy_batch_to_device: bool = False,
+        self, sample_batches: List[SampleBatch]
     ) -> List[Tuple[List[TensorType], GradInfoDict]]:
         """Performs a parallelized loss and gradient calculation over the batch.
 
@@ -1225,10 +1215,6 @@ class TorchPolicyV2(Policy):
         Args:
             sample_batches: A list of SampleBatch shards to
                 calculate loss and gradients for.
-            copy_batch_to_device: Whether to create a copy of the batch that is then
-                moved to GPU. This is useful if we don't want to move the original
-                batch to the device. In case of a large batch, we can thereby only move
-                mini-batches to GPU one by one and free them after each step.
 
         Returns:
             A list (one item per device) of 2-tuples, each with 1) gradient
@@ -1238,11 +1224,6 @@ class TorchPolicyV2(Policy):
         lock = threading.Lock()
         results = {}
         grad_enabled = torch.is_grad_enabled()
-
-        if copy_batch_to_device:
-            sample_batches = [
-                batch.to_device(i, copy=True) for i, batch in enumerate(sample_batches)
-            ]
 
         def _worker(shard_idx, model, sample_batch, device):
             torch.set_grad_enabled(grad_enabled)

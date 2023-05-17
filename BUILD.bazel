@@ -479,29 +479,6 @@ cc_library(
     ],
 )
 
-# This header is used to warp some internal code so we can reduce suspicious
-# symbols export.
-cc_library(
-    name = "exported_internal",
-    srcs = glob(
-        [
-            "src/ray/internal/internal.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/internal/internal.h",
-        ],
-    ),
-    copts = COPTS,
-    strip_include_prefix = "src",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core_worker_lib",
-    ],
-    alwayslink = 1,
-)
-
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
@@ -1468,6 +1445,18 @@ cc_test(
     name = "asio_defer_test",
     size = "small",
     srcs = ["src/ray/common/test/asio_defer_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "asio_retry_runner_test",
+    size = "small",
+    srcs = ["src/ray/common/test/asio_retry_runner_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
@@ -2569,6 +2558,7 @@ cc_library(
     deps = [
         "redis_client",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -2813,7 +2803,6 @@ pyx_library(
     ),
     deps = [
         "//:core_worker_lib",
-        "//:exported_internal",
         "//:global_state_accessor_lib",
         "//:ray_util",
         "//:raylet_lib",
@@ -2848,7 +2837,6 @@ cc_binary(
     visibility = ["//java:__subpackages__"],
     deps = [
         "//:core_worker_lib",
-        "//:exported_internal",
         "//:global_state_accessor_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
@@ -2908,6 +2896,7 @@ filegroup(
         "//src/ray/protobuf:event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
+        "//src/ray/protobuf:instance_manager_py_proto",
         "//src/ray/protobuf:job_agent_py_proto",
         "//src/ray/protobuf:monitor_py_proto",
         "//src/ray/protobuf:node_manager_py_proto",
