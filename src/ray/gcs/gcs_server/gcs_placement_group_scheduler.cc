@@ -692,7 +692,7 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
   std::vector<scheduling::ResourceID> bundle_resource_ids;
   absl::flat_hash_map<std::string, FixedPoint> wildcard_resources;
 
-  if (cluster_resource_manager.HasNode(node_id)) {
+  if (!cluster_resource_manager.HasNode(node_id)) {
     // If the node is dead, we do not need to release the bundle resources.
     return true;
   }
@@ -854,8 +854,8 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
   return preparing_bundle_locations_;
 }
 
-const std::shared_ptr<BundleLocations>
-    &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
+const std::shared_ptr<BundleLocations> &
+LeaseStatusTracker::GetUnCommittedBundleLocations() const {
   return uncommitted_bundle_locations_;
 }
 
@@ -868,8 +868,8 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetBundleLocations()
   return bundle_locations_;
 }
 
-const std::vector<std::shared_ptr<const BundleSpecification>>
-    &LeaseStatusTracker::GetBundlesToSchedule() const {
+const std::vector<std::shared_ptr<const BundleSpecification>> &
+LeaseStatusTracker::GetBundlesToSchedule() const {
   return bundles_to_schedule_;
 }
 
