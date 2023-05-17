@@ -73,9 +73,9 @@ def ensure_notebook_deps(
 ) -> Callable[[F], F]:
     """Generate a decorator which checks for soft dependencies.
 
-    This decorator is meant to wrap _repr_mimebundle_ methods. If the dependency is not
-    found, or a version is specified here and the version of the package is older than
-    the specified version, the original repr is used.
+    This decorator is meant to wrap repr methods. If the dependency is not found,
+    or a version is specified here and the version of the package is older than the
+    specified version, the original repr is used.
     If the dependency is missing or the version is old, a log message is displayed.
 
     Args:
@@ -155,11 +155,11 @@ def _has_missing(
             message = f"Run `pip install {' '.join(missing)}` for rich notebook output."
 
         if sys.version_info < (3, 8):
-            logger.info(f"Missing packages: {missing}. {message}")
+            logger.warning(f"Missing packages: {missing}. {message}")
         else:
             # stacklevel=3: First level is this function, then ensure_notebook_deps,
             # then the actual function affected.
-            logger.info(f"Missing packages: {missing}. {message}", stacklevel=3)
+            logger.warning(f"Missing packages: {missing}. {message}", stacklevel=3)
 
     return missing
 
@@ -190,11 +190,13 @@ def _has_outdated(
             message = f"Run `pip install -U {install_str}` for rich notebook output."
 
         if sys.version_info < (3, 8):
-            logger.info(f"Outdated packages:\n{outdated_str}\n{message}")
+            logger.warning(f"Outdated packages:\n{outdated_str}\n{message}")
         else:
             # stacklevel=3: First level is this function, then ensure_notebook_deps,
             # then the actual function affected.
-            logger.info(f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3)
+            logger.warning(
+                f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3
+            )
 
     return outdated
 
