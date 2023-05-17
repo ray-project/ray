@@ -186,9 +186,10 @@ void RedisRequestContext::Run() {
         auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
         // Error happened.
         if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
+          auto error_msg = redis_reply ? redis_reply->str : async_context->errstr;
           RAY_LOG(ERROR) << "Redis request ["
                          << absl::StrJoin(request_cxt->redis_cmds_, " ") << "]"
-                         << " failed due to error " << async_context->errstr << ". "
+                         << " failed due to error " << error_msg << ". "
                          << request_cxt->pending_retries_ << " retries left.";
           auto delay = request_cxt->exp_back_off_.Current();
           request_cxt->exp_back_off_.Next();
