@@ -135,10 +135,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
-from ray.widgets.util import (
-    ensure_ipywidgets_dep,
-    repr_fallback_if_colab,
-)
+from ray.widgets.util import repr_with_fallback
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -4219,8 +4216,7 @@ class Dataset:
         else:
             return result
 
-    @ensure_ipywidgets_dep("8")
-    @repr_fallback_if_colab
+    @repr_with_fallback(["ipywidgets", "8"])
     def _repr_mimebundle_(self, **kwargs):
         """Return a mimebundle with an ipywidget repr and a simple text repr.
 
