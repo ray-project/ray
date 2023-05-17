@@ -53,6 +53,7 @@ parts:
               - file: ray-air/computer-vision
               - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
+              - file: ray-air/experimental-features
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/opt_deepspeed_batch_inference
@@ -266,6 +267,7 @@ parts:
               - file: serve/scaling-and-resource-allocation
               - file: serve/model_composition
               - file: serve/dev-workflow
+              - file: serve/app-builder-guide
               - file: serve/multi-app
               - file: serve/production-guide/index
                 sections:

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import ray
 from ray import logger
 from ray.air import session
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 
 from ray.tune.logger import LoggerCallback
@@ -207,6 +208,10 @@ def _setup_wandb(
 
     run = _wandb.init(**wandb_init_kwargs)
     _run_wandb_process_run_info_hook(run)
+
+    # Record `setup_wandb` usage when everything has setup successfully.
+    air_usage.tag_setup_wandb()
+
     return run
 
 
