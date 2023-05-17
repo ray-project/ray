@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 import ray
+from ray.experimental.state.api import list_actors
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve._private.common import HTTPProxyStatus
@@ -134,7 +135,6 @@ def test_http_proxy_unhealthy():
 
 
 def test_http_proxy_shutdown():
-    from ray.experimental.state.api import list_actors
     ray.init()
 
     @ray.remote(num_cpus=0)
@@ -163,11 +163,11 @@ def test_http_proxy_shutdown():
     # Shutdown the http proxy state. Wait for the http proxy actor to be killed
     state.shutdown()
     wait_for_condition(lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 0)
-    
+
     # Make sure that the state doesn't try to check on the status of the dead actor
     state.update()
     assert state.status == HTTPProxyStatus.HEALTHY
-    
+
     ray.shutdown()
 
 
