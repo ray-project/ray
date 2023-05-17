@@ -613,14 +613,12 @@ class MetricsPusher:
             # TODO(simon): maybe wait for ack or handle controller failure?
             return self.metrics_process_func(data=data, send_timestamp=time.time())
 
-        def send_forever(stop_event):
+        def send_forever():
             last_ref: Optional[ray.ObjectRef] = None
             last_send_succeeded: bool = True
 
             while True:
                 start = time.time()
-                if stop_event and stop_event.is_set():
-                    return
 
                 if ray.is_initialized():
                     try:
@@ -641,7 +639,7 @@ class MetricsPusher:
                 if remaining_time > 0:
                     time.sleep(remaining_time)
 
-        timer = threading.Thread(target=send_forever, args=[self.stop_event])
+        timer = threading.Thread(target=send_forever)
         # Making this a daemon thread so it doesn't leak upon shutdown, and it
         # doesn't need to block the replica's shutdown.
         timer.setDaemon(True)
