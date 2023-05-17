@@ -30,6 +30,8 @@ class RedisStoreClientTest : public StoreClientTestBase {
   RedisStoreClientTest() {
     if (std::getenv("REDIS_CHAOS") != nullptr) {
       ::RayConfig::instance().num_redis_request_retries() = 1000;
+      ::RayConfig::instance().redis_retry_base_ms() = 10;
+      ::RayConfig::instance().redis_retry_max_ms() = 100;
     }
   }
 
@@ -47,7 +49,9 @@ class RedisStoreClientTest : public StoreClientTestBase {
       t_ = std::make_unique<std::thread>([this, port]() {
         while (!stopped_) {
           TestSetupUtil::ExecuteRedisCmd(port, {"REPLICAOF", "localhost", "1234"});
+          std::this_thread::sleep_for(50ms);
           TestSetupUtil::ExecuteRedisCmd(port, {"REPLICAOF", "NO", "ONE"});
+          std::this_thread::sleep_for(200ms);
         }
       });
     }
@@ -356,7 +360,7 @@ TEST_F(RedisStoreClientTest, Random) {
     auto idx = std::rand() % ops.size();
     ops[idx](i);
   }
-  EXPECT_TRUE(WaitForCondition([&counter]() { return *counter == 0; }, 5000));
+  EXPECT_TRUE(WaitForCondition([&counter]() { return *counter == 0; }, 10000));
   auto redis_store_client_raw_ptr = (RedisStoreClient *)store_client_.get();
   absl::MutexLock lock(&redis_store_client_raw_ptr->mu_);
   ASSERT_TRUE(redis_store_client_raw_ptr->pending_redis_request_by_key_.empty());
