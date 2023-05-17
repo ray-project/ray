@@ -18,6 +18,12 @@ from ray_release.config import (
     DEFAULT_WHEEL_WAIT_TIMEOUT,
     parse_python_version,
 )
+from ray_release.test import (
+    Test,
+    DOCKER_REPO,
+    S3_BUCKET,
+    DATAPLANE_FILENAME,
+)
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.wheels import (
@@ -28,7 +34,6 @@ from ray_release.wheels import (
 )
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
-DOCKER_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale"
 
 
 @click.command()

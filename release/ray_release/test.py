@@ -4,6 +4,9 @@ from typing import Optional, List
 DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
 )
+DOCKER_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale"
+S3_BUCKET = "ray-release-automation-results"
+DATAPLANE_FILENAME = "dataplane.tgz"
 
 
 class Test(dict):
@@ -58,7 +61,8 @@ class Test(dict):
         """
         Returns the anyscale byod image to use for this test.
         """
-        return self.get_ray_image().replace("rayproject", "anyscale")
+        tag = self.get_ray_image().replace("rayproject/", "").replace(":", "-")
+        return f"{DOCKER_REPO}:{tag}"
 
 
 class TestDefinition(dict):
