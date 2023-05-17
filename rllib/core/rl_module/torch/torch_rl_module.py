@@ -14,6 +14,8 @@ torch, nn = try_import_torch()
 
 
 class TorchRLModule(nn.Module, RLModule):
+    """Base class for RLlib PyTorch RLModules."""
+
     framwork: str = "torch"
 
     def __init__(self, *args, **kwargs) -> None:
