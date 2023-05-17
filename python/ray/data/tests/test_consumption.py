@@ -249,6 +249,38 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 0
 
 
+def test_columns(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    assert ds.columns() == ds.schema().names
+    assert ds.columns() == ["id"]
+
+    ds = ds.map(lambda x: x)
+    assert ds.columns(fetch_if_missing=False) is None
+
+
+def test_schema_repr(ray_start_regular_shared):
+    ds = ray.data.from_items([{"text": "spam", "number": 0}])
+    # fmt: off
+    expected_repr = (
+        "Column  Type\n"
+        "------  ----\n"
+        "text    string\n"
+        "number  int64"
+    )
+    # fmt:on
+    assert repr(ds.schema()) == expected_repr
+
+    ds = ray.data.from_items([{"long_column_name": "spam"}])
+    # fmt: off
+    expected_repr = (
+        "Column            Type\n"
+        "------            ----\n"
+        "long_column_name  string"
+    )
+    # fmt: on
+    assert repr(ds.schema()) == expected_repr
+
+
 def test_count_lazy(ray_start_regular_shared):
     ds = ray.data.range(100, parallelism=10)
     # We do not kick off the read task by default.

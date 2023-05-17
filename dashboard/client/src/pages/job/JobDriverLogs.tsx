@@ -11,11 +11,12 @@ type JobDriverLogsProps = {
     | "submission_id"
     | "driver_agent_http_address"
     | "driver_info"
+    | "type"
   >;
 };
 
 export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
-  const { driver_node_id, submission_id } = job;
+  const { driver_node_id, submission_id, type } = job;
   const filename = submission_id
     ? `job-driver-${submission_id}.log`
     : undefined;
@@ -42,16 +43,23 @@ export const JobDriverLogs = ({ job }: JobDriverLogsProps) => {
     link = undefined;
   }
 
-  // TODO(aguo): Support showing message for jobs not created via ray job submit
-  // instead of hiding the driver logs
   return (
     <MultiTabLogViewer
       tabs={[
-        {
-          title: "driver",
-          nodeId: driver_node_id,
-          filename,
-        },
+        type === "SUBMISSION"
+          ? {
+              title: "Driver",
+              nodeId: driver_node_id,
+              filename,
+            }
+          : {
+              title: "Driver",
+              contents:
+                "Driver logs are only available when submitting jobs via the " +
+                "Job Submission API, SDK or the `ray job submit` CLI command.\n" +
+                "To learn more, please read the documentation at " +
+                "https://docs.ray.io/en/latest/cluster/running-applications/job-submission/index.html",
+            },
       ]}
       otherLogsLink={link}
     />

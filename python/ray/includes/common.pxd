@@ -154,6 +154,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CWorkerType "ray::core::WorkerType":
         pass
+    cdef cppclass CWorkerExitType "ray::rpc::WorkerExitType":
+        pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
@@ -204,6 +206,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::core::WorkerType::SPILL_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::core::WorkerType::RESTORE_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_USER_ERROR "ray::rpc::WorkerExitType::USER_ERROR"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_SYSTEM_ERROR "ray::rpc::WorkerExitType::SYSTEM_ERROR"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -421,3 +425,7 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
         c_string GetName() const
         uint32_t GetMaxConcurrency() const
         c_vector[CFunctionDescriptor] GetFunctionDescriptors() const
+
+cdef extern from "ray/common/constants.h" nogil:
+    cdef const char[] kWorkerSetupHookKeyName
+    cdef int kResourceUnitScaling

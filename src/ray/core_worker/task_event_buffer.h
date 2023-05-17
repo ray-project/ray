@@ -90,6 +90,9 @@ class TaskStatusEvent : public TaskEvent {
     TaskStateUpdate(const rpc::TaskLogInfo &task_log_info)
         : task_log_info_(task_log_info) {}
 
+    TaskStateUpdate(const std::string &actor_repr_name)
+        : actor_repr_name_(actor_repr_name) {}
+
    private:
     friend class TaskStatusEvent;
 
@@ -101,6 +104,8 @@ class TaskStatusEvent : public TaskEvent {
     const absl::optional<rpc::RayErrorInfo> error_info_ = absl::nullopt;
     /// Task log info.
     const absl::optional<rpc::TaskLogInfo> task_log_info_ = absl::nullopt;
+    /// Actor task repr name.
+    const std::string actor_repr_name_ = "";
   };
 
   explicit TaskStatusEvent(

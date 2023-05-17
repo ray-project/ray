@@ -71,6 +71,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
+    validate_compute,
     ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -347,17 +348,7 @@ class Dataset:
                 Call this method to transform batches of data. It's faster and more
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
@@ -456,7 +447,7 @@ class Dataset:
             per worker instead of once per inference.
 
             To transform batches with :ref:`actors <actor-guide>`, pass a callable type
-            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy>`.
+            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy`.
 
             In the example below, ``CachedModel`` is called on an autoscaling pool of
             two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
@@ -571,16 +562,7 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
+        validate_compute(fn, compute)
 
         if fn_constructor_args is not None or fn_constructor_kwargs is not None:
             if compute is None or (
@@ -829,17 +811,7 @@ class Dataset:
                 This method isn't recommended because it's slow; call
                 :meth:`~Dataset.map_batches` instead.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
@@ -891,17 +863,7 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_filter_fn()
@@ -2195,6 +2157,39 @@ class Dataset:
                 return None
         else:
             return base_schema
+
+    @ConsumptionAPI(
+        if_more_than_read=True,
+        datasource_metadata="schema",
+        extra_condition="or if ``fetch_if_missing=True`` (the default)",
+        pattern="Time complexity:",
+    )
+    def columns(self, fetch_if_missing: bool = True) -> Optional[List[str]]:
+        """Returns the columns of this Dataset.
+
+        Time complexity: O(1)
+
+        Example:
+            >>> import ray
+            >>> # Create dataset from synthetic data.
+            >>> ds = ray.data.range(1000)
+            >>> ds.columns()
+            ['id']
+
+        Args:
+            fetch_if_missing: If True, synchronously fetch the column names from the
+                schema if it's not known. If False, None is returned if the schema is
+                not known. Default is True.
+
+        Returns:
+            A list of the column names for this Dataset or None if schema is not known
+            and `fetch_if_missing` is False.
+
+        """
+        schema = self.schema(fetch_if_missing=fetch_if_missing)
+        if schema is not None:
+            return schema.names
+        return None
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
@@ -4399,10 +4394,6 @@ class Dataset:
             self._current_executor.shutdown()
 
 
-# Backwards compatibility alias.
-Dataset = Dataset
-
-
 @PublicAPI
 class MaterializedDataset(Dataset, Generic[T]):
     """A Dataset materialized in Ray memory, e.g., via `.materialize()`.
@@ -4468,11 +4459,25 @@ class Schema:
     def __eq__(self, other):
         return isinstance(other, Schema) and other.base_schema == self.base_schema
 
-    def __str__(self):
-        return f"Schema({dict(zip(self.names, self.types))})"
-
     def __repr__(self):
-        return str(self)
+        column_width = max([len(name) for name in self.names] + [len("Column")])
+        padding = 2
+
+        output = "Column"
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "Type\n"
+
+        output += "-" * len("Column")
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "-" * len("Type") + "\n"
+
+        for name, type in zip(self.names, self.types):
+            output += name
+            output += " " * ((column_width + padding) - len(name))
+            output += f"{type}\n"
+
+        output = output.rstrip()
+        return output
 
 
 def _get_size_bytes(block: Block) -> int:
