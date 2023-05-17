@@ -1,6 +1,7 @@
+import collections
 import json
 import os
-from typing import TYPE_CHECKING, Optional, Set, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 import urllib.parse
 
 from ray.air._internal.remote_storage import _is_network_mount
@@ -10,7 +11,9 @@ if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
     from ray.tune.schedulers import TrialScheduler
     from ray.tune.search import BasicVariantGenerator, Searcher
+    from ray.tune import Callback
     from ray.tune import SyncConfig
+
 
 AIR_TRAINERS = {
     "AccelerateTrainer",
@@ -120,6 +123,78 @@ def tag_scheduler(scheduler: "TrialScheduler"):
     assert isinstance(scheduler, TrialScheduler)
     scheduler_name = _find_class_name(scheduler, "ray.tune.schedulers", TUNE_SCHEDULERS)
     record_extra_usage_tag(TagKey.TUNE_SCHEDULER, scheduler_name)
+
+
+def tag_setup_wandb():
+    record_extra_usage_tag(TagKey.AIR_SETUP_WANDB_INTEGRATION_USED, "1")
+
+
+def tag_setup_mlflow():
+    record_extra_usage_tag(TagKey.AIR_SETUP_MLFLOW_INTEGRATION_USED, "1")
+
+
+def _count_callbacks(callbacks: Optional[List["Callback"]]) -> Dict[str, int]:
+    """Creates a map of callback class name -> count given a list of callbacks."""
+    from ray.tune import Callback
+    from ray.tune.logger import LoggerCallback
+    from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
+
+    from ray.air.integrations.wandb import WandbLoggerCallback
+    from ray.air.integrations.mlflow import MLflowLoggerCallback
+    from ray.air.integrations.comet import CometLoggerCallback
+    from ray.tune.logger.aim import AimLoggerCallback
+
+    built_in_callbacks = (
+        WandbLoggerCallback,
+        MLflowLoggerCallback,
+        CometLoggerCallback,
+        AimLoggerCallback,
+    ) + DEFAULT_CALLBACK_CLASSES
+
+    callback_names = [callback_cls.__name__ for callback_cls in built_in_callbacks]
+    callback_counts = collections.defaultdict(int)
+
+    callbacks = callbacks or []
+    for callback in callbacks:
+        if not isinstance(callback, Callback):
+            # This will error later, but don't include this as custom usage.
+            continue
+
+        callback_name = callback.__class__.__name__
+
+        if callback_name in callback_names:
+            callback_counts[callback_name] += 1
+        elif isinstance(callback, LoggerCallback):
+            callback_counts["CustomLoggerCallback"] += 1
+        else:
+            callback_counts["CustomCallback"] += 1
+
+    return callback_counts
+
+
+def tag_callbacks(callbacks: Optional[List["Callback"]]) -> bool:
+    """Records built-in callback usage via a JSON str representing a
+    dictionary mapping callback class name -> counts.
+
+    User-defined callbacks will increment the count under the `CustomLoggerCallback`
+    or `CustomCallback` key depending on which of the provided interfaces they subclass.
+    NOTE: This will NOT track the name of the user-defined callback,
+    nor its implementation.
+
+    This will NOT report telemetry if no callbacks are provided by the user.
+
+    Returns:
+        bool: True if usage was recorded, False otherwise.
+    """
+    if not callbacks:
+        # User didn't pass in any callbacks -> no usage recorded.
+        return False
+
+    callback_counts = _count_callbacks(callbacks)
+
+    if callback_counts:
+        callback_counts_str = json.dumps(callback_counts)
+        record_extra_usage_tag(TagKey.AIR_CALLBACKS, callback_counts_str)
 
 
 def _get_tag_for_remote_path(remote_path: str) -> str:

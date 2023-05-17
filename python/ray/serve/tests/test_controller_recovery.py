@@ -7,7 +7,7 @@ from ray._private.test_utils import wait_for_condition
 
 import ray
 from ray._private.test_utils import SignalActor
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 
 from ray import serve
 from ray.serve._private.constants import (
@@ -23,6 +23,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     """Test controller is able to recover starting -> running replicas from
     actor names.
     """
+
     # Test failed to deploy with total of 2 replicas,
     # but first constructor call fails.
     @serve.deployment(name="recover_start_from_replica_actor_names", num_replicas=2)
@@ -238,8 +239,10 @@ def test_controller_recover_initializing_actor(serve_instance):
     _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
     # wait for controller is alive again
-    wait_for_condition(get_actor_info, name=SERVE_CONTROLLER_NAME)
-    assert controller1_pid != get_actor_info(SERVE_CONTROLLER_NAME)[1]
+    wait_for_condition(
+        lambda: get_actor_info(SERVE_CONTROLLER_NAME) is not None
+        and get_actor_info(SERVE_CONTROLLER_NAME)[1] != controller1_pid
+    )
 
     # Let the actor proceed initialization
     ray.get(signal.send.remote())

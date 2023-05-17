@@ -140,6 +140,9 @@ SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
 # still replicas in the RECOVERING state.
 RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
+# Minimum duration to wait until broadcasting model IDs.
+PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 1.0
+
 
 class ServeHandleType(str, Enum):
     SYNC = "SYNC"

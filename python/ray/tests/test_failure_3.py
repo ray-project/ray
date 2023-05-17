@@ -366,6 +366,9 @@ def test_no_worker_child_process_leaks(ray_start_cluster, tmp_path):
     processes.
     """
 
+    ray_start_cluster.add_node()
+    ray_start_cluster.wait_for_nodes()
+
     output_file_path = tmp_path / "leaked_pids.json"
     driver_script = f"""
 import ray
@@ -374,7 +377,7 @@ import multiprocessing
 import shutil
 import time
 import os
-
+ray.init("{ray_start_cluster.address}")
 @ray.remote
 class Actor:
     def create_leaked_child_process(self, num_to_leak):

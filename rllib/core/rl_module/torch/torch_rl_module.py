@@ -72,7 +72,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
 
 
 class TorchRLModule(nn.Module, RLModule):
-    """A base class for RLlib torch RLModules.
+    """A base class for RLlib PyTorch RLModules.
 
     Note that the `_forward` methods of this class can be 'torch.compiled' individually:
         - `TorchRLModule._forward_train()`

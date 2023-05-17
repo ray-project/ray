@@ -19,7 +19,6 @@ from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig
 from ray.util.annotations import Deprecated, PublicAPI
-from ray.widgets import Template
 
 logger = logging.getLogger(__name__)
 
@@ -85,20 +84,6 @@ class ClientContext(BaseContext):
         else:
             # This is only a driver connected to an existing cluster.
             ray.shutdown()
-
-    def _repr_html_(self):
-        if self.dashboard_url:
-            dashboard_row = Template("context_dashrow.html.j2").render(
-                dashboard_url="http://" + self.dashboard_url
-            )
-        else:
-            dashboard_row = None
-
-        return Template("context.html.j2").render(
-            python_version=self.python_version,
-            ray_version=self.ray_version,
-            dashboard_row=dashboard_row,
-        )
 
 
 @Deprecated
