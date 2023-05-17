@@ -85,6 +85,8 @@ PyTorch Training Loop Utilities
     ~train.torch.backward
     ~train.torch.enable_reproducibility
 
+.. _train-lightning-integration:
+
 PyTorch Lightning
 ~~~~~~~~~~~~~~~~~
 

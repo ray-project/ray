@@ -6,7 +6,7 @@ from typing import Dict
 
 import ray
 
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray._private.test_utils import (
     raw_metrics,
     wait_for_condition,
