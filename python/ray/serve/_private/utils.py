@@ -646,7 +646,7 @@ class MetricsPusher:
         # doesn't need to block the replica's shutdown.
         timer.setDaemon(True)
         timer.start()
-        self.pusher = timer
+        self.pusher_thread = timer
 
     def __del__(self):
         self.pusher_thread.join()
