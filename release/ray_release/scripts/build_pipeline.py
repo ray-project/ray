@@ -256,7 +256,7 @@ def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
         Key=DATAPLANE_FILENAME,
         Filename=DATAPLANE_FILENAME,
     )
-    built = {}
+    built = set()
     for test, _ in tests:
         if not test.is_byod_cluster():
             continue
