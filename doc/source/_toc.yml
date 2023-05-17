@@ -386,14 +386,15 @@ parts:
           - file: cluster/faq
           - file: cluster/package-overview
 
-      - file: ray-observability/monitoring-debugging/monitoring-debugging
+      - file: ray-observability/index
         title: "Monitoring and Debugging"
         sections:
-          - file: ray-observability/getting-started-dashboard
+          - file: ray-observability/getting-started
           - file: ray-observability/key-concepts
           - file: ray-observability/user-guides/index
             title: User Guides
             sections:
+              - file: ray-observability/user-guides/general-troubleshoot
               - file: ray-observability/user-guides/troubleshoot-apps/index
                 title: Troubleshooting Applications
                 sections:
@@ -409,9 +410,9 @@ parts:
           - file: ray-observability/reference/index
             title: Reference
             sections:
-              - file: ray-observability/reference/system-metrics
               - file: ray-observability/reference/api
               - file: ray-observability/reference/cli
+              - file: ray-observability/reference/system-metrics
 
       - file: ray-references/api
         title: References

@@ -1,7 +1,8 @@
-.. _observability-getting-started-dashboard:
+.. _observability-getting-started:
 
-Getting Started (Dashboard)
-===========================
+Getting Started
+===============
+
 Ray provides a web-based dashboard for monitoring and debugging Ray applications.
 The dashboard provides a visual representation of the system state, allowing users to track the performance
 of their applications and troubleshoot issues.

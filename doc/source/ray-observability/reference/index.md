@@ -7,3 +7,4 @@ Monitor and debug your Ray applications and clusters using the API and CLI docum
 The guides include:
 * {ref}`state-api-ref`
 * {ref}`state-api-cli-ref`
+* {ref}`system-metrics`
