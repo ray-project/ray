@@ -51,7 +51,7 @@ def test_get_anyscale_byod_image():
         == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_REPO}:123456-py37"
     )
     assert (
-        _stub_test().get_anyscale_byod_image()
+        _stub_test({}).get_anyscale_byod_image()
         == f"{DATAPLANE_ECR_REPO}:ray-123456-py37"
     )
     os.environ["BUILDKITE_PULL_REQUEST"] = "1234"
