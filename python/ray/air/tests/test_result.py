@@ -39,7 +39,9 @@ def test_result_restore(ray_start_4_cpus):
             )
         ),
     )
-    result = trainer.fit()
+
+    with pytest.raises(RuntimeError):
+        result = trainer.fit()
     local_path = result.path
 
     # Delete the in-memory result object, then restore it
