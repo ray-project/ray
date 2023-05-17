@@ -24,6 +24,7 @@ concurrency group, which has a default concurrency of 1000 in Python and
         You can define concurrency groups for asyncio actors using the ``concurrency_group`` decorator argument:
 
         .. testcode::
+
             import ray
 
             @ray.remote(concurrency_groups={"io": 2, "compute": 4})
