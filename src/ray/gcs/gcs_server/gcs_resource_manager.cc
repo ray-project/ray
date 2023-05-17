@@ -101,6 +101,8 @@ void GcsResourceManager::HandleGetAllAvailableResources(
         resource.mutable_resources_available()->insert(
             {resource_name, resource_value.Double()});
       }
+      resource.mutable_resources_total()->insert(
+          {resource_name, node_resources.total.Get(resource_id).Double()});
     }
     reply->add_resources_list()->CopyFrom(resource);
   }

@@ -292,6 +292,7 @@ message AvailableResources {
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
+  map<string, double> resources_total = 3;
 }
 
 message GcsNodeInfo {

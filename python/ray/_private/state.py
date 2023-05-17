@@ -698,6 +698,27 @@ class GlobalState:
 
         return available_resources_by_id
 
+    def cluster_view(self):
+        self._check_connected()
+
+        nodes = {}
+
+        all_available_resources = (
+            self.global_state_accessor.get_all_available_resources()
+        )
+        for available_resource in all_available_resources:
+            message = gcs_utils.AvailableResources.FromString(available_resource)
+            node_id = ray._private.utils.binary_to_hex(message.node_id)
+            available = {}
+            for resource_id, quantity in message.resources_available.items():
+                available[resource_id] = quantity
+            total = {}
+            for resource_id, quantity in message.resources_total.items():
+                total[resource_id] = quantity
+            nodes[node_id] = {"total": total, "available": available}
+
+        return nodes
+
     def available_resources(self):
         """Get the current available cluster resources.
 

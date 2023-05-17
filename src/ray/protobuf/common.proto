@@ -53,6 +53,7 @@ message NodeAffinitySchedulingStrategy {
   bytes node_id = 1;
   bool soft = 2;
   bool spill_on_unavailable = 3;
+  bool fail_on_unavailable = 4;
 }
 
 message PlacementGroupSchedulingStrategy {
