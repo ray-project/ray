@@ -264,9 +264,7 @@ class Router:
             ),
             tag_keys=("deployment", "application"),
         )
-        self.num_queued_queries_gauge.set_default_tags(
-            {"deployment": deployment_name}
-        )
+        self.num_queued_queries_gauge.set_default_tags({"deployment": deployment_name})
 
         self.long_poll_client = LongPollClient(
             controller_handle,
