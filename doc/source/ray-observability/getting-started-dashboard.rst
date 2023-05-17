@@ -9,7 +9,7 @@ of their applications and troubleshoot issues.
 .. raw:: html
 
     <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-        <iframe src="https://youtu.be/i33b1DYjYRQ" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
+        <iframe width="560" height="315" src="https://www.youtube.com/embed/i33b1DYjYRQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
 
@@ -56,15 +56,12 @@ Jobs View
 .. raw:: html
 
     <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
-        <iframe src="https://youtu.be/CrpXSSs0uaw" frameborder="0" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
+        <iframe width="560" height="315" src="https://www.youtube.com/embed/CrpXSSs0uaw" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
 The Jobs View lets you monitor the different jobs that ran on your Ray cluster.
 
 A job is a ray workload that uses Ray APIs (e.g., ``ray.init``). It can be submitted directly (e.g., by executing a Python script within a head node) or via :ref:`Ray job API <jobs-quickstart>`.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/job_list.png
-    :align: center
 
 The job page displays a list of active, finished, and failed jobs, and clicking on an ID allows users to view detailed information about that job.
 For more information on Ray jobs, see the Ray Job Overview section.
@@ -78,9 +75,6 @@ You can profile Ray jobs by clicking on the “Stack Trace” or “CPU Flame Gr
 
 Advanced Task and Actor Breakdown
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/advanced-progress.png
-    :align: left
 
 The job page allows you to see tasks and actors broken down by their states.
 Tasks and actors are grouped and nested by default. You can see the nested entries by clicking the expand button.
@@ -104,22 +98,110 @@ Task Timeline
 
 The :ref:`timeline API <ray-core-timeline>` is available from the dashboard.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/profile-button.png
-    :align: center
-
 First, you can download the chrome tracing file by clicking the download button.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/profile_drag.png
-    :align: center
-
 Second, you can use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. We will use the Perfetto as it is the recommendation way to visualize chrome tracing files.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/timeline.png
-    :align: center
 
 Now, you can see the timeline visualization of Ray tasks and actors. There are Node rows (hardware) and Worker rows (processes).
 Each worker rows display a list of events (e.g., task scheduled, task running, input/output deserialization, etc.) happening from that worker over time.
 
+
+.. _dash-serve-view:
+
+Serve View
+----------
+
+The Serve view lets you monitor the status of your :ref:`Ray Serve <rayserve>` applications.
+
+.. raw:: html
+
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+        <iframe width="560" height="315" src="https://www.youtube.com/embed/eqXfwM641a4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+
+The initial page showcases your general Serve configurations, a list of the Serve applications, and, if you have :ref:`Grafana and Prometheus <ray-metrics>` configured, some high-level
+metrics of all your Serve applications. Click the name of a Serve application to go to the Serve Application Detail Page.
+
+Serve Application Detail Page
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This page shows the Serve application's configurations and metadata. It also lists the :ref:`Serve deployments and replicas <serve-key-concepts-deployment>`.
+Click the expand button of a deployment to see all the replicas in that deployment.
+
+For each deployment, there are two available actions. You can view the Deployment config and, if you configured :ref:`Grafana and Prometheus <ray-metrics>`, you can open
+a Grafana dashboard with detailed metrics about that deployment.
+
+For each replica, there are two available actions. You can see the logs of that replica and, if you configured :ref:`Grafana and Prometheus <ray-metrics>`, you can open
+a Grafana dashboard with detailed metrics about that replica. Click on the replica name to go to the Serve Replica Detail Page.
+
+
+Serve Replica Detail Page
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This page shows metadata about the Serve replica, high-level metrics about the replica if you configured :ref:`Grafana and Prometheus <ray-metrics>`, and
+a history of completed :ref:`tasks <core-key-concepts>` of that replica.
+
+
+Serve Metrics
+~~~~~~~~~~~~~
+
+Ray serve exports various time-series metrics to understand the status of your Serve application over time. More details of these metrics can be found :ref:`here <serve-production-monitoring-metrics>`.
+In order to store and visualize these metrics, you must set up Prometheus and Grafana by following the instructions :ref:`here <ray-metrics>`.
+
+These metrics are available in the Ray dashboard in the Serve page and the Serve Replica Detail page. They are also accessible as Grafana dashboards.
+Within the Grafana dashboard, use the dropdown filters on the top to filter metrics by route, deployment, or replica. Exact descriptions
+of each graph are available by hovering over the "info" icon on the top left of each graph.
+
+
+.. _dash-node-view:
+
+Cluster View
+------------
+
+.. raw:: html
+
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+        <iframe width="560" height="315" src="https://www.youtube.com/embed/K2jLoIhlsnY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+
+The cluster view visualizes hierarchical relationship of
+machines (nodes) and workers (processes). Each host consists of many workers, and
+you can see them by clicking the + button. This also shows the assignment of GPU resources to specific actors or tasks.
+
+You can also click the node id to go into a node detail page where you can see more information.
+
+In addition, the machine view lets you see **logs** for a node or a worker.
+
+.. _dash-actors-view:
+
+Actors View
+-----------
+
+.. raw:: html
+
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+        <iframe width="560" height="315" src="https://www.youtube.com/embed/MChn6O1ecEQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+    
+
+The Actors view lets you see information about the actors that have existed on the ray cluster.
+
+You can view the logs for an actor and you can see which job created the actor.
+The information of up to 1000 dead actors will be stored.
+This value can be overridden by using the `RAY_DASHBOARD_MAX_ACTORS_TO_CACHE` environment variable
+when starting Ray.
+
+Actor Profiling
+~~~~~~~~~~~~~~~
+
+You can also run the profiler on a running actor. See :ref:`Dashboard Profiling <dashboard-profiling>` for more details.
+
+Actor Detail Page
+~~~~~~~~~~~~~~~~~
+
+By clicking the ID, you can also see the detail view of the actor.
+
+From the actor detail page, you can see the metadata, state, and the all tasks that have run from this actor.
 
 .. _dash-workflow-logs:
 
@@ -273,117 +355,6 @@ You get the same information from the :ref:`Ray state APIs <state-api-overview-r
     :align: center
 
 You can expand the table to see a list of each task, actor, and placement group.
-
-.. _dash-serve-view:
-
-Serve View
-----------
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/serve.png
-    :align: center
-
-The Serve view lets you monitor the status of your :ref:`Ray Serve <rayserve>` applications.
-
-The initial page showcases your general Serve configurations, a list of the Serve applications, and, if you have :ref:`Grafana and Prometheus <ray-metrics>` configured, some high-level
-metrics of all your Serve applications. Click the name of a Serve application to go to the Serve Application Detail Page.
-
-Serve Application Detail Page
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/serve-application.png
-    :align: center
-
-This page shows the Serve application's configurations and metadata. It also lists the :ref:`Serve deployments and replicas <serve-key-concepts-deployment>`.
-Click the expand button of a deployment to see all the replicas in that deployment.
-
-For each deployment, there are two available actions. You can view the Deployment config and, if you configured :ref:`Grafana and Prometheus <ray-metrics>`, you can open
-a Grafana dashboard with detailed metrics about that deployment.
-
-For each replica, there are two available actions. You can see the logs of that replica and, if you configured :ref:`Grafana and Prometheus <ray-metrics>`, you can open
-a Grafana dashboard with detailed metrics about that replica. Click on the replica name to go to the Serve Replica Detail Page.
-
-
-Serve Replica Detail Page
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/serve-replica.png
-    :align: center
-
-This page shows metadata about the Serve replica, high-level metrics about the replica if you configured :ref:`Grafana and Prometheus <ray-metrics>`, and
-a history of completed :ref:`tasks <core-key-concepts>` of that replica.
-
-
-Serve Metrics
-~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/serve-metrics.png
-    :align: center
-
-Ray serve exports various time-series metrics to understand the status of your Serve application over time. More details of these metrics can be found :ref:`here <serve-production-monitoring-metrics>`.
-In order to store and visualize these metrics, you must set up Prometheus and Grafana by following the instructions :ref:`here <ray-metrics>`.
-
-These metrics are available in the Ray dashboard in the Serve page and the Serve Replica Detail page. They are also accessible as Grafana dashboards.
-Within the Grafana dashboard, use the dropdown filters on the top to filter metrics by route, deployment, or replica. Exact descriptions
-of each graph are available by hovering over the "info" icon on the top left of each graph.
-
-.. _dash-node-view:
-
-Cluster View
-------------
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/nodes-view-expand.png
-    :align: center
-
-The cluster view visualizes hierarchical relationship of
-machines (nodes) and workers (processes). Each host consists of many workers, and
-you can see them by clicking the + button. This also shows the assignment of GPU resources to specific actors or tasks.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/node-detail.png
-    :align: center
-
-You can also click the node id to go into a node detail page where you can see more information.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/machine-view-log.png
-    :align: center
-
-
-In addition, the machine view lets you see **logs** for a node or a worker.
-
-.. _dash-actors-view:
-
-Actors View
------------
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/actor-page.png
-    :align: center
-
-The Actors view lets you see information about the actors that have existed on the ray cluster.
-
-You can view the logs for an actor and you can see which job created the actor.
-The information of up to 1000 dead actors will be stored.
-This value can be overridden by using the `RAY_DASHBOARD_MAX_ACTORS_TO_CACHE` environment variable
-when starting Ray.
-
-Actor Profiling
-~~~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/actor-profiling.png
-    :align: center
-
-You can also run the profiler on a running actor. See :ref:`Dashboard Profiling <dashboard-profiling>` for more details.
-
-Actor Detail Page
-~~~~~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/actor-list-id.png
-    :align: center
-
-By clicking the ID, you can also see the detail view of the actor.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/actor-detail.png
-    :align: center
-
-From the actor detail page, you can see the metadata, state, and the all tasks that have run from this actor.
 
 .. _dash-metrics-view:
 

@@ -1,7 +1,7 @@
+.. _state-api-cli-ref:
+
 Ray State CLI
 =============
-
-.. _state-api-cli-ref:
 
 State
 -----
