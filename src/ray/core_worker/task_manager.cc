@@ -471,6 +471,14 @@ void TaskManager::HandleReportGeneratorItemReturns(
       if (stream_it != object_ref_streams_.end()) {
         index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
       }
+
+      auto task_it = submissible_tasks_.find(task_id);
+      if (task_it != submissible_tasks_.end()) {
+        // NOTE(sang): This is a hack to modify immutable field.
+        // It is possible because most of attributes under
+        // TaskSpecification is a pointer to the protobuf message.
+        task_it->second.reconstructable_return_ids.insert(object_id);
+      }
       // TODO(sang): Update the reconstruct ids and task spec
       // when we support retry.
     }
@@ -488,12 +496,12 @@ void TaskManager::HandleReportGeneratorItemReturns(
       // after the task resubmission. We can do it by guaranteeing
       // HandleReportGeneratorItemReturns is not called after the task
       // CompletePendingTask.
-      reference_counter_->UpdateObjectReady(object_id);
-      HandleTaskReturn(object_id,
-                       return_object,
-                       NodeID::FromBinary(request.worker_addr().raylet_id()),
-                       /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
     }
+    reference_counter_->UpdateObjectReady(object_id);
+    HandleTaskReturn(object_id,
+                     return_object,
+                     NodeID::FromBinary(request.worker_addr().raylet_id()),
+                     /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
   }
 }
 

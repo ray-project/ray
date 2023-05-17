@@ -3670,8 +3670,8 @@ cdef class CoreWorker:
             return CCoreWorkerProcess.GetCoreWorker().AllocateDynamicReturnId(
                 owner_address,
                 CTaskID.Nil(),
-                NULL_PUT_INDEX
-            )
+                make_optional[ObjectIDIndexType](
+                    <int>1 + <int>num_returns + <int>generator_index))
 
     def create_object_ref_stream(self, ObjectRef generator_id):
         cdef:

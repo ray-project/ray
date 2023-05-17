@@ -49,7 +49,8 @@ struct WorkerThreadContext {
     // thread), so there's no risk of conflicting put object IDs, either.
     // See https://github.com/ray-project/ray/issues/10324 for further details.
     auto num_returns = current_task_ != nullptr ? current_task_->NumReturns() : 0;
-    return num_returns + ++put_counter_;
+    // Reserve 100 millions values for dynamically allocated objects.
+    return num_returns + 100 * 1000 * 1000 + ++put_counter_;
   }
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
