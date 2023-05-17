@@ -53,6 +53,7 @@ parts:
               - file: ray-air/computer-vision
               - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
+              - file: ray-air/experimental-features
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/opt_deepspeed_batch_inference
@@ -266,6 +267,7 @@ parts:
               - file: serve/scaling-and-resource-allocation
               - file: serve/model_composition
               - file: serve/dev-workflow
+              - file: serve/app-builder-guide
               - file: serve/multi-app
               - file: serve/production-guide/index
                 sections:
@@ -384,6 +386,19 @@ parts:
 
       - file: ray-observability/monitoring-debugging/monitoring-debugging
         title: "Monitoring and Debugging"
+        sections:
+          - file: ray-observability/user-guides/index
+            title: User Guides
+            sections:
+              - file: ray-observability/user-guides/troubleshoot-apps/index
+                title: Troubleshooting Applications
+                sections:
+                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-failures
+                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-hangs
+                  - file: ray-observability/user-guides/troubleshoot-apps/optimize-performance
+                  - file: ray-observability/user-guides/troubleshoot-apps/ray-debugging
+                  - file: ray-observability/user-guides/troubleshoot-apps/ray-core-profiling
+              - file: ray-observability/user-guides/ray-tracing
 
       - file: ray-references/api
         title: References
@@ -401,5 +416,7 @@ parts:
               - file: ray-contribute/writing-code-snippets
               - file: ray-contribute/fake-autoscaler
               - file: ray-core/examples/testing-tips
+              - file: ray-contribute/debugging.rst
+              - file: ray-contribute/profiling.rst
           - file: ray-core/configure
           - file: ray-contribute/whitepaper
