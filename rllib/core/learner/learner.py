@@ -1,10 +1,9 @@
 import abc
-from collections import defaultdict
-from dataclasses import dataclass, field
 import json
 import logging
-import numpy as np
 import pathlib
+from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import (
     Any,
     Callable,
@@ -18,36 +17,42 @@ from typing import (
     Tuple,
     Type,
     Union,
+    TYPE_CHECKING,
 )
 
+import numpy as np
+
 import ray
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
-)
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
-from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import TensorType, ResultDict
-from ray.rllib.utils.minibatch_utils import (
-    MiniBatchDummyIterator,
-    MiniBatchCyclicIterator,
-)
-from ray.rllib.utils.serialization import serialize_type
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
+from ray.rllib.utils.minibatch_utils import (
+    MiniBatchDummyIterator,
+    MiniBatchCyclicIterator,
+)
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
+from ray.rllib.utils.serialization import serialize_type
+from ray.rllib.utils.typing import TensorType, ResultDict
+
+if TYPE_CHECKING:
+    from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 
 torch, _ = try_import_torch()
 tf1, tf, tfv = try_import_tf()
@@ -81,9 +86,12 @@ class FrameworkHyperparameters:
             This is useful for speeding up the training loop. However, it is not
             compatible with all tf operations. For example, tf.print is not supported
             in tf.function.
+        troch_compile_config: The TorchCompileConfig to use for compiling the RL
+            Module in Torch.
     """
 
     eager_tracing: bool = False
+    torch_compile_cfg: Optional["TorchCompileConfig"] = None
 
 
 @dataclass
@@ -143,7 +151,7 @@ class Learner:
             ray.rllib.core.learner.learner.LearnerHyperparameters for more info.
         framework_hps: The framework specific hyper-parameters. This will be used to
             pass in any framework specific hyper-parameter that will impact the module
-            creation. For example eager_tracing in TF or compile in Torch.
+            creation. For example `eager_tracing` in TF or `torch.compile()` in Torch.
             Refer to ray.rllib.core.learner.learner.FrameworkHyperparameters for
             more info.
 
@@ -634,6 +642,7 @@ class Learner:
         )
 
         self._module = self._make_module()
+
         for param_seq, optimizer in self.configure_optimizers():
             self._optimizer_parameters[optimizer] = []
             for param in param_seq:

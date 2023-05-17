@@ -89,6 +89,7 @@ class TorchPolicyV2(Policy):
         # Create model.
         if self.config.get("_enable_rl_module_api", False):
             model = self.make_rl_module()
+
             dist_class = None
         else:
             model, dist_class = self._init_model_and_dist_class()
@@ -945,7 +946,10 @@ class TorchPolicyV2(Policy):
     @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
         weights = convert_to_torch_tensor(weights, device=self.device)
-        self.model.load_state_dict(weights)
+        if self.config.get("_enable_rl_module_api", False):
+            self.model.set_state(weights)
+        else:
+            self.model.load_state_dict(weights)
 
     @override(Policy)
     @DeveloperAPI
