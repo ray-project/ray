@@ -376,18 +376,15 @@ class Router:
             call_in_event_loop=event_loop,
         )
 
+        # Start the metrics pusher if autoscaling is enabled.
         self.deployment_name = deployment_name
         deployment_route = DeploymentRoute.FromString(
             ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
-
-        remote_func = controller_handle.record_handle_metrics.remote
-
-        # Start the metrics pusher if autoscaling is enabled.
         if deployment_info.deployment_config.autoscaling_config:
             self.metrics_pusher = MetricsPusher(
-                remote_func,
+                controller_handle.record_handle_metrics.remote,
                 HANDLE_METRIC_PUSH_INTERVAL_S,
                 self._collect_handle_queue_metrics,
             )
