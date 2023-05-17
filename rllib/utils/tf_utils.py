@@ -669,7 +669,7 @@ def two_hot(
     # First make sure, values are clipped.
     value = tf.clip_by_value(value, lower_bound, upper_bound)
     # Tensor of batch indices: [0, B=batch size).
-    batch_indices = tf.range(0, value.shape[0], dtype=tf.float32)
+    batch_indices = tf.range(0, tf.shape(value)[0], dtype=tf.float32)
     # Calculate the step deltas (how much space between each bucket's central value?).
     bucket_delta = (upper_bound - lower_bound) / (num_buckets - 1)
     # Compute the float indices (might be non-int numbers: sitting between two buckets).
@@ -680,7 +680,7 @@ def two_hot(
     kp1 = tf.math.ceil(idx)
     # In case k == kp1 (idx is exactly on the bucket boundary), move kp1 up by 1.0.
     # Otherwise, this would result in a NaN in the returned two-hot tensor.
-    kp1 = tf.where(k == kp1, kp1 + 1.0, kp1)
+    kp1 = tf.where(tf.equal(k, kp1), kp1 + 1.0, kp1)
     # Iff `kp1` is one beyond our last index (because incoming value is larger than
     # `upper_bound`), move it to one before k (kp1's weight is going to be 0.0 anyways,
     # so it doesn't matter where it points to; we are just avoiding an index error

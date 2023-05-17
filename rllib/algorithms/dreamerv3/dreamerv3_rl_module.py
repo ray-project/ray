@@ -16,6 +16,7 @@ from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import one_hot
 
 
@@ -98,9 +99,9 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         # Initialize the critic EMA net:
         self.critic.init_ema()
 
-    # @override(RLModule)
-    # def get_initial_state(self) -> NestedDict:
-    #    return self.dreamer_model.get_initial_state()
+    @override(RLModule)
+    def get_initial_state(self) -> NestedDict:
+        return self.dreamer_model.get_initial_state()
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:

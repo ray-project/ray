@@ -449,8 +449,6 @@ class DreamerV3(Algorithm):
                     results=results,
                     step=self._counters[NUM_ENV_STEPS_SAMPLED],
                     replay_buffer=self.replay_buffer,
-                    sampler_metrics=env_runner.get_metrics(),
-                    print_=True,
                 )
                 break
 

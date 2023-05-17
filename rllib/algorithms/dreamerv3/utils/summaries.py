@@ -320,8 +320,6 @@ def summarize_sampling_and_replay_buffer(
     results,
     step,
     replay_buffer,
-    sampler_metrics,
-    print_=False,
 ):
     episodes_in_buffer = replay_buffer.get_num_episodes()
     ts_in_buffer = replay_buffer.get_num_timesteps()
@@ -334,37 +332,6 @@ def summarize_sampling_and_replay_buffer(
             "BUFFER_size_timesteps": ts_in_buffer,
         }
     )
-
-    # Summarize episode returns.
-    episode_returns = []
-    episode_return_mean = None
-    if sampler_metrics.get("episode_lengths"):
-        episode_lengths = list(sampler_metrics["episode_lengths"])
-        episode_length_mean = np.mean(episode_lengths)
-        episode_returns = list(sampler_metrics["episode_returns"])
-        episode_return_mean = np.mean(episode_returns)
-
-        results.update(
-            {
-                "SAMPLER_actions_taken": sampler_metrics[SampleBatch.ACTIONS],
-                "SAMPLER_episode_return_mean": episode_return_mean,
-                "SAMPLER_episode_length_mean": episode_length_mean,
-            }
-        )
-
-    if print_:
-        print(f"SAMPLE: ts={sampler_metrics['ts_taken']} (total={step}); ", end="")
-        if episode_return_mean is not None:
-            print(f"avg(R)={episode_return_mean:.4f}; ", end="")
-        else:
-            print(f"avg(R)=[no episodes completed]; ", end="")
-        print(f"Rs={episode_returns}; ")
-
-        print(
-            f"BUFFER: ts replayed={replayed_steps}; "
-            f"ts total={ts_in_buffer}; "
-            f"episodes total={episodes_in_buffer}; "
-        )
 
 
 def summarize_world_model_train_results(

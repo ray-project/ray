@@ -98,5 +98,7 @@ class CNNAtari(tf.keras.Model):
         out = inputs
         for conv_2d, layer_norm in zip(self.conv_layers, self.layer_normalizations):
             out = tf.nn.silu(layer_norm(inputs=conv_2d(out)))
-        assert out.shape[1] == 4 and out.shape[2] == 4
+        # Make sure the "image" shape is now 4x4 (x[final num filters]).
+        tf.assert_equal(tf.shape(out)[1], 4)
+        tf.assert_equal(tf.shape(out)[2], 4)
         return self.flatten_layer(out)

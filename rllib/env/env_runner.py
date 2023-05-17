@@ -1,8 +1,9 @@
 import abc
 import platform
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import ray
+from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import DeveloperAPI
 
@@ -137,12 +138,11 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def get_metrics(self):
+    def get_metrics(self) -> List[RolloutMetrics]:
         """Returns the thus-far collected metrics from this worker's rollouts.
 
         Returns:
-             List of RolloutMetrics
-             collected thus-far.
+             List of RolloutMetrics collected thus-far.
         """
 
     def get_host(self) -> str:
@@ -158,6 +158,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         from ray.air._internal.util import find_free_port
 
         return find_free_port()
+
+    @abc.abstractmethod
+    def stop(self):
+        """Releases all resources used by this EnvRunner."""
 
     @abc.abstractmethod
     def __del__(self):

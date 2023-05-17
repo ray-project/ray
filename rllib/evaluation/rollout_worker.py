@@ -1598,6 +1598,7 @@ class RolloutWorker(EnvRunner):
         # Update all other global vars.
         self.global_vars.update(global_vars_copy)
 
+    @override(EnvRunner)
     def stop(self) -> None:
         """Releases all resources used by this RolloutWorker."""
         # If we have an env -> Release its resources.
