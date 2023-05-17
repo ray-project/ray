@@ -318,6 +318,7 @@ class RayServeSyncHandle(RayServeHandle):
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -328,9 +329,12 @@ class RayServeSyncHandle(RayServeHandle):
             # The following two lines are equivalent:
             obj_ref = handle.other_method.remote(*args)
             obj_ref = handle.options(method_name="other_method").remote(*args)
+            obj_ref = handle.options(multiplexed_model_id="model1").remote(*args)
 
         """
-        return self._options(method_name=method_name)
+        return self._options(
+            method_name=method_name, multiplexed_model_id=multiplexed_model_id
+        )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:
         """Issue an asynchronous request to the __call__ method of the deployment.

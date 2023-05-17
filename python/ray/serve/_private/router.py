@@ -6,7 +6,6 @@ import pickle
 import random
 import sys
 from typing import Any, Dict, List, Optional
-import threading
 from collections import defaultdict
 
 import ray
@@ -29,7 +28,7 @@ from ray.serve.generated.serve_pb2 import (
     RequestMetadata as RequestMetadataProto,
     DeploymentRoute,
 )
-from ray.serve._private.autoscaling_metrics import start_metrics_pusher
+from ray.serve._private.utils import MetricsPusher
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -233,7 +232,7 @@ class ReplicaSet:
                     f"Assigned query {query.metadata.request_id} "
                     f"to replica {replica.replica_tag}."
                 )
-                return self._assign_replica(replica)
+                return self._assign_replica(query, replica)
 
         for _ in range(len(self.in_flight_queries.keys())):
             replica = next(self.replica_iterator)
@@ -253,7 +252,7 @@ class ReplicaSet:
                 f"Assigned query {query.metadata.request_id} "
                 f"to replica {replica.replica_tag}."
             )
-            return self._assign_replica(replica)
+            return self._assign_replica(query, replica)
         return None
 
     @property
@@ -383,25 +382,19 @@ class Router:
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
 
-        self._stop_event: Optional[threading.Event] = None
-        self._pusher: Optional[threading.Thread] = None
         remote_func = controller_handle.record_handle_metrics.remote
+
+        # Start the metrics pusher if autoscaling is enabled.
         if deployment_info.deployment_config.autoscaling_config:
-            self._stop_event = threading.Event()
-            self._pusher = start_metrics_pusher(
-                interval_s=HANDLE_METRIC_PUSH_INTERVAL_S,
-                collection_callback=self._collect_handle_queue_metrics,
-                metrics_process_func=remote_func,
-                stop_event=self._stop_event,
+            self.metrics_pusher = MetricsPusher(
+                remote_func,
+                HANDLE_METRIC_PUSH_INTERVAL_S,
+                self._collect_handle_queue_metrics,
             )
+            self.metrics_pusher.start()
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
         return {self.deployment_name: self.get_num_queued_queries()}
-
-    def stop_metrics_pusher(self):
-        if self._stop_event and self._pusher:
-            self._stop_event.set()
-            self._pusher.join()
 
     def get_num_queued_queries(self):
         return self._replica_set.num_queued_queries
@@ -424,6 +417,3 @@ class Router:
                 metadata=request_meta,
             )
         )
-
-    def __del__(self):
-        self.stop_metrics_pusher()
