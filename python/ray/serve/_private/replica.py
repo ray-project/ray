@@ -217,6 +217,7 @@ def create_replica_wrapper(name: str):
             )
 
             if not isinstance(result, starlette.responses.StreamingResponse):
+                print("YIELDING NON-STREAMING")
                 yield result
             else:
                 gen = result.body_iterator
@@ -224,6 +225,7 @@ def create_replica_wrapper(name: str):
                 yield result
 
                 async for r in gen:
+                    print("YIELDING STREAMING")
                     yield r
 
         async def handle_request_from_java(
@@ -405,11 +407,14 @@ class RayServeReplica:
         method_stat = actor_stats.get(
             f"{_format_replica_actor_name(self.deployment_name)}.handle_request"
         )
+        streaming_method_stat = actor_stats.get(
+            f"{_format_replica_actor_name(self.deployment_name)}.handle_request_streaming"
+        )
         method_stat_java = actor_stats.get(
             f"{_format_replica_actor_name(self.deployment_name)}"
             f".handle_request_from_java"
         )
-        return merge_dict(method_stat, method_stat_java)
+        return merge_dict(merge_dict(method_stat, streaming_method_stat), method_stat_java)
 
     def _collect_autoscaling_metrics(self):
         method_stat = self._get_handle_request_stats()

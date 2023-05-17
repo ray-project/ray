@@ -178,7 +178,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             async for obj_ref in obj_ref_generator:
                 yield await obj_ref
 
-        result.body_iterator = obj_ref_generator_wrapper
+        result.body_iterator = obj_ref_generator_wrapper()
 
     if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
