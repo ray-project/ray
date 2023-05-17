@@ -854,8 +854,8 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
   return preparing_bundle_locations_;
 }
 
-const std::shared_ptr<BundleLocations> &
-LeaseStatusTracker::GetUnCommittedBundleLocations() const {
+const std::shared_ptr<BundleLocations>
+    &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
   return uncommitted_bundle_locations_;
 }
 
@@ -868,8 +868,8 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetBundleLocations()
   return bundle_locations_;
 }
 
-const std::vector<std::shared_ptr<const BundleSpecification>> &
-LeaseStatusTracker::GetBundlesToSchedule() const {
+const std::vector<std::shared_ptr<const BundleSpecification>>
+    &LeaseStatusTracker::GetBundlesToSchedule() const {
   return bundles_to_schedule_;
 }
 
