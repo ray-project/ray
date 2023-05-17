@@ -2,7 +2,10 @@ import sys
 import os
 import pytest
 
-from ray_release.test import Test
+from ray_release.test import (
+    Test,
+    DOCKER_REPO,
+)
 
 
 def _stub_test(val: dict) -> Test:
@@ -46,7 +49,7 @@ def test_get_ray_image():
 
 def test_get_anyscale_byod_image():
     os.environ.pop("BUILDKITE_COMMIT", None)
-    assert _stub_test({}).get_anyscale_byod_image() == "anyscale/ray:nightly-py37"
+    assert _stub_test().get_anyscale_byod_image() == f"{DOCKER_REPO}:ray-nightly-py37"
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
     # TODO(can): re-enable this test once we have a custom image
     # assert Test().get_anyscale_byod_image() == "anyscale/ray:123456-py37"
