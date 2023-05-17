@@ -31,6 +31,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
@@ -111,8 +112,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         try:
             assignment_result = await assignment_task
 
-            if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
-                obj_ref_generator = ossignment_result
+            if isinstance(assignment_result, ray._raylet.StreamingObjectRefGenerator):
+                obj_ref_generator = assignment_result
                 object_ref = await obj_ref_generator.__anext__()
             else:
                 obj_ref_generator = None
@@ -169,12 +170,15 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
 
-    if obj_ref_generator is not None and isinstance(result, starlette.responses.StreamingResponse):
+    if obj_ref_generator is not None and isinstance(
+        result, starlette.responses.StreamingResponse
+    ):
+
         async def obj_ref_generator_wrapper():
             async for obj_ref in obj_ref_generator:
                 yield await obj_ref
 
-        result.body_iterator = obj_ref_gen_wrapper
+        result.body_iterator = obj_ref_generator_wrapper
 
     if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
@@ -290,7 +294,7 @@ class HTTPProxy:
                 sync=False,
                 missing_ok=True,
                 _internal_pickled_http_request=True,
-                _use_ray_streaming=True,  # TODO: GET FROM ENV VAR.
+                _use_ray_streaming=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)

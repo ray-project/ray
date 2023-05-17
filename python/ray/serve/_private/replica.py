@@ -212,16 +212,18 @@ def create_replica_wrapper(name: str):
 
             # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs, request_metadata)
-            _, result = await self.replica.handle_request(query, should_convert_streaming_response=False)
+            _, result = await self.replica.handle_request(
+                query, should_convert_streaming_response=False
+            )
 
-            if not isinstance(result, StreamingResponse):
+            if not isinstance(result, starlette.responses.StreamingResponse):
                 yield result
             else:
                 gen = result.body_iterator
                 result.body_iterator = None
                 yield result
 
-                async for r in result:
+                async for r in gen:
                     yield r
 
         async def handle_request_from_java(
@@ -455,7 +457,9 @@ class RayServeReplica:
             return sender.build_asgi_response()
         return response
 
-    async def invoke_single(self, request_item: Query, *, should_convert_streaming_response: bool = True) -> Tuple[Any, bool]:
+    async def invoke_single(
+        self, request_item: Query, *, should_convert_streaming_response: bool = True
+    ) -> Tuple[Any, bool]:
         """Executes the provided request on this replica.
 
         Returns the user-provided output and a boolean indicating if the
@@ -541,7 +545,9 @@ class RayServeReplica:
                 )
                 await reconfigure_method(self.deployment_config.user_config)
 
-    async def handle_request(self, request: Query, *, should_convert_streaming_response: bool = True) -> asyncio.Future:
+    async def handle_request(
+        self, request: Query, *, should_convert_streaming_response: bool = True
+    ) -> asyncio.Future:
         async with self.rwlock.reader_lock:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
@@ -555,7 +561,10 @@ class RayServeReplica:
             )
 
             start_time = time.time()
-            result, success = await self.invoke_single(request, should_convert_streaming_response=should_convert_streaming_response)
+            result, success = await self.invoke_single(
+                request,
+                should_convert_streaming_response=should_convert_streaming_response,
+            )
             latency_ms = (time.time() - start_time) * 1000
             self.processing_latency_tracker.observe(
                 latency_ms, tags={"route": request.metadata.route}

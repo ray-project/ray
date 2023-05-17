@@ -80,21 +80,26 @@ class RandomStreamingReplicaScheduler(ReplicaScheduler):
         self._replicas_updated_event = asyncio.Event()
         self._replicas: List[RunningReplicaInfo] = []
 
-    async def assign_replica(self, query: Query) -> "ray._raylet.StreamingObjectRefGenerator":
+    async def assign_replica(
+        self, query: Query
+    ) -> "ray._raylet.StreamingObjectRefGenerator":
         while len(self._replicas) == 0:
             await self._replicas_updated_event.wait()
 
         replica = random.choice(self._replicas)
         if replica.is_cross_language:
-            raise RuntimeError("Streaming is not yet supported for cross-language actors.")
+            raise RuntimeError(
+                "Streaming is not yet supported for cross-language actors."
+            )
 
-        return replica.actor_handle.handle_request_streaming.options(num_returns="streaming").remote(
-            pickle.dumps(query.metadata), *query.args, **query.kwargs
-        )
+        return replica.actor_handle.handle_request_streaming.options(
+            num_returns="streaming"
+        ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         self._replicas_updated_event.set()
         self._replicas = running_replicas
+
 
 class RoundRobinReplicaScheduler(ReplicaScheduler):
     """Data structure representing a set of replica actor handles"""

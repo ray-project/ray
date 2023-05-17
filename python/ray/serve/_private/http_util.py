@@ -10,7 +10,6 @@ from starlette.requests import Request
 from starlette.types import Send, ASGIApp
 from fastapi.encoders import jsonable_encoder
 
-import ray
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 
