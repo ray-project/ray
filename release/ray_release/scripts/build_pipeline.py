@@ -28,6 +28,7 @@ from ray_release.wheels import (
 )
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
+DOCKER_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale"
 
 
 @click.command()
@@ -254,6 +255,7 @@ def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
     )
     for ray_image in ray_images:
         logger.info(f"Building BYOD for {ray_image}")
+        tag = f"{DOCKER_REPO}:{ray_image.replace('rayproject/', '').replace(':', '-')}"
         subprocess.check_call(
             [
                 "docker",
@@ -261,14 +263,19 @@ def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
                 "--build-arg",
                 f"BASE_IMAGE={ray_image}",
                 "-t",
-                ray_image.replace("rayproject", "anyscale"),
+                tag,
                 "-",
-                "<",
-                "dataplane.tgz",
             ],
+            stdin=open("dataplance.tgz", "rb"),
             env={"DOCKER_BUILDKIT": "1"},
         )
-    # TODO(aslonnie): Build anyscale byod images for the given ray images
+        subprocess.check_call(
+            [
+                "docker",
+                "push",
+                tag,
+            ]
+        )
     return
 
 
