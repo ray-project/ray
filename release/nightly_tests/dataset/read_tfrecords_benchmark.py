@@ -25,10 +25,11 @@ def generate_tfrecords_from_images(
 
         # Convert images from NumPy to bytes
         def images_to_bytes(batch):
-            images_as_bytes = [image.tobytes() for image in batch.values()]
-            return pa.table({"image": images_as_bytes})
+            return {"image": [image.tobytes() for image in batch["image"]]}
 
         ds = ds.map_batches(images_to_bytes, batch_format="numpy")
+        assert ds.count() == num_images
+
         tfrecords_dir = tempfile.mkdtemp()
         ds.write_tfrecords(tfrecords_dir)
     finally:
