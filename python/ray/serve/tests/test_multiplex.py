@@ -1,5 +1,7 @@
 import pytest
 from typing import List
+import os
+import requests
 
 import ray
 from ray import serve
@@ -7,6 +9,8 @@ from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.context import get_internal_replica_context
 from ray._private.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.common import RunningReplicaInfo
+from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
+from ray._private.test_utils import SignalActor
 
 
 @pytest.fixture()
@@ -17,6 +21,8 @@ def start_serve_with_context():
     )
     yield
     serve.shutdown()
+    ray.serve.context._set_request_context()
+    ray.shutdown()
 
 
 class TestMultiplexWrapper:
@@ -195,7 +201,7 @@ class TestBasicAPI:
         assert serve.get_multiplexed_model_id() == "1"
 
 
-def test_multiplexed_replica_info():
+def test_multiplexed_replica_info(serve_instance):
     """Test MultiplexedReplicaInfo is passed to the controller & router"""
 
     @serve.deployment
@@ -257,6 +263,99 @@ def test_multiplexed_replica_info():
             "model2",
             "model3",
         ],
+    )
+
+
+def test_multiplexed_e2e(serve_instance):
+    """Test multiplexed function end to end"""
+
+    @serve.deployment(num_replicas=2)
+    class Model:
+        @serve.multiplexed(max_num_models_per_replica=1)
+        async def get_model(self, tag):
+            return tag
+
+        async def __call__(self, request):
+            tag = serve.get_multiplexed_model_id()
+            await self.get_model(tag)
+            # return pid to check if the same model is used
+            return os.getpid()
+
+    handle = serve.run(Model.bind())
+    headers = {SERVE_MULTIPLEXED_MODEL_ID: str(1)}
+    resp = requests.get("http://localhost:8000", headers=headers)
+    pid = resp.json()
+
+    # send 10 times to make sure the same replica is used.
+    for _ in range(10):
+        resp = requests.get("http://localhost:8000", headers=headers)
+        assert resp.json() == pid
+    wait_for_condition(
+        lambda: "1" in handle.router._replica_set.multiplexed_replicas_table,
+    )
+
+    for _ in range(10):
+        assert ray.get(handle.options(multiplexed_model_id="1").remote("blabla")) == pid
+
+
+def test_multiplexed_lru_policy(serve_instance):
+    """Test multiplexed function LRU policy"""
+
+    @serve.deployment
+    class Model:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def get_model(self, tag):
+            return tag
+
+        async def __call__(self, request):
+            tag = serve.get_multiplexed_model_id()
+            await self.get_model(tag)
+            # return pid to check if the same model is used
+            return os.getpid()
+
+    handle = serve.run(Model.bind())
+    headers = {SERVE_MULTIPLEXED_MODEL_ID: str(1)}
+    requests.get("http://localhost:8000", headers=headers)
+    headers = {SERVE_MULTIPLEXED_MODEL_ID: str(2)}
+    requests.get("http://localhost:8000", headers=headers)
+    # Make sure model2 will be evicted
+    headers = {SERVE_MULTIPLEXED_MODEL_ID: str(1)}
+    requests.get("http://localhost:8000", headers=headers)
+    headers = {SERVE_MULTIPLEXED_MODEL_ID: str(3)}
+    requests.get("http://localhost:8000", headers=headers)
+
+    wait_for_condition(
+        lambda: "1" in handle.router._replica_set.multiplexed_replicas_table
+        and "3" in handle.router._replica_set.multiplexed_replicas_table,
+    )
+
+
+def test_multiplexed_multiple_replicas(serve_instance):
+    """Test multiplexed traffic can be sent to multiple replicas"""
+    signal = SignalActor.remote()
+
+    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    class Model:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def get_model(self, tag):
+            return tag
+
+        async def __call__(self, request):
+            tag = serve.get_multiplexed_model_id()
+            await self.get_model(tag)
+            await signal.wait.remote()
+            # return pid to check if the same model is used
+            return os.getpid()
+
+    handle = serve.run(Model.bind())
+    resp1_ref = handle.options(multiplexed_model_id="1").remote("blabla")
+    # Second request should be sent to the second replica
+    resp2_ref = handle.options(multiplexed_model_id="1").remote("blabla")
+    signal.send.remote()
+    assert ray.get(resp1_ref) != ray.get(resp2_ref)
+    wait_for_condition(
+        lambda: "1" in handle.router._replica_set.multiplexed_replicas_table
+        and len(handle.router._replica_set.multiplexed_replicas_table["1"]) == 2
     )
 
 

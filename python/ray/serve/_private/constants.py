@@ -188,3 +188,6 @@ SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_LEVEL_NAME: "%(levelname)s",
     SERVE_LOG_TIME: "%(asctime)s",
 }
+
+# Serve HTTP request header key for routing requests.
+SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
