@@ -642,12 +642,11 @@ class MetricsPusher:
                 if remaining_time > 0:
                     time.sleep(remaining_time)
 
-        timer = threading.Thread(target=send_forever)
+        self.pusher_thread = threading.Thread(target=send_forever)
         # Making this a daemon thread so it doesn't leak upon shutdown, and it
         # doesn't need to block the replica's shutdown.
-        timer.setDaemon(True)
-        timer.start()
-        self.pusher_thread = timer
+        self.pusher_thread.setDaemon(True)
+        self.pusher_thread.start()
 
     def __del__(self):
         self.stop_event.set()
