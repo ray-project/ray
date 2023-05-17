@@ -870,8 +870,8 @@
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../../configs/release_test_cluster_env.yaml
-    cluster_compute: ../../configs/compute/gpu/aws_release_test.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
 
   run:
     timeout: 600
@@ -883,8 +883,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../../configs/release_test_cluster_env.yaml
-          cluster_compute: ../../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../configs/release_test_cluster_env.yaml
+          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
 
 
 - name: workspace_template_many_model_training
@@ -894,8 +894,8 @@
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../../configs/release_test_cluster_env.yaml
-    cluster_compute: ../../configs/compute/cpu/aws_release_test.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_compute: ../configs/compute/cpu/aws_release_test.yaml
 
   run:
     timeout: 600
@@ -907,8 +907,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../../configs/release_test_cluster_env.yaml
-          cluster_compute: ../../configs/compute/cpu/gce_release_test.yaml
+          cluster_env: ../configs/release_test_cluster_env.yaml
+          cluster_compute: ../configs/compute/cpu/gce_release_test.yaml
 
 
 - name: workspace_template_serving_stable_diffusion
@@ -918,8 +918,8 @@
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../../configs/release_test_cluster_env.yaml
-    cluster_compute: ../../configs/compute/gpu/aws_release_test.yaml
+    cluster_env: ../configs/release_test_cluster_env.yaml
+    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
 
   run:
     timeout: 600
@@ -931,8 +931,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../../configs/release_test_cluster_env.yaml
-          cluster_compute: ../../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../configs/release_test_cluster_env.yaml
+          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
 
 
 #######################
