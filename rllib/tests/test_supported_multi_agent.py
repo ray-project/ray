@@ -159,6 +159,18 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             },
         )
 
+    class TestSupportedMultiAgentMultiGPU(unittest.TestCase):
+        @classmethod
+        def setUpClass(cls) -> None:
+            ray.init(num_cpus=4)
+
+        @classmethod
+        def tearDownClass(cls) -> None:
+            ray.shutdown()
+
+        def test_impala_multiagent_multi_gpu(self):
+            check_support_multiagent("IMPALA", {"num_gpus": 2})
+
 
 if __name__ == "__main__":
     import pytest
