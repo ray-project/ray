@@ -51,17 +51,8 @@ def test_get_anyscale_byod_image():
         == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_REPO}:123456-py37"
     )
     assert (
-        _stub_test(
-            {
-                "python": "3.8",
-                "cluster": {
-                    "byod": {
-                        "type": "gpu",
-                    }
-                },
-            }
-        ).get_anyscale_byod_image()
-        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
+        _stub_test().get_anyscale_byod_image()
+        == f"{DATAPLANE_ECR_REPO}:ray-123456-py37"
     )
     os.environ["BUILDKITE_PULL_REQUEST"] = "1234"
     assert (
