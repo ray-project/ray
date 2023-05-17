@@ -4,7 +4,6 @@ and use it in a serving/inference setting.
 
 import gymnasium as gym
 import os
-from pathlib import Path
 import tempfile
 
 from ray.rllib.examples.connectors.prepare_checkpoint import (
@@ -52,7 +51,10 @@ if __name__ == "__main__":
         # Normally, you would use a policy checkpoint from a real training run.
         create_appo_cartpole_checkpoint(tmpdir)
         policy_checkpoint_path = os.path.join(
-            tmpdir, "checkpoint_000000", "policies", policy_id,
+            tmpdir,
+            "checkpoint_000000",
+            "policies",
+            policy_id,
         )
 
         run(policy_checkpoint_path, policy_id)

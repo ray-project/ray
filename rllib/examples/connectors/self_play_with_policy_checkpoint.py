@@ -135,7 +135,10 @@ if __name__ == "__main__":
         create_open_spiel_checkpoint(tmpdir)
 
         policy_checkpoint_path = os.path.join(
-            tmpdir, "checkpoint_000000", "policies", OPPONENT_POLICY_ID,
+            tmpdir,
+            "checkpoint_000000",
+            "policies",
+            OPPONENT_POLICY_ID,
         )
 
         main(policy_checkpoint_path)
