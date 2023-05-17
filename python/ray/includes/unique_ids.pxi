@@ -21,8 +21,9 @@ from ray.includes.unique_ids cimport (
     CTaskID,
     CUniqueID,
     CWorkerID,
-    CPlacementGroupID
+    CPlacementGroupID,
 )
+
 
 import ray
 from ray._private.utils import decode

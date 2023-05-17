@@ -240,6 +240,27 @@ def test_actor_stats_async_actor(ray_start_regular):
     assert max(result["AysncActor.func"]["pending"] for result in results) == 3
 
 
+def test_actor_stats_async_actor_generator(ray_start_regular):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    class AysncActor:
+        async def func(self):
+            await signal.wait.remote()
+            yield ray.get_runtime_context()._get_actor_call_stats()
+
+    actor = AysncActor.options(max_concurrency=3).remote()
+    gens = [actor.func.options(num_returns="streaming").remote() for _ in range(6)]
+    time.sleep(1)
+    signal.send.remote()
+    results = []
+    for gen in gens:
+        for ref in gen:
+            results.append(ray.get(ref))
+    assert max(result["AysncActor.func"]["running"] for result in results) == 3
+    assert max(result["AysncActor.func"]["pending"] for result in results) == 3
+
+
 # Use default filterwarnings behavior for this test
 @pytest.mark.filterwarnings("default")
 def test_ids(ray_start_regular):
