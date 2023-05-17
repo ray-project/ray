@@ -4,7 +4,6 @@ import itertools
 import logging
 import pickle
 import random
-import sys
 from typing import Any, Dict, List, Optional
 
 import ray
