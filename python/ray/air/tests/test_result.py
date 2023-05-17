@@ -5,6 +5,7 @@ import ray
 from ray.air import CheckpointConfig, RunConfig, ScalingConfig, session
 from ray.air.result import Result
 from ray.train.torch import TorchCheckpoint, TorchTrainer
+from ray.train.trainer import TrainingFailedError
 
 
 @pytest.fixture
@@ -40,8 +41,9 @@ def test_result_restore(ray_start_4_cpus):
         ),
     )
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(TrainingFailedError) as exc_info:
         result = trainer.fit()
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
     local_path = result.path
 
     # Delete the in-memory result object, then restore it

@@ -18,7 +18,6 @@ from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 
-
 @PublicAPI(stability="beta")
 @dataclass
 class Result:

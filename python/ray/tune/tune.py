@@ -449,11 +449,12 @@ def run(
             training workers.
         checkpoint_upload_from_workers: Whether to upload checkpoint files
             directly from distributed training workers.
-        verbose: 0, 1, or 2. Verbosity mode.
-            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
-            If ``RAY_AIR_NEW_OUTPUT=0``, uses the old verbosity settings:
+        verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
-            results, 3 = status and detailed results.
+            results, 3 = status and detailed results. Defaults to 3.
+            If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
+            uses the new context-aware verbosity settings:
+            0 = silent, 1 = default, 2 = verbose.
         progress_reporter: Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
@@ -909,7 +910,11 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
-    # Create syncer callbacks
+    # NOTE: Report callback telemetry before populating the list with default callbacks.
+    # This tracks user-specified callback usage.
+    air_usage.tag_callbacks(callbacks)
+
+    # Create default logging + syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks,
         sync_config=sync_config,
@@ -1015,7 +1020,11 @@ def run(
         )
     else:
         air_progress_reporter = _detect_air_reporter(
-            air_verbosity, search_alg.total_samples, metric=metric, mode=mode
+            air_verbosity,
+            search_alg.total_samples,
+            metric=metric,
+            mode=mode,
+            config=config,
         )
 
     # rich live context manager has to be called encapsulating

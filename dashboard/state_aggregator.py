@@ -12,7 +12,7 @@ from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
 
-from ray.experimental.state.common import (
+from ray.util.state.common import (
     protobuf_message_to_dict,
     ActorState,
     JobState,
@@ -38,12 +38,12 @@ from ray.experimental.state.common import (
     PredicateType,
     protobuf_to_task_state_dict,
 )
-from ray.experimental.state.state_manager import (
+from ray.util.state.state_manager import (
     DataSourceUnavailable,
     StateDataSourceClient,
 )
 from ray.runtime_env import RuntimeEnv
-from ray.experimental.state.util import convert_string_to_type
+from ray.util.state.util import convert_string_to_type
 
 logger = logging.getLogger(__name__)
 
