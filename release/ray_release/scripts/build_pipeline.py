@@ -277,12 +277,12 @@ def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
                     "-",
                 ],
                 stdin=build_file,
-                stdout=subprocess.STDERR,
+                stdout=subprocess.DEVNULL,
                 env={"DOCKER_BUILDKIT": "1"},
             )
             subprocess.check_call(
                 ["docker", "push", byod_image],
-                stdout=subprocess.STDERR,
+                stdout=subprocess.DEVNULL,
             )
             built.add(ray_image)
     return
