@@ -104,10 +104,6 @@ class _BasicVariantGenerator(SearchAlgorithm):
     def _create_trial(self, resolved_vars, config):
         from pathlib import Path
 
-        import ipdb
-
-        ipdb.set_trace()
-
         trial_id = self.uuid_prefix + ("%05d" % self.counter)
         experiment_tag = str(self.counter)
         experiment_tag += "_{}".format(format_vars(resolved_vars))
@@ -210,7 +206,7 @@ class ExperimentRunner:
         )
 
         air_progress_reporter = _detect_air_reporter(
-            AirVerbosity(1),
+            AirVerbosity(2),
             search_alg.total_samples,
         )
 
@@ -260,3 +256,57 @@ if __name__ == "__main__":
     )
 
     runner.fit()
+
+
+"""
+### Ideal API
+
+def train_loop_per_worker(config):
+    pass
+
+class TorchTrainerConfig(TuneableConfig):
+    pass
+
+runner = ExperimentRunner(
+    TorchTrainer,
+    config=TorchTrainerConfig(
+        train_loop_per_worker=train_loop_per_worker,
+        train_loop_config={"lr": tune.uniform(0, 1)},
+        datasets={"train": ray.data.from_items(...)},
+        scaling_config=air.ScalingConfig(),
+    ),
+    run_config=air.RunConfig(
+    ),
+    tune_config=TuneConfig(searcher=OptunaSearch(), scheduler=ASHA())
+)
+
+# Can we make everything a callback??
+
+runner = ExperimentRunner(
+    TorchTrainer,
+    config=TorchTrainerConfig(
+        train_loop_per_worker=train_loop_per_worker,
+        train_loop_config={"lr": tune.uniform(0, 1)},
+        datasets={"train": ray.data.from_items(...)},
+        scaling_config=air.ScalingConfig(),
+        callbacks=[OptunaSearcher(), ]
+    ),
+    run_config=air.RunConfig(
+    ),
+    tune_config=TuneConfig(searcher=OptunaSearch(), scheduler=ASHA())
+)
+
+
+
+## How to deal with Tune specific stuff? Scheduler and searcher?
+## How to deal with multiple places to input the search space? E.g. directly through searchers?
+
+
+
+runner = (
+    ExperimentRunner(TorchTrainer, config=TorchTrainerConfig())
+    .config()
+    .tuning(searcher=)
+)
+
+"""
