@@ -19,7 +19,7 @@ class Template:
         from the keyword arguments.
 
         Returns:
-            str: HTML template with the keys of the kwargs replaced with corresponding
+            HTML template with the keys of the kwargs replaced with corresponding
                 values.
         """
         rendered = self.template
@@ -34,7 +34,6 @@ class Template:
         """List the available HTML templates.
 
         Returns:
-            List[pathlib.Path]: A list of files with .html.j2 extensions inside
-                ./templates/
+            A list of files with .html.j2 extensions inside ../templates/
         """
         return (pathlib.Path(__file__).parent / "templates").glob("*.html.j2")
