@@ -50,6 +50,8 @@ Ray cluster comes with the dashboard. See :ref:`Cluster Monitoring <monitor-clus
   They are necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
   See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
 
+.. _dash-jobs-view:
+
 Jobs View
 ---------
 
@@ -105,6 +107,36 @@ Second, you can use tools like ``chrome://tracing`` or the `Perfetto UI <https:/
 Now, you can see the timeline visualization of Ray tasks and actors. There are Node rows (hardware) and Worker rows (processes).
 Each worker rows display a list of events (e.g., task scheduled, task running, input/output deserialization, etc.) happening from that worker over time.
 
+Ray Status
+~~~~~~~~~~
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/ray-status.png
+    :align: center
+
+The job page displays the output of the CLI tool ``ray status``, which shows the autoscaler status of the Ray cluster.
+
+The left page shows the autoscaling status, including pending, active, and failed nodes.
+The right page displays the cluster's demands, which are resources that cannot be scheduled to the cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
+
+.. note::
+
+  The output shows the aggregated information across the cluster (not by job). If you run more than one job, some of the demands may come from other jobs.
+
+.. _dash-workflow-state-apis:
+
+Task Table, Actor Table, Placement Group Table
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/tables.png
+    :align: center
+
+The dashboard shows a table with the status of the job's tasks, actors, and placement groups.
+You get the same information from the :ref:`Ray state APIs <state-api-overview-ref>`.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/task-table.png
+    :align: center
+
+You can expand the table to see a list of each task, actor, and placement group.
 
 .. _dash-serve-view:
 
@@ -183,7 +215,6 @@ Actors View
         <iframe width="560" height="315" src="https://www.youtube.com/embed/MChn6O1ecEQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
     
-
 The Actors view lets you see information about the actors that have existed on the ray cluster.
 
 You can view the logs for an actor and you can see which job created the actor.
@@ -203,15 +234,57 @@ By clicking the ID, you can also see the detail view of the actor.
 
 From the actor detail page, you can see the metadata, state, and the all tasks that have run from this actor.
 
-.. _dash-workflow-logs:
+.. _dash-metrics-view:
 
-View the application logs and errors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Metrics View
+------------
+
+.. raw:: html
+
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+        <iframe width="560" height="315" src="https://www.youtube.com/embed/yn5Q65iHAR8" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+ 
+
+Ray exports default metrics which are available from the :ref:`Metrics View <dash-metrics-view>`. Here are some available example metrics.
+
+- The tasks, actors, and placement groups broken down by states.
+- The :ref:`logical resource usage <logical-resources>` across nodes.
+- The hardware resource usage across nodes.
+- The autoscaler status.
+
+See :ref:`System Metrics Page <system-metrics>` for available metrics.
+
+.. note::
+
+  The metrics view required the Prometheus and Grafana setup. See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
+
+The metrics view lets you view visualizations of the time series metrics emitted by Ray.
+
+You can select the time range of the metrics in the top right corner. The graphs refresh automatically every 15 seconds.
+
+There is also a convenient button to open the grafana UI from the dashboard. The Grafana UI provides additional customizability of the charts.
+
+.. _dash-logs-view:
+
+Logs View
+---------
+
+.. raw:: html
+
+    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+        <iframe width="560" height="315" src="https://www.youtube.com/embed/8V187F2DsN0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+ 
+The logs view lets you view all the Ray logs in your cluster. It is organized by node and log file name. Many log links in the other pages link to this view and filter the list so the relevant logs appear.
+
+To understand the log file structure of Ray, see the :ref:`Logging directory structure page <logging-directory-structure>`.
+
+
+The logs view provides search functionality to help you find specific log messages.
+
 
 **Driver Logs**
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/log_button_at_job.png
-    :align: center
 
 If the Ray job is submitted by :ref:`Ray job API <jobs-quickstart>`, the job logs are available from the dashboard. The log file follows the following format; ``job-driver-<job_submission_id>.log``.
 
@@ -221,30 +294,15 @@ If the Ray job is submitted by :ref:`Ray job API <jobs-quickstart>`, the job log
 
 **Task and Actor Logs**
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/actor_log.png
-    :align: center
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/task_log.png
-    :align: center
-
 Task and actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the log button.
 You can see the worker logs (``worker-[worker_id]-[job_id]-[pid].[out|err]``) that execute the task and actor. ``.out`` (stdout) and ``.err`` (stderr) logs contain the logs emitted from the tasks and actors.
 The core worker logs (``python-core-worker-[worker_id]_[pid].log``) contain the system-level logs for the corresponding worker.
 
 **Task and Actor Errors**
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/failed_task_progress-bar.png
-    :align: center
-
 You can easily identify failed tasks or actors by looking at the job progress bar, which links to the table.
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/task_error_button.png
-    :align: center
-
 The table displays the name of the failed tasks or actors and provides access to their corresponding log or error messages.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/task_error_box.png
-    :align: center
 
 .. _dash-workflow-cpu-memory-analysis:
 
@@ -322,195 +380,6 @@ Two types of events are available.
 
 - Job: Events related to :ref:`Ray job submission APIs <jobs-quickstart>`.
 - Autoscaler: Events related to the :ref:`Ray autoscaler <cluster-autoscaler>`.
-
-.. _dash-jobs-view:
-
-Ray Status
-~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/ray-status.png
-    :align: center
-
-The job page displays the output of the CLI tool ``ray status``, which shows the autoscaler status of the Ray cluster.
-
-The left page shows the autoscaling status, including pending, active, and failed nodes.
-The right page displays the cluster's demands, which are resources that cannot be scheduled to the cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
-
-.. note::
-
-  The output shows the aggregated information across the cluster (not by job). If you run more than one job, some of the demands may come from other jobs.
-
-.. _dash-workflow-state-apis:
-
-Task Table, Actor Table, Placement Group Table
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/tables.png
-    :align: center
-
-The dashboard shows a table with the status of the job's tasks, actors, and placement groups.
-You get the same information from the :ref:`Ray state APIs <state-api-overview-ref>`.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/task-table.png
-    :align: center
-
-You can expand the table to see a list of each task, actor, and placement group.
-
-.. _dash-metrics-view:
-
-Metrics View
-------------
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/metrics.png
-    :align: center
-
-Ray exports default metrics which are available from the :ref:`Metrics View <dash-metrics-view>`. Here are some available example metrics.
-
-- The tasks, actors, and placement groups broken down by states.
-- The :ref:`logical resource usage <logical-resources>` across nodes.
-- The hardware resource usage across nodes.
-- The autoscaler status.
-
-See :ref:`System Metrics Page <system-metrics>` for available metrics.
-
-.. note::
-
-  The metrics view required the Prometheus and Grafana setup. See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
-
-The metrics view lets you view visualizations of the time series metrics emitted by Ray.
-
-You can select the time range of the metrics in the top right corner. The graphs refresh automatically every 15 seconds.
-
-There is also a convenient button to open the grafana UI from the dashboard. The Grafana UI provides additional customizability of the charts.
-
-.. _dash-logs-view:
-
-Logs View
----------
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/logs.png
-    :align: center
-
-The logs view lets you view all the Ray logs in your cluster. It is organized by node and log file name. Many log links in the other pages link to this view and filter the list so the relevant logs appear.
-
-To understand the log file structure of Ray, see the :ref:`Logging directory structure page <logging-directory-structure>`.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard/logs-content.png
-    :align: center
-
-The logs view provides search functionality to help you find specific log messages.
-
-.. _dash-reference:
-
-Page References
----------------
-
-Cluster View
-~~~~~~~~~~~~
-
-.. list-table:: Cluster View Node Table Reference
-  :widths: 25 75
-  :header-rows: 1
-
-  * - Term
-    - Description
-  * - **State**
-    - Whether the node or worker is alive or dead.
-  * - **ID**
-    - The ID of the node or the workerId for the worker.
-  * - **Host / Cmd line**
-    - If it is a node, it shows host information. If it is a worker, it shows the name of the task that is being run.
-  * - **IP / PID**
-    - If it is a node, it shows the IP address of the node. If it's a worker, it shows the PID of the worker process.
-  * - **CPU Usage**
-    - CPU usage of each node and worker.
-  * - **Memory**
-    - RAM usage of each node and worker.
-  * - **GPU**
-    - GPU usage of the node.
-  * - **GRAM**
-    - GPU memory usage of the node.
-  * - **Object Store Memory**
-    - Amount of memory used by the object store for this node.
-  * - **Disk**
-    - Disk usage of the node.
-  * - **Sent**
-    - Network bytes sent for each node and worker.
-  * - **Received**
-    - Network bytes received for each node and worker.
-  * - **Log**
-    - Logs messages at each node and worker. You can see log files relevant to a node or worker by clicking this link.
-  * - **Stack Trace**
-    - Get the Python stack trace for the specified worker. Refer to :ref:`dashboard-profiling` for more information.
-  * - **CPU Flame Graph**
-    - Get a CPU flame graph for the specified worker. Refer to :ref:`dashboard-profiling` for more information.
-
-
-Jobs View
-~~~~~~~~~
-
-.. list-table:: Jobs View Reference
-  :widths: 25 75
-  :header-rows: 1
-
-  * - Term
-    - Description
-  * - **Job ID**
-    - The ID of the job. This is the primary id that associates tasks and actors to this job.
-  * - **Submission ID**
-    - An alternate ID that can be provided by a user or generated for all ray job submissions.
-      It's useful if you would like to associate your job with an ID that is provided by some external system.
-  * - **Status**
-    - Describes the state of a job. One of:
-        * PENDING: The job has not started yet, likely waiting for the runtime_env to be set up.
-        * RUNNING: The job is currently running.
-        * STOPPED: The job was intentionally stopped by the user.
-        * SUCCEEDED: The job finished successfully.
-        * FAILED: The job failed.
-  * - **Logs**
-    - A link to the logs for this job.
-  * - **StartTime**
-    - The time the job was started.
-  * - **EndTime**
-    - The time the job finished.
-  * - **DriverPid**
-    - The PID for the driver process that is started the job.
-
-Actors
-~~~~~~
-
-.. list-table:: Actor View Reference
-  :widths: 25 75
-  :header-rows: 1
-
-  * - Term
-    - Description
-  * - **Actor ID**
-    - The ID of the actor.
-  * - **Restart Times**
-    - Number of times this actor has been restarted.
-  * - **Name**
-    - The name of an actor. This can be user defined.
-  * - **Class**
-    - The class of the actor.
-  * - **Function**
-    - The current function the actor is running.
-  * - **Job ID**
-    - The job in which this actor was created.
-  * - **Pid**
-    - ID of the worker process on which the actor is running.
-  * - **IP**
-    - Node IP Address where the actor is located.
-  * - **Port**
-    - The Port for the actor.
-  * - **State**
-    - Either one of "ALIVE" or "DEAD".
-  * - **Log**
-    - A link to the logs that are relevant to this actor.
-  * - **Stack Trace**
-    - Get the Python stack trace for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
-  * - **CPU Flame Graph**
-    - Get a CPU flame graph for the specified actor. Refer to :ref:`dashboard-profiling` for more information.
 
 Resources
 ---------
