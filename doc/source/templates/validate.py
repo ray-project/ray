@@ -20,7 +20,15 @@ def get_root_path() -> Path:
 
 def validate_templates_yaml_schema(templates) -> dict:
     all_missing_fields = {}
-    required_fields = {"title", "description", "path", "cluster_env", "compute_config"}
+    required_fields = {
+        "title",
+        "description",
+        "path",
+        "cluster_env",
+        "compute_config",
+        "emoji",
+        "labels",
+    }
 
     for template_name, template_config in templates.items():
         # ======= Schema check for templates.yaml ========
