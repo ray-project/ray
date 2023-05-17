@@ -315,7 +315,7 @@ class StreamingObjectRefGenerator:
     def _handle_next(self):
         try:
             if hasattr(self.worker, "core_worker"):
-                obj = self.worker.core_worker.async_read_object_ref_stream(
+                obj = self.worker.core_worker.try_read_next_object_ref_stream(
                     self._generator_ref)
                 return obj
             else:
@@ -3291,13 +3291,13 @@ cdef class CoreWorker:
 
         CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
 
-    def async_read_object_ref_stream(self, ObjectRef generator_id):
+    def try_read_next_object_ref_stream(self, ObjectRef generator_id):
         cdef:
             CObjectID c_generator_id = generator_id.native()
             CObjectReference c_object_ref
 
         check_status(
-            CCoreWorkerProcess.GetCoreWorker().AsyncReadObjectRefStream(
+            CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
                 c_generator_id, &c_object_ref))
         return ObjectRef(
             c_object_ref.object_id(),
