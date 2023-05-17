@@ -23,6 +23,8 @@ def app_builder(args: Dict[str, str]) -> Application:
 
 # __end_untyped_builder__
 
+import requests
+
 serve.run(app_builder({"message": "Hello bar"}))
 resp = requests.get("http://localhost:8000")
 assert resp.text == "Hello bar"
