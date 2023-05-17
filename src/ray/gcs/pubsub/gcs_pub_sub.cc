@@ -350,7 +350,11 @@ Status PythonGcsSubscriber::Subscribe() {
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
-  return Status::OK();
+  if (status.ok()) {
+    return Status::OK();
+  } else {
+    return Status::RpcError(status.error_message(), status.error_code());
+  }
 }
 
 Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
@@ -457,7 +461,11 @@ Status PythonGcsSubscriber::Close() {
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
-  return Status::OK();
+  if (status.ok()) {
+    return Status::OK();
+  } else {
+    return Status::RpcError(status.error_message(), status.error_code());
+  }
 }
 
 int64_t PythonGcsSubscriber::last_batch_size() {
