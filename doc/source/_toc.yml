@@ -267,6 +267,7 @@ parts:
               - file: serve/scaling-and-resource-allocation
               - file: serve/model_composition
               - file: serve/dev-workflow
+              - file: serve/app-builder-guide
               - file: serve/multi-app
               - file: serve/production-guide/index
                 sections:
