@@ -2980,14 +2980,14 @@ TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
   ASSERT_EQ(address.ip_address(), added_address.ip_address());
   // Verify it had 1 local reference.
   std::vector<ObjectID> deleted;
-  rc_.RemoveLocalReference(object_id, &deleted);
+  rc->RemoveLocalReference(object_id, &deleted);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(deleted.size(), 1);
   ASSERT_FALSE(rc->GetOwner(object_id, &added_address));
 
   // Remove the generator.
-  rc_.RemoveLocalReference(generator_id, nullptr);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
+  rc->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_FALSE(rc->GetOwner(generator_id, &added_address));
 
   // Verify we cannot register a new object after the generator id is removed.
