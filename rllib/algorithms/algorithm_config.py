@@ -28,7 +28,6 @@ from ray.rllib.core.learner.learner_group_config import (
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
@@ -2988,6 +2987,11 @@ class AlgorithmConfig(_Config):
 
     def get_torch_compile_learner_config(self):
         """Returns the TorchCompileConfig to use on learners."""
+
+        from ray.rllib.core.rl_module.torch.torch_compile_config import (
+            TorchCompileConfig,
+        )
+
         return TorchCompileConfig(
             compile_forward_train=self.torch_compile_learner,
             torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
@@ -2996,6 +3000,11 @@ class AlgorithmConfig(_Config):
 
     def get_torch_compile_worker_config(self):
         """Returns the TorchCompileConfig to use on workers."""
+
+        from ray.rllib.core.rl_module.torch.torch_compile_config import (
+            TorchCompileConfig,
+        )
+
         return TorchCompileConfig(
             compile_forward_exploration=self.torch_compile_worker,
             compile_forward_inference=self.torch_compile_worker,
@@ -3222,11 +3231,12 @@ class AlgorithmConfig(_Config):
                 num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
                 local_gpu_idx=self.local_gpu_idx,
             )
-            .framework(
-                eager_tracing=self.eager_tracing,
-                torch_compile_cfg=self.get_torch_compile_learner_config(),
-            )
         )
+
+        if self.framework_str == "torch":
+            config.framework(torch_compile_cfg=self.get_torch_compile_learner_config())
+        elif self.framework_str == "tf2":
+            config.framework(eager_tracing=self.eager_tracing)
 
         return config
 
