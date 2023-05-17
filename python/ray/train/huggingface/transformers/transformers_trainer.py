@@ -6,12 +6,6 @@ import warnings
 from packaging.version import Version
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 
-import transformers
-import transformers.modeling_utils
-import transformers.trainer
-import transformers.training_args
-from transformers.trainer_utils import IntervalStrategy
-from transformers.utils import is_datasets_available
 from torch.utils.data import Dataset as TorchDataset
 
 from ray.air import session
@@ -22,41 +16,56 @@ from ray.train.constants import (
     TRAIN_DATASET_KEY,
 )
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.hf_transformers._transformers_utils import (
-    TrainReportCallback,
-    process_datasets,
-    wrap_transformers_trainer,
-)
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
 from ray.util import PublicAPI
 
+
+TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
+
+try:
+    import transformers
+    import transformers.modeling_utils
+    import transformers.trainer
+    import transformers.training_args
+    from transformers.trainer_utils import IntervalStrategy
+    from transformers.utils import is_datasets_available
+
+    from ray.train.huggingface.transformers._transformers_utils import (
+        TrainReportCallback,
+        process_datasets,
+        wrap_transformers_trainer,
+    )
+
+    # Due to HF Dataset's dynamic module system, we need to dynamically import the
+    # datasets_modules module on every actor when training.
+    # We accomplish this by simply running the following bit of code directly
+    # in module you are currently viewing. This ensures that when we
+    # unpickle the TransformersTrainer, it will be ran before pickle tries to
+    # import datasets_modules and prevents an exception from being thrown.
+    # Same logic is present inside HF Transformers Ray integration:
+    # https://github.com/huggingface/transformers/blob/\
+    # 7d5fde991d598370d961be8cb7add6541e2b59ce/src/transformers/integrations.py#L271
+    # Also see https://github.com/ray-project/ray/issues/28084
+    if "datasets_modules" not in sys.modules and is_datasets_available():
+        import datasets.load
+
+        dynamic_modules_path = os.path.join(
+            datasets.load.init_dynamic_modules(), "__init__.py"
+        )
+        # load dynamic_modules from path
+        spec = importlib.util.spec_from_file_location(
+            "datasets_modules", dynamic_modules_path
+        )
+        datasets_modules = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = datasets_modules
+        spec.loader.exec_module(datasets_modules)
+
+except ImportError as e:
+    TRANSFORMERS_IMPORT_ERROR = e
+
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
-
-# Due to HF Dataset's dynamic module system, we need to dynamically import the
-# datasets_modules module on every actor when training.
-# We accomplish this by simply running the following bit of code directly
-# in module you are currently viewing. This ensures that when we
-# unpickle the TransformersTrainer, it will be ran before pickle tries to
-# import datasets_modules and prevents an exception from being thrown.
-# Same logic is present inside HF Transformers Ray integration:
-# https://github.com/huggingface/transformers/blob/\
-# 7d5fde991d598370d961be8cb7add6541e2b59ce/src/transformers/integrations.py#L271
-# Also see https://github.com/ray-project/ray/issues/28084
-if "datasets_modules" not in sys.modules and is_datasets_available():
-    import datasets.load
-
-    dynamic_modules_path = os.path.join(
-        datasets.load.init_dynamic_modules(), "__init__.py"
-    )
-    # load dynamic_modules from path
-    spec = importlib.util.spec_from_file_location(
-        "datasets_modules", dynamic_modules_path
-    )
-    datasets_modules = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = datasets_modules
-    spec.loader.exec_module(datasets_modules)
 
 
 TRAINER_INIT_FN_KEY = "_trainer_init_per_worker"
@@ -121,7 +130,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
             import ray
-            from ray.train.hf_transformers import TransformersTrainer
+            from ray.train.huggingface import TransformersTrainer
             from ray.air.config import ScalingConfig
 
             # If using GPUs, set this to True.
@@ -241,7 +250,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         self,
         trainer_init_per_worker: Callable[
             [Optional[TorchDataset], Optional[TorchDataset], Any],
-            transformers.trainer.Trainer,
+            "transformers.trainer.Trainer",
         ],
         *,
         trainer_init_config: Optional[Dict] = None,
@@ -253,6 +262,9 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+
+        if TRANSFORMERS_IMPORT_ERROR is not None:
+            raise TRANSFORMERS_IMPORT_ERROR
 
         # Functionality required for TransformersTrainer only added in this
         # version
@@ -286,7 +298,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         cls,
         trainer_init_per_worker: Callable[
             [TorchDataset, Optional[TorchDataset], Any],
-            transformers.trainer.Trainer,
+            "transformers.trainer.Trainer",
         ],
         trainer_init_config: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
@@ -306,7 +318,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         trainer_init_per_worker: Optional[
             Callable[
                 [TorchDataset, Optional[TorchDataset], Any],
-                transformers.trainer.Trainer,
+                "transformers.trainer.Trainer",
             ]
         ] = None,
         trainer_init_config: Optional[Dict] = None,
@@ -445,7 +457,8 @@ def _huggingface_train_loop_per_worker(config):
             "You have set `push_to_hub=True` but didn't specify `hub_token`. "
             "Pushing to hub will most likely fail, as the credentials will not "
             "be automatically propagated from the local enviroment to the Ray Actors. "
-            "If that happens, specify `hub_token` in `TrainingArguments`."
+            "If that happens, specify `hub_token` in `TrainingArguments`.",
+            stacklevel=2,
         )
 
     trainer = wrap_transformers_trainer(trainer)
