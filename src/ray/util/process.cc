@@ -629,7 +629,17 @@ bool IsProcessAlive(pid_t pid) {
   }
   return false;
 #else
+  // Check pid is alive or not
   if (kill(pid, 0) == -1 && errno == ESRCH) {
+    return false;
+  }
+  // If it's a child, check whether it's zombie
+  int status = 0;
+  int ret = waitpid(pid, &status, WNOHANG);
+  if (ret == pid) {
+    if (WIFEXITED(status)) {
+      RAY_LOG(DEBUG) << "Child exited with status: " << WEXITSTATUS(status);
+    }
     return false;
   }
   return true;

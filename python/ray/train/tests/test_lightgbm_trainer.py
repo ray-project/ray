@@ -100,7 +100,7 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
         scaling_config=scale_config,
         label_column="target",
         params=params,
-        num_boost_round=5,
+        num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         resume_from_checkpoint=resume_from,
     )
