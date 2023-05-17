@@ -20,7 +20,6 @@ from ray_release.config import (
 )
 from ray_release.test import (
     Test,
-    DOCKER_REPO,
     S3_BUCKET,
     DATAPLANE_FILENAME,
 )
