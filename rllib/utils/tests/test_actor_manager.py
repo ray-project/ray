@@ -43,9 +43,11 @@ class Actor(FaultAwareApply):
         r = self.random_numbers[self.count]
         # 10% chance of crashing.
         if r < 0.1:
+            time.sleep(0.1)
             sys.exit(1)
         # Another 10% chance of throwing errors.
         elif r < 0.2:
+            time.sleep(0.1)
             raise AttributeError("sorry")
 
     def call(self):
@@ -61,6 +63,9 @@ class Actor(FaultAwareApply):
 
 def wait_for_restore():
     """Wait for Ray actor fault tolerence to restore all failed actors."""
+    # sleep for 1s to make sure if failure happened, it should have been
+    # reported to the GCS
+    time.sleep(1)
     while True:
         states = [
             # Wait till all actors are either "ALIVE" (retored),

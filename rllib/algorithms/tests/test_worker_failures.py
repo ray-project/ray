@@ -174,6 +174,26 @@ class ForwardHealthCheckToEnvWorker(RolloutWorker):
         return super().ping()
 
 
+def wait_for_healthy_actors(trainer, num_healthy_actors, timeout=10):
+    """Wait until actors are healthy
+
+    Args:
+      tainer: Trainer to make progress
+      num_healthy_actors: Number of healthy actors waiting to be healthy
+      timeout: timeout for this wait
+    """
+    import time
+
+    now = time.time()
+    while (time.time() - now) <= timeout:
+        trainer.train()
+        if trainer.workers.num_healthy_remote_workers() != num_healthy_actors:
+            time.sleep(1)
+        else:
+            return True
+    return False
+
+
 def wait_for_restore(num_restarting_allowed=0):
     """Wait for Ray actor fault tolerence to restore all failed workers.
 
@@ -786,7 +806,7 @@ class TestWorkerFailures(unittest.TestCase):
             a.train()
 
             # 2 healthy remote workers left, although worker 3 is stuck in rollout.
-            self.assertEqual(a.workers.num_healthy_remote_workers(), 2)
+            self.assertTrue(wait_for_healthy_actors(a, 2))
             # Only 1 successful restore, since worker 2 is stuck in indefinite init
             # and can not be properly restored.
             self.assertEqual(a.workers.num_remote_worker_restarts(), 1)
