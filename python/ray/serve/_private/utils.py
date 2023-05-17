@@ -584,15 +584,29 @@ class MetricsPusher:
         self,
         metrics_process_func: Callable,
         interval_s: float,
-        collection_callback: Callable[[], Dict[str, float]],
+        collection_callback: Callable,
     ):
-        self._stop_event = threading.Event()
+        """
+        Args:
+            interval_s: the push interval.
+            collection_callback: a callable that returns the metric data points to
+            be sent to the the controller. The collection callback should take
+            no argument and returns a dictionary of str_key -> float_value.
+            metrics_process_func: actor handle function.
+        """
         self.collection_callback = collection_callback
         self.metrics_process_func = metrics_process_func
         self.interval_s = interval_s
-        self.pusher_thread = None
+        self.pusher_thread: Union[threading.Thread, None] = None
 
     def start(self):
+        """Start a background thread to push metrics to controller.
+
+        We use this background so it will be not blocked by user's code and ensure
+        consistently metrics delivery. Python GIL will ensure that this thread gets
+        fair timeshare to execute and run.
+        """
+
         def send_once():
             data = self.collection_callback()
 
@@ -634,10 +648,5 @@ class MetricsPusher:
         timer.start()
         self.pusher = timer
 
-    def stop(self):
-        if self._stop_event and self.pusher_thread:
-            self._stop_event.set()
-            self.pusher_thread.join()
-
     def __del__(self):
-        self.stop()
+        self.pusher_thread.join()
