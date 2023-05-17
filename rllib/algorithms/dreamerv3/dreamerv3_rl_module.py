@@ -22,7 +22,6 @@ from ray.rllib.utils.numpy import one_hot
 
 @ExperimentalAPI
 class DreamerV3RLModule(RLModule, abc.ABC):
-
     @override(RLModule)
     def setup(self):
         # Gather model-relevant settings.

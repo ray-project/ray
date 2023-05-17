@@ -9,7 +9,6 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from typing import Optional
 
-import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 

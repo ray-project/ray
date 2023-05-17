@@ -5,7 +5,6 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import numpy as np
 import tensorflow as tf
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
