@@ -1,7 +1,7 @@
 .. _observability-getting-started-program:
 
-Getting started (programmatically)
-==================================
+Getting Started (API, CLI, SDK)
+===============================
 
 Monitoring and debugging capabilities in Ray are available through an API, CLI, or SDK.
 
