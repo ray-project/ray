@@ -1,3 +1,4 @@
+import logging
 from unittest import mock
 
 import pytest
@@ -8,6 +9,7 @@ from ray.widgets.util import repr_with_fallback
 @mock.patch("ray.widgets.util.in_notebook")
 def test_ensure_notebook_dep_missing(mock_in_notebook, mock_import_module, caplog):
     """Test that missing notebook dependencies trigger a warning."""
+    caplog.set_level(logging.INFO)
 
     class MockDep:
         __version__ = "8.0.0"
@@ -34,6 +36,7 @@ def test_ensure_notebook_dep_missing(mock_in_notebook, mock_import_module, caplo
 @mock.patch("ray.widgets.util.in_notebook")
 def test_ensure_notebook_dep_outdated(mock_in_notebook, mock_import_module, caplog):
     """Test that outdated notebook dependencies trigger a warning."""
+    caplog.set_level(logging.INFO)
 
     class MockDep:
         __version__ = "7.0.0"
@@ -56,6 +59,7 @@ def test_ensure_notebook_dep_outdated(mock_in_notebook, mock_import_module, capl
 @mock.patch("ray.widgets.util.in_notebook")
 def test_ensure_notebook_valid(mock_in_notebook, mock_import_module, caplog):
     """Test that valid notebook dependencies don't trigger a warning."""
+    caplog.set_level(logging.INFO)
 
     class MockDep:
         __version__ = "8.0.0"
