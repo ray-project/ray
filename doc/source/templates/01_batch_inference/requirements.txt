@@ -1,2 +1,4 @@
+ipywidgets
+matplotlib
 numpy
 ray[data]
