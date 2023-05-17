@@ -316,7 +316,7 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
           if (redis_callback) {
             redis_callback(reply);
           }
-        }));
+        });
   };
 
   {
