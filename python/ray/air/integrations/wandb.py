@@ -105,10 +105,10 @@ def setup_wandb(
 
         .. code-block: python
 
-            from ray.air.integrations.wandb import wandb_setup
+            from ray.air.integrations.wandb import setup_wandb
 
             def training_loop(config):
-                wandb = wandb_setup(config)
+                wandb = setup_wandb(config)
                 # ...
                 wandb.log({"loss": 0.123})
 
@@ -160,13 +160,11 @@ def _setup_wandb(
 
     wandb_config = _config.pop("wandb", {}).copy()
 
-    # Deprecate: 2.4
+    # TODO(ml-team): Remove in 2.6.
     if wandb_config:
-        warnings.warn(
-            "Passing a `wandb` key in the config dict is deprecated and will raise an "
-            "error in the future. Please pass the actual arguments to `setup_wandb()` "
-            "instead.",
-            DeprecationWarning,
+        raise DeprecationWarning(
+            "Passing a `wandb` key in the config dict is deprecated."
+            "Please pass the actual arguments to `setup_wandb()` instead."
         )
 
     # If key file is specified, set
