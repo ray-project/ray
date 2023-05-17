@@ -1,4 +1,4 @@
-.. _observability-troubleshoot-general:
+.. _observability-general-troubleshoot:
 
 General Troubleshooting
 =======================
