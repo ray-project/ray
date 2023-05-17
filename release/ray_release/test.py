@@ -77,7 +77,7 @@ class Test(dict):
         tag = (
             self.get_ray_image()
             .replace("rayproject/", "")
-            .replace(RAY_CI_ERC_REPO, "")
+            .replace(f"{RAY_CI_ERC_REPO}:", "")
             .replace(":", "-")
         )
         return f"{DATAPLANE_ECR_REPO}:{tag}"
