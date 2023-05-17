@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.experimental.state.api import list_nodes
+from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
