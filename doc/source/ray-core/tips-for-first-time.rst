@@ -66,7 +66,7 @@ Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray
     start = time.time()
     results = [do_some_work(x) for x in range(4)]
     print("duration =", time.time() - start)
-    print("results = ", results)
+    print("results =", results)
 
 
 The output of a program execution is below. As expected, the program takes around 4 seconds:
@@ -75,7 +75,7 @@ The output of a program execution is below. As expected, the program takes aroun
     :options: +SKIP
 
     duration = 4.0149290561676025
-    results =  [0, 1, 2, 3]
+    results = [0, 1, 2, 3]
 
 Now, let’s parallelize the above program with Ray. Some first-time users will do this by just making the function remote, i.e.,
 
@@ -94,7 +94,7 @@ Now, let’s parallelize the above program with Ray. Some first-time users will 
     start = time.time()
     results = [do_some_work.remote(x) for x in range(4)]
     print("duration =", time.time() - start)
-    print("results = ", results)
+    print("results =", results)
 
 However, when executing the above program one gets:
 
