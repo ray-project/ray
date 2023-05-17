@@ -25,7 +25,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
-  resolver_.ResolveDependencies(task_spec, [&](Status status) {
+  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
     task_finisher_->MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
@@ -96,8 +96,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         keep_executing = false;
       }
       if (keep_executing) {
-        task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-            current_sys_time_ms());
+        // task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
+        //     current_sys_time_ms());
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
         const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
@@ -224,7 +224,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
       scheduling_key_entry.num_busy_workers++;
 
-      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
+      // task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
       task_spec.EmitTaskMetrics();
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);
