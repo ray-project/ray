@@ -63,7 +63,7 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
             for e in udf_return_col:
                 if isinstance(e, np.ndarray):
                     shapes.add((e.dtype, e.shape))
-                else:
+                elif not np.isscalar(e):
                     has_object = True
             if has_object or len(shapes) > 1:
                 # This util works around some limitations of np.array(dtype=object).
