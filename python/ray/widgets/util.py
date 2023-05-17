@@ -65,6 +65,81 @@ def make_table_html_repr(
     return content
 
 
+@DeveloperAPI
+def ensure_notebook_deps(
+    *deps: Iterable[Union[str, Optional[str]]],
+    missing_message: Optional[str] = None,
+    outdated_message: Optional[str] = None,
+) -> Callable[[F], F]:
+    """Generate a decorator which checks for soft dependencies.
+
+    This decorator is meant to wrap _repr_mimebundle_ methods. If the dependency is not
+    found, or a version is specified here and the version of the package is older than
+    the specified version, the original repr is used.
+    If the dependency is missing or the version is old, a log message is displayed.
+
+    Args:
+        *deps: Iterable of (dependency name, min version (optional))
+        missing_message: Message to log if missing package is found
+        outdated_message: Message to log if outdated package is found
+
+    Returns:
+        Wrapped function. Guaranteed to be safe to import soft dependencies specified
+        above.
+    """
+
+    def wrapper(func: F) -> F:
+        @wraps(func)
+        def wrapped(self, *args, **kwargs):
+            if _has_missing(*deps, message=missing_message) or _has_outdated(
+                *deps, message=outdated_message
+            ):
+                # Fallback to plaintext repr if dependencies are missing.
+                return {"text/plain": repr(self)}
+            return func(self, *args, **kwargs)
+
+        return wrapped
+
+    return wrapper
+
+
+@DeveloperAPI
+def ensure_ipywidgets_dep(version: str) -> Callable[[F], F]:
+    """Generate a decorator which checks for a soft ipywidgets dependency.
+
+    This is a convencience function separate from `ensure_notebook_deps` because
+    of its custom missing and outdated messages, which suggest the user restart the
+    notebook server after installation/upgrade.
+
+    Args:
+        version: Version of ipywidgets required.
+
+    Returns:
+        Wrapped function. Guaranteed to be safe against the specified ipywidgets
+        version.
+    """
+    text = (
+        "Run `pip install {}ipywidgets`, then restart "
+        "the notebook server for rich notebook output."
+    )
+
+    if in_notebook():
+        return ensure_notebook_deps(
+            ["ipywidgets", version],
+            missing_message=text.format(""),
+            outdated_message=text.format("-U "),
+        )
+    else:
+        # If not in a notebook, then immediately short-circuit.
+        # We do not log has_missing or has_outdated messages if not in a notebook
+        # setting.
+        def dummy_decorator(func):
+            # Return the original function without any changes.
+            return func
+
+        return dummy_decorator
+
+
 def _has_missing(
     *deps: Iterable[Union[str, Optional[str]]], message: Optional[str] = None
 ):
@@ -80,11 +155,11 @@ def _has_missing(
             message = f"Run `pip install {' '.join(missing)}` for rich notebook output."
 
         if sys.version_info < (3, 8):
-            logger.warning(f"Missing packages: {missing}. {message}")
+            logger.info(f"Missing packages: {missing}. {message}")
         else:
             # stacklevel=3: First level is this function, then ensure_notebook_deps,
             # then the actual function affected.
-            logger.warning(f"Missing packages: {missing}. {message}", stacklevel=3)
+            logger.info(f"Missing packages: {missing}. {message}", stacklevel=3)
 
     return missing
 
@@ -115,13 +190,11 @@ def _has_outdated(
             message = f"Run `pip install -U {install_str}` for rich notebook output."
 
         if sys.version_info < (3, 8):
-            logger.warning(f"Outdated packages:\n{outdated_str}\n{message}")
+            logger.info(f"Outdated packages:\n{outdated_str}\n{message}")
         else:
             # stacklevel=3: First level is this function, then ensure_notebook_deps,
             # then the actual function affected.
-            logger.warning(
-                f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3
-            )
+            logger.info(f"Outdated packages:\n{outdated_str}\n{message}", stacklevel=3)
 
     return outdated
 
