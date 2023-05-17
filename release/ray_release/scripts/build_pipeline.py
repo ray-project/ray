@@ -266,7 +266,7 @@ def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
                 tag,
                 "-",
             ],
-            stdin=open("dataplance.tgz", "rb"),
+            stdin=open("dataplane.tgz", "rb"),
             env={"DOCKER_BUILDKIT": "1"},
         )
         subprocess.check_call(
