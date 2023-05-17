@@ -735,10 +735,7 @@ def test_actor_failure_per_type(ray_start_cluster):
     ray.kill(owner)
     with pytest.raises(
         ray.exceptions.RayActorError,
-        # TODO(iycheng): re-enable the match after fixing the
-        # race condition.
-        # https://github.com/ray-project/ray/pull/34883
-        # match="The actor is dead because its owner has died",
+        match="The actor is dead because its owner has died",
     ) as exc_info:
         ray.get(a.check_alive.remote())
     assert exc_info.value.actor_id == a._actor_id.hex()
