@@ -6,6 +6,7 @@ import sys
 import tempfile
 from typing import Optional
 
+import boto3
 import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
@@ -238,6 +239,37 @@ def main(
 
     steps_str = json.dumps(steps)
     print(steps_str)
+
+
+def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
+    """
+    Builds the Anyscale BYOD images for the given tests.
+    """
+    ray_images = {test.get_ray_image() for test, _ in tests if test.is_byod_cluster()}
+    s3 = boto3.client("s3")
+    s3.download_file(
+        Bucket="ray-release-automation-results",
+        Key="dataplane.tgz",
+        Filename="dataplane.tgz",
+    )
+    for ray_image in ray_images:
+        logger.info(f"Building BYOD for {ray_image}")
+        subprocess.check_call(
+            [
+                "docker",
+                "build",
+                "--build-arg",
+                f"BASE_IMAGE={ray_image}",
+                "-t",
+                ray_image.replace("rayproject", "anyscale"),
+                "-",
+                "<",
+                "dataplane.tgz",
+            ],
+            env={"DOCKER_BUILDKIT": "1"},
+        )
+    # TODO(aslonnie): Build anyscale byod images for the given ray images
+    return
 
 
 if __name__ == "__main__":
