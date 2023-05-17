@@ -201,6 +201,29 @@ def create_replica_wrapper(name: str):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.replica.handle_request(query)
 
+        async def handle_request_streaming(
+            self,
+            pickled_request_metadata: bytes,
+            *request_args,
+            **request_kwargs,
+        ):
+            # The request metadata should be pickled for performance.
+            request_metadata: RequestMetadata = pickle.loads(pickled_request_metadata)
+
+            # Directly receive input because it might contain an ObjectRef.
+            query = Query(request_args, request_kwargs, request_metadata)
+            _, result = await self.replica.handle_request(query, should_convert_streaming_response=False)
+
+            if not isinstance(result, StreamingResponse):
+                yield result
+            else:
+                gen = result.body_iterator
+                result.body_iterator = None
+                yield result
+
+                async for r in result:
+                    yield r
+
         async def handle_request_from_java(
             self,
             proto_request_metadata: bytes,
@@ -417,7 +440,7 @@ class RayServeReplica:
             return self.callable
         return getattr(self.callable, method_name)
 
-    async def ensure_serializable_response(self, response: Any) -> Any:
+    async def convert_streaming_response(self, response: Any) -> Any:
         if isinstance(response, starlette.responses.StreamingResponse):
 
             async def mock_receive():
@@ -432,7 +455,7 @@ class RayServeReplica:
             return sender.build_asgi_response()
         return response
 
-    async def invoke_single(self, request_item: Query) -> Tuple[Any, bool]:
+    async def invoke_single(self, request_item: Query, *, should_convert_streaming_response: bool = True) -> Tuple[Any, bool]:
         """Executes the provided request on this replica.
 
         Returns the user-provided output and a boolean indicating if the
@@ -467,7 +490,9 @@ class RayServeReplica:
                     # call with non-empty args
                     result = await method_to_call(*args, **kwargs)
 
-            result = await self.ensure_serializable_response(result)
+            if should_convert_streaming_response:
+                result = await self.convert_streaming_response(result)
+
             self.request_counter.inc(tags={"route": request_item.metadata.route})
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
@@ -516,7 +541,7 @@ class RayServeReplica:
                 )
                 await reconfigure_method(self.deployment_config.user_config)
 
-    async def handle_request(self, request: Query) -> asyncio.Future:
+    async def handle_request(self, request: Query, *, should_convert_streaming_response: bool = True) -> asyncio.Future:
         async with self.rwlock.reader_lock:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
@@ -530,7 +555,7 @@ class RayServeReplica:
             )
 
             start_time = time.time()
-            result, success = await self.invoke_single(request)
+            result, success = await self.invoke_single(request, should_convert_streaming_response=should_convert_streaming_response)
             latency_ms = (time.time() - start_time) * 1000
             self.processing_latency_tracker.observe(
                 latency_ms, tags={"route": request.metadata.route}

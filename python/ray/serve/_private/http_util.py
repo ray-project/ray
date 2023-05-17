@@ -6,7 +6,6 @@ import json
 import logging
 from typing import Any, Dict, Type
 
-from starlette.responses import StreamingResponse
 from starlette.requests import Request
 from starlette.types import Send, ASGIApp
 from fastapi.encoders import jsonable_encoder
@@ -283,17 +282,3 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
             f"Setting SO_REUSEPORT failed because of {e}. SO_REUSEPORT is disabled."
         )
         return False
-
-async def make_streaming_response_wrapper(
-    streaming_response: StreamingResponse,
-    gen: ray._raylet.StreamingObjectRefGenerator,
-) -> StreamingResponse:
-    """TODO."""
-    assert isinstance(streaming_response, StreamingResponse)
-
-    async def obj_ref_gen_wrapper():
-        async for obj_ref in gen:
-            yield await obj_ref
-
-    streaming_response.body_iterator = obj_ref_gen_wrapper
-    return streaming_response

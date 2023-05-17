@@ -109,7 +109,14 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # This will make the .result() to raise cancelled error.
             assignment_task.cancel()
         try:
-            object_ref = await assignment_task
+            assignment_result = await assignment_task
+
+            if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
+                obj_ref_generator = ossignment_result
+                object_ref = await obj_ref_generator.__anext__()
+            else:
+                obj_ref_generator = None
+                object_ref = assignment_result
 
             # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
             # some replicas crash simultaneously (e.g. if the head node crashes),
@@ -161,6 +168,13 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
+
+    if obj_ref_generator is not None and isinstance(result, starlette.responses.StreamingResponse):
+        async def obj_ref_generator_wrapper():
+            async for obj_ref in obj_ref_generator:
+                yield await obj_ref
+
+        result.body_iterator = obj_ref_gen_wrapper
 
     if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
@@ -276,7 +290,7 @@ class HTTPProxy:
                 sync=False,
                 missing_ok=True,
                 _internal_pickled_http_request=True,
-                _use_ray_streaming=True, # TODO: GET FROM ENV VAR.
+                _use_ray_streaming=True,  # TODO: GET FROM ENV VAR.
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
