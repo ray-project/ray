@@ -22,7 +22,7 @@ from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-from ray.widgets.util import ensure_ipywidgets_dep, repr_fallback_if_colab
+from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -458,8 +458,7 @@ class DataParallelTrainer(BaseTrainer):
         """
         return self._dataset_config.copy()
 
-    @ensure_ipywidgets_dep("8")
-    @repr_fallback_if_colab
+    @repr_with_fallback(["ipywidgets", "8"])
     def _repr_mimebundle_(self, **kwargs):
         """Return a mimebundle with an ipywidget repr and a simple text repr.
 
