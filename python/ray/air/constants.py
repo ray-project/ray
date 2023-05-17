@@ -45,31 +45,6 @@ CHECKPOINT_ID_ATTR = "_current_checkpoint_id"
 # checkpointing.
 LAZY_CHECKPOINT_MARKER_FILE = ".lazy_checkpoint_marker"
 
-# ==================================================
-#               Environment Variables
-# ==================================================
-
-# Integer value which if set will copy files in reported AIR directory
-# checkpoints instead of moving them (if worker is on the same node as Trainable)
-COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
-    "TRAIN_COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING"
-)
-
-# Integer value which if set will disable lazy checkpointing
-# (avoiding unnecessary serialization if worker is on the same node
-# as Trainable)
-DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
-
-
-# NOTE: When adding a new environment variable, please track it in this list.
-# TODO(ml-team): Most env var constants should get moved here.
-AIR_ENV_VARS = {
-    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
-    "RAY_AIR_FULL_TRACEBACKS",
-    "RAY_AIR_NEW_OUTPUT",
-    "RAY_AIR_RICH_LAYOUT",
-}
 
 # The timestamp of when the result is generated.
 # Default to when the result is processed by tune.
@@ -99,3 +74,29 @@ EXPR_ERROR_PICKLE_FILE = "error.pkl"
 
 # File that stores the error file
 EXPR_ERROR_FILE = "error.txt"
+
+# ==================================================
+#               Environment Variables
+# ==================================================
+
+# Integer value which if set will copy files in reported AIR directory
+# checkpoints instead of moving them (if worker is on the same node as Trainable)
+COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
+    "TRAIN_COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING"
+)
+
+# Integer value which if set will disable lazy checkpointing
+# (avoiding unnecessary serialization if worker is on the same node
+# as Trainable)
+DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
+
+
+# NOTE: When adding a new environment variable, please track it in this list.
+# TODO(ml-team): Most env var constants should get moved here.
+AIR_ENV_VARS = {
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+    DISABLE_LAZY_CHECKPOINTING_ENV,
+    "RAY_AIR_FULL_TRACEBACKS",
+    "RAY_AIR_NEW_OUTPUT",
+    "RAY_AIR_RICH_LAYOUT",
+}
