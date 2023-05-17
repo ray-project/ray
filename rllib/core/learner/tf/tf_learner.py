@@ -104,17 +104,13 @@ class TfLearner(Learner):
 
     @override(Learner)
     def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
+        self, loss: TensorType, tape: "tf.GradientTape", **kwargs
     ) -> Tuple[ParamDictType, ResultDict]:
         grads = tape.gradient(loss[self.TOTAL_LOSS_KEY], self._params)
         return grads, {}
 
     @override(Learner)
-    def postprocess_gradients(
-        self,
-        gradients_dict: Mapping[str, Any],
-    ) -> Tuple[ParamDictType, ResultDict]:
-
+    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
         # Perform gradient clipping, if necessary.
         clip_by = self._optimizer_config.get("grad_clip_by")
         global_norm = clip_gradients(
@@ -122,14 +118,14 @@ class TfLearner(Learner):
             grad_clip=self._optimizer_config.get("grad_clip"),
             grad_clip_by=clip_by,
         )
-        stats = {}
-        if clip_by == "global_norm":
-            stats["gradients_global_norm"] = global_norm
 
-        return gradients_dict, stats
+        if clip_by == "global_norm":
+            self.register_metric("gradients_global_norm", global_norm)
+
+        return gradients_dict
 
     @override(Learner)
-    def apply_gradients(self, gradients: ParamDictType) -> ResultDict:
+    def apply_gradients(self, gradients: ParamDictType):
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
@@ -146,8 +142,6 @@ class TfLearner(Learner):
                 if gradients[param_ref] is not None
             ]
             optim.apply_gradients(zip(gradient_list, variable_list))
-
-        return {}
 
     @override(Learner)
     def load_state(
@@ -474,7 +468,12 @@ class TfLearner(Learner):
             loss = update_outs["loss"]
             fwd_out = update_outs["fwd_out"]
             postprocessed_gradients = update_outs["postprocessed_gradients"]
-            result = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+            result = self.compile_results(
+                batch=batch,
+                fwd_out=fwd_out,
+                loss_or_loss_stats=loss,
+                postprocessed_gradients=postprocessed_gradients,
+            )
             self._check_result(result)
             results.append(result)
 
@@ -500,8 +499,6 @@ class TfLearner(Learner):
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
-                if isinstance(loss, tf.Tensor):
-                    loss = {"total_loss": loss}
             gradients = self.compute_gradients(loss, tape)
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)

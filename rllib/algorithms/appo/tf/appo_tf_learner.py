@@ -139,8 +139,8 @@ class APPOTfLearner(AppoLearner, TfLearner):
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
+        # Register important loss stats.
+        self.register_metrics({
             POLICY_LOSS_KEY: mean_pi_loss,
             VF_LOSS_KEY: mean_vf_loss,
             ENTROPY_KEY: -mean_entropy_loss,
@@ -148,7 +148,9 @@ class APPOTfLearner(AppoLearner, TfLearner):
             LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
                 self.curr_kl_coeffs_per_module[module_id]
             ),
-        }
+        })
+        # Return the total loss.
+        return total_loss
 
     @override(AppoLearner)
     def _update_module_target_networks(self, module_id: ModuleID):

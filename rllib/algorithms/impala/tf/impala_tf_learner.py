@@ -98,9 +98,12 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             + mean_entropy_loss
             * (self.entropy_coeff_scheduler.get_current_value(module_id))
         )
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
+
+        # Register important loss stats.
+        self.register_metrics({
             "pi_loss": mean_pi_loss,
             "vf_loss": mean_vf_loss,
             ENTROPY_KEY: -mean_entropy_loss,
-        }
+        })
+        # Return the total loss.
+        return total_loss

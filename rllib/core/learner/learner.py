@@ -270,6 +270,8 @@ class Learner:
         self._named_optimizers: Dict[str, Optimizer] = {}
         self._params: ParamDictType = {}
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
+        # Registered metrics to be returned from `Learner.update()`.
+        self._metrics = {}
 
     @property
     def distributed(self) -> bool:
@@ -424,17 +426,38 @@ class Learner:
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
-    def compute_gradients(self, loss: Mapping[str, Any]) -> ParamDictType:
+    def compute_gradients(self, loss: TensorType, **kwargs) -> ParamDictType:
         """Computes the gradients based on the loss.
 
         Args:
             loss: The computed loss dict. It should include the key
                 `self.TOTAL_LOSS_KEY` that contains the total loss.
+            **kwargs: Forward compatibility kwargs.
+
         Returns:
-            The gradients in teh same format as self._params.
+            The gradients in the same format as self._params.
         """
 
+    @OverrideToImplementCustomLogic
+    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
+        """Applies potential postprocessing operations on the gradients.
+
+        This method is called after gradients have been computed, and modifies them
+        before they are applied to the respective module(s).
+        This includes grad clipping by value, norm, or global-norm, or other
+        algorithm specific gradient postprocessing steps.
+
+        Args:
+            gradients_dict: A dictionary of gradients.
+
+        Returns:
+            A dictionary with the updated gradients.
+        """
+        return gradients_dict
+
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def apply_gradients(self, gradients: ParamDictType) -> None:
         """Applies the gradients to the MultiAgentRLModule parameters.
@@ -442,6 +465,19 @@ class Learner:
         Args:
             gradients: A dictionary of gradients, in the same format as self._params.
         """
+
+    def register_metric(self, key: str, value: Any):
+        """Registers a single key/value metric pair for loss and gradient stats.
+
+        Args:
+            TODO:
+        """
+        self._metrics[key] = value
+
+    def register_metrics(self, metrics_dict: Dict[str, Any]):
+        """TODO"""
+        for key, value in metrics_dict.items():
+            self.register_metric(key, value)
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the weights of the underlying MultiAgentRLModule.
@@ -513,23 +549,17 @@ class Learner:
         *,
         batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
-        loss_or_loss_stats: Union[TensorType, Mapping[str, Any]],
-        postprocessed_gradients: Mapping[str, Any],
-        compute_grad_stats: Mapping[str, Any],
-        postprocess_grad_stats: Mapping[str, Any],
-        apply_grad_stats: Mapping[str, Any],
+        loss_per_module: Mapping[str, TensorType],
+        postprocessed_gradients: ParamDictType,
     ) -> Mapping[str, Any]:
         """Compile results from the update in a numpy-friendly format.
 
         Args:
             batch: The batch that was used for the update.
             fwd_out: The output of the forward train pass.
-            loss_or_loss_stats: The loss after postprocessing.
+            loss_per_module: The loss tensors (per module ID) as returned by the
+                `compute_loss_per_module(module_id=...)` calls.
             postprocessed_gradients: The gradients after postprocessing.
-            compute_grad_stats: The stats dict returned by `self.compute_gradients()`.
-            postprocess_grad_stats: The stats dict returned by
-                `self.postprocess_gradients()`.
-            apply_grad_stats: The stats dict returned by `self.apply_gradients()`.
 
         Returns:
             A dictionary of results.
@@ -539,22 +569,15 @@ class Learner:
                 f"batch must be a MultiAgentBatch, but got {type(batch)} instead."
             )
 
-        loss_numpy = convert_to_numpy(loss_or_loss_stats)
+        loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
         # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
         # This matches what the legacy RLlib policies used to return.
         module_learner_stats = defaultdict(dict)
         for module_id in batch.policy_batches.keys():
-            module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
-
-        # Simply merge all the compute/postprocess/apply gradient stats dicts together
-        # and store them under the ALL_MODULES key since all these operations are always
-        # done for all modules (no individual per-module calls).
-        module_learner_stats[ALL_MODULES] = {
-            **compute_grad_stats,
-            **postprocessed_gradients,
-            **apply_grad_stats,
-        }
+            module_learner_stats[module_id] = {
+                LEARNER_STATS_KEY: loss_per_module_numpy[module_id],
+            }
 
         return dict(module_learner_stats)
 
@@ -698,7 +721,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     def compute_loss_per_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
-    ) -> Mapping[str, Any]:
+    ) -> TensorType:
         """Computes the loss for a single module.
 
         Think of this as computing loss for a single agent. For multi-agent use-cases
@@ -711,9 +734,11 @@ class Learner:
             fwd_out: The output of the forward pass for this particular module.
 
         Returns:
-            A dictionary of losses. The dictionary
-            must contain one protected key "total_loss" which will be used for
-            computing gradients through.
+            A single total loss tensor. If you have more than one optimizer on the
+            provided `module_id` and would like to compute gradients separately using
+            these different optimizers, simply add up the individual loss terms for
+            each optimizer and return the sum. Also, for tracking the individual loss
+            terms, you can use the `Learner.register_metric(s)` APIs.
         """
         raise NotImplementedError
 
@@ -785,26 +810,6 @@ class Learner:
             A dictionary of results from the update
         """
         return {}
-
-    @OverrideToImplementCustomLogic
-    def postprocess_gradients(
-        self,
-        gradients_dict: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        """Applies potential postprocessing operations on the gradients.
-
-        This method is called after gradients have been computed, and modifies them
-        before they are applied to the respective module(s).
-        This includes grad clipping by value, norm, or global-norm, or other
-        algorithm specific gradient postprocessing steps.
-
-        Args:
-            gradients_dict: A dictionary of gradients.
-
-        Returns:
-            A dictionary with the updated gradients.
-        """
-        return gradients_dict
 
     def update(
         self,
@@ -1098,19 +1103,12 @@ class Learner:
         #  NestedDict from the base class.
         tensorbatch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(tensorbatch)
-        loss_or_loss_stats = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
+        loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
 
-        gradients, compute_grad_stats = self.compute_gradients(loss_or_loss_stats)
-        postprocessed_gradients, postprocess_grad_stats = (
-            self.postprocess_gradients(gradients)
-        )
-        apply_grad_stats = self.apply_gradients(postprocessed_gradients)
-        results = self.compile_results(
-            batch,
-            fwd_out,
-            loss_or_loss_stats,
-            postprocessed_gradients,
-        )
+        gradients = self.compute_gradients(loss)
+        postprocessed_gradients = self.postprocess_gradients(gradients)
+        self.apply_gradients(postprocessed_gradients)
+        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
         self._check_result(results)
         return convert_to_numpy(results)
 

@@ -83,9 +83,7 @@ class TorchLearner(Learner):
         return pair
 
     @override(Learner)
-    def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]]
-    ) -> Tuple[ParamDictType, ResultDict]:
+    def compute_gradients(self, loss: TensorType, **kwargs) -> ParamDictType:
         for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients
             optim.zero_grad(set_to_none=True)
@@ -95,12 +93,7 @@ class TorchLearner(Learner):
         return grads, {}
 
     @override(Learner)
-    def postprocess_gradients(
-        self,
-        gradients_dict: Mapping[str, Any],
-    ) -> Tuple[ParamDictType, ResultDict]:
-        """Postprocesses gradients depending on the optimizer config."""
-
+    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
         # Perform gradient clipping, if necessary.
         clip_by = self._optimizer_config.get("grad_clip_by")
         global_norm = clip_gradients(
@@ -108,14 +101,14 @@ class TorchLearner(Learner):
             grad_clip=self._optimizer_config.get("grad_clip"),
             grad_clip_by=clip_by,
         )
-        stats = {}
-        if clip_by == "global_norm":
-            stats["gradients_global_norm"] = global_norm
 
-        return gradients_dict, stats
+        if clip_by == "global_norm":
+            self.register_metric("gradients_global_norm", global_norm)
+
+        return gradients_dict
 
     @override(Learner)
-    def apply_gradients(self, gradients: ParamDictType) -> ResultDict:
+    def apply_gradients(self, gradients: ParamDictType) -> None:
         # make sure the parameters do not carry gradients on their own
         for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
@@ -127,8 +120,6 @@ class TorchLearner(Learner):
         # for each optimizer call its step function with the gradients
         for optim in self._optimizer_parameters:
             optim.step()
-
-        return {}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)

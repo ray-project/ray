@@ -110,17 +110,19 @@ class PPOTfLearner(PPOLearner, TfLearner):
         if self.hps.kl_coeff > 0.0:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
+        # Register important loss stats.
+        self.register_metrics({
             POLICY_LOSS_KEY: -tf.reduce_mean(surrogate_loss),
             VF_LOSS_KEY: mean_vf_loss,
             LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
             LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
-                batch[Postprocessing.VALUE_TARGETS], value_fn_out
+               batch[Postprocessing.VALUE_TARGETS], value_fn_out
             ),
             ENTROPY_KEY: mean_entropy,
             LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-        }
+        })
+        # Return the total loss.
+        return total_loss
 
     @override(PPOLearner)
     def additional_update_per_module(
