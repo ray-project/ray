@@ -791,7 +791,7 @@ class AlgorithmConfig(_Config):
         if (
             _torch is not None
             and self.framework_str == "torch"
-            and version.parse(_torch.__version__) >= TORCH_COMPILE_REQUIRED_VERSION
+            and version.parse(_torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
             and (self.torch_compile_learner or self.torch_compile_worker)
         ):
             raise ValueError("torch.compile is only supported from torch 2.0.0")
