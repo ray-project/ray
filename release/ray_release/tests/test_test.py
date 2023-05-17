@@ -5,6 +5,7 @@ import pytest
 from ray_release.test import (
     Test,
     DATAPLANE_ECR_REPO,
+    RAY_CI_ERC_REPO,
 )
 
 
@@ -44,9 +45,12 @@ def test_get_ray_image():
     )
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
     assert _stub_test().get_ray_image() == "rayproject/ray:123456-py37"
+    os.environ["BUILDKITE_PULL_REQUEST"] = "1234"
+    assert _stub_test().get_ray_image() == f"{RAY_CI_ERC_REPO}:oss-ci-build_1234567890"
 
 
 def test_get_anyscale_byod_image():
+    os.environ.pop("BUILDKITE_PULL_REQUEST", None)
     os.environ.pop("BUILDKITE_COMMIT", None)
     assert (
         _stub_test().get_anyscale_byod_image()
