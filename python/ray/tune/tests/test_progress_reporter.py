@@ -325,12 +325,10 @@ with patch("ray.tune.progress_reporter._get_trial_location",
 # Add "verbose=3)" etc
 
 
-@pytest.mark.skipif(
-    "AIR_VERBOSITY" in os.environ, reason="console v2 doesn't work with this v1 test."
-)
 class ProgressReporterTest(unittest.TestCase):
     def setUp(self) -> None:
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"
+        os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
 
     def mock_trial(self, status, i):
         mock = MagicMock()
@@ -402,7 +400,7 @@ class ProgressReporterTest(unittest.TestCase):
             for i in range(3):
                 tune.report(**test_result)
 
-        analysis = tune.run(test, num_samples=3)
+        analysis = tune.run(test, num_samples=3, verbose=3)
         all_trials = analysis.trials
         inferred_results = reporter._infer_user_metrics(all_trials)
         for metric in inferred_results:
@@ -421,7 +419,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self._output.append(progress_str)
 
         reporter = TestReporter()
-        analysis = tune.run(test, num_samples=3, progress_reporter=reporter)
+        analysis = tune.run(test, num_samples=3, progress_reporter=reporter, verbose=3)
         found = {k: False for k in test_result}
         for output in reporter._output:
             for key in test_result:
@@ -688,7 +686,7 @@ class ProgressReporterTest(unittest.TestCase):
             output = run_string_as_driver(END_TO_END_COMMAND)
             try:
                 # New execution path is too fast, trials are already terminated
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     assert EXPECTED_END_TO_END_START in output
                 assert EXPECTED_END_TO_END_END in output
                 assert "(raylet)" not in output, "Unexpected raylet log messages"
@@ -713,7 +711,7 @@ class ProgressReporterTest(unittest.TestCase):
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -725,14 +723,14 @@ class ProgressReporterTest(unittest.TestCase):
             output = run_string_as_driver(verbose_1_cmd)
             try:
                 # New execution path is too fast, trials are already terminated
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertNotIn(VERBOSE_TRIAL_DETAIL, output)
             except Exception:
                 print("*** BEGIN OUTPUT ***")
@@ -743,7 +741,7 @@ class ProgressReporterTest(unittest.TestCase):
             verbose_2_cmd = VERBOSE_CMD + "verbose=2)"
             output = run_string_as_driver(verbose_2_cmd)
             try:
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertIn(VERBOSE_TRIAL_NORM_1, output)
@@ -760,14 +758,14 @@ class ProgressReporterTest(unittest.TestCase):
             verbose_3_cmd = VERBOSE_CMD + "verbose=3)"
             output = run_string_as_driver(verbose_3_cmd)
             try:
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertIn(VERBOSE_EXP_OUT_1, output)
                 self.assertIn(VERBOSE_EXP_OUT_2, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_1, output)
                 self.assertIsNone(re.search(VERBOSE_TRIAL_NORM_2_PATTERN, output))
                 self.assertNotIn(VERBOSE_TRIAL_NORM_3, output)
                 self.assertNotIn(VERBOSE_TRIAL_NORM_4, output)
-                if os.environ.get("TUNE_NEW_EXECUTION") != "1":
+                if os.environ.get("TUNE_NEW_EXECUTION") == "0":
                     self.assertIn(VERBOSE_TRIAL_DETAIL, output)
                 # Check that we don't print duplicate results at the end
                 self.assertTrue(output.count(VERBOSE_TRIAL_WITH_ONCE_RESULT) == 1)
@@ -799,7 +797,12 @@ class ProgressReporterTest(unittest.TestCase):
             def report(self, trials, done, *sys_info):
                 pass
 
-        tune.run(lambda config: 2, num_samples=1, progress_reporter=CustomReporter())
+        tune.run(
+            lambda config: 2,
+            num_samples=1,
+            progress_reporter=CustomReporter(),
+            verbose=3,
+        )
 
     def testMaxLen(self):
         trials = []

@@ -77,7 +77,7 @@ def make_ds(
     num_columns: int,
     ops_spec: List[Dict[str, Any]],
     target_max_block_size: int,
-) -> ray.data.Datastream:
+) -> ray.data.Dataset:
     ds = ray.data.read_datasource(
         BlockDatasource(),
         num_blocks_per_task=num_blocks_per_task,
@@ -96,7 +96,7 @@ def make_ds(
     return ds
 
 
-def execute_ds(ds: ray.data.Datastream):
+def execute_ds(ds: ray.data.Dataset):
     ds = ds.fully_executed()
 
 
@@ -123,7 +123,7 @@ if __name__ == "__main__":
         "--ops-spec",
         type=str,
         default=(
-            '[{"op": "map_batches", "batch_size": 1024, "batch_format": "default"}]'
+            '[{"op": "map_batches", "batch_size": 1024, "batch_format": "pandas"}]'
         ),
     )
     parser.add_argument("--target-max-block-size", type=int, default=None)

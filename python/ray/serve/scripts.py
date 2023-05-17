@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Dict, Optional, Union, Tuple
+from typing import Dict, Optional, Tuple
 
 import click
 import yaml
@@ -26,8 +26,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.common import ServeDeployMode
-from ray.serve.deployment import deployment_to_schema
-from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve._private import api as _private_api
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -100,6 +99,8 @@ def process_dict_for_yaml_dump(data):
     for k, v in data.items():
         if isinstance(v, dict):
             data[k] = process_dict_for_yaml_dump(v)
+        if isinstance(v, list):
+            data[k] = [process_dict_for_yaml_dump(item) for item in v]
         elif isinstance(v, str):
             data[k] = remove_ansi_escape_sequences(v)
 
@@ -121,12 +122,12 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     return args_dict
 
 
-@click.group(help="CLI for managing Serve instances on a Ray cluster.")
+@click.group(help="CLI for managing Serve applications on a Ray cluster.")
 def cli():
     pass
 
 
-@cli.command(help="Start a detached Serve instance on the Ray cluster.")
+@cli.command(help="Start Serve on the Ray cluster.")
 @click.option(
     "--address",
     "-a",
@@ -140,21 +141,21 @@ def cli():
     default=DEFAULT_HTTP_HOST,
     required=False,
     type=str,
-    help="Host for HTTP servers to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
+    help="Host for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
 )
 @click.option(
     "--http-port",
     default=DEFAULT_HTTP_PORT,
     required=False,
     type=int,
-    help="Port for HTTP servers to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
+    help="Port for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
 )
 @click.option(
     "--http-location",
     default=DeploymentMode.HeadOnly,
     required=False,
     type=click.Choice(list(DeploymentMode)),
-    help="Location of the HTTP servers. Defaults to HeadOnly.",
+    help="Location of the HTTP proxies. Defaults to HeadOnly.",
 )
 def start(address, http_host, http_port, http_location):
     ray.init(
@@ -231,7 +232,7 @@ def deploy(config_file_name: str, address: str):
     help=(
         "Runs an application from the specified import path (e.g., my_script:"
         "app) or application(s) from a YAML config.\n\n"
-        "If passing an import path, it must point to a bound Serve application or "
+        "If passing an import path, it must point to a Serve Application or "
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
@@ -299,7 +300,7 @@ def deploy(config_file_name: str, address: str):
     "-p",
     required=False,
     type=int,
-    help=f"Port for HTTP servers to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
+    help=f"Port for HTTP proxies to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
 )
 @click.option(
     "--blocking/--non-blocking",
@@ -504,7 +505,7 @@ def config(address: str, name: Optional[str]):
 
 
 @cli.command(
-    short_help="Get the current status of all live Serve applications and deployments.",
+    short_help="Get the current status of all Serve applications on the cluster.",
     help=(
         "Prints status information about all applications on the cluster.\n\n"
         "An application may be:\n\n"
@@ -583,7 +584,7 @@ def status(address: str, name: Optional[str]):
 
 
 @cli.command(
-    help="Deletes the Serve app.",
+    help="Shuts down Serve on the cluster, deleting all applications.",
 )
 @click.option(
     "--address",
@@ -611,11 +612,11 @@ def shutdown(address: str, yes: bool):
 
 
 @cli.command(
-    short_help="Writes a Serve Deployment Graph's config file.",
+    short_help="Generate a config file for the specified application(s).",
     help=(
-        "Imports the ClassNode(s) or FunctionNode(s) at IMPORT_PATH(S) and generates a "
+        "Imports the Application at IMPORT_PATH(S) and generates a "
         "structured config for it. If the flag --multi-app is set, accepts multiple "
-        "ClassNode/FunctionNodes and generates a multi-application config. Config "
+        "Applications and generates a multi-application config. Config "
         "outputted from this command can be used by `serve deploy` or the REST API. "
     ),
 )
@@ -659,14 +660,13 @@ def build(
     sys.path.insert(0, app_dir)
 
     def build_app_config(import_path: str, name: str = None):
-        node: Union[ClassNode, FunctionNode] = import_attr(import_path)
-        if not isinstance(node, (ClassNode, FunctionNode)):
+        app: Application = import_attr(import_path)
+        if not isinstance(app, Application):
             raise TypeError(
-                f"Expected '{import_path}' to be ClassNode or "
-                f"FunctionNode, but got {type(node)}."
+                f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(node)
+        app = build_app(app)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},

@@ -15,6 +15,7 @@ from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
+from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -46,7 +47,7 @@ def get_expected_module_config(
     return config
 
 
-def dummy_torch_ppo_loss(batch, fwd_out):
+def dummy_torch_ppo_loss(module, batch, fwd_out):
     """Dummy PPO loss function for testing purposes.
 
     Will eventually use the actual PPO loss function implemented in the PPOTfTrainer.
@@ -63,19 +64,24 @@ def dummy_torch_ppo_loss(batch, fwd_out):
     # this is not exactly a ppo loss, just something to show that the
     # forward train works
     adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
-    actor_loss = -(fwd_out[SampleBatch.ACTION_LOGP] * adv).mean()
+    action_dist_class = module.get_train_action_dist_cls()
+    action_probs = action_dist_class.from_logits(
+        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+    ).logp(batch[SampleBatch.ACTIONS])
+    actor_loss = -(action_probs * adv).mean()
     critic_loss = (adv**2).mean()
     loss = actor_loss + critic_loss
 
     return loss
 
 
-def dummy_tf_ppo_loss(batch, fwd_out):
+def dummy_tf_ppo_loss(module, batch, fwd_out):
     """Dummy PPO loss function for testing purposes.
 
     Will eventually use the actual PPO loss function implemented in the PPOTfTrainer.
 
     Args:
+        module: PPOTfRLModule
         batch: SampleBatch used for training.
         fwd_out: Forward output of the model.
 
@@ -83,7 +89,10 @@ def dummy_tf_ppo_loss(batch, fwd_out):
         Loss tensor
     """
     adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
-    action_probs = fwd_out[SampleBatch.ACTION_DIST].logp(batch[SampleBatch.ACTIONS])
+    action_dist_class = module.get_train_action_dist_cls()
+    action_probs = action_dist_class.from_logits(
+        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+    ).logp(batch[SampleBatch.ACTIONS])
     actor_loss = -tf.reduce_mean(action_probs * adv)
     critic_loss = tf.reduce_mean(tf.square(adv))
     return actor_loss + critic_loss
@@ -105,9 +114,13 @@ def _get_input_batch_from_obs(framework, obs):
     if framework == "torch":
         batch = {
             SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
+            STATE_IN: None,
         }
     else:
-        batch = {SampleBatch.OBS: tf.convert_to_tensor([obs])}
+        batch = {
+            SampleBatch.OBS: tf.convert_to_tensor([obs]),
+            STATE_IN: None,
+        }
     return batch
 
 
@@ -132,9 +145,6 @@ class TestPPO(unittest.TestCase):
             fw, env_name, fwd_fn, lstm = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
-                continue
-            if env_name == "ALE/Breakout-v5" and fw == "tf2":
-                # TODO(Artur): Implement CNN in TF2.
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
             if env_name.startswith("ALE/"):
@@ -181,9 +191,6 @@ class TestPPO(unittest.TestCase):
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
                 continue
-            if env_name == "ALE/Breakout-v5" and fw == "tf2":
-                # TODO(Artur): Implement CNN in TF2.
-                continue
             print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
             # TODO(Artur): Figure out why this is needed and fix it.
             if env_name.startswith("ALE/"):
@@ -220,9 +227,13 @@ class TestPPO(unittest.TestCase):
                 # input_batch[SampleBatch.SEQ_LENS] = np.array([1])
 
                 fwd_out = module.forward_exploration(input_batch)
-                _action = fwd_out["action_dist"].sample()
+                action_dist_cls = module.get_exploration_action_dist_cls()
+                action_dist = action_dist_cls.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
+                _action = action_dist.sample()
                 action = convert_to_numpy(_action[0])
-                action_logp = convert_to_numpy(fwd_out["action_dist"].logp(_action)[0])
+                action_logp = convert_to_numpy(action_dist.logp(_action)[0])
                 new_obs, reward, terminated, truncated, _ = env.step(action)
                 new_obs = preprocessor.transform(new_obs)
                 output_batch = {
@@ -233,6 +244,7 @@ class TestPPO(unittest.TestCase):
                     SampleBatch.REWARDS: np.array(reward),
                     SampleBatch.TERMINATEDS: np.array(terminated),
                     SampleBatch.TRUNCATEDS: np.array(truncated),
+                    STATE_IN: None,
                 }
 
                 # TODO (Artur): Un-uncomment once Policy supports RNN
@@ -259,7 +271,7 @@ class TestPPO(unittest.TestCase):
                 module.to("cpu")
                 module.train()
                 fwd_out = module.forward_train(fwd_in)
-                loss = dummy_torch_ppo_loss(fwd_in, fwd_out)
+                loss = dummy_torch_ppo_loss(module, fwd_in, fwd_out)
                 loss.backward()
 
                 # check that all neural net parameters have gradients
@@ -274,7 +286,7 @@ class TestPPO(unittest.TestCase):
                 # fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
                 with tf.GradientTape() as tape:
                     fwd_out = module.forward_train(fwd_in)
-                    loss = dummy_tf_ppo_loss(fwd_in, fwd_out)
+                    loss = dummy_tf_ppo_loss(module, fwd_in, fwd_out)
                 grads = tape.gradient(loss, module.trainable_variables)
                 for grad in grads:
                     self.assertIsNotNone(grad)
