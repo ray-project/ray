@@ -20,7 +20,6 @@ from ray_release.config import (
 )
 from ray_release.test import (
     Test,
-    DOCKER_REPO,
     S3_BUCKET,
     DATAPLANE_FILENAME,
 )
@@ -259,7 +258,6 @@ def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
     )
     built = {}
     for test, _ in tests:
-        break
         if not test.is_byod_cluster():
             continue
         ray_image = test.get_ray_image()
