@@ -25,11 +25,6 @@ class DreamerV3TfRLModule(DreamerV3RLModule, TfRLModule):
         DreamerV3RLModule.__init__(self, *args, **kwargs)
 
     @override(RLModule)
-    def get_initial_state(self) -> NestedDict:
-        # Use `DreamerModel`'s `get_initial_state` method.
-        return self.dreamer_model.get_initial_state()
-
-    @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
         # Call the Dreamer-Model's forward_inference method and return a dict.
         actions, next_state = self.dreamer_model.forward_inference(

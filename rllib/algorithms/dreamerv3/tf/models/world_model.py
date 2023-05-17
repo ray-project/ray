@@ -157,7 +157,7 @@ class WorldModel(tf.keras.Model):
         # Decoder: [ht, zt] -> x^t.
         self.decoder = decoder
 
-    # @tf.functionction
+    @tf.function
     def get_initial_state(self):
         """Returns the (current) initial state of the world model (h- and z-states).
 
@@ -174,11 +174,11 @@ class WorldModel(tf.keras.Model):
 
         return {"h": h, "z": z}
 
-    # @tf.functionction
+    @tf.function
     def call(self, inputs, *args, **kwargs):
         return self.forward_train(inputs, *args, **kwargs)
 
-    # @tf.functionction  # (experimental_relax_shapes=True)
+    @tf.function  # (experimental_relax_shapes=True)
     def forward_inference(self, observations, previous_states, is_first, training=None):
         """Performs a forward step for inference (e.g. environment stepping).
 
@@ -218,7 +218,7 @@ class WorldModel(tf.keras.Model):
 
         return {"h": h, "z": z}
 
-    # @tf.functionction
+    @tf.function
     def forward_train(self, observations, actions, is_first, training=None):
         """Performs a forward step for training.
 
@@ -376,7 +376,7 @@ class WorldModel(tf.keras.Model):
             "z_prior_probs_BxT": z_prior_probs,
         }
 
-    # @tf.functionction
+    @tf.function
     def compute_posterior_z(self, observations, initial_h):
         # Compute bare encoder outputs (not including z, which is computed in next step
         # with involvement of the previous output (initial_h) of the sequence model).
