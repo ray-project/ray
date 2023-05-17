@@ -45,9 +45,6 @@
 				"team": {
 					"type": "string"
 				},
-				"driver_setup": {
-					"type": "string"
-				},
 				"cluster": {
 					"$ref": "#/definitions/Cluster"
 				},
@@ -165,9 +162,6 @@
 					"type": "string"
 				},
 				"env": {
-					"type": "string"
-				},
-				"driver_setup": {
 					"type": "string"
 				},
 				"cluster": {

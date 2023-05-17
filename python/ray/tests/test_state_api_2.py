@@ -9,7 +9,7 @@ import requests
 import pytest
 
 from ray._private.profiling import chrome_tracing_dump
-from ray.experimental.state.api import (
+from ray.util.state import (
     get_actor,
     list_tasks,
     list_actors,
@@ -250,6 +250,31 @@ def test_actor_repr_name(shutdown_only):
 
     a = OutClass().get_actor(name="inner")
     wait_for_condition(_verify_repr_name, id=a._actor_id.hex(), name="inner")
+
+
+def test_experimental_import_deprecation():
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.api import list_tasks  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.common import DEFAULT_RPC_TIMEOUT  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.custom_types import ACTOR_STATUS  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.exception import RayStateApiException  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.state_cli import ray_get  # noqa: F401
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.state_manager import (  # noqa: F401
+            StateDataSourceClient,
+        )
+
+    with pytest.warns(DeprecationWarning):
+        from ray.experimental.state.util import convert_string_to_type  # noqa: F401
 
 
 def test_actor_task_with_repr_name():

@@ -247,6 +247,12 @@ def test_worker_crash_increment_stats():
             timeout=4,
         )
 
+        wait_for_condition(
+            lambda: "worker_crash_oom"
+            in ray_usage_lib.get_extra_usage_tags_to_report(gcs_client),
+            timeout=4,
+        )
+
         result = ray_usage_lib.get_extra_usage_tags_to_report(gcs_client)
 
         assert "worker_crash_system_error" in result
@@ -1204,6 +1210,7 @@ provider:
         if os.environ.get("RAY_MINIMAL") != "1":
             expected_payload["tune_scheduler"] = "FIFOScheduler"
             expected_payload["tune_searcher"] = "BasicVariantGenerator"
+            expected_payload["air_storage_configuration"] = "driver"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1
