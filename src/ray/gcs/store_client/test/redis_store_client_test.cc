@@ -30,7 +30,6 @@ class RedisStoreClientTest : public StoreClientTestBase {
   RedisStoreClientTest() {
     if (std::getenv("REDIS_CHAOS") != nullptr) {
       ::RayConfig::instance().num_redis_request_retries() = 1000;
-      ::RayConfig::instance().redis_retry_interval_ms() = 10;
     }
   }
 
