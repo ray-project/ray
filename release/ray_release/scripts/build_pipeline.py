@@ -6,6 +6,7 @@ import sys
 import tempfile
 from typing import Optional
 
+import boto3
 import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
