@@ -1,1 +1,3 @@
-statsforecast==1.5.0
+ipywidgets
+pandas>=1.5.3
+ray[tune]
