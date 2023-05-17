@@ -14,6 +14,7 @@ exist. See :ref:`actor-lifetimes` for more details.
     .. tab-item:: Python
 
         .. testcode::
+
             import ray
 
             @ray.remote
