@@ -365,18 +365,29 @@ class OperatorFusionRule(Rule):
         return op
 
 
-def _are_remote_args_compatible(up_args, down_args):
+def _are_remote_args_compatible(prev_args, next_args):
     """Check if Ray remote arguments are compatible for merging."""
-    from ray.data._internal.execution.operators.map_operator import (
-        _canonicalize_ray_remote_args,
-    )
-
-    up_args = _canonicalize_ray_remote_args(up_args)
-    down_args = _canonicalize_ray_remote_args(down_args)
-    remote_args = down_args.copy()
+    prev_args = _canonicalize(prev_args)
+    next_args = _canonicalize(next_args)
+    remote_args = next_args.copy()
     for key in INHERITABLE_REMOTE_ARGS:
-        if key in up_args:
-            remote_args[key] = up_args[key]
-    if up_args != remote_args:
+        if key in prev_args:
+            remote_args[key] = prev_args[key]
+    if prev_args != remote_args:
         return False
     return True
+
+
+def _canonicalize(remote_args: dict) -> dict:
+    """Returns canonical form of given remote args."""
+    remote_args = remote_args.copy()
+    if "num_cpus" not in remote_args or remote_args["num_cpus"] is None:
+        remote_args["num_cpus"] = 1
+    if "num_gpus" not in remote_args or remote_args["num_gpus"] is None:
+        remote_args["num_gpus"] = 0
+    resources = remote_args.get("resources", {})
+    for k, v in list(resources.items()):
+        if v is None or v == 0.0:
+            del resources[k]
+    remote_args["resources"] = resources
+    return remote_args
