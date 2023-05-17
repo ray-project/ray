@@ -28,6 +28,7 @@ from ray_release.wheels import (
 )
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
+DOCKER_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale"
 
 
 @click.command()
