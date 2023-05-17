@@ -20,7 +20,7 @@ If users would like to contribute a new algorithm tor rllib_contrib, they should
 1. Create a new directory with the same structure as the other algorithms.
 2. Add a `README.md` file that describes the algorithm and its usecases.
 3. Create unit tests/shorter learning tests and long learning tests for the algorithm.
-4. Submit a PR and a RLlib maintainer will review it and help you set up your testing to integrate with the CI of this repo.
+4. Submit a PR, add the tag `rllib_contrib`, and then a RLlib maintainer will review it and help you set up your testing to integrate with the CI of this repo.
 
 Regarding unit tests and long running tests:
 
