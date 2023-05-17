@@ -43,6 +43,7 @@ schema = {
         "min_workers": {"type": ["null", "integer"]},
         "max_workers": {"type": ["null", "integer"]},
         "head_node_instance_type": {"type": ["null", "string"]},
+        "libc_version": {"type": ["null", "string"]},
         "worker_node_instance_types": {
             "type": ["null", "array"],
             "items": {"type": "string"},
@@ -1153,6 +1154,16 @@ provider:
         assert payload["python_version"] == python_version
         assert payload["schema_version"] == "0.1"
         assert payload["os"] == sys.platform
+        if sys.platform != "linux":
+            payload["libc_version"] is None
+        else:
+            import platform
+
+            assert (
+                payload["libc_version"]
+                == f"{platform.libc_ver()[0]}:{platform.libc_ver()[1]}"
+            )
+
         assert payload["source"] == "OSS"
         assert payload["cloud_provider"] == "aws"
         assert payload["min_workers"] is None
@@ -1193,6 +1204,7 @@ provider:
         if os.environ.get("RAY_MINIMAL") != "1":
             expected_payload["tune_scheduler"] = "FIFOScheduler"
             expected_payload["tune_searcher"] = "BasicVariantGenerator"
+            expected_payload["air_storage_configuration"] = "driver"
         assert payload["extra_usage_tags"] == expected_payload
         assert payload["total_num_nodes"] == 1
         assert payload["total_num_running_jobs"] == 1

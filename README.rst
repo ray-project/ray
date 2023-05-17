@@ -44,7 +44,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 `Installation page <https://docs.ray.io/en/latest/installation.html>`__.
 
 .. _`Serve`: https://docs.ray.io/en/latest/serve/index.html
-.. _`Data`: https://docs.ray.io/en/latest/data/data.html
+.. _`Data`: https://docs.ray.io/en/latest/data/dataset.html
 .. _`Workflow`: https://docs.ray.io/en/latest/workflows/concepts.html
 .. _`Train`: https://docs.ray.io/en/latest/train/train.html
 .. _`Tune`: https://docs.ray.io/en/latest/tune/index.html

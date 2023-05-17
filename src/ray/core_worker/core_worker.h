@@ -348,6 +348,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
+  int64_t GetCurrentTaskAttemptNumber() const {
+    return worker_context_.GetCurrentTask() != nullptr
+               ? worker_context_.GetCurrentTask()->AttemptNumber()
+               : 0;
+  }
+
   JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
   const int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
@@ -1155,6 +1161,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param stderr_end_offset End offset of the stderr for this task.
   void RecordTaskLogEnd(int64_t stdout_end_offset, int64_t stderr_end_offset) const;
 
+  /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
+  /// exit when it drains all tasks and cleans all owned objects.
+  /// After this method is called, all the tasks in the queue will not be
+  /// executed.
+  ///
+  /// \param exit_type The reason why this worker process is disconnected.
+  /// \param exit_detail The detailed reason for a given exit.
+  /// \param creation_task_exception_pb_bytes It is given when the worker is
+  /// disconnected because the actor is failed due to its exception in its init method.
+  void Exit(const rpc::WorkerExitType exit_type,
+            const std::string &detail,
+            const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
+                nullptr);
+
  private:
   static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
 
@@ -1198,20 +1218,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
-
-  /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
-  /// exit when it drains all tasks and cleans all owned objects.
-  /// After this method is called, all the tasks in the queue will not be
-  /// executed.
-  ///
-  /// \param exit_type The reason why this worker process is disconnected.
-  /// \param exit_detail The detailed reason for a given exit.
-  /// \param creation_task_exception_pb_bytes It is given when the worker is
-  /// disconnected because the actor is failed due to its exception in its init method.
-  void Exit(const rpc::WorkerExitType exit_type,
-            const std::string &detail,
-            const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
-                nullptr);
 
   /// Forcefully exit the worker. `Force` means it will exit actor without draining
   /// or cleaning any resources.
@@ -1555,6 +1561,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Actor title that consists of class name, args, kwargs for actor construction.
   std::string actor_title_ GUARDED_BY(mutex_);
+
+  /// Actor repr name if overrides by the user, empty string if not.
+  std::string actor_repr_name_ GUARDED_BY(mutex_) = "";
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

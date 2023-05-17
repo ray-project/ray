@@ -146,10 +146,7 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
 Status PythonGcsClient::Connect() {
-  grpc::ChannelArguments arguments;
-  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
+  auto arguments = PythonGrpcChannelArguments();
   channel_ = rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
