@@ -8,11 +8,15 @@ D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, List
+
+import numpy as np
+import tree  # pip install dm_tree
 
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import ResultDict
 
 
 @dataclass
@@ -64,3 +68,15 @@ class DreamerV3Learner(Learner):
         self.module[module_id].critic.update_ema()
 
         return results
+
+
+def _reduce_dreamerv3_results(results: List[ResultDict]) -> ResultDict:
+    def _reduce(path, *x):
+        # Reduce data that still has some B/T structure only over
+        # the last dimension and leave the B/T/H dimensions intact.
+        # -1=actual data key.
+        #if path[-1].endswith(("T", "H", "B")):
+        #    return np.mean(x, axis=-1)
+        return np.mean(x, axis=0)
+
+    return tree.map_structure_with_path(_reduce, *results)

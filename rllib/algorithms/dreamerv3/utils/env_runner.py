@@ -176,20 +176,19 @@ class DreamerV3EnvRunner(EnvRunner):
         self.num_envs = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_worker
 
-        # TODO: Create new model and sync weights or reuse main one?
-        self.model = None
+        self.rl_module = None
 
-        self.needs_initial_reset = True
-        self.episodes = [None for _ in range(self.num_envs)]
+        self._needs_initial_reset = True
+        self._episodes = [None for _ in range(self.num_envs)]
 
         # TODO (sven): Move metrics temp storage and collection out of EnvRunner
         #  and RolloutWorkers. These classes should not continue tracking some data
         #  that they have already returned (in a call to `sample()`). Instead, the
         #  episode data should be analyzed where it was sent to (the Algorithm itself
         #  via its replay buffer, etc..).
-        self.done_episodes_for_metrics = []
-        self.ongoing_episodes_for_metrics = defaultdict(list)
-        self.ts_since_last_metrics = 0
+        self._done_episodes_for_metrics = []
+        self._ongoing_episodes_for_metrics = defaultdict(list)
+        self._ts_since_last_metrics = 0
 
     @override(EnvRunner)
     def sample(self, explore: bool = True, random_actions: bool = False):
@@ -229,37 +228,33 @@ class DreamerV3EnvRunner(EnvRunner):
         done_episodes_to_return = []
 
         # Get initial states for all `batch_size_B` rows.
-        if self.model is not None:
-            initial_states = tree.map_structure(
-                lambda s: tf.repeat(s, self.num_envs, axis=0).numpy(),
-                self.model.get_initial_state(),
-            )
-        else:
-            raise NotImplementedError
-            initial_states = np.array([0.0] * self.num_envs)
+        initial_states = tree.map_structure(
+            lambda s: np.repeat(s, self.num_envs, axis=0),
+            self.rl_module.get_initial_state(),
+        )
 
         # Have to reset the env (on all vector sub-envs).
-        if force_reset or self.needs_initial_reset:
+        if force_reset or self._needs_initial_reset:
             obs, _ = self.env.reset()
 
-            self.episodes = [Episode() for _ in range(self.num_envs)]
+            self._episodes = [Episode() for _ in range(self.num_envs)]
             states = initial_states
             is_first = np.ones((self.num_envs,), dtype=np.float32)
-            self.needs_initial_reset = False
+            self._needs_initial_reset = False
 
             for i, o in enumerate(self._split_by_env(obs)):
-                self.episodes[i].add_initial_observation(
+                self._episodes[i].add_initial_observation(
                     initial_observation=o,
                     initial_state={k: s[i] for k, s in states.items()},
                 )
         # Don't reset existing envs; continue in already started episodes.
         else:
-            obs = np.stack([eps.observations[-1] for eps in self.episodes])
+            obs = np.stack([eps.observations[-1] for eps in self._episodes])
             states = {
                 k: np.stack(
                     [
                         initial_states[k][i] if eps.states is None else eps.states[k]
-                        for i, eps in enumerate(self.episodes)
+                        for i, eps in enumerate(self._episodes)
                     ]
                 )
                 for k in initial_states.keys()
@@ -281,14 +276,14 @@ class DreamerV3EnvRunner(EnvRunner):
                 }
 
                 if explore:
-                    outs = self.model.forward_exploration(batch)
+                    outs = self.rl_module.forward_exploration(batch)
                 else:
-                    outs = self.model.forward_inference(batch)
+                    outs = self.rl_module.forward_inference(batch)
 
-                actions = outs[SampleBatch.ACTIONS].numpy()
+                actions = outs[SampleBatch.ACTIONS] #.numpy()
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
-                states = tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
+                states = outs[STATE_OUT]#tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
@@ -308,22 +303,23 @@ class DreamerV3EnvRunner(EnvRunner):
                 if term or trunc:
                     # Finish the episode with the actual terminal observation stored in
                     # the info dict.
-                    self.episodes[i].add_timestep(
+                    self._episodes[i].add_timestep(
                         infos["final_observation"][i],
                         a,
                         r,
                         state=s,
                         is_terminated=True,
                     )
-                    # Reset h-states to all zeros b/c we are starting a new episode.
-                    for k, v in self.model.get_initial_state().items():
-                        states[k][i] = v.numpy()
+                    # Reset h-states to the model's initial ones b/c we are starting a
+                    # new episode.
+                    for k, v in self.rl_module.get_initial_state().items():
+                        states[k][i] = v #.numpy()
                     is_first[i] = True
-                    done_episodes_to_return.append(self.episodes[i])
+                    done_episodes_to_return.append(self._episodes[i])
 
-                    self.episodes[i] = Episode(observations=[o], states=s)
+                    self._episodes[i] = Episode(observations=[o], states=s)
                 else:
-                    self.episodes[i].add_timestep(
+                    self._episodes[i].add_timestep(
                         o,
                         a,
                         r,
@@ -336,23 +332,23 @@ class DreamerV3EnvRunner(EnvRunner):
                 break
 
         # Return done episodes ...
-        self.done_episodes_for_metrics.extend(done_episodes_to_return)
+        self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks. Also, make sure, we return
         # a copy and start new chunks so that callers of this function
         # don't alter our ongoing and returned Episode objects.
-        ongoing_episodes = self.episodes
-        self.episodes = [
+        ongoing_episodes = self._episodes
+        self._episodes = [
             Episode(
                 id_=eps.id_,
                 observations=[eps.observations[-1]],
                 states=eps.states,
             )
-            for eps in self.episodes
+            for eps in self._episodes
         ]
         for eps in ongoing_episodes:
-            self.ongoing_episodes_for_metrics[eps.id_].append(eps)
+            self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
-        self.ts_since_last_metrics += ts
+        self._ts_since_last_metrics += ts
 
         return done_episodes_to_return, ongoing_episodes
 
@@ -383,15 +379,12 @@ class DreamerV3EnvRunner(EnvRunner):
 
         episodes = [Episode() for _ in range(self.num_envs)]
 
-        if self.model is not None:
-            states = tree.map_structure(
-                lambda s: tf.repeat(s, self.num_envs, axis=0).numpy(),
-                self.model.get_initial_state(),
-            )
-            is_first = np.ones((self.num_envs,), dtype=np.float32)
-        else:
-            raise NotImplementedError
-            states = np.array([0.0] * self.num_envs)
+        # Multiply states n times according to our vector env batch size (num_envs).
+        states = tree.map_structure(
+            lambda s: np.repeat(s, self.num_envs, axis=0),
+            self.model.get_initial_state(),
+        )
+        is_first = np.ones((self.num_envs,), dtype=np.float32)
 
         render_images = [None] * self.num_envs
         if with_render_data:
@@ -419,14 +412,14 @@ class DreamerV3EnvRunner(EnvRunner):
                 }
 
                 if explore:
-                    outs = self.model.forward_exploration(batch)
+                    outs = self.rl_module.forward_exploration(batch)
                 else:
-                    outs = self.model.forward_inference(batch)
+                    outs = self.rl_module.forward_inference(batch)
 
-                actions = outs[SampleBatch.ACTIONS].numpy()
+                actions = outs[SampleBatch.ACTIONS]#.numpy()
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
-                states = tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
+                states = outs[STATE_OUT]#tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             if with_render_data:
@@ -454,13 +447,10 @@ class DreamerV3EnvRunner(EnvRunner):
                         state=s,
                         is_terminated=True,
                     )
-                    # Reset h-states to all zeros b/c we are starting a new episode.
-                    if self.model is not None:
-                        for k, v in self.model.get_initial_state().items():
-                            states[k][i] = v.numpy()
-                    else:
-                        raise NotImplementedError
-                        # states[i] = 0.0
+                    # Reset h-states to the model's initial ones b/c we are starting a
+                    # new episode.
+                    for k, v in self.rl_module.get_initial_state().items():
+                        states[k][i] = v #.numpy()
                     is_first[i] = True
                     done_episodes_to_return.append(episodes[i])
 
@@ -483,40 +473,40 @@ class DreamerV3EnvRunner(EnvRunner):
             if eps >= num_episodes:
                 break
 
-        self.done_episodes_for_metrics.extend(done_episodes_to_return)
-        self.ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
+        self._done_episodes_for_metrics.extend(done_episodes_to_return)
+        self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
 
         return done_episodes_to_return
 
     @override(EnvRunner)
     def get_metrics(self):
         metrics = {
-            "ts_taken": self.ts_since_last_metrics,
+            "ts_taken": self._ts_since_last_metrics,
         }
 
         # Compute per-episode metrics (only on already completed episodes).
-        if self.done_episodes_for_metrics:
+        if self._done_episodes_for_metrics:
             lengths = []
             returns = []
             actions = []
-            for eps in self.done_episodes_for_metrics:
+            for eps in self._done_episodes_for_metrics:
                 lengths.append(len(eps))
                 returns.append(eps.get_return())
                 actions.extend(list(eps.actions))
                 # Don't forget about the already returned chunks of this episode.
-                if eps.id_ in self.ongoing_episodes_for_metrics:
-                    for eps2 in self.ongoing_episodes_for_metrics[eps.id_]:
+                if eps.id_ in self._ongoing_episodes_for_metrics:
+                    for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
                         lengths[-1] += len(eps2)
                         returns[-1] += eps2.get_return()
                         actions.extend(list(eps2.actions))
-                    del self.ongoing_episodes_for_metrics[eps.id_]
+                    del self._ongoing_episodes_for_metrics[eps.id_]
 
             metrics["episode_lengths"] = lengths
             metrics["episode_returns"] = returns
             metrics["actions"] = np.array(actions)
 
-        self.done_episodes_for_metrics.clear()
-        self.ts_since_last_metrics = 0
+        self._done_episodes_for_metrics.clear()
+        self._ts_since_last_metrics = 0
 
         return metrics
 

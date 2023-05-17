@@ -361,6 +361,7 @@ class WorldModel(tf.keras.Model):
             # Obs.
             "sampled_obs_symlog_BxT": observations,
             "obs_distribution_BxT": obs_distribution,
+            "obs_distribution_means_BxT": obs_distribution.loc,
             # Rewards.
             "reward_logits_BxT": reward_logits,
             "rewards_BxT": rewards,

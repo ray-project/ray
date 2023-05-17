@@ -1,21 +1,14 @@
 import numpy as np
-import tensorflow as tf
-import tree  # pip install dm_tree
 
-# from ray.rllib.algorithms.dreamerv3.utils import (
-#    create_cartpole_dream_image,
-#    create_frozenlake_dream_image,
-# )
+from ray.rllib.algorithms.dreamerv3.utils.debugging import (
+    create_cartpole_dream_image,
+    create_frozenlake_dream_image,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.tf_utils import inverse_symlog
 
 
 def _summarize(*, results, data_to_summarize, keys_to_log, include_histograms=False):
-    data_to_summarize = tree.map_structure(
-        lambda s: s.numpy() if tf.is_tensor(s) else s,
-        data_to_summarize,
-    )
-
     for k in keys_to_log:
         if data_to_summarize[k].shape == ():
             results.update({k: data_to_summarize[k]})
@@ -30,7 +23,7 @@ def reconstruct_obs_from_h_and_z(
     obs_dims_shape,
 ):
     """Returns"""
-    shape = tf.shape(h_t0_to_H)
+    shape = h_t0_to_H.shape
     T = shape[0]  # inputs are time-major
     B = shape[1]
     # Compute actual observations using h and z and the decoder net.
@@ -38,27 +31,32 @@ def reconstruct_obs_from_h_and_z(
     # a new trajectory.
     _, reconstructed_obs_distr_TxB = dreamer_model.world_model.decoder(
         # Fold time rank.
-        h=tf.reshape(h_t0_to_H, shape=(T * B, -1)),
-        z=tf.reshape(z_t0_to_H, shape=(T * B,) + z_t0_to_H.shape[2:]),
+        h=np.reshape(h_t0_to_H, (T * B, -1)),
+        z=np.reshape(z_t0_to_H, (T * B,) + z_t0_to_H.shape[2:]),
     )
     # Use mean() of the Gaussian, no sample!
     loc = reconstructed_obs_distr_TxB.loc
     # Unfold time rank again.
-    reconstructed_obs_T_B = tf.reshape(loc, shape=(T, B) + obs_dims_shape)
+    reconstructed_obs_T_B = np.reshape(loc, (T, B) + obs_dims_shape)
     # Return inverse symlog'd (real env obs space) reconstructed observations.
     return reconstructed_obs_T_B
 
 
 def summarize_dreamed_trajectory(
     *,
-    dream_data,
+    results,
     train_results,
     env,
     dreamer_model,
     obs_dims_shape,
     batch_indices=(0,),
     desc=None,
+    include_images=True,
 ):
+    if not include_images:
+        return
+
+    dream_data = train_results["dream_data"]
     dreamed_obs_H_B = reconstruct_obs_from_h_and_z(
         h_t0_to_H=dream_data["h_states_t0_to_H_B"],
         z_t0_to_H=dream_data["z_states_prior_t0_to_H_B"],
@@ -107,11 +105,12 @@ def summarize_dreamed_trajectory(
 def summarize_forward_train_outs_vs_samples(
     *,
     results,
-    fwd_outs,
+    train_results,
     sample,
     batch_size_B,
     batch_length_T,
     symlog_obs: bool = True,
+    include_images: bool = True,
 ):
     """Summarizes sampled data (from the replay buffer) vs world-model predictions.
 
@@ -125,9 +124,8 @@ def summarize_forward_train_outs_vs_samples(
     Continues: Compute MSE (sampled vs predicted).
 
     Args:
-        results
-        train_results: The results dict returned by the world model's
-            `forward_train` method.
+        results: The results dict to add summary data to and return. 
+        train_results: The results dict that was returned by `LearnerGroup.update()`.
         sample: The sampled data (dict) from the replay buffer. Already tf-tensor
             converted.
         batch_size_B: The batch size (B). This is the number of trajectories sampled
@@ -135,32 +133,44 @@ def summarize_forward_train_outs_vs_samples(
         batch_length_T: The batch length (T). This is the length of an individual
             trajectory sampled from the buffer.
     """
+    predicted_observation_means_BxT = train_results[
+        "WORLD_MODEL_fwd_out_obs_distribution_means_BxT"
+    ]
+    predicted_rewards_BxT = train_results[
+        "WORLD_MODEL_fwd_out_rewards_BxT"
+    ]
+    predicted_continues_BxT = train_results[
+        "WORLD_MODEL_fwd_out_continues_BxT"
+    ]
     _summarize_obs(
-        computed_float_obs_B_T_dims=tf.reshape(
-            fwd_outs["obs_distribution_BxT"].loc,
-            shape=(batch_size_B, batch_length_T) + sample[SampleBatch.OBS].shape[2:],
+        results=results,
+        computed_float_obs_B_T_dims=np.reshape(
+            predicted_observation_means_BxT,
+            (batch_size_B, batch_length_T) + sample[SampleBatch.OBS].shape[2:],
         ),
         sampled_obs_B_T_dims=sample[SampleBatch.OBS],
         descr_prefix="WORLD_MODEL",
         descr_obs=f"predicted_posterior_T{batch_length_T}",
         symlog_obs=symlog_obs,
+        include_images=include_images,
     )
-    predicted_rewards = inverse_symlog(fwd_outs["rewards_BxT"])
+    predicted_rewards_BxT = inverse_symlog(predicted_rewards_BxT)
     _summarize_rewards(
-        computed_rewards=predicted_rewards,
+        results=results,
+        computed_rewards=predicted_rewards_BxT,
         sampled_rewards=np.reshape(sample[SampleBatch.REWARDS], [-1]),
         descr_prefix="WORLD_MODEL",
         descr_reward="predicted_posterior",
     )
     results.update(
         {
-            "sampled_rewards": sample[SampleBatch.REWARDS].numpy(),
-            "WORLD_MODEL_predicted_posterior_rewards": predicted_rewards.numpy(),
+            "sampled_rewards": sample[SampleBatch.REWARDS],
+            "WORLD_MODEL_predicted_posterior_rewards": predicted_rewards_BxT,
         }
     )
-
     _summarize_continues(
-        computed_continues=fwd_outs["continues_BxT"],
+        results=results,
+        computed_continues=predicted_continues_BxT,
         sampled_continues=np.reshape(1.0 - sample["is_terminated"], [-1]),
         descr_prefix="WORLD_MODEL",
         descr_cont="predicted_posterior",
@@ -181,12 +191,12 @@ def summarize_actor_train_results(
         # Action entropy.
         "ACTOR_action_entropy",
         # Terms related to scaling the value targets.
-        "ACTOR_scaled_value_targets_H_B",
+        #"ACTOR_scaled_value_targets_H_B",
         "ACTOR_value_targets_pct95_ema",
         "ACTOR_value_targets_pct5_ema",
-        # Gradients.
-        "ACTOR_gradients_maxabs",
-        "ACTOR_gradients_clipped_by_glob_norm_maxabs",
+        # TODO: Gradients.
+        #"ACTOR_gradients_maxabs",
+        #"ACTOR_gradients_clipped_by_glob_norm_maxabs",
     ]
 
     _summarize(
@@ -204,17 +214,17 @@ def summarize_critic_train_results(
     include_histograms=False,
 ):
     keys_to_log = [
-        # TODO: Move this to generic function as value targets are also important for actor
-        #  loss.
-        "VALUE_TARGETS_H_B",
+        # TODO: Move this to generic function as value targets are also important for
+        #  actor loss.
+        #"VALUE_TARGETS_H_B",
         "VALUE_TARGETS_symlog_H_B",
         # Loss terms.
         "CRITIC_L_total",
         "CRITIC_L_neg_logp_of_value_targets",
         "CRITIC_L_slow_critic_regularization",
-        # Gradients.
-        "CRITIC_gradients_maxabs",
-        "CRITIC_gradients_clipped_by_glob_norm_maxabs",
+        # TODO: Gradients.
+        #"CRITIC_gradients_maxabs",
+        #"CRITIC_gradients_clipped_by_glob_norm_maxabs",
     ]
 
     _summarize(
@@ -259,6 +269,7 @@ def summarize_dreamed_eval_trajectory_vs_samples(
     dreamed_T,
     dreamer_model,
     symlog_obs: bool = True,
+    include_images=True,
 ):
     # Obs MSE.
     dreamed_obs_T_B = reconstruct_obs_from_h_and_z(
@@ -273,14 +284,15 @@ def summarize_dreamed_eval_trajectory_vs_samples(
     mse_sampled_vs_dreamed_obs = _summarize_obs(
         results=results,
         # Have to transpose b/c dreamed data is time-major.
-        computed_float_obs_B_T_dims=tf.transpose(
+        computed_float_obs_B_T_dims=np.transpose(
             dreamed_obs_T_B,
-            perm=[1, 0] + list(range(2, len(dreamed_obs_T_B.shape.as_list()))),
+            axes=[1, 0] + list(range(2, len(dreamed_obs_T_B.shape))),
         ),
         sampled_obs_B_T_dims=sample[SampleBatch.OBS][:, t0 : tH + 1],
         descr_prefix="EVALUATION",
         descr_obs=f"dreamed_prior_H{dreamed_T}",
         symlog_obs=symlog_obs,
+        include_images=include_images,
     )
 
     # Reward MSE.
@@ -361,42 +373,34 @@ def summarize_world_model_train_results(
     train_results,
     include_histograms=False,
 ):
-    # TODO: Move to returned train_one_step results.
-    results.update(
-        {
-            "WORLD_MODEL_initial_h_sum_abs": tf.reduce_sum(
-                tf.math.abs(train_results["WORLD_MODEL_learned_initial_h"])
-            ).numpy()
-        }
-    )
-
     keys_to_log = [
         # Learned initial state.
-        "WORLD_MODEL_learned_initial_h",
+        #"WORLD_MODEL_learned_initial_h",
+        "WORLD_MODEL_learned_initial_h_sum_abs",
         # Loss terms.
         # Prediction loss.
-        "WORLD_MODEL_L_prediction_B_T",
+        #"WORLD_MODEL_L_prediction_B_T",
         "WORLD_MODEL_L_prediction",
         # ----
-        "WORLD_MODEL_L_decoder_B_T",
+        #"WORLD_MODEL_L_decoder_B_T",
         "WORLD_MODEL_L_decoder",
-        "WORLD_MODEL_L_reward_B_T",
+        #"WORLD_MODEL_L_reward_B_T",
         "WORLD_MODEL_L_reward",
-        "WORLD_MODEL_L_continue_B_T",
+        #"WORLD_MODEL_L_continue_B_T",
         "WORLD_MODEL_L_continue",
         # ----
         # Dynamics loss.
-        "WORLD_MODEL_L_dynamics_B_T",
+        #"WORLD_MODEL_L_dynamics_B_T",
         "WORLD_MODEL_L_dynamics",
         # Representation loss.
-        "WORLD_MODEL_L_representation_B_T",
+        #"WORLD_MODEL_L_representation_B_T",
         "WORLD_MODEL_L_representation",
         # TOTAL loss.
-        "WORLD_MODEL_L_total_B_T",
+        #"WORLD_MODEL_L_total_B_T",
         "WORLD_MODEL_L_total",
-        # Gradients.
-        "WORLD_MODEL_gradients_maxabs",
-        "WORLD_MODEL_gradients_clipped_by_glob_norm_maxabs",
+        # TODO: Gradients.
+        #"WORLD_MODEL_gradients_maxabs",
+        #"WORLD_MODEL_gradients_clipped_by_glob_norm_maxabs",
     ]
 
     _summarize(
@@ -415,6 +419,7 @@ def _summarize_obs(
     descr_prefix=None,
     descr_obs,
     symlog_obs,
+    include_images=True,
 ):
     """Summarizes computed- vs sampled observations: MSE and (if applicable) images.
 
@@ -438,41 +443,41 @@ def _summarize_obs(
     # MSE is the mean over all feature dimensions.
     # Images: Flatten image dimensions (w, h, C); Vectors: Mean over all items, etc..
     # Then sum over time-axis and mean over batch-axis.
-    mse_sampled_vs_computed_obs = tf.math.square(
-        computed_float_obs_B_T_dims - tf.cast(sampled_obs_B_T_dims, tf.float32)
+    mse_sampled_vs_computed_obs = np.square(
+        computed_float_obs_B_T_dims - sampled_obs_B_T_dims.astype(np.float32)
     )
-    mse_sampled_vs_computed_obs = tf.reduce_mean(mse_sampled_vs_computed_obs)
+    mse_sampled_vs_computed_obs = np.mean(mse_sampled_vs_computed_obs)
     results.update(
         {
             f"{descr_prefix}sampled_vs_{descr_obs}_obs_mse": (
-                mse_sampled_vs_computed_obs.numpy()
+                mse_sampled_vs_computed_obs
             ),
         }
     )
 
     # Videos: Create summary, comparing computed images with actual sampled ones.
     # 4=[B, T, w, h] grayscale image; 5=[B, T, w, h, C] RGB image.
-    if len(sampled_obs_B_T_dims.shape) in [4, 5]:
+    if include_images and len(sampled_obs_B_T_dims.shape) in [4, 5]:
         # Restore image pixels from normalized (non-symlog'd) data.
         if not symlog_obs:
             computed_float_obs_B_T_dims = (computed_float_obs_B_T_dims + 1.0) * 128
             sampled_obs_B_T_dims = (sampled_obs_B_T_dims + 1.0) * 128
-            sampled_obs_B_T_dims = tf.cast(
-                tf.clip_by_value(sampled_obs_B_T_dims, 0.0, 255.0), tf.uint8
+            sampled_obs_B_T_dims = (
+                np.clip(sampled_obs_B_T_dims, 0.0, 255.0).astype(np.uint8)
             )
-        computed_images = tf.cast(
-            tf.clip_by_value(computed_float_obs_B_T_dims, 0.0, 255.0), tf.uint8
+        computed_images = (
+            np.clip(computed_float_obs_B_T_dims, 0.0, 255.0).astype(np.uint8)
         )
         # Concat sampled and computed images along the height axis (3) such that
         # real images show below respective predicted ones.
         # (B, T, C, h, w)
-        sampled_vs_computed_images = tf.concat(
+        sampled_vs_computed_images = np.concatenate(
             [computed_images, sampled_obs_B_T_dims],
             axis=3,
         )
         # Add grayscale dim, if necessary.
         if len(sampled_obs_B_T_dims.shape) == 2 + 2:
-            sampled_vs_computed_images = tf.expand_dims(sampled_vs_computed_images, -1)
+            sampled_vs_computed_images = np.expand_dims(sampled_vs_computed_images, -1)
 
         results.update(
             {f"{descr_prefix}sampled_vs_{descr_obs}_videos": sampled_vs_computed_images}
@@ -490,15 +495,14 @@ def _summarize_rewards(
     descr_reward,
 ):
     descr_prefix = (descr_prefix + "_") if descr_prefix else ""
-    mse_sampled_vs_computed_rewards = tf.losses.mse(
-        tf.expand_dims(computed_rewards, axis=-1),
-        tf.expand_dims(sampled_rewards, axis=-1),
+    mse_sampled_vs_computed_rewards = np.mean(
+        np.square(computed_rewards - sampled_rewards)
     )
-    mse_sampled_vs_computed_rewards = tf.reduce_mean(mse_sampled_vs_computed_rewards)
+    mse_sampled_vs_computed_rewards = np.mean(mse_sampled_vs_computed_rewards)
     results.update(
         {
             f"{descr_prefix}sampled_vs_{descr_reward}_rewards_mse": (
-                mse_sampled_vs_computed_rewards.numpy()
+                mse_sampled_vs_computed_rewards
             ),
         }
     )
@@ -514,17 +518,13 @@ def _summarize_continues(
 ):
     descr_prefix = (descr_prefix + "_") if descr_prefix else ""
     # Continue MSE.
-    mse_sampled_vs_computed_continues = tf.losses.mse(
-        tf.expand_dims(computed_continues, axis=-1),
-        tf.expand_dims(tf.cast(sampled_continues, dtype=tf.float32), axis=-1),
-    )
-    mse_sampled_vs_computed_continues = tf.reduce_mean(
-        mse_sampled_vs_computed_continues
+    mse_sampled_vs_computed_continues = np.mean(
+        np.square(computed_continues - sampled_continues.astype(np.float32))
     )
     results.update(
         {
             f"{descr_prefix}sampled_vs_{descr_cont}_continues_mse": (
-                mse_sampled_vs_computed_continues.numpy()
+                mse_sampled_vs_computed_continues
             ),
         }
     )
