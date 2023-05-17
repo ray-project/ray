@@ -14,9 +14,9 @@ from typing import Optional, Type
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_KL_KEY
 from ray.rllib.algorithms.appo.appo_learner import (
     AppoHyperparameters,
-    LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL

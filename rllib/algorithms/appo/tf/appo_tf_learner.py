@@ -1,10 +1,12 @@
 from typing import Any, Dict, Mapping
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.algorithms.appo.appo_learner import (
-    AppoLearner,
+from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
+)
+from ray.rllib.algorithms.appo.appo_learner import (
+    AppoLearner,
     OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2

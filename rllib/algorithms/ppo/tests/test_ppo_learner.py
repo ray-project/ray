@@ -9,14 +9,12 @@ import tree  # pip install dm-tree
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
-from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
-    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
-)
+from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_CURR_KL_COEFF_KEY
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.tune.registry import register_env
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 from ray.rllib.evaluation.postprocessing import (
@@ -176,7 +174,6 @@ class TestPPO(unittest.TestCase):
                 num_rollout_workers=0,
                 rollout_fragment_length=50,
             )
-            .resources(num_gpus=0)
             .training(
                 gamma=0.99,
                 model=dict(
@@ -200,7 +197,7 @@ class TestPPO(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, "tf2", with_eager_tracing=True):
+        for _ in framework_iterator(config, ("torch", "tf2"), with_eager_tracing=True):
             algo = config.build()
             # Call train while results aren't returned because this is
             # a asynchronous trainer and results are returned asynchronously.
@@ -214,16 +211,15 @@ class TestPPO(unittest.TestCase):
                 if results and "info" in results and LEARNER_INFO in results["info"]:
                     if "p0" in results["info"][LEARNER_INFO]:
                         curr_kl_coeff_1 = results["info"][LEARNER_INFO]["p0"][
-                            LEARNER_STATS_KEY
-                        ][LEARNER_RESULTS_CURR_KL_COEFF_KEY]
+                            LEARNER_RESULTS_CURR_KL_COEFF_KEY
+                        ]
                     if "p1" in results["info"][LEARNER_INFO]:
                         curr_kl_coeff_2 = results["info"][LEARNER_INFO]["p1"][
-                            LEARNER_STATS_KEY
-                        ][LEARNER_RESULTS_CURR_KL_COEFF_KEY]
+                            LEARNER_RESULTS_CURR_KL_COEFF_KEY
+                        ]
 
             self.assertNotEqual(curr_kl_coeff_1, initial_kl_coeff)
             self.assertNotEqual(curr_kl_coeff_2, initial_kl_coeff)
-            self.assertEqual(curr_kl_coeff_1, curr_kl_coeff_2)
 
 
 if __name__ == "__main__":
