@@ -1,10 +1,11 @@
+from abc import ABC
 import asyncio
 from dataclasses import dataclass
 import itertools
 import logging
 import pickle
 import random
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -64,7 +65,14 @@ class Query:
         scanner.clear()
 
 
-class ReplicaSet:
+class ReplicaScheduler(ABC):
+    async def assign_replica(self, query: Query) -> Union[ray.ObjectRef, ray._raylet.StreamingObjectRefGenerator]:
+        pass
+
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        pass
+
+class RoundRobinReplicaScheduler:
     """Data structure representing a set of replica actor handles"""
 
     def __init__(self):
@@ -109,7 +117,7 @@ class ReplicaSet:
             self.in_flight_queries.pop(removed_replica, None)
 
         if len(added) > 0 or len(removed) > 0:
-            logger.debug(f"ReplicaSet: +{len(added)}, -{len(removed)} replicas.")
+            logger.debug(f"RoundRobinReplicaScheduler: +{len(added)}, -{len(removed)} replicas.")
             self._reset_replica_iterator()
             self.config_updated_event.set()
 
@@ -238,6 +246,7 @@ class Router:
         controller_handle: ActorHandle,
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
+        _use_ray_streaming: bool = False,
     ):
         """Router process incoming queries: assign a replica.
 
@@ -245,7 +254,7 @@ class Router:
             controller_handle: The controller handle.
         """
         self._event_loop = event_loop
-        self._replica_set = ReplicaSet()
+        self._replica_scheduler = RoundRobinReplicaScheduler()
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
@@ -274,7 +283,7 @@ class Router:
                 (
                     LongPollNamespace.RUNNING_REPLICAS,
                     deployment_name,
-                ): self._replica_set.update_running_replicas,
+                ): self._replica_scheduler.update_running_replicas,
             },
             call_in_event_loop=event_loop,
         )
@@ -301,7 +310,7 @@ class Router:
             },
         )
 
-        result: ray.ObjectRef = await self._replica_set.assign_replica(
+        result: ray.ObjectRef = await self._replica_scheduler.assign_replica(
             Query(
                 args=list(request_args),
                 kwargs=request_kwargs,

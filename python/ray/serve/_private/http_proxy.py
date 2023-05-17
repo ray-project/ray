@@ -276,6 +276,7 @@ class HTTPProxy:
                 sync=False,
                 missing_ok=True,
                 _internal_pickled_http_request=True,
+                _use_ray_streaming=True, # TODO: GET FROM ENV VAR.
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)

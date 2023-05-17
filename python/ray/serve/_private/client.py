@@ -440,6 +440,7 @@ class ServeControllerClient:
         missing_ok: Optional[bool] = False,
         sync: bool = True,
         _internal_pickled_http_request: bool = False,
+        _use_ray_streaming: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
@@ -469,12 +470,14 @@ class ServeControllerClient:
                 self._controller,
                 deployment_name,
                 _internal_pickled_http_request=_internal_pickled_http_request,
+                _use_ray_streaming=_use_ray_streaming,
             )
         else:
             handle = RayServeHandle(
                 self._controller,
                 deployment_name,
                 _internal_pickled_http_request=_internal_pickled_http_request,
+                _use_ray_streaming=_use_ray_streaming,
             )
 
         self.handle_cache[cache_key] = handle
