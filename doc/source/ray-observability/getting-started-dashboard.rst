@@ -8,7 +8,7 @@ of their applications and troubleshoot issues.
 
 .. raw:: html
 
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+    <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/i33b1DYjYRQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
@@ -50,6 +50,8 @@ Ray cluster comes with the dashboard. See :ref:`Cluster Monitoring <monitor-clus
   They are necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
   See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
 
+  .. _dash-workflow-cpu-memory-analysis:
+
 .. _dash-jobs-view:
 
 Jobs View
@@ -57,7 +59,7 @@ Jobs View
 
 .. raw:: html
 
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+    <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/CrpXSSs0uaw" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
@@ -110,9 +112,6 @@ Each worker rows display a list of events (e.g., task scheduled, task running, i
 Ray Status
 ~~~~~~~~~~
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/ray-status.png
-    :align: center
-
 The job page displays the output of the CLI tool ``ray status``, which shows the autoscaler status of the Ray cluster.
 
 The left page shows the autoscaling status, including pending, active, and failed nodes.
@@ -127,14 +126,8 @@ The right page displays the cluster's demands, which are resources that cannot b
 Task Table, Actor Table, Placement Group Table
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/tables.png
-    :align: center
-
 The dashboard shows a table with the status of the job's tasks, actors, and placement groups.
 You get the same information from the :ref:`Ray state APIs <state-api-overview-ref>`.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/task-table.png
-    :align: center
 
 You can expand the table to see a list of each task, actor, and placement group.
 
@@ -147,7 +140,7 @@ The Serve view lets you monitor the status of your :ref:`Ray Serve <rayserve>` a
 
 .. raw:: html
 
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+    <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/eqXfwM641a4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
@@ -192,7 +185,7 @@ Cluster View
 
 .. raw:: html
 
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+    <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/K2jLoIhlsnY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
@@ -211,7 +204,7 @@ Actors View
 
 .. raw:: html
 
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+    <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/MChn6O1ecEQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
     
@@ -241,7 +234,7 @@ Metrics View
 
 .. raw:: html
 
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+    <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/yn5Q65iHAR8" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
  
@@ -265,6 +258,35 @@ You can select the time range of the metrics in the top right corner. The graphs
 
 There is also a convenient button to open the grafana UI from the dashboard. The Grafana UI provides additional customizability of the charts.
 
+Analyze the CPU and memory usage of tasks and actors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`Metrics View <dash-metrics-view>` in the Ray dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each task and actor in the application (as well as system components).
+This allows users to identify tasks and actors that may be consuming more resources than expected and optimize the performance of the application.
+
+Per component CPU graph. 0.379 cores mean that it uses 40% of a single CPU core. Ray process names start with ``ray::``. ``raylet``, ``agent``, ``dashboard``, or ``gcs`` are system components.
+
+Per component memory graph. Ray process names start with ``ray::``. ``raylet``, ``agent``, ``dashboard``, or ``gcs`` are system components.
+
+Additionally, users can see a snapshot of hardware utilization from the :ref:`cluster page <dash-node-view>`, which provides an overview of resource usage across the entire Ray cluster.
+
+.. _dash-workflow-resource-utilization:
+
+View the Resource Utilization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray requires users to specify the number of :ref:`resources <logical-resources>` their tasks and actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
+These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
+
+- You can see the logical and physical resource utilization over time from the :ref:`Metrics View <dash-metrics-view>`.
+- The snapshot of physical resource utilization (CPU, GPU, memory, disk, network) is also available from the :ref:`Cluster View <dash-node-view>`.
+
+The :ref:`logical resources <logical-resources>` usage.
+
+The physical resources (hardware) usage. Ray provides CPU, GPU, Memory, GRAM, disk, and network usage for each machine in a cluster.
+
+
+
 .. _dash-logs-view:
 
 Logs View
@@ -272,7 +294,7 @@ Logs View
 
 .. raw:: html
 
-    <div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+    <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/8V187F2DsN0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
  
@@ -303,51 +325,6 @@ The core worker logs (``python-core-worker-[worker_id]_[pid].log``) contain the 
 You can easily identify failed tasks or actors by looking at the job progress bar, which links to the table.
 
 The table displays the name of the failed tasks or actors and provides access to their corresponding log or error messages.
-
-.. _dash-workflow-cpu-memory-analysis:
-
-Analyze the CPU and memory usage of tasks and actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The :ref:`Metrics View <dash-metrics-view>` in the Ray dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each task and actor in the application (as well as system components).
-This allows users to identify tasks and actors that may be consuming more resources than expected and optimize the performance of the application.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/node_cpu_by_comp.png
-    :align: center
-
-
-Per component CPU graph. 0.379 cores mean that it uses 40% of a single CPU core. Ray process names start with ``ray::``. ``raylet``, ``agent``, ``dashboard``, or ``gcs`` are system components.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/node_memory_by_comp.png
-    :align: center
-
-Per component memory graph. Ray process names start with ``ray::``. ``raylet``, ``agent``, ``dashboard``, or ``gcs`` are system components.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/cluster_page.png
-    :align: center
-
-Additionally, users can see a snapshot of hardware utilization from the :ref:`cluster page <dash-node-view>`, which provides an overview of resource usage across the entire Ray cluster.
-
-.. _dash-workflow-resource-utilization:
-
-View the Resource Utilization
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ray requires users to specify the number of :ref:`resources <logical-resources>` their tasks and actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
-These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
-
-- You can see the logical and physical resource utilization over time from the :ref:`Metrics View <dash-metrics-view>`.
-- The snapshot of physical resource utilization (CPU, GPU, memory, disk, network) is also available from the :ref:`Cluster View <dash-node-view>`.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/logical_resource.png
-    :align: center
-
-The :ref:`logical resources <logical-resources>` usage.
-
-.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/physical_resource.png
-    :align: center
-
-The physical resources (hardware) usage. Ray provides CPU, GPU, Memory, GRAM, disk, and network usage for each machine in a cluster.
 
 .. _dash-overview:
 

@@ -390,7 +390,6 @@ parts:
         title: "Monitoring and Debugging"
         sections:
           - file: ray-observability/getting-started-dashboard
-          - file: ray-observability/getting-started-program
           - file: ray-observability/key-concepts
           - file: ray-observability/user-guides/index
             title: User Guides
@@ -403,6 +402,7 @@ parts:
                   - file: ray-observability/user-guides/troubleshoot-apps/optimize-performance
                   - file: ray-observability/user-guides/troubleshoot-apps/ray-debugging
                   - file: ray-observability/user-guides/troubleshoot-apps/ray-core-profiling
+              - file: ray-observability/user-guides/cli-sdk
               - file: ray-observability/user-guides/configure-logging
               - file: ray-observability/user-guides/add-app-metrics
               - file: ray-observability/user-guides/ray-tracing

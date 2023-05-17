@@ -1,9 +1,9 @@
-.. _observability-getting-started-program:
+.. _observability-programmatic:
 
-Getting Started (API, CLI, SDK)
-===============================
+Monitoring with the CLI or SDK
+==============================
 
-Monitoring and debugging capabilities in Ray are available through an API, CLI, or SDK.
+Monitoring and debugging capabilities in Ray are available through a CLI or SDK.
 
 
 Monitoring Cluster State and Resource Demands

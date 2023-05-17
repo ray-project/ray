@@ -106,6 +106,24 @@ Below is an example with a `traefik <https://doc.traefik.io/traefik/getting-star
         [[http.services.dashboard.loadBalancer.servers]]
           url = "http://localhost:8265"
 
+Viewing Built-in Dashboard API Metrics
+--------------------------------------
+
+The dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints.
+There are basic Prometheus metrics that are emitted for each of these API endpoints:
+
+`ray_dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
+
+`ray_dashboard_api_requests_duration_seconds_bucket`: Collects the duration of requests. This is tagged by endpoint and method.
+
+For example, you can view the p95 duration of all requests with this query:
+
+.. code-block:: text
+
+  histogram_quantile(0.95, sum(rate(ray_dashboard_api_requests_duration_seconds_bucket[5m])) by (le))
+
+These metrics can be queried via Prometheus or Grafana UI. Instructions on how to set these tools up can be found :ref:`here <observability-visualization-setup>`.
+
 Disabling the Dashboard
 -----------------------
 
@@ -143,29 +161,13 @@ To disable the dashboard, use the following arguments `--include-dashboard`.
 
       TODO
 
-Viewing Built-in Dashboard API Metrics
---------------------------------------
-
-The dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints.
-There are basic Prometheus metrics that are emitted for each of these API endpoints:
-
-`ray_dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
-
-`ray_dashboard_api_requests_duration_seconds_bucket`: Collects the duration of requests. This is tagged by endpoint and method.
-
-For example, you can view the p95 duration of all requests with this query:
-
-.. code-block:: text
-
-  histogram_quantile(0.95, sum(rate(ray_dashboard_api_requests_duration_seconds_bucket[5m])) by (le))
-
-These metrics can be queried via Prometheus or Grafana UI. Instructions on how to set these tools up can be found :ref:`here <ray-metrics>`.
+.. _observability-visualization-setup:
 
 Integrating with Prometheus and Grafana
 ---------------------------------------
 
 Setting up Prometheus
----------------------
+~~~~~~~~~~~~~~~~~~~~~
 
 .. tip::
 
@@ -221,7 +223,7 @@ See :ref:`here <multi-node-metrics>` for more information on how to set up Prome
 .. _grafana:
 
 Setting up Grafana
-------------------
+~~~~~~~~~~~~~~~~~~
 
 .. tip::
 
@@ -235,7 +237,7 @@ for debugging ray applications.
 
 
 Deploying Grafana
-~~~~~~~~~~~~~~~~~
+*****************
 
 First, `download Grafana <https://grafana.com/grafana/download>`_. Follow the instructions on the download page to download the right binary for your operating system.
 
@@ -301,10 +303,10 @@ to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
 
 
 Troubleshooting
----------------
+~~~~~~~~~~~~~~~
 
 Getting Prometheus and Grafana to use the Ray configurations when installed via homebrew on macOS X
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+***************************************************************************************************
 
 With homebrew, Prometheus and Grafana are installed as services that are automatically launched for you.
 Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
@@ -318,7 +320,7 @@ You can then start or restart the services with `brew services start grafana` an
 .. _unverified-developer:
 
 MacOS does not trust the developer to install Prometheus or Grafana
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*******************************************************************
 
 You may have received an error that looks like this:
 
@@ -331,12 +333,12 @@ Unfortunately, many developers today are not trusted by Mac and so this requirem
 See `these instructions <https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac>`_ on how to override the restriction and install or run the application.
 
 Grafana dashboards are not embedded in the Ray dashboard
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+********************************************************
 If you're getting an error that says `RAY_GRAFANA_HOST` is not setup despite having set it up, check that:
 You've included the protocol in the URL (e.g., `http://your-grafana-url.com` instead of `your-grafana-url.com`).
 The URL doesn't have a trailing slash (e.g., `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
 
 Certificate Authority (CA error)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+********************************
 You may see a CA error if your Grafana instance is hosted behind HTTPS. Contact the Grafana service owner to properly enable HTTPS traffic.
 

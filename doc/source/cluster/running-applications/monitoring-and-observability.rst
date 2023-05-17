@@ -1,3 +1,6 @@
+Scraping and Persisting Metrics
+===============================
+
 Cluster Monitoring
 ------------------
 
