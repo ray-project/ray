@@ -263,7 +263,7 @@ class Router:
                 "The current number of queries to this deployment waiting"
                 " to be assigned to a replica."
             ),
-            tag_keys=("deployment", "route", "application"),
+            tag_keys=("deployment", "application"),
         )
         self.num_queued_queries_gauge.set_default_tags(
             {"deployment": deployment_name}
@@ -298,7 +298,6 @@ class Router:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries,
             tags={
-                "route": request_meta.route,
                 "application": request_meta.app_name,
             },
         )
@@ -315,7 +314,6 @@ class Router:
         self.num_queued_queries_gauge.set(
             self.num_queued_queries,
             tags={
-                "route": request_meta.route,
                 "application": request_meta.app_name,
             },
         )
