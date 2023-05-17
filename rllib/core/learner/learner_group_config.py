@@ -10,9 +10,9 @@ from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.from_config import NotProvided
-from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 
 if TYPE_CHECKING:
+    from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
     from ray.rllib.core.learner import Learner
 
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
@@ -103,7 +103,7 @@ class LearnerGroupConfig:
     def framework(
         self,
         eager_tracing: Optional[bool] = NotProvided,
-        torch_compile_cfg: Optional[TorchCompileConfig] = NotProvided,
+        torch_compile_cfg: Optional["TorchCompileConfig"] = NotProvided,
     ) -> "LearnerGroupConfig":
 
         if eager_tracing is not NotProvided:
