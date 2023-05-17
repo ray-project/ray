@@ -21,7 +21,7 @@ class BatchPredictor:
     """Batch predictor class.
 
     Takes a predictor class and a checkpoint and provides an interface to run
-    batch scoring on Ray datasets.
+    batch scoring on Datasets.
 
     This batch predictor wraps around a predictor class and executes it
     in a distributed way when calling ``predict()``.
@@ -127,10 +127,10 @@ class BatchPredictor:
         """Run batch scoring on a Dataset.
 
         .. note::
-            In Ray 2.4, `BatchPredictor` is lazy by default. Use one of the Datasets consumption APIs, such as iterating through the output, to trigger the execution of prediction.
+            In Ray 2.4, `BatchPredictor` is lazy by default. Use one of the Dataset consumption APIs, such as iterating through the output, to trigger the execution of prediction.
 
         Args:
-            data: Ray dataset or pipeline to run batch prediction on.
+            data: Dataset or pipeline to run batch prediction on.
             feature_columns: List of columns in the preprocessed dataset to use for
                 prediction. Columns not specified will be dropped
                 from `data` before being passed to the predictor.
@@ -190,7 +190,7 @@ class BatchPredictor:
             .. testoutput::
 
                 MapBatches(ScoringWrapper)
-                +- Datastream(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
+                +- Dataset(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
                 Final accuracy: 1.0
         """  # noqa: E501
         if num_gpus_per_worker is None:
@@ -297,7 +297,7 @@ class BatchPredictor:
                     return prediction_output_batch
 
             def __call__(self, input_batch: DataBatchType) -> DataBatchType:
-                # TODO: Delegate separate_gpu_stage flag to Datasets.
+                # TODO: Delegate separate_gpu_stage flag to Dataset.
                 if self.override_prep:
                     # Apply preprocessing before selecting feature columns.
                     input_batch = self.override_prep.transform_batch(input_batch)
@@ -330,7 +330,7 @@ class BatchPredictor:
         preprocessor = self.get_preprocessor()
         override_prep = None
         if preprocessor:
-            # TODO: Delegate separate_gpu_stage flag to Datasets.
+            # TODO: Delegate separate_gpu_stage flag to Dataset.
             if not separate_gpu_stage and num_gpus_per_worker > 0:
                 override_prep = preprocessor
             else:
@@ -387,7 +387,7 @@ class BatchPredictor:
         to passing it `BatchPredictor.predict()`.
 
         Args:
-            data: Ray dataset to run batch prediction on.
+            data: Dataset to run batch prediction on.
             blocks_per_window: The window size (parallelism) in blocks.
                 Increasing window size increases pipeline throughput, but also
                 increases the latency to initial output, since it decreases the

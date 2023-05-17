@@ -10,6 +10,7 @@ from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
     get_fs_and_path,
+    _is_network_mount,
 )
 from ray.tune.utils.file_transfer import _get_recursive_files_and_stats
 
@@ -131,6 +132,46 @@ def test_upload_exclude_multimatch(temp_data_dirs):
     assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
 
 
+@pytest.mark.parametrize("no_fsspec", [False, True])
+def test_upload_local_exclude_multi(temp_data_dirs, no_fsspec):
+    if no_fsspec:
+        with patch("ray.air._internal.remote_storage.fsspec", None):
+            return test_upload_local_exclude_multi(temp_data_dirs, no_fsspec=False)
+
+    tmp_source, tmp_target = temp_data_dirs
+
+    upload_to_uri(tmp_source, tmp_target, exclude=["*_exclude.txt", "*_exclude/*"])
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "level0_exclude.txt")
+    assert_file(True, tmp_target, "subdir/level1.txt")
+    assert_file(False, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_target, "subdir/nested/level2.txt")
+    assert_file(False, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(False, tmp_target, "subdir_exclude")
+    assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
+@pytest.mark.parametrize("no_fsspec", [False, True])
+def test_upload_local_exclude_multimatch(temp_data_dirs, no_fsspec):
+    if no_fsspec:
+        with patch("ray.air._internal.remote_storage.fsspec", None):
+            return test_upload_local_exclude_multimatch(temp_data_dirs, no_fsspec=False)
+
+    tmp_source, tmp_target = temp_data_dirs
+
+    upload_to_uri(tmp_source, tmp_target, exclude=["*_exclude*"])
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "level0_exclude.txt")
+    assert_file(True, tmp_target, "subdir/level1.txt")
+    assert_file(False, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_target, "subdir/nested/level2.txt")
+    assert_file(False, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(False, tmp_target, "subdir_exclude")
+    assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+
 def test_get_recursive_files_race_con(temp_data_dirs):
     tmp_source, _ = temp_data_dirs
 
@@ -173,6 +214,25 @@ def test_get_fs_and_path():
             or "pyarrow and local java libraries required for HDFS" in str_e
         )
         assert find_error
+
+
+def test_is_network_mount(tmp_path, monkeypatch):
+    """Test `_is_network_mount` storage utility."""
+
+    with monkeypatch.context() as m:
+        import ray.air._internal.remote_storage
+
+        m.setattr(
+            ray.air._internal.remote_storage,
+            "_get_network_mounts",
+            lambda: [str(tmp_path)],
+        )
+        assert _is_network_mount(str(tmp_path / "a/b/c"))
+
+    # Local paths should return False
+    assert not _is_network_mount(str(tmp_path / "ray_results"))
+    assert not _is_network_mount("~/ray_results")
+    assert not _is_network_mount("")  # cwd
 
 
 if __name__ == "__main__":

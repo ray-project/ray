@@ -1,12 +1,12 @@
+from collections import namedtuple
+import functools
 import itertools
 import unittest
-import functools
-from collections import namedtuple
 
 import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 import numpy as np
 import tree
-from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -83,10 +83,13 @@ class TestCatalog(unittest.TestCase):
         outputs = model(inputs)
 
         self.assertEqual(outputs[ENCODER_OUT].shape, (32, latent_dim))
-        tree.map_structure_with_path(
-            lambda p, v: self.assertEqual(v.shape, states[p].shape),
-            outputs[STATE_OUT],
-        )
+        if STATE_OUT in outputs:
+            tree.map_structure_with_path(
+                lambda p, v: (
+                    True if v is None else self.assertEqual(v.shape, states[p].shape)
+                ),
+                outputs[STATE_OUT],
+            )
 
     def test_get_encoder_config(self):
         """Tests if we can create a bunch of encoders from the base catalog class."""
@@ -176,9 +179,6 @@ class TestCatalog(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
             input_space, model_config_type = input_space_and_config_type
-            if model_config_type is not MLPEncoderConfig and framework == "tf2":
-                # TODO (Artur): Enable this once we have TF implementations
-                continue
             print(
                 f"Testing framework: \n{framework}\n, input space: \n{input_space}\n "
                 f"and config: \n{model_config_dict}\n"
@@ -201,8 +201,8 @@ class TestCatalog(unittest.TestCase):
             # Do a forward pass and check if the output has the correct shape
             self._check_model_outputs(model, framework, model_config_dict, input_space)
 
-        # TODO(Artur): Add support for composite spaces and test here
-        # Today, Catalog does not handle composite spaces, so we can't test them
+        # TODO(Artur): Add support for composite spaces and test here.
+        #  Today, Catalog does not handle composite spaces, so we can't test them.
 
     def test_get_dist_cls_from_action_space(self):
         """Tests if we can create a bunch of action distributions.
@@ -385,6 +385,7 @@ class TestCatalog(unittest.TestCase):
                 _enable_rl_module_api=True,
                 rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog),
             )
+            .training(_enable_learner_api=True)
             .framework("torch")
         )
 
@@ -425,11 +426,11 @@ class TestCatalog(unittest.TestCase):
 
         class MyCostumTorchEncoderConfig(ModelConfig):
             def build(self, framework):
-                return MyCostumTorchEncoder()
+                return MyCostumTorchEncoder(self)
 
         class MyCostumTorchEncoder(TorchModel, Encoder):
-            def __init__(self):
-                super().__init__({})
+            def __init__(self, config):
+                super().__init__(config)
                 self.net = torch.nn.Linear(env.observation_space.shape[0], 10)
 
             def _forward(self, input_dict, **kwargs):

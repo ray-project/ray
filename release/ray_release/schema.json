@@ -21,10 +21,12 @@
 				"stable": {
 					"type": "boolean"
 				},
+				"jailed": {
+					"type": "boolean"
+				},
 				"python": {
 					"type": "string",
 					"enum": [
-						"3.6",
 						"3.7",
 						"3.8",
 						"3.9"
@@ -41,9 +43,6 @@
 					]
 				},
 				"team": {
-					"type": "string"
-				},
-				"driver_setup": {
 					"type": "string"
 				},
 				"cluster": {
@@ -110,14 +109,6 @@
 						"anyscale_job"
 					]
 				},
-				"file_manager": {
-					"type": "string",
-					"enum": [
-						"sdk",
-						"client",
-						"job"
-					]
-				},
 				"wait_for_nodes": {
 					"$ref": "#/definitions/WaitForNodes"
 				},
@@ -171,9 +162,6 @@
 					"type": "string"
 				},
 				"env": {
-					"type": "string"
-				},
-				"driver_setup": {
 					"type": "string"
 				},
 				"cluster": {

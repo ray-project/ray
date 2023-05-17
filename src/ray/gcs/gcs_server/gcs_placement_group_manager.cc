@@ -756,11 +756,13 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
         iter->second->GetMutableStats()->set_scheduling_state(
             rpc::PlacementGroupStats::QUEUED);
         AddToPendingQueue(iter->second, 0);
+        RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
+            iter->second->GetPlacementGroupID(),
+            iter->second->GetPlacementGroupTableData(),
+            [this](Status status) { SchedulePendingPlacementGroups(); }));
       }
     }
   }
-
-  SchedulePendingPlacementGroups();
 }
 
 void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
@@ -826,7 +828,9 @@ void GcsPlacementGroupManager::Tick() {
   // added as a safety check. https://github.com/ray-project/ray/pull/18419
   SchedulePendingPlacementGroups();
   execute_after(
-      io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+      io_context_,
+      [this] { Tick(); },
+      std::chrono::milliseconds(1000) /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
@@ -966,7 +970,10 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
                       << placement_group->GetPlacementGroupID();
         placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
         AddToPendingQueue(placement_group, 0);
-        SchedulePendingPlacementGroups();
+        RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
+            placement_group->GetPlacementGroupID(),
+            placement_group->GetPlacementGroupTableData(),
+            [this](Status status) { SchedulePendingPlacementGroups(); }));
         return true;
       }
     }

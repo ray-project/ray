@@ -24,6 +24,7 @@ parts:
           - file: ray-core/examples/overview
             title: "Examples"
             sections:
+              - file: ray-core/examples/gentle_walkthrough
               - file: ray-core/examples/monte_carlo_pi
               - file: ray-core/examples/plot_example-a3c
               - file: ray-core/examples/plot_example-lm
@@ -52,8 +53,10 @@ parts:
               - file: ray-air/computer-vision
               - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
+              - file: ray-air/experimental-features
           - file: ray-air/examples/index
             sections:
+              - file: ray-air/examples/opt_deepspeed_batch_inference
               - file: ray-air/examples/torch_image_example
               - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
@@ -80,10 +83,11 @@ parts:
               - file: ray-air/examples/gptj_batch_prediction
               - file: ray-air/examples/gptj_serving
               - file: ray-air/examples/dreambooth_finetuning
+              - file: ray-air/examples/dolly_lightning_fsdp_finetuning
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
-      - file: data/dataset
+      - file: data/data
         title: Ray Data
         sections:
           - file: data/getting-started
@@ -94,10 +98,9 @@ parts:
               - file: data/examples/nyc_taxi_basic_processing
                 title: Processing the NYC taxi dataset
               - file: data/examples/batch_training
-                title: Batch Training with Ray Datasets
+                title: Batch Training with Ray Data
               - file: data/examples/ocr_example
-                title: Scaling OCR with Ray Datasets
-              - file: data/examples/advanced-pipelines
+                title: Scaling OCR with Ray Data
               - file: data/examples/random-access
           - file: data/faq
           - file: data/api/api
@@ -128,7 +131,9 @@ parts:
               - file: train/examples/pytorch/torch_fashion_mnist_example
                 title: "PyTorch Fashion MNIST Example"
               - file: train/examples/lightning/lightning_mnist_example
-                title: "PyTorch Lightning MNIST Example"
+                title: "PyTorch Lightning Basic Example"
+              - file: train/examples/lightning/lightning_cola_advanced
+                title: "PyTorch Lightning Advanced Example"
               - file: train/examples/transformers/transformers_example
                 title: "HF Transformers Example"
               - file: train/examples/tf/tensorflow_mnist_example
@@ -262,6 +267,7 @@ parts:
               - file: serve/scaling-and-resource-allocation
               - file: serve/model_composition
               - file: serve/dev-workflow
+              - file: serve/app-builder-guide
               - file: serve/multi-app
               - file: serve/production-guide/index
                 sections:
@@ -380,6 +386,19 @@ parts:
 
       - file: ray-observability/monitoring-debugging/monitoring-debugging
         title: "Monitoring and Debugging"
+        sections:
+          - file: ray-observability/user-guides/index
+            title: User Guides
+            sections:
+              - file: ray-observability/user-guides/troubleshoot-apps/index
+                title: Troubleshooting Applications
+                sections:
+                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-failures
+                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-hangs
+                  - file: ray-observability/user-guides/troubleshoot-apps/optimize-performance
+                  - file: ray-observability/user-guides/troubleshoot-apps/ray-debugging
+                  - file: ray-observability/user-guides/troubleshoot-apps/ray-core-profiling
+              - file: ray-observability/user-guides/ray-tracing
 
       - file: ray-references/api
         title: References
@@ -394,7 +413,10 @@ parts:
             sections:
               - file: ray-contribute/development
               - file: ray-contribute/docs
+              - file: ray-contribute/writing-code-snippets
               - file: ray-contribute/fake-autoscaler
               - file: ray-core/examples/testing-tips
+              - file: ray-contribute/debugging.rst
+              - file: ray-contribute/profiling.rst
           - file: ray-core/configure
           - file: ray-contribute/whitepaper

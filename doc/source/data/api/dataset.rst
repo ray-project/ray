@@ -1,7 +1,7 @@
 .. _dataset-api:
 
 Dataset API
-===========
+==============
 
 .. currentmodule:: ray.data
 
@@ -41,7 +41,7 @@ Sorting, Shuffling, Repartitioning
    Dataset.repartition
 
 Splitting and Merging Datasets
-------------------------------
+---------------------------------
 
 .. autosummary::
    :toctree: doc/
@@ -77,8 +77,8 @@ Converting to Pipeline
    Dataset.repeat
    Dataset.window
 
-Consuming Datasets
-------------------
+Consuming Data
+---------------------
 
 .. autosummary::
    :toctree: doc/
@@ -126,6 +126,7 @@ Inspecting Metadata
    :toctree: doc/
 
    Dataset.count
+   Dataset.columns
    Dataset.schema
    Dataset.default_batch_format
    Dataset.num_blocks
@@ -138,9 +139,10 @@ Execution
 ---------
 
 .. autosummary::
-   :toctree: doc/
+    :toctree: doc/
 
-   Dataset.materialize
+    Dataset.materialize
+    ActorPoolStrategy
 
 Serialization
 -------------

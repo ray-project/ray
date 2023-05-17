@@ -20,7 +20,7 @@ logger = DatasetLogger(__name__)
 class BulkExecutor(Executor):
     """A bulk (BSP) operator executor.
 
-    This implementation emulates the behavior of the legacy Datasets backend. It
+    This implementation emulates the behavior of the legacy Data backend. It
     is intended to be replaced by default by StreamingExecutor in the future.
     """
 

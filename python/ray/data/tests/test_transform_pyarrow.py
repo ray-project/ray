@@ -378,19 +378,19 @@ def test_convert_to_pyarrow(ray_start_regular_shared, tmp_path):
 
 
 def test_pyarrow(ray_start_regular_shared):
-    ds = ray.data.range_table(5)
-    assert ds.map(lambda x: {"b": x["value"] + 2}).take() == [
+    ds = ray.data.range(5)
+    assert ds.map(lambda x: {"b": x["id"] + 2}).take() == [
         {"b": 2},
         {"b": 3},
         {"b": 4},
         {"b": 5},
         {"b": 6},
     ]
-    assert ds.map(lambda x: {"b": x["value"] + 2}).filter(
+    assert ds.map(lambda x: {"b": x["id"] + 2}).filter(
         lambda x: x["b"] % 2 == 0
     ).take() == [{"b": 2}, {"b": 4}, {"b": 6}]
-    assert ds.filter(lambda x: x["value"] == 0).flat_map(
-        lambda x: [{"b": x["value"] + 2}, {"b": x["value"] + 20}]
+    assert ds.filter(lambda x: x["id"] == 0).flat_map(
+        lambda x: [{"b": x["id"] + 2}, {"b": x["id"] + 20}]
     ).take() == [{"b": 2}, {"b": 20}]
 
 

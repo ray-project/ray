@@ -11,21 +11,23 @@ from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, List
+from ray.data.block import Block, BlockMetadata, CallableClass, List
 from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatasetStats
-from ray.data._internal.stage_impl import RandomizeBlocksStage
+from ray.data._internal.stage_impl import (
+    RandomizeBlocksStage,
+    LimitStage,
+)
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import (
     get_compute,
-    CallableClass,
-    TaskPoolStrategy,
     ActorPoolStrategy,
 )
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage, Stage
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.interfaces import (
@@ -34,7 +36,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.util import validate_compute
 from ray.data._internal.execution.util import make_callable_class_concurrent
+
+# Warn about tasks larger than this.
+TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
 
 def execute_to_legacy_block_iterator(
@@ -188,6 +194,24 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         read_tasks = blocks._tasks
         remote_args = blocks._remote_args
         assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
+
+        # Defensively compute the size of the block as the max size reported by the
+        # datasource and the actual read task size. This is to guard against issues
+        # with bad metadata reporting.
+        def cleaned_metadata(read_task):
+            block_meta = read_task.get_metadata()
+            task_size = len(cloudpickle.dumps(read_task))
+            if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
+                if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
+                    print(
+                        f"WARNING: the read task size ({task_size} bytes) is larger "
+                        "than the reported output size of the task "
+                        f"({block_meta.size_bytes} bytes). This may be a size "
+                        "reporting bug in the datasource being read from."
+                    )
+                block_meta.size_bytes = task_size
+            return block_meta
+
         inputs = InputDataBuffer(
             [
                 RefBundle(
@@ -196,13 +220,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                             # This isn't a proper block, but it's what we are doing
                             # in the legacy code.
                             ray.put(read_task),
-                            BlockMetadata(
-                                num_rows=1,
-                                size_bytes=len(cloudpickle.dumps(read_task)),
-                                schema=None,
-                                input_files=[],
-                                exec_stats=None,
-                            ),
+                            cleaned_metadata(read_task),
                         )
                     ],
                     owns_blocks=True,
@@ -219,8 +237,13 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for read_task in blocks:
                 yield from read_task()
 
+        # If the BlockList's read stage name is available, we assign it
+        # as the operator's name, which is used as the task name.
+        task_name = "DoRead"
+        if isinstance(blocks, LazyBlockList):
+            task_name = getattr(blocks, "_read_stage_name", task_name)
         return MapOperator.create(
-            do_read, inputs, name="DoRead", ray_remote_args=remote_args
+            do_read, inputs, name=task_name, ray_remote_args=remote_args
         )
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
@@ -243,16 +266,11 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
     if isinstance(stage, OneToOneStage):
         compute = get_compute(stage.compute)
+        validate_compute(stage.fn, compute)
 
         block_fn = stage.block_fn
         if stage.fn:
             if isinstance(stage.fn, CallableClass):
-                if isinstance(compute, TaskPoolStrategy):
-                    raise ValueError(
-                        "``compute`` must be specified when using a callable class, "
-                        "and must specify the actor compute strategy. "
-                        "For example, use ``compute=ActorPoolStrategy(size=n)``."
-                    )
                 assert isinstance(compute, ActorPoolStrategy)
 
                 fn_constructor_args = stage.fn_constructor_args or ()
@@ -295,6 +313,8 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             min_rows_per_bundle=stage.target_block_size,
             ray_remote_args=stage.ray_remote_args,
         )
+    elif isinstance(stage, LimitStage):
+        return LimitOperator(stage.limit, input_op)
     elif isinstance(stage, AllToAllStage):
         fn = stage.fn
         block_udf = stage.block_udf

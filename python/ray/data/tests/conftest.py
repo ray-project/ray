@@ -36,6 +36,22 @@ def ray_start_10_cpus_shared(request):
         yield res
 
 
+@pytest.fixture(scope="module")
+def enable_strict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = True
+    yield
+    ctx.strict_mode = False
+
+
+@pytest.fixture(scope="module")
+def enable_nonstrict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = False
+    yield
+    ctx.strict_mode = True
+
+
 @pytest.fixture(scope="function")
 def aws_credentials():
     import os
@@ -262,12 +278,12 @@ def assert_base_partitioned_ds():
                 ds_str = ds_str.replace(c, "")
             return ds_str
 
-        assert "Datastream(num_blocks={},num_rows={},schema={})".format(
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
             num_input_files,
             num_rows,
             _remove_whitespace(schema),
         ) == _remove_whitespace(str(ds)), ds
-        assert "Datastream(num_blocks={},num_rows={},schema={})".format(
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
             num_input_files,
             num_rows,
             _remove_whitespace(schema),
@@ -293,7 +309,7 @@ def assert_base_partitioned_ds():
 
 
 @pytest.fixture
-def restore_dataset_context(request):
+def restore_data_context(request):
     """Restore any DataContext changes after the test runs"""
     original = copy.deepcopy(ray.data.context.DataContext.get_current())
     yield

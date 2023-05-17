@@ -1,10 +1,14 @@
-from typing import Dict, Optional, Tuple, Union
+import inspect
 import logging
 import os
+from types import FunctionType
+from typing import Any, Dict, Optional, Tuple, Union
+
+from pydantic.main import ModelMetaclass
 
 import ray
 from ray._private.usage import usage_lib
-from ray.serve.deployment import Deployment
+from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
@@ -134,7 +138,7 @@ def _start_controller(
     """
 
     # Initialize ray if needed.
-    ray._private.worker.global_worker.filter_logs_by_job = False
+    ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
@@ -329,3 +333,55 @@ def serve_start(
         f'namespace "{SERVE_NAMESPACE}".'
     )
     return client
+
+
+def call_app_builder_with_args_if_necessary(
+    builder: Union[Application, FunctionType],
+    args: Dict[str, Any],
+) -> Application:
+    """Builds a Serve application from an application builder function.
+
+    If a pre-built application is passed, this is a no-op.
+
+    Else, we validate the signature of the builder, convert the args dictionary to
+    the user-annotated Pydantic model if provided, and call the builder function.
+
+    The output of the function is returned (must be an Application).
+    """
+    if isinstance(builder, Application):
+        if len(args) > 0:
+            raise ValueError(
+                "Arguments can only be passed to an application builder function, "
+                "not an already built application."
+            )
+        return builder
+    elif not isinstance(builder, FunctionType):
+        raise TypeError(
+            "Expected a built Serve application or an application builder function "
+            f"but got: {type(builder)}."
+        )
+
+    # Check that the builder only takes a single argument.
+    # TODO(edoakes): we may want to loosen this to allow optional kwargs in the future.
+    signature = inspect.signature(builder)
+    if len(signature.parameters) != 1:
+        raise TypeError(
+            "Application builder functions should take exactly one parameter, "
+            "a dictionary containing the passed arguments."
+        )
+
+    # If the sole argument to the builder is a pydantic model, convert the args dict to
+    # that model. This will perform standard pydantic validation (e.g., raise an
+    # exception if required fields are missing).
+    param = signature.parameters[list(signature.parameters.keys())[0]]
+    if issubclass(type(param.annotation), ModelMetaclass):
+        args = param.annotation.parse_obj(args)
+
+    app = builder(args)
+    if not isinstance(app, Application):
+        raise TypeError(
+            "Application builder functions must return an `Application` returned "
+            f"`from `Deployment.bind()`, but got: {type(app)}."
+        )
+
+    return app

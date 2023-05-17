@@ -220,8 +220,8 @@ class DatasetStats:
             parent: Reference to parent Dataset's stats, or a list of parents
                 if there are multiple.
             needs_stats_actor: Whether this Dataset's stats needs a stats actor for
-                stats collection. This is currently only used for Datasets using a lazy
-                datasource (i.e. a LazyBlockList).
+                stats collection. This is currently only used for Datasets using a
+                lazy datasource (i.e. a LazyBlockList).
             stats_uuid: The uuid for the stats, used to fetch the right stats
                 from the stats actor.
             base_name: The name of the base operation for a multi-stage operation.

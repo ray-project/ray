@@ -16,14 +16,15 @@ from typing import (
 )
 
 import ray
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data._internal.util import capitalize
 from ray.types import ObjectRef
-from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
-    UDF,
+    UserDefinedFunction,
     ActorPoolStrategy,
+    TaskPoolStrategy,
     BlockTransform,
     CallableClass,
     ComputeStrategy,
@@ -130,6 +131,10 @@ class ExecutionPlan:
             stats.dataset_uuid = self._dataset_uuid
 
         self._run_by_consumer = run_by_consumer
+
+        # Snapshot the current context, so that the config of Datasets is always
+        # determined by the config at the time it was created.
+        self._context = copy.deepcopy(DataContext.get_current())
 
     def __repr__(self) -> str:
         return (
@@ -393,8 +398,8 @@ class ExecutionPlan:
                 return None
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
-            # This applies to newly created dataset. For example, initial dataset from
-            # read, and output datasets of Dataset.split().
+            # This applies to newly created dataset. For example, initial dataset
+            # from read, and output datasets of Dataset.split().
             self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
@@ -412,36 +417,17 @@ class ExecutionPlan:
             fetch_if_missing: Whether to execute the blocks to fetch the schema.
         """
 
-        # Only trigger the execution of first block in case it's a lazy block list.
-        # Don't trigger full execution for a schema read.
+        # Ensure the first block has schema information available in the metadata.
+        # Otherwise, this will trigger computation on the first block
+        # for a schema read.
         if isinstance(blocks, LazyBlockList):
-            blocks.compute_first_block()
             blocks.ensure_metadata_for_first_block()
 
         metadata = blocks.get_metadata(fetch_if_missing=False)
-        # Some blocks could be empty, in which case we cannot get their schema.
-        # TODO(ekl) validate schema is the same across different blocks.
 
-        # First check if there are blocks with computed schemas, then unify
-        # valid schemas from all such blocks.
-        schemas_to_unify = []
-        for m in metadata:
-            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                schemas_to_unify.append(m.schema)
-        if schemas_to_unify:
-            # Check valid pyarrow installation before attempting schema unification
-            try:
-                import pyarrow as pa
-            except ImportError:
-                pa = None
-            # If the result contains PyArrow schemas, unify them
-            if pa is not None and any(
-                isinstance(s, pa.Schema) for s in schemas_to_unify
-            ):
-                return unify_schemas(schemas_to_unify)
-            # Otherwise, if the resulting schemas are simple types (e.g. int),
-            # return the first schema.
-            return schemas_to_unify[0]
+        unified_schema = unify_block_metadata_schema(metadata)
+        if unified_schema is not None:
+            return unified_schema
         if not fetch_if_missing:
             return None
         # Synchronously fetch the schema.
@@ -465,8 +451,8 @@ class ExecutionPlan:
             return None
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
-            # This applies to newly created dataset. For example, initial dataset from
-            # read, and output datasets of Dataset.split().
+            # This applies to newly created dataset. For example, initial dataset
+            # from read, and output datasets of Dataset.split().
             self.execute()
         # Snapshot is now guaranteed to be the final block or None.
         return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
@@ -501,7 +487,9 @@ class ExecutionPlan:
             Tuple of iterator over output blocks and the executor.
         """
 
-        ctx = DataContext.get_current()
+        # Always used the saved context for execution.
+        ctx = self._context
+
         if not ctx.use_streaming_executor or self.has_computed_output():
             return (
                 self.execute(
@@ -550,7 +538,10 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        context = DataContext.get_current()
+
+        # Always used the saved context for execution.
+        context = self._context
+
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.get_logger().warning(
@@ -690,7 +681,7 @@ class ExecutionPlan:
         """Apply stage fusion optimizations, returning an updated source block list and
         associated stats, and a set of optimized stages.
         """
-        context = DataContext.get_current()
+        context = self._context
         blocks, stats, stages = self._get_source_blocks_and_stages()
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
@@ -746,7 +737,7 @@ class ExecutionPlan:
         """Return whether this plan can be executed as only a read stage."""
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
-        context = DataContext.get_current()
+        context = self._context
         remaining_stages = self._stages_after_snapshot
         if (
             context.optimize_fuse_stages
@@ -782,7 +773,7 @@ class ExecutionPlan:
         # - Read only: handle with legacy backend
         # - Read->randomize_block_order: handle with new backend
         # Note that both are considered read equivalent, hence this extra check.
-        context = DataContext.get_current()
+        context = self._context
         trailing_randomize_block_order_stage = (
             self._stages_after_snapshot
             and len(self._stages_after_snapshot) == 1
@@ -893,7 +884,7 @@ class OneToOneStage(Stage):
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -901,7 +892,7 @@ class OneToOneStage(Stage):
     ):
         super().__init__(name, None)
         self.block_fn = block_fn
-        self.compute = compute or "tasks"
+        self.compute = compute or TaskPoolStrategy()
         self.ray_remote_args = ray_remote_args or {}
         self.target_block_size = target_block_size
         self.fn = fn
@@ -981,7 +972,7 @@ class OneToOneStage(Stage):
         def block_fn(
             blocks: Iterable[Block],
             ctx: TaskContext,
-            fn: UDF,
+            fn: UserDefinedFunction,
             *fn_args,
             **fn_kwargs,
         ) -> Iterable[Block]:
@@ -1211,7 +1202,7 @@ def _rewrite_read_stage(
     stage = OneToOneStage(
         name,
         block_fn,
-        "tasks",
+        TaskPoolStrategy(),
         remote_args,
     )
     stats = DatasetStats(stages={}, parent=None)

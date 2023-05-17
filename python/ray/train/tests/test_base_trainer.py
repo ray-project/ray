@@ -60,7 +60,7 @@ class DummyPreprocessor(Preprocessor):
         self.fit_counter += 1
 
     def transform(self, ds):
-        return ds.map(lambda x: x + 1)
+        return ds.map(lambda x: {"item": x["item"] + 1})
 
 
 class DummyTrainer(BaseTrainer):
@@ -102,7 +102,7 @@ def test_preprocess_datasets(ray_start_4_cpus):
     ctx.execution_options.preserve_order = True
 
     def training_loop(self):
-        assert self.datasets["my_dataset"].take() == [2, 3, 4]
+        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
 
     datasets = {"my_dataset": ray.data.from_items([1, 2, 3])}
     trainer = DummyTrainer(
@@ -144,8 +144,8 @@ def test_preprocess_fit_on_train(ray_start_4_cpus, gen_dataset):
         # Fit was only called once.
         assert self.preprocessor.fit_counter == 1
         # Datasets should all be transformed.
-        assert self.datasets["train"].take() == [2, 3, 4]
-        assert self.datasets["my_dataset"].take() == [2, 3, 4]
+        assert self.datasets["train"].take_batch()["item"].tolist() == [2, 3, 4]
+        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
 
     if gen_dataset:
         datasets = {
@@ -168,8 +168,8 @@ def test_preprocessor_already_fitted(ray_start_4_cpus):
         # Make sure fit is not called if preprocessor is already fit.
         assert self.preprocessor.fit_counter == 1
         # Datasets should all be transformed.
-        assert self.datasets["train"].take() == [2, 3, 4]
-        assert self.datasets["my_dataset"].take() == [2, 3, 4]
+        assert self.datasets["train"].take_batch()["item"].tolist() == [2, 3, 4]
+        assert self.datasets["my_dataset"].take_batch()["item"].tolist() == [2, 3, 4]
 
     datasets = {
         "train": ray.data.from_items([1, 2, 3]),
