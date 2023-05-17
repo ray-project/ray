@@ -8,8 +8,8 @@ from ray.rllib.utils.framework import try_import_tf
 _, tf, _ = try_import_tf()
 
 
-class TfRLModule(RLModule, tf.keras.Model):
-    """Base class for RLlib TF RLModules."""
+class TfRLModule(tf.keras.Model, RLModule):
+    """Base class for RLlib TensorFlow RLModules."""
 
     framework = "tf2"
 
