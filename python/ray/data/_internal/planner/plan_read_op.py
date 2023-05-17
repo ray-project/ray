@@ -15,6 +15,7 @@ from ray.data.datasource.datasource import ReadTask
 
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
+
 def _plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
