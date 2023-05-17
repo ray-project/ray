@@ -598,6 +598,7 @@ class MetricsPusher:
         self.metrics_process_func = metrics_process_func
         self.interval_s = interval_s
         self.pusher_thread: Union[threading.Thread, None] = None
+        self.stop_event = threading.Event()
 
     def start(self):
         """Start a background thread to push metrics to controller.
@@ -619,6 +620,8 @@ class MetricsPusher:
 
             while True:
                 start = time.time()
+                if self.stop_event.is_set():
+                    return
 
                 if ray.is_initialized():
                     try:
@@ -647,4 +650,5 @@ class MetricsPusher:
         self.pusher_thread = timer
 
     def __del__(self):
+        self.stop_event.set()
         self.pusher_thread.join()
