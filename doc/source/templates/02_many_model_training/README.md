@@ -1,26 +1,11 @@
 # Scaling Many Model Training with Ray Tune
 
-This template is a quickstart to using [Ray
-Tune](https://docs.ray.io/en/latest/tune/index.html) for batch
-inference. Ray Tune is one of many libraries under the [Ray AI
-Runtime](https://docs.ray.io/en/latest/ray-air/getting-started.html).
-See [this blog
-post](https://www.anyscale.com/blog/training-one-million-machine-learning-models-in-record-time-with-ray)
-for more information on the benefits of performing many model training
-with Ray!
+This template demonstrates how to parallelize the training of hundreds of time-series forecasting models with [Ray Tune](https://docs.ray.io/en/latest/tune/index.html).
 
-This template walks through time-series forecasting using
-`statsforecast`, but the framework and data format can be swapped out
-easily \-- they are there just to help you build your own application!
+The template uses the `statsforecast` library to fit models to partitions of the M4 forecasting competition dataset.
 
-At a high level, this template will:
+The end result of the template is fitting multiple models on each dataset partition, then determining the best model based on cross-validation metrics. Then, using the best model, we can generate forecasts like the ones shown below:
 
-1.  [Define the training function for a single partition of
-    data.](https://docs.ray.io/en/latest/tune/tutorials/tune-run.html)
-2.  [Define a Tune search space to run training over many partitions of
-    data.](https://docs.ray.io/en/latest/tune/tutorials/tune-search-spaces.html)
-3.  [Extract the best model per dataset partition from the Tune
-    experiment
-    output.](https://docs.ray.io/en/latest/tune/examples/tune_analyze_results.html)
+![Forecasts](https://github-production-user-asset-6210df.s3.amazonaws.com/3887863/239091118-2413f399-4636-40cf-8b12-8d3ce15f5ce1.png)
 
-Start coding by clicking on the Jupyter or VSCode icon above.
+When the workspace is up and running, start coding by clicking on the Jupyter or VSCode icon above. Open the `many_model_training.ipynb` file and follow the instructions there.
