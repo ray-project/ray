@@ -96,10 +96,6 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
-<<<<<<< HEAD
-from ray.widgets.util import repr_with_fallback
-=======
->>>>>>> 45067ae21835a78666f0da1143ec4469c6265667
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1039,6 +1035,7 @@ class BaseContext(metaclass=ABCMeta):
     @abstractmethod
     def __exit__(self):
         pass
+
 
 @dataclass
 class RayContext(BaseContext, Mapping):
