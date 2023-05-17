@@ -1,7 +1,7 @@
 from typing import Iterator, List
 
-import cloudpickle
 import ray
+import ray.cloudpickle as cloudpickle
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
