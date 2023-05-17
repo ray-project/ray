@@ -865,7 +865,7 @@
 
 - name: workspace_template_batch_inference
   group: Workspace templates
-  working_dir: workspace_templates/tests/01_batch_inference
+  working_dir: workspace_templates/01_batch_inference
   python: "3.9"
   frequency: nightly-3x
   team: ml
@@ -875,7 +875,7 @@
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test batch_inference.ipynb && ipython _test.py
+    script: pip install -r requirements.txt && jupyter nbconvert --to script --output _test batch_inference.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -889,7 +889,7 @@
 
 - name: workspace_template_many_model_training
   group: Workspace templates
-  working_dir: workspace_templates/tests/02_many_model_training
+  working_dir: workspace_templates/02_many_model_training
   python: "3.9"
   frequency: nightly-3x
   team: ml
@@ -899,7 +899,7 @@
 
   run:
     timeout: 600
-    script: pip install -U -r requirements.txt && jupyter nbconvert --to script --output _test many_model_training.ipynb && ipython _test.py
+    script: pip install -r requirements.txt && jupyter nbconvert --to script --output _test many_model_training.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -913,7 +913,7 @@
 
 - name: workspace_template_serving_stable_diffusion
   group: Workspace templates
-  working_dir: workspace_templates/tests/03_serving_stable_diffusion
+  working_dir: workspace_templates/03_serving_stable_diffusion
   python: "3.9"
   frequency: nightly-3x
   team: ml
@@ -923,7 +923,7 @@
 
   run:
     timeout: 600
-    script: pip install -U -r requirements.txt && jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
+    script: pip install -r requirements.txt && jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
