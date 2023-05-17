@@ -73,6 +73,12 @@ def test_failure():
     with pytest.raises(ModuleNotFoundError):
         import horovod  # noqa: F401
 
+    with pytest.raises(ModuleNotFoundError):
+        import accelerate  # noqa: F401
+
+    with pytest.raises(ModuleNotFoundError):
+        import transformers  # noqa: F401
+
 
 if __name__ == "__main__":
     import sys

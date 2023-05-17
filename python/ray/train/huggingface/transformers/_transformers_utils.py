@@ -8,7 +8,7 @@ from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
 from ray.data import DataIterator
-from ray.train.hf_transformers.transformers_checkpoint import (
+from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
 )
 

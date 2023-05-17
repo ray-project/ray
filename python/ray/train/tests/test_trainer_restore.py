@@ -11,7 +11,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
-from ray.train.hf_transformers import TransformersTrainer
+from ray.train.huggingface import TransformersTrainer
 from ray.train.rl import RLTrainer
 from ray.tune import Callback
 from ray.data.preprocessors.batch_mapper import BatchMapper

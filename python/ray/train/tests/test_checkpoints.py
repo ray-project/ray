@@ -3,7 +3,7 @@ import re
 import pytest
 
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.train.hf_transformers import TransformersCheckpoint
+from ray.train.huggingface import TransformersCheckpoint
 from ray.train.lightgbm import LightGBMCheckpoint
 from ray.train.rl import RLCheckpoint
 from ray.train.sklearn import SklearnCheckpoint

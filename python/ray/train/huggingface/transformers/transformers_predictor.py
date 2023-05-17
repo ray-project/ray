@@ -2,11 +2,6 @@ import logging
 from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import pandas as pd
-from transformers.pipelines import Pipeline
-from transformers.pipelines import pipeline as pipeline_factory
-from transformers.pipelines.table_question_answering import (
-    TableQuestionAnsweringPipeline,
-)
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
@@ -37,6 +32,17 @@ except ImportError:
         return 0
 
 
+TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
+try:
+    from transformers.pipelines import Pipeline
+    from transformers.pipelines import pipeline as pipeline_factory
+    from transformers.pipelines.table_question_answering import (
+        TableQuestionAnsweringPipeline,
+    )
+except ImportError as e:
+    TRANSFORMERS_IMPORT_ERROR = e
+
+
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
@@ -59,10 +65,14 @@ class TransformersPredictor(Predictor):
 
     def __init__(
         self,
-        pipeline: Optional[Pipeline] = None,
+        pipeline: Optional["Pipeline"] = None,
         preprocessor: Optional["Preprocessor"] = None,
         use_gpu: bool = False,
     ):
+
+        if TRANSFORMERS_IMPORT_ERROR is not None:
+            raise TRANSFORMERS_IMPORT_ERROR
+
         self.pipeline = pipeline
         self.use_gpu = use_gpu
 
@@ -91,7 +101,7 @@ class TransformersPredictor(Predictor):
         cls,
         checkpoint: Checkpoint,
         *,
-        pipeline_cls: Optional[Type[Pipeline]] = None,
+        pipeline_cls: Optional[Type["Pipeline"]] = None,
         use_gpu: bool = False,
         **pipeline_kwargs,
     ) -> "TransformersPredictor":
@@ -120,6 +130,9 @@ class TransformersPredictor(Predictor):
                 True, 'device' will be set to 0 by default, unless 'device_map' is
                 passed.
         """
+        if TRANSFORMERS_IMPORT_ERROR is not None:
+            raise TRANSFORMERS_IMPORT_ERROR
+
         if not pipeline_cls and "task" not in pipeline_kwargs:
             raise ValueError(
                 "If `pipeline_cls` is not specified, 'task' must be passed as a kwarg."
@@ -155,7 +168,7 @@ class TransformersPredictor(Predictor):
 
     @staticmethod
     def _convert_data_for_pipeline(
-        data: pd.DataFrame, pipeline: Pipeline
+        data: pd.DataFrame, pipeline: "Pipeline"
     ) -> Union[list, pd.DataFrame]:
         """Convert the data into a format accepted by the pipeline.
 
@@ -197,7 +210,7 @@ class TransformersPredictor(Predictor):
             >>> import pandas as pd
             >>> from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
             >>> from transformers.pipelines import pipeline
-            >>> from ray.train.hf_transformers import TransformersPredictor
+            >>> from ray.train.huggingface import TransformersPredictor
             >>>
             >>> model_checkpoint = "gpt2"
             >>> tokenizer_checkpoint = "sgugger/gpt2-like-tokenizer"
