@@ -1038,11 +1038,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// worker context.
   /// \param[in] put_index The equivalent of the return value of
   /// WorkerContext::GetNextPutIndex.
-  /// If -1 is specified, it will deduce the Task ID from the current
-  /// worker context.
+  /// If std::nullopt is specified, it will deduce the put index from the
+  /// current worker context.
   ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
                                    const TaskID &task_id = TaskID::Nil(),
-                                   ObjectIDIndexType put_index = -1);
+                                   std::optional<ObjectIDIndexType> put_index = -1);
 
   /// Get a handle to an actor.
   ///

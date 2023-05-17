@@ -2858,7 +2858,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
 
 ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
                                              const TaskID &task_id,
-                                             ObjectIDIndexType put_index) {
+                                             std::optional<ObjectIDIndexType> put_index) {
   TaskID current_task_id;
   if (task_id.IsNil()) {
     const auto &task_spec = worker_context_.GetCurrentTask();
@@ -2868,10 +2868,10 @@ ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
   }
 
   ObjectIDIndexType current_put_index;
-  if (put_index == -1) {
+  if (!put_index.has_value()) {
     current_put_index = worker_context_.GetNextPutIndex();
   } else {
-    current_put_index = put_index;
+    current_put_index = put_index.value();
   }
 
   const auto return_id = ObjectID::FromIndex(current_task_id, current_put_index);

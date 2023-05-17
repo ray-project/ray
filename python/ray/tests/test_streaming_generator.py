@@ -127,7 +127,9 @@ def test_streaming_object_ref_generator_network_failed_unit(mocked_worker):
             # unexpected_network_failure_timeout_s second,
             # it should fail.
             c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-            ref = generator._next_sync(timeout_s=0, unexpected_network_failure_timeout_s=1)
+            ref = generator._next_sync(
+                timeout_s=0, unexpected_network_failure_timeout_s=1
+            )
             assert ref == ray.ObjectRef.nil()
             time.sleep(1)
             with pytest.raises(AssertionError):
@@ -168,7 +170,9 @@ async def test_streaming_object_ref_generator_unit_async(mocked_worker):
 
         # When try_read_next_object_ref_stream raises a
         # ObjectRefStreamEoFError, it should raise a stop iteration.
-        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEoFError("")  # noqa
+        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEoFError(
+            ""
+        )  # noqa
         with pytest.raises(StopAsyncIteration):
             ref = await generator._next_async(timeout_s=0)
 

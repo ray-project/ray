@@ -106,6 +106,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CNodeID,
     CPlacementGroupID,
+    ObjectIDIndexType,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -123,7 +124,7 @@ from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 from ray.includes.global_state_accessor cimport RedisDelKeySync
 from ray.includes.optional cimport (
-    optional
+    optional, nullopt
 )
 
 import ray
@@ -186,6 +187,8 @@ current_task_id_lock = threading.Lock()
 
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
+
+cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 
 
 class ObjectRefGenerator:
@@ -1093,7 +1096,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                 # ObjectRef will contain the error.
                 error_id = (CCoreWorkerProcess.GetCoreWorker()
                             .AllocateDynamicReturnId(
-                                caller_address, CTaskID.Nil(), -1))
+                                caller_address, CTaskID.Nil(), NULL_PUT_INDEX))
                 dynamic_returns[0].push_back(
                         c_pair[CObjectID, shared_ptr[CRayObject]](
                             error_id, shared_ptr[CRayObject]()))
@@ -3308,7 +3311,7 @@ cdef class CoreWorker:
             while i >= returns[0].size():
                 return_id = (CCoreWorkerProcess.GetCoreWorker()
                              .AllocateDynamicReturnId(
-                                caller_address, CTaskID.Nil(), -1))
+                                caller_address, CTaskID.Nil(), NULL_PUT_INDEX))
                 returns[0].push_back(
                         c_pair[CObjectID, shared_ptr[CRayObject]](
                             return_id, shared_ptr[CRayObject]()))
@@ -3646,13 +3649,14 @@ cdef class CoreWorker:
                 # Should add 1 because put index is always incremented
                 # before it is used. So if you have 1 return object
                 # the next index will be 2.
-                1 + num_returns + generator_index,  # put_index
+                make_optional[ObjectIDIndexType](
+                    <int>1 + <int>num_returns + <int>generator_index)  # put_index
             )
         else:
             return CCoreWorkerProcess.GetCoreWorker().AllocateDynamicReturnId(
                 owner_address,
                 CTaskID.Nil(),
-                -1
+                NULL_PUT_INDEX
             )
 
     def create_object_ref_stream(self, ObjectRef generator_id):

@@ -50,7 +50,7 @@ from ray.includes.function_descriptor cimport (
 )
 
 from ray.includes.optional cimport (
-    optional
+    optional,
 )
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
@@ -156,7 +156,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CObjectID AllocateDynamicReturnId(
             const CAddress &owner_address,
             const CTaskID &task_id,
-            ObjectIDIndexType put_index)
+            optional[ObjectIDIndexType] put_index)
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
