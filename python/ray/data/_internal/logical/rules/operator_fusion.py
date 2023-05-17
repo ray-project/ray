@@ -113,11 +113,14 @@ class OperatorFusionRule(Rule):
         from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 
         # We currently only support fusing for the following cases:
-        # - MapOperator -> MapOperator
-        # - TaskPoolMapOperator -> AllToAllOperator (because AllToAllOperator can't run with actor pools).
+        # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
+        # - TaskPoolMapOperator -> AllToAllOperator
         # (only RandomShuffle and Repartition LogicalOperators are currently supported)
         if not (
-            (isinstance(up_op, MapOperator) and isinstance(down_op, MapOperator))
+            (
+                isinstance(up_op, TaskPoolMapOperator)
+                and isinstance(down_op, (TaskPoolMapOperator, ActorPoolMapOperator))
+            )
             or (
                 isinstance(up_op, TaskPoolMapOperator)
                 and isinstance(down_op, AllToAllOperator)
@@ -234,21 +237,9 @@ class OperatorFusionRule(Rule):
             return down_transform_fn(blocks, ctx)
 
         # Fuse init funcitons.
-        up_init_fn = (
-            up_op.get_init_fn() if isinstance(up_op, ActorPoolMapOperator) else None
-        )
-        down_init_fn = (
+        fused_init_fn = (
             down_op.get_init_fn() if isinstance(down_op, ActorPoolMapOperator) else None
         )
-        if up_init_fn is None and down_init_fn is None:
-            fused_init_fn = None
-        else:
-
-            def fused_init_fn():
-                if up_init_fn is not None:
-                    up_init_fn()
-                if down_init_fn is not None:
-                    down_init_fn()
 
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).

@@ -52,7 +52,8 @@ from ray.data.read_api import (  # noqa: F401
 # Key the class, value is the object.
 # see make_callable_class_concurrent in python/ray/data/_internal/execution/util.py.
 # The reason why this is a dict is because we may fuse multiple map operators into one.
-_callable_class_cache = {}
+_cached_fn = None
+_cached_cls = None
 
 __all__ = [
     "ActorPoolStrategy",

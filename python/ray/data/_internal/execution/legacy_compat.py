@@ -280,18 +280,19 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
                 fn_constructor_args = stage.fn_constructor_args or ()
                 fn_constructor_kwargs = stage.fn_constructor_kwargs or {}
 
-                wrapper_class = make_callable_class_concurrent(stage.fn)
+                fn_ = make_callable_class_concurrent(stage.fn)
 
                 def fn(item: Any) -> Any:
-                    assert (
-                        wrapper_class in ray.data._callable_class_cache
-                    ), wrapper_class
-                    return ray.data._callable_class_cache[wrapper_class](item)
+                    assert ray.data._cached_fn is not None
+                    assert ray.data._cached_cls == fn_
+                    return ray.data._cached_fn(item)
 
                 def init_fn():
-                    ray.data._callable_class_cache[wrapper_class] = wrapper_class(
-                        *fn_constructor_args, **fn_constructor_kwargs
-                    )
+                    if ray.data._cached_fn is None:
+                        ray.data._cached_cls = fn_
+                        ray.data._cached_fn = fn_(
+                            *fn_constructor_args, **fn_constructor_kwargs
+                        )
 
             else:
                 fn = stage.fn
