@@ -273,7 +273,9 @@ class Learner:
         self._named_optimizers: Dict[str, Optimizer] = {}
         self._params: ParamDictType = {}
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
-        # Registered metrics to be returned from `Learner.update()`.
+        # Registered metrics (one sub-dict per module ID) to be returned from
+        # `Learner.update()`. These metrics will be "compiled" automatically into
+        # the final results dict in the `self.compile_results()` method.
         self._metrics = defaultdict(dict)
 
     @property
@@ -438,12 +440,16 @@ class Learner:
 
         Args:
             loss_per_module: Dict mapping module IDs to their individual total loss
-                terms, computed by compute_loss_per_module. The total loss (sum over
-                all modules) is stored under the `ALL_MODULES` key.
+                terms, computed by compute_loss_per_module. The overall total loss
+                (sum of loss terms over all modules) is stored under the `ALL_MODULES`
+                key.
             **kwargs: Forward compatibility kwargs.
 
         Returns:
-            The gradients in the same format as self._params.
+            The gradients in the same (flat) format as self._params. Note that all
+            top-level structures, such as module IDs, will not be present anymore in
+            the returned dict. It will merely map gradient tensor references to gradient
+            tensors.
         """
 
     @OverrideToImplementCustomLogic
@@ -456,10 +462,14 @@ class Learner:
         algorithm specific gradient postprocessing steps.
 
         Args:
-            gradients_dict: A dictionary of gradients.
+            gradients_dict: A dictionary of gradients in the same (flat) format as
+                self._params. Note that top-level structures, such as module IDs,
+                will not be present anymore in this dict. It will merely map gradient
+                tensor references to gradient tensors.
 
         Returns:
-            A dictionary with the updated gradients.
+            A dictionary with the updated gradients and the exact same (flat) structure
+            as the incoming `gradients_dict` arg.
         """
         return gradients_dict
 
@@ -469,19 +479,34 @@ class Learner:
         """Applies the gradients to the MultiAgentRLModule parameters.
 
         Args:
-            gradients: A dictionary of gradients, in the same format as self._params.
+            gradients: A dictionary of gradients  in the same (flat) format as
+                self._params. Note that top-level structures, such as module IDs,
+                will not be present anymore in this dict. It will merely map gradient
+                tensor references to gradient tensors.
         """
 
     def register_metric(self, module_id: str, key: str, value: Any) -> None:
         """Registers a single key/value metric pair for loss and gradient stats.
 
         Args:
-            TODO:
+            module_id: The module_id to register the metric under. This may be
+                ALL_MODULES.
+            key: The name of the metric to register (below the given `module_id`).
+            value: The actual value of the metric. This might also be a tensor var (e.g.
+                from within a traced tf2 function).
         """
         self._metrics[module_id][key] = value
 
     def register_metrics(self, module_id: str, metrics_dict: Dict[str, Any]) -> None:
-        """TODO"""
+        """Registers a several key/value metric pairs for loss and gradient stats.
+
+        Args:
+            module_id: The module_id to register the metrics under. This may be
+                ALL_MODULES.
+            metrics_dict: A dict mapping names of metrics to be registered (below the
+                given `module_id`) to the actual values of these metrics. Values might
+                also be tensor vars (e.g. from within a traced tf2 function).
+        """
         for key, value in metrics_dict.items():
             self.register_metric(module_id, key, value)
 
@@ -577,8 +602,10 @@ class Learner:
 
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
-        # We restructure the metrics to be
-        # module_id -> [key, e.g. self.TOTAL_LOSS_KEY] -> [value].
+        # We compile the metrics to have the structure:
+        # top-leve key: module_id -> [key, e.g. self.TOTAL_LOSS_KEY] -> [value].
+        # Results will include all registered metrics under the respective module ID
+        # top-level key.
         module_learner_stats = {}
         for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
             module_learner_stats[module_id] = dict(
