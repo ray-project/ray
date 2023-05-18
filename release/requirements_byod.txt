@@ -4,4 +4,4 @@ awscli
 ray[tune]
 torch 
 torchvision
-horovod
+horovod[pytorch,gloo]
