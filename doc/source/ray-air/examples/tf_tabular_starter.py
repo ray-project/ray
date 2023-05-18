@@ -55,7 +55,7 @@ def train_loop_per_worker(config):
     epochs = config["num_epochs"]
     num_features = config["num_features"]
 
-    # Get the Datastream shard for this data parallel worker,
+    # Get the Dataset shard for this data parallel worker,
     # and convert it to a Tensorflow Dataset.
     train_data = session.get_dataset_shard("train")
 
@@ -103,8 +103,8 @@ trainer = TensorflowTrainer(
     preprocessor=preprocessor,
 )
 
-result = trainer.fit()
-print(f"Last result: {result.metrics}")
+best_result = trainer.fit()
+print(f"Last result: {best_result.metrics}")
 # Last result: {'loss': 8.997025489807129, ...}
 # __air_tf_train_end__
 

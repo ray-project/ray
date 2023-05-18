@@ -805,7 +805,7 @@ py_test(
 py_test(
     name = "test_algorithm_config",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "small",
+    size = "medium",
     srcs = ["algorithms/tests/test_algorithm_config.py"],
 )
 
@@ -1875,7 +1875,7 @@ py_test(
 py_test(
     name = "test_cnn_encoders",
     tags = ["team:rllib", "core", "models"],
-    size = "medium",
+    size = "large",
     srcs = ["core/models/tests/test_cnn_encoders.py"]
 )
 
@@ -1934,8 +1934,19 @@ py_test(
     name = "test_torch_rl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
+    args = ["TestRLModule"],
 )
+
+# TODO(Artur): Comment this back in as soon as we can test with GPU
+# py_test(
+#    name = "test_torch_rl_module_gpu",
+#    main = "core/rl_module/torch/tests/test_torch_rl_module.py",
+#    tags = ["team:rllib", "core", "gpu", "exclusive"],
+#    size = "medium",
+#    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
+#    args = ["TestRLModuleGPU"],
+# )
 
 py_test(
     name = "test_tf_rl_module",
@@ -2767,9 +2778,18 @@ py_test(
  )
 
 py_test(
+    name="tests/test_supported_spaces_dqn",
+    main="tests/test_supported_spaces.py",
+    tags=["team:rllib", "tests_dir"],
+    size="large",
+    srcs=["tests/test_supported_spaces.py"],
+    args=["TestSupportedSpacesDQN"]
+)
+
+py_test(
      name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "multi_gpu", "exclusive"],
+     tags = ["team:rllib", "gpu", "no_cpu"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPPONoPreprocessorGPU"]

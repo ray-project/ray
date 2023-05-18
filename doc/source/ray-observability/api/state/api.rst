@@ -22,9 +22,9 @@ Summary APIs
 .. autosummary::
    :toctree: doc/
 
-    ray.experimental.state.api.summarize_actors
-    ray.experimental.state.api.summarize_objects
-    ray.experimental.state.api.summarize_tasks
+    ray.util.state.summarize_actors
+    ray.util.state.summarize_objects
+    ray.util.state.summarize_tasks
 
 List APIs
 ~~~~~~~~~~
@@ -32,14 +32,14 @@ List APIs
 .. autosummary::
    :toctree: doc/
 
-    ray.experimental.state.api.list_actors
-    ray.experimental.state.api.list_placement_groups
-    ray.experimental.state.api.list_nodes
-    ray.experimental.state.api.list_jobs
-    ray.experimental.state.api.list_workers
-    ray.experimental.state.api.list_tasks
-    ray.experimental.state.api.list_objects
-    ray.experimental.state.api.list_runtime_envs
+    ray.util.state.list_actors
+    ray.util.state.list_placement_groups
+    ray.util.state.list_nodes
+    ray.util.state.list_jobs
+    ray.util.state.list_workers
+    ray.util.state.list_tasks
+    ray.util.state.list_objects
+    ray.util.state.list_runtime_envs
 
 Get APIs
 ~~~~~~~~~
@@ -47,12 +47,12 @@ Get APIs
 .. autosummary::
    :toctree: doc/
 
-    ray.experimental.state.api.get_actor
-    ray.experimental.state.api.get_placement_group
-    ray.experimental.state.api.get_node
-    ray.experimental.state.api.get_worker
-    ray.experimental.state.api.get_task
-    ray.experimental.state.api.get_objects
+    ray.util.state.get_actor
+    ray.util.state.get_placement_group
+    ray.util.state.get_node
+    ray.util.state.get_worker
+    ray.util.state.get_task
+    ray.util.state.get_objects
 
 Log APIs
 ~~~~~~~~
@@ -60,8 +60,8 @@ Log APIs
 .. autosummary::
    :toctree: doc/
 
-    ray.experimental.state.api.list_logs
-    ray.experimental.state.api.get_log
+    ray.util.state.list_logs
+    ray.util.state.get_log
 
 .. _state-api-schema:
 
@@ -72,21 +72,21 @@ State APIs Schema
    :toctree: doc/
    :template: autosummary/class_without_autosummary.rst
 
-    ray.experimental.state.common.ActorState
-    ray.experimental.state.common.TaskState
-    ray.experimental.state.common.NodeState
-    ray.experimental.state.common.PlacementGroupState
-    ray.experimental.state.common.WorkerState
-    ray.experimental.state.common.ObjectState
-    ray.experimental.state.common.RuntimeEnvState
-    ray.experimental.state.common.JobState
-    ray.experimental.state.common.StateSummary
-    ray.experimental.state.common.TaskSummaries
-    ray.experimental.state.common.TaskSummaryPerFuncOrClassName
-    ray.experimental.state.common.ActorSummaries
-    ray.experimental.state.common.ActorSummaryPerClass
-    ray.experimental.state.common.ObjectSummaries
-    ray.experimental.state.common.ObjectSummaryPerKey
+    ray.util.state.common.ActorState
+    ray.util.state.common.TaskState
+    ray.util.state.common.NodeState
+    ray.util.state.common.PlacementGroupState
+    ray.util.state.common.WorkerState
+    ray.util.state.common.ObjectState
+    ray.util.state.common.RuntimeEnvState
+    ray.util.state.common.JobState
+    ray.util.state.common.StateSummary
+    ray.util.state.common.TaskSummaries
+    ray.util.state.common.TaskSummaryPerFuncOrClassName
+    ray.util.state.common.ActorSummaries
+    ray.util.state.common.ActorSummaryPerClass
+    ray.util.state.common.ObjectSummaries
+    ray.util.state.common.ObjectSummaryPerKey
 
 State APIs Exceptions
 ---------------------
@@ -94,4 +94,4 @@ State APIs Exceptions
 .. autosummary::
    :toctree: doc/
 
-    ray.experimental.state.exception.RayStateApiException
+    ray.util.state.exception.RayStateApiException

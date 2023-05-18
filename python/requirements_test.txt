@@ -59,6 +59,7 @@ pymongo==4.3.2
 pyspark==3.3.1
 pytest==7.0.1
 pytest-asyncio==0.16.0
+pytest-httpserver==1.0.6
 pytest-rerunfailures==10.2
 pytest-sugar==0.9.5
 pytest-lazy-fixture==0.6.3
@@ -68,6 +69,7 @@ redis==4.4.2
 scikit-learn==1.0.2; python_version < '3.11'
 smart_open[s3]==6.2.0
 tqdm==4.64.1
+trustme==0.9.0
 testfixtures==7.0.0
 werkzeug==2.1.2
 xlrd==2.0.1

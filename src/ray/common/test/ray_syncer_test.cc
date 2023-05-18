@@ -611,6 +611,20 @@ TEST_F(SyncerTest, Broadcast) {
   ASSERT_EQ(nullptr,
             s1.syncer->GetSyncMessage(NodeID::FromRandom().Binary(),
                                       MessageType::RESOURCE_VIEW));
+  s1.syncer->Disconnect(s3.syncer->GetLocalNodeID());
+  RAY_LOG(INFO) << "s1.id=" << NodeID::FromBinary(s1.syncer->GetLocalNodeID());
+  RAY_LOG(INFO) << "s3.id=" << NodeID::FromBinary(s3.syncer->GetLocalNodeID());
+
+  EXPECT_TRUE(s3.WaitUntil(
+      [&s3, node_id = s1.syncer->GetLocalNodeID()]() mutable {
+        return s3.syncer->node_state_->GetClusterView().count(node_id) == 0;
+      },
+      5));
+  EXPECT_TRUE(s1.WaitUntil(
+      [&s1, node_id = s3.syncer->GetLocalNodeID()]() mutable {
+        return s1.syncer->node_state_->GetClusterView().count(node_id) == 0;
+      },
+      5));
 }
 
 bool CompareViews(const std::vector<SyncerServerTest *> &servers,

@@ -88,9 +88,7 @@ class TfLearner(Learner):
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        # TODO (sven): Move lr from optimizer config to Learner HPs?
-        #  We might not need optimizer config.
-        lr = self.curr_lr_per_module[module_id]
+        lr = self.lr_scheduler.get_current_value(module_id)
         optim = tf.keras.optimizers.Adam(learning_rate=lr)
         pair: ParamOptimizerPair = (
             self.get_parameters(module),
@@ -528,17 +526,23 @@ class TfLearner(Learner):
     def additional_update_per_module(
         self, module_id: ModuleID, *, timestep: int, **kwargs
     ) -> Mapping[str, Any]:
+
+        results = super().additional_update_per_module(module_id, timestep=timestep)
+
         # Handle lr scheduling updates and apply new learning rates to the optimizers.
+        new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
+
+        # Not sure why we need to do this here besides setting the original
+        # tf Variable `self.curr_lr_per_module[module_id]`. But when tf creates the
+        # optimizer, it seems to detach its lr value from the given variable.
+        # Updating this variable is NOT sufficient to update the actual optimizer's
+        # learning rate, so we have to explicitly set it here.
         if self.hps.lr_schedule is not None:
-            value = self.lr_schedule_per_module[module_id].value(t=timestep)
-            self.curr_lr_per_module[module_id].assign(value)
-            # Not sure why we need to do this here besides setting the original
-            # tf Variable `self.curr_lr_per_module[module_id]`. When tf creates the
-            # optimizer, maybe it detaches its lr value from the given variable?
-            self._named_optimizers[module_id].lr = value
-        return {
-            LEARNER_RESULTS_CURR_LR_KEY: self._named_optimizers[module_id].lr.numpy()
-        }
+            self._named_optimizers[module_id].lr = new_lr
+
+        results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
+
+        return results
 
     @override(Learner)
     def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
