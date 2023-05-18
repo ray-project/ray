@@ -497,11 +497,11 @@ class CausalLM(Model):
 
     @override
     def create_batch(self, requests: List[GenerationRequest]) -> Type[CausalLMBatch]:
-        raise NotImplementedError
+        return CausalLMBatch.from_requests(requests, self.tokenizer, self.device)
 
     @override
-    def concatenate_batches(self, baches: List[CausalLMBatch]) -> CausalLMBatch:
-        raise NotImplementedError
+    def concatenate_batches(self, batches: List[CausalLMBatch]) -> CausalLMBatch:
+        return CausalLMBatch.concatenate(batches)
 
     @override
     def decode(self, generated_ids: List[int]) -> str:

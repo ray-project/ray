@@ -63,7 +63,7 @@ class Model(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def concatenate_batches(self, baches: List[B]) -> B:
+    def concatenate_batches(self, batches: List[B]) -> B:
         raise NotImplementedError
 
     @abstractmethod
