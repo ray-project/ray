@@ -311,6 +311,15 @@ RAY_CONFIG(int, worker_niceness, 15)
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
 
+/// Number of retries for a redis request failure.
+RAY_CONFIG(size_t, num_redis_request_retries, 5)
+
+/// Exponential backoff setup. By default:
+/// 100ms, 200ms, 400ms, 800ms, 1s, 1s,...
+RAY_CONFIG(int64_t, redis_retry_base_ms, 100)
+RAY_CONFIG(int64_t, redis_retry_multiplier, 2)
+RAY_CONFIG(int64_t, redis_retry_max_ms, 1000)
+
 /// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
 

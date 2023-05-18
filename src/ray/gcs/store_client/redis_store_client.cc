@@ -301,22 +301,22 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
     }
     // Send the actual request
     auto cxt = redis_client_->GetShardContext("");
-    RAY_CHECK_OK(cxt->RunArgvAsync(
-        std::move(args),
-        [this, keys = std::move(keys), redis_callback = std::move(redis_callback)](
-            auto reply) {
-          std::vector<std::function<void()>> requests;
-          {
-            absl::MutexLock lock(&mu_);
-            requests = TakeRequestsFromSendingQueue(keys);
-          }
-          for (auto &request : requests) {
-            request();
-          }
-          if (redis_callback) {
-            redis_callback(reply);
-          }
-        }));
+    cxt->RunArgvAsync(std::move(args),
+                      [this,
+                       keys = std::move(keys),
+                       redis_callback = std::move(redis_callback)](auto reply) {
+                        std::vector<std::function<void()>> requests;
+                        {
+                          absl::MutexLock lock(&mu_);
+                          requests = TakeRequestsFromSendingQueue(keys);
+                        }
+                        for (auto &request : requests) {
+                          request();
+                        }
+                        if (redis_callback) {
+                          redis_callback(reply);
+                        }
+                      });
   };
 
   {
@@ -432,10 +432,7 @@ void RedisStoreClient::RedisScanner::Scan(const std::string &match_pattern,
                                      "COUNT",
                                      std::to_string(batch_count)};
     auto shard_context = redis_client_->GetShardContexts()[shard_index];
-    Status status = shard_context->RunArgvAsync(args, scan_callback);
-    if (!status.ok()) {
-      RAY_LOG(FATAL) << "Scan failed, status " << status.ToString();
-    }
+    shard_context->RunArgvAsync(args, scan_callback);
   }
 }
 
