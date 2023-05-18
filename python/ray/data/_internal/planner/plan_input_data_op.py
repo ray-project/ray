@@ -4,10 +4,8 @@ from ray.data._internal.logical.operators.input_data_operator import InputData
 
 
 def _plan_input_data_op(op: InputData) -> PhysicalOperator:
-    """Get the corresponding DAG of physical operators for Read.
+    """Get the corresponding DAG of physical operators for InputData."""
 
-    Note this method only converts the given `op`, but not its input dependencies.
-    See Planner.plan() for more details.
-    """
-
-    return InputDataBuffer(input_data=op.input_data, input_data_factory=op.input_data_factory)
+    return InputDataBuffer(
+        input_data=op.input_data, input_data_factory=op.input_data_factory
+    )

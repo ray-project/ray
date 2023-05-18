@@ -5,7 +5,11 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 
 
 class InputData(LogicalOperator):
-    """Logical operator for read."""
+    """Logical operator for input data.
+
+    This may hold cached blocks from a previous Dataset execution, or
+    the arguments for read tasks.
+    """
 
     def __init__(
         self,

@@ -3947,13 +3947,21 @@ class Dataset:
         copy._plan.execute(force_read=True)
 
         blocks = copy._plan._snapshot_blocks
+
         def get_input_data():
             from ray.data._internal.execution.interfaces import RefBundle
+
             if not blocks:
                 return []
             else:
-                return [RefBundle(blocks=blocks.get_blocks_with_metadata(), owns_blocks=False)]
+                return [
+                    RefBundle(
+                        blocks=blocks.get_blocks_with_metadata(),
+                        owns_blocks=False,
+                    )
+                ]
 
+        # Create a new logical plan whose input is the existing data from the the old Dataset.
         copy._logical_plan = LogicalPlan(InputData(input_data_factory=get_input_data))
 
         return copy
