@@ -160,6 +160,13 @@ Serve supports arbitrary Python code and therefore integrates well with the MLOp
 
 :::
 
+:::{dropdown} LLM Developer
+:animate: fade-in-slide-down
+
+Serve lets you rapidly prototype, develop, and deploy scalable LLM applications to production. Many large language model (LLM) applications combine prompt preprocessing, vector database lookups, LLM API calls, and response validation. Since Serve supports any arbitrary Python code, you can write all these steps as a single Python module, enabling rapid development and easy testing. You can then quickly deploy your Ray Serve LLM application to production, and each application step can independently autoscale to efficiently accommodate user traffic without wasting resources.
+
+:::
+
 
 ## How does Serve compare to ...
 
