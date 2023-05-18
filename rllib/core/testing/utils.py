@@ -30,7 +30,7 @@ DEFAULT_POLICY_ID = "default_policy"
 
 @DeveloperAPI
 def get_learner_class(framework: str) -> Type["Learner"]:
-    if framework == "tf":
+    if framework == "tf2":
         from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 
         return BCTfLearner
@@ -44,7 +44,7 @@ def get_learner_class(framework: str) -> Type["Learner"]:
 
 @DeveloperAPI
 def get_module_class(framework: str) -> Type["RLModule"]:
-    if framework == "tf":
+    if framework == "tf2":
         from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 
         return DiscreteBCTFModule
@@ -78,7 +78,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
 
 @DeveloperAPI
 def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
-    if framework == "tf":
+    if framework == "tf2":
         import tensorflow as tf
 
         return tf.keras.optimizers.Adam
@@ -92,7 +92,9 @@ def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
 
 @DeveloperAPI
 def get_learner(
+    *,
     framework: str,
+    eager_tracing: bool = True,
     env: "gym.Env",
     learning_rate: float = 1e-3,
     is_multi_agent: bool = False,
@@ -109,13 +111,21 @@ def get_learner(
         A learner.
 
     """
-
+    # Get our testing (BC) Learner class (given the framework).
     _cls = get_learner_class(framework)
+    # Get our RLModule spec to use.
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
-    # adding learning rate as a configurable parameter to avoid hardcoding it
+    # Adding learning rate as a configurable parameter to avoid hardcoding it
     # and information leakage across tests that rely on knowing the LR value
     # that is used in the learner.
-    return _cls(module_spec=spec, optimizer_config={"lr": learning_rate})
+    learner = _cls(
+        module_spec=spec,
+        optimizer_config={"lr": learning_rate},
+        learner_group_scaling_config=LearnerGroupScalingConfig(),
+        framework_hyperparameters=FrameworkHyperparameters(eager_tracing=eager_tracing),
+    )
+    learner.build()
+    return learner
 
 
 @DeveloperAPI
@@ -143,7 +153,7 @@ def get_learner_group(
         A learner_group.
 
     """
-    if framework == "tf":
+    if framework == "tf2":
         framework_hps = FrameworkHyperparameters(eager_tracing=eager_tracing)
     else:
         framework_hps = None

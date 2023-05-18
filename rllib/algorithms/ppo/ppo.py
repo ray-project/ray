@@ -471,7 +471,7 @@ class PPO(Algorithm):
 
         if self.config._enable_learner_api:
             kl_dict = {
-                pid: train_results[pid][LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
+                pid: train_results[pid][LEARNER_RESULTS_KL_KEY]
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.

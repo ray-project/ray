@@ -1,7 +1,5 @@
-from collections import defaultdict
 from typing import List, Optional, Tuple
 
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
 from ray.rllib.utils.typing import TensorType
@@ -41,6 +39,10 @@ class Scheduler:
                 the graph, e.g. in a loss function.
             device: Optional device (for torch) to place the tensor variable on.
         """
+        # Either fixed_value OR schedule must be provided. If both are provided,
+        # use only the schedule information.
+        assert fixed_value is not None or schedule is not None
+
         self.use_schedule = schedule is not None
         self.framework = framework
         self.device = device
@@ -48,20 +50,19 @@ class Scheduler:
         if self.use_schedule:
             # Custom schedule, based on list of
             # ([ts], [value to be reached by ts])-tuples.
-            self.schedule_per_module = defaultdict(
-                lambda: PiecewiseSchedule(
-                    schedule,
-                    outside_value=schedule[-1][-1],
-                    framework=None,
-                )
+            self._schedule = PiecewiseSchedule(
+                schedule,
+                outside_value=schedule[-1][-1],
+                framework=None,
             )
             # As initial tensor valie, use the first timestep's (must be 0) value.
-            self.curr_value_per_module = defaultdict(
-                lambda: self._create_tensor_variable(initial_value=schedule[0][1])
+            self._curr_value = self._create_tensor_variable(
+                initial_value=schedule[0][1]
             )
+
         # If no schedule, pin (fix) given value.
         else:
-            self.curr_value_per_module = defaultdict(lambda: fixed_value)
+            self._curr_value = fixed_value
 
     @staticmethod
     def validate(
@@ -101,35 +102,31 @@ class Scheduler:
                     f"provided ts={schedule[0][0]} {value_name}={schedule[0][1]}."
                 )
 
-    def get_current_value(self, module_id: ModuleID) -> TensorType:
-        """Returns the current value (as a tensor variable), given a ModuleID.
-
-        Args:
-            module_id: The module ID, for which to retrueve the current tensor value.
+    def get_current_value(self) -> TensorType:
+        """Returns the current value (as a tensor variable).
 
         Returns:
             The tensor variable (holding the current value to be used).
         """
-        return self.curr_value_per_module[module_id]
+        return self._curr_value
 
-    def update(self, module_id: ModuleID, timestep: int) -> float:
+    def update(self, timestep: int) -> float:
         """Updates the underlying (framework specific) tensor variable.
 
         Args:
-            module_id: The module ID, for which to update the tensor variable.
             timestep: The current timestep.
 
         Returns:
             The current value of the tensor variable as a python float.
         """
         if self.use_schedule:
-            python_value = self.schedule_per_module[module_id].value(t=timestep)
+            python_value = self._schedule.value(t=timestep)
             if self.framework == "torch":
-                self.curr_value_per_module[module_id].data = torch.tensor(python_value)
+                self._curr_value.data = torch.tensor(python_value)
             else:
-                self.curr_value_per_module[module_id].assign(python_value)
+                self._curr_value.assign(python_value)
         else:
-            python_value = self.curr_value_per_module[module_id]
+            python_value = self._curr_value
 
         return python_value
 

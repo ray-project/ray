@@ -40,7 +40,7 @@ def _get_backend_config(learner_class: Type["Learner"]) -> str:
         from ray.train.torch import TorchConfig
 
         backend_config = TorchConfig()
-    elif learner_class.framework == "tf":
+    elif learner_class.framework == "tf2":
         from ray.train.tensorflow import TensorflowConfig
 
         backend_config = TensorflowConfig()

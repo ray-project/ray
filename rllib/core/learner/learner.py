@@ -20,8 +20,6 @@ from typing import (
     TYPE_CHECKING,
 )
 
-import numpy as np
-
 import ray
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
@@ -40,7 +38,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
@@ -110,10 +108,7 @@ class LearnerHyperparameters:
     respective AlgorithmConfig class.
     """
 
-    # TODO (Sven): Move lr from - currently - optimizer config to only exist here.
-    # lr: float = None
-
-    lr_schedule: Optional[List[List[Union[int, float]]]] = None
+    pass
 
 
 class Learner:
@@ -583,18 +578,13 @@ class Learner:
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
         # We restructure the metrics to be
-        # module_id -> LEARNER_STATS_KEY -> [key, e.g. self.TOTAL_LOSS_KEY] -> [value].
-        # This matches what the legacy RLlib policies used to return.
+        # module_id -> [key, e.g. self.TOTAL_LOSS_KEY] -> [value].
         module_learner_stats = {}
         for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
-            module_learner_stats[module_id] = {
-                LEARNER_STATS_KEY: dict(
-                    {
-                        self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
-                    },
-                    **self._metrics[module_id],
-                ),
-            }
+            module_learner_stats[module_id] = dict(
+                {self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id]},
+                **self._metrics[module_id],
+            )
         return module_learner_stats
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -666,16 +656,6 @@ class Learner:
             return
         self._is_built = True
 
-        # Build learning rate scheduling tools.
-        # TODO (sven): Move lr from optimizer config to Learner HPs?
-        #  We might not need optimizer config.
-        self.lr_scheduler = Scheduler(
-            fixed_value=self._optimizer_config["lr"],
-            schedule=self.hps.lr_schedule,
-            framework=self.framework,
-            device=self._device,
-        )
-
         self._module = self._make_module()
 
         for param_seq, optimizer in self.configure_optimizers():
@@ -684,6 +664,27 @@ class Learner:
                 param_ref = self.get_param_ref(param)
                 self._optimizer_parameters[optimizer].append(param_ref)
                 self._params[param_ref] = param
+
+        # Build learning rate scheduling tools.
+        self.lr_schedulers_per_optimizer = {}
+        for name, optimizer in self._named_optimizers.items():
+            # TODO (sven): Move lr from optimizer config to Learner HPs?
+            #  We might not need optimizer config.
+            self.lr_schedulers_per_optimizer[optimizer] = Scheduler(
+                # Try finding `[name]->lr|lr_schedule` on top-level. If not found,
+                # try `lr` directly on top level (only one lr/lr_schedule to be used).
+                fixed_value=self._optimizer_config.get(
+                    name, self._optimizer_config
+                ).get("lr"),
+                schedule=self._optimizer_config.get(name, self._optimizer_config).get(
+                    "lr_schedule"
+                ),
+                framework=self.framework,
+                device=self._device,
+            )
+            # Set the optimizer to the current (first) learning rate.
+            lr = self.lr_schedulers_per_optimizer[optimizer].get_current_value()
+            self._set_optimizer_lr(optimizer=optimizer, lr=lr)
 
     @OverrideToImplementCustomLogic
     def compute_loss(
@@ -810,7 +811,7 @@ class Learner:
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def additional_update_per_module(
-        self, module_id: ModuleID, **kwargs
+        self, module_id: ModuleID, timestep: int, **kwargs
     ) -> Dict[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
@@ -818,12 +819,22 @@ class Learner:
 
         Args:
             module_id: The id of the module to update.
+            timestep: The current global timestep (to be used with schedulers).
             **kwargs: Keyword arguments to use for the additional update.
 
         Returns:
             A dictionary of results from the update
         """
-        return {}
+        results = {}
+        # Handle lr scheduling updates and apply new learning rates to the optimizers.
+        for name, optimizer in self._named_optimizers.items():
+            new_lr = self.lr_schedulers_per_optimizer[optimizer].update(
+                timestep=timestep
+            )
+            self._set_optimizer_lr(optimizer, lr=new_lr)
+            results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
+
+        return results
 
     def update(
         self,
@@ -1147,6 +1158,15 @@ class Learner:
 
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
+
+    @abc.abstractmethod
+    def _set_optimizer_lr(self, optimizer: Optimizer, lr: float) -> None:
+        """Updates the learning rate of the given local optimizer.
+
+        Args:
+            optimizer: The local optimizer to update the learning rate for.
+            lr: The new learning rate.
+        """
 
     @abc.abstractmethod
     def _get_tensor_variable(

@@ -12,7 +12,6 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
-    LEARNER_RESULTS_CURR_LR_KEY,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
     ParamType,
@@ -32,7 +31,6 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import ALL_MODULES
@@ -77,10 +75,9 @@ class TorchLearner(Learner):
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        lr = self.lr_scheduler.get_current_value(module_id)
         pair: ParamOptimizerPair = (
             self.get_parameters(module),
-            torch.optim.Adam(self.get_parameters(module), lr=lr),
+            torch.optim.Adam(self.get_parameters(module)),
         )
         return pair
 
@@ -113,30 +110,17 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
-        # make sure the parameters do not carry gradients on their own
+        # Make sure the parameters do not carry gradients on their own.
         for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
 
-        # set the gradient of the parameters
+        # Set the gradient of the parameters.
         for pid, grad in gradients.items():
             self._params[pid].grad = grad
 
-        # for each optimizer call its step function with the gradients
+        # For each optimizer call its step function.
         for optim in self._optimizer_parameters:
             optim.step()
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    @override(Learner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, *, timestep: int, **kwargs
-    ) -> Mapping[str, Any]:
-        results = super().additional_update_per_module(module_id, timestep=timestep)
-
-        # Handle lr scheduling updates and apply new learning rates to the optimizers.
-        new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
-        results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
-
-        return results
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:
@@ -323,6 +307,11 @@ class TorchLearner(Learner):
             for key in module.keys():
                 if isinstance(module[key], torch.nn.Module):
                     module[key].to(self._device)
+
+    @override(Learner)
+    def _set_optimizer_lr(self, optimizer: "torch.optim.Optimizer", lr: float) -> None:
+        for g in optimizer.param_groups:
+            g["lr"] = lr
 
     @override(Learner)
     def _get_tensor_variable(

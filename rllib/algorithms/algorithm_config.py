@@ -3220,6 +3220,7 @@ class AlgorithmConfig(_Config):
                 #  the learner, NOT the optimizer directly.
                 optimizer_config={
                     "lr": self.lr,
+                    "lr_schedule": self.lr_schedule,
                     "grad_clip": self.grad_clip,
                     "grad_clip_by": self.grad_clip_by,
                 },
@@ -3252,7 +3253,7 @@ class AlgorithmConfig(_Config):
         Note that LearnerHyperparameters should always be derived directly from a
         AlgorithmConfig object's own settings and considered frozen/read-only.
         """
-        return LearnerHyperparameters(lr_schedule=self.lr_schedule)
+        return LearnerHyperparameters()
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
