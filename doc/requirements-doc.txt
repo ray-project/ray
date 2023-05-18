@@ -1,4 +1,4 @@
-# Production requirements. This is what readthedocs.org picks up
+# Production requirements. This is what readthedocs.com picks up
 
 # Python / ML libraries
 accelerate>=0.17.0
