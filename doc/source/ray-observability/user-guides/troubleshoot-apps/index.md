@@ -3,6 +3,7 @@
 # Troubleshooting Applications
 
 These guides help you perform common debugging or optimization tasks for your distributed application on Ray:
+* {ref}`observability-general-troubleshoot`
 * {ref}`observability-troubleshoot-failures`
 * {ref}`observability-troubleshoot-hangs`
 * {ref}`observability-optimize-performance`
