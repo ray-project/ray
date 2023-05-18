@@ -18,6 +18,7 @@ use wasm_on_ray::runtime::{
     register_ray_hostcalls, ClusterHelper, RayConfig, RayRuntime, RayRuntimeFactory,
 };
 use wasm_on_ray::util::{self, RayLog};
+use wasm_on_ray::util::{WasmEngineTypeParam, WorkerParameters};
 
 use std::sync::{Arc, RwLock};
 use tracing::error;
@@ -36,7 +37,7 @@ struct WorkerContext {
 
 async fn init_runtime(
     cfg: &RayConfig,
-    args: &util::WorkerParameters,
+    args: &WorkerParameters,
 ) -> Result<Box<dyn RayRuntime + Send + Sync>> {
     let mut internal_cfg = config::ConfigInternal::new();
 
@@ -48,10 +49,10 @@ async fn init_runtime(
     Ok(runtime)
 }
 
-async fn init_engine(args: &util::WorkerParameters) -> Result<Box<dyn WasmEngine + Send + Sync>> {
+async fn init_engine(args: &WorkerParameters) -> Result<Box<dyn WasmEngine + Send + Sync>> {
     let engine_type = match args.engine_type {
-        util::WasmEngineType::Wasmedge => WasmEngineType::WASMEDGE,
-        util::WasmEngineType::Wasmtime => WasmEngineType::WASMTIME,
+        WasmEngineTypeParam::WASMEDGE => WasmEngineType::WASMEDGE,
+        WasmEngineTypeParam::WASMTIME => WasmEngineType::WASMTIME,
         _ => unimplemented!(),
     };
     let engine = WasmEngineFactory::create_engine(engine_type).unwrap();
@@ -107,7 +108,7 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }));
 
-    let args = util::WorkerParameters::parse();
+    let args = WorkerParameters::parse();
     let mut cfg = RayConfig::new();
 
     // we need to run in worker mode

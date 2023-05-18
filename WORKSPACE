@@ -22,6 +22,16 @@ crates_repository(
     render_config = render_config(
         default_package_name = ""
     ),
+    annotations = {
+        "wasmedge-sys": [crate.annotation(
+            build_script_data = [
+                "@//wasm:wasmedge_pkg",
+            ],
+            data = [
+                "@//wasm:wasmedge_pkg",
+            ],
+        )],
+    },
 )
 
 load("@wasm_crate_index//:defs.bzl", "crate_repositories")

@@ -47,7 +47,7 @@ export CC="${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysr
 
 $CC --target=wasm32-unknown-wasi \
     -Wl,--export-all \
-    ./simple.c -o simple.wasm -nostdlib
+    ./simple.c -o simple.wasm # -nostdlib
 
 
 # check if wabt is installed

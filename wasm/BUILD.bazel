@@ -43,6 +43,9 @@ rust_library(
     crate_name = "wasm_on_ray",
     crate_root = "src/lib.rs",
     visibility = ["//visibility:public"],
+    proc_macro_deps = [
+        "@wasm_crate_index//:wasmedge-macro",
+    ],
     deps = [
         "ray_wasm_buildrs",
         "//:core_worker_lib",
@@ -61,6 +64,9 @@ rust_library(
         "@wasm_crate_index//:libc",
         "@wasm_crate_index//:rmp",
         "@wasm_crate_index//:sha256",
+        "@wasm_crate_index//:wasmedge-sdk",
+        "@wasm_crate_index//:wasmedge-sys",
+        "@wasm_crate_index//:wasmedge-types",
     ],
 )
 
@@ -83,6 +89,9 @@ rust_dylib_library(
         "-C", "prefer-dynamic",
     ],
     visibility = ["//visibility:public"],
+    proc_macro_deps = [
+        "@wasm_crate_index//:wasmedge-macro",
+    ],
     deps = [
         "ray_wasm_buildrs",
         "//:core_worker_lib",
@@ -101,6 +110,9 @@ rust_dylib_library(
         "@wasm_crate_index//:libc",
         "@wasm_crate_index//:rmp",
         "@wasm_crate_index//:sha256",
+        "@wasm_crate_index//:wasmedge-sdk",
+        "@wasm_crate_index//:wasmedge-sys",
+        "@wasm_crate_index//:wasmedge-types",
     ],
 )
 
@@ -180,7 +192,17 @@ genrule(
         "raywa",
         "libray_wasm.so",
         "ray_wasm_lib.dylib",
-    ],
+    ] +  select({
+        "@bazel_tools//src/conditions:darwin": [
+            "@com_github_wasmedge_darwin_x86_64//:lib",
+        ],
+        "@bazel_tools//src/conditions:windows": [
+            # TODO: Add Windows support.
+        ],
+        "//conditions:default": [
+            "@com_github_wasmedge_manylinux2014_x86_64//:lib",
+        ],
+    }),
     outs = ["ray_wasm_pkg.out"],
     cmd = """
         WORK_DIR="$$(pwd)" &&
@@ -191,6 +213,53 @@ genrule(
         cp -f $(location libray_wasm.so) "$$PY_WASM_DIR/lib/" &&
         cp -f $(location ray_wasm_lib.dylib) "$$PY_WASM_DIR/lib/" &&
         cp -f $(location raywa) "$$PY_WASM_DIR/" &&
+        """ + select({
+            "@bazel_tools//src/conditions:darwin": """cp -f $(locations @com_github_wasmedge_darwin_x86_64//:lib) "$$PY_WASM_DIR/lib/" &&""",
+            "@bazel_tools//src/conditions:windows": """# TODO: Add Windows support. &&""",
+            "//conditions:default": """cp -f $(locations @com_github_wasmedge_manylinux2014_x86_64//:lib) "$$PY_WASM_DIR/lib/" &&""",
+        }) +
+        """
+        echo "$$WORK_DIR" > $@
+    """,
+    local = True,
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "wasmedge_pkg",
+    srcs = select({
+        "@bazel_tools//src/conditions:darwin": [
+            "@com_github_wasmedge_darwin_x86_64//:all_files",
+            "@com_github_wasmedge_darwin_x86_64//:wasmedge_bin",
+        ],
+        "@bazel_tools//src/conditions:windows": [
+            # TODO: Add Windows support.
+        ],
+        "//conditions:default": [
+            "@com_github_wasmedge_manylinux2014_x86_64//:all_files",
+            "@com_github_wasmedge_manylinux2014_x86_64//:wasmedge_bin",
+        ],
+    }),
+    outs = ["wasmedge_pkg.out"],
+    # we should avoid using sudo here.
+    cmd = """
+        WORK_DIR="$$(pwd)" &&
+        PY_WASM_DIR="$$WORK_DIR/python/ray/wasm" &&
+        mkdir -p "$$PY_WASM_DIR" &&
+        WASMEDGE_DIR="$$PY_WASM_DIR/wasmedge" &&
+        rm -rf $$WASMEDGE_DIR && 
+        """ + select({
+        "@bazel_tools//src/conditions:darwin": """WASMEDGE_SRC_BIN="$(location @com_github_wasmedge_darwin_x86_64//:wasmedge_bin)" &&""",
+        "@bazel_tools//src/conditions:windows": """# TODO: Add Windows support. &&""",
+        "//conditions:default": """WASMEDGE_SRC_BIN="$(location @com_github_wasmedge_manylinux2014_x86_64//:wasmedge_bin)" &&""",
+    }) + """ 
+        WASMEDGE_SRC_BIN_DIR="$$(dirname $$WASMEDGE_SRC_BIN)" &&
+        WASMEDGE_SRC_DIR="$$(dirname \"$$WASMEDGE_SRC_BIN_DIR\")" &&
+        WASMEDGE_SRC_INCLUDE_DIR="$$WASMEDGE_SRC_DIR/include" &&
+        WASMEDGE_SRC_LIB_DIR="$$WASMEDGE_SRC_DIR/lib*" &&
+        sudo rm -r -f /usr/local/include/wasmedge &&
+        sudo cp -r -f $$WASMEDGE_SRC_INCLUDE_DIR/wasmedge /usr/local/include/ &&
+        sudo cp -r -f $$WASMEDGE_SRC_LIB_DIR/* /usr/local/lib &&
         echo "$$WORK_DIR" > $@
     """,
     local = True,

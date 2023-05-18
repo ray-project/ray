@@ -122,13 +122,13 @@ impl WasmContext for WasmtimeContext<'_> {
         let call_opt = CallOptions::new();
         let invoke_spec =
             InvocationSpec::new(TaskType::NormalTask, remote_func_holder.clone(), args, None);
-        let result = self.runtime.read().unwrap().call(&invoke_spec, &call_opt);
-        match result {
-            Ok(result) => {
-                if result.len() != 1 {
+        let ret = self.runtime.read().unwrap().call(&invoke_spec, &call_opt);
+        match ret {
+            Ok(results) => {
+                if results.len() != 1 {
                     return Err(anyhow!("Invalid result length"));
                 }
-                Ok(result)
+                Ok(results)
             }
             Err(e) => Err(anyhow!("Failed to invoke remote function: {}", e)),
         }

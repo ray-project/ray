@@ -217,23 +217,23 @@ pub fn register_ray_hostcalls(
 ) -> Result<()> {
     let mut hostcalls = Hostcalls::new("ray", runtime.clone());
     hostcalls
-        .add_hostcall("test", vec![], vec![], hc_test)
+        .add_hostcall("test", vec![], vec![], hc_ray_test)
         .unwrap();
     hostcalls
-        .add_hostcall("sleep", vec![WasmType::I32], vec![], hc_sleep)
+        .add_hostcall("sleep", vec![WasmType::I32], vec![], hc_ray_sleep)
         .unwrap();
     hostcalls
-        .add_hostcall("init", vec![], vec![WasmType::I32], hc_init)
+        .add_hostcall("init", vec![], vec![WasmType::I32], hc_ray_init)
         .unwrap();
     hostcalls
-        .add_hostcall("shutdown", vec![], vec![], hc_shutdown)
+        .add_hostcall("shutdown", vec![], vec![], hc_ray_shutdown)
         .unwrap();
     hostcalls
         .add_hostcall(
             "get",
             vec![WasmType::I32, WasmType::I32, WasmType::I32],
             vec![WasmType::I32],
-            hc_get,
+            hc_ray_get,
         )
         .unwrap();
     hostcalls
@@ -241,7 +241,7 @@ pub fn register_ray_hostcalls(
             "put",
             vec![WasmType::I32, WasmType::I32, WasmType::I32],
             vec![WasmType::I32],
-            hc_put,
+            hc_ray_put,
         )
         .unwrap();
     hostcalls
@@ -249,7 +249,7 @@ pub fn register_ray_hostcalls(
             "call",
             vec![WasmType::I32, WasmType::I32, WasmType::I32],
             vec![WasmType::I32],
-            hc_call,
+            hc_ray_call,
         )
         .unwrap();
     {
@@ -259,12 +259,12 @@ pub fn register_ray_hostcalls(
     Ok(())
 }
 
-fn hc_test(_ctx: &mut dyn WasmContext, _params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+pub fn hc_ray_test(_ctx: &mut dyn WasmContext, _params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     info!("test function called");
     Ok(vec![])
 }
 
-fn hc_sleep(_ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+pub fn hc_ray_sleep(_ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     match &params[0] {
         WasmValue::I32(v) => {
             sleep(std::time::Duration::from_secs(*v as u64));
@@ -277,7 +277,7 @@ fn hc_sleep(_ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<Wasm
 /// put sandbox binaries to object store
 /// no parameter
 /// return 0 if success, -1 if failed
-fn hc_init(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+pub fn hc_ray_init(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     // make sure there is not parameter
     if params.len() != 0 {
         error!("invalid parameter");
@@ -292,7 +292,10 @@ fn hc_init(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVa
     }
 }
 
-fn hc_shutdown(_ctx: &mut dyn WasmContext, _params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+pub fn hc_ray_shutdown(
+    _ctx: &mut dyn WasmContext,
+    _params: &[WasmValue],
+) -> Result<Vec<WasmValue>> {
     Err(anyhow!("not implemented"))
 }
 
@@ -301,7 +304,7 @@ fn hc_shutdown(_ctx: &mut dyn WasmContext, _params: &[WasmValue]) -> Result<Vec<
 /// params[1]: result buffer pointer
 /// params[2]: result buffer length pointer
 /// return 0 if success, -1 if failed
-fn hc_get(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+pub fn hc_ray_get(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     info!("ray_get: {:x?}", params);
     let obj_id_ptr = match &params[0] {
         WasmValue::I32(v) => v.clone(),
@@ -433,7 +436,7 @@ fn hc_get(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVal
 /// params[1]: data buffer pointer
 /// params[2]: data length
 /// return 0 if success, -1 if failed
-fn hc_put(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+pub fn hc_ray_put(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     info!("ray_put: {:x?}", params);
     let ray_buf_ptr = match &params[0] {
         WasmValue::I32(v) => v.clone(),
@@ -503,7 +506,7 @@ fn hc_put(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmVal
 /// params[1]: function reference value
 /// params[2]: function arguments buffer pointer
 /// return 0 if success, -1 if failed
-fn hc_call(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
+pub fn hc_ray_call(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec<WasmValue>> {
     info!("ray_call: {:x?}", params);
     let ray_buf_ptr = match &params[0] {
         WasmValue::I32(v) => v.clone(),

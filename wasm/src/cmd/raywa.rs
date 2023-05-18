@@ -15,7 +15,9 @@ use wasm_on_ray::config;
 use wasm_on_ray::engine;
 use wasm_on_ray::runtime;
 use wasm_on_ray::runtime::register_ray_hostcalls;
-use wasm_on_ray::util;
+use wasm_on_ray::util::{
+    LauncherParameters, WasmEngineTypeParam, WasmFileFormat, WorkerParameters,
+};
 
 use tracing::{debug, error};
 
@@ -32,7 +34,7 @@ struct RayWaContext {
     engine: Arc<RwLock<Box<dyn engine::WasmEngine + Send + Sync>>>,
 
     // launch parameters
-    params: util::LauncherParameters,
+    params: LauncherParameters,
 
     // ray internal config
     config: config::ConfigInternal,
@@ -41,11 +43,11 @@ struct RayWaContext {
 struct RayWaContextFactory {}
 
 impl RayWaContextFactory {
-    pub async fn create_context(params: &util::LauncherParameters) -> Result<RayWaContext> {
+    pub async fn create_context(params: &LauncherParameters) -> Result<RayWaContext> {
         let cfg = runtime::RayConfig::new();
         let mut internal_cfg = config::ConfigInternal::new();
 
-        internal_cfg.init(&cfg, &util::WorkerParameters::new_empty());
+        internal_cfg.init(&cfg, &WorkerParameters::new_empty());
 
         let wasm_engine = RayWaContextFactory::create_engine(params.engine_type.clone());
         let ray_runtime = RayWaContextFactory::create_runtime(internal_cfg.clone());
@@ -74,11 +76,11 @@ impl RayWaContextFactory {
     }
 
     async fn create_engine(
-        engine_type: util::WasmEngineType,
+        engine_type: WasmEngineTypeParam,
     ) -> Result<Box<dyn engine::WasmEngine + Send + Sync>> {
         let engine_type = match engine_type {
-            util::WasmEngineType::Wasmedge => engine::WasmEngineType::WASMEDGE,
-            util::WasmEngineType::Wasmtime => engine::WasmEngineType::WASMTIME,
+            WasmEngineTypeParam::WASMEDGE => engine::WasmEngineType::WASMEDGE,
+            WasmEngineTypeParam::WASMTIME => engine::WasmEngineType::WASMTIME,
             _ => unimplemented!(),
         };
         let e = engine::WasmEngineFactory::create_engine(engine_type);
@@ -93,7 +95,7 @@ impl RayWaContextFactory {
     }
 }
 
-async fn run_binary(args: &util::LauncherParameters) -> Result<()> {
+async fn run_binary(args: &LauncherParameters) -> Result<()> {
     let ctx = RayWaContextFactory::create_context(&args);
 
     // check if wasm file exists
@@ -107,37 +109,41 @@ async fn run_binary(args: &util::LauncherParameters) -> Result<()> {
     // wait for context creation to finish
     let ctx = ctx.await?;
 
-    {
-        let mut engine = ctx.engine.write().unwrap();
-        let _module = engine.compile("module", &data)?;
-        let _sandbox = engine.create_sandbox("sandbox")?;
-        let _instance = engine.instantiate("sandbox", "module", "instance")?;
+    match ctx.engine.write() {
+        Ok(mut engine) => {
+            let _module = engine.compile("module", &data)?;
+            let _sandbox = engine.create_sandbox("sandbox")?;
+            let _instance = engine.instantiate("sandbox", "module", "instance")?;
 
-        debug!("wasm module instantiated");
+            debug!("wasm module instantiated");
 
-        match engine.execute("sandbox", "instance", "_start", vec![]) {
-            Ok(_) => debug!("wasm module completed execution"),
-            Err(e) => error!("wasm module execution failed: {}", e),
+            match engine.execute("sandbox", "instance", "_start", vec![]) {
+                Ok(_) => debug!("wasm module completed execution"),
+                Err(e) => error!("wasm module execution failed: {}", e),
+            }
         }
+        Err(e) => error!("failed to acquire engine lock: {}", e),
     }
 
     // for now, we just shutdown the runtime
-    {
-        let mut rt = ctx.runtime.write().unwrap();
-        rt.do_shutdown().unwrap();
+    match ctx.runtime.write() {
+        Ok(mut rt) => {
+            rt.do_shutdown()?;
+        }
+        Err(e) => error!("failed to acquire runtime lock: {}", e),
     }
 
     Ok(())
 }
 
-async fn run_text(_args: &util::LauncherParameters) -> Result<()> {
+async fn run_text(_args: &LauncherParameters) -> Result<()> {
     unimplemented!()
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
-    let args = util::LauncherParameters::parse();
+    let args = LauncherParameters::parse();
 
     let default_panic = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -147,8 +153,8 @@ async fn main() -> Result<()> {
 
     // load data
     match args.file_format {
-        util::WasmFileFormat::WASM => run_binary(&args).await?,
-        util::WasmFileFormat::WAT => run_text(&args).await?,
+        WasmFileFormat::WASM => run_binary(&args).await?,
+        WasmFileFormat::WAT => run_text(&args).await?,
     }
 
     Ok(())

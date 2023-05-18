@@ -91,16 +91,23 @@ int test_call() {
   return 0;
 }
 
-int _start() {
+int main() {
+  fprintf(stderr, "starting\n");
   int res = rinit();
   if (res != 0) {
+    fprintf(stderr, "rinit failed: %d\n", res);
     return res;
   }
+  fprintf(stderr, "rinit ok\n");
   if (test_call() != 0) {
+    fprintf(stderr, "test_call failed\n");
     return 1;
   }
+  fprintf(stderr, "test_call ok\n");
   if (test_put() != 0) {
+    fprintf(stderr, "test_put failed\n");
     return 1;
   }
+  fprintf(stderr, "test_put ok\n");
   return 0;
 }
