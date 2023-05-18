@@ -663,7 +663,7 @@ def validate_save_restore(
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)
 
-    from ray.tune.result import TRAINING_ITERATION
+    from ray.air.constants import TRAINING_ITERATION
 
     for _ in range(3):
         res = ray.get(trainable_1.train.remote())

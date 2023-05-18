@@ -18,13 +18,6 @@ from ray.air.constants import (  # noqa: F401
 )
 
 # Autofilled session.report() metrics. Keys should be consistent with Tune.
-# The train provided `TIME_THIS_ITER_S` and `TIMESTAMP` will triumph what's
-# auto-filled by Tune session.
-# TODO: Combine the following two with tune's, once there is a centralized
-#  file for both tune/train constants.
-TIMESTAMP = "timestamp"
-TIME_THIS_ITER_S = "time_this_iter_s"
-
 TIME_TOTAL_S = "_time_total_s"
 
 WORKER_HOSTNAME = "_hostname"

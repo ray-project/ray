@@ -39,11 +39,11 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
-from ray.air.constants import LAZY_CHECKPOINT_MARKER_FILE
+from ray.air.constants import LAZY_CHECKPOINT_MARKER_FILE, TRAINING_ITERATION
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.result import TRAINING_ITERATION, TIME_TOTAL_S
+from ray.tune.result import TIME_TOTAL_S
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util import log_once
 from ray.util.annotations import PublicAPI, DeveloperAPI

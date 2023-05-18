@@ -44,6 +44,7 @@ from ray._private.thirdparty.tabulate.tabulate import (
     DataRow,
 )
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.callback import Callback
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
@@ -52,7 +53,6 @@ from ray.tune.result import (
     MEAN_LOSS,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
 )
 from ray.tune.experiment.trial import Trial
 

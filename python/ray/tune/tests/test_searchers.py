@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import ray
 from ray import tune
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.search import ConcurrencyLimiter
 
 

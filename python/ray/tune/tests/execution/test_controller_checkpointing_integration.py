@@ -9,10 +9,11 @@ import ray
 from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-from ray.tune.result import TRAINING_ITERATION, DONE
+from ray.tune.result import DONE
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.trainable import TrainableUtil
