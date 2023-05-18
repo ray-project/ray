@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.3-labs
+
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
@@ -7,9 +9,10 @@ ARG DEBIAN_REQUIREMENTS
 COPY $DEBIAN_REQUIREMENTS .
 RUN <<EOF
 #!/bin/bash
+
 sudo apt-get update -y \
-  && sudo apt-get install -y --no-install-recommends $(cat requirements_debian_byod.txt) \
-  && sudo apt-get autoclean
+    && sudo apt-get install -y --no-install-recommends $(cat requirements_debian_byod.txt) \
+    && sudo apt-get autoclean
 
 EOF
 
