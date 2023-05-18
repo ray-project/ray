@@ -104,9 +104,12 @@ class TfLearner(Learner):
 
     @override(Learner)
     def compute_gradients(
-        self, loss_per_module: TensorType, tape: "tf.GradientTape", **kwargs
+        self,
+        loss_per_module: Mapping[str, TensorType],
+        gradient_tape: "tf.GradientTape",
+        **kwargs,
     ) -> ParamDictType:
-        grads = tape.gradient(loss_per_module[ALL_MODULES], self._params)
+        grads = gradient_tape.gradient(loss_per_module[ALL_MODULES], self._params)
         return grads
 
     @override(Learner)
@@ -499,7 +502,7 @@ class TfLearner(Learner):
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
-            gradients = self.compute_gradients(loss_per_module, tape)
+            gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)
 

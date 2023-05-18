@@ -443,7 +443,7 @@ class Learner:
 
         Args:
             loss_per_module: Dict mapping module IDs to their individual total loss
-                terms, computed by compute_loss_per_module. The total loss (over
+                terms, computed by compute_loss_per_module. The total loss (sum over
                 all modules) is stored under the `ALL_MODULES` key.
             **kwargs: Forward compatibility kwargs.
 

@@ -16,4 +16,5 @@ class BCTorchLearner(TorchLearner, BaseTestingLearner):
         action_dist_class = self._module[module_id].get_train_action_dist_cls()
         action_dist = action_dist_class.from_logits(action_dist_inputs)
         loss = -torch.mean(action_dist.logp(batch[SampleBatch.ACTIONS]))
-        return {self.TOTAL_LOSS_KEY: loss}
+
+        return loss
