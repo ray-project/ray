@@ -461,11 +461,11 @@ Status PythonGcsSubscriber::Close() {
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
-  if (status.ok()) {
-    return Status::OK();
-  } else {
-    return Status::RpcError(status.error_message(), status.error_code());
+  if (!status.ok()) {
+    RAY_LOG(DEBUG) << "Error while closing the subscriber: "
+      << status.error_message() << " [code " << status.error_code() << "]";
   }
+  return Status::OK();
 }
 
 int64_t PythonGcsSubscriber::last_batch_size() {
