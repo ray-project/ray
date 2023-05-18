@@ -44,6 +44,7 @@ from ray.serve._private.logging_utils import (
 )
 
 from ray.serve._private.utils import get_random_letters
+from ray._private.utils import import_attr
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -607,6 +608,7 @@ class HTTPProxyActor:
         controller_name: str,
         node_ip_address: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
+        http_proxy_callback_import_path: Optional[str] = None,
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
@@ -624,6 +626,21 @@ class HTTPProxyActor:
         self.app = HTTPProxy(controller_name)
 
         self.wrapped_app = self.app
+
+        if http_proxy_callback_import_path:
+            proxy_callback = import_attr(http_proxy_callback_import_path)
+            if not callable(proxy_callback):
+                raise ValueError(
+                    f"HTTP proxy callback {http_proxy_callback_import_path} "
+                    "is not callable."
+                )
+            middlewares = proxy_callback()
+            if not isinstance(middlewares, list):
+                raise ValueError(
+                    f"HTTP proxy callback {http_proxy_callback_import_path} "
+                    "must return a list of Starlette middlewares."
+                )
+            http_middlewares.extend(middlewares)
         for middleware in http_middlewares:
             self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 
