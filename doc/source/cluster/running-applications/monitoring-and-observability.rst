@@ -1,5 +1,5 @@
-Cluster Monitoring
-------------------
+Scraping and Persisting Metrics
+===============================
 
 Ray ships with the following observability features:
 
