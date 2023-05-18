@@ -1,0 +1,7 @@
+ARG BASE_IMAGE
+FROM "$BASE_IMAGE"
+
+ARG PIP_REQUIREMENTS
+
+COPY $PIP_REQUIREMENTS .
+RUN $HOME/anaconda3/bin/pip install --no-cache-dir install -r $PIP_REQUIREMENTS
