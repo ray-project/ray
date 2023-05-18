@@ -243,8 +243,8 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                                         const ObjectID &generator_id) {
   absl::MutexLock lock(&mutex_);
   // NOTE: The upper layer (the layer that manges the object ref stream)
-  // should make sure the generator ref is not GC'ed when the
-  //
+  // should make sure the generator ref is not GC'ed until the
+  // stream is deleted.
   auto outer_it = object_id_refs_.find(generator_id);
   if (outer_it == object_id_refs_.end()) {
     // Generator object already went out of scope.

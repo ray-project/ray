@@ -149,7 +149,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[CRayObject] *return_object,
             const CObjectID& generator_id)
         void DelObjectRefStream(const CObjectID &generator_id)
-        void CreateObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)

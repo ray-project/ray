@@ -22,10 +22,6 @@
 #  # on. This must be a string!
 #  python: "3.7"
 #
-#  # Optional location of a bash setup script to run on the driver
-#  # when setting up the local environment. Relative to working_dir
-#  driver_setup: setup_driver.sh
-#
 #  # Cluster information
 #  cluster:
 #    # Location of cluster env, relative to working_dir
@@ -1474,7 +1470,6 @@
     cluster_env: horovod/app_config.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
-  driver_setup: horovod/driver_setup_latest.sh
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
@@ -1503,7 +1498,6 @@
     cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
-  driver_setup: horovod/driver_setup_master.sh
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
@@ -1532,7 +1526,6 @@
     cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
-  driver_setup: train/driver_setup.sh
   run:
     timeout: 36000
     script: python train/train_tensorflow_mnist_test.py
@@ -1561,7 +1554,6 @@
     cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
-  driver_setup: train/driver_setup.sh
   run:
     timeout: 36000
     script: python train/train_torch_linear_test.py
@@ -1646,7 +1638,6 @@
     cluster_env: ray-lightning/app_config.yaml
     cluster_compute: ray-lightning/compute_tpl_aws.yaml
 
-  driver_setup: ray-lightning/driver_setup.sh
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
@@ -1675,7 +1666,6 @@
     cluster_env: ray-lightning/app_config_master.yaml
     cluster_compute: ray-lightning/compute_tpl_aws.yaml
 
-  driver_setup: ray-lightning/driver_setup.sh
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
@@ -1704,7 +1694,6 @@
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
-  driver_setup: tune_rllib/driver_setup.sh
   run:
     timeout: 2000
     script: python tune_rllib/run_connect_tests.py
