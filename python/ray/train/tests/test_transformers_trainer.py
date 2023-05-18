@@ -11,7 +11,7 @@ from transformers import (
 
 import ray.data
 from ray.train.batch_predictor import BatchPredictor
-from ray.train.huggingface import (
+from ray.train.hf_transformers import (
     TransformersPredictor,
     TransformersTrainer,
     TransformersCheckpoint,
