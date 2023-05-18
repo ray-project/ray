@@ -97,8 +97,6 @@ class PandasBlockBuilder(TableBlockBuilder):
             ):
                 from ray.data.extensions.tensor_extension import TensorArray
 
-                if len(value) == 1:
-                    value = value[0]
                 columns[key] = TensorArray(value)
         return pandas.DataFrame(columns)
 
