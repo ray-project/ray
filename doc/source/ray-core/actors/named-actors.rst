@@ -13,12 +13,16 @@ exist. See :ref:`actor-lifetimes` for more details.
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
+
+            import ray
+
+            @ray.remote
+            class Counter:
+                pass
 
             # Create an actor with a name
             counter = Counter.options(name="some_name").remote()
-
-            ...
 
             # Retrieve the actor later somewhere
             counter = ray.get_actor("some_name")
@@ -69,7 +73,8 @@ exist. See :ref:`actor-lifetimes` for more details.
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import ray
 
@@ -167,7 +172,7 @@ Separately, actor lifetimes can be decoupled from the job, allowing an actor to 
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             counter = Counter.options(name="CounterActor", lifetime="detached").remote()
 
@@ -175,10 +180,9 @@ Separately, actor lifetimes can be decoupled from the job, allowing an actor to 
         exits. Therefore it is possible to run the following script in a different
         driver:
 
-        .. code-block:: python
+        .. testcode::
 
             counter = ray.get_actor("CounterActor")
-            print(ray.get(counter.get_counter.remote()))
 
         Note that an actor can be named but not detached. If we only specified the
         name without specifying ``lifetime="detached"``, then the CounterActor can
