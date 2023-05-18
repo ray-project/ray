@@ -21,7 +21,8 @@
 namespace ray {
 namespace core {
 
-  Status CoreWorkerDirectTaskSubmitter::SubmitTask(std::shared_ptr<TaskSpecification> task_spec) {
+Status CoreWorkerDirectTaskSubmitter::SubmitTask(
+    std::shared_ptr<TaskSpecification> task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec->TaskId();
   num_tasks_submitted_++;
 
