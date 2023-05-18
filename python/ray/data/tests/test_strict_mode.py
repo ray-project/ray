@@ -197,7 +197,7 @@ def test_strict_schema(ray_start_regular_shared, enable_strict_mode):
     schema = ds.schema()
     assert isinstance(schema.base_schema, pa.lib.Schema)
     assert schema.names == ["x", "y"]
-    assert schema.types == [pa.int64(), ArrowTensorType(shape=(2,), dtype=pa.int64())]
+    assert schema.types == [pa.int64(), pa.list_(pa.int64())]
 
     ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
     schema = ds.schema()
@@ -205,7 +205,7 @@ def test_strict_schema(ray_start_regular_shared, enable_strict_mode):
     assert schema.types == [
         pa.int64(),
         object,
-        ArrowTensorType(shape=(2,), dtype=pa.int64()),
+        object,
     ]
 
     ds = ray.data.from_numpy(np.ones((100, 10)))
