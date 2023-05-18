@@ -282,6 +282,8 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each record of this dataset.
@@ -328,8 +330,12 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray for each map worker.
 
         .. seealso::
 
@@ -349,6 +355,12 @@ class Dataset:
         self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
+
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
 
         plan = self._plan.with_stage(
             OneToOneStage(
@@ -383,6 +395,8 @@ class Dataset:
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -515,8 +529,11 @@ class Dataset:
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., ``num_gpus=1`` to request GPUs for the map tasks).
+                ray for each map worker.
 
         .. seealso::
 
@@ -582,6 +599,12 @@ class Dataset:
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
         )
+
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
 
         # TODO(chengsu): pass function name to MapBatches logical operator.
         if hasattr(fn, "__self__") and isinstance(
@@ -769,6 +792,8 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each record and then flatten results.
@@ -793,8 +818,12 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray for each map worker.
 
         .. seealso::
 
@@ -812,6 +841,12 @@ class Dataset:
         self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
+
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
 
         plan = self._plan.with_stage(
             OneToOneStage("FlatMap", transform_fn, compute, ray_remote_args, fn=fn)
