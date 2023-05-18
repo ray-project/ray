@@ -9,13 +9,6 @@ from typing import (
     Union,
 )
 
-from ray.rllib.core.rl_module.rl_module import (
-    RLModule,
-    ModuleID,
-    SingleAgentRLModuleSpec,
-)
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
@@ -25,21 +18,30 @@ from ray.rllib.core.learner.learner import (
     ParamType,
     ParamDictType,
 )
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.rl_module import (
+    RLModule,
+    ModuleID,
+    SingleAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import (
+    TorchRLModule,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import (
     clip_gradients,
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -252,6 +254,13 @@ class TorchLearner(Learner):
             self._device = torch.device("cpu")
 
         super().build()
+
+        # Maybe torch compile forward methods.
+        compile_config = self._framework_hyperparameters.torch_compile_cfg
+        if compile_config is not None:
+            for module in self._module._rl_modules.values():
+                if isinstance(module, TorchRLModule):
+                    module.compile(compile_config)
 
         self._make_modules_ddp_if_necessary()
 

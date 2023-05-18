@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
     from ray.tune.syncer import SyncConfig
+    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -728,7 +729,10 @@ class RunConfig:
             a Jupyter notebook.
         verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
-            results, 3 = status and detailed results. Defaults to 2.
+            results, 3 = status and detailed results. Defaults to 3.
+            If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
+            uses the new context-aware verbosity settings:
+            0 = silent, 1 = default, 2 = verbose.
         log_to_file: Log stdout and stderr to files in
             trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
@@ -748,7 +752,7 @@ class RunConfig:
     sync_config: Optional["SyncConfig"] = None
     checkpoint_config: Optional[CheckpointConfig] = None
     progress_reporter: Optional["ProgressReporter"] = None
-    verbose: Union[int, "Verbosity"] = 3
+    verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated
@@ -757,6 +761,7 @@ class RunConfig:
     def __post_init__(self):
         from ray.tune.syncer import SyncConfig, Syncer
         from ray.tune.utils.util import _resolve_storage_path
+        from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -821,6 +826,13 @@ class RunConfig:
             raise ValueError(
                 "Must specify a remote `storage_path` to use a custom `syncer`."
             )
+
+        if self.verbose is None:
+            # Default `verbose` value. For new output engine,
+            # this is AirVerbosity.DEFAULT.
+            # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+            # Todo (krfricke): Currently uses number to pass test_configs::test_repr
+            self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
 
     def __repr__(self):
         from ray.tune.syncer import SyncConfig

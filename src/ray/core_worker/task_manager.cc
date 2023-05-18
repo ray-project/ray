@@ -31,15 +31,17 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
-  bool is_eof_set = last_ != -1;
-  if (is_eof_set && curr_ >= last_) {
+  bool is_eof_set = end_of_stream_index_ != -1;
+  if (is_eof_set && next_index_ >= end_of_stream_index_) {
+    // next_index_ cannot be bigger than end_of_stream_index_.
+    RAY_CHECK(next_index_ == end_of_stream_index_);
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
                    << " has no more objects.";
     *object_id_out = ObjectID::Nil();
     return Status::ObjectRefStreamEoF("");
   }
 
-  auto it = item_index_to_refs_.find(curr_);
+  auto it = item_index_to_refs_.find(next_index_);
   if (it != item_index_to_refs_.end()) {
     // If the current index has been written,
     // return the object ref.
@@ -47,14 +49,15 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
     // The caller of this API is supposed to remove the reference
     // when the obtained object id goes out of scope.
     *object_id_out = it->second;
-    curr_ += 1;
+    next_index_ += 1;
     RAY_LOG_EVERY_MS(DEBUG, 10000) << "Get the next object id " << *object_id_out
                                    << " generator id: " << generator_id_;
   } else {
     // If the current index hasn't been written, return nothing.
     // The caller is supposed to retry.
     RAY_LOG_EVERY_MS(DEBUG, 10000)
-        << "Object not available. Current index: " << curr_ << " last: " << last_
+        << "Object not available. Current index: " << next_index_
+        << " end_of_stream_index_: " << end_of_stream_index_
         << " generator id: " << generator_id_;
     *object_id_out = ObjectID::Nil();
   }
@@ -62,11 +65,11 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
 }
 
 bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_index) {
-  if (last_ != -1) {
-    RAY_CHECK(curr_ <= last_);
+  if (end_of_stream_index_ != -1) {
+    RAY_CHECK(next_index_ <= end_of_stream_index_);
   }
 
-  if (item_index < curr_) {
+  if (item_index < next_index_) {
     // Index is already used. Don't write it to the stream.
     return false;
   }
@@ -76,6 +79,9 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
     // It means the when a task is retried it returns a different object id
     // for the same index, which means the task was not deterministic.
     // Fail the owner if it happens.
+    // It can happen if the second try is none determinstic and
+    // execute more ray.put, which modifies the put index that
+    // can return a different object ref.
     RAY_CHECK_EQ(object_id, it->second)
         << "The task has been retried with none deterministic task return ids. Previous "
            "return id: "
@@ -87,7 +93,9 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
   return true;
 }
 
-void ObjectRefStream::MarkEndOfStream(int64_t item_index) { last_ = item_index; }
+void ObjectRefStream::MarkEndOfStream(int64_t item_index) {
+  end_of_stream_index_ = item_index;
+}
 
 std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     const rpc::Address &caller_address,
@@ -406,7 +414,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   for (const auto &object_id : object_ids_unconsumed) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    RAY_CHECK(deleted.size() == 1);
+    RAY_CHECK_EQ(deleted.size(), 1UL);
   }
 }
 
@@ -434,7 +442,7 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
   return it != object_ref_streams_.end();
 }
 
-void TaskManager::HandleReportGeneratorItemReturns(
+bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
@@ -442,18 +450,21 @@ void TaskManager::HandleReportGeneratorItemReturns(
   // Every generated object has the same task id.
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
-
-  if (request.finished()) {
+  {
     absl::MutexLock lock(&mu_);
-    RAY_LOG(DEBUG) << "Writing EoF to the object ref stream. Index: " << item_index;
     auto stream_it = object_ref_streams_.find(generator_id);
-    if (stream_it != object_ref_streams_.end()) {
-      RAY_LOG(DEBUG) << "Wrote EoF to the object ref stream. Index: " << item_index;
-      stream_it->second.MarkEndOfStream(item_index);
+    if (stream_it == object_ref_streams_.end()) {
+      // SANG-TODO add an unit test.
+      // Stream has been already deleted. Do not handle it.
+      return false;
     }
-    // The last report should not have any return objects.
-    RAY_CHECK(request.dynamic_return_objects_size() == 0);
-    return;
+
+    if (request.finished()) {
+      RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << item_index;
+      stream_it->second.MarkEndOfStream(item_index);
+      RAY_CHECK(request.dynamic_return_objects_size() == 0);
+      return true;
+    }
   }
 
   // Handle the intermediate values.
@@ -461,6 +472,7 @@ void TaskManager::HandleReportGeneratorItemReturns(
   const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
 
   // TODO(sang): Support the regular return values as well.
+  size_t num_objects_written = 0;
   for (const auto &return_object : request.dynamic_return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
     RAY_LOG(DEBUG) << "Write an object " << object_id
@@ -480,22 +492,25 @@ void TaskManager::HandleReportGeneratorItemReturns(
     // NOTE: If we call this method while holding a lock, it can deadlock.
     if (index_not_used_yet) {
       reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
-      // When an object is reported, the object is ready to be fetched.
-      // TODO(sang): It is possible this invairant is not true
-      // if tasks can be retried. For example, imagine the intermediate
-      // task return is reported after a task is resubmitted.
-      // It is okay now because we don't support retry yet. But when
-      // we support retry, we should guarantee it is not called
-      // after the task resubmission. We can do it by guaranteeing
-      // HandleReportGeneratorItemReturns is not called after the task
-      // CompletePendingTask.
-      reference_counter_->UpdateObjectReady(object_id);
-      HandleTaskReturn(object_id,
-                       return_object,
-                       NodeID::FromBinary(request.worker_addr().raylet_id()),
-                       /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
+      num_objects_written += 1;
     }
+    // When an object is reported, the object is ready to be fetched.
+    // TODO(sang): It is possible this invairant is not true
+    // if tasks can be retried. For example, imagine the intermediate
+    // task return is reported after a task is resubmitted.
+    // It is okay now because we don't support retry yet. But when
+    // we support retry, we should guarantee it is not called
+    // after the task resubmission. We can do it by guaranteeing
+    // HandleReportGeneratorItemReturns is not called after the task
+    // CompletePendingTask.
+    reference_counter_->UpdateObjectReady(object_id);
+    HandleTaskReturn(object_id,
+                     return_object,
+                     NodeID::FromBinary(request.worker_addr().raylet_id()),
+                     /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
   }
+
+  return num_objects_written != 0;
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
@@ -909,6 +924,9 @@ absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
+    // When a generator task is used, it is possible
+    // this API is used after the task has been removed
+    // from submissible_tasks_. Do nothing in this case.
     return {};
   }
   first_execution = it->second.num_successful_executions == 0;
