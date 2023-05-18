@@ -18,7 +18,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
-    MapOperatorInitFn,
     _map_task,
     _TaskState,
 )
@@ -49,7 +48,7 @@ class ActorPoolMapOperator(MapOperator):
     def __init__(
         self,
         transform_fn: Callable[[Iterator[Block]], Iterator[Block]],
-        init_fn: Optional[MapOperatorInitFn],
+        init_fn: Callable[[], None],
         input_op: PhysicalOperator,
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
@@ -95,7 +94,7 @@ class ActorPoolMapOperator(MapOperator):
         self._inputs_done = False
         self._next_task_idx = 0
 
-    def get_init_fn(self) -> Optional[MapOperatorInitFn]:
+    def get_init_fn(self) -> Callable[[], None]:
         return self._init_fn
 
     def internal_queue_size(self) -> int:
@@ -370,14 +369,13 @@ class _MapWorker:
     """An actor worker for MapOperator."""
 
     def __init__(
-        self, ctx: DataContext, src_fn_name: str, init_fn: Optional[MapOperatorInitFn]
+        self, ctx: DataContext, src_fn_name: str, init_fn: _CallableClassProtocol
     ):
         DataContext._set_current(ctx)
         self.src_fn_name: str = src_fn_name
 
         # Initialize state for this actor.
-        if init_fn is not None:
-            init_fn()
+        init_fn()
 
     def get_location(self) -> NodeIdStr:
         return ray.get_runtime_context().get_node_id()

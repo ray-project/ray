@@ -2,15 +2,7 @@ from abc import ABC, abstractmethod
 import copy
 from dataclasses import dataclass
 import itertools
-from typing import (
-    Callable,
-    List,
-    Iterator,
-    Any,
-    Dict,
-    Optional,
-    Union,
-)
+from typing import Callable, List, Iterator, Any, Dict, Optional, Union
 
 import ray
 from ray.data.block import (
@@ -37,23 +29,6 @@ from ray.data._internal.stats import StatsDict
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
-
-
-@dataclass
-class MapOperatorInitFn:
-    constructor_fn: Callable[[], None]
-    constructor_args: List[Any]
-    constructor_kwargs: Dict[str, Any]
-
-    def __post_init__(self):
-        self.concurrent_constructor = make_callable_class_concurrent(self.constructor_fn)
-
-    def __call__(self) -> None:
-        if ray.data._cached_fn is None:
-            ray.data._cached_cls = self.constructor_fn
-            ray.data._cached_fn = self.constructor_fn(
-                *self.constructor_args, **self.constructor_kwargs
-            )
 
 
 class MapOperator(PhysicalOperator, ABC):
@@ -96,7 +71,7 @@ class MapOperator(PhysicalOperator, ABC):
         cls,
         transform_fn: MapTransformFn,
         input_op: PhysicalOperator,
-        init_fn: Optional[MapOperatorInitFn] = None,
+        init_fn: Optional[Callable[[], None]] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
         # config and not contain implementation code.
@@ -149,6 +124,11 @@ class MapOperator(PhysicalOperator, ABC):
                 compute_strategy
             )
             autoscaling_policy = AutoscalingPolicy(autoscaling_config)
+
+            if init_fn is None:
+
+                def init_fn():
+                    pass
 
             return ActorPoolMapOperator(
                 transform_fn,
