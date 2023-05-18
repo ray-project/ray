@@ -236,8 +236,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Create the object ref stream.
   /// If the object ref stream is not created by this API,
   /// all object ref stream operation will be no-op.
+  ///
   /// Once the stream is created, it has to be deleted
   /// by DelObjectRefStream when it is not used anymore.
+  /// Once you generate a stream, it is the caller's responsibility
+  /// to call DelObjectRefStream.
+  ///
   /// The API is not idempotent.
   ///
   /// \param[in] generator_id The object ref id of the streaming

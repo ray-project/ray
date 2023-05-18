@@ -445,9 +445,10 @@ void TaskManager::HandleReportGeneratorItemReturns(
 
   if (request.finished()) {
     absl::MutexLock lock(&mu_);
-    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << item_index;
+    RAY_LOG(DEBUG) << "Writing EoF to the object ref stream. Index: " << item_index;
     auto stream_it = object_ref_streams_.find(generator_id);
     if (stream_it != object_ref_streams_.end()) {
+      RAY_LOG(DEBUG) << "Wrote EoF to the object ref stream. Index: " << item_index;
       stream_it->second.MarkEndOfStream(item_index);
     }
     // The last report should not have any return objects.

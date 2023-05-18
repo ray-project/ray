@@ -1947,6 +1947,13 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
+
+    // If it is a generator task, create a object ref stream.
+    // The language frontend is responsible for calling DeleteObjectRefStream.
+    if (task_spec.IsStreamingGenerator()) {
+      CreateObjectRefStream(task_spec.ReturnId(0));
+    }
+
     io_service_.post(
         [this, task_spec]() {
           RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
@@ -2272,6 +2279,14 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+
+    // If it is a generator task, create a object ref stream.
+    // The language frontend is responsible for calling DeleteObjectRefStream.
+    if (task_spec.IsStreamingGenerator()) {
+      // Generator task only has 1 return.
+      CreateObjectRefStream(task_spec.ReturnId(0));
+    }
+
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
   task_returns = std::move(returned_refs);

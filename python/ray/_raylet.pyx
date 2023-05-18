@@ -217,7 +217,6 @@ class StreamingObjectRefGenerator:
         # Ray's worker class. ray._private.worker.global_worker
         self.worker = worker
         assert hasattr(worker, "core_worker")
-        self.worker.core_worker.create_object_ref_stream(self._generator_ref)
 
     def __iter__(self):
         return self
@@ -398,6 +397,8 @@ class StreamingObjectRefGenerator:
 
     def __del__(self):
         if hasattr(self.worker, "core_worker"):
+            # The stream is created when a task is first submitted via
+            # CreateObjectRefStream.
             # NOTE: This can be called multiple times
             # because python doesn't guarantee __del__ is called
             # only once.
@@ -491,6 +492,7 @@ def compute_task_id(ObjectRef object_ref):
 
 cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
+    t = time.time()
     cdef:
         CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
         int current_limit = Py_GetRecursionLimit()
@@ -506,7 +508,6 @@ cdef increase_recursion_limit():
             int CURRENT_DEPTH(CPyThreadState *x)
 
         int current_depth = CURRENT_DEPTH(s)
-
     if current_limit - current_depth < 500:
         Py_SetRecursionLimit(new_limit)
         logger.debug("Increasing Python recursion limit to {} "
@@ -1219,14 +1220,6 @@ cdef void execute_task(
                             class_name=class_name
                             )
                         )
-                # Increase recursion limit if necessary. In asyncio mode,
-                # we have many parallel callstacks (represented in fibers)
-                # that's suspended for execution. Python interpreter will
-                # mistakenly count each callstack towards recusion limit.
-                # We don't need to worry about stackoverflow here because
-                # the max number of callstacks is limited in direct actor
-                # transport with max_concurrency flag.
-                increase_recursion_limit()
 
                 if is_async_func(function.method):
                     async_function = function
@@ -3465,6 +3458,15 @@ cdef class CoreWorker:
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
 
+        # Increase recursion limit if necessary. In asyncio mode,
+        # we have many parallel callstacks (represented in fibers)
+        # that's suspended for execution. Python interpreter will
+        # mistakenly count each callstack towards recusion limit.
+        # We don't need to worry about stackoverflow here because
+        # the max number of callstacks is limited in direct actor
+        # transport with max_concurrency flag.
+        increase_recursion_limit()
+
         if inspect.isawaitable(func_or_coro):
             coroutine = func_or_coro
         else:
@@ -3672,12 +3674,6 @@ cdef class CoreWorker:
                 CTaskID.Nil(),
                 NULL_PUT_INDEX
             )
-
-    def create_object_ref_stream(self, ObjectRef generator_id):
-        cdef:
-            CObjectID c_generator_id = generator_id.native()
-
-        CCoreWorkerProcess.GetCoreWorker().CreateObjectRefStream(c_generator_id)
 
     def delete_object_ref_stream(self, ObjectRef generator_id):
         cdef:

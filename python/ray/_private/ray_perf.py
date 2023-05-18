@@ -365,8 +365,6 @@ def main(results=None):
         refs = []
         for gen in gens:
             refs.extend(list(gen))
-        print(refs)
-        print(len(refs))
         ray.get(refs)
 
     results += timeit(
@@ -379,8 +377,8 @@ def main(results=None):
     client = GeneratorClient.remote(actors)
 
     def async_actor_async_generator():
-        gen = client.small_value_batch.remote(n)
-        ray.get(list(gen))
+        ref = client.small_value_batch.remote(n)
+        ray.get(ref)
 
     results += timeit(
         "1:n async-actor-generator calls async",
