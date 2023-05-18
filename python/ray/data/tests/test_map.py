@@ -552,6 +552,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     values = [s["two"] for s in ds_list]
     assert values == [5, 7, 9]
 
+    print("=== Test callable chain ===")
     # Test callable chain.
     ds = ray.data.read_parquet(str(tmp_path))
     fn_constructor_args = (put(1),)
@@ -580,6 +581,7 @@ def test_map_batches_extra_args(shutdown_only, tmp_path):
     assert values == [7, 11, 15]
     values = [s["two"] for s in ds_list]
     assert values == [11, 15, 19]
+    print("=== end Test callable chain ===")
 
     # Test function + callable chain.
     ds = ray.data.read_parquet(str(tmp_path))

@@ -114,18 +114,27 @@ class OperatorFusionRule(Rule):
 
         # We currently only support fusing for the following cases:
         # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
+        # - ActorPoolMapOperator -> ActorPoolMapOperator (only if they have the same UDF class and same constructor args)
         # - TaskPoolMapOperator -> AllToAllOperator
         # (only RandomShuffle and Repartition LogicalOperators are currently supported)
-        if not (
-            (
-                isinstance(up_op, TaskPoolMapOperator)
-                and isinstance(down_op, (TaskPoolMapOperator, ActorPoolMapOperator))
-            )
-            or (
-                isinstance(up_op, TaskPoolMapOperator)
-                and isinstance(down_op, AllToAllOperator)
-            )
+        supported = False
+        if isinstance(up_op, MapOperator) and isinstance(down_op, MapOperator):
+            if isinstance(up_op, TaskPoolMapOperator):
+                # Task -> Task/Actor
+                supported = True
+            else:
+                assert isinstance(up_op, ActorPoolMapOperator)
+                if isinstance(down_op, ActorPoolMapOperator):
+                    # Actor -> Actor
+                    print("Actor -> Actor", up_op.get_init_fn(), down_op.get_init_fn())
+                    if up_op.get_init_fn() == down_op.get_init_fn():
+                        supported = True
+        elif isinstance(up_op, TaskPoolMapOperator) and isinstance(
+            down_op, AllToAllOperator
         ):
+            supported = True
+
+        if not supported:
             return False
 
         down_logical_op = self._op_map[down_op]
@@ -246,6 +255,7 @@ class OperatorFusionRule(Rule):
         compute = None
         if isinstance(down_logical_op, AbstractUDFMap):
             compute = get_compute(down_logical_op._compute)
+        print("000", up_logical_op._ray_remote_args, down_logical_op._ray_remote_args)
         ray_remote_args = up_logical_op._ray_remote_args
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
