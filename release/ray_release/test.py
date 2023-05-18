@@ -50,7 +50,11 @@ class Test(dict):
         Returns the ray docker image to use for this test. If the commit hash is not
         specified, use the nightly ray image.
         """
-        ray_version = os.environ.get("BUILDKITE_COMMIT", "")[:6] or "nightly"
+        ray_version = (
+            os.environ.get("COMMIT_TO_TEST", "")[:6]
+            or os.environ.get("BUILDKITE_COMMIT", "")[:6]
+            or "nightly"
+        )
         ray_project = "ray-ml" if self.get_byod_type() == "gpu" else "ray"
         image_suffix = "-gpu" if self.get_byod_type() == "gpu" else ""
         python_version = f"py{self.get_python_version().replace('.',   '')}"
