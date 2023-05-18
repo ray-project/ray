@@ -4034,10 +4034,6 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
-    data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022",
-    ]),
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
 
 py_test(
@@ -4046,10 +4042,6 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
-    data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022",
-    ]),
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )
 
 py_test(
@@ -4058,11 +4050,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
-    data = glob([
-        "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
-    ]),
     args = [
-        "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
         "--train_iteration=1"  # Smoke test.
     ]
 )
