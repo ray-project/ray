@@ -315,9 +315,9 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
                 return get_current_placement_group()
 
             pg = ray.util.placement_group([{"CPU": 2}])
-            ray.get(f.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg)).remote()) == pg
+            assert ray.get(f.options(
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pg)).remote()) == pg
 
             # Driver doesn't belong to any placement group,
             # so it returns None.
