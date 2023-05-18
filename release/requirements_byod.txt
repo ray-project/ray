@@ -1,0 +1,7 @@
+# Requirements to run release tests from anyscale byod
+pytest
+awscli
+'ray[tune]'
+torch 
+torchvision
+horovod
