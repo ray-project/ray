@@ -134,7 +134,9 @@ class APPOTfLearner(AppoLearner, TfLearner):
             + (mean_vf_loss * self.hps.vf_loss_coeff)
             + (
                 mean_entropy_loss
-                * self.entropy_coeff_scheduler.get_current_value(module_id)
+                * self.entropy_coeff_schedulers_per_module[
+                    module_id
+                ].get_current_value()
             )
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )

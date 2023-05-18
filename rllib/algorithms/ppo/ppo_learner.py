@@ -42,12 +42,15 @@ class PPOLearner(Learner):
         super().build()
 
         # Build entropy coeff scheduling tools.
-        self.entropy_coeff_scheduler = Scheduler(
-            fixed_value=self.hps.entropy_coeff,
-            schedule=self.hps.entropy_coeff_schedule,
-            framework=self.framework,
-            device=self._device,
-        )
+        self.entropy_coeff_schedulers_per_module = {
+            module_id: Scheduler(
+                fixed_value=self.hps.entropy_coeff,
+                schedule=self.hps.entropy_coeff_schedule,
+                framework=self.framework,
+                device=self._device,
+            )
+            for module_id in self.module.keys()
+        }
 
         # Set up KL coefficient variables (per module).
         # Note that the KL coeff is not controlled by a schedul, but seeks
@@ -67,8 +70,8 @@ class PPOLearner(Learner):
         )
 
         # Update entropy coefficient via our Scheduler.
-        new_entropy_coeff = self.entropy_coeff_scheduler.update(
-            module_id, timestep=timestep
+        new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
+            timestep=timestep
         )
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 

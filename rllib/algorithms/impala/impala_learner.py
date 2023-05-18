@@ -56,12 +56,15 @@ class ImpalaLearner(Learner):
         super().build()
 
         # Build entropy coeff scheduling tools.
-        self.entropy_coeff_scheduler = Scheduler(
-            fixed_value=self.hps.entropy_coeff,
-            schedule=self.hps.entropy_coeff_schedule,
-            framework=self.framework,
-            device=self._device,
-        )
+        self.entropy_coeff_schedulers_per_module = {
+            module_id: Scheduler(
+                fixed_value=self.hps.entropy_coeff,
+                schedule=self.hps.entropy_coeff_schedule,
+                framework=self.framework,
+                device=self._device,
+            )
+            for module_id in self.module.keys()
+        }
 
     @override(Learner)
     def additional_update_per_module(
@@ -70,8 +73,8 @@ class ImpalaLearner(Learner):
         results = super().additional_update_per_module(module_id, timestep=timestep)
 
         # Update entropy coefficient via our Scheduler.
-        new_entropy_coeff = self.entropy_coeff_scheduler.update(
-            module_id, timestep=timestep
+        new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
+            timestep=timestep
         )
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 

@@ -102,7 +102,10 @@ class PPOTfLearner(PPOLearner, TfLearner):
         total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.entropy_coeff_scheduler.get_current_value(module_id) * curr_entropy
+            - (
+                self.entropy_coeff_schedulers_per_module[module_id].get_current_value()
+                * curr_entropy
+            )
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),

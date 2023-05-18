@@ -138,9 +138,9 @@ class TestPPO(unittest.TestCase):
                     check(lr, config.lr_schedule[0][1])
 
                     # Check current entropy coeff value using the respective Scheduler.
-                    entropy_coeff = learner.entropy_coeff_scheduler.get_current_value(
+                    entropy_coeff = learner.entropy_coeff_schedulers_per_module[
                         DEFAULT_POLICY_ID
-                    )
+                    ].get_current_value()
                     check(entropy_coeff, 0.1)
 
                     for i in range(num_iterations):
