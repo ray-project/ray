@@ -1,8 +1,23 @@
+# coding=utf-8
+# Code adapted from "Text Generation Inference"
+# available at https://github.com/huggingface/text-generation-inference
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import torch
 
 from dataclasses import dataclass
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase
-from typing import Optional, Tuple, List, Type, Dict, Any
+from typing import Optional, Tuple, List, Type, Dict, Any, override
 
 from ray.serve.experimental.llm.models.model import Model
 from ray.serve.experimental.llm.types import (
@@ -51,9 +66,9 @@ class CausalLMBatch(Batch):
     keys_head_dim_last: bool = True
 
     @classmethod
-    def from_pb(
+    def from_requests(
         cls,
-        pb: generate_pb2.Batch,
+        requests: List[GenerationRequest],
         tokenizer: PreTrainedTokenizerBase,
         device: torch.device,
     ) -> "CausalLMBatch":
@@ -68,7 +83,7 @@ class CausalLMBatch(Batch):
         max_truncation = 0
         padding_right_offset = 0
         max_decode_tokens = 0
-        for i, r in enumerate(pb.requests):
+        for i, r in enumerate(requests):
             requests_idx_mapping[r.id] = i
             inputs.append(r.inputs)
             next_token_choosers.append(NextTokenChooser.from_pb(r.parameters, device))
@@ -90,7 +105,7 @@ class CausalLMBatch(Batch):
             truncation=True,
             max_length=max_truncation,
         ).to(device)
-        for _ in pb.requests:
+        for _ in requests:
             input_len = tokenized_inputs["input_ids"].shape[1]
             prefix_offsets.append(0)
             read_offsets.append(input_len)
@@ -101,7 +116,7 @@ class CausalLMBatch(Batch):
         input_ids = tokenized_inputs["input_ids"]
         # Allocate maximum attention_mask
         attention_mask = input_ids.new_zeros(
-            (pb.size, max_input_length + padding_right_offset)
+            (len(requests), max_input_length + padding_right_offset)
         )
         # Copy tokenizer attention_mask into fully allocated attention_mask
         attention_mask[:, :max_input_length] = tokenized_inputs["attention_mask"]
@@ -113,7 +128,7 @@ class CausalLMBatch(Batch):
         max_tokens = len(inputs) * max_input_length + max_decode_tokens
         return cls(
             batch_id=pb.id,
-            requests=pb.requests,
+            requests=requests,
             requests_idx_mapping=requests_idx_mapping,
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -476,6 +491,15 @@ class CausalLM(Model):
     def batch_type(self) -> Type[CausalLMBatch]:
         return CausalLMBatch
 
+    @override
+    def create_batch(self, requests: List[GenerationRequest]) -> Type[CausalLMBatch]:
+        raise NotImplementedError
+
+    @override
+    def concatenate_batches(self, baches: List[CausalLMBatch]) -> CausalLMBatch:
+        raise NotImplementedError
+
+    @override
     def decode(self, generated_ids: List[int]) -> str:
         return self.tokenizer.decode(
             generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False

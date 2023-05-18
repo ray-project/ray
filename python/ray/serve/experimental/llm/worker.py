@@ -1,3 +1,4 @@
+import ray
 from collections import defaultdict
 from typing import List, Callable, Dict, Tuple, Optional
 
@@ -34,7 +35,7 @@ class InferenceWorker:
             batch_states.append(batch_state)
 
         if len(batch_states) > 1:
-            batch_state = self._model.concatenate_batch_stats(batch_states)
+            batch_state = self._model.concatenate_batches(batch_states)
         else:
             batch_state = batch_states[0]
 
