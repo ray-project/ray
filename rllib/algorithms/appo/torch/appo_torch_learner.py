@@ -144,15 +144,18 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         )
 
         # Register important loss stats.
-        self.register_metrics({
-            POLICY_LOSS_KEY: mean_pi_loss,
-            VF_LOSS_KEY: mean_vf_loss,
-            ENTROPY_KEY: -mean_entropy_loss,
-            LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-            LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
-                self.curr_kl_coeffs_per_module[module_id]
-            ),
-        })
+        self.register_metrics(
+            module_id,
+            {
+                POLICY_LOSS_KEY: mean_pi_loss,
+                VF_LOSS_KEY: mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+                LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+                LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
+                    self.curr_kl_coeffs_per_module[module_id]
+                ),
+            },
+        )
         # Return the total loss.
         return total_loss
 

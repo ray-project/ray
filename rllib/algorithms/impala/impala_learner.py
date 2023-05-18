@@ -4,7 +4,11 @@ from typing import Any, Dict, List, Mapping, Optional, Union
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
+from ray.rllib.core.learner.learner import (
+    Learner,
+    LearnerHyperparameters,
+    ParamDictType,
+)
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
@@ -79,20 +83,14 @@ class ImpalaLearner(Learner):
         *,
         batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
-        loss_or_loss_stats: Union[TensorType, Mapping[str, Any]],
-        postprocessed_gradients: Mapping[str, Any],
-        compute_grad_stats: Mapping[str, Any],
-        postprocess_grad_stats: Mapping[str, Any],
-        apply_grad_stats: Mapping[str, Any],
+        loss_per_module: Union[TensorType, Mapping[str, Any]],
+        postprocessed_gradients: ParamDictType,
     ) -> Mapping[str, Any]:
         results = super().compile_results(
             batch=batch,
             fwd_out=fwd_out,
-            loss_or_loss_stats=loss_or_loss_stats,
+            loss_per_module=loss_per_module,
             postprocessed_gradients=postprocessed_gradients,
-            compute_grad_stats=compute_grad_stats,
-            postprocess_grad_stats=postprocess_grad_stats,
-            apply_grad_stats=apply_grad_stats,
         )
         results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
         results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()

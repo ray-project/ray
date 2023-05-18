@@ -6,7 +6,6 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
-    Tuple,
     Union,
 )
 
@@ -33,14 +32,15 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.typing import ResultDict, TensorType
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import (
     clip_gradients,
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -83,14 +83,16 @@ class TorchLearner(Learner):
         return pair
 
     @override(Learner)
-    def compute_gradients(self, loss: TensorType, **kwargs) -> ParamDictType:
+    def compute_gradients(
+        self, loss_per_module: Mapping[str, TensorType], **kwargs
+    ) -> ParamDictType:
         for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients
             optim.zero_grad(set_to_none=True)
-        loss[self.TOTAL_LOSS_KEY].backward()
+        loss_per_module[ALL_MODULES].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
-        return grads, {}
+        return grads
 
     @override(Learner)
     def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
@@ -103,7 +105,7 @@ class TorchLearner(Learner):
         )
 
         if clip_by == "global_norm":
-            self.register_metric("gradients_global_norm", global_norm)
+            self.register_metric(ALL_MODULES, "gradients_global_norm", global_norm)
 
         return gradients_dict
 

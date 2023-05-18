@@ -3,7 +3,7 @@ from gymnasium.spaces import Discrete, MultiDiscrete
 import logging
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING, Union
+from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf

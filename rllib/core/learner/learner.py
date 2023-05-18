@@ -3,7 +3,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 import json
 import logging
-import numpy as np
 import pathlib
 from typing import (
     Any,
@@ -212,7 +211,7 @@ class Learner:
                 # compute the loss based on batch and output of the forward pass
                 # to access the learner hyper-parameters use `self._hps`
 
-                return {self.TOTAL_LOSS_KEY: loss}
+                return {ALL_MODULES: loss}
     """
 
     framework: str = None
@@ -271,7 +270,7 @@ class Learner:
         self._params: ParamDictType = {}
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
         # Registered metrics to be returned from `Learner.update()`.
-        self._metrics = {}
+        self._metrics = defaultdict(dict)
 
     @property
     def distributed(self) -> bool:
@@ -428,12 +427,15 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
-    def compute_gradients(self, loss: TensorType, **kwargs) -> ParamDictType:
-        """Computes the gradients based on the loss.
+    def compute_gradients(
+        self, loss_per_module: Mapping[str, TensorType], **kwargs
+    ) -> ParamDictType:
+        """Computes the gradients based on the given losses.
 
         Args:
-            loss: The computed loss dict. It should include the key
-                `self.TOTAL_LOSS_KEY` that contains the total loss.
+            loss_per_module: Dict mapping module IDs to their individual total loss
+                terms, computed by compute_loss_per_module. The total loss (over
+                all modules) is stored under the `ALL_MODULES` key.
             **kwargs: Forward compatibility kwargs.
 
         Returns:
@@ -466,18 +468,18 @@ class Learner:
             gradients: A dictionary of gradients, in the same format as self._params.
         """
 
-    def register_metric(self, key: str, value: Any):
+    def register_metric(self, module_id: str, key: str, value: Any) -> None:
         """Registers a single key/value metric pair for loss and gradient stats.
 
         Args:
             TODO:
         """
-        self._metrics[key] = value
+        self._metrics[module_id][key] = value
 
-    def register_metrics(self, metrics_dict: Dict[str, Any]):
+    def register_metrics(self, module_id: str, metrics_dict: Dict[str, Any]) -> None:
         """TODO"""
         for key, value in metrics_dict.items():
-            self.register_metric(key, value)
+            self.register_metric(module_id, key, value)
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the weights of the underlying MultiAgentRLModule.
@@ -571,15 +573,20 @@ class Learner:
 
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
-        # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
+        # We restructure the metrics to be
+        # module_id -> LEARNER_STATS_KEY -> [key, e.g. self.TOTAL_LOSS_KEY] -> [value].
         # This matches what the legacy RLlib policies used to return.
-        module_learner_stats = defaultdict(dict)
-        for module_id in batch.policy_batches.keys():
+        module_learner_stats = {}
+        for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
             module_learner_stats[module_id] = {
-                LEARNER_STATS_KEY: loss_per_module_numpy[module_id],
+                LEARNER_STATS_KEY: dict(
+                    {
+                        self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
+                    },
+                    **self._metrics[module_id],
+                ),
             }
-
-        return dict(module_learner_stats)
+        return module_learner_stats
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def add_module(
@@ -698,25 +705,22 @@ class Learner:
             computing gradients through.
         """
         loss_total = None
-        results_all_modules = {}
+        loss_per_module = {}
         for module_id in fwd_out:
             module_batch = batch[module_id]
             module_fwd_out = fwd_out[module_id]
 
-            module_results = self.compute_loss_per_module(
-                module_id, module_batch, module_fwd_out
-            )
-            results_all_modules[module_id] = module_results
-            loss = module_results[self.TOTAL_LOSS_KEY]
+            loss = self.compute_loss_per_module(module_id, module_batch, module_fwd_out)
+            loss_per_module[module_id] = loss
 
             if loss_total is None:
                 loss_total = loss
             else:
                 loss_total += loss
 
-        results_all_modules[self.TOTAL_LOSS_KEY] = loss_total
+        loss_per_module[ALL_MODULES] = loss_total
 
-        return results_all_modules
+        return loss_per_module
 
     @OverrideToImplementCustomLogic
     def compute_loss_per_module(
@@ -1103,12 +1107,17 @@ class Learner:
         #  NestedDict from the base class.
         tensorbatch = self._convert_batch_type(batch)
         fwd_out = self._module.forward_train(tensorbatch)
-        loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
+        loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
 
-        gradients = self.compute_gradients(loss)
+        gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
+        results = self.compile_results(
+            batch=batch,
+            fwd_out=fwd_out,
+            loss_per_module=loss_per_module,
+            postprocessed_gradients=postprocessed_gradients,
+        )
         self._check_result(results)
         return convert_to_numpy(results)
 

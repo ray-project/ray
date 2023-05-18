@@ -11,7 +11,6 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
-    Tuple,
     Union,
 )
 
@@ -36,14 +35,15 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import clip_gradients
-from ray.rllib.utils.typing import TensorType, ResultDict
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
 )
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
+from ray.rllib.utils.tf_utils import clip_gradients
+from ray.rllib.utils.typing import TensorType, ResultDict
 
 
 tf1, tf, tfv = try_import_tf()
@@ -104,10 +104,10 @@ class TfLearner(Learner):
 
     @override(Learner)
     def compute_gradients(
-        self, loss: TensorType, tape: "tf.GradientTape", **kwargs
-    ) -> Tuple[ParamDictType, ResultDict]:
-        grads = tape.gradient(loss[self.TOTAL_LOSS_KEY], self._params)
-        return grads, {}
+        self, loss_per_module: TensorType, tape: "tf.GradientTape", **kwargs
+    ) -> ParamDictType:
+        grads = tape.gradient(loss_per_module[ALL_MODULES], self._params)
+        return grads
 
     @override(Learner)
     def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
@@ -120,7 +120,7 @@ class TfLearner(Learner):
         )
 
         if clip_by == "global_norm":
-            self.register_metric("gradients_global_norm", global_norm)
+            self.register_metric(ALL_MODULES, "gradients_global_norm", global_norm)
 
         return gradients_dict
 
@@ -465,13 +465,13 @@ class TfLearner(Learner):
             #  dict will most likely hit us in perf. But let's go with this for now.
             tensorbatch = self._convert_batch_type(minibatch)
             update_outs = self._update_fn(tensorbatch)
-            loss = update_outs["loss"]
+            loss_per_module = update_outs["loss_per_module"]
             fwd_out = update_outs["fwd_out"]
             postprocessed_gradients = update_outs["postprocessed_gradients"]
             result = self.compile_results(
                 batch=batch,
                 fwd_out=fwd_out,
-                loss_or_loss_stats=loss,
+                loss_per_module=loss_per_module,
                 postprocessed_gradients=postprocessed_gradients,
             )
             self._check_result(result)
@@ -498,8 +498,8 @@ class TfLearner(Learner):
             _batch = NestedDict(_batch)
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
-                loss = self.compute_loss(fwd_out=fwd_out, batch=_batch)
-            gradients = self.compute_gradients(loss, tape)
+                loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
+            gradients = self.compute_gradients(loss_per_module, tape)
             gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(gradients)
 
@@ -518,7 +518,7 @@ class TfLearner(Learner):
                 return None
 
             return {
-                "loss": loss,
+                "loss_per_module": loss_per_module,
                 "fwd_out": tree.map_structure(filter_fwd_out, fwd_out),
                 "postprocessed_gradients": gradients,
             }
