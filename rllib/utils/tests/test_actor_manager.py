@@ -43,11 +43,9 @@ class Actor(FaultAwareApply):
         r = self.random_numbers[self.count]
         # 10% chance of crashing.
         if r < 0.1:
-            time.sleep(0.1)
             sys.exit(1)
         # Another 10% chance of throwing errors.
         elif r < 0.2:
-            time.sleep(0.1)
             raise AttributeError("sorry")
 
     def call(self):
