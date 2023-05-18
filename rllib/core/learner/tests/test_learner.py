@@ -82,20 +82,21 @@ class TestLearner(unittest.TestCase):
                 check(grad, np.ones(grad.shape))
 
     def test_postprocess_gradients(self):
-        """Tests the postprocess_gradients correctness."""
-        config = (
-            APPOConfig()
-            .environment("CartPole-v1")
-            .framework(eager_tracing=True)
-            .rollouts(rollout_fragment_length=50)
-        )
+        """Tests the base grad clipping logic in `postprocess_gradients()`."""
 
-        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
-            # Clip by value only.
-            config.training(
-                grad_clip=0.75,
-                grad_clip_by="value",
+        for fw in ["torch", "tf2"]:
+            config = (
+                APPOConfig()
+                .framework(fw, eager_tracing=True)
+                .environment("CartPole-v1")
+                .rollouts(rollout_fragment_length=50)
+                # Clip by value only.
+                .training(
+                    grad_clip=0.75,
+                    grad_clip_by="value",
+                )
             )
+
             module_spec = config.get_default_rl_module_spec()
             module_spec.model_config_dict = {"fcnet_hiddens": [10]}
             module_spec.observation_space = self.ENV.observation_space
@@ -121,7 +122,7 @@ class TestLearner(unittest.TestCase):
             self.assertTrue(
                 all(
                     np.max(grad) <= 0.75 and np.min(grad) >= -0.75
-                    for grad in processed_grads
+                    for grad in convert_to_numpy(processed_grads)
                 )
             )
 
@@ -138,13 +139,21 @@ class TestLearner(unittest.TestCase):
                 .build()
             )
             learner = learner_group._learner
+            # Pretend our computed gradients are our weights + 1.0.
+            grads = {
+                learner.get_param_ref(v): v + 1.0
+                for v in learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+            }
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
             # Check clipped gradients.
-            for proc_grad, grad in zip(processed_grads, grads.values()):
+            for proc_grad, grad in zip(
+                convert_to_numpy(processed_grads),
+                convert_to_numpy(list(grads.values())),
+            ):
                 l2_norm = np.sqrt(np.sum(grad**2.0))
-                if l2_norm > 1.0:
-                    check(proc_grad, grad * (1.0 / l2_norm))
+                if l2_norm > config.grad_clip:
+                    check(proc_grad, grad * (config.grad_clip / l2_norm))
 
             # Clip by global norm.
             config = config.copy(copy_frozen=False).training(
@@ -159,15 +168,29 @@ class TestLearner(unittest.TestCase):
                 .build()
             )
             learner = learner_group._learner
+            # Pretend our computed gradients are our weights + 1.0.
+            grads = {
+                learner.get_param_ref(v): v + 1.0
+                for v in learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+            }
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
             # Check clipped gradients.
             global_norm = np.sqrt(
-                np.sum(np.sum(grad**2.0) for grad in grads.values())
+                np.sum(
+                    np.sum(grad**2.0)
+                    for grad in convert_to_numpy(list(grads.values()))
+                )
             )
-            if global_norm > 5.0:
-                for proc_grad, grad in zip(processed_grads, grads.values()):
-                    check(proc_grad, grad * (5.0 / global_norm))
+            if global_norm > config.grad_clip:
+                for proc_grad, grad in zip(
+                    convert_to_numpy(processed_grads),
+                    grads.values(),
+                ):
+                    check(proc_grad, grad * (config.grad_clip / global_norm))
+
+            # Hack to make the framework loop work:
+            # config._is_frozen = False
 
     def test_apply_gradients(self):
         """Tests the apply_gradients correctness.

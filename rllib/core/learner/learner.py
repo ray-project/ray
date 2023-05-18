@@ -275,6 +275,8 @@ class Learner:
         self._optimizer_lr_schedules: Dict[Optimizer, Scheduler] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
         self._params: ParamDictType = {}
+        # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
+        # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
 
         # Registered metrics (one sub-dict per module ID) to be returned from
@@ -335,11 +337,7 @@ class Learner:
 
     def _configure_optimizers_per_module_helper(
         self, module_id: ModuleID
-    ) -> Tuple[
-        ParamOptimizerPairs,
-        Dict[str, Optimizer],
-        Dict[Optimizer, Scheduler],
-    ]:
+    ) -> Tuple[ParamOptimizerPairs, Dict[str, Optimizer], Dict[Optimizer, Scheduler]]:
         """Configures the optimizers for the given module_id.
 
         This method is a helper method for processing the output of
@@ -856,14 +854,24 @@ class Learner:
             A dictionary of results from the update
         """
         results = {}
+
         # Handle lr scheduling updates and apply new learning rates to the optimizers.
         for name, optimizer in self._named_optimizers.items():
-            new_lr = self._optimizer_lr_schedules[optimizer].update(
-                timestep=timestep
-            )
-            self._set_optimizer_lr(optimizer, lr=new_lr)
-            results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
+            # Only cover optimizers for this particular module.
+            if name not in self._module_optimizers[module_id]:
+                continue
 
+            new_lr = self._optimizer_lr_schedules[optimizer].update(timestep=timestep)
+            self._set_optimizer_lr(optimizer, lr=new_lr)
+            results.update({name: new_lr})
+        # In the simple case (only one optimizer for this module), publish current lr
+        # directly under LEARNER_RESULTS_CURR_LR_KEY, otherwise, return new lrs by
+        # optimizer name.
+        results = {
+            LEARNER_RESULTS_CURR_LR_KEY: (
+                results if len(results) > 1 else list(results.values())[0]
+            )
+        }
         return results
 
     def update(
@@ -1195,9 +1203,9 @@ class Learner:
             # Try finding `[name]->lr|lr_schedule` within optimizer config.
             # If not found, try `lr` directly on top level (only one lr/lr_schedule
             # to be used then).
-            fixed_value=self._optimizer_config.get(
-                name, self._optimizer_config
-            ).get("lr"),
+            fixed_value=self._optimizer_config.get(name, self._optimizer_config).get(
+                "lr"
+            ),
             schedule=self._optimizer_config.get(name, self._optimizer_config).get(
                 "lr_schedule"
             ),
