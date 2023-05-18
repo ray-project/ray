@@ -3310,8 +3310,6 @@
   cluster:
     byod:
       type: gpu
-      pre_run_cmds:
-        - sudo apt-get install curl
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
