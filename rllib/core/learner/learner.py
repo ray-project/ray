@@ -649,7 +649,7 @@ class Learner:
         """Builds the Learner.
 
         This method should be called before the learner is used. It is responsible for
-        setting up the module and optimizers.
+        setting up the RLModule, optimizers, and their lr-schedulers.
         """
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")
@@ -665,14 +665,13 @@ class Learner:
                 self._optimizer_parameters[optimizer].append(param_ref)
                 self._params[param_ref] = param
 
-        # Build learning rate scheduling tools.
+        # Build learning rate scheduling tools (one Schedule per optimizer).
         self.lr_schedulers_per_optimizer = {}
         for name, optimizer in self._named_optimizers.items():
-            # TODO (sven): Move lr from optimizer config to Learner HPs?
-            #  We might not need optimizer config.
             self.lr_schedulers_per_optimizer[optimizer] = Scheduler(
-                # Try finding `[name]->lr|lr_schedule` on top-level. If not found,
-                # try `lr` directly on top level (only one lr/lr_schedule to be used).
+                # Try finding `[name]->lr|lr_schedule` within optimizer config.
+                # If not found, try `lr` directly on top level (only one lr/lr_schedule
+                # to be used then).
                 fixed_value=self._optimizer_config.get(
                     name, self._optimizer_config
                 ).get("lr"),
