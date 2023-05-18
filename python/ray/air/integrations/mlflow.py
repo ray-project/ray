@@ -1,7 +1,6 @@
 import logging
 from types import ModuleType
 from typing import Dict, Optional, Union
-import warnings
 
 import ray
 from ray.air import session
@@ -135,7 +134,7 @@ def setup_mlflow(
 
         .. code-block:: python
 
-            from ray.tune.integration.mlflow import setup_mlflow
+            from ray.air.integrations.mlflow import setup_mlflow
 
             def train_fn(config):
                 mlflow = setup_mlflow(config)
@@ -164,13 +163,11 @@ def setup_mlflow(
     _config = config.copy() if config else {}
     mlflow_config = _config.pop("mlflow", {}).copy()
 
-    # Deprecate: 2.4
+    # TODO(ml-team) Remove in 2.6.
     if mlflow_config:
-        warnings.warn(
-            "Passing a `mlflow` key in the config dict is deprecated and will raise an "
-            "error in the future. Please pass the actual arguments to `setup_mlflow()` "
-            "instead.",
-            DeprecationWarning,
+        raise DeprecationWarning(
+            "Passing a `mlflow` key in the config dict is deprecated."
+            "Please pass the actual arguments to `setup_mlflow()` instead."
         )
 
     experiment_id = experiment_id or default_trial_id

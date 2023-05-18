@@ -2108,6 +2108,13 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             else:
                 new_policy = policy
 
+            # Maybe torch compile an RLModule.
+            if self.config.get("_enable_rl_module_api", False):
+                rl_module = getattr(new_policy, "model", None)
+                if rl_module is not None and self.config.framework_str == "torch":
+                    compile_config = self.config.get_torch_compile_worker_config()
+                    rl_module.compile(compile_config)
+
             self.policy_map[name] = new_policy
 
             restore_states = (policy_states or {}).get(name, None)

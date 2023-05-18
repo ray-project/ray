@@ -5,6 +5,19 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 
+# Importing for Backward Compatibility
+from ray.air.constants import (  # noqa: F401
+    TIMESTAMP,
+    TIME_THIS_ITER_S,
+    TRAINING_ITERATION,
+    EXPR_PARAM_FILE,
+    EXPR_PARAM_PICKLE_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
+    EXPR_ERROR_PICKLE_FILE,
+    EXPR_ERROR_FILE,
+)
+
 # fmt: off
 # __sphinx_doc_begin__
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
