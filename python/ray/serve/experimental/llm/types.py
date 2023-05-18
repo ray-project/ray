@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Optional
 
+
 class Batch(ABC):
     @abstractmethod
     def filter(self, request_ids: List[int]) -> "Batch":
