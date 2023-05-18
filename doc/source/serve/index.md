@@ -109,7 +109,7 @@ In many cases each model may use a different architecture or framework and requi
 Many other solutions support defining a static graph in YAML or some other configuration language.
 This can be limiting and hard to work with.
 Ray Serve, on the other hand, supports multi-model composition using a programmable API where calls to different models look just like function calls.
-The models can use different resources and run across different machines in the cluster, but to the developer it's just like writing a regular program (see {ref}`serve-model-composition` for more details).
+The models can use different resources and run across different machines in the cluster, but you can write it like a regular program (see {ref}`serve-model-composition` for more details).
 
 :::
 
