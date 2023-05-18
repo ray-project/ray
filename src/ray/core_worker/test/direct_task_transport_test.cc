@@ -413,7 +413,7 @@ TEST(DirectTaskTransportTest, TestLocalityAwareSubmitOneTask) {
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -465,7 +465,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_is_selected_based_on_locality_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -517,7 +517,7 @@ TEST(DirectTaskTransportTest, TestRetryTaskApplicationLevelError) {
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate an application-level error.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
@@ -531,7 +531,7 @@ TEST(DirectTaskTransportTest, TestRetryTaskApplicationLevelError) {
 
   task.GetMutableMessage().set_retry_exceptions(false);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate an application-level error.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), false, true));
@@ -573,7 +573,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
                                           kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
@@ -619,9 +619,9 @@ TEST(DirectTaskTransportTest, TestHandleUnschedulableTask) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -689,9 +689,9 @@ TEST(DirectTaskTransportTest, TestHandleRuntimeEnvSetupFailed) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -756,7 +756,7 @@ TEST(DirectTaskTransportTest, TestWorkerHandleLocalRayletDied) {
                                           kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
   ASSERT_DEATH(raylet_client->FailWorkerLeaseDueToGrpcUnavailable(), "");
 }
 
@@ -788,9 +788,9 @@ TEST(DirectTaskTransportTest, TestDriverHandleLocalRayletDied) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -845,7 +845,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   for (int i = 0; i < 2 * concurrency; i++) {
     auto task = BuildEmptyTaskSpec();
     tasks.push_back(task);
-    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   }
 
   ASSERT_EQ(lease_policy->num_lease_policy_consults, concurrency);
@@ -923,7 +923,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamic) {
   for (int i = 0; i < 2 * concurrency; i++) {
     auto task = BuildEmptyTaskSpec();
     tasks.push_back(task);
-    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   }
 
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
@@ -1030,7 +1030,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   for (int i = 0; i < 2 * concurrency; i++) {
     auto task = BuildEmptyTaskSpec();
     tasks.push_back(task);
-    ASSERT_TRUE(submitter.SubmitTask(task).ok());
+    ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   }
 
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
@@ -1134,9 +1134,9 @@ TEST(DirectTaskTransportTest, TestSubmitMultipleTasks) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->reported_backlog_size, 0);
@@ -1206,9 +1206,9 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
@@ -1278,9 +1278,9 @@ TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -1346,8 +1346,8 @@ TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
 
   // Task 1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
@@ -1363,7 +1363,7 @@ TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
 
   // Another task is submitted while task 2's lease request is being canceled.
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Task 2's lease request is canceled, a new worker is requested for task 3.
@@ -1410,8 +1410,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -1465,7 +1465,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
                                           kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -1521,7 +1521,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
                                           kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1595,7 +1595,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
                                           kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_EQ(raylet_client->num_grant_or_reject_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -1672,9 +1672,9 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
                                           JobID::Nil(),
                                           kOneRateLimiter);
 
-  ASSERT_TRUE(submitter.SubmitTask(same1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(same2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(different).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(same1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(same2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(different)).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // same1 is pushed.
@@ -1854,14 +1854,14 @@ TEST(DirectTaskTransportTest, TestBacklogReport) {
 
   TaskSpecification task4 = BuildTaskSpec(resources2, descriptor2);
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
   // One is requested and one is in the backlog for each SchedulingKey
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task4).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task4).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task4)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task4)).ok());
 
   submitter.ReportWorkerBacklog();
   ASSERT_EQ(raylet_client->reported_backlogs.size(), 3);
@@ -1897,9 +1897,9 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task1)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task3)).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -1962,7 +1962,7 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
                                           kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try force kill, exiting the worker
@@ -1979,7 +1979,7 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
 
   task.GetMutableMessage().set_task_id(
       TaskID::ForNormalTask(JobID::Nil(), TaskID::Nil(), 1).Binary());
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, NodeID::Nil()));
 
   // Try non-force kill, worker returns normally
@@ -2024,7 +2024,7 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
                                           kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -2070,7 +2070,7 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(std::make_shared<TaskSpecification>(task)).ok());
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   auto data = GenerateRandomObject();
