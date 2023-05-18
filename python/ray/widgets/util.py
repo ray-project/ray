@@ -64,6 +64,7 @@ def make_table_html_repr(
 
     return content
 
+
 def _has_missing(
     *deps: Iterable[Union[str, Optional[str]]], message: Optional[str] = None
 ):
