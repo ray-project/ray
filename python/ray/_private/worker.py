@@ -96,7 +96,7 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
-from ray.widgets.util import ensure_ipywidgets_dep
+from ray.widgets.util import repr_with_fallback
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1061,7 +1061,7 @@ class BaseContext(metaclass=ABCMeta):
             context_table=self._context_table_template(),
         )
 
-    @ensure_ipywidgets_dep("8")
+    @repr_with_fallback(["ipywidgets", "8"])
     def _get_widget_bundle(self, **kwargs) -> Dict[str, Any]:
         """Get the mimebundle for the widget representation of the context.
 

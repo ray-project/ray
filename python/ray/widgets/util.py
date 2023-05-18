@@ -65,89 +65,21 @@ def make_table_html_repr(
     return content
 
 
-@DeveloperAPI
-def ensure_notebook_deps(
-    *deps: Iterable[Union[str, Optional[str]]],
-    missing_message: Optional[str] = None,
-    outdated_message: Optional[str] = None,
-) -> Callable[[F], F]:
-    """Generate a decorator which checks for soft dependencies.
-
-    This decorator is meant to wrap _repr_mimebundle_ methods. If the dependency is not
-    found, or a version is specified here and the version of the package is older than
-    the specified version, the original repr is used.
-    If the dependency is missing or the version is old, a log message is displayed.
-
-    Args:
-        *deps: Iterable of (dependency name, min version (optional))
-        missing_message: Message to log if missing package is found
-        outdated_message: Message to log if outdated package is found
-
-    Returns:
-        Wrapped function. Guaranteed to be safe to import soft dependencies specified
-        above.
-    """
-
-    def wrapper(func: F) -> F:
-        @wraps(func)
-        def wrapped(self, *args, **kwargs):
-            if _has_missing(*deps, message=missing_message) or _has_outdated(
-                *deps, message=outdated_message
-            ):
-                # Fallback to plaintext repr if dependencies are missing.
-                return {"text/plain": repr(self)}
-            return func(self, *args, **kwargs)
-
-        return wrapped
-
-    return wrapper
-
-
-@DeveloperAPI
-def ensure_ipywidgets_dep(version: str) -> Callable[[F], F]:
-    """Generate a decorator which checks for a soft ipywidgets dependency.
-
-    This is a convencience function separate from `ensure_notebook_deps` because
-    of its custom missing and outdated messages, which suggest the user restart the
-    notebook server after installation/upgrade.
-
-    Args:
-        version: Version of ipywidgets required.
-
-    Returns:
-        Wrapped function. Guaranteed to be safe against the specified ipywidgets
-        version.
-    """
-    text = (
-        "Run `pip install {}ipywidgets`, then restart "
-        "the notebook server for rich notebook output."
-    )
-
-    if in_notebook():
-        return ensure_notebook_deps(
-            ["ipywidgets", version],
-            missing_message=text.format(""),
-            outdated_message=text.format("-U "),
-        )
-    else:
-        # If not in a notebook, then immediately short-circuit.
-        # We do not log has_missing or has_outdated messages if not in a notebook
-        # setting.
-        def dummy_decorator(func):
-            # Return the original function without any changes.
-            return func
-
-        return dummy_decorator
-
-
 def _has_missing(
     *deps: Iterable[Union[str, Optional[str]]], message: Optional[str] = None
 ):
+    """Return a list of missing dependencies.
+
+    Args:
+        deps: Dependencies to check for
+        message: Message to be emitted if a dependency isn't found
+
+    Returns:
+        A list of dependencies which can't be found, if any
+    """
     missing = []
     for (lib, _) in deps:
-        try:
-            importlib.import_module(lib)
-        except ImportError:
+        if importlib.util.find_spec(lib) is None:
             missing.append(lib)
 
     if missing:
@@ -220,66 +152,61 @@ def repr_with_fallback(
         conditions above hold, in which case it returns a mimebundle that only contains
         a single text/plain mimetype.
     """
-
-    try:
-        import IPython
-
-        ipython = IPython.get_ipython()
-    except (ModuleNotFoundError, ValueError):
-        ipython = None
-
     message = (
         "Run `pip install -U ipywidgets`, then restart "
         "the notebook server for rich notebook output."
     )
+    if _can_display_ipywidgets(*notebook_deps, message=message):
 
-    def wrapper(func: F) -> F:
-        @wraps(func)
-        def wrapped(self, *args, **kwargs):
-            fallback = (
-                # In Google Colab.
-                (ipython and "google.colab" in str(ipython))
-                or
-                # In notebook environment without required dependencies.
-                (
-                    in_notebook()
-                    and (
-                        _has_missing(*notebook_deps, message=message)
-                        or _has_outdated(*notebook_deps, message=message)
-                    )
-                )
-                or
-                # In ipython shell.
-                in_ipython_shell()
-            )
-            if fallback:
-                return {"text/plain": repr(self)}
-            else:
+        def wrapper(func: F) -> F:
+            @wraps(func)
+            def wrapped(self, *args, **kwargs):
                 return func(self, *args, **kwargs)
 
-        return wrapped
+            return wrapped
+
+    else:
+
+        def wrapper(func: F) -> F:
+            @wraps(func)
+            def wrapped(self, *args, **kwargs):
+                return {"text/plain": repr(self)}
+
+            return wrapped
 
     return wrapper
 
 
 def _get_ipython_shell_name() -> str:
-    try:
+    if "IPython" in sys.modules:
         import IPython
 
-        shell = IPython.get_ipython().__class__.__name__
-        return shell
-    except (ModuleNotFoundError, NameError, ValueError):
-        return ""
+        return IPython.get_ipython().__class__.__name__
+    return ""
+
+
+def _can_display_ipywidgets(*deps, message) -> bool:
+    # Default to safe behavior: only display widgets if running in a notebook
+    # that has valid dependencies
+    if in_notebook() and not (
+        _has_missing(*deps, message=message) or _has_outdated(*deps, message=message)
+    ):
+        return True
+
+    return False
 
 
 @DeveloperAPI
-def in_notebook() -> bool:
-    """Return whether we are in a Jupyter notebook."""
-    shell = _get_ipython_shell_name()
-    return shell == "ZMQInteractiveShell"  # Jupyter notebook or qtconsole
+def in_notebook(shell_name: Optional[str] = None) -> bool:
+    """Return whether we are in a Jupyter notebook or qtconsole."""
+    if not shell_name:
+        shell_name = _get_ipython_shell_name()
+    return shell_name == "ZMQInteractiveShell"
 
 
 @DeveloperAPI
-def in_ipython_shell() -> bool:
-    shell = _get_ipython_shell_name()
-    return shell == "TerminalInteractiveShell"  # Terminal running IPython
+def in_ipython_shell(shell_name: Optional[str] = None) -> bool:
+    """Return whether we are in a terminal running IPython"""
+    if not shell_name:
+        shell_name = _get_ipython_shell_name()
+    return shell_name == "TerminalInteractiveShell"
