@@ -27,10 +27,11 @@ class Batch(ABC):
     @classmethod
     @abstractmethod
     def from_requests(
-        cls, 
-        requests: List["GenerationRequest"], 
-        tokenizer:PreTrainedTokenizerBase, 
-        device: torch.device) -> "Batch":
+        cls,
+        requests: List["GenerationRequest"],
+        tokenizer: PreTrainedTokenizerBase,
+        device: torch.device,
+    ) -> "Batch":
         raise NotImplementedError
 
     @abstractmethod
@@ -44,6 +45,11 @@ class Batch(ABC):
 
     @abstractmethod
     def __len__(self):
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def id(self):
         raise NotImplementedError
 
 
@@ -72,12 +78,6 @@ class Generation:
 
 
 @dataclass
-class GenerationRequest:
-    id: int
-    input_text: str
-
-
-@dataclass
 class SamplingParams:
     temperature: float
     top_k: int
@@ -91,3 +91,10 @@ class SamplingParams:
     max_new_tokens: int
     stop_sequences: List[str]
     ignore_eos_token: bool
+
+
+@dataclass
+class GenerationRequest:
+    id: int
+    input_text: str
+    sampling_params: SamplingParams

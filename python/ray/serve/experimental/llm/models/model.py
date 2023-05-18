@@ -23,6 +23,14 @@ from ray.serve.experimental.llm.types import Batch, GeneratedText, GenerationReq
 
 B = TypeVar("B", bound=Batch)
 
+_batch_id = 0
+
+
+def get_batch_id() -> int:
+    global _batch_id
+    _batch_id += 1
+    return _batch_id
+
 
 class Model(ABC):
     def __init__(

@@ -1,6 +1,4 @@
-import ray
-from collections import defaultdict
-from typing import List, Callable, Dict, Tuple, Optional
+from typing import List, Callable, Tuple, Optional
 
 from ray.serve.experimental.llm.models.model import Model
 from ray.serve.experimental.llm.types import Generation, GenerationRequest
@@ -10,21 +8,18 @@ class InferenceWorker:
     def __init__(self, model_loader: Callable[[], Model]):
         self._model = model_loader()
         self._batch_state_cache = dict()
-        self._batch_counter = 0
 
-    def get_next_batch_id(self) -> int:
-        batch_id = self._batch_counter
-        self._batch_counter += 1
-        return batch_id
-
-    async def process_new_batch(self, requests: List[GenerationRequest]) -> Tuple[List[Generation], int]:
-        batch_state = self._model.create_batch_state(requests)
-        batch_id = self.get_next_batch_id()
+    async def process_new_batch(
+        self, requests: List[GenerationRequest]
+    ) -> Tuple[List[Generation], int]:
+        batch_state = self._model.create_batch(requests)
         generations, batch_state = self._model.generate_token(batch_state)
-        self._batch_state_cache[batch_id] = batch_state
-        return generations, batch_id
+        self._batch_state_cache[batch_state.id] = batch_state
+        return generations, batch_state.id
 
-    async def generate_next_token(self, batch_ids: List[int]) -> Tuple[List[Generation], int]:
+    async def generate_next_token(
+        self, batch_ids: List[int]
+    ) -> Tuple[List[Generation], int]:
         if len(batch_ids) == 0:
             raise ValueError("Must provide at least one batch")
         batch_states = []
@@ -40,16 +35,15 @@ class InferenceWorker:
             batch_state = batch_states[0]
 
         generations, batch_state = self._model.generate_token(batch_state)
-        new_batch_id = self.get_next_batch_id()
-        self._batch_state_cache[new_batch_id] = batch_state
-        return generations, new_batch_id
+        self._batch_state_cache[batch_state.id] = batch_state
+        return generations, batch_state.id
 
-    async def delete_finished_requests(self, batch_id: int, request_ids: List[int]) -> Optional[int]:
+    async def delete_finished_requests(
+        self, batch_id: int, request_ids: List[int]
+    ) -> Optional[int]:
         batch_state = self._batch_state_cache.pop(batch_id)
         filtered = batch_state.filter(request_ids)
         if len(filtered):
-            next_batch_id = self.get_next_batch_id()
-            self._batch_state_cache[next_batch_id] = filtered
-            return next_batch_id
+            self._batch_state_cache[filtered.id] = filtered
+            return filtered.id
         return None
-        

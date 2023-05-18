@@ -19,7 +19,8 @@ from dataclasses import dataclass
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase
 from typing import Optional, Tuple, List, Type, Dict, Any, override
 
-from ray.serve.experimental.llm.models.model import Model
+from ray.serve.experimental.llm.models.model import Model, get_batch_id
+from ray.serve.experimental.llm.utils import NextTokenChooser, StoppingCriteria
 from ray.serve.experimental.llm.types import (
     Batch,
     #    PrefillTokens,
@@ -86,9 +87,11 @@ class CausalLMBatch(Batch):
         for i, r in enumerate(requests):
             requests_idx_mapping[r.id] = i
             inputs.append(r.inputs)
-            next_token_choosers.append(NextTokenChooser.from_pb(r.parameters, device))
-            stopping_criteria = StoppingCriteria.from_pb(
-                r.stopping_parameters, tokenizer
+            next_token_choosers.append(
+                NextTokenChooser.from_params(r.sampling_params, device)
+            )
+            stopping_criteria = StoppingCriteria.from_params(
+                r.sampling_params, tokenizer
             )
             stopping_criterias.append(stopping_criteria)
             max_truncation = max(max_truncation, r.truncate)
@@ -127,7 +130,7 @@ class CausalLMBatch(Batch):
 
         max_tokens = len(inputs) * max_input_length + max_decode_tokens
         return cls(
-            batch_id=pb.id,
+            batch_id=get_batch_id(),
             requests=requests,
             requests_idx_mapping=requests_idx_mapping,
             input_ids=input_ids,
@@ -224,6 +227,7 @@ class CausalLMBatch(Batch):
 
         max_tokens = len(request_ids) * max_input_length + total_remaining_decode_tokens
 
+        self.batch_id = get_batch_id()
         self.requests = request_ids
         self.requests_idx_mapping = requests_idx_mapping
         self.input_ids = input_ids
@@ -423,7 +427,7 @@ class CausalLMBatch(Batch):
             past_key_values.append([padded_past_keys, padded_past_values])
 
         return cls(
-            batch_id=batches[0].batch_id,
+            batch_id=get_batch_id(),
             requests=requests,
             requests_idx_mapping=requests_idx_mapping,
             input_ids=input_ids,
