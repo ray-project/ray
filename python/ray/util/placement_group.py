@@ -310,8 +310,8 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
 
             @ray.remote
             def f():
-                # This will return the placement group the task f belongs to.
-                # It means this pg will be identical to the pg created below.
+                # This returns the placement group the task f belongs to.
+                # It means this pg is identical to the pg created below.
                 return get_current_placement_group()
 
             pg = ray.util.placement_group([{"CPU": 2}])

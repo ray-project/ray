@@ -131,7 +131,7 @@ class RuntimeContext(object):
                 def f():
                     return True
 
-                # All the below code will generate different task ids.
+                # All the below code generates different task ids.
                 # Task ids are available for actor creation.
                 a = Actor.remote()
                 # Task ids are available for actor tasks.
@@ -171,7 +171,7 @@ class RuntimeContext(object):
                 def get_task_id():
                     return ray.get_runtime_context().get_task_id()
 
-                # All the below code will generate different task ids.
+                # All the below code generates different task ids.
                 a = Actor.remote()
                 # Task ids are available for actor tasks.
                 print(ray.get(a.get_task_id.remote()))
