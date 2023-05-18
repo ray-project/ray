@@ -91,7 +91,9 @@ void EventTracker::RecordExecution(const std::function<void()> &fn,
     stats->stats.running_count++;
   }
   // Execute actual function.
-  fn();
+  if (fn) {
+    fn();
+  }
   int64_t end_execution = absl::GetCurrentTimeNanos();
   // Update execution time stats.
   const auto execution_time_ns = end_execution - start_execution;
