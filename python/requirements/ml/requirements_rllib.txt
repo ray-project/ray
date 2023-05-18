@@ -3,7 +3,7 @@
 # Environment adapters.
 # ---------------------
 # Atari
-gymnasium==0.28.1
+gymnasium[atari,mujoco]==0.28.1
 # For testing MuJoCo envs with gymnasium.
 mujoco-py<2.2,>=2.1
 # Kaggle envs.
