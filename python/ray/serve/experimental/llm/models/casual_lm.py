@@ -4,15 +4,14 @@ from dataclasses import dataclass
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase
 from typing import Optional, Tuple, List, Type, Dict
 
-from text_generation_server.models import Model
-from text_generation_server.models.types import (
+from ray.serve.experimental.llm.models.model import Model
+from ray.serve.experimental.llm.types import (
     Batch,
-    PrefillTokens,
+#    PrefillTokens,
     Generation,
     GeneratedText,
 )
-from text_generation_server.pb import generate_pb2
-from text_generation_server.utils import NextTokenChooser, StoppingCriteria, Sampling
+#from text_generation_server.utils import NextTokenChooser, StoppingCriteria, Sampling
 
 
 @dataclass

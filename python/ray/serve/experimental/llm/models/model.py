@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple, Optional, TypeVar, Type
 from transformers import PreTrainedTokenizerBase
 
-from serve.experimental.llm.models.types import Batch, GeneratedText
+from ray.serve.experimental.llm.types import Batch, GeneratedText
 
 B = TypeVar("B", bound=Batch)
 
