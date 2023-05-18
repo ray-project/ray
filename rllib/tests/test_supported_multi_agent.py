@@ -159,6 +159,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             },
         )
 
+
 class TestSupportedMultiAgentMultiGPU(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
