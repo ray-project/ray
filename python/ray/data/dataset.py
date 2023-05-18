@@ -282,8 +282,8 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
-        num_cpus: Optional[Union[int, float]] = None,
-        num_gpus: Optional[Union[int, float]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each record of this dataset.
@@ -395,8 +395,8 @@ class Dataset:
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        num_cpus: Optional[Union[int, float]] = None,
-        num_gpus: Optional[Union[int, float]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -792,8 +792,8 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
-        num_cpus: Optional[Union[int, float]] = None,
-        num_gpus: Optional[Union[int, float]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each record and then flatten results.
