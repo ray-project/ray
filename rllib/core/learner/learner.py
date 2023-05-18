@@ -266,13 +266,17 @@ class Learner:
         # whether self.build has already been called
         self._is_built = False
 
-        # These are the attributes that are set during build
-        self._module: MultiAgentRLModule = None
+        # These are the attributes that are set during build.
+
+        # The actual MARLModule used by this Learner.
+        self._module: Optional[MultiAgentRLModule] = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
+        self._optimizer_lr_schedules: Dict[Optimizer, Scheduler] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
         self._params: ParamDictType = {}
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
+
         # Registered metrics (one sub-dict per module ID) to be returned from
         # `Learner.update()`. These metrics will be "compiled" automatically into
         # the final results dict in the `self.compile_results()` method.
@@ -317,18 +321,25 @@ class Learner:
                 (
                     module_param_optimizer_pairs,
                     module_named_optims,
+                    module_optim_schedulers,
                 ) = self._configure_optimizers_per_module_helper(module_id)
                 param_optimizer_pairs.extend(module_param_optimizer_pairs)
                 name_to_optim.update(module_named_optims)
                 self._module_optimizers[module_id].extend(
                     list(module_named_optims.keys())
                 )
+                for optim, scheduler in module_optim_schedulers:
+                    self._optimizer_lr_schedules[optim] = scheduler
         self._named_optimizers = name_to_optim
         return param_optimizer_pairs
 
     def _configure_optimizers_per_module_helper(
         self, module_id: ModuleID
-    ) -> Tuple[ParamOptimizerPairs, Dict[str, Optimizer]]:
+    ) -> Tuple[
+        ParamOptimizerPairs,
+        Dict[str, Optimizer],
+        Dict[Optimizer, Scheduler],
+    ]:
         """Configures the optimizers for the given module_id.
 
         This method is a helper method for processing the output of
@@ -341,12 +352,14 @@ class Learner:
             module_id: The module_id of the module to configure optimizers for.
 
         Returns:
-            A tuple of a list of ParamOptimizerPairs and a dictionary of names mapping
-            from optimizer names to optimizers.
+            A tuple consisting of: A list of ParamOptimizerPairs, a dict of names
+            mapping from optimizer names to optimizers, and a dict mapping optimizer
+            objects to scheduler objects.
 
         """
         pairs = []
         name_to_optim = {}
+        optim_to_lr_scheduler = {}
         pair_or_pairs: Union[
             ParamOptimizerPair, NamedParamOptimizerPairs
         ] = self.configure_optimizer_per_module(module_id)
@@ -355,8 +368,10 @@ class Learner:
             pair = pair_or_pairs
             self._check_structure_param_optim_pair(pair)
             _, optim = pair
-            name_to_optim[f"{module_id}"] = optim
+            name = f"{module_id}"
+            name_to_optim[name] = optim
             pairs.append(pair)
+            self._pair_optim_with_lr_scheduler(name, optim)
         elif isinstance(pair_or_pairs, dict):
             # pair_or_pairs is a NamedParamOptimizerPairs
             for name, pair in pair_or_pairs.items():
@@ -368,14 +383,16 @@ class Learner:
                         "NamedParamOptimizerPairs. The key of a "
                         "NamedParamOptimizerPairs must be a string."
                     )
-                name_to_optim[f"{module_id}_{name}"] = optim
+                name = f"{module_id}_{name}"
+                name_to_optim[name] = optim
                 pairs.append(pair)
+                self._pair_optim_with_lr_scheduler(name, optim)
         else:
             raise ValueError(
                 "The output of configure_optimizer_per_module must be a "
                 "ParamOptimizerPair or NamedParamOptimizerPairs."
             )
-        return pairs, name_to_optim
+        return pairs, name_to_optim, optim_to_lr_scheduler
 
     def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
         """Checks that the given param_optim_pair is a valid ParamOptimizerPair.
@@ -402,6 +419,7 @@ class Learner:
             )
 
     @OverrideToImplementCustomLogic
+    @abc.abstractmethod
     def configure_optimizer_per_module(
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
@@ -429,7 +447,6 @@ class Learner:
         Returns:
             A ParamOptimizerPair or NamedParamOptimizerPairs for this module_id.
         """
-        raise NotImplementedError
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
@@ -637,6 +654,7 @@ class Learner:
         (
             param_optimizer_pair,
             name_to_optimizer,
+            module_optim_schedulers,
         ) = self._configure_optimizers_per_module_helper(module_id)
 
         for (param_seq, optimizer) in param_optimizer_pair:
@@ -646,7 +664,10 @@ class Learner:
                 self._optimizer_parameters[optimizer].append(param_ref)
                 self._params[param_ref] = param
         self._named_optimizers.update(name_to_optimizer)
-        self._module_optimizers[module_id].extend(list(name_to_optimizer.keys()))
+        # Register optimizer name and create a lr scheduler for it.
+        for name, optim in name_to_optimizer.items():
+            self._module_optimizers[module_id].append(name)
+            self._pair_optim_with_lr_scheduler(name, optim)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def remove_module(self, module_id: ModuleID) -> None:
@@ -669,6 +690,7 @@ class Learner:
                 optim = self._named_optimizers[optim_name]
                 del self._optimizer_parameters[optim]
                 del self._named_optimizers[optim_name]
+                del self._optimizer_lr_schedules[optim]
             del self._module_optimizers[module_id]
 
         self._module.remove_module(module_id)
@@ -693,26 +715,6 @@ class Learner:
                 param_ref = self.get_param_ref(param)
                 self._optimizer_parameters[optimizer].append(param_ref)
                 self._params[param_ref] = param
-
-        # Build learning rate scheduling tools (one Schedule per optimizer).
-        self.lr_schedulers_per_optimizer = {}
-        for name, optimizer in self._named_optimizers.items():
-            self.lr_schedulers_per_optimizer[optimizer] = Scheduler(
-                # Try finding `[name]->lr|lr_schedule` within optimizer config.
-                # If not found, try `lr` directly on top level (only one lr/lr_schedule
-                # to be used then).
-                fixed_value=self._optimizer_config.get(
-                    name, self._optimizer_config
-                ).get("lr"),
-                schedule=self._optimizer_config.get(name, self._optimizer_config).get(
-                    "lr_schedule"
-                ),
-                framework=self.framework,
-                device=self._device,
-            )
-            # Set the optimizer to the current (first) learning rate.
-            lr = self.lr_schedulers_per_optimizer[optimizer].get_current_value()
-            self._set_optimizer_lr(optimizer=optimizer, lr=lr)
 
     @OverrideToImplementCustomLogic
     def compute_loss(
@@ -856,7 +858,7 @@ class Learner:
         results = {}
         # Handle lr scheduling updates and apply new learning rates to the optimizers.
         for name, optimizer in self._named_optimizers.items():
-            new_lr = self.lr_schedulers_per_optimizer[optimizer].update(
+            new_lr = self._optimizer_lr_schedules[optimizer].update(
                 timestep=timestep
             )
             self._set_optimizer_lr(optimizer, lr=new_lr)
@@ -1186,6 +1188,25 @@ class Learner:
 
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
+
+    def _pair_optim_with_lr_scheduler(self, name, optim):
+        # Build learning rate scheduling tools (one Schedule per optimizer).
+        self._optimizer_lr_schedules[optim] = Scheduler(
+            # Try finding `[name]->lr|lr_schedule` within optimizer config.
+            # If not found, try `lr` directly on top level (only one lr/lr_schedule
+            # to be used then).
+            fixed_value=self._optimizer_config.get(
+                name, self._optimizer_config
+            ).get("lr"),
+            schedule=self._optimizer_config.get(name, self._optimizer_config).get(
+                "lr_schedule"
+            ),
+            framework=self.framework,
+            device=self._device,
+        )
+        # Set the optimizer to the current (first) learning rate.
+        lr = self._optimizer_lr_schedules[optim].get_current_value()
+        self._set_optimizer_lr(optimizer=optim, lr=lr)
 
     @abc.abstractmethod
     def _set_optimizer_lr(self, optimizer: Optimizer, lr: float) -> None:
