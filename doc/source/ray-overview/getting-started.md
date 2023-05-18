@@ -410,11 +410,13 @@ for Python and Java, with simple primitives for building and running distributed
 
 ````{tab-item} Python
 
+:::{note}
 To run this example install Ray Core:
 
 ```bash
 pip install -U "ray"
 ```
+:::
 
 Import Ray and and initialize it with `ray.init()`.
 Then decorate the function with ``@ray.remote`` to declare that you want to run this function remotely.
@@ -504,11 +506,13 @@ maintain its own internal state.
 
 ````{tab-item} Python
 
+:::{note}
 To run this example install Ray Core:
 
 ```bash
 pip install -U "ray"
 ```
+:::
 
 ```{code-block} python
 
