@@ -2,22 +2,24 @@ import torch
 
 from dataclasses import dataclass
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase
-from typing import Optional, Tuple, List, Type, Dict
+from typing import Optional, Tuple, List, Type, Dict, Any
 
 from ray.serve.experimental.llm.models.model import Model
 from ray.serve.experimental.llm.types import (
     Batch,
-#    PrefillTokens,
+    #    PrefillTokens,
+    GenerationRequest,
     Generation,
     GeneratedText,
 )
-#from text_generation_server.utils import NextTokenChooser, StoppingCriteria, Sampling
+
+# from text_generation_server.utils import NextTokenChooser, StoppingCriteria, Sampling
 
 
 @dataclass
 class CausalLMBatch(Batch):
     batch_id: int
-    requests: List[generate_pb2.Request]
+    requests: List[GenerationRequest]
     requests_idx_mapping: Dict[int, int]
 
     # Decoder values
@@ -47,14 +49,6 @@ class CausalLMBatch(Batch):
 
     # Past metadata
     keys_head_dim_last: bool = True
-
-    def to_pb(self) -> generate_pb2.Batch:
-        return generate_pb2.Batch(
-            id=self.batch_id,
-            requests=self.requests,
-            size=len(self),
-            max_tokens=self.max_tokens,
-        )
 
     @classmethod
     def from_pb(
@@ -117,7 +111,7 @@ class CausalLMBatch(Batch):
         all_input_ids = tokenized_inputs["input_ids"].T.split(1, dim=1)
 
         max_tokens = len(inputs) * max_input_length + max_decode_tokens
- cls(
+        return cls(
             batch_id=pb.id,
             requests=pb.requests,
             requests_idx_mapping=requests_idx_mapping,
@@ -136,11 +130,10 @@ class CausalLMBatch(Batch):
             max_tokens=max_tokens,
         )
 
-    @tracer.start_as_current_span("filter")
-    def filter(self, requests: List[generate_pb2.Request]) -> Optional["CausalLMBatch"]:
-        if len(requests) == 0:
+    def filter(self, request_ids: List[int]) -> Optional["CausalLMBatch"]:
+        if len(request_ids) == 0:
             raise ValueError("Batch must have at least one request")
-        if len(requests) == len(self):
+        if len(request_ids) == len(self):
             return self
 
         keep_indices = []
@@ -159,9 +152,9 @@ class CausalLMBatch(Batch):
         total_remaining_decode_tokens = 0
         new_padding_right_offset = 0
 
-        for i, r in enumerate(requests):
-            idx = self.requests_idx_mapping[r.id]
-            requests_idx_mapping[r.id] = i
+        for i, r_id in enumerate(request_ids):
+            idx = self.requests_idx_mapping[r_id]
+            requests_idx_mapping[r_id] = i
             keep_indices.append(idx)
 
             prefix_offsets.append(self.prefix_offsets[idx])
@@ -214,9 +207,9 @@ class CausalLMBatch(Batch):
             layer[1] = past_values[keep_indices, :, -past_kv_length:, :]
             del past_values
 
-        max_tokens = len(requests) * max_input_length + total_remaining_decode_tokens
+        max_tokens = len(request_ids) * max_input_length + total_remaining_decode_tokens
 
-        self.requests = requests
+        self.requests = request_ids
         self.requests_idx_mapping = requests_idx_mapping
         self.input_ids = input_ids
         self.position_ids = position_ids
@@ -233,7 +226,6 @@ class CausalLMBatch(Batch):
         return self
 
     @classmethod
-    @tracer.start_as_current_span("concatenate")
     def concatenate(cls, batches: List["CausalLMBatch"]) -> "CausalLMBatch":
         # Used for padding
         total_batch_size = 0
@@ -490,7 +482,11 @@ class CausalLM(Model):
         )
 
     def forward(
-        self, input_ids, attention_mask, position_ids, past_key_values: Optional = None
+        self,
+        input_ids,
+        attention_mask,
+        position_ids,
+        past_key_values: Optional[Any] = None,
     ) -> Tuple[torch.Tensor, List[Tuple[torch.Tensor, torch.Tensor]]]:
         # Model Forward
         outputs = self.model.forward(
@@ -502,7 +498,6 @@ class CausalLM(Model):
         )
         return outputs.logits, outputs.past_key_values
 
-    @tracer.start_as_current_span("generate_token")
     def generate_token(
         self, batch: CausalLMBatch
     ) -> Tuple[List[Generation], Optional[CausalLMBatch]]:
@@ -588,29 +583,28 @@ class CausalLM(Model):
                 else:
                     generated_text = None
 
-                # Prefill
-                if stopping_criteria.current_tokens == 1:
-                    # Remove generated token to only have prefill and add nan for first prompt token
-                    prefill_logprobs = [float("nan")] + torch.log_softmax(
-                        logits, -1
-                    ).gather(1, all_input_ids[1:]).squeeze(1)[
-                        -new_input_length:-1
-                    ].tolist()
-                    prefill_token_ids = all_input_ids[-new_input_length:-1]
-                    prefill_texts = self.tokenizer.batch_decode(
-                        prefill_token_ids,
-                        clean_up_tokenization_spaces=False,
-                        skip_special_tokens=False,
-                    )
-                    prefill_tokens = PrefillTokens(
-                        prefill_token_ids, prefill_logprobs, prefill_texts
-                    )
-                else:
-                    prefill_tokens = None
+                # # Prefill
+                # if stopping_criteria.current_tokens == 1:
+                #     # Remove generated token to only have prefill and add nan for first prompt token
+                #     prefill_logprobs = [float("nan")] + torch.log_softmax(
+                #         logits, -1
+                #     ).gather(1, all_input_ids[1:]).squeeze(1)[
+                #         -new_input_length:-1
+                #     ].tolist()
+                #     prefill_token_ids = all_input_ids[-new_input_length:-1]
+                #     prefill_texts = self.tokenizer.batch_decode(
+                #         prefill_token_ids,
+                #         clean_up_tokenization_spaces=False,
+                #         skip_special_tokens=False,
+                #     )
+                #     prefill_tokens = PrefillTokens(
+                #         prefill_token_ids, prefill_logprobs, prefill_texts
+                #     )
+                # else:
+                #     # prefill_tokens = None
 
                 generation = Generation(
                     request.id,
-                    prefill_tokens,
                     next_token_id_squeezed,
                     next_token_logprob,
                     next_token_text,
