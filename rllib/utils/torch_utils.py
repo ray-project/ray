@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 import warnings
 from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
@@ -7,6 +7,7 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 from gymnasium.spaces import Discrete, MultiDiscrete
+from packaging import version
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -30,6 +31,13 @@ torch, nn = try_import_torch()
 # since -inf / inf cause NaNs during backprop.
 FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
+
+if torch:
+    TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
+else:
+    TORCH_COMPILE_REQUIRED_VERSION = ValueError(
+        "torch is not installed. " "TORCH_COMPILE_REQUIRED_VERSION is " "not defined."
+    )
 
 
 # TODO (sven): Deprecate this function once we have moved completely to the Learner API.

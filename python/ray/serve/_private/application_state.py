@@ -242,6 +242,7 @@ class ApplicationState:
         if self._deploy_obj_ref:
             finished, _ = ray.wait([self._deploy_obj_ref], timeout=0)
             if finished:
+                self._deploy_obj_ref = None
                 try:
                     ray.get(finished[0])
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
@@ -260,7 +261,13 @@ class ApplicationState:
                         f"failed:\n{traceback.format_exc()}"
                     )
                     logger.warning(self._app_msg)
-                self._deploy_obj_ref = None
+                except Exception:
+                    self._status = ApplicationStatus.DEPLOY_FAILED
+                    self._app_msg = (
+                        "Unexpected error occured while deploying application "
+                        f"'{self._name}':\n{traceback.format_exc()}"
+                    )
+                    logger.warning(self._app_msg)
 
         # If no application has been deployed, or if we're waiting on the build app
         # task to finish, don't perform any reconciliation.

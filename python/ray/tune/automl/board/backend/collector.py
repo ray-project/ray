@@ -4,6 +4,10 @@ import time
 
 from threading import Thread
 
+from ray.air.constants import (
+    EXPR_PARAM_FILE,
+    EXPR_RESULT_FILE,
+)
 from ray.tune.automl.board.common.exception import CollectorError
 from ray.tune.automl.board.common.utils import (
     parse_json,
@@ -14,8 +18,6 @@ from ray.tune.automl.board.models.models import JobRecord, TrialRecord, ResultRe
 from ray.tune.result import (
     DEFAULT_RESULTS_DIR,
     JOB_META_FILE,
-    EXPR_PARAM_FILE,
-    EXPR_RESULT_FILE,
     EXPR_META_FILE,
 )
 

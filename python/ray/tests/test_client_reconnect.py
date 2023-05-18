@@ -367,17 +367,17 @@ def test_disconnects_during_large_get():
 
     @ray.remote
     def large_result():
-        # 1024x1024x128 float64 matrix (1024 MiB). With 64MiB chunk size,
+        # 1024x1024x6 float64 matrix (96 MiB). With 5MiB chunk size,
         # it will take at least 16 chunks to transfer this object. Since
         # the failure is injected every 3 chunks, this transfer can only
         # work if the chunked get request retries at the last received chunk
         # (instead of starting from the beginning each retry)
-        return np.random.random((1024, 1024, 128))
+        return np.random.random((1024, 1024, 6))
 
     with start_middleman_server(on_task_response=fail_every_three):
         started = True
         result = ray.get(large_result.remote())
-        assert result.shape == (1024, 1024, 128)
+        assert result.shape == (1024, 1024, 6)
 
 
 def test_disconnects_during_large_async_get():
@@ -398,12 +398,12 @@ def test_disconnects_during_large_async_get():
 
     @ray.remote
     def large_result():
-        # 1024x1024x128 float64 matrix (1024 MiB). With 64MiB chunk size,
+        # 1024x1024x6 float64 matrix (96 MiB). With 5MiB chunk size,
         # it will take at least 16 chunks to transfer this object. Since
         # the failure is injected every 3 chunks, this transfer can only
         # work if the chunked get request retries at the last received chunk
         # (instead of starting from the beginning each retry)
-        return np.random.random((1024, 1024, 128))
+        return np.random.random((1024, 1024, 6))
 
     with start_middleman_server(on_data_response=fail_every_three):
         started = True
@@ -412,7 +412,7 @@ def test_disconnects_during_large_async_get():
             return await large_result.remote()
 
         result = get_or_create_event_loop().run_until_complete(get_large_result())
-        assert result.shape == (1024, 1024, 128)
+        assert result.shape == (1024, 1024, 6)
 
 
 def test_disconnect_during_large_put():
@@ -433,10 +433,10 @@ def test_disconnect_during_large_put():
 
     with start_middleman_server(on_data_request=fail_halfway):
         started = True
-        objref = ray.put(np.random.random((1024, 1024, 128)))
+        objref = ray.put(np.random.random((1024, 1024, 6)))
         assert i > 8  # Check that the failure was injected
         result = ray.get(objref)
-        assert result.shape == (1024, 1024, 128)
+        assert result.shape == (1024, 1024, 6)
 
 
 def test_disconnect_during_large_schedule():
@@ -461,10 +461,10 @@ def test_disconnect_during_large_schedule():
 
     with start_middleman_server(on_data_request=fail_halfway):
         started = True
-        a = np.random.random((1024, 1024, 128))
+        a = np.random.random((1024, 1024, 6))
         result = ray.get(f.remote(a))
         assert i > 8  # Check that the failure was injected
-        assert result == (1024, 1024, 128)
+        assert result == (1024, 1024, 6)
 
 
 def test_valid_actor_state():
