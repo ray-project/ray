@@ -359,7 +359,7 @@ class Learner:
             pairs.append(pair)
         elif isinstance(pair_or_pairs, dict):
             # pair_or_pairs is a NamedParamOptimizerPairs
-            for name, pair in pairs.items():
+            for name, pair in pair_or_pairs.items():
                 self._check_structure_param_optim_pair(pair)
                 _, optim = pair
                 if not isinstance(name, str):
@@ -588,12 +588,14 @@ class Learner:
         Args:
             batch: The batch that was used for the update.
             fwd_out: The output of the forward train pass.
-            loss_per_module: The loss tensors (per module ID) as returned by the
-                `compute_loss_per_module(module_id=...)` calls.
-            postprocessed_gradients: The gradients after postprocessing.
+            loss_per_module: A dict mapping module IDs (including ALL_MODULES) to the
+                individual loss tensors as returned by calls to
+                `compute_loss_per_module(module_id=...)`.
+            postprocessed_gradients: The postprocessed gradients dict, (flat) mapping
+                gradient tensor refs to the already postprocessed gradient tensors.
 
         Returns:
-            A dictionary of results.
+            A dictionary of results sub-dicts per module (including ALL_MODULES).
         """
         if not isinstance(batch, MultiAgentBatch):
             raise ValueError(
