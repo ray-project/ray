@@ -394,7 +394,7 @@ parts:
           - file: ray-observability/user-guides/index
             title: User Guides
             sections:
-               - file: ray-observability/user-guides/troubleshoot-apps/index
+              - file: ray-observability/user-guides/troubleshoot-apps/index
                 title: Troubleshooting Applications
                 sections:
                   - file: ray-observability/user-guides/troubleshoot-apps/general-troubleshoot
