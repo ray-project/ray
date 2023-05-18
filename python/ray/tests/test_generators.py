@@ -264,7 +264,7 @@ def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
     gen = ray.get(
         remote_generator_fn.options(num_returns="dynamic").remote(0, store_in_plasma)
     )
-    assert len(gen) == 0
+    assert len(list(gen)) == 0
 
     # Check that passing as task arg.
     gen = remote_generator_fn.options(num_returns="dynamic").remote(10, store_in_plasma)
@@ -284,7 +284,9 @@ def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
         return list(range(num_returns))
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(static.remote(3))
+        gen = ray.get(static.remote(3))
+        for ref in gen:
+            ray.get(ref)
 
 
 def test_dynamic_generator_distributed(ray_start_cluster):
@@ -535,7 +537,7 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(ray_start_clust
 
     @ray.remote
     def check(empty_generator):
-        return len(empty_generator) == 0
+        return len(list(empty_generator)) == 0
 
     exec_counter = ExecutionCounter.remote()
     gen = maybe_empty_generator.remote(exec_counter)

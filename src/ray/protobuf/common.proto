@@ -539,6 +539,22 @@ message TaskArg {
   repeated ObjectReference nested_inlined_refs = 4;
 }
 
+message ReturnObject {
+  // Object ID.
+  bytes object_id = 1;
+  // If set, indicates the data is in plasma instead of inline. This
+  // means that data and metadata will be empty.
+  bool in_plasma = 2;
+  // Data of the object.
+  bytes data = 3;
+  // Metadata of the object.
+  bytes metadata = 4;
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  repeated ObjectReference nested_inlined_refs = 5;
+  // Size of this object.
+  int64 size = 6;
+}
+
 // Task spec of an actor creation task.
 message ActorCreationTaskSpec {
   // ID of the actor that will be created by this task.

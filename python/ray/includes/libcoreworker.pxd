@@ -146,8 +146,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool PinExistingReturnObject(
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
-            const CObjectID& generator_id
-        )
+            const CObjectID& generator_id)
         CObjectID AllocateDynamicReturnId()
 
         CJobID GetCurrentJobId()
@@ -237,6 +236,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 int64_t timeout_ms,
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
+        CRayStatus ReportGeneratorItemReturns(
+            const pair[CObjectID, shared_ptr[CRayObject]] &dynamic_return_object,
+            const CObjectID &generator_id,
+            const CAddress &caller_address,
+            int64_t item_index,
+            c_bool finished)
         c_string MemoryUsageString()
 
         CWorkerContext &GetWorkerContext()
