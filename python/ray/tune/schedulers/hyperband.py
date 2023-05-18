@@ -266,16 +266,19 @@ class HyperBandScheduler(FIFOScheduler):
 
             # ready the good trials - if trial is too far ahead, don't continue
             for t in good:
-                if t.status not in [Trial.PAUSED, Trial.RUNNING]:
-                    raise TuneError(
-                        f"Trial with unexpected good status encountered: {t.status}"
-                    )
                 if bracket.continue_trial(t):
+                    # The scheduler should have cleaned up this trial already.
+                    assert t.status not in (Trial.ERROR, Trial.TERMINATED), (
+                        f"Good trial {t.trial_id} is in an invalid state: {t.status}\n"
+                        "Expected trial to be either PAUSED, PENDING, or RUNNING.\n"
+                        "If you encounter this, please file an issue on the Ray Github."
+                    )
                     if t.status == Trial.PAUSED:
                         self._unpause_trial(trial_runner, t)
                         trial_runner._set_trial_status(t, Trial.PENDING)
                     elif t.status == Trial.RUNNING:
                         action = TrialScheduler.CONTINUE
+                    # else: PENDING trial (from a previous unpause) should stay as is.
         return action
 
     def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):

@@ -112,6 +112,8 @@ class HyperBandForBOHB(HyperBandScheduler):
             trial_runner._search_alg.searcher.on_pause(trial.trial_id)
             return TrialScheduler.PAUSE
         action = self._process_bracket(trial_runner, bracket)
+        if action == TrialScheduler.PAUSE:
+            trial_runner._search_alg.searcher.on_pause(trial.trial_id)
         return action
 
     def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
