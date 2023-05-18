@@ -131,13 +131,15 @@ class Result:
     @classmethod
     def from_path(cls, path: str) -> "Result":
         """Restore a Result object from local trial directory.
+
         Args:
             path: the path to a local trial directory.
+
         Returns:
             A :py:class:`Result` object of that trial.
         """
 
-        # TODO(yunxuanx): support restoration from cloud storage
+        # TODO(yunxuanx): restoration from cloud storage
         local_path = path
 
         cls._validate_trial_dir(local_path)
@@ -149,7 +151,7 @@ class Result:
 
         metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
 
-        # Restore all checkpoints from checkpoint folders
+        # Restore all checkpoints from the checkpoint folders
         ckpt_dirs = [
             os.path.join(local_path, entry)
             for entry in os.listdir(local_path)
@@ -168,7 +170,7 @@ class Result:
                 for ckpt in checkpoints
             ]
 
-            # TODO(air-team): make metrics as a property of checkpoint
+            # TODO(air-team): make metrics a property of Checkpoint
             best_checkpoints = list(zip(checkpoints, checkpoint_metrics))
             latest_checkpoint = max(checkpoints, key=lambda ckpt: ckpt.id)
         else:
@@ -193,10 +195,13 @@ class Result:
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(self, metric: str, mode: str) -> Optional[Checkpoint]:
         """Gets best persistent checkpoint of this trial.
+
         Any checkpoints without an associated metric value will be filtered out.
+
         Args:
             metric: The key for checkpoints to order on.
             mode: One of ["min", "max"].
+
         Returns:
             :class:`Checkpoint <ray.air.Checkpoint>` object, or None if there is
             no valid checkpoint associated with the metric.
