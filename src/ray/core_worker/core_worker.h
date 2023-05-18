@@ -721,6 +721,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] dynamic_return_object A intermediate ray object to report
   /// to the caller before the task terminates. This object must have been
   /// created dynamically from this worker via AllocateReturnObject.
+  /// If the Object ID is nil, it means it is the end of the task return.
+  /// In this case, the caller is responsible for setting finished = true,
+  /// otherwise it will panic.
   /// \param[in] generator_id The return object ref ID from a current generator
   /// task.
   /// \param[in] caller_address The address of the caller of the current task
@@ -728,8 +731,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] item_index The index of the task return. It is used to reorder the
   /// report from the caller side.
   /// \param[in] finished True indicates there's going to be no more intermediate
-  /// task return. When finished is provided dynamic_return_object input will be
-  /// ignored.
+  /// task return. When finished is provided dynamic_return_object's key must be
+  /// pair<nil, empty_pointer>
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
