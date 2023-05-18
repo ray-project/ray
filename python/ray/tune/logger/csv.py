@@ -4,8 +4,8 @@ import os
 
 from typing import TYPE_CHECKING, Dict, TextIO
 
+from ray.air.constants import EXPR_PROGRESS_FILE
 from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
-from ray.tune.result import EXPR_PROGRESS_FILE
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import Deprecated, PublicAPI
 
