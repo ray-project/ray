@@ -244,7 +244,7 @@ class StreamingObjectRefGenerator:
             self,
             timeout_s: float = -1,
             sleep_interval_s: float = 0.0001,
-            unexpected_network_failure_timeout_s: float = 60):
+            unexpected_network_failure_timeout_s: float = 30):
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -297,7 +297,7 @@ class StreamingObjectRefGenerator:
             self,
             timeout_s: float = -1,
             sleep_interval_s: float = 0.0001,
-            unexpected_network_failure_timeout_s: float = 60):
+            unexpected_network_failure_timeout_s: float = 30):
         """Same API as _next_sync, but it is for async context."""
         obj = await self._handle_next_async()
         last_time = time.time()
@@ -387,7 +387,7 @@ class StreamingObjectRefGenerator:
                 self._generator_task_exception = AssertionError
                 assert False, (
                     "Unexpected network failure occured. "
-                    f"Task ID: {self._generator_ref.task_id()}"
+                    f"Task ID: {self._generator_ref.task_id().hex()}"
                 )
 
         if timeout_s != -1 and time.time() - last_time > timeout_s:
@@ -492,7 +492,6 @@ def compute_task_id(ObjectRef object_ref):
 
 cdef increase_recursion_limit():
     """Double the recusion limit if current depth is close to the limit"""
-    t = time.time()
     cdef:
         CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
         int current_limit = Py_GetRecursionLimit()
@@ -1423,14 +1422,6 @@ cdef void execute_task(
                 raise ValueError(
                     "Task returned {} objects, but num_returns={}.".format(
                         len(outputs), returns[0].size()))
-
-            if inspect.isgenerator(outputs) or inspect.isasyncgen(outputs):
-                if dynamic_returns == NULL and not is_streaming_generator:
-                    raise ValueError(
-                        f"{name} is a generator function, "
-                        "but it doesn't specify "
-                        "@ray.remote(num_returns=\"dynamic\") or "
-                        "@ray.remote (num_returns=\"streaming\"). ")
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
