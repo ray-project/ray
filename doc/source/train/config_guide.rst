@@ -86,7 +86,7 @@ are :ref:`not tunable <air-tuner-search-space>`.
     :end-before: __checkpoint_config_end__
 
 Trainers of certain frameworks including :class:`~ray.train.xgboost.XGBoostTrainer`,
-:class:`~ray.train.lightgbm.LightGBMTrainer`, and :class:`~ray.train.hf_transformers.TransformersTrainer`
+:class:`~ray.train.lightgbm.LightGBMTrainer`, and :class:`~ray.train.huggingface.TransformersTrainer`
 implement checkpointing out of the box. For these trainers, checkpointing can be
 enabled by setting the checkpoint frequency within the :class:`~ray.air.CheckpointConfig`.
 
