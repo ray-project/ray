@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Optional, List, Tuple
+from typing import Optional
 
 import click
 
@@ -17,7 +17,6 @@ from ray_release.config import (
     DEFAULT_WHEEL_WAIT_TIMEOUT,
     parse_python_version,
 )
-from ray_release.test import Test
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.wheels import (
