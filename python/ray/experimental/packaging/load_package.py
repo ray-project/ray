@@ -31,29 +31,32 @@ def load_package(config_path: str) -> "_RuntimePackage":
             example YAML in ``example_pkg/ray_pkg.yaml``.
 
     Examples:
-        >>> # Load from local.
-        >>> my_pkg = load_package("~/path/to/my_pkg.yaml")
 
-        >>> # Load from GitHub.
-        >>> my_pkg = ray.util.load_package(
-        ...   "https://raw.githubusercontent.com/user/repo/refspec"
-        ...   "/path/to/package/my_pkg.yaml")
+        .. code-block :: python
 
-        >>> # Inspect the package runtime env.
-        >>> print(my_pkg._runtime_env)
-        ... {"conda": {...},
-        ...  "docker": "anyscale-ml/ray-ml:nightly-py38-cpu",
-        ...  "working_dir": "https://github.com/demo/foo/blob/v3.0/project/"}
+            # Load from local.
+            my_pkg = load_package("~/path/to/my_pkg.yaml")
 
-        >>> # Run remote functions from the package.
-        >>> my_pkg.my_func.remote(1, 2)
+            # Load from GitHub.
+            my_pkg = ray.util.load_package(
+            "https://raw.githubusercontent.com/user/repo/refspec"
+            "/path/to/package/my_pkg.yaml")
 
-        >>> # Create actors from the package.
-        >>> actor = my_pkg.MyActor.remote(3, 4)
+            # Inspect the package runtime env.
+            print(my_pkg._runtime_env)
+            {"conda": {...},
+            "docker": "anyscale-ml/ray-ml:nightly-py38-cpu",
+            "working_dir": "https://github.com/demo/foo/blob/v3.0/project/"}
 
-        >>> # Create new remote funcs in the same env as a package.
-        >>> @ray.remote(runtime_env=my_pkg._runtime_env)
-        >>> def f(): ...
+            # Run remote functions from the package.
+            my_pkg.my_func.remote(1, 2)
+
+            # Create actors from the package.
+            actor = my_pkg.MyActor.remote(3, 4)
+
+            # Create new remote funcs in the same env as a package.
+            @ray.remote(runtime_env=my_pkg._runtime_env)
+            def f(): ...
     """
 
     from ray._private.runtime_env.packaging import (

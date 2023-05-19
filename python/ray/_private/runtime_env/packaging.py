@@ -450,9 +450,8 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
 
     Examples:
 
-    .. code-block:: python
-        >>> get_uri_for_directory("/my_directory")
-        .... _ray_pkg_af2734982a741.zip
+        >>> get_uri_for_directory("/my_directory")  # doctest: +SKIP
+        ._ray_pkg_af2734982a741.zip
 
     Args:
         directory: The directory.

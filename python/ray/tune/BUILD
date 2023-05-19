@@ -2,7 +2,7 @@ load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"], exclude=["examples/**/*", "tests/**/*", "suggest/**/*", "impl/test_utils.py"]),
+    files = glob(["**/*.py"], exclude=["examples/**/*", "tests/**/*", "suggest/**/*", "impl/test_utils.py", "automl/board/**"]),
     tags = ["team:ml"]
 )
 
