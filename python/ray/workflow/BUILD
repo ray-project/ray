@@ -7,7 +7,7 @@ load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"]),
+    files = glob(["**/*.py"], exclude=["tests/**/*", "examples/**/*"]),
 )
 
 SRCS = glob(["**/conftest.py"])

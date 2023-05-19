@@ -1,10 +1,9 @@
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"]),
+    files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*"])),
     tags = ["team:data"]
 )
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/data/tests directory.
 # Covers all tests starting with `test_`.

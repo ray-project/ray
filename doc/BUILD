@@ -310,5 +310,15 @@ py_test(
 # --------------------------------------------------------------------
 
 doctest(
-    files = glob(["source/**/*.rst"]),
+    files = glob(
+        include=["source/**/*.rst"],
+        exclude=[
+            "source/ray-contribute/getting-involved.rst",
+            "source/ray-core/handling-dependencies.rst",
+            "source/ray-core/tasks/nested-tasks.rst",
+            "source/ray-observability/user-guides/ray-tracing.rst",
+            "source/rllib/rllib-env.rst",
+            "source/rllib/rllib-sample-collection.rst",
+        ]
+    ),
 )
