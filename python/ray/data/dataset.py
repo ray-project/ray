@@ -555,6 +555,12 @@ class Dataset:
                 :meth:`~Dataset.map_batches` instead.
         """  # noqa: E501
 
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
+
         batch_format = _apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
             logger.warning("The 'native' batch format has been renamed 'default'.")
@@ -599,12 +605,6 @@ class Dataset:
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
         )
-
-        if num_cpus is not None:
-            ray_remote_args["num_cpus"] = num_cpus
-
-        if num_gpus is not None:
-            ray_remote_args["num_gpus"] = num_gpus
 
         # TODO(chengsu): pass function name to MapBatches logical operator.
         if hasattr(fn, "__self__") and isinstance(
