@@ -17,7 +17,7 @@ import torch
 
 from dataclasses import dataclass
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase
-from typing import Optional, Tuple, List, Type, Dict, Any, override
+from typing import Optional, Tuple, List, Type, Dict, Any
 
 from ray.serve.experimental.llm.models.model import Model, get_batch_id
 from ray.serve.experimental.llm.utils import (
@@ -88,7 +88,7 @@ class CausalLMBatch(Batch):
         max_decode_tokens = 0
         for i, r in enumerate(requests):
             requests_idx_mapping[r.id] = i
-            inputs.append(r.inputs)
+            inputs.append(r.input_text)
             next_token_choosers.append(
                 NextTokenChooser.from_params(r.sampling_params, device)
             )
@@ -451,6 +451,10 @@ class CausalLMBatch(Batch):
     def __len__(self):
         return len(self.requests)
 
+    @property
+    def id(self):
+        return self.batch_id
+
 
 class CausalLM(Model):
     def __init__(
@@ -497,15 +501,12 @@ class CausalLM(Model):
     def batch_type(self) -> Type[CausalLMBatch]:
         return CausalLMBatch
 
-    @override
     def create_batch(self, requests: List[GenerationRequest]) -> Type[CausalLMBatch]:
         return CausalLMBatch.from_requests(requests, self.tokenizer, self.device)
 
-    @override
     def concatenate_batches(self, batches: List[CausalLMBatch]) -> CausalLMBatch:
         return CausalLMBatch.concatenate(batches)
 
-    @override
     def decode(self, generated_ids: List[int]) -> str:
         return self.tokenizer.decode(
             generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False

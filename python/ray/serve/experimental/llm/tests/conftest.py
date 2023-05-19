@@ -2,6 +2,7 @@ import pytest
 
 from ray.serve.experimental.llm.types import SamplingParams
 
+
 @pytest.fixture
 def default_sampling_parameters():
     return SamplingParams(
@@ -14,5 +15,6 @@ def default_sampling_parameters():
         max_new_tokens=10,
         stop_sequences=[],
         ignore_eos_token=False,
+        watermark=False,
+        seed=42,
     )
-

@@ -97,4 +97,5 @@ class SamplingParams:
 class GenerationRequest:
     id: int
     input_text: str
+    truncate: int
     sampling_params: SamplingParams

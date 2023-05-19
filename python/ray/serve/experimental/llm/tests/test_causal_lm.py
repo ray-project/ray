@@ -25,9 +25,10 @@ def default_pb_request(default_sampling_parameters):
     return GenerationRequest(
         id=0,
         input_text="Test",
-        #truncate=100,
-        parameters=default_sampling_parameters,
+        truncate=100,
+        sampling_params=default_sampling_parameters,
     )
+
 
 @pytest.fixture
 def default_pb_batch(default_pb_request):
@@ -36,7 +37,9 @@ def default_pb_batch(default_pb_request):
 
 @pytest.fixture
 def default_causal_lm_batch(default_pb_batch, gpt2_tokenizer):
-    return CausalLMBatch.from_requests(requests=default_pb_batch, tokenizer=gpt2_tokenizer, device=torch.device("cpu"))
+    return CausalLMBatch.from_requests(
+        requests=default_pb_batch, tokenizer=gpt2_tokenizer, device=torch.device("cpu")
+    )
 
 
 @pytest.fixture
@@ -47,7 +50,9 @@ def default_multi_requests_causal_lm_batch(default_pb_request, gpt2_tokenizer):
     req_1.id = 2
     req_1.sampling_params.max_new_tokens = 5
 
-    return CausalLMBatch.from_requests([req_0, req_1], gpt2_tokenizer, torch.device("cpu"))
+    return CausalLMBatch.from_requests(
+        [req_0, req_1], gpt2_tokenizer, torch.device("cpu")
+    )
 
 
 def test_batch_from_pb(default_pb_batch, default_causal_lm_batch):
