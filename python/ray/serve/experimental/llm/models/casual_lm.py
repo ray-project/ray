@@ -20,7 +20,11 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenize
 from typing import Optional, Tuple, List, Type, Dict, Any, override
 
 from ray.serve.experimental.llm.models.model import Model, get_batch_id
-from ray.serve.experimental.llm.utils import NextTokenChooser, StoppingCriteria
+from ray.serve.experimental.llm.utils import (
+    NextTokenChooser,
+    StoppingCriteria,
+    Sampling,
+)
 from ray.serve.experimental.llm.types import (
     Batch,
     #    PrefillTokens,
@@ -635,6 +639,7 @@ class CausalLM(Model):
                     next_token_logprob,
                     next_token_text,
                     next_token_id_squeezed.item() in self.all_special_ids,
+                    stopped,
                     generated_text,
                 )
 

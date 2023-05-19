@@ -5,6 +5,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import List, Tuple
+from threading import Thread
 from ray.serve.experimental.llm.worker import InferenceWorker
 from ray.serve.experimental.llm.types import (
     SamplingParams,
@@ -47,8 +48,9 @@ class InferenceScheduler:
     def __init__(self, inference_worker: InferenceWorker):
         self._inference_worker = inference_worker
         self._request_queue = PendingRequestQueue()
-        self._executor = ThreadPoolExecutor(max_workers=1)
-        self._executor.submit(self._run)
+        self._executor_loop = asyncio.new_event_loop()
+        self._thread = Thread(target=self._run_executor_loop)
+        self._thread.start()
 
     def process_request(self, input_text: str, params: SamplingParams) -> TokenStream:
         request = GenerationRequest(
@@ -56,24 +58,30 @@ class InferenceScheduler:
         )
         return self._add_request(request)
 
-    def _add_request(self, request: GenerationRequest) -> asyncio.Future:
+    def _add_request(self, request: GenerationRequest) -> TokenStream:
         pending_request = PendingRequest.from_request(request)
         self._request_queue.append(pending_request)
         return pending_request.output_stream
 
-    def _run(self):
-        while True:
-            self._process_next_batch()
+    def _run_executor_loop(self):
+        asyncio.set_event_loop(self._executor_loop)
+        self._executor_loop.run_until_complete(self._schedule_request())
 
-    def _select_requests() -> List[PendingRequest]:
+    async def _schedule_request(self):
+        while True:
+            await self._process_next_batch()
+
+    async def _select_requests(
+        in_process_requests: List[PendingRequest],
+    ) -> List[PendingRequest]:
         pass
 
-    def _process_next_batch(self):
-        requests = self._select_requests()
+    async def _process_next_batch(self):
+        requests = await self._select_requests([])
         current_batch_id, requests = self._process_new_batch(requests)
 
         while current_batch_id is not None:
-            additional_requests = self._select_requests()
+            additional_requests = await self._select_requests(requests)
             additional_batch_id, additional_requests = self._process_new_batch(
                 additional_requests
             )
