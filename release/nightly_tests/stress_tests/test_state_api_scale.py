@@ -48,7 +48,10 @@ def test_many_tasks(num_tasks: int):
         filters=[("name", "=", TASK_NAME_TEMPLATE.format(num_tasks=num_tasks))],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
-        err_msg=f"Expect 0 running tasks for {TASK_NAME_TEMPLATE.format(num_tasks=num_tasks)}",
+        err_msg=(
+            "Expect 0 running tasks for "
+            f"{TASK_NAME_TEMPLATE.format(num_tasks=num_tasks)}"
+        ),
     )
 
     # Task definition adopted from:
