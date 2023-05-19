@@ -4860,7 +4860,7 @@
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
-    timeout: 3600
+    timeout: 1800
     # 2cpus per node x 2000 nodes / 0.4 cpus per actor = 10k
     # 2cpus per node x 3000 nodes / 0.4 cpus per actor = 15k
     script: python distributed/many_nodes_tests/actor_test.py --no-wait --cpus-per-actor=0.4 --total-actors 10000 15000

@@ -38,7 +38,7 @@ def scale_cluster_up(num_cpus):
     def get_curr_cpus():
         return int(sum([r.get("Resources", {}).get("CPU", 0) for r in ray.nodes()]))
 
-    step = 1000
+    step = 3000
     curr_cpus = get_curr_cpus()
     target_cpus = curr_cpus
 
