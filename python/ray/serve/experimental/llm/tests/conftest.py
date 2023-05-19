@@ -1,7 +1,13 @@
 import asyncio
 import pytest
+import torch
 
 from ray.serve.experimental.llm.types import SamplingParams
+from copy import deepcopy
+from transformers import AutoTokenizer
+
+from ray.serve.experimental.llm.models.casual_lm import CausalLM, CausalLMBatch
+from ray.serve.experimental.llm.types import GenerationRequest
 
 
 @pytest.fixture
@@ -29,3 +35,50 @@ def event_loop():
         loop = asyncio.new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest.fixture(scope="session")
+def default_causal_lm():
+    return CausalLM("gpt2")
+
+
+@pytest.fixture(scope="session")
+def gpt2_tokenizer():
+    tokenizer = AutoTokenizer.from_pretrained("gpt2", padding_side="left")
+    tokenizer.pad_token_id = 50256
+    return tokenizer
+
+
+@pytest.fixture
+def default_pb_request(default_sampling_parameters):
+    return GenerationRequest(
+        id=0,
+        input_text="Test",
+        truncate=100,
+        sampling_params=default_sampling_parameters,
+    )
+
+
+@pytest.fixture
+def default_pb_batch(default_pb_request):
+    return [default_pb_request]
+
+
+@pytest.fixture
+def default_causal_lm_batch(default_pb_batch, gpt2_tokenizer):
+    return CausalLMBatch.from_requests(
+        requests=default_pb_batch, tokenizer=gpt2_tokenizer, device=torch.device("cpu")
+    )
+
+
+@pytest.fixture
+def default_multi_requests_causal_lm_batch(default_pb_request, gpt2_tokenizer):
+    req_0 = deepcopy(default_pb_request)
+    req_0.id = 1
+    req_1 = deepcopy(default_pb_request)
+    req_1.id = 2
+    req_1.sampling_params.max_new_tokens = 5
+
+    return CausalLMBatch.from_requests(
+        [req_0, req_1], gpt2_tokenizer, torch.device("cpu")
+    )
