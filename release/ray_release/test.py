@@ -4,7 +4,7 @@ from typing import Optional, List
 DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
 )
-DOCKER_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale"
+DATAPLANE_ECR_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale"
 
 
 class Test(dict):

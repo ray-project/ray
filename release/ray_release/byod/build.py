@@ -7,7 +7,10 @@ import sys
 import time
 
 from ray_release.logger import logger
-from ray_release.test import Test
+from ray_release.test import (
+    Test,
+    DATAPLANE_ECR_REPO,
+)
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
 DATAPLANE_FILENAME = "dataplane.tgz"
@@ -19,6 +22,7 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
     Builds the Anyscale BYOD images for the given tests.
     """
     _download_dataplane_build_file()
+    to_be_built = {}
     built = set()
     for test in tests:
         if not test.is_byod_cluster():
@@ -62,6 +66,21 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                 )
                 built.add(ray_image)
     return
+
+
+def _download_dataplane_build_file() -> None:
+    """
+    Downloads the dataplane build file from S3.
+    """
+    s3 = boto3.client("s3")
+    s3.download_file(
+        Bucket=DATAPLANE_S3_BUCKET,
+        Key=DATAPLANE_FILENAME,
+        Filename=DATAPLANE_FILENAME,
+    )
+    with open(DATAPLANE_FILENAME, "rb") as build_context:
+        digest = hashlib.sha256(build_context.read()).hexdigest()
+        assert digest == DATAPLANE_DIGEST, "Mismatched dataplane digest found!"
 
 
 def _byod_image_exist(image_tag: str) -> bool:
