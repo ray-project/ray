@@ -336,6 +336,14 @@ py_test(
 )
 
 py_test(
+    name = "test_huggingface",
+    size = "small",
+    srcs = ["tests/test_huggingface.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_torch_fsdp",
     size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
@@ -497,7 +505,7 @@ py_test(
 
 py_test(
     name = "test_torch_predictor",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_torch_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
     deps = [":train_lib", ":conftest"]
@@ -561,7 +569,7 @@ py_test(
 
 py_test(
     name = "test_transformers_trainer_steps",
-    size = "large",
+    size = "enormous", # TODO: Reduce this.
     srcs = ["tests/test_transformers_trainer_steps.py"],
     tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
@@ -625,7 +633,7 @@ py_test(
 
 py_test(
     name = "test_trainer_restore",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trainer_restore.py"],
     tags = [
         "exclusive",

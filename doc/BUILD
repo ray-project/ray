@@ -306,6 +306,19 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Test all doc/external code
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["external/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "external"],
+)
+
+
+# --------------------------------------------------------------------
 # Tests code snippets in user guides.
 # --------------------------------------------------------------------
 
@@ -320,5 +333,5 @@ doctest(
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
         ]
-    ),
+    )
 )
