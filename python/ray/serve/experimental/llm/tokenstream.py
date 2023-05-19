@@ -9,6 +9,8 @@ EOS = _EndOfStream()
 
 
 class TokenStream:
+    """A stream of tokens that can be iterated over asynchronously."""
+
     def __init__(self):
         self._queue = asyncio.Queue()
         self._lock = asyncio.Lock()

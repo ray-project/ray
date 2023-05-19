@@ -17,6 +17,7 @@ _request_id = 0
 
 
 def get_request_id() -> int:
+    # TODO: more robust request id generation.
     global _request_id
     _request_id += 1
     return _request_id
@@ -48,8 +49,7 @@ class InferenceScheduler:
         self._inference_worker = inference_worker
         self._request_queue = request_queue
         self._request_selection_policy = request_selection_policy
-        self._executor_loop = asyncio.new_event_loop()
-        self._thread = Thread(target=self._run_executor_loop)
+        self._thread = Thread(target=self._run_scheduling_loop)
         self._thread.start()
 
     def process_request(self, input_text: str, params: SamplingParams) -> TokenStream:
@@ -66,11 +66,7 @@ class InferenceScheduler:
         self._request_queue.append(pending_request)
         return pending_request.output_stream
 
-    def _run_executor_loop(self):
-        asyncio.set_event_loop(self._executor_loop)
-        self._executor_loop.run_until_complete(self._run_scheduling_loop())
-
-    async def _run_scheduling_loop(self):
+    def _run_scheduling_loop(self):
         """Schedule requests to be processed by the inference worker."""
 
         # The main schedule loop:
@@ -88,7 +84,7 @@ class InferenceScheduler:
         in_process_requests = []
         while True:
             # select new requests to process.
-            new_requests = await self._select_new_requests(in_process_requests)
+            new_requests = self._select_new_requests(in_process_requests)
             new_batch_id, new_unfinished_requests = self._process_new_requests(
                 new_requests
             )
@@ -97,10 +93,15 @@ class InferenceScheduler:
                 [batch_id, new_batch_id], in_process_requests + new_unfinished_requests
             )
 
-    async def _select_new_requests(
+    def _select_new_requests(
         self,
         in_process_requests: List[InferenceRequest],
     ) -> List[InferenceRequest]:
+        if len(in_process_requests) == 0 and self._request_queue.is_empty():
+            # if there is no in-process requests and no new requests in the queue,
+            # wait for new requests to arrive in the queue.
+            self._request_queue.wait()
+
         return self._request_selection_policy.select_requests(
             in_process_requests, self._request_queue
         )

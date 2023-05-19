@@ -2,7 +2,7 @@ import time
 import asyncio
 from collections import deque
 from dataclasses import dataclass
-from threading import Lock
+from threading import RLock, Condition
 from typing import List, Optional
 from ray.serve.experimental.llm.types import GenerationRequest
 from ray.serve.experimental.llm.tokenstream import TokenStream
@@ -31,11 +31,13 @@ class InferenceRequest:
 class RequestQueue:
     def __init__(self):
         self._queue = deque()
-        self._lock = Lock()
+        self._lock = RLock()
+        self._cv = Condition(self._lock)
 
-    def put(self, request: InferenceRequest) -> bool:
-        with self._lock:
+    def push(self, request: InferenceRequest) -> bool:
+        with self._cv:
             self._queue.append(request)
+            self._cv.notify()
             return True
 
     def peek(self) -> Optional[InferenceRequest]:
@@ -46,14 +48,19 @@ class RequestQueue:
 
     def pop(self) -> Optional[InferenceRequest]:
         with self._lock:
-            if len(self._queue) == 0:
+            while len(self._queue) == 0:
                 return None
             return self._queue.popleft()
 
+    def wait(self):
+        with self._cv:
+            while len(self._queue) == 0:
+                self._cv.wait()
+
     def reverse_push(self, request: InferenceRequest) -> None:
-        with self._lock:
+        with self._cv:
             self._queue.appendleft(request)
-            return True
+            self._cv.notify()
 
     def empty(self) -> bool:
         with self._lock:
