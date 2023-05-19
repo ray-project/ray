@@ -118,7 +118,7 @@ class MultiAgentGymnasiumOldAPI(MultiAgentEnv):
 class TestGymEnvAPIs(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(_system_config={"timeout_ms_task_wait_for_death_info": 4000})
 
     @classmethod
     def tearDownClass(cls) -> None:
