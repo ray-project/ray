@@ -105,6 +105,8 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                         "-f",
                         "byod.Dockerfile",
                         os.join.path(RELEASE_PACKAGE_DIR, "ray_release/byod"),
+                        os.path.join(RELEASE_BYOD_DIR, "byod.Dockerfile"),
+                        RELEASE_BYOD_DIR,
                     ],
                     stdout=subprocess.DEVNULL,
                     env={"DOCKER_BUILDKIT": "1"},
