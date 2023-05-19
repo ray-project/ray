@@ -886,7 +886,7 @@ cdef void execute_task(
 
             # Record the task id via magic token in the log file.
             # This will be used to locate the beginning of logs from a task.
-            if core_worker.current_actor_max_concurrency() == 1:
+            if core_worker.current_actor_max_concurrency() == 1 and False:
                 # We only do this for non concurrent actor tasks. For concurrent
                 # actors, there's significant overhead due to io contention, and
                 # since the logs are interleaving, they're not very useful.
@@ -950,7 +950,7 @@ cdef void execute_task(
                 finally:
                     # Record the end of task via magic token in the log file.
                     # This will be used to locate the end of logs from a task.
-                    if core_worker.current_actor_max_concurrency() == 1:
+                    if core_worker.current_actor_max_concurrency() == 1 and False:
                         task_attempt_magic_token = "{}{}-{}\n".format(
                             ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
                             attempt_number)
