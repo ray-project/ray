@@ -91,6 +91,25 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                     env=env,
                 )
                 subprocess.check_call(
+                    [
+                        "docker",
+                        "build",
+                        "--build-arg",
+                        f"BASE_IMAGE={byod_image}",
+                        "--build-arg",
+                        "PIP_REQUIREMENTS=requirements_byod.txt",
+                        "--build-arg",
+                        "DEBIAN_REQUIREMENTS=requirements_debian_byod.txt",
+                        "-t",
+                        byod_image,
+                        "-f",
+                        "byod.Dockerfile",
+                        os.join.path(RELEASE_PACKAGE_DIR, "ray_release/byod"),
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    env={"DOCKER_BUILDKIT": "1"},
+                )
+                subprocess.check_call(
                     ["docker", "push", byod_image],
                     stdout=sys.stderr,
                 )
