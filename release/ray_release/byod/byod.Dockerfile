@@ -19,3 +19,6 @@ EOF
 
 COPY "$PIP_REQUIREMENTS" .
 RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir install -r requirements_byod.txt
+
+COPY $PIP_REQUIREMENTS .
+RUN $HOME/anaconda3/bin/pip install --no-cache-dir install -r requirements_byod.txt
