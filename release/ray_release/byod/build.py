@@ -3,7 +3,6 @@ from typing import List
 import boto3
 import hashlib
 import os
-import os
 import subprocess
 import sys
 import time
