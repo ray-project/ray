@@ -99,7 +99,7 @@ class CausalLMBatch(Batch):
                 r.sampling_params, tokenizer
             )
             stopping_criterias.append(stopping_criteria)
-            max_truncation = max(max_truncation, r.truncate)
+            max_truncation = max(max_truncation, r.max_length)
             max_decode_tokens += stopping_criteria.max_new_tokens
             padding_right_offset = max(
                 padding_right_offset, stopping_criteria.max_new_tokens

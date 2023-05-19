@@ -55,7 +55,8 @@ def default_pb_request(default_sampling_parameters):
     return GenerationRequest(
         id=0,
         input_text="Test",
-        truncate=100,
+        max_length=100,
+        input_length=1,
         sampling_params=default_sampling_parameters,
     )
 

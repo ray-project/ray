@@ -1,7 +1,8 @@
 import asyncio
 from abc import ABC, abstractmethod
-from typing import List, Tuple, override
+from typing import List, Tuple
 from threading import Thread
+from transformers import AutoTokenizer
 from ray.serve.experimental.llm.worker import InferenceWorker
 from ray.serve.experimental.llm.types import (
     SamplingParams,
@@ -25,16 +26,31 @@ def get_request_id() -> int:
 
 class Tokenizer(ABC):
     @abstractmethod
-    def get_input_length(self, input_text: str) -> int:
-        return input_text.count(" ") + 1
+    def get_input_length(self, input_text: str, max_length: int) -> int:
+        raise NotImplementedError("")
 
 
 class NaiveTokenizer(Tokenizer):
-    @override
-    def get_input_length(self, input_text: str) -> int:
-        return input_text.count(" ") + 1
+    def get_input_length(self, input_text: str, max_length: int) -> int:
+        return max(input_text.count(" ") + 1, max_length)
 
     # TODO: add model specific tokenizer
+
+
+class TransfomerTokenizer(Tokenizer):
+    def __init__(self, pad_token_id=50256, *args, **kwargs):
+        self._tokenizer = AutoTokenizer.from_pretrained(*args, **kwargs)
+        self._tokenizer.pad_token_id = pad_token_id
+
+    def get_input_length(self, input_text: str, max_length: int) -> int:
+        return self._tokenizer(
+            inputs=input_text,
+            return_tensors="pt",
+            padding=True,
+            return_token_type_ids=False,
+            truncation=True,
+            max_length=max_length,
+        )["input_ids"].shape[1]
 
 
 class InferenceScheduler:
@@ -52,11 +68,14 @@ class InferenceScheduler:
         self._thread = Thread(target=self._run_scheduling_loop)
         self._thread.start()
 
-    def process_request(self, input_text: str, params: SamplingParams) -> TokenStream:
+    def process_request(
+        self, input_text: str, params: SamplingParams, max_length: int = 1024
+    ) -> TokenStream:
         request = GenerationRequest(
             id=get_request_id(),
             input_text=input_text,
-            input_length=self._tokenizer.get_input_length(input_text),
+            max_length=max_length,
+            input_length=self._tokenizer.get_input_length(input_text, max_length),
             params=params,
         )
         return self._add_request(request)

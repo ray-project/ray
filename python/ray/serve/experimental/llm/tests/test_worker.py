@@ -1,8 +1,10 @@
 import pytest
 from copy import deepcopy
+from ray.serve.experimental.llm.models.model import _reset_batch_id
 
 
 def test_pass_through(default_worker, default_pb_batch):
+    _reset_batch_id()
     generations, batch_id = default_worker.process_new_batch(default_pb_batch)
     assert len(generations) == len(default_pb_batch)
     assert generations[0].request_id == default_pb_batch[0].id

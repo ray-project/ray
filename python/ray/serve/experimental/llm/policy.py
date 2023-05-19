@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections import namedtuple
-from typing import List, override
+from typing import List
 from ray.serve.experimental.llm.queue import InferenceRequest, RequestQueue
 
 
@@ -29,7 +29,6 @@ class QuotaBasedRequestSelectionPolicy(RequestSelectionPolicy):
         self.waiting_served_ratio = waiting_served_ratio
         self.max_waiting_tokens = max_waiting_tokens
 
-    @override
     def select_new_requests(
         self, in_process_requests: List[InferenceRequest], queue: RequestQueue
     ) -> List[InferenceRequest]:
