@@ -1,0 +1,6 @@
+# Python requirements to run release tests from anyscale byod
+pytest
+awscli
+torch 
+torchvision
+horovod[pytorch,gloo]
