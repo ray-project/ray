@@ -11,7 +11,7 @@ import ray.train as train
 from ray.air import session
 from ray.train.tests.dummy_preprocessor import DummyPreprocessor
 from ray.train.torch.torch_checkpoint import TorchCheckpoint
-from ray.train.hf_accelerate import AccelerateTrainer
+from ray.train.huggingface import AccelerateTrainer
 from accelerate import Accelerator
 
 ACCELERATE_CONFIG_CPU = """compute_environment: LOCAL_MACHINE
