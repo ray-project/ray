@@ -1801,6 +1801,30 @@
 
   alert: tune_tests
 
+- name: tune_cloud_durable_upload_rllib_str_byod
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+
+  stable: false
+
+  frequency: manual
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config_ml.yaml
+    cluster_compute: tpl_aws_4x2.yaml
+
+  run:
+    timeout: 600
+
+    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
+      --bucket s3://tune-cloud-tests/durable_upload_rllib_str
+
+    wait_for_nodes:
+      num_nodes: 4
+
 - name: tune_cloud_durable_upload_rllib_str
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -3299,28 +3323,6 @@
 ########################
 # Train tests
 ########################
-
-- name: train_horovod_multi_node_test_byod
-  group: Train tests
-  working_dir: train_tests/horovod
-
-  frequency: manual
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_aws.yaml
-
-  run:
-    timeout: 3000
-    script: python train_horovod_multi_node_test.py
-
-    wait_for_nodes:
-      num_nodes: 2
-
-  alert: default 
 
 - name: train_horovod_multi_node_test
   group: Train tests
