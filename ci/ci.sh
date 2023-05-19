@@ -485,7 +485,7 @@ build_wheels() {
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
-        if [-z "${LINUX_JARS}" ]; then
+        if [ -z "${LINUX_JARS}" ]; then
           docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${IMAGE_NAME}:${IMAGE_TAG}" /ray/java/build-jar-multiplatform.sh many-linux
         fi
