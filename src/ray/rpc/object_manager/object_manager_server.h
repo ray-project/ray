@@ -72,7 +72,7 @@ class ObjectManagerGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 

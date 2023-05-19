@@ -136,7 +136,7 @@ class JobInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     JOB_INFO_SERVICE_RPC_HANDLER(AddJob);
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
     JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
@@ -200,7 +200,7 @@ class ActorInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     /// Register/Create Actor RPC takes long time, we shouldn't limit them to avoid
     /// distributed deadlock.
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor, -1);
@@ -259,7 +259,7 @@ class MonitorGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     MONITOR_SERVICE_RPC_HANDLER(GetRayVersion);
     MONITOR_SERVICE_RPC_HANDLER(DrainAndKillNode);
     MONITOR_SERVICE_RPC_HANDLER(GetSchedulingStatus);
@@ -317,7 +317,7 @@ class NodeInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     RPC_SERVICE_HANDLER_CUSTOM_AUTH(
         NodeInfoGcsService,
         RegisterClient,
@@ -375,7 +375,7 @@ class NodeResourceInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
@@ -426,7 +426,7 @@ class WorkerInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     WORKER_INFO_SERVICE_RPC_HANDLER(ReportWorkerFailure);
     WORKER_INFO_SERVICE_RPC_HANDLER(GetWorkerInfo);
     WORKER_INFO_SERVICE_RPC_HANDLER(GetAllWorkerInfo);
@@ -531,7 +531,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(CreatePlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(RemovePlacementGroup);
     PLACEMENT_GROUP_INFO_SERVICE_RPC_HANDLER(GetPlacementGroup);
@@ -586,7 +586,7 @@ class InternalKVGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVGet);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVMultiGet);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVPut);
@@ -619,7 +619,7 @@ class RuntimeEnvGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     RUNTIME_ENV_SERVICE_RPC_HANDLER(PinRuntimeEnvURI);
   }
 
@@ -658,7 +658,7 @@ class TaskInfoGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskEventData);
     TASK_INFO_SERVICE_RPC_HANDLER(GetTaskEvents);
   }
@@ -698,7 +698,7 @@ class InternalPubSubGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override {
+      ClusterID const &cluster_id) override {
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsPublish);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberPoll);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberCommandBatch);

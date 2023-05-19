@@ -28,24 +28,24 @@ namespace ray {
 namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
-#define _RPC_SERVICE_HANDLER(                                     \
-    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS) \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(      \
-      new ServerCallFactoryImpl<SERVICE,                          \
-                                SERVICE##Handler,                 \
-                                HANDLER##Request,                 \
-                                HANDLER##Reply,                   \
-                                AUTH_TYPE>(                       \
-          service_,                                               \
-          &SERVICE::AsyncService::Request##HANDLER,               \
-          service_handler_,                                       \
-          &SERVICE##Handler::Handle##HANDLER,                     \
-          cq,                                                     \
-          main_service_,                                          \
-          #SERVICE ".grpc_server." #HANDLER,                      \
-          AUTH_TYPE == AuthType::NO_AUTH ? nullptr : cluster_id,  \
-          MAX_ACTIVE_RPCS,                                        \
-          RECORD_METRICS));                                       \
+#define _RPC_SERVICE_HANDLER(                                             \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS)         \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(              \
+      new ServerCallFactoryImpl<SERVICE,                                  \
+                                SERVICE##Handler,                         \
+                                HANDLER##Request,                         \
+                                HANDLER##Reply,                           \
+                                AUTH_TYPE>(                               \
+          service_,                                                       \
+          &SERVICE::AsyncService::Request##HANDLER,                       \
+          service_handler_,                                               \
+          &SERVICE##Handler::Handle##HANDLER,                             \
+          cq,                                                             \
+          main_service_,                                                  \
+          #SERVICE ".grpc_server." #HANDLER,                              \
+          AUTH_TYPE == AuthType::NO_AUTH ? ClusterID::Nil() : cluster_id, \
+          MAX_ACTIVE_RPCS,                                                \
+          RECORD_METRICS));                                               \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 /// Define a RPC service handler with gRPC server metrics enabled.
@@ -205,7 +205,7 @@ class GrpcService {
   virtual void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) = 0;
+      ClusterID const &cluster_id) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;

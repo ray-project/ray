@@ -52,7 +52,7 @@ class GreeterGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const *const cluster_id) override{
+      ClusterID const &cluster_id) override{
       RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(
           Greeter, SayHello, -1, AuthType::NO_AUTH)}
 
