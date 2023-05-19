@@ -4,6 +4,7 @@ import asyncio
 from ray.serve.experimental.llm.tokenstream import TokenStream
 from threading import Thread, Lock
 
+
 @pytest.mark.asyncio
 async def test_token_stream(event_loop):
     token_stream = TokenStream(loop=event_loop)
@@ -12,7 +13,7 @@ async def test_token_stream(event_loop):
     await token_stream.end()
     results = []
     async for entry in token_stream:
-        results.append(entry) 
+        results.append(entry)
     assert results == [1, 2]
 
 
@@ -25,11 +26,12 @@ async def test_token_stream_concurrent(event_loop):
     async def read_tokens():
         tmp = []
         async for entry in token_stream:
-            tmp.append(entry) 
+            tmp.append(entry)
         with lock:
             results.extend(tmp)
 
     loop1 = asyncio.new_event_loop()
+
     def run_loop(loop):
         asyncio.set_event_loop(loop)
         loop.run_until_complete(read_tokens())

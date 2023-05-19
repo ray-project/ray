@@ -4,6 +4,7 @@ from threading import Thread
 
 from ray.serve.experimental.llm.queue import RequestQueue
 
+
 def test_request_queue():
     queue = RequestQueue()
     assert queue.peek() is None
@@ -31,7 +32,7 @@ def test_request_queue():
 
 def test_wait_queue():
     queue = RequestQueue()
-    
+
     start = time.time()
     queue.wait(timeout=0.5)
     elapsed = time.time() - start
