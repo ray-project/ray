@@ -4,19 +4,19 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Optional, List, Tuple
+from typing import Optional
 
 import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step
+from ray_release.byod.build import build_anyscale_byod_images
 from ray_release.config import (
     read_and_validate_release_test_collection,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
     parse_python_version,
 )
-from ray_release.test import Test
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.wheels import (
@@ -153,7 +153,7 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     logger.info("Build anyscale BYOD images")
-    _build_anyscale_byod_images(filtered_tests)
+    build_anyscale_byod_images([test for test, _ in filter_tests])
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
@@ -238,15 +238,6 @@ def main(
 
     steps_str = json.dumps(steps)
     print(steps_str)
-
-
-def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
-    """
-    Builds the Anyscale BYOD images for the given tests.
-    """
-    _ = {test.get_ray_image() for test, _ in tests}
-    # TODO(aslonnie): Build anyscale byod images for the given ray images
-    return
 
 
 if __name__ == "__main__":

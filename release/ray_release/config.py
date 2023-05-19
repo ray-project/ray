@@ -6,22 +6,15 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import jsonschema
 import yaml
-from ray_release.test import Test
+from ray_release.test import (
+    Test,
+    TestDefinition,
+)
 from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.util import DeferredEnvVar, deep_update
-
-
-class TestDefinition(dict):
-    """
-    A class represents a definition of a test, such as test name, group, etc. Comparing
-    to the test class, there are additional field, for example variations, which can be
-    used to define several variations of a test.
-    """
-
-    pass
 
 
 DEFAULT_WHEEL_WAIT_TIMEOUT = 7200  # Two hours

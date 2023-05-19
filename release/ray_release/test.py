@@ -29,3 +29,13 @@ class Test(dict):
         Returns the anyscale byod image to use for this test.
         """
         return self.get_ray_image().replace("rayproject", "anyscale")
+
+
+class TestDefinition(dict):
+    """
+    A class represents a definition of a test, such as test name, group, etc. Comparing
+    to the test class, there are additional field, for example variations, which can be
+    used to define several variations of a test.
+    """
+
+    pass
