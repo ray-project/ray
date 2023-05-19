@@ -471,8 +471,8 @@ build_wheels_and_jars() {
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
         "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         # Build Jar on manylinux2014 to resolve incompatibilities.
-        if [-z "${LINUX_JARS}" ]; then
-          if [ -z "${LINUX_JARS}" == "1" ]; then
+        if [ ${LINUX_JARS} ]; then
+          if [ "${LINUX_JARS}" == "1" ]; then
             docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
             "${IMAGE_NAME}:${IMAGE_TAG}" /ray/java/build-jar-multiplatform.sh many-linux
           fi
@@ -487,8 +487,8 @@ build_wheels_and_jars() {
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
-        if [-z "${LINUX_JARS}" ]; then
-          if [ -z "${LINUX_JARS}" == "1" ]; then
+        if [ ${LINUX_JARS} ]; then
+          if [ "${LINUX_JARS}" == "1" ]; then
             docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
             "${IMAGE_NAME}:${IMAGE_TAG}" /ray/java/build-jar-multiplatform.sh many-linux
           fi
