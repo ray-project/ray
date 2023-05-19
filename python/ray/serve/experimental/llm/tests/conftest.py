@@ -7,6 +7,7 @@ from copy import deepcopy
 from transformers import AutoTokenizer
 
 from ray.serve.experimental.llm.models.casual_lm import CausalLM, CausalLMBatch
+from ray.serve.experimental.llm.worker import InferenceWorker
 from ray.serve.experimental.llm.types import GenerationRequest
 
 
@@ -82,3 +83,8 @@ def default_multi_requests_causal_lm_batch(default_pb_request, gpt2_tokenizer):
     return CausalLMBatch.from_requests(
         [req_0, req_1], gpt2_tokenizer, torch.device("cpu")
     )
+
+
+@pytest.fixture
+def default_worker(default_causal_lm):
+    return InferenceWorker(lambda: default_causal_lm)

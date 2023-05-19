@@ -24,7 +24,7 @@ class InferenceWorker:
         for batch_id in batch_ids:
             if batch_id is None:
                 continue
-            batch_state = self._batch_state_cache.pop(batch_id)
+            batch_state = self._batch_state_cache.pop(batch_id, None)
             if batch_state is None:
                 raise ValueError(f"Batch ID {batch_id} not found in cache.")
             batch_states.append(batch_state)
