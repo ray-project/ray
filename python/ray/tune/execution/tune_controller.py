@@ -67,6 +67,7 @@ class TuneController(_TuneControllerBase):
         reuse_actors: bool = False,
         resource_manager_factory: Optional[Callable[[], ResourceManager]] = None,
         _trainer_api: bool = False,
+        run_config=None,
     ):
         if resource_manager_factory:
             self._resource_manager = resource_manager_factory()
@@ -118,6 +119,7 @@ class TuneController(_TuneControllerBase):
 
         # General trial behavior
         self._chdir_to_trial_dir = chdir_to_trial_dir
+        self._run_config = run_config
 
         # Trial metadata for experiment checkpoints
         self._trials_to_cache: Set[Trial] = set()
@@ -582,7 +584,9 @@ class TuneController(_TuneControllerBase):
 
         trial.set_location(_Location())
         trainable_kwargs = _get_trainable_kwargs(
-            trial=trial, should_chdir=self._chdir_to_trial_dir
+            trial=trial,
+            should_chdir=self._chdir_to_trial_dir,
+            run_config=self._run_config,
         )
 
         with _change_working_directory(trial):

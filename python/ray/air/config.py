@@ -771,8 +771,9 @@ class RunConfig:
         if isinstance(self.local_dir, Path):
             self.local_dir = str(self.local_dir)
 
-        if isinstance(self.storage_path, Path):
-            self.storage_path = str(self.storage_path)
+        self.storage_path = Path(self.storage_path).expanduser().resolve().as_posix()
+        # if isinstance(self.storage_path, Path):
+        #     self.storage_path = str(self.storage_path)
 
         local_path, remote_path = _resolve_storage_path(
             self.storage_path, self.local_dir, self.sync_config.upload_dir

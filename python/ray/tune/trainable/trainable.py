@@ -113,6 +113,7 @@ class Trainable:
         custom_syncer: Optional[Syncer] = None,  # Deprecated (2.6)
         sync_timeout: Optional[int] = None,  # Deprecated (2.6)
         sync_config: Optional[SyncConfig] = None,
+        run_config=None,
     ):
         """Initialize a Trainable.
 
@@ -186,6 +187,10 @@ class Trainable:
         self.sync_config = sync_config or SyncConfig(
             upload_dir=self.remote_checkpoint_dir, syncer="auto"
         )
+
+        from ray.air import RunConfig
+
+        self.run_config = run_config or RunConfig()
 
         # TODO(ml-team): `custom_syncer` and `syncer` are deprecated. Remove in 2.6.
         warning_message = (

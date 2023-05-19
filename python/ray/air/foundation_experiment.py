@@ -1,6 +1,10 @@
 from ray.tune.trainable import FunctionTrainable
 from ray import air
-from ray.train.data_parallel_trainer import DataParallelTrainable
+from ray.train.data_parallel_trainer import (
+    DataParallelTrainable,
+    DataParallelTrainerConfig,
+    _Config,
+)
 
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.search.basic_variant import BasicVariantGenerator
@@ -13,25 +17,10 @@ from ray.tune.tune import _report_air_progress
 from pathlib import Path
 
 
-class _Config:
-    def to_dict(self):
-        pass
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
 
 
-class _Experiment:
-    def __init__(self, run_config):
-        self._run_config = run_config
-
-    @property
-    def path(self):
-        return str(Path(self._run_config.storage_path) / self._run_config.name)
-
-    @property
-    def name(self):
-        return self._run_config.name
-
-
-import copy
 from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search.basic_variant import _VariantIterator
 from ray.tune.search.variant_generator import (
@@ -182,11 +171,13 @@ class ExperimentRunner:
         config: _Config,
     ):
         self._config = config
-        self._experiment = _Experiment(run_config)
         self._run_config = run_config
         self._trainable = trainable
 
     def fit(self):
+        pass
+
+    def fit_new(self):
         _print("Registering trainable")
 
         registered_trainable_name = Experiment.register_if_needed(self._trainable)
@@ -195,14 +186,16 @@ class ExperimentRunner:
         search_alg = _BasicVariantGenerator(
             trainable_name=registered_trainable_name, run_config=self._run_config
         )
-        # search_alg.add_configurations(self._config.to_dict())
-        search_alg.add_configurations(self._config)
+        search_alg.add_configurations(self._config.to_dict())
 
         _print("Creating tune controller")
         tune_controller = TuneController(
             search_alg=search_alg,
-            experiment_path=self._experiment.path,
-            experiment_dir_name=self._experiment.name,
+            experiment_path=str(
+                Path(self._run_config.storage_path) / self._run_config.name
+            ),
+            experiment_dir_name=self._run_config.name,
+            run_config=self._run_config,
         )
 
         air_progress_reporter = _detect_air_reporter(
@@ -245,14 +238,22 @@ if __name__ == "__main__":
         run_config=air.RunConfig(
             storage_path="~/ray_results", name="foundation_experimentation"
         ),
-        config={
-            "scaling_config": air.ScalingConfig(num_workers=2),
-            "datasets": {
+        # config={
+        #     "scaling_config": air.ScalingConfig(num_workers=2),
+        #     "datasets": {
+        #         "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
+        #     },
+        #     "train_loop_per_worker": train_loop,
+        #     "train_loop_config": {"a": tune.grid_search([1, 2, 3])},
+        # },
+        config=DataParallelTrainerConfig(
+            train_loop_per_worker=train_loop,
+            train_loop_config={"a": tune.grid_search([1, 2, 3])},
+            scaling_config=air.ScalingConfig(num_workers=2),
+            datasets={
                 "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
             },
-            "train_loop_per_worker": train_loop,
-            "train_loop_config": {"a": tune.grid_search([1, 2, 3])},
-        },
+        ),
     )
 
     runner.fit()

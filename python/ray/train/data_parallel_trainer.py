@@ -55,17 +55,40 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
 
 
 from ray.tune.trainable.function_trainable import FunctionTrainable
+import dataclasses
 from dataclasses import dataclass
+import typing
+
+
+class _Config:
+    def to_dict(self):
+        return self.__dict__.copy()
+
+    def __post_init__(self):
+        for field_name, typehint in self.__annotations__.items():
+            types = typing.get_args(typehint)
+            dataclass_types = [t for t in types if dataclasses.is_dataclass(t)]
+            assert len(dataclass_types) <= 1
+
+            if not dataclass_types:
+                continue
+
+            dataclass_type = dataclass_types[0]
+
+            curr_val = getattr(self, field_name)
+            if isinstance(curr_val, dict):
+                setattr(self, field_name, dataclass_type(**curr_val))
 
 
 @dataclass
-class _DataParallelTrainableConfig:
+class DataParallelTrainerConfig(_Config):
     train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]]
-    train_loop_config: Optional[Dict] = None
-    backend_config: Optional[BackendConfig] = None
+    train_loop_config: Dict = dataclasses.field(default_factory=dict)
+    backend_config: BackendConfig = dataclasses.field(
+        default_factory=lambda: BackendConfig()
+    )
     scaling_config: Optional[ScalingConfig] = None
     dataset_config: Optional[Dict[str, DatasetConfig]] = None
-    run_config: Optional[RunConfig] = None
     datasets: Optional[Dict[str, GenDataset]] = None
     preprocessor: Optional["Preprocessor"] = None
     resume_from_checkpoint: Optional[Checkpoint] = None
@@ -90,15 +113,15 @@ class DataParallelTrainable(FunctionTrainable):
             session.report(first_worker_results)
 
     def _trainable_func(self, config, reporter, checkpoint_dir):
-        scaling_config = config.get("scaling_config", ScalingConfig())
-        if isinstance(scaling_config, dict):
-            scaling_config = ScalingConfig(**scaling_config)
+        run_config = self.run_config
 
-        run_config = config.get("run_config", RunConfig())
-        datasets = config.get("datasets", {})
-        backend_config = config.get("backend_config", BackendConfig())
-        preprocessor = config.get("preprocessor")
-        dataset_config = config.get("dataset_config", {})
+        config = DataParallelTrainerConfig(**config)
+
+        scaling_config = config.scaling_config
+        datasets = config.datasets
+        backend_config = config.backend_config
+        preprocessor = config.preprocessor
+        dataset_config = config.dataset_config
         dataset_config = DatasetConfig.validated(
             DatasetConfig.merge(DataParallelTrainable._dataset_config, dataset_config),
             datasets,
@@ -110,8 +133,8 @@ class DataParallelTrainable(FunctionTrainable):
         datasets = self.preprocess_datasets(datasets, preprocessor, ingest_spec)
 
         train_loop_per_worker = construct_train_func(
-            config["train_loop_per_worker"],
-            config.get("train_loop_config", {}),
+            config.train_loop_per_worker,
+            config.train_loop_config,
             fn_arg_name="train_loop_per_worker",
             discard_returns=True,
         )
@@ -160,7 +183,7 @@ class DataParallelTrainable(FunctionTrainable):
             train_func=train_loop_per_worker,
             dataset_spec=ingest_spec,
             checkpoint_manager=checkpoint_manager,
-            checkpoint=None,  # todo
+            checkpoint=session.get_checkpoint(),
             checkpoint_strategy=checkpoint_strategy,
             storage_path=run_config.storage_path,
         )

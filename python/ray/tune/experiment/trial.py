@@ -224,6 +224,7 @@ def _get_trainable_kwargs(
     trial: "Trial",
     additional_kwargs: Optional[Dict[str, Any]] = None,
     should_chdir: bool = False,
+    run_config=None,
 ) -> Dict[str, Any]:
     trial.init_local_path()
 
@@ -242,6 +243,7 @@ def _get_trainable_kwargs(
     kwargs = {
         "config": trial_config,
         "logger_creator": logger_creator,
+        "run_config": run_config,
     }
 
     if trial.uses_cloud_checkpointing:
