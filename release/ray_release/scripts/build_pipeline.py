@@ -6,7 +6,6 @@ import sys
 import tempfile
 from typing import Optional
 
-import boto3
 import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
@@ -17,11 +16,6 @@ from ray_release.config import (
     read_and_validate_release_test_collection,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
     parse_python_version,
-)
-from ray_release.test import (
-    Test,
-    S3_BUCKET,
-    DATAPLANE_FILENAME,
 )
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
@@ -244,15 +238,6 @@ def main(
 
     steps_str = json.dumps(steps)
     print(steps_str)
-
-
-def _build_anyscale_byod_images(tests: List[Tuple[Test, bool]]) -> None:
-    """
-    Builds the Anyscale BYOD images for the given tests.
-    """
-    _ = set(test.get_ray_image() for test, _ in tests)
-    # TODO(aslonnie): Build anyscale byod images for the given ray images
-    return
 
 
 if __name__ == "__main__":
