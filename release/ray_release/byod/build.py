@@ -59,7 +59,5 @@ def _download_dataplane_build_file() -> None:
         Filename=DATAPLANE_FILENAME,
     )
     with open(DATAPLANE_FILENAME, "rb") as build_context:
-        digest = hashlib.file_digest(build_context, "sha256")
-        assert (
-            digest.hexdigest() == DATAPLANE_DIGEST
-        ), "Mismatched dataplane digest found!"
+        digest = hashlib.sha256(build_context.read()).hexdigest()
+        assert digest == DATAPLANE_DIGEST, "Mismatched dataplane digest found!"
