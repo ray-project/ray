@@ -4,37 +4,34 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
 
-from packaging.version import Version
-
-import accelerate
-
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import GenDataset
 
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
-    from ray.tune.trainable import Trainable
-
 from ray.train.torch import TorchTrainer, get_device
 from ray.train.torch.config import _set_torch_distributed_env_vars
 
+ACCELERATE_IMPORT_ERROR: Optional[ImportError] = None
+
 try:
-    from ray.train.hf_accelerate._accelerate_utils import (
+    from ray.train.huggingface.accelerate._accelerate_utils import (
         launch_command,
         AccelerateDefaultNamespace,
         AccelerateConfigWrapper,
         load_accelerate_config,
     )
 except ImportError as e:
-    if "AccelerateTrainer requires accelerate" not in e.msg:
-        raise
+    ACCELERATE_IMPORT_ERROR = e
     launch_command = None
     AccelerateDefaultNamespace = None
     AccelerateConfigWrapper = None
     load_accelerate_config = None
+
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
+    from ray.tune.trainable import Trainable
 
 
 class AccelerateTrainer(TorchTrainer):
@@ -122,7 +119,7 @@ class AccelerateTrainer(TorchTrainer):
 
             import ray
             from ray.air import session, Checkpoint
-            from ray.train.hf_accelerate import AccelerateTrainer
+            from ray.train.huggingface import AccelerateTrainer
             from ray.air.config import ScalingConfig
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig
@@ -274,11 +271,8 @@ class AccelerateTrainer(TorchTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        if Version(accelerate.__version__) < Version("0.17.0.dev0"):
-            raise RuntimeError(
-                "AccelerateTrainer requires accelerate>=0.17.0, "
-                f"got {accelerate.__version__}"
-            )
+        if ACCELERATE_IMPORT_ERROR is not None:
+            raise ACCELERATE_IMPORT_ERROR
 
         self.accelerate_config = accelerate_config
         (
