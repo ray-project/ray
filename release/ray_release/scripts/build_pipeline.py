@@ -153,7 +153,7 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     logger.info("Build anyscale BYOD images")
-    build_anyscale_byod_images([test for test, _ in filter_tests])
+    build_anyscale_byod_images([test for test, _ in filtered_tests])
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
