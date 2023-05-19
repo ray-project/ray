@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <gtest/gtest.h>
 #include <gtest/gtest_prod.h>
 
 #include <boost/asio.hpp>
@@ -33,6 +34,9 @@
 #include "ray/util/logging.h"
 
 namespace ray {
+
+class GcsClientTest;
+class GcsClientTest_TestCheckAlive_Test;
 
 namespace gcs {
 
@@ -162,6 +166,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
+ protected:
   /// For testing purposes only. Get an auth-stamped context.
   void StampContext(grpc::ClientContext &context) {
     RAY_CHECK(client_call_manager_)
@@ -169,7 +174,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     client_call_manager_->StampContext(context);
   }
 
- protected:
   GcsClientOptions options_;
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
@@ -182,15 +186,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
 
-  friend class GcsClientTest;
-  FRIEND_TEST(GcsClientTest, TestGcsAuth);
-  FRIEND_TEST(GcsClientTest, TestEvictExpiredDestroyedActors);
-  FRIEND_TEST(GcsClientTest, TestEvictExpiredDeadNodes);
-  FRIEND_TEST(GcsClientTest, TestJobTableResubscribe);
-  FRIEND_TEST(GcsClientTest, TestActorTableResubscribe);
-  FRIEND_TEST(GcsClientTest, TestNodeTableResubscribe);
-  FRIEND_TEST(GcsClientTest, TestWorkerTableResubscribe);
-  FRIEND_TEST(GcsClientTest, TestGcsTableReload);
+  friend class ray::GcsClientTest;
+  FRIEND_TEST(ray::GcsClientTest, TestCheckAlive);
 
  private:
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
