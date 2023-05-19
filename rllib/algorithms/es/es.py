@@ -530,12 +530,12 @@ class ES(Algorithm):
         }
 
         reward_mean = np.mean(self.reward_list[-self.report_length :])
-        result = dict(
-            episode_reward_mean=reward_mean,
-            episode_len_mean=eval_lengths.mean(),
-            timesteps_this_iter=noisy_lengths.sum(),
-            info=info,
-        )
+        result = {
+            "evaluation/sampler_results/episode_reward_mean": reward_mean,
+            "sampler_results/episode_len_mean": eval_lengths.mean(),
+            "timesteps_this_iter": noisy_lengths.sum(),
+            "info": info,
+        }
 
         return result
 
