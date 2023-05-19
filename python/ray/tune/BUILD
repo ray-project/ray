@@ -1,4 +1,10 @@
 load("//bazel:python.bzl", "py_test_module_list")
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(["**/*.py"]),
+    tags = ["team:ml"]
+)
 
 py_library(
     name = "conftest",

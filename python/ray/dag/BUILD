@@ -1,3 +1,12 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(["**/*.py"]),
+    tags = ["team:core"],
+    deps = [":dag_lib"]
+)
+
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(

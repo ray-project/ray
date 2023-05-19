@@ -1,5 +1,6 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
+load("//bazel:python.bzl", "doctest")
 
 exports_files(["test_myst_doc.py"])
 
@@ -302,4 +303,12 @@ py_test(
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
+)
+
+# --------------------------------------------------------------------
+# Tests code snippets in user guides.
+# --------------------------------------------------------------------
+
+doctest(
+    files = glob(["source/**/*.rst"]),
 )
