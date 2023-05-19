@@ -8,7 +8,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatastreamStats, StatsDict
+from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -233,6 +233,10 @@ class TaskContext:
     # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
     sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
 
+    # The underlying function called in a MapOperator; this is used when fusing
+    # an AllToAllOperator with an upstream MapOperator.
+    upstream_map_transform_fn: Optional["MapTransformFn"] = None
+
 
 # Block transform function applied by task and actor pools in MapOperator.
 MapTransformFn = Callable[[Iterable[Block], TaskContext], Iterable[Block]]
@@ -250,7 +254,7 @@ class PhysicalOperator(Operator):
     output stream of RefBundles.
 
     Physical operators are stateful and non-serializable; they live on the driver side
-    of the Datastream only.
+    of the Dataset only.
 
     Here's a simple example of implementing a basic "Map" operator:
 
@@ -281,21 +285,27 @@ class PhysicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._dependents_complete = False
         self._started = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
 
     def completed(self) -> bool:
-        """Return True when this operator is done and all outputs are taken."""
+        """Return True when this operator is completed.
+
+        An operator is completed if any of the following conditions are met:
+        - All upstream operators are completed and all outputs are taken.
+        - All downstream operators are completed.
+        """
         return (
             self._inputs_complete
             and len(self.get_work_refs()) == 0
             and not self.has_next()
-        )
+        ) or self._dependents_complete
 
     def get_stats(self) -> StatsDict:
-        """Return recorded execution stats for use with DatastreamStats."""
+        """Return recorded execution stats for use with DatasetStats."""
         raise NotImplementedError
 
     def get_metrics(self) -> Dict[str, int]:
@@ -345,6 +355,13 @@ class PhysicalOperator(Operator):
         """
         return True
 
+    def need_more_inputs(self) -> bool:
+        """Return true if the operator still needs more inputs.
+
+        Once this return false, it should never return true again.
+        """
+        return True
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
 
@@ -366,6 +383,13 @@ class PhysicalOperator(Operator):
         via `add_input` for any input index.
         """
         self._inputs_complete = True
+
+    def all_dependents_complete(self) -> None:
+        """Called when all downstream operators have completed().
+
+        After this is called, the operator is marked as completed.
+        """
+        self._dependents_complete = True
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.
@@ -468,7 +492,7 @@ class PhysicalOperator(Operator):
 class OutputIterator(Iterator[RefBundle]):
     """Iterator used to access the output of an Executor execution.
 
-    This is a blocking iterator. Datastreams guarantees that all its iterators are
+    This is a blocking iterator. Datasets guarantees that all its iterators are
     thread-safe (i.e., multiple threads can block on them at the same time).
     """
 
@@ -483,7 +507,7 @@ class OutputIterator(Iterator[RefBundle]):
 
         Args:
             output_split_idx: The output split index to get results for. This arg is
-                only allowed for iterators created by `Datastream.streaming_split()`.
+                only allowed for iterators created by `Dataset.streaming_split()`.
 
         Raises:
             StopIteration if there are no more outputs to return.
@@ -509,13 +533,13 @@ class Executor:
         self._options = options
 
     def execute(
-        self, dag: PhysicalOperator, initial_stats: Optional[DatastreamStats] = None
+        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
     ) -> OutputIterator:
         """Start execution.
 
         Args:
             dag: The operator graph to execute.
-            initial_stats: The DatastreamStats to prepend to the stats returned by the
+            initial_stats: The DatasetStats to prepend to the stats returned by the
                 executor. These stats represent actions done to compute inputs.
         """
         raise NotImplementedError
@@ -527,7 +551,7 @@ class Executor:
         """
         pass
 
-    def get_stats(self) -> DatastreamStats:
+    def get_stats(self) -> DatasetStats:
         """Return stats for the execution so far.
 
         This is generally called after `execute` has completed, but may be called
