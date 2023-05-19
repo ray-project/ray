@@ -271,14 +271,9 @@ class TuneCheckpointManager(CheckpointManager):
         # After this is committed, checkpoint.dir_or_path will become a string,
         # which will prevent this checkpoint from being commtted again in the
         # subsequent super()._process_persistent_checkpoint() call.
-        try:
-            with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
-                path = Path(checkpoint_dir)
-                checkpoint.commit(path)
-        except:
-            print("\n\n", _session, _session_v2)
-
-            raise RuntimeError
+        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as checkpoint_dir:
+            path = Path(checkpoint_dir)
+            checkpoint.commit(path)
 
         return super()._process_persistent_checkpoint(checkpoint)
 

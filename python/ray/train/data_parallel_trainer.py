@@ -54,6 +54,7 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
         )
 
 
+# === experiment start ===
 from ray.tune.trainable.function_trainable import FunctionTrainable
 import dataclasses
 from dataclasses import dataclass
@@ -210,6 +211,9 @@ class DataParallelTrainable(FunctionTrainable):
         if isinstance(updated_scaling_config, dict):
             updated_scaling_config = ScalingConfig(**updated_scaling_config)
         return updated_scaling_config.as_placement_group_factory()
+
+
+# === experiment end ===
 
 
 @DeveloperAPI
