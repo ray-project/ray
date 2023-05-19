@@ -6,6 +6,7 @@ import sys
 import grpc
 import numpy as np
 
+import gc
 import time
 import random
 import pytest
@@ -319,12 +320,15 @@ def start_middleman_server(
         # GC finally catches up, leading to test failures.
         server.stop(0)
         del server
+        gc.collect()
         start = time.monotonic()
         with disable_client_hook():
             while ray.is_initialized():
                 time.sleep(1)
                 if time.monotonic() - start > 30:
                     raise RuntimeError("Failed to terminate Ray")
+        # Extra buffer time
+        time.sleep(3)
 
 
 def test_disconnect_during_get():
