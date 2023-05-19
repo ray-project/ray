@@ -436,7 +436,7 @@ def read_datasource(
         owned_by_consumer=False,
     )
 
-    read_op = Read(datasource, read_tasks)
+    read_op = Read(datasource, read_tasks, ray_remote_args)
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(

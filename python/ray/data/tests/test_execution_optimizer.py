@@ -377,6 +377,7 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
     planner = Planner()
     read_op = Read(
         ParquetDatasource(),
+        [],
         ray_remote_args={"num_cpus": 1, "scheduling_strategy": "SPREAD"},
     )
     op = MapBatches(read_op, lambda x: x, ray_remote_args={"num_cpus": 1})
@@ -786,7 +787,7 @@ def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
 def test_write_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     datasource = ParquetDatasource()
-    read_op = Read(datasource)
+    read_op = Read(datasource, [])
     op = Write(
         read_op,
         datasource,
