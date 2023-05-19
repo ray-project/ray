@@ -91,19 +91,49 @@ class Executor {
 ///
 /// Currently, SyncMETHOD will copy the reply additionally.
 /// TODO(sang): Fix it.
-#define _VOID_GCS_RPC_CLIENT_METHOD(                                                     \
-    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS, IS_INSECURE)                 \
-  void METHOD(const METHOD##Request &request,                                            \
-              const ClientCallback<METHOD##Reply> &callback,                             \
-              const int64_t timeout_ms = method_timeout_ms) SPECS {                      \
-    auto executor = new Executor(this, [callback](const ray::Status &status) {           \
-      callback(status, METHOD##Reply());                                                 \
-    });                                                                                  \
-    auto operation_callback =                                                            \
-        [this, request, callback, executor, timeout_ms](const ray::Status &status,       \
-                                                        const METHOD##Reply &reply) {    \
-          if (status.IsTimedOut()) {                                                     \
-            callback(status, reply);                                                     \
+#define _VOID_GCS_RPC_CLIENT_METHOD(                                           \
+    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS, IS_INSECURE)       \
+  void METHOD(const METHOD##Request &request,                                  \
+              const ClientCallback<METHOD##Reply> &callback,                   \
+              const int64_t timeout_ms = method_timeout_ms) SPECS {            \
+    auto executor = new Executor(this, [callback](const ray::Status &status) { \
+      callback(status, METHOD##Reply());                                       \
+    });                                                                        \
+    auto operation_callback = [this, request, callback, executor, timeout_ms]( \
+                                  const ray::Status &status,                   \
+                                  const METHOD##Reply &reply) {                          \
+      if (status.IsTimedOut()) {                                                         \
+        callback(status, reply);                                                         \
+        delete executor;                                                                 \
+      } else if (!status.IsGrpcError()) {                                                \
+        /* We prioritize RPC status over reply.status when propagating. */               \
+        if (!status.ok()) {                                                              \
+          callback(status, reply);                                                       \
+        } else {                                                                         \
+          auto st =                                                                      \
+              reply.status().code() == (int)StatusCode::OK                               \
+                  ? Status()                                                             \
+                  : Status(StatusCode(reply.status().code()), reply.status().message()); \
+          callback(st, reply);                                                           \
+        }                                                                                \
+        delete executor;                                                                 \
+      } else {                                                                           \
+        /* In case of GCS failure, we queue the request and these requets will be */     \
+        /* executed once GCS is back. */                                                 \
+        gcs_is_down_ = true;                                                             \
+        auto request_bytes = request.ByteSizeLong();                                     \
+        if (pending_requests_bytes_ + request_bytes >                                    \
+            ::RayConfig::instance().gcs_grpc_max_request_queued_max_bytes()) {           \
+          RAY_LOG(WARNING) << "Pending queue for failed GCS request has reached the "    \
+                           << "limit. Blocking the current thread until GCS is back";    \
+          while (gcs_is_down_ && !shutdown_) {                                           \
+            CheckChannelStatus(false);                                                   \
+            std::this_thread::sleep_for(std::chrono::milliseconds(                       \
+                ::RayConfig::instance()                                                  \
+                    .gcs_client_check_connection_status_interval_milliseconds()));       \
+          }                                                                              \
+          if (shutdown_) {                                                               \
+            callback(Status::Disconnected("GCS client has been disconnected."), reply);  \
             delete executor;                                                             \
           } else if (!status.IsGrpcError()) {                                            \
             /* We prioritize RPC status over reply.status when propagating. */           \
@@ -174,7 +204,6 @@ class Executor {
           timeout_ms);                                                                   \
       return promise.get_future().get();                                                 \
     }
-
 #define VOID_GCS_RPC_CLIENT_METHOD(                         \
     SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS) \
   _VOID_GCS_RPC_CLIENT_METHOD(                              \

@@ -92,7 +92,6 @@ class ClientCallImpl : public ClientCall {
   void SetReturnStatus() override {
     absl::MutexLock lock(&mutex_);
     return_status_ = GrpcStatusToRayStatus(status_);
-    RAY_LOG(INFO) << "return status is ! " << return_status_;
   }
 
   void OnReplyReceived() override {
@@ -100,7 +99,6 @@ class ClientCallImpl : public ClientCall {
     {
       absl::MutexLock lock(&mutex_);
       status = return_status_;
-      RAY_LOG(INFO) << "return status is ! " << return_status_;
     }
     if (callback_ != nullptr) {
       callback_(status, reply_);

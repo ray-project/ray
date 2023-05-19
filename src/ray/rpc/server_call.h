@@ -179,6 +179,8 @@ class ServerCallImpl : public ServerCall {
         start_time_(0),
         record_metrics_(record_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
+    RAY_LOG(INFO) << "xxx is nil? " << cluster_id_.IsNil() << " "
+                  << typeid(Request).name() << " " << cluster_id_.Hex();
     // TODO call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
@@ -195,26 +197,30 @@ class ServerCallImpl : public ServerCall {
   void HandleRequest() override {
     bool auth_success = true;
     if constexpr (EnableAuth == AuthType::STRICT) {
-      RAY_CHECK(cluster_id_ != nullptr) << "Expected cluster ID in server call!";
+      RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
       auto &metadata = context_.client_metadata();
       if (auto it = metadata.find(kClusterIdKey);
-          it == metadata.end() || it->second != cluster_id_->Hex()) {
+          it == metadata.end() || it->second != cluster_id_.Hex()) {
         RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
-                       << cluster_id_->Hex() << ", but got: "
+                       << cluster_id_.Hex() << ", but got: "
                        << (it == metadata.end() ? "No token!" : it->second);
         auth_success = false;
       }
     } else if constexpr (EnableAuth == AuthType::LAZY) {
-      RAY_CHECK(cluster_id_ != nullptr) << "Expected cluster ID in server call!";
+      RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
       auto &metadata = context_.client_metadata();
       if (auto it = metadata.find(kClusterIdKey);
-          it != metadata.end() && it->second != cluster_id_->Hex()) {
-        RAY_LOG(DEBUG) << "Wrong cluster ID token in request!";
+          it != metadata.end() && it->second != cluster_id_.Hex()) {
+        RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
+                       << cluster_id_.Hex() << ", but got: "
+                       << (it == metadata.end() ? "No token!" : it->second);
         auth_success = false;
       }
     } else {
-      RAY_CHECK(cluster_id_ == nullptr)
-          << "Unexpected cluster ID in server call!" << cluster_id_;
+      if (cluster_id_.IsNil()) {
+        RAY_LOG_EVERY_N(WARNING, 100)
+            << "Unexpected cluster ID in server call! " << cluster_id_;
+      }
     }
 
     start_time_ = absl::GetCurrentTimeNanos();

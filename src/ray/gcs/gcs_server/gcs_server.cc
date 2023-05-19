@@ -152,8 +152,9 @@ void GcsServer::CacheAndSetClusterId() {
   kv_manager_->GetInstance().Get(
       kTokenNamespace, kClusterIdKey, [this](std::optional<std::string> token) mutable {
         if (!token.has_value()) {
-          RAY_LOG(DEBUG) << "No existing server token found. Generating new token.";
           ClusterID cluster_token = ClusterID::FromRandom();
+          RAY_LOG(DEBUG) << "No existing server token found. Generating new token: "
+                         << cluster_token.Hex();
           kv_manager_->GetInstance().Put(
               kTokenNamespace,
               kClusterIdKey,
@@ -164,7 +165,9 @@ void GcsServer::CacheAndSetClusterId() {
                 cluster_token_promise_.set_value(std::move(cluster_token));
               });
         } else {
-          cluster_token_promise_.set_value(ClusterID::FromBinary(token.value()));
+          ClusterID cluster_token = ClusterID::FromBinary(token.value());
+          RAY_LOG(DEBUG) << "Found existing server token: " << cluster_token;
+          cluster_token_promise_.set_value(std::move(cluster_token));
         }
       });
 }
