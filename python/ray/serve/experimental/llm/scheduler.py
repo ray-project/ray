@@ -1,10 +1,6 @@
-import time
-
-import ray
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from typing import List, Tuple
+from abc import ABC, abstractmethod
+from typing import List, Tuple, override
 from threading import Thread
 from ray.serve.experimental.llm.worker import InferenceWorker
 from ray.serve.experimental.llm.types import (
@@ -13,7 +9,8 @@ from ray.serve.experimental.llm.types import (
     Generation,
 )
 from ray.serve.experimental.llm.tokenstream import TokenStream
-from ray.serve.experimental.llm.queue import PendingRequestQueue
+from ray.serve.experimental.llm.queue import RequestQueue, InferenceRequest
+from ray.serve.experimental.llm.policy import RequestSelectionPolicy
 
 
 _request_id = 0
@@ -25,49 +22,55 @@ def get_request_id() -> int:
     return _request_id
 
 
-@dataclass
-class PendingRequest:
-    """A request that has been submitted to the scheduler but not yet processed."""
+class Tokenizer(ABC):
+    @abstractmethod
+    def get_input_length(self, input_text: str) -> int:
+        return input_text.count(" ") + 1
 
-    id: int
-    request: GenerationRequest
-    output_stream: TokenStream
-    submit_time_ns: int
 
-    @classmethod
-    def from_request(cls, request: GenerationRequest):
-        return cls(
-            id=request.id,
-            request=request,
-            result=TokenStream(),
-            submit_time_ns=int(time.time()),
-        )
+class NaiveTokenizer(Tokenizer):
+    @override
+    def get_input_length(self, input_text: str) -> int:
+        return input_text.count(" ") + 1
+
+    # TODO: add model specific tokenizer
 
 
 class InferenceScheduler:
-    def __init__(self, inference_worker: InferenceWorker):
+    def __init__(
+        self,
+        tokenizer: Tokenizer,
+        inference_worker: InferenceWorker,
+        request_selection_policy: RequestSelectionPolicy,
+        request_queue: RequestQueue,
+    ):
+        self._tokenizer = tokenizer
         self._inference_worker = inference_worker
-        self._request_queue = PendingRequestQueue()
+        self._request_queue = request_queue
+        self._request_selection_policy = request_selection_policy
         self._executor_loop = asyncio.new_event_loop()
         self._thread = Thread(target=self._run_executor_loop)
         self._thread.start()
 
     def process_request(self, input_text: str, params: SamplingParams) -> TokenStream:
         request = GenerationRequest(
-            id=get_request_id(), input_text=input_text, params=params
+            id=get_request_id(),
+            input_text=input_text,
+            input_length=self._tokenizer.get_input_length(input_text),
+            params=params,
         )
         return self._add_request(request)
 
     def _add_request(self, request: GenerationRequest) -> TokenStream:
-        pending_request = PendingRequest.from_request(request)
+        pending_request = InferenceRequest.from_request(request)
         self._request_queue.append(pending_request)
         return pending_request.output_stream
 
     def _run_executor_loop(self):
         asyncio.set_event_loop(self._executor_loop)
-        self._executor_loop.run_until_complete(self._schedule_request())
+        self._executor_loop.run_until_complete(self._run_scheduling_loop())
 
-    async def _schedule_request(self):
+    async def _run_scheduling_loop(self):
         """Schedule requests to be processed by the inference worker."""
 
         # The main schedule loop:
@@ -80,13 +83,13 @@ class InferenceScheduler:
         # 2. for both new and in-process requests, combine them
         # and generate the next token. filter out finished requests.
         #
-        # 3. repeat.
+        # 3. goto step 1.
         batch_id = None
         in_process_requests = []
         while True:
             # select new requests to process.
             new_requests = await self._select_new_requests(in_process_requests)
-            new_batch_id, new_unfinished_requests = self._process_new_batch(
+            new_batch_id, new_unfinished_requests = self._process_new_requests(
                 new_requests
             )
             # combine new batch with existing batch to generate next token.
@@ -95,13 +98,16 @@ class InferenceScheduler:
             )
 
     async def _select_new_requests(
-        in_process_requests: List[PendingRequest],
-    ) -> List[PendingRequest]:
-        pass
+        self,
+        in_process_requests: List[InferenceRequest],
+    ) -> List[InferenceRequest]:
+        return self._request_selection_policy.select_requests(
+            in_process_requests, self._request_queue
+        )
 
-    def _process_new_batch(
-        self, requests: List[PendingRequest]
-    ) -> Tuple[int, List[PendingRequest]]:
+    def _process_new_requests(
+        self, requests: List[InferenceRequest]
+    ) -> Tuple[int, List[InferenceRequest]]:
         if len(requests) == 0:
             return None, []
         generations, batch_id = self._inference_worker.process_new_batch(requests)
@@ -112,7 +118,7 @@ class InferenceScheduler:
         return batch_id, requests
 
     def _generate_next_token(
-        self, batch_ids: List[int], requests: List[PendingRequest]
+        self, batch_ids: List[int], requests: List[InferenceRequest]
     ) -> List[Generation]:
         generations, batch_id = self._inference_worker.generate_next_token(
             batch_ids,
@@ -124,8 +130,8 @@ class InferenceScheduler:
         return batch_id, requests
 
     def _process_generation_result(
-        self, generations: List[Generation], requests: List[PendingRequest]
-    ) -> List[PendingRequest]:
+        self, generations: List[Generation], requests: List[InferenceRequest]
+    ) -> List[InferenceRequest]:
         unfinished_requests = []
         for i, generation in enumerate(generations):
             assert (
