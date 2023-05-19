@@ -68,39 +68,31 @@ class InferenceScheduler:
         self._executor_loop.run_until_complete(self._schedule_request())
 
     async def _schedule_request(self):
+        batch_id = None
+        in_process_requests = []
         while True:
-            await self._process_next_batch()
+            # select new requests to process.
+            new_requests = await self._select_new_requests(in_process_requests)
+            new_batch_id, new_unfinished_requests = self._process_new_batch(
+                new_requests
+            )
+            # combine new batch with existing batch to generate next token.
+            batch_id, in_process_requests = self._generate_next_token(
+                [batch_id, new_batch_id], in_process_requests + new_unfinished_requests
+            )
 
-    async def _select_requests(
+    async def _select_new_requests(
         in_process_requests: List[PendingRequest],
     ) -> List[PendingRequest]:
         pass
 
-    async def _process_next_batch(self):
-        requests = await self._select_requests([])
-        current_batch_id, requests = self._process_new_batch(requests)
-
-        while current_batch_id is not None:
-            additional_requests = await self._select_requests(requests)
-            additional_batch_id, additional_requests = self._process_new_batch(
-                additional_requests
-            )
-
-            generations, current_batch_id = self._inference_worker.generate_next_token(
-                [current_batch_id, additional_batch_id]
-            )
-            requests = self._process_generations(
-                generations, requests + additional_requests
-            )
-            current_batch_id = self._inference_worker.filter_requests(
-                current_batch_id, [r.id for r in requests]
-            )
-
     def _process_new_batch(
         self, requests: List[PendingRequest]
     ) -> Tuple[int, List[PendingRequest]]:
+        if len(requests) == 0:
+            return None, []
         generations, batch_id = self._inference_worker.process_new_batch(requests)
-        requests = self._process_generations(generations, requests)
+        requests = self._process_generation_result(generations, requests)
         batch_id = self._inference_worker.filter_requests(
             batch_id, [r.id for r in requests]
         )
@@ -112,13 +104,13 @@ class InferenceScheduler:
         generations, batch_id = self._inference_worker.generate_next_token(
             batch_ids,
         )
-        requests = self._process_generations(generations, requests)
+        requests = self._process_generation_result(generations, requests)
         batch_id = self._inference_worker.filter_requests(
             batch_id, [r.id for r in requests]
         )
         return batch_id, requests
 
-    def _process_generations(
+    def _process_generation_result(
         self, generations: List[Generation], requests: List[PendingRequest]
     ) -> List[PendingRequest]:
         unfinished_requests = []
