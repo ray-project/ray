@@ -15,6 +15,7 @@
 # limitations under the License.
 import torch
 
+import logging
 from dataclasses import dataclass
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizerBase
 from typing import Optional, Tuple, List, Type, Dict, Any
@@ -32,6 +33,8 @@ from ray.serve.experimental.llm.types import (
     Generation,
     GeneratedText,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -171,8 +174,10 @@ class CausalLMBatch(Batch):
 
         total_remaining_decode_tokens = 0
         new_padding_right_offset = 0
+        requests = []
 
         for i, r_id in enumerate(request_ids):
+            requests.append(self.requests[self.requests_idx_mapping[r_id]])
             idx = self.requests_idx_mapping[r_id]
             requests_idx_mapping[r_id] = i
             keep_indices.append(idx)
@@ -230,7 +235,7 @@ class CausalLMBatch(Batch):
         max_tokens = len(request_ids) * max_input_length + total_remaining_decode_tokens
 
         self.batch_id = get_batch_id()
-        self.requests = request_ids
+        self.requests = requests
         self.requests_idx_mapping = requests_idx_mapping
         self.input_ids = input_ids
         self.position_ids = position_ids
@@ -590,6 +595,7 @@ class CausalLM(Model):
                 next_token_id_squeezed,
                 next_token_text,
             )
+            logger.debug(f"stop: {stop}, reason: {reason}")
 
             if not stop:
                 stopped = False
@@ -634,6 +640,7 @@ class CausalLM(Model):
                 # else:
                 #     # prefill_tokens = None
 
+                logger.debug(f"request is {request}")
                 generation = Generation(
                     request.id,
                     next_token_id_squeezed,

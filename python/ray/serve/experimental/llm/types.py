@@ -74,6 +74,7 @@ class Generation:
     token_logprob: float
     token_text: str
     token_is_special: bool
+    stopped: bool
     generated_text: Optional[GeneratedText]
 
 

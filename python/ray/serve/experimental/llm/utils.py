@@ -149,7 +149,12 @@ class NextTokenChooser:
         if self.watermark_processor:
             scores = self.watermark_processor(input_ids, scores)
         if self.repetition_processor:
-            scores = self.repetition_processor(input_ids, scores)
+            # FIXME: scores.clone() is used to avoid following error:
+            # RuntimeError: Output 0 of SliceBackward0 is a view and is being modified
+            # inplace. This view is the output of a function that returns multiple views.
+            # Such functions do not allow the output views to be modified inplace.
+            # You should replace the inplace operation by an out-of-place one.
+            scores = self.repetition_processor(input_ids, scores.clone())
 
         if self.static_warper is None:
             next_logprob = torch.log_softmax(scores, -1)
