@@ -935,7 +935,7 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
         caller_address: The address of the caller. By our protocol,
             the caller of the streaming generator task is always
             the owner, so we can also call it "owner address".
-    
+
     Returns:
         A Ray Object that contains the given output.
     """
@@ -954,7 +954,7 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
         &intermediate_result,
         caller_address,
         generator_id)
-    
+
     return intermediate_result.back()
 
 
@@ -975,7 +975,7 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
     """Create a generator error object.
 
     This API sets is_retryable_error and application_error,
-    It also creates and returns a new RayObject that 
+    It also creates and returns a new RayObject that
     contains the exception `e`.
 
     Args:
@@ -1019,15 +1019,17 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
         is_retryable_error[0]
         and core_worker.get_current_task_retry_exceptions()
     ):
-        logger.debug("Task failed with retryable exception:"
-                        " {}.".format(task_id), exc_info=True)
+        logger.debug(
+            "Task failed with retryable exception:"
+            " {}.".format(task_id), exc_info=True)
         # Raise an exception directly and halt the execution
         # because there's no need to set the exception
         # for the return value when the task is retryable.
         raise e
 
-    logger.debug("Task failed with unretryable exception:"
-                    " {}.".format(task_id), exc_info=True)
+    logger.debug(
+        "Task failed with unretryable exception:"
+        " {}.".format(task_id), exc_info=True)
 
     error_id = (CCoreWorkerProcess.GetCoreWorker()
                 .AllocateDynamicReturnId(caller_address))
