@@ -22,7 +22,7 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
         Filename=DATAPLANE_FILENAME,
     )
     built = set()
-    for test, _ in tests:
+    for test in tests:
         if not test.is_byod_cluster():
             continue
         ray_image = test.get_ray_image()
@@ -30,7 +30,7 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
             continue
         byod_image = test.get_anyscale_byod_image()
         logger.info(f"Building {byod_image} from {ray_image}")
-        with open(DATAPLANE_FILENAME, "rb") as build_file:
+        with open(DATAPLANE_FILENAME, "rb") as build_context:
             subprocess.check_call(
                 [
                     "docker",
@@ -41,7 +41,7 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                     byod_image,
                     "-",
                 ],
-                stdin=build_file,
+                stdin=build_context,
                 stdout=subprocess.DEVNULL,
                 env={"DOCKER_BUILDKIT": "1"},
             )
