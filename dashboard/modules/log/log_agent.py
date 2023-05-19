@@ -337,12 +337,14 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         )
 
         if task_attempt_magic_line_offset == -1:
-            raise FileNotFoundError(
-                f"Log for task attempt({task_id},{attempt_number}) not found"
+            # TODO(rickyx): This means the token is missing in the corresponding
+            # worker file, which is the case for concurrent actor (threaded actors/
+            # async actors). As best efforts, we will stream the entire worker file.
+            start_offset = 0
+        else:
+            start_offset = task_attempt_magic_line_offset + len(
+                task_attempt_start_magic_line
             )
-        start_offset = task_attempt_magic_line_offset + len(
-            task_attempt_start_magic_line
-        )
 
         # Find the end of the task log, which is the start of the next task log if any
         # with the LOG_PREFIX_TASK_ATTEMPT_END magic line.

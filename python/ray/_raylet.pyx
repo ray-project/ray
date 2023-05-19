@@ -887,6 +887,9 @@ cdef void execute_task(
             # Record the task id via magic token in the log file.
             # This will be used to locate the beginning of logs from a task.
             if core_worker.current_actor_max_concurrency() == 1:
+                # We only do this for non concurrent actor tasks. For concurrent
+                # actors, there's significant overhead due to io contention, and
+                # since the logs are interleaving, they're not very useful.
                 attempt_number = core_worker.get_current_task_attempt_number()
                 task_attempt_magic_token = "{}{}-{}\n".format(
                     ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
@@ -3038,7 +3041,6 @@ cdef class CoreWorker:
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
-
 
     def get_current_runtime_env(self) -> str:
         # This should never change, so we can safely cache it to avoid ser/de
