@@ -16,6 +16,7 @@ DATAPLANE_FILENAME = "dataplane.tgz"
 DATAPLANE_DIGEST = "f9b0055085690ddad2faa804bb6b38addbcf345b9166f2204928a7ece1c8a39b"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
+RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 
 
 def build_anyscale_byod_images(tests: List[Test]) -> None:
@@ -83,8 +84,8 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                         "-t",
                         byod_image,
                         "-f",
-                        "byod.Dockerfile",
-                        os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod"),
+                        os.path.join(RELEASE_BYOD_DIR, "byod.Dockerfile"),
+                        RELEASE_BYOD_DIR,
                     ],
                     stdout=subprocess.DEVNULL,
                     env={"DOCKER_BUILDKIT": "1"},
