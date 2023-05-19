@@ -8,7 +8,10 @@ import sys
 import time
 
 from ray_release.logger import logger
-from ray_release.test import Test
+from ray_release.test import (
+    Test,
+    DATAPLANE_ECR_REPO,
+)
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
 DATAPLANE_FILENAME = "dataplane.tgz"
