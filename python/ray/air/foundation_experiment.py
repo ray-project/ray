@@ -1,26 +1,21 @@
+from pathlib import Path
+import time
+
+import ray
 from ray.tune.trainable import FunctionTrainable
 from ray import air, tune
+from ray.air import session
 from ray.train.data_parallel_trainer import (
     DataParallelTrainable,
     DataParallelTrainerConfig,
     _Config,
 )
-
 from ray.tune.execution.tune_controller import TuneController
-from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.experimental.output import (
     AirVerbosity,
     _detect_reporter as _detect_air_reporter,
 )
 from ray.tune.tune import _report_air_progress
-
-from pathlib import Path
-
-
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
-
-
 from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search.basic_variant import _VariantIterator
 from ray.tune.search.variant_generator import (
@@ -148,12 +143,6 @@ class _BasicVariantGenerator(SearchAlgorithm):
             self._variant_iter = None
             self.set_finished()
             return None
-
-
-from ray.train.data_parallel_trainer import DataParallelTrainable
-
-# class _TorchTrainable(DataParallelTrainable):
-# def _
 
 
 def _print(msg):
@@ -286,12 +275,6 @@ class _Tuner:
         return runner.fit()
 
 
-import ray
-from ray import tune
-from ray.air import session
-import time
-
-
 def train_loop(config):
     print(f"\nrank = {session.get_world_rank()}")
     print(f"a = {config['a']}")
@@ -311,6 +294,7 @@ def run_with_exp_runner():
         run_config=air.RunConfig(
             storage_path="~/ray_results", name="foundation_experimentation"
         ),
+        # Use a dict
         # config={
         #     "scaling_config": air.ScalingConfig(num_workers=2),
         #     "datasets": {
@@ -319,6 +303,7 @@ def run_with_exp_runner():
         #     "train_loop_per_worker": train_loop,
         #     "train_loop_config": {"a": tune.grid_search([1, 2, 3])},
         # },
+        # Or a data parallel trainer config dataclass
         config=DataParallelTrainerConfig(
             train_loop_per_worker=train_loop,
             train_loop_config={"a": tune.grid_search([1, 2, 3])},
@@ -378,10 +363,14 @@ def run_with_tuner():
 
 
 if __name__ == "__main__":
+    run_with_exp_runner()
     # run_with_trainer()
     run_with_tuner()
 
+
 """
+# Brainstorming
+
 ### Ideal API
 
 def train_loop_per_worker(config):
