@@ -500,7 +500,7 @@
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-gpu
-      python/ray/... doc/source/...
+      python/ray/... doc/...
 
 - label: ":python: Ray on Spark Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]

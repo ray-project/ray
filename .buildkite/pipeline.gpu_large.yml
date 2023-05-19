@@ -57,7 +57,7 @@
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=doctest,-cpu python/ray/... doc/source/...
+      --test_tag_filters=doctest,-cpu python/ray/... doc/...
 
 - label: ":zap: :python: Lightning 2.0 Train GPU tests"
   conditions:
