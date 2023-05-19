@@ -1,26 +1,22 @@
 from typing import List
 
 import boto3
+import hashlib
 import subprocess
 
 from ray_release.logger import logger
-from ray_release.test import (
-    Test,
-    S3_BUCKET,
-    DATAPLANE_FILENAME,
-)
+from ray_release.test import Test
+
+DATAPLANE_S3_BUCKET = "ray-release-automation-results"
+DATAPLANE_FILENAME = "dataplane.tgz"
+DATAPLANE_DIGEST = "f9b0055085690ddad2faa804bb6b38addbcf345b9166f2204928a7ece1c8a39b"
 
 
 def build_anyscale_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
     """
-    s3 = boto3.client("s3")
-    s3.download_file(
-        Bucket=S3_BUCKET,
-        Key=DATAPLANE_FILENAME,
-        Filename=DATAPLANE_FILENAME,
-    )
+    _download_dataplane_build_file()
     built = set()
     for test in tests:
         if not test.is_byod_cluster():
@@ -50,4 +46,20 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                 stdout=subprocess.DEVNULL,
             )
             built.add(ray_image)
-    return
+
+
+def _download_dataplane_build_file() -> None:
+    """
+    Downloads the dataplane build file from S3.
+    """
+    s3 = boto3.client("s3")
+    s3.download_file(
+        Bucket=DATAPLANE_S3_BUCKET,
+        Key=DATAPLANE_FILENAME,
+        Filename=DATAPLANE_FILENAME,
+    )
+    with open(DATAPLANE_FILENAME, "rb") as build_context:
+        digest = hashlib.file_digest(build_context, "sha256")
+        assert (
+            digest.hexdigest() == DATAPLANE_DIGEST
+        ), "Mismatched dataplane digest found!"

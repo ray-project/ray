@@ -5,8 +5,6 @@ DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
 )
 DOCKER_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale"
-S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane.tgz"
 
 
 class Test(dict):
@@ -35,6 +33,9 @@ class Test(dict):
         return self["cluster"]["byod"].get("pre_run_cmds", [])
 
     def get_name(self) -> str:
+        """
+        Returns the name of the test.
+        """
         return self["name"]
 
     def get_python_version(self) -> str:
