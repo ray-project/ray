@@ -139,7 +139,6 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
-    ObjectRefStreamEoFError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -197,6 +196,10 @@ class ObjectRefGenerator:
 
     def __len__(self):
         return len(self._refs)
+
+
+class ObjectRefStreamEoFError(RayError):
+    pass
 
 
 class StreamingObjectRefGenerator:
