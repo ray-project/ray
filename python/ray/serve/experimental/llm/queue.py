@@ -37,7 +37,7 @@ class RequestQueue:
     def push(self, request: InferenceRequest) -> bool:
         with self._cv:
             self._queue.append(request)
-            self._cv.notify()
+            self._cv.notify_all()
             return True
 
     def peek(self) -> Optional[InferenceRequest]:
@@ -52,15 +52,18 @@ class RequestQueue:
                 return None
             return self._queue.popleft()
 
-    def wait(self):
+    def wait(self, timeout=None):
+        start = time.time()
         with self._cv:
             while len(self._queue) == 0:
-                self._cv.wait()
+                self._cv.wait(timeout)
+                if timeout is not None and time.time() - start >= timeout:
+                    return
 
     def reverse_push(self, request: InferenceRequest) -> None:
         with self._cv:
             self._queue.appendleft(request)
-            self._cv.notify()
+            self._cv.notify_all()
 
     def empty(self) -> bool:
         with self._lock:
