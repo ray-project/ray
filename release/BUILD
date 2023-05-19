@@ -15,8 +15,8 @@ compile_pip_requirements(
 
 compile_pip_requirements(
     name = "requirements_byod",
-    requirements_in = "requirements_byod.in",
-    requirements_txt = "requirements_byod.txt",
+    requirements_in = "ray_release/byod/requirements_byod.in",
+    requirements_txt = "ray_release/byod/requirements_byod.txt",
     tags = [
         "team:ci",
     ],
