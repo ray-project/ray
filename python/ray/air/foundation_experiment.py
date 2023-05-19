@@ -1,5 +1,5 @@
 from ray.tune.trainable import FunctionTrainable
-from ray import air
+from ray import air, tune
 from ray.train.data_parallel_trainer import (
     DataParallelTrainable,
     DataParallelTrainerConfig,
@@ -167,17 +167,18 @@ class ExperimentRunner:
     def __init__(
         self,
         trainable: FunctionTrainable,
-        run_config: air.RunConfig,
         config: _Config,
+        run_config: air.RunConfig,
+        tune_config: tune.TuneConfig = None,
     ):
         self._config = config
         self._run_config = run_config
         self._trainable = trainable
 
-    def fit(self):
+    def fit_with_tune_run(self):
         pass
 
-    def fit_new(self):
+    def fit(self):
         _print("Registering trainable")
 
         registered_trainable_name = Experiment.register_if_needed(self._trainable)
@@ -186,7 +187,12 @@ class ExperimentRunner:
         search_alg = _BasicVariantGenerator(
             trainable_name=registered_trainable_name, run_config=self._run_config
         )
-        search_alg.add_configurations(self._config.to_dict())
+        config_as_dict = (
+            self._config.to_dict()
+            if isinstance(self._config, _Config)
+            else self._config
+        )
+        search_alg.add_configurations(config_as_dict)
 
         _print("Creating tune controller")
         tune_controller = TuneController(
@@ -215,24 +221,91 @@ class ExperimentRunner:
         _print("Experiment finished running!!")
 
 
-if __name__ == "__main__":
-    import ray
-    from ray import tune
-    from ray.air import session
-    import time
+class _BaseTrainer:
+    pass
 
-    def train_loop(config):
-        print(f"\nrank = {session.get_world_rank()}")
-        print(f"a = {config['a']}")
 
-        ds = session.get_dataset_shard("train")
-        for batch in ds.iter_batches():
-            print(batch)
+class _DataParallelTrainer(_BaseTrainer):
+    _trainable_cls = DataParallelTrainable
+    _config_cls = DataParallelTrainerConfig
 
-        for i in range(10):
-            time.sleep(0.5)
-            session.report({"train_session_report": 1})
+    def __init__(self, run_config: air.RunConfig = None, **kwargs):
+        self.kwargs = kwargs
+        self.run_config = run_config
 
+    def fit(self):
+        runner = ExperimentRunner(
+            self._trainable_cls,
+            config=self._config_cls(**self.kwargs),
+            run_config=self.run_config,
+        )
+        return runner.fit()
+
+
+class _Tuner:
+    def __init__(
+        self,
+        trainable_or_trainer,
+        param_space={},
+        run_config: air.RunConfig = None,
+        tune_config: tune.TuneConfig = None,
+    ):
+        if isinstance(trainable_or_trainer, _BaseTrainer):
+            trainable = trainable_or_trainer._trainable_cls
+            trainer_run_config = trainable_or_trainer.run_config
+            config = trainable_or_trainer.kwargs
+        else:
+            trainable = trainable_or_trainer
+            config = {}
+
+        self._trainable = trainable
+        self._run_config = run_config
+        self._tune_config = tune_config
+
+        def merge_dicts(d1, d2):
+            for k in d2:
+                if k not in d1:
+                    d1[k] = d2[k]
+            for k, v in d1.items():
+                if isinstance(v, dict) and k in d2:
+                    merge_dicts(d1[k], d2[k])
+
+        if isinstance(param_space, _Config):
+            param_space = param_space.to_dict()
+
+        merge_dicts(config, param_space)
+        self._config = config
+
+    def fit(self):
+        runner = ExperimentRunner(
+            self._trainable,
+            config=self._config,
+            run_config=self._run_config,
+            tune_config=self._tune_config,
+        )
+        return runner.fit()
+
+
+import ray
+from ray import tune
+from ray.air import session
+import time
+
+
+def train_loop(config):
+    print(f"\nrank = {session.get_world_rank()}")
+    print(f"a = {config['a']}")
+
+    ds = session.get_dataset_shard("train")
+    for batch in ds.iter_batches():
+        print(batch)
+
+    for i in range(10):
+        time.sleep(0.5)
+        session.report({"train_session_report": 1})
+
+
+def run_with_exp_runner():
     runner = ExperimentRunner(
         DataParallelTrainable,
         run_config=air.RunConfig(
@@ -258,6 +331,55 @@ if __name__ == "__main__":
 
     runner.fit()
 
+
+def run_with_trainer():
+    trainer = _DataParallelTrainer(
+        train_loop_per_worker=train_loop,
+        train_loop_config={"a": 1},
+        scaling_config=air.ScalingConfig(num_workers=2),
+        datasets={
+            "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
+        },
+        run_config=air.RunConfig(
+            storage_path="~/ray_results", name="foundation_run_with_trainer"
+        ),
+    )
+    trainer.fit()
+
+
+def run_with_tuner():
+    trainer = _DataParallelTrainer(
+        train_loop_per_worker=train_loop,
+        train_loop_config={"a": tune.grid_search([1, 2, 3])},
+        scaling_config=air.ScalingConfig(num_workers=2),
+        datasets={
+            "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
+        },
+        # run_config=air.RunConfig(
+        #     storage_path="~/ray_results", name="foundation_experimentation"
+        # ),
+    )
+
+    tuner = _Tuner(
+        trainer,
+        param_space=DataParallelTrainerConfig(
+            train_loop_per_worker=train_loop,
+            train_loop_config={"a": tune.grid_search([1, 2, 3])},
+            scaling_config=air.ScalingConfig(num_workers=2),
+            datasets={
+                "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
+            },
+        ),
+        run_config=air.RunConfig(
+            storage_path="~/ray_results", name="foundation_run_with_tuner"
+        ),
+    )
+    tuner.fit()
+
+
+if __name__ == "__main__":
+    # run_with_trainer()
+    run_with_tuner()
 
 """
 ### Ideal API
