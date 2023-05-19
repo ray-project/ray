@@ -200,7 +200,7 @@ class ObjectRefGenerator:
 
 
 class StreamingObjectRefGenerator:
-    def __init__(self, generator_ref, worker):
+    def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
         # The reference to a generator task.
         self._generator_ref = generator_ref
         # The last time generator task has completed.
@@ -212,10 +212,10 @@ class StreamingObjectRefGenerator:
         assert hasattr(worker, "core_worker")
         self.worker.core_worker.create_object_ref_stream(self._generator_ref)
 
-    def __iter__(self):
+    def __iter__(self) -> "StreamingObjectRefGenerator":
         return self
 
-    def __next__(self):
+    def __next__(self) -> ObjectRef:
         """Waits until a next ref is available and returns the object ref.
 
         Raises StopIteration if there's no more objects
@@ -232,7 +232,7 @@ class StreamingObjectRefGenerator:
             self,
             timeout_s: float = -1,
             sleep_interval_s: float = 0.0001,
-            unexpected_network_failure_timeout_s: float = 30):
+            unexpected_network_failure_timeout_s: float = 30) -> ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -312,7 +312,7 @@ class StreamingObjectRefGenerator:
             obj = self._handle_next()
         return obj
 
-    def _handle_next(self):
+    def _handle_next(self) -> ObjectRef:
         try:
             if hasattr(self.worker, "core_worker"):
                 obj = self.worker.core_worker.try_read_next_object_ref_stream(
@@ -334,8 +334,8 @@ class StreamingObjectRefGenerator:
 
     def __getstate__(self):
         raise TypeError(
-            "Serialization of the StreamingObjectRefGenerator "
-            "is now allowed")
+            "You cannot return or pass a generator to other task. "
+            "Serializing a StreamingObjectRefGenerator is not allowed.")
 
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
