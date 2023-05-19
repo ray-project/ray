@@ -1,5 +1,6 @@
 from typing import Optional
 
+import random
 import pytest
 
 import ray
@@ -93,19 +94,99 @@ def test_configure_execution_options(ray_start_4_cpus):
         test.fit()
 
 
+class CustomConfig(DataConfig):
+    def __init__(self):
+        pass
+
+    def configure(self, *args, **kwargs):
+        ds = ray.data.range(10)
+        return [
+            {"train": ds.iterator()},
+            {"train": ds.iterator()},
+        ]
+
+
 def test_custom_config_subclass(ray_start_4_cpus):
-    # TODO implement split in subclass
-    pass
+    test = TestBasic(
+        1,
+        True,
+        {"train": 10},
+        dataset_config=CustomConfig(),
+    )
+    test.fit()
+
+
+class TestRandom(DataParallelTrainer):
+    def __init__(self, num_workers: int, expect_random: bool, **kwargs):
+        def train_loop_per_worker():
+            data_shard = session.get_dataset_shard("train")
+            assert isinstance(data_shard, DataIterator), data_shard
+            epoch1 = list(data_shard.iter_rows())
+            epoch2 = list(data_shard.iter_rows())
+            print("Epochs", epoch1, "\n", epoch2)
+            if expect_random:
+                assert epoch1 != epoch2
+            else:
+                assert epoch1 == epoch2
+
+        kwargs.pop("scaling_config", None)
+        super().__init__(
+            train_loop_per_worker=train_loop_per_worker,
+            scaling_config=ScalingConfig(num_workers=num_workers),
+            **kwargs,
+        )
 
 
 def test_per_epoch_preprocessing(ray_start_4_cpus):
-    # TODO check read order is randomized each time with randomize block order
-    pass
+    ds = ray.data.range(100, parallelism=100).randomize_block_order()
+    test = TestRandom(2, True, datasets={"train": ds})
+    test.fit()
+
+    ds = ray.data.range(100, parallelism=100).random_shuffle()
+    test = TestRandom(2, True, datasets={"train": ds})
+    test.fit()
+
+    ds = ray.data.range(100, parallelism=100).map(
+        lambda x: {"id": x["id"] * random.random()}
+    )
+    test = TestRandom(2, True, datasets={"train": ds})
+    test.fit()
 
 
 def test_materialized_preprocessing(ray_start_4_cpus):
-    # TODO check side effect doesn't happen twice
-    pass
+    # TODO(ekl) we should test all these configs with splitting enabled, but this
+    # requires implementing deterministic streaming split.
+    ds = ray.data.range(100, parallelism=100).randomize_block_order()
+    ds = ds.materialize()
+    test = TestRandom(
+        2,
+        False,
+        datasets={"train": ds},
+        dataset_config=DataConfig(datasets_to_split=[]),
+    )
+    test.fit()
+
+    ds = ray.data.range(100, parallelism=100).random_shuffle()
+    ds = ds.materialize()
+    test = TestRandom(
+        2,
+        False,
+        datasets={"train": ds},
+        dataset_config=DataConfig(datasets_to_split=[]),
+    )
+    test.fit()
+
+    ds = ray.data.range(100, parallelism=100).map(
+        lambda x: {"id": x["id"] * random.random()}
+    )
+    ds = ds.materialize()
+    test = TestRandom(
+        2,
+        False,
+        datasets={"train": ds},
+        dataset_config=DataConfig(datasets_to_split=[]),
+    )
+    test.fit()
 
 
 if __name__ == "__main__":
