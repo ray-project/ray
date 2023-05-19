@@ -838,12 +838,15 @@ cdef void execute_task(
             return function(actor, *arguments, **kwarguments)
 
     def write_to_stdout_and_err_no_flush(msg):
+        # We need to flush the stdout and stderr buffers manually because
+        # we set the sys.stdout/stderr to be Unbuffered in
+        # ray_logging.py::configure_log_file
         if isinstance(sys.stdout, Unbuffered):
             sys.stdout.writelines_no_flush(msg)
             sys.stderr.writelines_no_flush(msg)
         else:
-            sys.stdout.writelines(msg)
-            sys.stderr.writelines(msg)
+            print(msg, end="", flush=False, file=sys.stdout)
+            print(msg, end="", flush=False, file=sys.stderr)
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         task_exception = False
