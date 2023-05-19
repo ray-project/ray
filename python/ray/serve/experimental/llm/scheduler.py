@@ -4,7 +4,7 @@ import ray
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import List
+from typing import List, Tuple
 from ray.serve.experimental.llm.worker import InferenceWorker
 from ray.serve.experimental.llm.types import (
     SamplingParams,
@@ -70,31 +70,45 @@ class InferenceScheduler:
 
     def _process_next_batch(self):
         requests = self._select_requests()
-        generations, current_batch_id = self._inference_worker.process_new_batch(
-            requests
-        )
-        requests = self._process_generations(generations, requests)
-        current_batch_id = self._inference_worker.filter_requests(
-            current_batch_id, [r.id for r in requests]
-        )
+        current_batch_id, requests = self._process_new_batch(requests)
 
         while current_batch_id is not None:
-            delta_requests = self._select_requests()
-            generations, delta_batch_id = self._inference_worker.process_new_batch(
-                delta_requests
-            )
-            delta_requests = self._process_generations(generations, delta_requests)
-            delta_requests = self._inference_worker.filter_requests(
-                delta_batch_id, [r.id for r in delta_requests]
+            additional_requests = self._select_requests()
+            additional_batch_id, additional_requests = self._process_new_batch(
+                additional_requests
             )
 
             generations, current_batch_id = self._inference_worker.generate_next_token(
-                [current_batch_id, delta_batch_id]
+                [current_batch_id, additional_batch_id]
             )
-            requests = self._process_generations(generations, requests + delta_requests)
+            requests = self._process_generations(
+                generations, requests + additional_requests
+            )
             current_batch_id = self._inference_worker.filter_requests(
                 current_batch_id, [r.id for r in requests]
             )
+
+    def _process_new_batch(
+        self, requests: List[PendingRequest]
+    ) -> Tuple[int, List[PendingRequest]]:
+        generations, batch_id = self._inference_worker.process_new_batch(requests)
+        requests = self._process_generations(generations, requests)
+        batch_id = self._inference_worker.filter_requests(
+            batch_id, [r.id for r in requests]
+        )
+        return batch_id, requests
+
+    def _generate_next_token(
+        self, batch_ids: List[int], requests: List[PendingRequest]
+    ) -> List[Generation]:
+        generations, batch_id = self._inference_worker.generate_next_token(
+            batch_ids,
+        )
+        requests = self._process_generations(generations, requests)
+        batch_id = self._inference_worker.filter_requests(
+            batch_id, [r.id for r in requests]
+        )
+        return batch_id, requests
 
     def _process_generations(
         self, generations: List[Generation], requests: List[PendingRequest]

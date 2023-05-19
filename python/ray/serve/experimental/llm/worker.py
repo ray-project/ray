@@ -22,10 +22,14 @@ class InferenceWorker:
             raise ValueError("Must provide at least one batch")
         batch_states = []
         for batch_id in batch_ids:
+            if batch_id is None:
+                continue
             batch_state = self._batch_state_cache.pop(batch_id)
             if batch_state is None:
                 raise ValueError(f"Batch ID {batch_id} not found in cache.")
             batch_states.append(batch_state)
+
+        assert len(batch_states) > 0
 
         if len(batch_states) > 1:
             batch_state = self._model.concatenate_batches(batch_states)
