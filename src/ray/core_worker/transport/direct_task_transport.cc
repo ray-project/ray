@@ -26,7 +26,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(
   RAY_LOG(DEBUG) << "Submit task " << task_spec->TaskId();
   num_tasks_submitted_++;
 
-  resolver_.ResolveDependencies(*task_spec, [this, task_spec](Status status) {
+  resolver_.ResolveDependencies(*task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
     // mutable. (Mutations to the variable are expected to be shared inside and
     // outside of this closure).

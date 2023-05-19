@@ -530,10 +530,10 @@ void TaskSpecification::EmitTaskMetrics() const {
                       1000;
 
   if (IsActorCreationTask()) {
-    stats::STATS_workload_placement_time_s.Record(duration_s,
+    stats::STATS_scheduler_placement_time_s.Record(duration_s,
                                                   {{"WorkloadType", "Actor"}});
   } else {
-    stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
+    stats::STATS_scheduler_placement_time_s.Record(duration_s, {{"WorkloadType", "Task"}});
   }
 }
 

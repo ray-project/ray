@@ -23,14 +23,6 @@
 namespace ray {
 namespace gcs {
 
-void RecordTaskMetrics(const TaskSpecification &task_spec) {
-  double duration_s = (task_spec.GetMessage().lease_grant_timestamp_ms() -
-                       task_spec.GetMessage().dependency_resolution_timestamp_ms()) /
-                      1000;
-
-  stats::STATS_workload_placement_time_s.Record(duration_s, {{"WorkloadType", "Actor"}});
-}
-
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context,
     GcsActorTable &gcs_actor_table,
