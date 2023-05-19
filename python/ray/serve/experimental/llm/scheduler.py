@@ -68,6 +68,19 @@ class InferenceScheduler:
         self._executor_loop.run_until_complete(self._schedule_request())
 
     async def _schedule_request(self):
+        """Schedule requests to be processed by the inference worker."""
+
+        # The main schedule loop:
+        #
+        # 0. start with empty in-process requests.
+        #
+        # 1. select new requests to process, based
+        # on the current in-process requests. send them to the inference worker.
+        #
+        # 2. for both new and in-process requests, combine them
+        # and generate the next token. filter out finished requests.
+        #
+        # 3. repeat.
         batch_id = None
         in_process_requests = []
         while True:
