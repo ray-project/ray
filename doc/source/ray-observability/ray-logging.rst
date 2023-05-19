@@ -10,7 +10,7 @@ When ``import ray`` is executed, Ray's logger is initialized, generating a sensi
 
 All ray loggers are automatically configured in ``ray._private.ray_logging``. To change the Ray library logging configuration:
 
-.. code-block:: python
+.. testcode::
 
    import logging
 
@@ -19,7 +19,7 @@ All ray loggers are automatically configured in ``ray._private.ray_logging``. To
 
 Similarly, to modify the logging configuration for any Ray subcomponent, specify the appropriate logger name:
 
-.. code-block:: python
+.. testcode::
 
    import logging
 
@@ -61,11 +61,9 @@ Ray's tasks or actors are executed remotely within Ray's worker processes. Ray h
 
 Let's look at a code example to see how this works.
 
-.. code-block:: python
+.. testcode::
 
     import ray
-    # Initiate a driver.
-    ray.init()
 
     @ray.remote
     def task():
@@ -77,9 +75,10 @@ You should be able to see the string `task` from your driver stdout.
 
 When logs are printed, the process id (pid) and an IP address of the node that executes tasks/actors are printed together. Check out the output below.
 
-.. code-block:: bash
+.. testoutput::
+    :options: +SKIP
 
-    (pid=45601) task
+    (task pid=7976) task
 
 Actor log messages look like the following by default.
 
@@ -92,7 +91,7 @@ Log deduplication
 
 By default, Ray will deduplicate logs that appear redundantly across multiple processes. The first instance of each log message will always be immediately printed. However, subsequent log messages of the same pattern (ignoring words with numeric components) will be buffered for up to five seconds and printed in batch. For example, for the following code snippet:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     import random
@@ -105,9 +104,9 @@ By default, Ray will deduplicate logs that appear redundantly across multiple pr
 
 The output will be as follows:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +SKIP
 
-    2023-03-27 15:08:34,195	INFO worker.py:1603 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
     (task pid=534172) Hello there, I am a task 0.20583517821231412
     (task pid=534174) Hello there, I am a task 0.17536720316370757 [repeated 99x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication)
 
@@ -124,7 +123,13 @@ Disabling logging to the driver
 
 In large scale runs, it may be undesirable to route all worker logs to the driver. You can disable this feature by setting ``log_to_driver=False`` in Ray init:
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    import ray
+    ray.shutdown()
+
+.. testcode::
 
     import ray
 
@@ -183,12 +188,10 @@ When using Ray, all tasks and actors are executed remotely in Ray's worker proce
 
     To stream logs to a driver, they should be flushed to stdout and stderr.
 
-.. code-block:: python
+.. testcode::
 
     import ray
     import logging
-    # Initiate a driver.
-    ray.init()
 
     @ray.remote
     class Actor:
@@ -223,21 +226,20 @@ How to use structured logging
 The metadata of tasks or actors may be obtained by Ray's :ref:`runtime_context APIs <runtime-context-apis>`.
 Runtime context APIs help you to add metadata to your logging messages, making your logs more structured.
 
-.. code-block:: python
+.. testcode::
 
     import ray
-    # Initiate a driver.
-    ray.init()
 
     @ray.remote
     def task():
-        print(f"task_id: {ray.get_runtime_context().task_id}")
+        print(f"task_id: {ray.get_runtime_context().get_task_id()}")
 
     ray.get(task.remote())
 
-.. code-block:: bash
+.. testoutput::
+    :options: +SKIP
 
-    (pid=47411) task_id: TaskID(a67dc375e60ddd1affffffffffffffffffffffff01000000)
+    (task pid=12842) task_id: 32d950ec0ccf9d2affffffffffffffffffffffff01000000
 
 Logging directory structure
 ---------------------------
@@ -306,7 +308,15 @@ This should make it easier to filter the stderr stream of logs down to the compo
 
 When running a local Ray cluster, this environment variable should be set before starting the local cluster:
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    ray.shutdown()
+
+.. testcode::
+
+    import os
+    import ray
 
     os.environ["RAY_LOG_TO_STDERR"] = "1"
     ray.init()
@@ -331,7 +341,8 @@ If using the Ray cluster launcher, you would specify this environment variable i
 
 When connecting to the cluster, be sure to set the environment variable before connecting:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     os.environ["RAY_LOG_TO_STDERR"] = "1"
     ray.init(address="auto")
