@@ -154,6 +154,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
       const GetObjectLocationsOwnerRequest &request,
       const ClientCallback<GetObjectLocationsOwnerReply> &callback) {}
 
+  virtual void ReportGeneratorItemReturns(
+      const ReportGeneratorItemReturnsRequest &request,
+      const ClientCallback<ReportGeneratorItemReturnsReply> &callback) {}
+
   /// Tell this actor to exit immediately.
   virtual void KillActor(const KillActorRequest &request,
                          const ClientCallback<KillActorReply> &callback) {}
@@ -279,6 +283,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          GetObjectLocationsOwner,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         ReportGeneratorItemReturns,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

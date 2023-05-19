@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 from contextlib import redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional, Union, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
 import warnings
 
 import ray
@@ -19,6 +19,11 @@ from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
+)
+from ray.air.constants import (
+    TIMESTAMP,
+    TIME_THIS_ITER_S,
+    TRAINING_ITERATION,
 )
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -33,12 +38,9 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
     STDERR_FILE,
     STDOUT_FILE,
-    TIME_THIS_ITER_S,
     TIME_TOTAL_S,
-    TIMESTAMP,
     TIMESTEPS_THIS_ITER,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
     TRIAL_ID,
     TRIAL_INFO,
 )
@@ -108,10 +110,10 @@ class Trainable:
     def __init__(
         self,
         config: Dict[str, Any] = None,
-        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
+        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
         remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,  # Deprecated
-        sync_timeout: Optional[int] = None,  # Deprecated
+        custom_syncer: Optional[Syncer] = None,  # Deprecated (2.6)
+        sync_timeout: Optional[int] = None,  # Deprecated (2.6)
         sync_config: Optional[SyncConfig] = None,
     ):
         """Initialize a Trainable.
@@ -125,7 +127,7 @@ class Trainable:
         Args:
             config: Trainable-specific configuration data. By default
                 will be saved as ``self.config``.
-            logger_creator: Function that creates a ray.tune.Logger
+            logger_creator: (Deprecated) Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
@@ -140,6 +142,7 @@ class Trainable:
         if self.is_actor():
             disable_ipython()
 
+        # TODO(ml-team): Remove `logger_creator` in 2.7.
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
 
