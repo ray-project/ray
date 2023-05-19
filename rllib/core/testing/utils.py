@@ -120,7 +120,6 @@ def get_learner(
     # that is used in the learner.
     learner = _cls(
         module_spec=spec,
-        optimizer_config={"lr": learning_rate},
         learner_group_scaling_config=LearnerGroupScalingConfig(),
         framework_hyperparameters=FrameworkHyperparameters(eager_tracing=eager_tracing),
     )
@@ -162,7 +161,6 @@ def get_learner_group(
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
-        optimizer_config={"lr": learning_rate},
         learner_group_scaling_config=scaling_config,
         framework_hyperparameters=framework_hps,
     )

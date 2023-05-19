@@ -7,6 +7,7 @@ from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.schedules.scheduler import Scheduler
+from ray.rllib.utils.typing import TensorType
 
 
 LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY = "vf_loss_unclipped"
@@ -41,38 +42,47 @@ class PPOLearner(Learner):
     def build(self) -> None:
         super().build()
 
-        # Build entropy coeff scheduling tools.
-        self.entropy_coeff_schedulers_per_module = {
-            module_id: Scheduler(
-                fixed_value=self.hps.entropy_coeff,
-                schedule=self.hps.entropy_coeff_schedule,
-                framework=self.framework,
-                device=self._device,
-            )
-            for module_id in self.module.keys()
-        }
+        # Dict mapping module IDs to the respective entropy Scheduler instance.
+        self.entropy_coeff_schedulers_per_module: Dict[ModuleID, Scheduler] = {}
 
         # Set up KL coefficient variables (per module).
-        # Note that the KL coeff is not controlled by a schedul, but seeks
+        # Note that the KL coeff is not controlled by a Scheduler, but seeks
         # to stay close to a given kl_target value.
-        self.curr_kl_coeffs_per_module = defaultdict(
-            lambda: self._get_tensor_variable(self.hps.kl_coeff)
-        )
+        self.curr_kl_coeffs_per_module: Dict[ModuleID, TensorType] = {}
 
     @override(Learner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
+    def additional_update_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: PPOLearnerHyperparameters,
+        timestep: int,
+        sampled_kl_values: dict,
     ) -> Dict[str, Any]:
-        results = super().additional_update_per_module(
-            module_id,
+        results = super().additional_update_for_module(
+            module_id=module_id,
+            hps=hps,
             sampled_kl_values=sampled_kl_values,
             timestep=timestep,
         )
 
+        # Make sure we have a proper entropy scheduler under the given `module_id`.
+        if module_id not in self.entropy_coeff_schedulers_per_module:
+            self.entropy_coeff_schedulers_per_module[module_id] = Scheduler(
+                fixed_value_or_schedule=hps.entropy_coeff,
+                framework=self.framework,
+                device=self._device,
+            )
         # Update entropy coefficient via our Scheduler.
         new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
             timestep=timestep
         )
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
+
+        # Make sure we have a proper tensor KL variable under the given `module_id`.
+        if module_id not in self.curr_kl_coeffs_per_module:
+            self.curr_kl_coeffs_per_module[module_id] = self._get_tensor_variable(
+                hps.kl_coeff
+            )
 
         return results

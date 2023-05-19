@@ -29,7 +29,10 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.minibatch_utils import (
@@ -38,7 +41,6 @@ from ray.rllib.utils.minibatch_utils import (
 )
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
-from ray.rllib.utils.tf_utils import clip_gradients
 from ray.rllib.utils.typing import TensorType, ResultDict
 
 
@@ -81,12 +83,17 @@ class TfLearner(Learner):
         # `_make_distributed_strategy_if_necessary`.
         self._strategy: tf.distribute.Strategy = None
 
+    @OverrideToImplementCustomLogic
     @override(Learner)
-    def configure_optimizer_per_module(
-        self, module_id: ModuleID
+    def configure_optimizers_for_module(
+        self, module_id: ModuleID, hps: LearnerHyperparameters
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        optim = tf.keras.optimizers.Adam()
+
+        # Use keras' convenience method to get the proper optimizer class, no
+        # matter upper/lower case.
+        optim_class = tf.keras.optimizers.get(hps.optimizer_type)
+        optim = optim_class()
         pair: ParamOptimizerPair = (self.get_parameters(module), optim)
 
         # This isn't strictly necessary, but makes it so that if a checkpoint is
@@ -104,21 +111,6 @@ class TfLearner(Learner):
     ) -> ParamDictType:
         grads = gradient_tape.gradient(loss_per_module[ALL_MODULES], self._params)
         return grads
-
-    @override(Learner)
-    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
-        # Perform gradient clipping, if necessary.
-        clip_by = self._optimizer_config.get("grad_clip_by")
-        global_norm = clip_gradients(
-            gradients_dict,
-            grad_clip=self._optimizer_config.get("grad_clip"),
-            grad_clip_by=clip_by,
-        )
-
-        if clip_by == "global_norm":
-            self.register_metric(ALL_MODULES, "gradients_global_norm", global_norm)
-
-        return gradients_dict
 
     @override(Learner)
     def apply_gradients(self, gradients: ParamDictType):
@@ -522,15 +514,6 @@ class TfLearner(Learner):
         return self._strategy.run(helper, args=(batch,))
 
     @override(Learner)
-    def _set_optimizer_lr(self, optimizer: "tf.Optimizer", lr: float) -> None:
-        # Not sure why we need to do this here besides setting the original
-        # tf Variable via our schedule objects. But when tf creates the
-        # optimizer, it seems to detach its lr value from the given variable.
-        # Thus, updating this variable is NOT sufficient to update the actual
-        # optimizer's learning rate, so we have to explicitly set it here.
-        optimizer.lr = lr
-
-    @override(Learner)
     def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
         return tf.Variable(
             value,
@@ -546,3 +529,20 @@ class TfLearner(Learner):
                 )
             ),
         )
+
+    @override(Learner)
+    @staticmethod
+    def _set_optimizer_lr(optimizer: "tf.Optimizer", lr: float) -> None:
+        # Not sure why we need to do this here besides setting the original
+        # tf Variable via our schedule objects. But when tf creates the
+        # optimizer, it seems to detach its lr value from the given variable.
+        # Thus, updating this variable is NOT sufficient to update the actual
+        # optimizer's learning rate, so we have to explicitly set it here.
+        optimizer.lr = lr
+
+    @override(Learner)
+    @staticmethod
+    def _get_clip_function() -> Callable:
+        from ray.rllib.utils.tf_utils import clip_gradients
+
+        return clip_gradients

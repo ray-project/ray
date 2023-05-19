@@ -21,7 +21,7 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.learner.learner import LearnerHyperparameters
+from ray.rllib.core.learner.learner import LearnerHyperparameters, LearningRateType
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -330,10 +330,11 @@ class AlgorithmConfig(_Config):
 
         # `self.training()`
         self.gamma = 0.99
+        self.optimizer_type = "adam"
         self.lr = 0.001
-        self.lr_schedule = None
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
+
         self.train_batch_size = 32
         self.model = copy.deepcopy(MODEL_DEFAULTS)
         self.optimizer = {}
@@ -897,7 +898,7 @@ class AlgorithmConfig(_Config):
 
         # LR-schedule checking.
         if self._enable_learner_api:
-            Scheduler.validate(self.lr_schedule, "lr_schedule", "learning rate")
+            Scheduler.validate(self.lr, "lr_schedule", "learning rate")
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -1637,10 +1638,11 @@ class AlgorithmConfig(_Config):
         self,
         *,
         gamma: Optional[float] = NotProvided,
-        lr: Optional[float] = NotProvided,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
-        grad_clip: Optional[float] = NotProvided,
-        grad_clip_by: Optional[str] = NotProvided,
+        optimizer_type: Optional[Union[str, Dict[str, str]]] = NotProvided,
+        lr: Optional[Union[float, Dict[str, float]]] = NotProvided,
+        #lr_schedule: Optional[LearningRateType] = NotProvided,
+        grad_clip: Optional[Union[float, Dict[str, float]]] = NotProvided,
+        grad_clip_by: Optional[Union[str, Dict[str, str]]] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
@@ -1652,24 +1654,40 @@ class AlgorithmConfig(_Config):
 
         Args:
             gamma: Float specifying the discount factor of the Markov Decision process.
-            lr: The default learning rate.
-            lr_schedule: Learning rate schedule. In the format of
+            optimizer_type: The type of the optimizer to use. RLlib will try to
+                translate this string into a matching tf or torch optimizer class, e.g.
+                "adam" -> `torch.optim.Adam` or `tf.keras.optimizers.Adam`.
+                Alternatively, provide a dict here, mapping optimizer names (str) to
+                individual optimizer_type settings (str). In this
+                case, it is expected that your Learner subclass returns these exact
+                names and optimizers from the
+                `Learner.configure_optimizers_for_module()` method.
+            lr: The learning rate (float) or learning rate schedule in the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
-                Intermediary timesteps will be assigned to interpolated learning rate
-                values. A schedule config's first entry must start with timestep 0,
-                i.e.: [[0, initial_value], [...]].
-            grad_clip: The value to use for gradient clipping. Depending on the
+                In case of a schedule, intermediary timesteps will be assigned to
+                interpolated learning rate values. A schedule config's first entry must
+                start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Alternatively, provide a dict here, mapping optimizer names (str) to
+                individual learning rates (float) or learning rate schedules (see
+                above). In this case, it is expected that your Learner subclass returns
+                these exact names and optimizers from the
+                `Learner.configure_optimizers_for_module()` method.
+            grad_clip: The value (float) to use for gradient clipping. Depending on the
                 `grad_clip_by` setting, gradients will either be clipped by value,
                 norm, or global_norm (see docstring on `grad_clip_by` below for more
                 details). If `grad_clip` is None, gradients will be left unclipped.
-            grad_clip_by: If 'value': Will clip all computed gradients individually
+                Alternatively, provide a dict here, mapping optimizer names (str) to
+                individual `grad_clip` (float) settings, in which case, it is expected
+                that your Learner subclass returns these exact names and optimizers
+                from the `Learner.configure_optimizers_for_module()` method.
+            grad_clip_by: If "value": Will clip all computed gradients individually
                 inside the interval [-grad_clip, +grad_clip].
-                If 'norm', will compute the L2-norm of each weight/bias
+                If "norm", will compute the L2-norm of each weight/bias
                 gradient tensor and then clip all gradients such that this L2-norm does
                 not exceed `grad_clip`. The L2-norm of a tensor is computed via:
                 `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of the
                 tensor (no matter what the shape of this tensor is).
-                If 'global_norm', will compute the square of the L2-norm of each
+                If "global_norm", will compute the square of the L2-norm of each
                 weight/bias gradient tensor, sum up all these squared L2-norms across
                 all given gradient tensors (e.g. the entire module to
                 be updated), square root that overall sum, and then clip all gradients
@@ -1681,11 +1699,16 @@ class AlgorithmConfig(_Config):
                 the shapes of these tensors are).
                 Note that if `grad_clip` is None, the `grad_clip_by` setting has no
                 effect.
+                Alternatively, provide a dict here, mapping optimizer names (str) to
+                individual `grad_clip_by` (str) settings, in which case, it is expected
+                that your Learner subclass returns these exact names and optimizers
+                from the `Learner.configure_optimizers_for_module()` method.
             train_batch_size: Training batch size, if applicable.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
-            optimizer: Arguments to pass to the policy optimizer.
+            optimizer: Arguments to pass to the policy optimizer. Not used when
+                _enable_learner_api=True.
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the FaultTolerantActorManager class for
                 more details.
@@ -1707,10 +1730,10 @@ class AlgorithmConfig(_Config):
         """
         if gamma is not NotProvided:
             self.gamma = gamma
+        if optimizer_type is not NotProvided:
+            self.optimizer_type = optimizer_type
         if lr is not NotProvided:
             self.lr = lr
-        if lr_schedule is not NotProvided:
-            self.lr_schedule = lr_schedule
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if grad_clip_by is not NotProvided:
@@ -3218,12 +3241,12 @@ class AlgorithmConfig(_Config):
                 # TODO (Sven): Shouldn't optimizer config be part of learner HPs?
                 #  E.g. if we have a lr schedule, this will have to be managed by
                 #  the learner, NOT the optimizer directly.
-                optimizer_config={
-                    "lr": self.lr,
-                    "lr_schedule": self.lr_schedule,
-                    "grad_clip": self.grad_clip,
-                    "grad_clip_by": self.grad_clip_by,
-                },
+                #optimizer_config={
+                #    "lr": self.lr,
+                #    "lr_schedule": self.lr_schedule,
+                #    "grad_clip": self.grad_clip,
+                #    "grad_clip_by": self.grad_clip_by,
+                #},
                 learner_hyperparameters=self.get_learner_hyperparameters(),
             )
             .resources(
@@ -3253,7 +3276,12 @@ class AlgorithmConfig(_Config):
         Note that LearnerHyperparameters should always be derived directly from a
         AlgorithmConfig object's own settings and considered frozen/read-only.
         """
-        return LearnerHyperparameters()
+        return LearnerHyperparameters(
+            optim_type=self.optimizer_type,
+            learning_rate=self.lr,
+            grad_clip=self.grad_clip,
+            grad_clip_by=self.grad_clip_by,
+        )
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""

@@ -1,15 +1,22 @@
 import torch
 from typing import Any, Mapping
 
+from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.core.testing.testing_learner import BaseTestingLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.typing import TensorType
 
 
 class BCTorchLearner(TorchLearner, BaseTestingLearner):
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: LearnerHyperparameters,
+        batch: SampleBatch,
+        fwd_out: Mapping[str, TensorType],
     ) -> Mapping[str, Any]:
 
         action_dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]

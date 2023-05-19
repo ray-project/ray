@@ -2,6 +2,7 @@ import logging
 import pathlib
 from typing import (
     Any,
+    Callable,
     Hashable,
     Mapping,
     Optional,
@@ -71,14 +72,12 @@ class TorchLearner(Learner):
         self._device = None
 
     @override(Learner)
-    def configure_optimizer_per_module(
+    def configure_optimizers_for_module(
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        pair: ParamOptimizerPair = (
-            self.get_parameters(module),
-            torch.optim.Adam(self.get_parameters(module)),
-        )
+        parameters = self.get_parameters(module)
+        pair: ParamOptimizerPair = (parameters, torch.optim.Adam(parameters))
         return pair
 
     @override(Learner)
@@ -92,21 +91,6 @@ class TorchLearner(Learner):
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
-
-    @override(Learner)
-    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
-        # Perform gradient clipping, if necessary.
-        clip_by = self._optimizer_config.get("grad_clip_by")
-        global_norm = clip_gradients(
-            gradients_dict,
-            grad_clip=self._optimizer_config.get("grad_clip"),
-            grad_clip_by=clip_by,
-        )
-
-        if clip_by == "global_norm":
-            self.register_metric(ALL_MODULES, "gradients_global_norm", global_norm)
-
-        return gradients_dict
 
     @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
@@ -309,11 +293,6 @@ class TorchLearner(Learner):
                     module[key].to(self._device)
 
     @override(Learner)
-    def _set_optimizer_lr(self, optimizer: "torch.optim.Optimizer", lr: float) -> None:
-        for g in optimizer.param_groups:
-            g["lr"] = lr
-
-    @override(Learner)
     def _get_tensor_variable(
         self, value, dtype=None, trainable=False
     ) -> "torch.Tensor":
@@ -332,3 +311,16 @@ class TorchLearner(Learner):
                 )
             ),
         )
+
+    @override(Learner)
+    @staticmethod
+    def _set_optimizer_lr(optimizer: "torch.optim.Optimizer", lr: float) -> None:
+        for g in optimizer.param_groups:
+            g["lr"] = lr
+
+    @override(Learner)
+    @staticmethod
+    def _get_clip_function() -> Callable:
+        from ray.rllib.utils.torch_utils import clip_gradients
+
+        return clip_gradients

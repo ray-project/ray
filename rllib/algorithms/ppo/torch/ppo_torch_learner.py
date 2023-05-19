@@ -7,6 +7,7 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
     PPOLearner,
+    PPOLearnerHyperparameters,
 )
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
@@ -26,12 +27,17 @@ logger = logging.getLogger(__name__)
 class PPOTorchLearner(PPOLearner, TorchLearner):
     """Implements torch-specific PPO loss logic on top of PPOLearner.
 
-    This class implements the ppo loss under `_compute_loss_per_module()`.
+    This class implements the ppo loss under `self.compute_loss_for_module()`.
     """
 
     @override(TorchLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: PPOLearnerHyperparameters,
+        batch: SampleBatch,
+        fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
         # TODO (Kourosh): batch type is NestedDict.
         # TODO (Kourosh): We may or may not user module_id. For example if we have an
@@ -59,7 +65,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
-        if self.hps.kl_coeff > 0.0:
+        if hps.kl_coeff > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = torch.mean(action_kl)
             if mean_kl_loss.isinf():
@@ -82,14 +88,14 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         surrogate_loss = torch.min(
             batch[Postprocessing.ADVANTAGES] * logp_ratio,
             batch[Postprocessing.ADVANTAGES]
-            * torch.clamp(logp_ratio, 1 - self.hps.clip_param, 1 + self.hps.clip_param),
+            * torch.clamp(logp_ratio, 1 - hps.clip_param, 1 + hps.clip_param),
         )
 
         # Compute a value function loss.
-        if self.hps.use_critic:
+        if hps.use_critic:
             value_fn_out = fwd_out[SampleBatch.VF_PREDS]
             vf_loss = torch.pow(value_fn_out - batch[Postprocessing.VALUE_TARGETS], 2.0)
-            vf_loss_clipped = torch.clamp(vf_loss, 0, self.hps.vf_clip_param)
+            vf_loss_clipped = torch.clamp(vf_loss, 0, hps.vf_clip_param)
             mean_vf_loss = torch.mean(vf_loss_clipped)
             mean_vf_unclipped_loss = torch.mean(vf_loss)
         # Ignore the value function.
@@ -100,7 +106,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         total_loss = torch.mean(
             -surrogate_loss
-            + self.hps.vf_loss_coeff * vf_loss_clipped
+            + hps.vf_loss_coeff * vf_loss_clipped
             - (
                 self.entropy_coeff_schedulers_per_module[module_id].get_current_value()
                 * curr_entropy
@@ -109,7 +115,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
-        if self.hps.kl_coeff > 0.0:
+        if hps.kl_coeff > 0.0:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
         # Register important loss stats.
@@ -130,24 +136,30 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         return total_loss
 
     @override(PPOLearner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
+    def additional_update_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: PPOLearnerHyperparameters,
+        timestep: int,
+        sampled_kl_values: dict,
     ) -> Dict[str, Any]:
         assert sampled_kl_values, "Sampled KL values are empty."
 
-        results = super().additional_update_per_module(
-            module_id,
-            sampled_kl_values=sampled_kl_values,
+        results = super().additional_update_for_module(
+            module_id=module_id,
+            hps=hps,
             timestep=timestep,
+            sampled_kl_values=sampled_kl_values,
         )
 
         # Update KL coefficient.
         sampled_kl = sampled_kl_values[module_id]
         curr_var = self.curr_kl_coeffs_per_module[module_id]
-        if sampled_kl > 2.0 * self.hps.kl_target:
+        if sampled_kl > 2.0 * hps.kl_target:
             # TODO (Kourosh) why not 2?
             curr_var.data *= 1.5
-        elif sampled_kl < 0.5 * self.hps.kl_target:
+        elif sampled_kl < 0.5 * hps.kl_target:
             curr_var.data *= 0.5
         results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
 
