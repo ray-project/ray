@@ -374,7 +374,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
 
 def test_map_batches_extra_args(shutdown_only, tmp_path):
     ray.shutdown()
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=3)
 
     def put(x):
         # We only support automatic deref in the legacy backend.
