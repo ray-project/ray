@@ -29,8 +29,6 @@ from ray.serve.experimental.llm.types import (
     GeneratedText,
 )
 
-# from text_generation_server.utils import NextTokenChooser, StoppingCriteria, Sampling
-
 
 @dataclass
 class CausalLMBatch(Batch):

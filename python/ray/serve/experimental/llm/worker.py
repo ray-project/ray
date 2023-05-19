@@ -9,7 +9,7 @@ class InferenceWorker:
         self._model = model_loader()
         self._batch_state_cache = dict()
 
-    async def process_new_batch(
+    def process_new_batch(
         self, requests: List[GenerationRequest]
     ) -> Tuple[List[Generation], int]:
         batch_state = self._model.create_batch(requests)
@@ -17,9 +17,7 @@ class InferenceWorker:
         self._batch_state_cache[batch_state.id] = batch_state
         return generations, batch_state.id
 
-    async def generate_next_token(
-        self, batch_ids: List[int]
-    ) -> Tuple[List[Generation], int]:
+    def generate_next_token(self, batch_ids: List[int]) -> Tuple[List[Generation], int]:
         if len(batch_ids) == 0:
             raise ValueError("Must provide at least one batch")
         batch_states = []
@@ -38,12 +36,15 @@ class InferenceWorker:
         self._batch_state_cache[batch_state.id] = batch_state
         return generations, batch_state.id
 
-    async def delete_finished_requests(
-        self, batch_id: int, request_ids: List[int]
-    ) -> Optional[int]:
+    def filter_requests(self, batch_id: int, request_ids: List[int]) -> Optional[int]:
         batch_state = self._batch_state_cache.pop(batch_id)
+
+        if len(request_ids) == 0:
+            return None
+
         filtered = batch_state.filter(request_ids)
         if len(filtered):
             self._batch_state_cache[filtered.id] = filtered
             return filtered.id
+
         return None
