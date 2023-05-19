@@ -153,7 +153,7 @@ from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
-from ray._private.utils import decode, DeferSigint
+from ray._private.utils import decode, DeferSigint, Unbuffered
 
 cimport cpython
 
@@ -837,6 +837,14 @@ cdef void execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
+    def write_to_stdout_and_err_no_flush(msg):
+        if isinstance(sys.stdout, Unbuffered):
+            sys.stdout.writelines_no_flush(msg)
+            sys.stderr.writelines_no_flush(msg)
+        else:
+            sys.stdout.writelines(msg)
+            sys.stderr.writelines(msg)
+
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         task_exception = False
         try:
@@ -894,9 +902,8 @@ cdef void execute_task(
                 task_attempt_magic_token = "{}{}-{}\n".format(
                     ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
                     attempt_number)
-                # Print on both .out and .err
-                print(task_attempt_magic_token, end="")
-                print(task_attempt_magic_token, file=sys.stderr, end="")
+                # Print on both .out and .err with buffering.
+                write_to_stdout_and_err_no_flush(task_attempt_magic_token)
 
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
@@ -954,9 +961,8 @@ cdef void execute_task(
                         task_attempt_magic_token = "{}{}-{}\n".format(
                             ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
                             attempt_number)
-                        # Print on both .out and .err
-                        worker._out_file.write(task_attempt_magic_token)
-                        worker._err_file.write(task_attempt_magic_token)
+                        # Print on both .out and .err with buffering
+                        write_to_stdout_and_err_no_flush(task_attempt_magic_token)
 
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
