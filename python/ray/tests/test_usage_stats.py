@@ -1281,18 +1281,10 @@ def test_usage_report_disabled(monkeypatch, ray_start_cluster, reset_usage_stats
             if "dashboard.log" in str(path):
                 with open(str(path), "r") as f:
                     contents = f.readlines()
+                break
         assert contents is not None
-
-        keyword_found = False
-        for c in contents:
-            if "Usage reporting is disabled" in c:
-                keyword_found = True
-
-        # Make sure the module was disabled.
-        assert keyword_found
-
-        for c in contents:
-            assert "Failed to report usage stats" not in c
+        assert any(["Usage reporting is disabled" in c for c in contents])
+        assert all(["Failed to report usage stats" not in c for c in contents])
 
 
 def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_usage_stats):

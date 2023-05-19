@@ -36,19 +36,18 @@ ray.get([verbose.remote() for _ in range(10)])
     assert out_str.count("[repeated 9x across cluster]") == 1
 
 
-def test_logger_config():
+def test_logger_config_with_ray_init():
+    """Test that the logger is correctly configured when ray.init is called."""
+
     script = """
 import ray
 
 ray.init(num_cpus=1)
     """
 
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
-
-    print(out_str, err_str)
-    assert "INFO worker.py:" in err_str, err_str
+    out_str = run_string_as_driver(script)
+    assert "INFO" in out_str, out_str
+    assert "ray._private.worker" in out_str, out_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -501,17 +500,13 @@ ray.init()
     """
     output = run_string_as_driver(script)
     lines = output.strip("\n").split("\n")
-    for line in lines:
-        print(line)
     lines = [line for line in lines if "The object store is using /tmp" not in line]
-    assert len(lines) == 1
-    line = lines[0]
-    print(line)
-    assert "Started a local Ray instance." in line
+    assert len(lines) >= 1
+    assert "Started a local Ray instance." in output
     if os.environ.get("RAY_MINIMAL") == "1":
-        assert "View the dashboard" not in line
+        assert "View the dashboard" not in output
     else:
-        assert "View the dashboard" in line
+        assert "View the dashboard" in output
 
 
 def test_output_ray_cluster(call_ray_start):
@@ -521,15 +516,13 @@ ray.init()
     """
     output = run_string_as_driver(script)
     lines = output.strip("\n").split("\n")
-    for line in lines:
-        print(line)
-    assert len(lines) == 2
-    assert "Connecting to existing Ray cluster at address:" in lines[0]
-    assert "Connected to Ray cluster." in lines[1]
+    assert len(lines) >= 1
+    assert "Connecting to existing Ray cluster at address:" in output
+    assert "Connected to Ray cluster." in output
     if os.environ.get("RAY_MINIMAL") == "1":
-        assert "View the dashboard" not in lines[1]
+        assert "View the dashboard" not in output
     else:
-        assert "View the dashboard" in lines[1]
+        assert "View the dashboard" in output
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

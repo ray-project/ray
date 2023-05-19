@@ -10,7 +10,7 @@ import ray
 from ray import serve
 
 from ray._private.test_utils import wait_for_condition
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import pytest_runtest_makereport, propagate_logs  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152

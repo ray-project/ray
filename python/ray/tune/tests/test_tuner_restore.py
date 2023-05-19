@@ -37,6 +37,17 @@ from ray.tune.tuner import Tuner
 
 
 @pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
+
+
+@pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2, configure_logging=False)
     yield address_info
@@ -1166,7 +1177,7 @@ def testParamSpaceOverwrite(ray_start_4_cpus, tmp_path, monkeypatch):
         assert r.config["test2"].name in ["11", "12", "13", "14"]
 
 
-def test_tuner_pkl_backwards_compatibility(tmp_path, caplog):
+def test_tuner_pkl_backwards_compatibility(tmp_path, propagate_logs, caplog):
     tuner_internal = Tuner(
         _train_fn_sometimes_failing, param_space={"a": 1}
     )._local_tuner

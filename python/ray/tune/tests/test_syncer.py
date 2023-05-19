@@ -32,6 +32,17 @@ from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
 @pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
+
+
+@pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4, configure_logging=False)
     yield address_info
@@ -470,7 +481,7 @@ def test_syncer_hanging_sync_with_timeout(temp_data_dirs):
             syncer.wait()
 
 
-def test_syncer_not_running_sync_last_failed(caplog, temp_data_dirs):
+def test_syncer_not_running_sync_last_failed(propagate_logs, caplog, temp_data_dirs):
     """Check that new sync is issued if old sync completed"""
     caplog.set_level(logging.WARNING)
 

@@ -6,7 +6,9 @@ from ray.widgets.util import repr_with_fallback
 
 @mock.patch("importlib.import_module")
 @mock.patch("ray.widgets.util.in_notebook")
-def test_ensure_notebook_dep_missing(mock_in_notebook, mock_import_module, caplog):
+def test_ensure_notebook_dep_missing(
+    mock_in_notebook, mock_import_module, propagate_logs, caplog
+):
     """Test that missing notebook dependencies trigger a warning."""
 
     class MockDep:
@@ -32,7 +34,9 @@ def test_ensure_notebook_dep_missing(mock_in_notebook, mock_import_module, caplo
 
 @mock.patch("importlib.import_module")
 @mock.patch("ray.widgets.util.in_notebook")
-def test_ensure_notebook_dep_outdated(mock_in_notebook, mock_import_module, caplog):
+def test_ensure_notebook_dep_outdated(
+    mock_in_notebook, mock_import_module, propagate_logs, caplog
+):
     """Test that outdated notebook dependencies trigger a warning."""
 
     class MockDep:
@@ -54,7 +58,9 @@ def test_ensure_notebook_dep_outdated(mock_in_notebook, mock_import_module, capl
 
 @mock.patch("importlib.import_module")
 @mock.patch("ray.widgets.util.in_notebook")
-def test_ensure_notebook_valid(mock_in_notebook, mock_import_module, caplog):
+def test_ensure_notebook_valid(
+    mock_in_notebook, mock_import_module, propagate_logs, caplog
+):
     """Test that valid notebook dependencies don't trigger a warning."""
 
     class MockDep:

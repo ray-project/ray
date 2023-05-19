@@ -5,6 +5,7 @@ import json
 import logging
 import logging.handlers
 import os
+import pathlib
 import sys
 import signal
 
@@ -18,7 +19,10 @@ from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._private.gcs_pubsub import GcsAioPublisher
 from ray._raylet import GcsClient
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.ray_logging import setup_component_logger
+from ray._private.ray_logging import (
+    setup_component_logger,
+    configure_log_file,
+)
 from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -341,6 +345,14 @@ class DashboardAgent:
             await self.http_server.cleanup()
 
 
+def open_capture_files(log_dir):
+    filename = f"agent-{args.agent_id}"
+    return (
+        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.out"),
+        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.err"),
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dashboard agent.")
     parser.add_argument(
@@ -506,6 +518,10 @@ if __name__ == "__main__":
         # Initialize event loop, see Dashboard init code for caveat
         # w.r.t grpc server init in the DashboardAgent initializer.
         loop = ray._private.utils.get_or_create_event_loop()
+
+        # Setup stdout/stderr redirect files
+        out_file, err_file = open_capture_files(args.log_dir)
+        configure_log_file(out_file, err_file)
 
         agent = DashboardAgent(
             args.node_ip_address,
