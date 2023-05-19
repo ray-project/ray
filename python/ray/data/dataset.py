@@ -3956,9 +3956,9 @@ class Dataset:
             else:
                 return [
                     RefBundle(
-                        blocks=blocks.get_blocks_with_metadata(),
+                        blocks=[block_with_metadata],
                         owns_blocks=False,
-                    )
+                    ) for block_with_metadata in blocks.get_blocks_with_metadata()
                 ]
 
         # Create a new logical plan whose input is the existing data from the the old Dataset.
