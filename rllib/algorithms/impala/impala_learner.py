@@ -9,7 +9,7 @@ from ray.rllib.core.learner.learner import (
     LearnerHyperparameters,
     ParamDictType,
 )
-from ray.rllib.core.rl_module.rl_module import ModuleID
+from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
@@ -51,28 +51,52 @@ class ImpalaLearnerHyperparameters(LearnerHyperparameters):
 
 
 class ImpalaLearner(Learner):
+
     @override(Learner)
     def build(self) -> None:
         super().build()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
-        self.entropy_coeff_schedulers_per_module: Dict[ModuleID, Scheduler] = {}
+        self.entropy_coeff_schedulers_per_module: Dict[ModuleID, Scheduler] = {
+            module_id: Scheduler(
+                fixed_value_or_schedule=(
+                    self.hps.get_hps_for_module(module_id).entropy_coeff
+                ),
+                framework=self.framework,
+                device=self._device,
+            ) for module_id in self.module.keys()
+        }
+
+    @override(Learner)
+    def add_module(
+        self,
+        *,
+        module_id: ModuleID,
+        module_spec: SingleAgentRLModuleSpec,
+    ) -> None:
+        super().add_module(module_id=module_id, module_spec=module_spec)
+
+        hps = self.hps.get_hps_for_module(module_id)
+
+        # Make sure the new module has an entropy coeff scheduler to use.
+        self.entropy_coeff_schedulers_per_module[module_id] = Scheduler(
+            fixed_value_or_schedule=hps.entropy_coeff,
+            framework=self.framework,
+            device=self._device,
+        )
+
+    @override(Learner)
+    def remove_module(self, module_id: str):
+        super().remove_module(module_id)
+        self.entropy_coeff_schedulers_per_module.pop(module_id)
 
     @override(Learner)
     def additional_update_for_module(
-        self, module_id: ModuleID, *, hps: ImpalaLearnerHyperparameters, timestep: int
+        self, *, module_id: ModuleID, hps: ImpalaLearnerHyperparameters, timestep: int
     ) -> Dict[str, Any]:
         results = super().additional_update_for_module(
-            module_id, hps=hps, timestep=timestep
+            module_id=module_id, hps=hps, timestep=timestep
         )
-
-        # Make sure we have a proper scheduler under the given `module_id`.
-        if module_id not in self.entropy_coeff_schedulers_per_module:
-            self.entropy_coeff_schedulers_per_module[module_id] = Scheduler(
-                fixed_value_or_schedule=hps.entropy_coeff,
-                framework=self.framework,
-                device=self._device,
-            )
 
         # Update entropy coefficient via our Scheduler.
         new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(

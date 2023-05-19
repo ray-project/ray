@@ -17,6 +17,7 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
+    LearnerHyperparameters,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
     ParamType,
@@ -92,8 +93,7 @@ class TfLearner(Learner):
 
         # Use keras' convenience method to get the proper optimizer class, no
         # matter upper/lower case.
-        optim_class = tf.keras.optimizers.get(hps.optimizer_type)
-        optim = optim_class()
+        optim = tf.keras.optimizers.get(hps.optimizer_type)
         pair: ParamOptimizerPair = (self.get_parameters(module), optim)
 
         # This isn't strictly necessary, but makes it so that if a checkpoint is
@@ -530,8 +530,8 @@ class TfLearner(Learner):
             ),
         )
 
-    @override(Learner)
     @staticmethod
+    @override(Learner)
     def _set_optimizer_lr(optimizer: "tf.Optimizer", lr: float) -> None:
         # Not sure why we need to do this here besides setting the original
         # tf Variable via our schedule objects. But when tf creates the
@@ -540,8 +540,8 @@ class TfLearner(Learner):
         # optimizer's learning rate, so we have to explicitly set it here.
         optimizer.lr = lr
 
-    @override(Learner)
     @staticmethod
+    @override(Learner)
     def _get_clip_function() -> Callable:
         from ray.rllib.utils.tf_utils import clip_gradients
 

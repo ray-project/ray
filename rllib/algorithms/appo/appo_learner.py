@@ -7,9 +7,10 @@ from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearnerHyperparameters,
 )
 from ray.rllib.core.rl_module.marl_module import ModuleID
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.schedules.scheduler import Scheduler
 
 
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
@@ -43,12 +44,33 @@ class AppoLearner(ImpalaLearner):
     and `_update_module_kl_coeff()`
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    @override(ImpalaLearner)
+    def build(self):
+        super().build()
 
         # The current kl coefficients per module as tensor variables
         # (framework specific).
-        self.curr_kl_coeffs_per_module: Dict[ModuleID, TensorType] = {}
+        self.curr_kl_coeffs_per_module: Dict[ModuleID, Scheduler] = {
+            module_id: self._get_tensor_variable(
+                self.hps.get_hps_for_module(module_id).kl_coeff
+            )
+            for module_id in self.module.keys()
+        }
+
+    @override(ImpalaLearner)
+    def add_module(
+        self,
+        *,
+        module_id: ModuleID,
+        module_spec: SingleAgentRLModuleSpec,
+    ) -> None:
+        super().add_module(module_id=module_id, module_spec=module_spec)
+
+        # Make sure the new module has a KL coefficient to use.
+        hps = self.hps.get_hps_for_module(module_id)
+        self.curr_kl_coeffs_per_module[module_id] = (
+            self._get_tensor_variable(hps.kl_coeff)
+        )
 
     @override(ImpalaLearner)
     def remove_module(self, module_id: str):
@@ -58,12 +80,12 @@ class AppoLearner(ImpalaLearner):
     @override(ImpalaLearner)
     def additional_update_for_module(
         self,
-        module_id: ModuleID,
         *,
+        module_id: ModuleID,
         hps: AppoLearnerHyperparameters,
+        timestep: int,
         last_update: int,
         mean_kl_loss_per_module: dict,
-        timestep: int,
         **kwargs,
     ) -> Mapping[str, Any]:
         """Updates the target networks and KL loss coefficients (per module).
@@ -82,7 +104,9 @@ class AppoLearner(ImpalaLearner):
         #  updates.
         #  We should instead have the target / kl threshold update be based off
         #  of the train_batch_size * some target update frequency * num_sgd_iter.
-        results = super().additional_update_for_module(module_id, timestep=timestep)
+        results = super().additional_update_for_module(
+            module_id=module_id, hps=hps, timestep=timestep
+        )
 
         if (timestep - last_update) >= hps.target_update_frequency_ts:
             self._update_module_target_networks(module_id, hps)

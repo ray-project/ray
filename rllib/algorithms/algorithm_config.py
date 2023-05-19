@@ -3277,7 +3277,7 @@ class AlgorithmConfig(_Config):
         AlgorithmConfig object's own settings and considered frozen/read-only.
         """
         return LearnerHyperparameters(
-            optim_type=self.optimizer_type,
+            optimizer_type=self.optimizer_type,
             learning_rate=self.lr,
             grad_clip=self.grad_clip,
             grad_clip_by=self.grad_clip_by,

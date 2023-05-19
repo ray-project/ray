@@ -13,6 +13,7 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
+    LearnerHyperparameters,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
     ParamType,
@@ -37,7 +38,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import (
-    clip_gradients,
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
@@ -71,13 +71,33 @@ class TorchLearner(Learner):
         # Will be set during build.
         self._device = None
 
+    @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID
+        self, module_id: ModuleID, hps: LearnerHyperparameters
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
+
+        optimizers = {
+            "sgd": torch.optim.SGD,
+            "adam": torch.optim.Adam,
+            "adamw": torch.optim.AdamW,
+            "sparseadam": torch.optim.SparseAdam,
+            "adamax": torch.optim.Adamax,
+            "asgd": torch.optim.ASGD,
+            "lbfgs": torch.optim.LBFGS,
+            "rmsprop": torch.optim.RMSprop,
+            "rprop": torch.optim.Rprop,
+            "adagrad": torch.optim.Adagrad,
+            "adadelta": torch.optim.Adadelta,
+        }
+
+        # Use keras' convenience method to get the proper optimizer class, no
+        # matter upper/lower case.
+        optim_class = optimizers.get(hps.optimizer_type)
         parameters = self.get_parameters(module)
-        pair: ParamOptimizerPair = (parameters, torch.optim.Adam(parameters))
+        optim = optim_class(parameters)
+        pair: ParamOptimizerPair = (parameters, optim)
         return pair
 
     @override(Learner)
@@ -312,14 +332,14 @@ class TorchLearner(Learner):
             ),
         )
 
-    @override(Learner)
     @staticmethod
+    @override(Learner)
     def _set_optimizer_lr(optimizer: "torch.optim.Optimizer", lr: float) -> None:
         for g in optimizer.param_groups:
             g["lr"] = lr
 
-    @override(Learner)
     @staticmethod
+    @override(Learner)
     def _get_clip_function() -> Callable:
         from ray.rllib.utils.torch_utils import clip_gradients
 

@@ -118,7 +118,7 @@ class LearnerHyperparameters:
     """
 
     # Parameters used for gradient postprocessing (clipping) and gradient application.
-    optim_type: Union[str, Dict[str, str]] = None
+    optimizer_type: Union[str, Dict[str, str]] = None
     learning_rate: Union[LearningRateType, Dict[str, LearningRateType]] = None
     grad_clip: Union[float, Dict[str, float]] = None
     grad_clip_by: Union[str, Dict[str, str]] = None
@@ -354,8 +354,8 @@ class Learner:
         """
         param_optimizer_pairs = []
         name_to_optim = {}
-        for module_id in self._module.keys():
-            if self._is_module_compatible_with_learner(self._module[module_id]):
+        for module_id in self.module.keys():
+            if self._is_module_compatible_with_learner(self.module[module_id]):
                 (
                     module_param_optimizer_pairs,
                     module_named_optims,
@@ -533,14 +533,17 @@ class Learner:
             # Send a sub-gradients dict to the `postprocess_gradients_for_module`
             # method.
             module_grads_dict = {}
-            for optimizer in self._module_optimizers[module_id]:
+            for name in self._module_optimizers[module_id]:
+                optimizer = self._named_optimizers[name]
                 module_grads_dict.update({
                     ref: gradients_dict[ref]
                     for ref in self._optimizer_parameters[optimizer]
                     if ref in gradients_dict and gradients_dict[ref] is not None
                 })
             module_grads_dict = self.postprocess_gradients_for_module(
-                module_id=module_id, module_gradients_dict=module_grads_dict
+                module_id=module_id,
+                hps=self.hps.get_hps_for_module(module_id),
+                module_gradients_dict=module_grads_dict,
             )
             assert isinstance(module_grads_dict, dict)
 
@@ -668,7 +671,7 @@ class Learner:
             A dictionary that holds the weights of the modules in a numpy-friendly
             format.
         """
-        module_states = self._module.get_state(module_ids)
+        module_states = self.module.get_state(module_ids)
         return convert_to_numpy({k: v for k, v in module_states.items()})
 
     @abc.abstractmethod
@@ -776,7 +779,7 @@ class Learner:
         self._check_is_built()
         module = module_spec.build()
 
-        self._module.add_module(module_id, module)
+        self.module.add_module(module_id, module)
 
         (
             param_optimizer_pair,
@@ -802,7 +805,7 @@ class Learner:
             module_id: The id of the module to remove.
         """
         self._check_is_built()
-        module = self._module[module_id]
+        module = self.module[module_id]
 
         if self._is_module_compatible_with_learner(module):
             parameters = self.get_parameters(module)
@@ -818,7 +821,7 @@ class Learner:
                 del self._optimizer_lr_schedules[optim]
             del self._module_optimizers[module_id]
 
-        self._module.remove_module(module_id)
+        self.module.remove_module(module_id)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def build(self) -> None:
@@ -861,7 +864,7 @@ class Learner:
         compute the required tensors for loss calculation.
 
         Args:
-            fwd_out: Output from a call to `forward_train` on self._module during
+            fwd_out: Output from a call to `forward_train` on self.module during
                 training.
             batch: The data that was used to compute fwd_out.
 
@@ -944,8 +947,8 @@ class Learner:
 
                 def additional_update_for_module(self, module_id: ModuleID, tau: float):
                     # perform polyak averaging update
-                    main = self._module[module_id].main
-                    target = self._module[module_id].target
+                    main = self.module[module_id].main
+                    target = self.module[module_id].target
                     for param, target_param in zip(
                         main.parameters(), target.parameters()
                     ):
@@ -973,7 +976,7 @@ class Learner:
             A dictionary of results from the update
         """
         results_all_modules = {}
-        module_ids = module_ids_to_update or self._module.keys()
+        module_ids = module_ids_to_update or self.module.keys()
         for module_id in module_ids:
             module_results = self.additional_update_for_module(
                 module_id=module_id,
@@ -1060,7 +1063,7 @@ class Learner:
         """
         self._check_is_built()
 
-        missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
+        missing_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
         if len(missing_module_ids) > 0:
             raise ValueError(
                 "Batch contains module ids that are not in the learner: "
@@ -1216,7 +1219,7 @@ class Learner:
         self._check_is_built()
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        self._module.save_to_checkpoint(path / "module_state")
+        self.module.save_to_checkpoint(path / "module_state")
         self._save_optimizers(path / "optimizer_state")
         with open(path / "learner_state.json", "w") as f:
             metadata = self._get_metadata()
@@ -1237,7 +1240,7 @@ class Learner:
         path = pathlib.Path(path)
         del self._module
         # TODO(avnishn) from checkpoint doesn't currently support modules_to_load,
-        # but it should, so we will add it later.
+        #  but it should, so we will add it later.
         self._module_obj = MultiAgentRLModule.from_checkpoint(path / "module_state")
         self._reset()
         self.build()
@@ -1318,7 +1321,7 @@ class Learner:
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
         #  NestedDict from the base class.
         tensorbatch = self._convert_batch_type(batch)
-        fwd_out = self._module.forward_train(tensorbatch)
+        fwd_out = self.module.forward_train(tensorbatch)
         loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
 
         gradients = self.compute_gradients(loss_per_module)
@@ -1334,7 +1337,7 @@ class Learner:
         return convert_to_numpy(results)
 
     def _check_is_built(self):
-        if self._module is None:
+        if self.module is None:
             raise ValueError(
                 "Learner.build() must be called after constructing a "
                 "Learner and before calling any methods on it."
@@ -1387,8 +1390,8 @@ class Learner:
             dtype and trainable/requires_grad property.
         """
 
-    @abc.abstractmethod
     @staticmethod
+    @abc.abstractmethod
     def _set_optimizer_lr(optimizer: Optimizer, lr: float) -> None:
         """Updates the learning rate of the given local optimizer.
 
@@ -1397,8 +1400,8 @@ class Learner:
             lr: The new learning rate.
         """
 
-    @abc.abstractmethod
     @staticmethod
+    @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
 
