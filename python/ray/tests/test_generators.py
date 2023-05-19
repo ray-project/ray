@@ -221,7 +221,7 @@ def test_dynamic_generator_retry_exception(ray_start_regular, store_in_plasma):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-@pytest.mark.parametrize("num_returns_type", ["streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
 def test_dynamic_generator(
     ray_start_regular, use_actors, store_in_plasma, num_returns_type
 ):
