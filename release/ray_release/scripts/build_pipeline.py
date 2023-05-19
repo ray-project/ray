@@ -15,7 +15,6 @@ from ray_release.byod.build import build_anyscale_byod_images
 from ray_release.config import (
     read_and_validate_release_test_collection,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
-    RELEASE_PACKAGE_DIR,
     parse_python_version,
 )
 from ray_release.test import (
