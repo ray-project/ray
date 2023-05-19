@@ -428,6 +428,9 @@ class Unbuffered(object):
         self.stream.writelines(datas)
         self.stream.flush()
 
+    def writelines_no_flush(self, datas):
+        self.stream.writelines(datas)
+
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
 

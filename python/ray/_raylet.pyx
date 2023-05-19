@@ -891,8 +891,8 @@ cdef void execute_task(
                 ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
                 attempt_number)
             # Print on both .out and .err
-            print(task_attempt_magic_token, end="")
-            print(task_attempt_magic_token, file=sys.stderr, end="")
+            sys.stdout.writelines_no_flush(task_attempt_magic_token)
+            sys.stderr.writelines_no_flush(task_attempt_magic_token)
 
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
@@ -950,8 +950,8 @@ cdef void execute_task(
                         ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
                         attempt_number)
                     # Print on both .out and .err
-                    print(task_attempt_magic_token, end="")
-                    print(task_attempt_magic_token, file=sys.stderr, end="")
+                    sys.stdout.writelines_no_flush(task_attempt_magic_token)
+                    sys.stderr.writelines_no_flush(task_attempt_magic_token)
 
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
