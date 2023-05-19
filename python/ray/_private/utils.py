@@ -438,7 +438,7 @@ def open_log(path, unbuffered=False, **kwargs):
     `open`.
     """
     # Disable buffering, see test_advanced_3.py::test_logging_to_driver
-    kwargs.setdefault("buffering", 1)
+    # kwargs.setdefault("buffering", 1)
     kwargs.setdefault("mode", "a")
     kwargs.setdefault("encoding", "utf-8")
     stream = open(path, **kwargs)
