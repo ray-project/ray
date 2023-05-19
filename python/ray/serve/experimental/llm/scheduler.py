@@ -107,9 +107,9 @@ class InferenceScheduler:
         in_process_requests = []
         while True:
             # select new requests to process.
-            print("select new requests to process")
+            logger.debug("select new requests to process")
             new_requests = self._select_new_requests(in_process_requests)
-            print(f"requests selected {new_requests}")
+            logger.debug(f"requests selected {new_requests}")
             new_batch_id, new_unfinished_requests = self._process_new_requests(
                 new_requests
             )
@@ -148,7 +148,7 @@ class InferenceScheduler:
     def _generate_next_token(
         self, batch_ids: List[int], requests: List[InferenceRequest]
     ) -> Tuple[Optional[int], List[Generation]]:
-        print(f"generating tokesn for batch {batch_ids}")
+        logger.debug(f"generating tokesn for batch {batch_ids}")
         generations, batch_id = self._inference_worker.generate_next_token(
             batch_ids,
         )
@@ -170,10 +170,9 @@ class InferenceScheduler:
             assert (
                 requests[i].id == generation.request_id
             ), f"expect request id {requests[i].id} but got {generation.request_id}"
-            print(f"processing generation {generation}")
+            logger.debug(f"processing generation {generation}")
             requests[i].output_stream.put(generation)
             if generation.stopped:
-                print(f"outstream finished {generation}")
                 requests[i].output_stream.end()
             else:
                 unfinished_requests.append(requests[i])
