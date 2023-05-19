@@ -109,14 +109,16 @@ class InferenceScheduler:
             # select new requests to process.
             logger.debug("select new requests to process")
             new_requests = self._select_new_requests(in_process_requests)
-            logger.debug(f"requests selected {new_requests}")
+            logger.debug(f"requests selected {[r.id for r in new_requests]}")
             new_batch_id, new_unfinished_requests = self._process_new_requests(
                 new_requests
             )
+            logger.debug(f"request proccessed {[r.id for r in new_requests]}")
             # combine new batch with existing batch to generate next token.
             batch_id, in_process_requests = self._generate_next_token(
                 [batch_id, new_batch_id], in_process_requests + new_unfinished_requests
             )
+            logger.debug(f"token generated")
 
     def _select_new_requests(
         self,
@@ -173,6 +175,7 @@ class InferenceScheduler:
             logger.debug(f"processing generation {generation}")
             requests[i].output_stream.put(generation)
             if generation.stopped:
+                logger.info(f" {requests[i].id} finished")
                 requests[i].output_stream.end()
             else:
                 unfinished_requests.append(requests[i])
