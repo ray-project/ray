@@ -17,7 +17,9 @@ class InferenceWorker:
         self._batch_state_cache[batch_state.id] = batch_state
         return generations, batch_state.id
 
-    def generate_next_token(self, batch_ids: List[int]) -> Tuple[List[Generation], int]:
+    def generate_next_token(
+        self, batch_ids: List[int]
+    ) -> Tuple[List[Generation], Optional[int]]:
         if len(batch_ids) == 0:
             raise ValueError("Must provide at least one batch")
         batch_states = []
@@ -37,8 +39,11 @@ class InferenceWorker:
             batch_state = batch_states[0]
 
         generations, batch_state = self._model.generate_token(batch_state)
-        self._batch_state_cache[batch_state.id] = batch_state
-        return generations, batch_state.id
+
+        if batch_state:
+            self._batch_state_cache[batch_state.id] = batch_state
+            return generations, batch_state.id
+        return generations, None
 
     def filter_requests(self, batch_id: int, request_ids: List[int]) -> Optional[int]:
         batch_state = self._batch_state_cache.pop(batch_id)

@@ -1,6 +1,7 @@
 import asyncio
+import logging
 from abc import ABC, abstractmethod
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from threading import Thread
 from transformers import AutoTokenizer
 from ray.serve.experimental.llm.worker import InferenceWorker
@@ -13,6 +14,7 @@ from ray.serve.experimental.llm.tokenstream import TokenStream
 from ray.serve.experimental.llm.queue import RequestQueue, InferenceRequest
 from ray.serve.experimental.llm.policy import RequestSelectionPolicy
 
+logger = logging.getLogger(__name__)
 
 _request_id = 0
 
@@ -32,7 +34,7 @@ class Tokenizer(ABC):
 
 class NaiveTokenizer(Tokenizer):
     def get_input_length(self, input_text: str, max_length: int) -> int:
-        return max(input_text.count(" ") + 1, max_length)
+        return min(input_text.count(" ") + 1, max_length)
 
     # TODO: add model specific tokenizer
 
@@ -44,7 +46,7 @@ class TransfomerTokenizer(Tokenizer):
 
     def get_input_length(self, input_text: str, max_length: int) -> int:
         return self._tokenizer(
-            inputs=input_text,
+            text=input_text,
             return_tensors="pt",
             padding=True,
             return_token_type_ids=False,
@@ -60,11 +62,13 @@ class InferenceScheduler:
         inference_worker: InferenceWorker,
         request_selection_policy: RequestSelectionPolicy,
         request_queue: RequestQueue,
+        loop: asyncio.AbstractEventLoop,
     ):
         self._tokenizer = tokenizer
         self._inference_worker = inference_worker
-        self._request_queue = request_queue
         self._request_selection_policy = request_selection_policy
+        self._request_queue = request_queue
+        self._loop = loop
         self._thread = Thread(target=self._run_scheduling_loop)
         self._thread.start()
 
@@ -76,13 +80,13 @@ class InferenceScheduler:
             input_text=input_text,
             max_length=max_length,
             input_length=self._tokenizer.get_input_length(input_text, max_length),
-            params=params,
+            sampling_params=params,
         )
         return self._add_request(request)
 
     def _add_request(self, request: GenerationRequest) -> TokenStream:
-        pending_request = InferenceRequest.from_request(request)
-        self._request_queue.append(pending_request)
+        pending_request = InferenceRequest.from_request(request, self._loop)
+        self._request_queue.push(pending_request)
         return pending_request.output_stream
 
     def _run_scheduling_loop(self):
@@ -103,7 +107,9 @@ class InferenceScheduler:
         in_process_requests = []
         while True:
             # select new requests to process.
+            print("select new requests to process")
             new_requests = self._select_new_requests(in_process_requests)
+            print(f"requests selected {new_requests}")
             new_batch_id, new_unfinished_requests = self._process_new_requests(
                 new_requests
             )
@@ -116,12 +122,12 @@ class InferenceScheduler:
         self,
         in_process_requests: List[InferenceRequest],
     ) -> List[InferenceRequest]:
-        if len(in_process_requests) == 0 and self._request_queue.is_empty():
+        if len(in_process_requests) == 0 and self._request_queue.empty():
             # if there is no in-process requests and no new requests in the queue,
             # wait for new requests to arrive in the queue.
             self._request_queue.wait()
 
-        return self._request_selection_policy.select_requests(
+        return self._request_selection_policy.select_new_requests(
             in_process_requests, self._request_queue
         )
 
@@ -130,7 +136,9 @@ class InferenceScheduler:
     ) -> Tuple[int, List[InferenceRequest]]:
         if len(requests) == 0:
             return None, []
-        generations, batch_id = self._inference_worker.process_new_batch(requests)
+        generations, batch_id = self._inference_worker.process_new_batch(
+            [r.request for r in requests]
+        )
         requests = self._process_generation_result(generations, requests)
         batch_id = self._inference_worker.filter_requests(
             batch_id, [r.id for r in requests]
@@ -139,14 +147,19 @@ class InferenceScheduler:
 
     def _generate_next_token(
         self, batch_ids: List[int], requests: List[InferenceRequest]
-    ) -> List[Generation]:
+    ) -> Tuple[Optional[int], List[Generation]]:
+        print(f"generating tokesn for batch {batch_ids}")
         generations, batch_id = self._inference_worker.generate_next_token(
             batch_ids,
         )
         requests = self._process_generation_result(generations, requests)
-        batch_id = self._inference_worker.filter_requests(
-            batch_id, [r.id for r in requests]
-        )
+
+        if batch_id is not None:
+            batch_id = self._inference_worker.filter_requests(
+                batch_id, [r.id for r in requests]
+            )
+        else:
+            assert len(requests) == 0, "expect no requests left"
         return batch_id, requests
 
     def _process_generation_result(
@@ -157,8 +170,10 @@ class InferenceScheduler:
             assert (
                 requests[i].id == generation.request_id
             ), f"expect request id {requests[i].id} but got {generation.request_id}"
-            requests[i].output_stream.append(generation.token_text)
-            if generation.is_finished:
+            print(f"processing generation {generation}")
+            requests[i].output_stream.put(generation)
+            if generation.stopped:
+                print(f"outstream finished {generation}")
                 requests[i].output_stream.end()
             else:
                 unfinished_requests.append(requests[i])

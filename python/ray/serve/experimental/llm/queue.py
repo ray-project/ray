@@ -16,16 +16,16 @@ class InferenceRequest:
     submit_time_ns: int
 
     @classmethod
-    def from_request(cls, request: GenerationRequest):
+    def from_request(cls, request: GenerationRequest, loop: asyncio.AbstractEventLoop):
         return cls(
             id=request.id,
             request=request,
-            result=TokenStream(),
+            output_stream=TokenStream(loop=loop),
             submit_time_ns=int(time.time()),
         )
 
-    def total_tokesn(self) -> int:
-        return self.request.input_length + self.requst.params.max_tokens
+    def total_tokens(self) -> int:
+        return self.request.input_length + self.request.sampling_params.max_new_tokens
 
 
 class RequestQueue:

@@ -1,6 +1,7 @@
 import asyncio
 import pytest
 import torch
+import threading
 
 from ray.serve.experimental.llm.types import SamplingParams
 from copy import deepcopy
@@ -36,6 +37,21 @@ def event_loop():
         loop = asyncio.new_event_loop()
     yield loop
     loop.close()
+
+
+def start_loop(loop):
+    asyncio.set_event_loop(loop)
+    asyncio.get_event_loop().run_forever()
+
+
+@pytest.fixture(scope="session")
+def event_loop_in_different_thread():
+    new_loop = asyncio.new_event_loop()
+    t = threading.Thread(target=start_loop, args=(new_loop,))
+    t.start()
+    yield new_loop
+    new_loop.stop()
+    t.join()
 
 
 @pytest.fixture(scope="session")
