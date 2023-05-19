@@ -1,10 +1,12 @@
+import os
 from pathlib import Path
 import time
 
 import ray
+import ray.cloudpickle as pickle
 from ray.tune.trainable import FunctionTrainable
 from ray import air, tune
-from ray.air import session
+from ray.air import session, Checkpoint
 from ray.train.data_parallel_trainer import (
     DataParallelTrainable,
     DataParallelTrainerConfig,
@@ -144,6 +146,24 @@ class _BasicVariantGenerator(SearchAlgorithm):
             self.set_finished()
             return None
 
+    def has_checkpoint(self, dirpath: str) -> bool:
+        """Should return False if restoring is not implemented."""
+        return "searcher_state.pkl" in os.listdir(dirpath)
+
+    def save_to_dir(self, dirpath: str, **kwargs):
+        """Saves a search algorithm."""
+        save_path = Path(dirpath) / "searcher_state.pkl"
+        with open(save_path, "wb") as f:
+            pickle.dump(self.__dict__.copy(), f)
+
+    def restore_from_dir(self, dirpath: str):
+        """Restores a search algorithm along with its wrapped state."""
+        save_path = Path(dirpath) / "searcher_state.pkl"
+        with open(save_path, "rb") as f:
+            state = pickle.load(f)
+
+        self.__dict__.update(state)
+
 
 def _print(msg):
     print("=" * 50)
@@ -163,11 +183,38 @@ class ExperimentRunner:
         self._config = config
         self._run_config = run_config
         self._trainable = trainable
+        self._tune_config = tune_config  # TODO: handle tune config
 
-    def fit_with_tune_run(self):
-        pass
+        self._restored = False
 
     def fit(self):
+        save_path = Path(self._run_config.storage_path) / self._run_config.name
+        save_path.mkdir(parents=True, exist_ok=True)
+
+        runner_state = {
+            "run_config": self._run_config,
+            "tune_config": self._tune_config,
+        }
+        with open(save_path / "exp_runner.pkl", "wb") as f:
+            pickle.dump(runner_state, f)
+
+        self._new_tune_run()
+
+    @classmethod
+    def restore(cls, path, trainable, config={}) -> "ExperimentRunner":
+        path = Path(path).expanduser().resolve()
+        with open(path / "exp_runner.pkl", "rb") as f:
+            runner_state = pickle.load(f)
+        run_config = runner_state["run_config"]
+        tune_config = runner_state["tune_config"]
+
+        restored_runner = ExperimentRunner(
+            trainable, config, run_config, tune_config=tune_config
+        )
+        restored_runner._restored = True
+        return restored_runner
+
+    def _new_tune_run(self):
         _print("Registering trainable")
 
         registered_trainable_name = Experiment.register_if_needed(self._trainable)
@@ -184,6 +231,10 @@ class ExperimentRunner:
         search_alg.add_configurations(config_as_dict)
 
         _print("Creating tune controller")
+
+        if self._restored:
+            _print("tune controller resuming!!!")
+
         tune_controller = TuneController(
             search_alg=search_alg,
             experiment_path=str(
@@ -191,6 +242,7 @@ class ExperimentRunner:
             ),
             experiment_dir_name=self._run_config.name,
             run_config=self._run_config,
+            resume="AUTO+ERRORED_ONLY" if self._restored else False,
         )
 
         air_progress_reporter = _detect_air_reporter(
@@ -202,6 +254,11 @@ class ExperimentRunner:
         while not tune_controller.is_finished():
             tune_controller.step()
             _report_air_progress(tune_controller, air_progress_reporter)
+
+        try:
+            tune_controller.checkpoint(force=True, wait=True)
+        except Exception as e:
+            tune_controller.warning(f"Trial Runner checkpointing failed: {str(e)}")
 
         tune_controller.cleanup()
 
@@ -279,20 +336,30 @@ def train_loop(config):
     print(f"\nrank = {session.get_world_rank()}")
     print(f"a = {config['a']}")
 
+    ckpt = session.get_checkpoint()
+    has_ckpt = bool(ckpt)
+    print(f"has checkpoint = {has_ckpt}")
+
+    start = ckpt.to_dict()["it"] + 1 if ckpt else 1
+
     ds = session.get_dataset_shard("train")
     for batch in ds.iter_batches():
         print(batch)
 
-    for i in range(10):
-        time.sleep(0.5)
-        session.report({"train_session_report": 1})
+    for i in range(start, 11):
+        if i == 5 and not has_ckpt:
+            raise RuntimeError
+        time.sleep(1.0)
+        session.report(
+            {"train_session_report": 1}, checkpoint=Checkpoint.from_dict({"it": i})
+        )
 
 
 def run_with_exp_runner():
     runner = ExperimentRunner(
         DataParallelTrainable,
         run_config=air.RunConfig(
-            storage_path="~/ray_results", name="foundation_experimentation"
+            storage_path="~/ray_results", name="foundation_experiment"
         ),
         # Use a dict
         # config={
@@ -314,6 +381,14 @@ def run_with_exp_runner():
         ),
     )
 
+    runner.fit()
+
+
+def restore_with_exp_runner():
+    runner = ExperimentRunner.restore(
+        path="~/ray_results/foundation_experiment",
+        trainable=DataParallelTrainable,
+    )
     runner.fit()
 
 
@@ -364,8 +439,10 @@ def run_with_tuner():
 
 if __name__ == "__main__":
     run_with_exp_runner()
+    restore_with_exp_runner()
+
     # run_with_trainer()
-    run_with_tuner()
+    # run_with_tuner()
 
 
 """

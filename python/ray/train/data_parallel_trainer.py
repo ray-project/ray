@@ -110,11 +110,12 @@ class DataParallelTrainable(FunctionTrainable):
         for results in training_iterator:
             # TODO(ml-team): add ability to report results from multiple workers.
             first_worker_results = results[0]
-            session.report(first_worker_results)
+            tune.report(first_worker_results)
 
     def _trainable_func(self, config, reporter, checkpoint_dir):
         run_config = self.run_config
 
+        print("\n\n", session.get_trial_dir(), "\n", config)
         config = DataParallelTrainerConfig(**config)
 
         scaling_config = config.scaling_config
