@@ -303,3 +303,15 @@ py_test(
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
 )
+
+# --------------------------------------------------------------------
+# Test all doc/external code
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["external/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "external"],
+)
