@@ -8,6 +8,8 @@ from transformers.trainer_utils import IntervalStrategy
 
 from ray.air import session
 from ray.data import DataIterator
+from ray.data.dataset import MaterializedDataset
+from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
 )
@@ -87,11 +89,21 @@ def process_dataset_for_hf(
         hf_iterable, format_type="torch"
     ).with_format("torch")
 
-    try:
-        dataset_length = dataset._base_dataset.count()
-    except (ValueError, AttributeError):
-        # pipeline case
-        dataset_length = None
+    if isinstance(dataset, StreamSplitDataIterator):
+        if isinstance(dataset._base_dataset, MaterializedDataset):
+            # In the materialized case, we can count efficiently. TODO(ekl) avoid
+            # using the internal API here by passing in the base dataset from Train.
+            dataset_length = dataset._base_dataset.count() // dataset.world_size()
+        else:
+            # Otherwise don't count to avoid breaking streaming.
+            dataset_length = None
+    else:
+        # Legacy + non-split case.
+        try:
+            dataset_length = dataset._base_dataset.count()
+        except (ValueError, AttributeError):
+            # pipeline case
+            dataset_length = None
 
     iterable_dataset = maybe_add_length(iterable_dataset, dataset_length)
     # Trigger logic in `wrap_transformers_trainer` to disable built-in
