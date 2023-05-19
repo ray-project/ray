@@ -11,7 +11,6 @@ from ray._private.state_api_test_utils import (
 
 import ray._private.test_utils as test_utils
 import tqdm
-import asyncio
 import time
 import os
 
@@ -26,22 +25,6 @@ GiB = 1024 * 1024 * 1024
 MiB = 1024 * 1024
 
 
-# We set num_cpus to zero because this actor will mostly just block on I/O.
-@ray.remote(num_cpus=0)
-class SignalActor:
-    def __init__(self):
-        self.ready_event = asyncio.Event()
-
-    def send(self, clear=False):
-        self.ready_event.set()
-        if clear:
-            self.ready_event.clear()
-
-    async def wait(self, should_wait=True):
-        if should_wait:
-            await self.ready_event.wait()
-
-
 def invoke_state_api_n(*args, **kwargs):
     def verify():
         NUM_API_CALL_SAMPLES = 10
@@ -53,6 +36,7 @@ def invoke_state_api_n(*args, **kwargs):
 
 
 def test_many_tasks(num_tasks: int):
+    TASK_NAME_TEMPLATE = "pi4_sample_{num_tasks}"
     if num_tasks == 0:
         print("Skipping test with no tasks")
         return
@@ -61,10 +45,10 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
+        filters=[("name", "=", TASK_NAME_TEMPLATE.format(num_tasks=num_tasks))],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
-        err_msg="Expect 0 running tasks.",
+        err_msg=f"Expect 0 running tasks for {TASK_NAME_TEMPLATE.format(num_tasks=num_tasks)}",
     )
 
     # Task definition adopted from:
@@ -73,37 +57,32 @@ def test_many_tasks(num_tasks: int):
 
     SAMPLES = 100
 
-    # `num_cpus` required obtained from 1 / (num_tasks /num_total_cpus)
-    #  where num_total_cpus obtained from cluster_compute in `release_tests.yaml`
-    # 1 / (10k/45 * 7) ~= 0.03, taking a smaller value to make sure all tasks could be
-    # running at the same time.
-    @ray.remote(num_cpus=0.02)
-    def pi4_sample(signal):
+    @ray.remote
+    def pi4_sample():
         in_count = 0
         for _ in range(SAMPLES):
             x, y = random(), random()
             if x * x + y * y <= 1:
                 in_count += 1
-        # Block on signal
-        ray.get(signal.wait.remote())
         return in_count
 
     results = []
-    signal = SignalActor.remote()
     for _ in tqdm.trange(num_tasks, desc="Launching tasks"):
-        results.append(pi4_sample.remote(signal))
+        results.append(
+            pi4_sample.options(
+                name=TASK_NAME_TEMPLATE.format(num_tasks=num_tasks)
+            ).remote()
+        )
 
     invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("state", "!=", "FINISHED")],
+        filters=[("name", "=", TASK_NAME_TEMPLATE.format(num_tasks=num_tasks))],
         key_suffix=f"{num_tasks}",
         limit=STATE_LIST_LIMIT,
         err_msg=f"Expect {num_tasks} non finished tasks.",
     )
 
-    print("Waiting for tasks to finish...")
-    ray.get(signal.send.remote())
     ray.get(results)
 
     # Clean up
@@ -111,13 +90,14 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
+        filters=[
+            ("name", "=", TASK_NAME_TEMPLATE.format(num_tasks=num_tasks)),
+            ("state", "=", "RUNNING"),
+        ],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
         err_msg="Expect 0 running tasks",
     )
-
-    del signal
 
 
 def test_many_actors(num_actors: int):
@@ -420,7 +400,33 @@ def test(
                 "perf_metric_name": "avg_state_api_latency_sec",
                 "perf_metric_value": state_perf_result["avg_state_api_latency_sec"],
                 "perf_metric_type": "LATENCY",
-            }
+            },
+            {
+                "perf_metric_name": "avg_state_api_get_log_latency_sec",
+                "perf_metric_value": state_perf_result["avg_get_log_latency_sec"],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "avg_state_api_list_tasks_10000_latency_sec",
+                "perf_metric_value": state_perf_result[
+                    "avg_list_tasks_10000_latency_sec"
+                ],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "avg_state_api_list_actors_5000_latency_sec",
+                "perf_metric_value": state_perf_result[
+                    "avg_list_actors_5000_latency_sec"
+                ],
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": "avg_state_api_list_objects_50000_latency_sec",
+                "perf_metric_value": state_perf_result[
+                    "avg_list_objects_50000_latency_sec"
+                ],
+                "perf_metric_type": "LATENCY",
+            },
         ]
 
     if "TEST_OUTPUT_JSON" in os.environ:
