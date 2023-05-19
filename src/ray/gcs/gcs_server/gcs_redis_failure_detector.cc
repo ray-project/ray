@@ -48,7 +48,13 @@ void GcsRedisFailureDetector::DetectRedis() {
       callback_();
     }
   };
-  redis_context_->RunArgvAsync({"PING"}, redis_callback);
+
+  Status status = redis_context_->RunArgvAsync({"PING"}, redis_callback);
+
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Redis is disconnected.";
+    callback_();
+  }
 }
 
 }  // namespace gcs

@@ -14,56 +14,23 @@
 
 #include "ray/gcs/store_client/redis_store_client.h"
 
-#include <chrono>
-
 #include "ray/common/test_util.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/test/store_client_test_base.h"
 
-using namespace std::chrono_literals;
 namespace ray {
 
 namespace gcs {
 
 class RedisStoreClientTest : public StoreClientTestBase {
  public:
-  RedisStoreClientTest() {
-    if (std::getenv("REDIS_CHAOS") != nullptr) {
-      ::RayConfig::instance().num_redis_request_retries() = 1000;
-      ::RayConfig::instance().redis_retry_base_ms() = 10;
-      ::RayConfig::instance().redis_retry_max_ms() = 100;
-    }
-  }
+  RedisStoreClientTest() {}
 
   virtual ~RedisStoreClientTest() {}
 
   static void SetUpTestCase() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
   static void TearDownTestCase() { TestSetupUtil::ShutDownRedisServers(); }
-
-  void SetUp() override {
-    auto port = TEST_REDIS_SERVER_PORTS.front();
-    TestSetupUtil::FlushRedisServer(port);
-    StoreClientTestBase::SetUp();
-    if (std::getenv("REDIS_CHAOS") != nullptr) {
-      t_ = std::make_unique<std::thread>([this, port]() {
-        while (!stopped_) {
-          TestSetupUtil::ExecuteRedisCmd(port, {"REPLICAOF", "localhost", "1234"});
-          std::this_thread::sleep_for(50ms);
-          TestSetupUtil::ExecuteRedisCmd(port, {"REPLICAOF", "NO", "ONE"});
-          std::this_thread::sleep_for(200ms);
-        }
-      });
-    }
-  }
-
-  void TearDown() override {
-    stopped_ = true;
-    if (t_) {
-      t_->join();
-    }
-    StoreClientTestBase::TearDown();
-  }
 
   void InitStoreClient() override {
     RedisClientOptions options("127.0.0.1",
@@ -80,8 +47,6 @@ class RedisStoreClientTest : public StoreClientTestBase {
 
  protected:
   std::shared_ptr<RedisClient> redis_client_;
-  std::unique_ptr<std::thread> t_;
-  std::atomic<bool> stopped_ = false;
 };
 
 TEST_F(RedisStoreClientTest, AsyncPutAndAsyncGetTest) { TestAsyncPutAndAsyncGet(); }
@@ -360,7 +325,7 @@ TEST_F(RedisStoreClientTest, Random) {
     auto idx = std::rand() % ops.size();
     ops[idx](i);
   }
-  EXPECT_TRUE(WaitForCondition([&counter]() { return *counter == 0; }, 10000));
+  EXPECT_TRUE(WaitForCondition([&counter]() { return *counter == 0; }, 5000));
   auto redis_store_client_raw_ptr = (RedisStoreClient *)store_client_.get();
   absl::MutexLock lock(&redis_store_client_raw_ptr->mu_);
   ASSERT_TRUE(redis_store_client_raw_ptr->pending_redis_request_by_key_.empty());
