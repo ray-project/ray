@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
 from collections import deque
 from contextlib import nullcontext
@@ -284,8 +285,28 @@ PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 class WaitBlockPrefetcher(BlockPrefetcher):
     """Block prefetcher using ray.wait."""
 
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
-        ray.wait(blocks, num_returns=1, fetch_local=True)
+    def __init__(self):
+        self._blocks = []
+        self._condition = threading.Condition()
+        self._thread = threading.Thread(
+            target=self._run, args=(self,), name="Prefetcher"
+        )
+        self._thread.start()
+
+    def _run(self):
+        while True:
+            try:
+                if len(self._blocks) > 0:
+                    blocks_to_wait, self._blocks = self._blocks[:], []
+                    ray.wait(blocks_to_wait, num_returns=1, fetch_local=True)
+                else:
+                    self._condition.wait()
+            except Exception as e:
+                logging.exception("Error fetching blocks.", e)
+
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
+        self._blocks = blocks
+        self._condition.notify()
 
 
 # ray.wait doesn't work as expected, so we have an
@@ -308,7 +329,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
             get_if_exists=True,
         ).remote()
 
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         self.prefetch_actor.prefetch.remote(*blocks)
 
 

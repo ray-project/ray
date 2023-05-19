@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, List
 
 from ray.types import ObjectRef
 from ray.data.block import Block, DataBatch
@@ -36,6 +36,6 @@ class CollatedBatch(Batch):
 class BlockPrefetcher:
     """Interface for prefetching blocks."""
 
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         """Prefetch the provided blocks to this node."""
         raise NotImplementedError
