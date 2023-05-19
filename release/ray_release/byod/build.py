@@ -65,7 +65,6 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                     stdout=subprocess.DEVNULL,
                 )
                 built.add(ray_image)
-    return
 
 
 def _download_dataplane_build_file() -> None:
