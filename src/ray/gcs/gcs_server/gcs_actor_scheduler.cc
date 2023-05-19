@@ -349,7 +349,8 @@ void GcsActorScheduler::RetryLeasingWorkerFromNode(
   RAY_UNUSED(execute_after(
       io_context_,
       [this, node, actor] { DoRetryLeasingWorkerFromNode(actor, node); },
-      RayConfig::instance().gcs_lease_worker_retry_interval_ms()));
+      std::chrono::milliseconds(
+          RayConfig::instance().gcs_lease_worker_retry_interval_ms())));
 }
 
 void GcsActorScheduler::DoRetryLeasingWorkerFromNode(
@@ -514,7 +515,8 @@ void GcsActorScheduler::RetryCreatingActorOnWorker(
   RAY_UNUSED(execute_after(
       io_context_,
       [this, actor, worker] { DoRetryCreatingActorOnWorker(actor, worker); },
-      RayConfig::instance().gcs_create_actor_retry_interval_ms()));
+      std::chrono::milliseconds(
+          RayConfig::instance().gcs_create_actor_retry_interval_ms())));
 }
 
 void GcsActorScheduler::DoRetryCreatingActorOnWorker(

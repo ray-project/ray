@@ -225,8 +225,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
-  task_event_buffer_ =
-      std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
+      std::move(task_event_gcs_client), worker_context_.GetCurrentJobID());
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     if (!task_event_buffer_->Start().ok()) {
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
@@ -2567,11 +2567,25 @@ Status CoreWorker::ExecuteTask(
 
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  std::string actor_repr_name = "";
+  {
+    absl::MutexLock lock(&mutex_);
+    actor_repr_name = actor_repr_name_;
+  }
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    task_manager_->RecordTaskStatusEvent(
-        task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+    if (task_spec.IsActorTask() && !actor_repr_name.empty()) {
+      task_manager_->RecordTaskStatusEvent(
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::RUNNING,
+          /* include_task_info */ false,
+          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name));
+    } else {
+      task_manager_->RecordTaskStatusEvent(
+          task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+    }
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -2604,6 +2618,9 @@ Status CoreWorker::ExecuteTask(
     dynamic_return_objects = NULL;
   } else if (task_spec.AttemptNumber() > 0) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
+      // Increase the put index so that when the generator creates a new obj
+      // the object id won't conflict.
+      worker_context_.GetNextPutIndex();
       dynamic_return_objects->push_back(
           std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
       RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
@@ -2818,6 +2835,59 @@ ObjectID CoreWorker::AllocateDynamicReturnId() {
   reference_counter_->AddBorrowedObject(
       return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
   return return_id;
+}
+
+Status CoreWorker::ReportGeneratorItemReturns(
+    const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+    const ObjectID &generator_id,
+    const rpc::Address &caller_address,
+    int64_t item_index,
+    bool finished) {
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
+                 << " finished: " << finished << ", id: " << dynamic_return_object.first;
+  rpc::ReportGeneratorItemReturnsRequest request;
+  request.mutable_worker_addr()->CopyFrom(rpc_address_);
+  request.set_item_index(item_index);
+  request.set_finished(finished);
+  request.set_generator_id(generator_id.Binary());
+  auto client = core_worker_client_pool_->GetOrConnect(caller_address);
+
+  if (!dynamic_return_object.first.IsNil()) {
+    RAY_CHECK_EQ(finished, false);
+    auto return_object_proto = request.add_dynamic_return_objects();
+    SerializeReturnObject(
+        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+    std::vector<ObjectID> deleted;
+    // When we allocate a dynamic return ID (AllocateDynamicReturnId),
+    // we borrow the object. When the object value is allocatd, the
+    // memory store is updated. We should clear borrowers and memory store
+    // here.
+    ReferenceCounter::ReferenceTableProto borrowed_refs;
+    reference_counter_->PopAndClearLocalBorrowers(
+        {dynamic_return_object.first}, &borrowed_refs, &deleted);
+    memory_store_->Delete(deleted);
+  } else {
+    // fininshed must be set when dynamic_return_object is nil.
+    RAY_CHECK_EQ(finished, true);
+  }
+
+  client->ReportGeneratorItemReturns(
+      request,
+      [](const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+        if (!status.ok()) {
+          // TODO(sang): Handle network error more gracefully.
+          RAY_LOG(ERROR) << "Failed to send the object ref.";
+        }
+      });
+  return Status::OK();
+}
+
+void CoreWorker::HandleReportGeneratorItemReturns(
+    rpc::ReportGeneratorItemReturnsRequest request,
+    rpc::ReportGeneratorItemReturnsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  task_manager_->HandleReportGeneratorItemReturns(request);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
@@ -3850,6 +3920,9 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 void CoreWorker::SetActorReprName(const std::string &repr_name) {
   RAY_CHECK(direct_task_receiver_ != nullptr);
   direct_task_receiver_->SetActorReprName(repr_name);
+
+  absl::MutexLock lock(&mutex_);
+  actor_repr_name_ = repr_name;
 }
 
 rpc::JobConfig CoreWorker::GetJobConfig() const {
