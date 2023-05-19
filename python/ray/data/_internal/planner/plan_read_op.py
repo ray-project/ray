@@ -16,6 +16,24 @@ from ray.data.datasource.datasource import ReadTask
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
 
+# Defensively compute the size of the block as the max size reported by the
+# datasource and the actual read task size. This is to guard against issues
+# with bad metadata reporting.
+def cleaned_metadata(read_task):
+    block_meta = read_task.get_metadata()
+    task_size = len(cloudpickle.dumps(read_task))
+    if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
+        if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
+            print(
+                f"WARNING: the read task size ({task_size} bytes) is larger "
+                "than the reported output size of the task "
+                f"({block_meta.size_bytes} bytes). This may be a size "
+                "reporting bug in the datasource being read from."
+            )
+        block_meta.size_bytes = task_size
+    return block_meta
+
+
 def _plan_read_op(op: Read) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for Read.
 
@@ -24,26 +42,7 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
     """
 
     def get_input_data() -> List[RefBundle]:
-        reader = op._datasource.create_reader(**op._read_args)
-        read_tasks = reader.get_read_tasks(op._parallelism)
-
-        # Defensively compute the size of the block as the max size reported by the
-        # datasource and the actual read task size. This is to guard against issues
-        # with bad metadata reporting.
-        def cleaned_metadata(read_task):
-            block_meta = read_task.get_metadata()
-            task_size = len(cloudpickle.dumps(read_task))
-            if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
-                if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
-                    print(
-                        f"WARNING: the read task size ({task_size} bytes) is larger "
-                        "than the reported output size of the task "
-                        f"({block_meta.size_bytes} bytes). This may be a size "
-                        "reporting bug in the datasource being read from."
-                    )
-                block_meta.size_bytes = task_size
-            return block_meta
-
+        read_tasks = op._read_tasks
         return [
             RefBundle(
                 [
