@@ -179,9 +179,9 @@ def repr_with_fallback(
 
 def _get_ipython_shell_name() -> str:
     if "IPython" in sys.modules:
-        import IPython
+        from IPython import get_ipython
 
-        return IPython.get_ipython().__class__.__name__
+        return get_ipython().__class__.__name__
     return ""
 
 
