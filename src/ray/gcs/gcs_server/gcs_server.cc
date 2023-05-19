@@ -149,33 +149,24 @@ void GcsServer::Start() {
 
 void GcsServer::CacheAndSetClusterId() {
   static std::string const kTokenNamespace = "cluster";
-  switch (storage_type_) {
-  case StorageType::IN_MEMORY:
-    cluster_token_promise_.set_value(ClusterID::FromRandom());
-    break;
-  case StorageType::REDIS_PERSIST:
-    kv_manager_->GetInstance().Get(
-        kTokenNamespace, kClusterIdKey, [this](std::optional<std::string> token) mutable {
-          if (!token.has_value()) {
-            RAY_LOG(DEBUG) << "No existing server token found. Generating new token.";
-            ClusterID cluster_token = ClusterID::FromRandom();
-            kv_manager_->GetInstance().Put(
-                kTokenNamespace,
-                kClusterIdKey,
-                cluster_token.Binary(),
-                false,
-                [this, cluster_token](bool added_entry) mutable {
-                  RAY_CHECK(added_entry) << "Failed to persist new token!";
-                  cluster_token_promise_.set_value(std::move(cluster_token));
-                });
-          } else {
-            cluster_token_promise_.set_value(ClusterID::FromBinary(token.value()));
-          }
-        });
-    break;
-  default:
-    RAY_LOG(FATAL) << "Unexpected storage type " << storage_type_;
-  }
+  kv_manager_->GetInstance().Get(
+      kTokenNamespace, kClusterIdKey, [this](std::optional<std::string> token) mutable {
+        if (!token.has_value()) {
+          RAY_LOG(DEBUG) << "No existing server token found. Generating new token.";
+          ClusterID cluster_token = ClusterID::FromRandom();
+          kv_manager_->GetInstance().Put(
+              kTokenNamespace,
+              kClusterIdKey,
+              cluster_token.Binary(),
+              false,
+              [this, cluster_token](bool added_entry) mutable {
+                RAY_CHECK(added_entry) << "Failed to persist new token!";
+                cluster_token_promise_.set_value(std::move(cluster_token));
+              });
+        } else {
+          cluster_token_promise_.set_value(ClusterID::FromBinary(token.value()));
+        }
+      });
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
