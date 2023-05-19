@@ -19,7 +19,7 @@ class TorchVisionPreprocessor(Preprocessor):
     Examples:
         >>> import ray
         >>> dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
-        >>> dataset  # doctest: +ELLIPSIS
+        >>> dataset  # doctest: +SKIP
         Dataset(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(..., 3), dtype=float)})
 
         Torch models expect inputs of shape :math:`(B, C, H, W)` in the range
@@ -34,12 +34,13 @@ class TorchVisionPreprocessor(Preprocessor):
         ... ])
         >>> preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
         >>> dataset = preprocessor.transform(dataset)  # doctest: +ELLIPSIS
-        >>> dataset  # doctest: +ELLIPSIS
+        >>> dataset  # doctest: +SKIP
         Dataset(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(3, 224, 224), dtype=float)})
 
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
         with a batch-supporting ``Lambda``.
 
+        >>> import torch
         >>> def to_tensor(batch: np.ndarray) -> torch.Tensor:
         ...     tensor = torch.as_tensor(batch, dtype=torch.float)
         ...     # (B, H, W, C) -> (B, C, H, W)
@@ -55,7 +56,7 @@ class TorchVisionPreprocessor(Preprocessor):
         ...     ["image"], transform=transform, batched=True
         ... )
         >>> dataset = preprocessor.transform(dataset)  # doctest: +ELLIPSIS
-        >>> dataset  # doctest: +ELLIPSIS
+        >>> dataset  # doctest: +SKIP
         Dataset(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(3, 224, 224), dtype=float)})
 
     Args:

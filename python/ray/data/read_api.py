@@ -265,6 +265,7 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     """Create a Tensor stream from a range of integers [0..n).
 
     Examples:
+
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
         >>> ds  # doctest: +ELLIPSIS
@@ -1868,8 +1869,8 @@ def from_tf(
         node's memory before moving the data to the distributed object store.
 
     Examples:
-        >>> import ray
-        >>> import tensorflow_datasets as tfds
+        >>> import ray  # doctest: +SKIP
+        >>> import tensorflow_datasets as tfds  # doctest: +SKIP
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
         >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP

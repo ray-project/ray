@@ -202,7 +202,7 @@ class DataIterator(abc.ABC):
             >>> import ray
             >>> dataset = ray.data.range(10)
             >>> next(iter(dataset.iterator().iter_rows()))
-            0
+            {'id': 0}
 
         Time complexity: O(1)
 
