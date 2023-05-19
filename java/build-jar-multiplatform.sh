@@ -181,6 +181,10 @@ case "$1" in
 linux) # build jars that only contains Linux binaries.
   build_jars_linux
   ;;
+many-linux) # install jdk and build jars that only contains Linux binaries.
+  yum -y update && yum install -y java-1.8.0-openjdk maven
+  build_jars_linux
+  ;;
 darwin) # build jars that only contains macos binaries.
   build_jars_darwin
   ;;
