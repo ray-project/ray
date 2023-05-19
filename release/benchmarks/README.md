@@ -2,15 +2,16 @@
 
 ## Distributed Benchmarks
 
-| Dimension                                         | Quantity |
-| ---------                                         | -------- |
-| # nodes in cluster (with trivial task workload)*  | 3k+      |
-| # actors in cluster (with trivial workload)*      | 15k+     |
-| # simultaneously running tasks**                  | 15k+     |
-| # simultaneously running placement groups**       | 1k+      |
+| Dimension                                                    | Quantity |
+| ---------                                                    | -------- |
+| # nodes in cluster (with trivial task workload)<sup>+</sup>  | 3k+      |
+| # actors in cluster (with trivial workload)<sup>+</sup>      | 15k+     |
+| # simultaneously running tasks<sup>++</sup>                  | 15k+     |
+| # simultaneously running placement groups<sup>++</sup>       | 1k+      |
 
-* Tests run on m5.16xlarge for head nodes and m5.large for worker nodes
-** Tests run on 64 nodes with 64 cores/node. Maximum number of nodes is achieved by adding 4 core nodes.
+<sup>+</sup> Tests run on m5.16xlarge for head nodes and m5.large for worker nodes
+
+<sup>++</sup> Tests run on 64 nodes with 64 cores/node. Maximum number of nodes is achieved by adding 4 core nodes.
 
 
 ## Object Store Benchmarks
