@@ -434,7 +434,7 @@ validate_wheels_commit_str() {
   echo "All wheels passed the sanity check and have the correct wheel commit set."
 }
 
-build_wheels() {
+build_wheels_and_jars() {
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
   mkdir -p .whl
@@ -471,9 +471,11 @@ build_wheels() {
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
         "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         # Build Jar on manylinux2014 to resolve incompatibilities.
-        if [ -z "${LINUX_JARS}" ]; then
-          docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${IMAGE_NAME}:${IMAGE_TAG}" /ray/java/build-jar-multiplatform.sh many-linux
+        if [-z "${LINUX_JARS}" ]; then
+          if [ -z "${LINUX_JARS}" == "1" ]; then
+            docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
+            "${IMAGE_NAME}:${IMAGE_TAG}" /ray/java/build-jar-multiplatform.sh many-linux
+          fi
         fi
       else
         rm -rf /ray-mount/*
@@ -485,9 +487,11 @@ build_wheels() {
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
-        if [ -z "${LINUX_JARS}" ]; then
-          docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${IMAGE_NAME}:${IMAGE_TAG}" /ray/java/build-jar-multiplatform.sh many-linux
+        if [-z "${LINUX_JARS}" ]; then
+          if [ -z "${LINUX_JARS}" == "1" ]; then
+            docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
+            "${IMAGE_NAME}:${IMAGE_TAG}" /ray/java/build-jar-multiplatform.sh many-linux
+          fi
         fi
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
@@ -776,7 +780,7 @@ build() {
   fi
 
   if [[ "${NEED_WHEELS}" == "true" ]]; then
-    build_wheels
+    build_wheels_and_jars
   fi
 }
 
