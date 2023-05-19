@@ -738,13 +738,12 @@ class options:
         >>> from ray import workflow
         >>>
         >>> # specify workflow options with a decorator
-        >>> @workflow.options(catch_exceptions=True):
-        >>> @ray.remote
-        >>> def foo():
-        >>>     return 1
-        >>>
+        ... @workflow.options(catch_exceptions=True)  # doctest: +SKIP
+        ... @ray.remote
+        ... def foo():
+        ...     return 1
         >>> # speficy workflow options in ".options"
-        >>> foo_new = foo.options(**workflow.options(catch_exceptions=False))
+        >>> foo_new = foo.options(**workflow.options(catch_exceptions=False))  # doctest: +SKIP
     """
 
     def __init__(self, **workflow_options: Dict[str, Any]):
