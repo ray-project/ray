@@ -7,6 +7,11 @@ import ray
 import psutil
 
 
+def get_gcs_connections():
+    gcs_pid = [p for p in psutil.process_iter() if p.name()=='gcs_server'][0]
+    return len(gcs_pid.connections())
+
+
 def test_max_actors_launch(cpus_per_actor, total_actors):
     @ray.remote(num_cpus=cpus_per_actor)
     class Actor:
@@ -78,6 +83,7 @@ def run_one(total_actors, cpus_per_actor, no_wait):
         f" ({total_actors} actors)"
     )
     print(f"Through put: {throughput}")
+    print(f"GCS connections: {get_gcs_connections()}")
 
     return {
         "actor_launch_time": actor_launch_time,
@@ -103,7 +109,15 @@ def main():
         result[f"many_nodes_actor_tests_{i}"] = run_one(
             i, args.cpus_per_actor, args.no_wait
         )
-
+        # Wait for GCS connection dropping.
+        # This shouldn't cause too much time from observation
+        # But for correctness and corner cases, wait here.
+        while True:
+            conn = get_gcs_connections()
+            print("GCS connections:", conn)
+            sleep(5)
+            if conn < 10000:
+                break
     # Print the results early so if failed in the future, we still
     # can see it in the log.
     print(f"Result: {json.dumps(result, indent=2)}")
