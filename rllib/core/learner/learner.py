@@ -896,7 +896,7 @@ class Learner:
         reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
             _reduce_mean_results
         ),
-    ) -> Mapping[str, Any]:
+    ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do `num_iters` minibatch updates given the original batch.
 
         Given a batch of episodes you can use this method to take more
@@ -916,7 +916,8 @@ class Learner:
                 to the algorithm's training_step. If None is passed, the results will
                 not get reduced.
         Returns:
-            A dictionary of results, in numpy format.
+            A dictionary of results, in numpy format or a list of such dictionaries in
+            case `reduce_fn` is None and we have more than one minibatch pass.
         """
         self._check_is_built()
 
@@ -928,13 +929,13 @@ class Learner:
             )
 
         if num_iters < 1:
-            # we must do at least one pass on the batch for training
-            raise ValueError("num_iters must be >= 1")
+            # We must do at least one pass on the batch for training.
+            raise ValueError("`num_iters` must be >= 1")
 
         if minibatch_size:
             batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
-            # minibatch size was not set but num_iters > 1
+            # `minibatch_size` was not set but `num_iters` > 1.
             # Under the old training stack, users could do multiple sgd passes
             # over a batch without specifying a minibatch size. We enable
             # this behavior here by setting the minibatch size to be the size
@@ -942,15 +943,22 @@ class Learner:
             minibatch_size = batch.count
             batch_iter = MiniBatchCyclicIterator
         else:
-            # minibatch_size and num_iters are not set by the user
+            # `minibatch_size` and `num_iters` are not set by the user.
             batch_iter = MiniBatchDummyIterator
 
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
+            # Convert minibatch into a tensor batch (NestedDict).
             tensor_minibatch = self._convert_batch_type(minibatch)
+            # Make the actual in-graph/traced `_update` call. This should return
+            # all tensor values (no numpy).
             (
                 fwd_out,
                 loss_per_module,
+                # TODO (sven): Moving all grads around is probably expensive.
+                #  We might want to scrap that option here and ask users to use
+                #  register_metrics() inside their postprocee_gradients method for
+                #  the stats they care about.
                 postprocessed_gradients,
                 metrics_per_module,
             ) = self._update(tensor_minibatch)
@@ -959,19 +967,29 @@ class Learner:
                 batch=minibatch,
                 fwd_out=fwd_out,
                 loss_per_module=loss_per_module,
+                # TODO (sven): Same as above: expensive!
                 postprocessed_gradients=postprocessed_gradients,
                 metrics_per_module=metrics_per_module,
             )
             self._check_result(result)
+            # TODO (sven): Figure out whether `compile_metrics` should be forced
+            #  to return all numpy/python data, then we can skip this conversion
+            #  step here.
             results.append(convert_to_numpy(result))
 
         # Reduce results across all minibatches, if necessary.
+
+        # If we only have one result anyways, then the user will not expect a list
+        # to be reduced here (and might not provide a `reduce_fn` therefore) ->
+        # Return single results dict.
         if len(results) == 1:
             return results[0]
-        else:
-            if reduce_fn is None:
-                return results
-            return reduce_fn(results)
+        # If no `reduce_fn` provided, return list of results dicts.
+        elif reduce_fn is None:
+            return results
+        # Pass list of results dicts through `reduce_fn` and return a single results
+        # dict.
+        return reduce_fn(results)
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
