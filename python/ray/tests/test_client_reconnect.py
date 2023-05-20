@@ -571,7 +571,7 @@ def test_client_reconnect_grace_period(call_ray_start_shared):
     # Lower grace period to 5 seconds to save time
     with patch.dict(
         os.environ, {"RAY_CLIENT_RECONNECT_GRACE_PERIOD": "5"}
-    ), start_middleman_server() as (middleman, _):
+    ), start_middleman_server() as middleman:
         assert ray.get(ray.put(42)) == 42
         # Close channel
         middleman.channel.close()
