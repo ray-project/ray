@@ -4594,7 +4594,7 @@
     timeout: 3600
     script: python stress_tests/test_state_api_scale.py
     wait_for_nodes:
-      num_nodes: 7
+      num_nodes: 3
 
   smoke_test:
     frequency: nightly
