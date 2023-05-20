@@ -200,10 +200,12 @@ class InferenceScheduler:
         generations, batch_id = self._inference_worker.process_new_batch(
             [r.request for r in requests]
         )
-        requests = self._process_generation_result(generations, requests)
-        batch_id = self._inference_worker.filter_requests(
-            batch_id, [r.id for r in requests]
-        )
+        requests, need_filter = self._process_generation_result(generations, requests)
+
+        if need_filter:
+            batch_id = self._inference_worker.filter_requests(
+                batch_id, [r.id for r in requests]
+            )
         return batch_id, requests
 
     def _generate_next_token(
@@ -212,19 +214,21 @@ class InferenceScheduler:
         generations, batch_id = self._inference_worker.generate_next_token(
             batch_ids,
         )
-        requests = self._process_generation_result(generations, requests)
+        requests, need_filter = self._process_generation_result(generations, requests)
 
         if batch_id is not None:
-            batch_id = self._inference_worker.filter_requests(
-                batch_id, [r.id for r in requests]
-            )
+            if need_filter:
+                batch_id = self._inference_worker.filter_requests(
+                    batch_id, [r.id for r in requests]
+                )
         else:
             assert len(requests) == 0, "expect no requests left"
         return batch_id, requests
 
     def _process_generation_result(
         self, generations: List[Generation], requests: List[InferenceRequest]
-    ) -> List[InferenceRequest]:
+    ) -> Tuple[List[InferenceRequest], bool]:
+        some_request_finished = False
         unfinished_requests = []
         self._stats.token_generated(len(generations))
         for i, generation in enumerate(generations):
@@ -235,6 +239,7 @@ class InferenceScheduler:
             if generation.stopped:
                 self._stats.request_finished()
                 requests[i].output_stream.end()
+                some_request_finished = True
             else:
                 unfinished_requests.append(requests[i])
-        return unfinished_requests
+        return unfinished_requests, some_request_finished
