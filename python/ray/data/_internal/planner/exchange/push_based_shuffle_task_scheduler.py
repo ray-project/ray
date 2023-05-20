@@ -503,7 +503,10 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             for i, block in enumerate(new_blocks)
         ]
         sorted_blocks.sort(key=lambda x: x[0])
-        _, new_blocks, reduce_stage_metadata = zip(*sorted_blocks)
+
+        new_blocks, reduce_stage_metadata = [], []
+        if sorted_blocks:
+            _, new_blocks, reduce_stage_metadata = zip(*sorted_blocks)
         del sorted_blocks
 
         assert (
