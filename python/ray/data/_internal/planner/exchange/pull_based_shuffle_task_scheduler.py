@@ -75,7 +75,9 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             for j in range(output_num_blocks)
         ]
 
-        new_blocks, new_metadata = zip(*shuffle_reduce_out)
+        new_blocks, new_metadata = [], []
+        if shuffle_reduce_out:
+            new_blocks, new_metadata = zip(*shuffle_reduce_out)
         new_metadata = reduce_bar.fetch_until_complete(list(new_metadata))
         reduce_bar.close()
 
