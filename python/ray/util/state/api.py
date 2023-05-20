@@ -1193,7 +1193,9 @@ def get_log(
             import ray
             import time
 
+            ray.shutdown()
             ray.init()
+
             # Wait for the node to be registered to the dashboard
             time.sleep(5)
 
