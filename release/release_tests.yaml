@@ -1804,7 +1804,7 @@
 - name: tune_cloud_durable_upload_rllib_str_byod
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-
+  python: "3.8"
   stable: false
 
   frequency: manual
@@ -4499,8 +4499,7 @@
   team: core
   frequency: manual
   working_dir: microbenchmark
-
-  python: "3.7"
+  python: "3.8"
 
   cluster:
     byod: 
