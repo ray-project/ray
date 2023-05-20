@@ -1,3 +1,4 @@
+import torch
 from typing import List, Callable, Tuple, Optional
 
 from ray.serve.experimental.llm.models.model import Model
@@ -61,3 +62,5 @@ class InferenceWorker:
 
     def report_stats(self):
         print(f"worker stats: {len(self._batch_state_cache)}")
+        if self._model.device.type == "cuda":
+            print(f"memory stats: {torch.cuda.memory_summary(self._model.device)}")
