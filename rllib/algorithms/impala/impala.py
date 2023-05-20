@@ -371,16 +371,20 @@ class ImpalaConfig(AlgorithmConfig):
                 "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
             )
 
-        # Check `entropy_coeff` for correctness.
-        if self.entropy_coeff < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0!")
         # Entropy coeff schedule checking.
         if self._enable_learner_api:
+            if self.entropy_coeff_schedule is not None:
+                raise ValueError(
+                    "`entropy_coeff_schedule` is deprecated and must be None! Use the "
+                    "`entropy_coeff` setting to setup a schedule."
+                )
             Scheduler.validate(
-                self.entropy_coeff_schedule,
+                self.entropy_coeff,
                 "entropy_coeff_schedule",
                 "entropy coefficient",
             )
+        if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0")
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_rollout_workers:

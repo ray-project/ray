@@ -59,6 +59,7 @@ class SingleAgentRLModuleSpec:
             observation space of an environment, would usually correspond to a
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
+        algorithm_config_overrides: TODO
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
     """
@@ -66,6 +67,7 @@ class SingleAgentRLModuleSpec:
     module_class: Optional[Type["RLModule"]] = None
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
+    algorithm_config_overrides: Optional[Dict[str, Any]] = None
     model_config_dict: Optional[Mapping[str, Any]] = None
     catalog_class: Optional[Type["Catalog"]] = None
 
@@ -74,6 +76,7 @@ class SingleAgentRLModuleSpec:
         return RLModuleConfig(
             observation_space=self.observation_space,
             action_space=self.action_space,
+            algorithm_config_overrides=self.algorithm_config_overrides,
             model_config_dict=self.model_config_dict,
             catalog_class=self.catalog_class,
         )
@@ -167,6 +170,7 @@ class RLModuleConfig:
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
+    algorithm_config_overrides: Dict[str, Any] = None
     model_config_dict: Mapping[str, Any] = None
     catalog_class: Type["Catalog"] = None
 
@@ -191,6 +195,7 @@ class RLModuleConfig:
         return {
             "observation_space": gym_space_to_dict(self.observation_space),
             "action_space": gym_space_to_dict(self.action_space),
+            "algorithm_config_overrides": self.algorithm_config_overrides,
             "model_config_dict": self.model_config_dict,
             "catalog_class_path": catalog_class_path,
         }
@@ -206,6 +211,7 @@ class RLModuleConfig:
         return cls(
             observation_space=gym_space_from_dict(d["observation_space"]),
             action_space=gym_space_from_dict(d["action_space"]),
+            algorithm_config_overrides=d["algorithm_config_overrides"],
             model_config_dict=d["model_config_dict"],
             catalog_class=catalog_class,
         )

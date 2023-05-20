@@ -1,4 +1,5 @@
 import gym
+from typing import Type
 import unittest
 
 import ray
@@ -7,7 +8,7 @@ from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec, RLModule
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
@@ -218,15 +219,19 @@ class TestAlgorithmConfig(unittest.TestCase):
             )
             self.assertEqual(module_spec1.action_space, module_spec2.action_space)
             self.assertEqual(
+                module_spec1.algorithm_config_overrides,
+                module_spec2.algorithm_config_overrides,
+            )
+            self.assertEqual(
                 module_spec1.model_config_dict, module_spec2.model_config_dict
             )
 
     def _get_expected_marl_spec(
         self,
         config: AlgorithmConfig,
-        expected_module_class: type,
-        passed_module_class: type = None,
-        expected_marl_module_class: type = None,
+        expected_module_class: Type[RLModule],
+        passed_module_class: Type[RLModule] = None,
+        expected_marl_module_class: Type[MultiAgentRLModule] = None,
     ):
         """This is a utility function that retrieves the expected marl specs.
 
@@ -252,14 +257,20 @@ class TestAlgorithmConfig(unittest.TestCase):
             expected_marl_module_class = MultiAgentRLModule
 
         env = gym.make("CartPole-v1")
-        policy_spec_ph = PolicySpec(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            config=AlgorithmConfig(),
-        )
 
         marl_spec = config.get_marl_module_spec(
-            policy_dict={"p1": policy_spec_ph, "p2": policy_spec_ph},
+            policy_dict={
+                "p1": PolicySpec(
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    config=AlgorithmConfig(),
+                ),
+                "p2": PolicySpec(
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    config=AlgorithmConfig(),
+                ),
+            },
             module_spec=SingleAgentRLModuleSpec(module_class=passed_module_class)
             if passed_module_class
             else None,
@@ -272,12 +283,18 @@ class TestAlgorithmConfig(unittest.TestCase):
                     module_class=expected_module_class,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
+                    algorithm_config_overrides=(
+                        marl_spec.module_specs["p1"].algorithm_config_overrides
+                    ),
                     model_config_dict=AlgorithmConfig().model,
                 ),
                 "p2": SingleAgentRLModuleSpec(
                     module_class=expected_module_class,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
+                    algorithm_config_overrides=(
+                        marl_spec.module_specs["p2"].algorithm_config_overrides
+                    ),
                     model_config_dict=AlgorithmConfig().model,
                 ),
             },
@@ -355,6 +372,33 @@ class TestAlgorithmConfig(unittest.TestCase):
                 ),
             )
             .training(_enable_learner_api=True)
+        )
+        config.validate()
+
+        spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
+        self._assertEqualMARLSpecs(spec, expected)
+
+        ########################################
+        # This is the case where we pass in a multi-agent RLModuleSpec that asks the
+        # algorithm to assign a specific type of RLModule class to certain module_ids
+        # AND change one of the RLModule's hyperparameters.
+        config = (
+            SingleAgentAlgoConfig()
+            .rl_module(
+                _enable_rl_module_api=True,
+                rl_module_spec=MultiAgentRLModuleSpec(
+                    module_specs={
+                        "p1": SingleAgentRLModuleSpec(
+                            module_class=CustomRLModule1,
+                            algorithm_config_overrides=(
+                                SingleAgentAlgoConfig.overrides(lr=0.002)
+                            ),
+                        ),
+                        "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
+                    },
+                ),
+            )
+            .training(_enable_learner_api=True, lr=0.001)
         )
         config.validate()
 

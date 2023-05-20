@@ -68,6 +68,9 @@ ParamOptimizerPairs = List[ParamOptimizerPair]
 NamedParamOptimizerPairs = Dict[str, ParamOptimizerPair]
 ParamRef = Hashable
 ParamDict = Dict[ParamRef, Param]
+# A single learning rate or a learning rate schedule (list of sub-lists, each of
+# the format: [ts (int), lr_to_reach_by_ts (float)]).
+LearningRateType = Union[float, List[List[Union[int, float]]]]
 
 # COMMON LEARNER LOSS_KEYS
 POLICY_LOSS_KEY = "policy_loss"
@@ -110,12 +113,42 @@ class LearnerHyperparameters:
 
     Validation of the values of these hyperparameters should be done by the
     respective AlgorithmConfig class.
+
+    For configuring different learning behaviors for different (single-agent) RLModules
+    within the Learner, RLlib uses the `per_module_overrides` property (dict), mapping
+    ModuleID to a "sub-version" of a `LearnerHyperparameters` instance, in which the
+    module-specific override settings are applied AND the `per_module_overrides` is set
+    to None.
     """
 
-    # TODO (Sven): Move lr from - currently - optimizer config to only exist here.
-    # lr: float = None
+    # Parameters used for gradient postprocessing (clipping) and gradient application.
+    optimizer_type: Union[str, Dict[str, str]] = None
+    learning_rate: Union[LearningRateType, Dict[str, LearningRateType]] = None
+    grad_clip: Union[float, Dict[str, float]] = None
+    grad_clip_by: Union[str, Dict[str, str]] = None
 
-    lr_schedule: Optional[List[List[Union[int, float]]]] = None
+    # Holds hyperparameters per module. This is not None only in the top-level
+    # Learner's self.hps (whose self.module is a `MARLModule`) and then contains the correct
+    # mappings from ModuleID to the .
+    _per_module_overrides: Optional[Dict[ModuleID, "LearnerHyperparameters"]] = None
+
+    def get_hps_for_module(self, module_id: ModuleID) -> "LearnerHyperparameters":
+        """Returns a LearnerHyperparameter instance, given a `module_id`.
+
+        Args:
+            module_id: The module ID for which to return a specific
+                LearnerHyperparameter instance.
+
+        Returns:
+            The module specific LearnerHyperparameter instance.
+        """
+        if (
+            self._per_module_overrides is not None
+            and module_id in self._per_module_overrides
+        ):
+            return self._per_module_overrides[module_id]
+        else:
+            return self
 
 
 class Learner:
@@ -141,8 +174,6 @@ class Learner:
             or ray.rllib.core.rl_module.MultiAgentRLModuleSpec for more info.
         module: If learner is being used stand-alone, the RLModule can be optionally
             passed in directly instead of the through the `module_spec`.
-        optimizer_config: The deep learning gradient optimizer configuration to be
-            used. For example lr=0.0001, momentum=0.9, etc.
         scaling_config: Configuration for scaling the learner actors.
             Refer to ray.rllib.core.learner.scaling_config.LearnerGroupScalingConfig
             for more info.
@@ -235,7 +266,6 @@ class Learner:
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
         module: Optional[RLModule] = None,
-        optimizer_config: Mapping[str, Any] = None,
         learner_group_scaling_config: Optional[LearnerGroupScalingConfig] = None,
         learner_hyperparameters: Optional[LearnerHyperparameters] = None,
         framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
@@ -253,7 +283,6 @@ class Learner:
 
         self._module_spec = module_spec
         self._module_obj = module
-        self._optimizer_config = optimizer_config
         self._hps = learner_hyperparameters or LearnerHyperparameters()
         self._device = None
 
@@ -279,6 +308,7 @@ class Learner:
         self._module: Optional[MultiAgentRLModule] = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
+        self._optimizer_lr_schedules: Dict[Optimizer, Scheduler] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
         self._params: ParamDict = {}
         # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
@@ -357,21 +387,25 @@ class Learner:
             mapping from optimizer names to optimizers.
 
         """
+        hps = self.hps.get_hps_for_module(module_id)
+
         pairs = []
         name_to_optim = {}
         pair_or_pairs: Union[
             ParamOptimizerPair, NamedParamOptimizerPairs
-        ] = self.configure_optimizers_for_module(module_id)
+        ] = self.configure_optimizers_for_module(module_id, hps=hps)
         if isinstance(pair_or_pairs, tuple):
             # pair_or_pairs is a single ParamOptimizerPair
             pair = pair_or_pairs
             self._check_structure_param_optim_pair(pair)
             _, optim = pair
-            name_to_optim[f"{module_id}"] = optim
+            name = f"{module_id}"
+            name_to_optim[name] = optim
             pairs.append(pair)
+            self._pair_optim_with_lr_scheduler(hps, name, optim)
         elif isinstance(pair_or_pairs, dict):
             # pair_or_pairs is a NamedParamOptimizerPairs
-            for name, pair in pairs.items():
+            for name, pair in pair_or_pairs.items():
                 self._check_structure_param_optim_pair(pair)
                 _, optim = pair
                 if not isinstance(name, str):
@@ -380,8 +414,10 @@ class Learner:
                         "NamedParamOptimizerPairs. The key of a "
                         "NamedParamOptimizerPairs must be a string."
                     )
-                name_to_optim[f"{module_id}_{name}"] = optim
+                name = f"{module_id}_{name}"
+                name_to_optim[name] = optim
                 pairs.append(pair)
+                self._pair_optim_with_lr_scheduler(hps, name, optim)
         else:
             raise ValueError(
                 "The output of configure_optimizers_for_module must be a "
@@ -416,7 +452,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID
+        self, module_id: ModuleID, hps: LearnerHyperparameters
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         """Configures an optimizer for the given module_id.
 
@@ -438,6 +474,7 @@ class Learner:
 
         Args:
             module_id: The module_id of the RLModule that is being configured.
+            hps: The LearnerHyperparameters specific to the given `module_id`.
 
         Returns:
             A ParamOptimizerPair or NamedParamOptimizerPairs for this module_id.
@@ -460,9 +497,129 @@ class Learner:
         Returns:
             The gradients in the same (flat) format as self._params. Note that all
             top-level structures, such as module IDs, will not be present anymore in
-            the returned dict. It will merely map parameter tensor references to their
-            respective gradient tensors.
+            the returned dict. It will merely map gradient tensor references to gradient
+            tensors.
         """
+
+    @OverrideToImplementCustomLogic
+    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
+        """Applies potential postprocessing operations on the gradients.
+
+        This method is called after gradients have been computed and modifies them
+        before they are applied to the respective module(s) by the optimizer(s).
+        This might include grad clipping by value, norm, or global-norm, or other
+        algorithm specific gradient postprocessing steps.
+
+        This default implementation calls `self.postprocess_gradients_for_module()`
+        on each of the sub-modules in our MultiAgentRLModule: `self.module` and
+        returns the accumulated gradients dicts.
+
+        Args:
+            gradients_dict: A dictionary of gradients in the same (flat) format as
+                self._params. Note that top-level structures, such as module IDs,
+                will not be present anymore in this dict. It will merely map gradient
+                tensor references to gradient tensors.
+
+        Returns:
+            A dictionary with the updated gradients and the exact same (flat) structure
+            as the incoming `gradients_dict` arg.
+        """
+
+        # The flat gradients dict (mapping param refs to params), returned by this
+        # method.
+        postprocessed_gradients = {}
+
+        for module_id in self.module.keys():
+            # Send a sub-gradients dict to the `postprocess_gradients_for_module`
+            # method.
+            module_grads_dict = {}
+            for name in self._module_optimizers[module_id]:
+                optimizer = self._named_optimizers[name]
+                module_grads_dict.update({
+                    ref: gradients_dict[ref]
+                    for ref in self._optimizer_parameters[optimizer]
+                    if ref in gradients_dict and gradients_dict[ref] is not None
+                })
+            module_grads_dict = self.postprocess_gradients_for_module(
+                module_id=module_id,
+                hps=self.hps.get_hps_for_module(module_id),
+                module_gradients_dict=module_grads_dict,
+            )
+            assert isinstance(module_grads_dict, dict)
+
+            # Update our return dict.
+            postprocessed_gradients.update(module_grads_dict)
+
+        return postprocessed_gradients
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def postprocess_gradients_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: LearnerHyperparameters,
+        module_gradients_dict: ParamDictType,
+    ) -> ParamDictType:
+        """
+
+        Args:
+            module_id: The module ID for which we will postprocess computed gradients.
+                Note that `module_gradients_dict` already only carries those gradient
+                tensors that belong to this `module_id`. Other `module_id`'s gradients
+                are not available in this call.
+            hps: The LearnerHyperparameters specific to the given `module_id`.
+            module_gradients_dict: A dictionary of gradients in the same (flat) format
+                as self._params, mapping gradient refs to gradient tensors, which are to
+                be postprocessed. You may alter these tensors in place or create new
+                ones and return these in a new dict.
+
+        Returns:
+            A dictionary with the updated gradients and the exact same (flat) structure
+            as the incoming `module_gradients_dict` arg.
+        """
+        clip_gradients = self._get_clip_function()
+
+        postprocessed_grads = {}
+
+        # Loop through all optimizers of this `module_id`.
+        for name in self._module_optimizers[module_id]:
+            optim_name = name[len(module_id) + 1:]
+            grad_clip: Optional[float] = (
+                hps.grad_clip.get(optim_name) if isinstance(hps.grad_clip, dict)
+                else hps.grad_clip
+            )
+            if grad_clip is None:
+                postprocessed_grads.update(module_gradients_dict)
+            else:
+                grad_clip_by: Optional[str] = (
+                    hps.grad_clip_by.get(optim_name) if isinstance(hps.grad_clip_by,
+                                                                   dict)
+                    else hps.grad_clip_by
+                )
+                grad_dict_to_clip = {
+                    ref: module_gradients_dict[ref]
+                    for ref in self._optimizer_parameters[optimizer]
+                    if (
+                        ref in module_gradients_dict
+                        and module_gradients_dict[ref] is not None
+                    )
+                }
+
+                # Perform gradient clipping, if necessary.
+                global_norm = clip_gradients(
+                    grad_dict_to_clip,
+                    grad_clip=grad_clip,
+                    grad_clip_by=grad_clip_by,
+                )
+                if grad_clip_by == "global_norm":
+                    self.register_metric(
+                        module_id,
+                        f"gradients_{optim_name}_global_norm",
+                        global_norm,
+                    )
+                postprocessed_grads.update(grad_dict_to_clip)
+
+        return postprocessed_grads
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
@@ -609,12 +766,10 @@ class Learner:
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
         for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
-            module_learner_stats[module_id].update(
-                {
-                    self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
-                    **convert_to_numpy(metrics_per_module[module_id]),
-                }
-            )
+            module_learner_stats[module_id].update({
+                self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
+                **convert_to_numpy(metrics_per_module[module_id]),
+            })
         return dict(module_learner_stats)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -670,6 +825,7 @@ class Learner:
                 optim = self._named_optimizers[optim_name]
                 del self._optimizer_parameters[optim]
                 del self._named_optimizers[optim_name]
+                del self._optimizer_lr_schedules[optim]
             del self._module_optimizers[module_id]
 
         self.module.remove_module(module_id)
@@ -679,22 +835,12 @@ class Learner:
         """Builds the Learner.
 
         This method should be called before the learner is used. It is responsible for
-        setting up the RLModule and optimizers.
+        setting up the RLModule, optimizers, and their lr-schedulers.
         """
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")
             return
         self._is_built = True
-
-        # Build learning rate scheduling tools.
-        # TODO (sven): Move lr from optimizer config to Learner HPs?
-        #  We might not need optimizer config.
-        self.lr_scheduler = Scheduler(
-            fixed_value=self._optimizer_config["lr"],
-            schedule=self.hps.lr_schedule,
-            framework=self.framework,
-            device=self._device,
-        )
 
         self._module = self._make_module()
 
@@ -742,6 +888,7 @@ class Learner:
 
             loss = self.compute_loss_for_module(
                 module_id=module_id,
+                hps=self.hps.get_hps_for_module(module_id),
                 batch=module_batch,
                 fwd_out=module_fwd_out,
             )
@@ -762,6 +909,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
+        hps: LearnerHyperparameters,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
@@ -773,6 +921,7 @@ class Learner:
 
         Args:
             module_id: The id of the module.
+            hps: The LearnerHyperparameters specific to the given `module_id`.
             batch: The sample batch for this particular module.
             fwd_out: The output of the forward pass for this particular module.
 
@@ -838,6 +987,7 @@ class Learner:
         for module_id in module_ids:
             module_results = self.additional_update_for_module(
                 module_id=module_id,
+                hps=self.hps.get_hps_for_module(module_id),
                 timestep=timestep,
                 **kwargs,
             )
@@ -850,8 +1000,8 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        timestep: int,
-        **kwargs,
+        hps: LearnerHyperparameters,
+        timestep: int, **kwargs,
     ) -> Dict[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
@@ -859,33 +1009,33 @@ class Learner:
 
         Args:
             module_id: The id of the module to update.
+            hps: The LearnerHyperparameters specific to the given `module_id`.
             timestep: The current global timestep (to be used with schedulers).
             **kwargs: Keyword arguments to use for the additional update.
 
         Returns:
             A dictionary of results from the update
         """
-        return {}
+        results = {}
 
-    @OverrideToImplementCustomLogic
-    def postprocess_gradients(
-        self,
-        gradients_dict: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        """Applies potential postprocessing operations on the gradients.
+        # Handle lr scheduling updates and apply new learning rates to the optimizers.
+        for name, optimizer in self._named_optimizers.items():
+            # Only cover optimizers for this particular module.
+            if name not in self._module_optimizers[module_id]:
+                continue
 
-        This method is called after gradients have been computed, and modifies them
-        before they are applied to the respective module(s).
-        This includes grad clipping by value, norm, or global-norm, or other
-        algorithm specific gradient postprocessing steps.
-
-        Args:
-            gradients_dict: A dictionary of gradients.
-
-        Returns:
-            A dictionary with the updated gradients.
-        """
-        return gradients_dict
+            new_lr = self._optimizer_lr_schedules[optimizer].update(timestep=timestep)
+            self._set_optimizer_lr(optimizer, lr=new_lr)
+            results.update({name: new_lr})
+        # In the simple case (only one optimizer for this module), publish current lr
+        # directly under LEARNER_RESULTS_CURR_LR_KEY, otherwise, return new lrs by
+        # optimizer name.
+        results = {
+            LEARNER_RESULTS_CURR_LR_KEY: (
+                results if len(results) > 1 else list(results.values())[0]
+            )
+        }
+        return results
 
     def update(
         self,
@@ -1244,6 +1394,23 @@ class Learner:
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
 
+    def _pair_optim_with_lr_scheduler(self, hps, name, optim):
+        # Figure out the correct setting to use for this optimizer.
+        fixed_value_or_schedule = (
+            hps.learning_rate.get(name) if isinstance(hps.learning_rate, dict)
+            else hps.learning_rate
+        )
+
+        # Build learning rate scheduling tools (one Schedule per optimizer).
+        self._optimizer_lr_schedules[optim] = Scheduler(
+            fixed_value_or_schedule=fixed_value_or_schedule,
+            framework=self.framework,
+            device=self._device,
+        )
+        # Set the optimizer to the current (first) learning rate.
+        lr = self._optimizer_lr_schedules[optim].get_current_value()
+        self._set_optimizer_lr(optimizer=optim, lr=lr)
+
     @abc.abstractmethod
     def _get_tensor_variable(
         self,
@@ -1264,6 +1431,21 @@ class Learner:
             dtype and trainable/requires_grad property.
         """
 
+    @staticmethod
+    @abc.abstractmethod
+    def _set_optimizer_lr(optimizer: Optimizer, lr: float) -> None:
+        """Updates the learning rate of the given local optimizer.
+
+        Args:
+            optimizer: The local optimizer to update the learning rate for.
+            lr: The new learning rate.
+        """
+
+    @staticmethod
+    @abc.abstractmethod
+    def _get_clip_function() -> Callable:
+        """Returns the gradient clipping function to use, given the framework."""
+
 
 @dataclass
 class LearnerSpec:
@@ -1275,7 +1457,6 @@ class LearnerSpec:
         module: Alternatively the RLModule instance can be passed in directly. This
             only works if the Learner is not an actor.
         backend_config: The backend config for properly distributing the RLModule.
-        optimizer_config: The optimizer setting to apply during training.
         learner_hyperparameters: The extra config for the loss/additional update. This
             should be a subclass of LearnerHyperparameters. This is useful for passing
             in algorithm configs that contains the hyper-parameters for loss
@@ -1288,7 +1469,6 @@ class LearnerSpec:
     learner_group_scaling_config: LearnerGroupScalingConfig = field(
         default_factory=LearnerGroupScalingConfig
     )
-    optimizer_config: Dict[str, Any] = field(default_factory=dict)
     learner_hyperparameters: LearnerHyperparameters = field(
         default_factory=LearnerHyperparameters
     )
@@ -1302,7 +1482,6 @@ class LearnerSpec:
             "module": self.module,
             "module_spec": self.module_spec,
             "learner_group_scaling_config": self.learner_group_scaling_config,
-            "optimizer_config": self.optimizer_config,
             "learner_hyperparameters": self.learner_hyperparameters,
             "framework_hyperparameters": self.framework_hyperparameters,
         }
