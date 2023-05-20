@@ -528,6 +528,7 @@ class CausalLM(Model):
             dtype=dtype,
             device=device,
         )
+        self.model = model.eval()
 
     @property
     def batch_type(self) -> Type[CausalLMBatch]:

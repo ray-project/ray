@@ -10,6 +10,8 @@ class InferenceWorker:
     def __init__(self, model_loader: Callable[[], Model]):
         self._model = model_loader()
         self._batch_state_cache = dict()
+        if self._model.device.type == "cuda":
+            self._inference_mode_raii_guard = torch._C._InferenceMode(True)
 
     def process_new_batch(
         self, requests: List[GenerationRequest]
