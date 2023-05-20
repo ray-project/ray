@@ -2,6 +2,7 @@ from typing import List
 
 import boto3
 import hashlib
+import os
 import subprocess
 import sys
 import time
@@ -29,6 +30,8 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
             continue
         to_be_built[test.get_ray_image()] = test.get_anyscale_byod_image()
 
+    env = os.environ.copy()
+    env["DOCKER_BUILDKIT"] = "1"
     timeout = 0
     # ray images are built on post-merge, so we can wait for them to be available
     while len(built) < len(to_be_built) and timeout < 7200:
@@ -52,7 +55,7 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                         ],
                         stdin=build_file,
                         stdout=subprocess.DEVNULL,
-                        env={"DOCKER_BUILDKIT": "1"},
+                        env=env,
                     )
                 except subprocess.CalledProcessError:
                     # If the ray image does not exist yet, we will retry later
