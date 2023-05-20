@@ -38,7 +38,11 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
+)
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
@@ -317,7 +321,7 @@ class Learner:
 
         # Registered metrics (one sub-dict per module ID) to be returned from
         # `Learner.update()`. These metrics will be "compiled" automatically into
-        # the final results dict in the `self.compile_results()` method.
+        # the final results dict in the `self.compile_update_results()` method.
         self._metrics = defaultdict(dict)
 
     @property
@@ -722,13 +726,14 @@ class Learner:
         """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def compile_results(
+    def compile_update_results(
         self,
         *,
         batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
         loss_per_module: Mapping[str, TensorType],
         postprocessed_gradients: ParamDictType,
+        metrics_per_module: Dict[ModuleID, Dict[str, Any]],
     ) -> Mapping[str, Any]:
         """Compile results from the update in a numpy-friendly format.
 
@@ -740,6 +745,9 @@ class Learner:
                 `compute_loss_for_module(module_id=...)`.
             postprocessed_gradients: The postprocessed gradients dict, (flat) mapping
                 gradient tensor refs to the already postprocessed gradient tensors.
+            metrics_per_module: The collected metrics dict mapping ModuleIDs to
+                metrics dicts. These metrics are collected during loss- and
+                gradient computation, gradient postprocessing, and gradient application.
 
         Returns:
             A dictionary of results sub-dicts per module (including ALL_MODULES).
@@ -749,19 +757,23 @@ class Learner:
                 f"batch must be a MultiAgentBatch, but got {type(batch)} instead."
             )
 
-        loss_per_module_numpy = convert_to_numpy(loss_per_module)
-
         # We compile the metrics to have the structure:
         # top-leve key: module_id -> [key, e.g. self.TOTAL_LOSS_KEY] -> [value].
         # Results will include all registered metrics under the respective module ID
         # top-level key.
-        module_learner_stats = {}
+        module_learner_stats = defaultdict(dict)
+        # Add the num agent|env steps trained counts for all modules.
+        module_learner_stats[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
+        module_learner_stats[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
+
+        loss_per_module_numpy = convert_to_numpy(loss_per_module)
+
         for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
-            module_learner_stats[module_id] = dict(
-                {self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id]},
-                **self._metrics[module_id],
-            )
-        return module_learner_stats
+            module_learner_stats[module_id].update({
+                self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
+                **convert_to_numpy(metrics_per_module[module_id]),
+            })
+        return dict(module_learner_stats)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def add_module(
@@ -1090,9 +1102,19 @@ class Learner:
 
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
+            tensor_minibatch = self._convert_batch_type(minibatch)
+            #result = self._update(tensor_minibatch)
+            fwd_out, loss_per_module, postprocessed_gradients, metrics_per_module = self._update(tensor_minibatch)
 
-            result = self._update(minibatch)
-            results.append(result)
+            result = self.compile_update_results(
+                batch=minibatch,
+                fwd_out=fwd_out,
+                loss_per_module=loss_per_module,
+                postprocessed_gradients=postprocessed_gradients,
+                metrics_per_module=metrics_per_module,
+            )
+            self._check_result(result)
+            results.append(convert_to_numpy(result))
 
         # Reduce results across all minibatches, if necessary.
         if len(results) == 1:
@@ -1101,6 +1123,14 @@ class Learner:
             if reduce_fn is None:
                 return results
             return reduce_fn(results)
+
+    @abc.abstractmethod
+    def _update(
+        self,
+        batch: NestedDict,
+        **kwargs,
+    ):
+        """TODO"""
 
     def set_state(self, state: Mapping[str, Any]) -> None:
         """Set the state of the learner.
@@ -1312,29 +1342,32 @@ class Learner:
                         f"module id. Valid module ids are: {list(self.module.keys())}."
                     )
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    """@OverrideToImplementCustomLogic_CallToSuperRecommended
     def _update(
         self,
-        batch: MultiAgentBatch,
+        batch: NestedDict,
     ) -> Mapping[str, Any]:
-        """Performs a single update given a batch of data."""
+        ""Performs a single update given a batch of data.""
         # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
         #  NestedDict from the base class.
-        tensorbatch = self._convert_batch_type(batch)
-        fwd_out = self.module.forward_train(tensorbatch)
-        loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
+        #tensorbatch = self._convert_batch_type(batch)
+        fwd_out = self.module.forward_train(batch)
+        loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
 
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        results = self.compile_results(
-            batch=batch,
-            fwd_out=fwd_out,
-            loss_per_module=loss_per_module,
-            postprocessed_gradients=postprocessed_gradients,
-        )
-        self._check_result(results)
-        return convert_to_numpy(results)
+        return fwd_out, loss_per_module, postprocessed_gradients, self._metrics
+        #results = self.compile_update_results(
+        #    batch=batch,
+        #    fwd_out=fwd_out,
+        #    loss_per_module=loss_per_module,
+        #    postprocessed_gradients=postprocessed_gradients,
+        #    metrics_per_module=self._metrics,
+        #)
+        #self._check_result(results)
+        #return convert_to_numpy(results)
+"""
 
     def _check_is_built(self):
         if self.module is None:

@@ -106,25 +106,6 @@ class ImpalaLearner(Learner):
 
         return results
 
-    @override(Learner)
-    def compile_results(
-        self,
-        *,
-        batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
-        loss_per_module: Union[TensorType, Mapping[str, Any]],
-        postprocessed_gradients: ParamDictType,
-    ) -> Mapping[str, Any]:
-        results = super().compile_results(
-            batch=batch,
-            fwd_out=fwd_out,
-            loss_per_module=loss_per_module,
-            postprocessed_gradients=postprocessed_gradients,
-        )
-        results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
-        results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
-        return results
-
 
 def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
     """Reduce/Aggregate a list of results from Impala Learners.

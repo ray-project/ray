@@ -375,7 +375,7 @@ class TfLearner(Learner):
 
         A stratgey is a tensorflow object that is used for distributing training and
         gradient computation across multiple devices. By default a no-op strategy is
-        that is not distributed is used.
+        used that is not distributed.
 
         Returns:
             A strategy for the learner to use for distributed training.
@@ -419,11 +419,12 @@ class TfLearner(Learner):
             super().build()
 
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
-        else:
-            self._update_fn = self._do_update_fn
+            #self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
+            self._update = tf.function(self._update, reduce_retracing=True)
+        #else:
+        #    self._update_fn = self._do_update_fn
 
-    @override(Learner)
+    """@override(Learner)
     def update(
         self,
         batch: MultiAgentBatch,
@@ -456,11 +457,13 @@ class TfLearner(Learner):
             loss_per_module = update_outs["loss_per_module"]
             fwd_out = update_outs["fwd_out"]
             postprocessed_gradients = update_outs["postprocessed_gradients"]
-            result = self.compile_results(
+            metrics_per_module = update_outs["metrics_per_module"]
+            result = self.compile_update_results(
                 batch=batch,
                 fwd_out=fwd_out,
                 loss_per_module=loss_per_module,
                 postprocessed_gradients=postprocessed_gradients,
+                metrics_per_module=metrics_per_module,
             )
             self._check_result(result)
             results.append(result)
@@ -472,44 +475,52 @@ class TfLearner(Learner):
             if reduce_fn is None:
                 return results
             return reduce_fn(results)
+        """
 
-    def _do_update_fn(
+    #def _do_update_fn(
+    @override(Learner)
+    def _update(
         self,
-        batch: MultiAgentBatch,
+        batch: NestedDict,
         _ray_trace_ctx=None,
     ) -> Mapping[str, Any]:
         # TODO (Avnish): Match the base class's implementation.
         def helper(_batch):
+
             # TODO (Kourosh): We need to go back to NestedDict because that's the
             #  constraint on forward_train and compute_loss APIs. This seems to be
             #  in-efficient. Make it efficient.
-            _batch = NestedDict(_batch)
+            # TODO (Sven): Seemingly not needed anymore :) Remove in PR.
+            #_batch = self._convert_batch_type(_batch)
+
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
             gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
-            gradients = self.postprocess_gradients(gradients)
-            self.apply_gradients(gradients)
+            postprocessed_gradients = self.postprocess_gradients(gradients)
+            self.apply_gradients(postprocessed_gradients)
 
             # NOTE (Kourosh) The reason for returning fwd_out is that it is optionally
             # needed for compiling the results in a later step (e.g. in
-            # compile_results), but it should not contain anything but tensors, None or
-            # ExtensionTypes, otherwise the tf.function will yell at us because it
-            # won't be able to convert the returned objects to a tensor representation
-            # (for internal reasons). So, in here, we remove anything from fwd_out that
-            # is not a tensor, None or ExtensionType.
-            def filter_fwd_out(x):
-                if isinstance(
-                    x, (tf.Tensor, type(None), tf.experimental.ExtensionType)
-                ):
-                    return x
-                return None
+            # compile_update_results), but it should not contain anything but tensors,
+            # None or ExtensionTypes, otherwise the tf.function will yell at us because
+            # it won't be able to convert the returned objects to a tensor
+            # representation (for internal reasons). So, in here, we remove anything
+            # from fwd_out that is not a tensor, None or ExtensionType.
+            #def filter_fwd_out(x):
+            #    if isinstance(
+            #        x, (tf.Tensor, type(None), tf.experimental.ExtensionType)
+            #    ):
+            #        return x
+            #    return None
 
-            return {
-                "loss_per_module": loss_per_module,
-                "fwd_out": tree.map_structure(filter_fwd_out, fwd_out),
-                "postprocessed_gradients": gradients,
-            }
+            return fwd_out, loss_per_module, postprocessed_gradients, self._metrics
+            #return {
+            #    "loss_per_module": loss_per_module,
+            #    "fwd_out": fwd_out,#tree.map_structure(filter_fwd_out, fwd_out),
+            #    "postprocessed_gradients": gradients,
+            #    "metrics_per_module": self._metrics,
+            #}
 
         return self._strategy.run(helper, args=(batch,))
 

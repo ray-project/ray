@@ -11,7 +11,7 @@ from ray.rllib.utils.typing import TensorType
 
 class BaseTestingLearner(Learner):
     @override(Learner)
-    def compile_results(
+    def compile_update_results(
         self,
         *,
         batch: NestedDict,
@@ -19,7 +19,7 @@ class BaseTestingLearner(Learner):
         loss_per_module: Union[TensorType, Mapping[str, Any]],
         postprocessed_gradients: Dict[str, Any],
     ) -> Mapping[str, Any]:
-        results = super().compile_results(
+        results = super().compile_update_results(
             batch=batch,
             fwd_out=fwd_out,
             loss_per_module=loss_per_module,

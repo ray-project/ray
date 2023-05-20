@@ -101,6 +101,33 @@ class TorchLearner(Learner):
         return pair
 
     @override(Learner)
+    def _update(
+        self,
+        batch: NestedDict,
+        **kwargs,
+    ):
+        """Performs a single update given a batch of data."""
+        # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
+        #  NestedDict from the base class.
+        # tensorbatch = self._convert_batch_type(batch)
+        fwd_out = self.module.forward_train(batch)
+        loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
+
+        gradients = self.compute_gradients(loss_per_module)
+        postprocessed_gradients = self.postprocess_gradients(gradients)
+        self.apply_gradients(postprocessed_gradients)
+        return fwd_out, loss_per_module, postprocessed_gradients, self._metrics
+        # results = self.compile_update_results(
+        #    batch=batch,
+        #    fwd_out=fwd_out,
+        #    loss_per_module=loss_per_module,
+        #    postprocessed_gradients=postprocessed_gradients,
+        #    metrics_per_module=self._metrics,
+        # )
+        # self._check_result(results)
+        # return convert_to_numpy(results)
+
+    @override(Learner)
     def compute_gradients(
         self, loss_per_module: Mapping[str, TensorType], **kwargs
     ) -> ParamDictType:
