@@ -586,20 +586,21 @@ class Learner:
         postprocessed_grads = {}
 
         # Loop through all optimizers of this `module_id`.
-        for name, optimizer in self._named_optimizers.items():
+        for name in self._module_optimizers[module_id]:
             optim_name = name[len(module_id) + 1:]
             grad_clip: Optional[float] = (
                 hps.grad_clip.get(optim_name) if isinstance(hps.grad_clip, dict)
                 else hps.grad_clip
             )
-            grad_clip_by: Optional[str] = (
-                hps.grad_clip_by.get(optim_name) if isinstance(hps.grad_clip_by,
-                                                               dict)
-                else hps.grad_clip_by
-            )
-
-            if grad_clip is not None:
-                grad_dict = {
+            if grad_clip is None:
+                postprocessed_grads.update(module_gradients_dict)
+            else:
+                grad_clip_by: Optional[str] = (
+                    hps.grad_clip_by.get(optim_name) if isinstance(hps.grad_clip_by,
+                                                                   dict)
+                    else hps.grad_clip_by
+                )
+                grad_dict_to_clip = {
                     ref: module_gradients_dict[ref]
                     for ref in self._optimizer_parameters[optimizer]
                     if (
@@ -610,7 +611,7 @@ class Learner:
 
                 # Perform gradient clipping, if necessary.
                 global_norm = clip_gradients(
-                    grad_dict,
+                    grad_dict_to_clip,
                     grad_clip=grad_clip,
                     grad_clip_by=grad_clip_by,
                 )
@@ -620,7 +621,7 @@ class Learner:
                         f"gradients_{optim_name}_global_norm",
                         global_norm,
                     )
-                postprocessed_grads.update(grad_dict)
+                postprocessed_grads.update(grad_dict_to_clip)
 
         return postprocessed_grads
 
@@ -1129,8 +1130,20 @@ class Learner:
         self,
         batch: NestedDict,
         **kwargs,
-    ):
-        """TODO"""
+    ) -> Tuple[Any, ]:
+        """Contains all logic for an in-graph/traceable update step.
+
+        Framework specific subclasses must implement this method. This should include
+        calls to the RLModule's `forward_train`, `compute_loss`, compute_gradients`,
+        `postprocess_gradients`, and `apply_gradients` and return .
+
+        Args:
+            batch: The train batch already converted in to a (tensor) NestedDict.
+            **kwargs: Forward compatibility kwargs.
+
+        Returns:
+            A tuple consisting of:
+        """
 
     def set_state(self, state: Mapping[str, Any]) -> None:
         """Set the state of the learner.

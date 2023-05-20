@@ -898,7 +898,7 @@ class AlgorithmConfig(_Config):
 
         # LR-schedule checking.
         if self._enable_learner_api:
-            Scheduler.validate(self.lr, "lr_schedule", "learning rate")
+            Scheduler.validate(self.lr, "lr", "learning rate")
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -1640,7 +1640,6 @@ class AlgorithmConfig(_Config):
         gamma: Optional[float] = NotProvided,
         optimizer_type: Optional[Union[str, Dict[str, str]]] = NotProvided,
         lr: Optional[Union[float, Dict[str, float]]] = NotProvided,
-        #lr_schedule: Optional[LearningRateType] = NotProvided,
         grad_clip: Optional[Union[float, Dict[str, float]]] = NotProvided,
         grad_clip_by: Optional[Union[str, Dict[str, str]]] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
@@ -3237,16 +3236,6 @@ class AlgorithmConfig(_Config):
             .module(module_spec)
             .learner(
                 learner_class=self.learner_class,
-                # TODO (Kourosh): optimizer config can now be more complicated.
-                # TODO (Sven): Shouldn't optimizer config be part of learner HPs?
-                #  E.g. if we have a lr schedule, this will have to be managed by
-                #  the learner, NOT the optimizer directly.
-                #optimizer_config={
-                #    "lr": self.lr,
-                #    "lr_schedule": self.lr_schedule,
-                #    "grad_clip": self.grad_clip,
-                #    "grad_clip_by": self.grad_clip_by,
-                #},
                 learner_hyperparameters=self.get_learner_hyperparameters(),
             )
             .resources(

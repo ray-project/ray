@@ -75,7 +75,7 @@ class Scheduler:
                 Intermediary timesteps will be assigned to linerarly interpolated
                 values. A schedule config's first entry must
                 start with timestep 0, i.e.: [[0, initial_value], [...]].
-            schedule_name: The name of the schedule, e.g. `lr_schedule`.
+            schedule_name: The name of the schedule, e.g. `lr` or `entropy_coeff`.
             value_name: A full text description of the variable that's being scheduled,
                 e.g. `learning rate`.
 
