@@ -466,8 +466,8 @@ build_wheels_and_jars() {
       IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
       IMAGE_TAG="2022-12-20-b4884d9"
 
-      local MOUNT_ENV=(）
-      if [ $LINUX_JARS ]; then
+      local MOUNT_ENV=()
+      if [ ${LINUX_JARS-} == "1" ]; then
         MOUNT_ENV+=(
           -e "BUILD_JAR=1"
         )

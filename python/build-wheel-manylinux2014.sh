@@ -23,7 +23,7 @@ PYTHON_NUMPYS=(
 )
 
 yum -y install unzip zip sudo
-yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
+yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven xz
 yum -y install openssl
 
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
@@ -130,6 +130,6 @@ done
 # Clean the build output so later operations is on a clean directory.
 git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
 
-if [ $BUILD_JAR ]; then
+if [ ${BUILD_JAR-} == "1" ]; then
   ./java/build-jar-multiplatform.sh linux
 fi
