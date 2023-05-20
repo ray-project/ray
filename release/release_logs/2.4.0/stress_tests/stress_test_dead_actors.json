@@ -1,14 +1,14 @@
 {
-    "avg_iteration_time": 2.0598055481910706,
-    "max_iteration_time": 15.883565187454224,
-    "min_iteration_time": 0.14446020126342773,
+    "avg_iteration_time": 1.6586534643173219,
+    "max_iteration_time": 7.94333553314209,
+    "min_iteration_time": 0.2625112533569336,
     "perf_metrics": [
         {
             "perf_metric_name": "avg_iteration_time",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 2.0598055481910706
+            "perf_metric_value": 1.6586534643173219
         }
     ],
     "success": 1,
-    "total_time": 205.98083114624023
+    "total_time": 165.86570835113525
 }
