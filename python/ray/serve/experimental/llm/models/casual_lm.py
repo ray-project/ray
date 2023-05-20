@@ -25,6 +25,7 @@ from ray.serve.experimental.llm.utils import (
     NextTokenChooser,
     StoppingCriteria,
     Sampling,
+    tensor_memory,
 )
 from ray.serve.experimental.llm.types import (
     Batch,
@@ -154,10 +155,19 @@ class CausalLMBatch(Batch):
         )
 
     def stats(self):
+        total_size = 0
         past_kv_shape = []
         if self.past_key_values:
             for keys, values in self.past_key_values:
                 past_kv_shape.append((keys.size(), values.size()))
+                total_size += tensor_memory(keys) 
+                total_size += tensor_memory(values) 
+
+        total_size += tensor_memory(self.input_ids)
+        total_size += tensor_memory(self.attention_mask)
+        total_size += tensor_memory(self.position_ids)
+        for i in self.all_input_ids:
+            total_size += tensor_memory(i)
 
         return {
             "request": len(self.requests),
@@ -165,7 +175,8 @@ class CausalLMBatch(Batch):
             "attention_mask": self.attention_mask.size(),
             "position_ids": self.position_ids.size(), 
             "past_key_values": past_kv_shape,
-            "all_input_ids": [input_id.size() for input_id in self.all_input_ids]
+            "all_input_ids": [input_id.size() for input_id in self.all_input_ids],
+            "total_size": total_size
         }
 
 

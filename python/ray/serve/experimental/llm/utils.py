@@ -241,3 +241,9 @@ class StoppingCriteria:
             params.max_new_tokens,
             params.ignore_eos_token,
         )
+
+def tensor_memory(tensor):
+    if tensor.is_cuda:  # only for tensors stored in GPU
+        return tensor.element_size() * tensor.nelement()
+    else:
+        return 0

@@ -67,7 +67,9 @@ class InferenceWorker:
             gc.collect()
             print(f"memory allocated: {torch.cuda.memory_allocated(self._model.device) / 2 ** 30}")
             print(f"memory reserved: {torch.cuda.memory_reserved(self._model.device) / 2 ** 30}")
-            self.debug_objects()
+            self.check_cuda_objects()
+            if torch.cuda.memory_allocated(self._model.device) / 2 ** 30 > 30:
+                self.debug_objects()
 
     def check_cuda_objects(self):
         from collections import defaultdict
@@ -78,7 +80,7 @@ class InferenceWorker:
         for obj in gc.get_objects():
             try:
                 if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
-                    t = tuple(obj.size()) + (obj.dtype, obj.device)
+                    t = tuple(obj.size()) + (obj.dtype, obj.device) 
                     d[t] += 1
             except:
                 pass
