@@ -467,7 +467,7 @@ build_wheels_and_jars() {
       IMAGE_TAG="2022-12-20-b4884d9"
 
       local MOUNT_ENV=()
-      if [ ${LINUX_JARS-} == "1" ]; then
+      if [ "${LINUX_JARS-}" == "1" ]; then
         MOUNT_ENV+=(
           -e "BUILD_JAR=1"
         )
