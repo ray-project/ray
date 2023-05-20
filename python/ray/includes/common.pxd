@@ -433,3 +433,4 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
 cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kWorkerSetupHookKeyName
     cdef int kResourceUnitScaling
+    cdef int kStreamingGeneratorReturn

@@ -1853,7 +1853,7 @@ void CoreWorker::BuildCommonTaskSpec(
   // TODO(sang): Remove this and integrate it to
   // nun_returns == -1 once migrating to streaming
   // generator.
-  bool is_streaming_generator = num_returns == -2;
+  bool is_streaming_generator = num_returns == kStreamingGeneratorReturn;
   if (is_streaming_generator) {
     num_returns = 1;
     // We are using the dynamic return if

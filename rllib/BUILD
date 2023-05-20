@@ -2714,6 +2714,16 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_supported_multi_agent_multi_gpu",
+    main = "tests/test_supported_multi_agent.py",
+    tags = ["team:rllib", "tests_dir", "multi_gpu"],
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentMultiGPU"]
+)
+
+
+py_test(
     name = "tests/test_supported_multi_agent_pg",
     main = "tests/test_supported_multi_agent.py",
     tags = ["team:rllib", "tests_dir"],
