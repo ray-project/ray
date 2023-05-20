@@ -159,7 +159,7 @@ cdef class CoreWorker:
             self,
             const CAddress &owner_address,
             const CTaskID &task_id,
-            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+            return_size,
             generator_index,
             is_async_actor)
 

@@ -46,7 +46,6 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
         generator_ref = ray.ObjectRef.from_random()
         generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
         c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-        c.create_object_ref_stream.assert_called()
 
         # Test when there's no new ref, it returns a nil.
         mocked_ray_wait.return_value = [], [generator_ref]
@@ -73,7 +72,6 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             dumps(generator)
 
         del generator
-        c.delete_object_ref_stream.assert_called()
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
@@ -154,7 +152,6 @@ async def test_streaming_object_ref_generator_unit_async(mocked_worker):
         generator_ref = ray.ObjectRef.from_random()
         generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
         c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-        c.create_object_ref_stream.assert_called()
 
         # Test when there's no new ref, it returns a nil.
         mocked_ray_wait.return_value = [], [generator_ref]

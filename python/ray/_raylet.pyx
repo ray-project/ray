@@ -872,7 +872,6 @@ cdef store_task_errors(
 
 cdef execute_streaming_generator(
         generator,
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         const CObjectID &generator_id,
         CTaskType task_type,
         const CAddress &caller_address,
@@ -884,6 +883,7 @@ cdef execute_streaming_generator(
         actor,
         actor_id,
         name_of_concurrency_group_to_execute,
+        return_size,
         c_bool *is_retryable_error,
         c_string *application_error):
     """Execute a given generator and streaming-report the
@@ -916,6 +916,7 @@ cdef execute_streaming_generator(
         actor: The instance of the actor created in this worker.
             It is used to write an error message.
         actor_id: The ID of the actor. It is used to write an error message.
+        return_size: The number of static returns.
         is_retryable_error(out): It is set to True if the generator
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
@@ -924,8 +925,7 @@ cdef execute_streaming_generator(
     worker = ray._private.worker.global_worker
     # Generator task should only have 1 return object ref,
     # which contains None or exceptions (if system error occurs).
-    assert returns != NULL
-    assert returns[0].size() == 1
+    assert return_size == 1
 
     cdef:
         CoreWorker core_worker = worker.core_worker
@@ -962,6 +962,9 @@ cdef execute_streaming_generator(
                 title,
                 actor,
                 actor_id,
+                return_size,
+                generator_index,
+                is_async,
                 is_retryable_error,
                 application_error
             )
@@ -979,7 +982,11 @@ cdef execute_streaming_generator(
                 output,
                 generator_id,
                 worker,
-                caller_address)
+                caller_address,
+                task_id,
+                return_size,
+                generator_index,
+                is_async)
             # Del output here so that we can GC the memory
             # usage asap.
             del output
@@ -1012,7 +1019,11 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
         output,
         const CObjectID &generator_id,
         worker: "Worker",
-        const CAddress &caller_address):
+        const CAddress &caller_address,
+        TaskID task_id,
+        return_size,
+        generator_index,
+        is_async):
     """Create a generator return object based on a given output.
 
     Args:
@@ -1022,6 +1033,11 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
         caller_address: The address of the caller. By our protocol,
             the caller of the streaming generator task is always
             the owner, so we can also call it "owner address".
+        task_id: The task ID of the generator task.
+        return_size: The number of static returns.
+        generator_index: The index of a current error object.
+        is_async: Whether or not the given object is created within
+            an async actor.
 
     Returns:
         A Ray Object that contains the given output.
@@ -1030,9 +1046,13 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
         CoreWorker core_worker = worker.core_worker
 
-    return_id = (
-        CCoreWorkerProcess.GetCoreWorker().AllocateDynamicReturnId(
-            caller_address))
+    return_id = core_worker.allocate_dynamic_return_id_for_generator(
+        caller_address,
+        task_id.native(),
+        return_size,
+        generator_index,
+        is_async,
+    )
     intermediate_result.push_back(
             c_pair[CObjectID, shared_ptr[CRayObject]](
                 return_id, shared_ptr[CRayObject]()))
@@ -1057,6 +1077,9 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
         title,
         actor,
         actor_id,
+        return_size,
+        generator_index,
+        is_async,
         c_bool *is_retryable_error,
         c_string *application_error):
     """Create a generator error object.
@@ -1084,6 +1107,10 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
         actor: The instance of the actor created in this worker.
             It is used to write an error message.
         actor_id: The ID of the actor. It is used to write an error message.
+        return_size: The number of static returns.
+        generator_index: The index of a current error object.
+        is_async: Whether or not the given object is created within
+            an async actor.
         is_retryable_error(out): It is set to True if the generator
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
@@ -1096,6 +1123,8 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
         CoreWorker core_worker = worker.core_worker
 
+    # Generator only has 1 static return.
+    assert return_size == 1
     is_retryable_error[0] = determine_if_retryable(
         e,
         serialized_retry_exception_allowlist,
@@ -1118,8 +1147,13 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
         "Task failed with unretryable exception:"
         " {}.".format(task_id), exc_info=True)
 
-    error_id = (CCoreWorkerProcess.GetCoreWorker()
-                .AllocateDynamicReturnId(caller_address))
+    error_id = core_worker.allocate_dynamic_return_id_for_generator(
+        caller_address,
+        task_id.native(),
+        return_size,
+        generator_index,
+        is_async,
+    )
     intermediate_result.push_back(
             c_pair[CObjectID, shared_ptr[CRayObject]](
                 error_id, shared_ptr[CRayObject]()))
@@ -1407,7 +1441,6 @@ cdef void execute_task(
 
                             execute_streaming_generator(
                                     outputs,
-                                    returns,
                                     returns[0][0].first,  # generator object ID.
                                     task_type,
                                     caller_address,
@@ -1419,6 +1452,7 @@ cdef void execute_task(
                                     actor,
                                     actor_id,
                                     name_of_concurrency_group_to_execute,
+                                    returns[0].size(),
                                     is_retryable_error,
                                     application_error)
                             # Streaming generator output is not used, so set it to None.
@@ -3697,7 +3731,7 @@ cdef class CoreWorker:
             self,
             const CAddress &owner_address,
             const CTaskID &task_id,
-            c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
+            return_size,
             generator_index,
             is_async_actor):
         """Allocate a dynamic return ID for a generator task.
@@ -3721,10 +3755,6 @@ cdef class CoreWorker:
                 If async actor is used, we should calculate the
                 put_index ourselves.
         """
-        assert returns != NULL
-        cdef:
-            num_returns = returns[0].size()
-
         if is_async_actor:
             # This part of code has a couple of assumptions.
             # - This API is not called within an asyncio event loop
@@ -3737,7 +3767,7 @@ cdef class CoreWorker:
             # scoped to a asyncio event loop thread.
             # This means the execution thread that this API will be called
             # will only create "return" objects. That means if we use
-            # num_returns + genreator_index as a put_index, it is guaranteed
+            # return_size + genreator_index as a put_index, it is guaranteed
             # to be unique.
             #
             # Why do we need it?
@@ -3753,7 +3783,7 @@ cdef class CoreWorker:
                 # before it is used. So if you have 1 return object
                 # the next index will be 2.
                 make_optional[ObjectIDIndexType](
-                    <int>1 + <int>num_returns + <int>generator_index)  # put_index
+                    <int>1 + <int>return_size + <int>generator_index)  # put_index
             )
         else:
             return CCoreWorkerProcess.GetCoreWorker().AllocateDynamicReturnId(
