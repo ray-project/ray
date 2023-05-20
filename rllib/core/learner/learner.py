@@ -20,8 +20,6 @@ from typing import (
     TYPE_CHECKING,
 )
 
-import numpy as np
-
 import ray
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
@@ -611,10 +609,12 @@ class Learner:
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
         for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
-            module_learner_stats[module_id].update({
-                self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
-                **convert_to_numpy(metrics_per_module[module_id]),
-            })
+            module_learner_stats[module_id].update(
+                {
+                    self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
+                    **convert_to_numpy(metrics_per_module[module_id]),
+                }
+            )
         return dict(module_learner_stats)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -850,7 +850,8 @@ class Learner:
         self,
         *,
         module_id: ModuleID,
-        timestep: int, **kwargs,
+        timestep: int,
+        **kwargs,
     ) -> Dict[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
@@ -947,9 +948,12 @@ class Learner:
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
             tensor_minibatch = self._convert_batch_type(minibatch)
-            fwd_out, loss_per_module, postprocessed_gradients, metrics_per_module = (
-                self._update(tensor_minibatch)
-            )
+            (
+                fwd_out,
+                loss_per_module,
+                postprocessed_gradients,
+                metrics_per_module,
+            ) = self._update(tensor_minibatch)
 
             result = self.compile_results(
                 batch=minibatch,

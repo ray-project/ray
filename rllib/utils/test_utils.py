@@ -35,7 +35,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
+from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
 
 
