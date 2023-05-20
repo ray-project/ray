@@ -529,7 +529,7 @@ class ES(Algorithm):
             "episodes_so_far": self.episodes_so_far,
         }
 
-        reward_mean = np.mean(self.reward_list[-self.report_length:])
+        reward_mean = np.mean(self.reward_list[-self.report_length :])
         result = {
             "sampler_results/episode_reward_mean": reward_mean,
             "sampler_results/episode_len_mean": eval_lengths.mean(),
