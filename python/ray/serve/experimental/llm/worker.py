@@ -63,4 +63,5 @@ class InferenceWorker:
     def report_stats(self):
         print(f"worker stats: {len(self._batch_state_cache)}")
         if self._model.device.type == "cuda":
-            print(f"memory stats: {torch.cuda.memory_summary(self._model.device)}")
+            print(f"memory allocated: {torch.cuda.memory_allocated(self._model.device)}")
+            print(f"memory reserved: {torch.cuda.memory_reserved(self._model.device)}")
