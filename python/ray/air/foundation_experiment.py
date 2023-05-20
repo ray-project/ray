@@ -287,6 +287,15 @@ class _DataParallelTrainer(_BaseTrainer):
         )
         return runner.fit()
 
+    @classmethod
+    def restore(cls, path, config={}) -> "ExperimentRunner":
+        runner = ExperimentRunner.restore(
+            path,
+            trainable=cls._trainable_cls,
+            config=config,
+        )
+        return runner.fit()
+
 
 class _Tuner:
     def __init__(
@@ -296,6 +305,23 @@ class _Tuner:
         run_config: air.RunConfig = None,
         tune_config: tune.TuneConfig = None,
     ):
+        self._trainable, self._config = _Tuner.get_trainable_and_config(
+            trainable_or_trainer, param_space
+        )
+        self._run_config = run_config
+        self._tune_config = tune_config
+
+    def fit(self):
+        runner = ExperimentRunner(
+            self._trainable,
+            config=self._config,
+            run_config=self._run_config,
+            tune_config=self._tune_config,
+        )
+        return runner.fit()
+
+    @classmethod
+    def get_trainable_and_config(cls, trainable_or_trainer, param_space):
         if isinstance(trainable_or_trainer, _BaseTrainer):
             trainable = trainable_or_trainer._trainable_cls
             trainer_run_config = trainable_or_trainer.run_config
@@ -303,10 +329,6 @@ class _Tuner:
         else:
             trainable = trainable_or_trainer
             config = {}
-
-        self._trainable = trainable
-        self._run_config = run_config
-        self._tune_config = tune_config
 
         def merge_dicts(d1, d2):
             for k in d2:
@@ -320,14 +342,17 @@ class _Tuner:
             param_space = param_space.to_dict()
 
         merge_dicts(config, param_space)
-        self._config = config
+        return trainable, config
 
-    def fit(self):
-        runner = ExperimentRunner(
-            self._trainable,
-            config=self._config,
-            run_config=self._run_config,
-            tune_config=self._tune_config,
+    @classmethod
+    def restore(cls, path, trainable_or_trainer, param_space={}) -> "ExperimentRunner":
+        trainable, config = _Tuner.get_trainable_and_config(
+            trainable_or_trainer, param_space
+        )
+        runner = ExperimentRunner.restore(
+            path,
+            trainable=trainable,
+            config=param_space,
         )
         return runner.fit()
 
