@@ -59,10 +59,10 @@ class ImpalaLearner(Learner):
         )
 
     @override(Learner)
-    def additional_update_per_module(
+    def additional_update_for_module(
         self, module_id: ModuleID, timestep: int
     ) -> Dict[str, Any]:
-        results = super().additional_update_per_module(module_id, timestep=timestep)
+        results = super().additional_update_for_module(module_id, timestep=timestep)
 
         # Update entropy coefficient via our Scheduler.
         new_entropy_coeff = self.entropy_coeff_scheduler.update(

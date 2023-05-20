@@ -134,7 +134,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
     ) -> Dict[str, Any]:
         assert sampled_kl_values, "Sampled KL values are empty."
 
-        results = super().additional_update_per_module(
+        results = super().additional_update_for_module(
             module_id,
             sampled_kl_values=sampled_kl_values,
             timestep=timestep,
