@@ -33,21 +33,21 @@ RL Modules (Alpha)
        * - **PPO**
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
-         - |pytorch|
-         -
-         - |pytorch|
+         - |pytorch| |tensorflow|
+         - 
+         - |pytorch| |tensorflow|
        * - **Impala**
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
-         - |pytorch|
+         - |pytorch| |tensorflow|
          -
-         - |pytorch|
+         - |pytorch| |tensorflow|
        * - **APPO**
-         - |tensorflow|
-         - |tensorflow|
-         - 
-         - 
-         - 
+         - |pytorch| |tensorflow|
+         - |pytorch| |tensorflow|
+         - |pytorch| |tensorflow|
+         -
+         - |pytorch| |tensorflow|
 
 
 
@@ -458,5 +458,5 @@ Notable TODOs
 -------------
 
 - [] Add support for RNNs.
-- [] Checkpointing.
+- [x] Checkpointing.
 - [] End to end example for custom RL Modules extending PPORLModule (e.g. LLM)
