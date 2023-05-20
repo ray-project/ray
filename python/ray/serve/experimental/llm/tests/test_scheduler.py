@@ -8,11 +8,10 @@ from ray.serve.experimental.llm.policy import QuotaBasedRequestSelectionPolicy
 from ray.serve.experimental.llm.types import SamplingParams
 from ray.serve.experimental.llm.worker import InferenceWorker
 from ray.serve.experimental.llm.models.casual_lm import CausalLM
+from ray.serve.experimental.llm.models.opt import OPT
 
 
-@pytest.mark.asyncio
-async def test_pass_through(default_worker):
-
+def test_pass_through(default_worker):
     params = SamplingParams(
         temperature=1.0,
         repetition_penalty=1.0,
@@ -30,7 +29,7 @@ async def test_pass_through(default_worker):
         tokenizer=TransfomerTokenizer(
             pretrained_model_name_or_path="gpt2", padding_side="left"
         ),
-        # inference_worker=InferenceWorker(lambda: CausalLM("facebook/opt-6.7b")),
+        # inference_worker=InferenceWorker(lambda: OPT("facebook/opt-6.7b")),
         inference_worker=default_worker,
         request_selection_policy=QuotaBasedRequestSelectionPolicy(),
         request_queue=RequestQueue(),
@@ -46,7 +45,6 @@ async def test_pass_through(default_worker):
 
     for result in results:
         result.wait_until_finished()
-        print(result.last().generated_text)
         assert result.num_tokens() == 64
 
     scheduler.stop()

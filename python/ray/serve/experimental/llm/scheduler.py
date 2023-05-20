@@ -1,9 +1,12 @@
 import asyncio
 import logging
+import time
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import List, Tuple, Optional
 from threading import Thread, Lock
 from transformers import AutoTokenizer
+from dataclasses import dataclass
 from ray.serve.experimental.llm.worker import InferenceWorker
 from ray.serve.experimental.llm.types import (
     SamplingParams,
@@ -55,6 +58,38 @@ class TransfomerTokenizer(Tokenizer):
         )["input_ids"].shape[1]
 
 
+@dataclass
+class Stats:
+    num_requests_processed: int = 0
+    num_active_requests: int = 0
+    num_finished_requests: int = 0
+    num_tokens_generated: int = 0
+    num_input_tokens: int = 0
+    num_iterations: int = 0
+    last_report_time: float = 0.0
+
+    def report_stats(self):
+        # if time.time() - self.last_report_time < 10:
+        #     return
+        # self.last_report_time = time.time()
+        print(f"stats: {self}")
+
+    def request_selected(self, requests: List[InferenceRequest]):
+        self.num_active_requests += len(requests)
+        self.num_requests_processed += len(requests)
+        self.num_input_tokens += sum([r.request.input_length for r in requests])
+
+    def request_finished(self):
+        self.num_active_requests -= 1
+        self.num_finished_requests += 1
+
+    def token_generated(self, num):
+        self.num_tokens_generated += num
+
+    def iteration_finished(self):
+        self.num_iterations += 1
+
+
 class InferenceScheduler:
     def __init__(
         self,
@@ -71,6 +106,7 @@ class InferenceScheduler:
         self._loop = loop
         self._lock = Lock()
         self._stop = False
+        self._stats = Stats()
         self._thread = Thread(target=self._run_scheduling_loop)
         self._thread.start()
 
@@ -118,18 +154,17 @@ class InferenceScheduler:
         in_process_requests = []
         while not self.is_stopped():
             # select new requests to process.
-            logger.debug("select new requests to process")
             new_requests = self._select_new_requests(in_process_requests)
-            logger.debug(f"requests selected {[r.id for r in new_requests]}")
             new_batch_id, new_unfinished_requests = self._process_new_requests(
                 new_requests
             )
-            logger.debug(f"request proccessed {[r.id for r in new_requests]}")
+
             # combine new batch with existing batch to generate next token.
             batch_id, in_process_requests = self._generate_next_token(
                 [batch_id, new_batch_id], in_process_requests + new_unfinished_requests
             )
-            logger.debug(f"token generated")
+            self._stats.iteration_finished()
+            self._stats.report_stats()
 
     def _select_new_requests(
         self,
@@ -144,9 +179,11 @@ class InferenceScheduler:
             # wait for new requests to arrive in the queue.
             self._request_queue.wait(1)
 
-        return self._request_selection_policy.select_new_requests(
+        requests = self._request_selection_policy.select_new_requests(
             in_process_requests, self._request_queue
         )
+        self._stats.request_selected(requests)
+        return requests
 
     def _process_new_requests(
         self, requests: List[InferenceRequest]
@@ -165,7 +202,6 @@ class InferenceScheduler:
     def _generate_next_token(
         self, batch_ids: List[int], requests: List[InferenceRequest]
     ) -> Tuple[Optional[int], List[Generation]]:
-        logger.debug(f"generating tokesn for batch {batch_ids}")
         generations, batch_id = self._inference_worker.generate_next_token(
             batch_ids,
         )
@@ -183,14 +219,14 @@ class InferenceScheduler:
         self, generations: List[Generation], requests: List[InferenceRequest]
     ) -> List[InferenceRequest]:
         unfinished_requests = []
+        self._stats.token_generated(len(generations))
         for i, generation in enumerate(generations):
             assert (
                 requests[i].id == generation.request_id
             ), f"expect request id {requests[i].id} but got {generation.request_id}"
-            logger.debug(f"processing generation {generation}")
             requests[i].output_stream.put(generation)
             if generation.stopped:
-                logger.info(f" {requests[i].id} finished")
+                self._stats.request_finished()
                 requests[i].output_stream.end()
             else:
                 unfinished_requests.append(requests[i])
