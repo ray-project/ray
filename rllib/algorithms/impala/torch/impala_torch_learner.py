@@ -9,6 +9,7 @@ from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
@@ -21,7 +22,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
 
     @override(TorchLearner)
     def compute_loss_for_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         action_dist_class_train = (
             self.module[module_id].unwrapped().get_train_action_dist_cls()

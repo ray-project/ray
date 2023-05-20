@@ -23,6 +23,7 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
@@ -33,7 +34,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
 
     @override(TorchLearner)
     def compute_loss_for_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
 
         values = fwd_out[SampleBatch.VF_PREDS]

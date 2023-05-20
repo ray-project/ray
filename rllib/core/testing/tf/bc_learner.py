@@ -6,6 +6,7 @@ from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
 
 from ray.rllib.core.testing.testing_learner import BaseTestingLearner
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 
@@ -14,7 +15,7 @@ class BCTfLearner(TfLearner, BaseTestingLearner):
         self,
         *,
         module_id: ModuleID,
-        batch: SampleBatch,
+        batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> Mapping[str, Any]:
 

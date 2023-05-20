@@ -7,6 +7,7 @@ from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
@@ -17,7 +18,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
 
     @override(TfLearner)
     def compute_loss_for_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
         target_policy_dist = action_dist_class_train.from_logits(

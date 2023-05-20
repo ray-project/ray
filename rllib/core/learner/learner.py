@@ -757,11 +757,12 @@ class Learner:
         return loss_per_module
 
     @OverrideToImplementCustomLogic
+    @abc.abstractmethod
     def compute_loss_for_module(
         self,
         *,
         module_id: ModuleID,
-        batch: SampleBatch,
+        batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
         """Computes the loss for a single module.
@@ -782,7 +783,6 @@ class Learner:
             each optimizer and return the sum. Also, for tracking the individual loss
             terms, you can use the `Learner.register_metric(s)` APIs.
         """
-        raise NotImplementedError
 
     @OverrideToImplementCustomLogic
     def additional_update(
@@ -973,6 +973,7 @@ class Learner:
                 return results
             return reduce_fn(results)
 
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _update(
         self,

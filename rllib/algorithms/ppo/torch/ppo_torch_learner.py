@@ -13,9 +13,10 @@ from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
@@ -31,7 +32,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
     @override(TorchLearner)
     def compute_loss_for_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         # TODO (Kourosh): batch type is NestedDict.
         # TODO (Kourosh): We may or may not user module_id. For example if we have an

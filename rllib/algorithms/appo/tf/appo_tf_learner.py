@@ -13,6 +13,7 @@ from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
@@ -23,7 +24,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
 
     @override(TfLearner)
     def compute_loss_for_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
         action_dist_cls_train = self._module[module_id].get_train_action_dist_cls()
