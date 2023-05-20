@@ -78,6 +78,8 @@ class TestLearner(unittest.TestCase):
     def test_bc_algorithm_w_custom_marl_module(self):
         """Tests the independent multi-agent case with shared encoders."""
 
+        policies = {"policy_1", "policy_2"}
+
         for fw in ["torch"]:
             if fw == "torch":
                 spec = MultiAgentRLModuleSpec(
@@ -94,7 +96,6 @@ class TestLearner(unittest.TestCase):
                     ),
                 )
 
-            policies = {"policy_1", "policy_2"}
             config = (
                 BCConfigTest()
                 .framework(fw)

@@ -36,6 +36,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import (
     clip_gradients,
