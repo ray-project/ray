@@ -3,6 +3,7 @@ from typing import Any, Dict, Mapping
 import numpy as np
 
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -18,12 +19,14 @@ class BaseTestingLearner(Learner):
         fwd_out: Mapping[str, Any],
         loss_per_module: Mapping[str, TensorType],
         postprocessed_gradients: Dict[str, Any],
+        metrics_per_module: Dict[ModuleID, Dict[str, Any]],
     ) -> Mapping[str, Any]:
         results = super().compile_results(
             batch=batch,
             fwd_out=fwd_out,
             loss_per_module=loss_per_module,
             postprocessed_gradients=postprocessed_gradients,
+            metrics_per_module=metrics_per_module,
         )
         # this is to check if in the multi-gpu case, the weights across workers are
         # the same. It is really only needed during testing.
