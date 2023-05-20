@@ -17,8 +17,8 @@ from ray.rllib.core.learner.learner import (
     LEARNER_RESULTS_CURR_LR_KEY,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
-    ParamType,
-    ParamDictType,
+    Param,
+    ParamDict,
 )
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -103,7 +103,7 @@ class TfLearner(Learner):
         loss_per_module: Mapping[str, TensorType],
         gradient_tape: "tf.GradientTape",
         **kwargs,
-    ) -> ParamDictType:
+    ) -> ParamDict:
         grads = gradient_tape.gradient(loss_per_module[ALL_MODULES], self._params)
         return grads
 
@@ -124,7 +124,7 @@ class TfLearner(Learner):
         return gradients_dict
 
     @override(Learner)
-    def apply_gradients(self, gradients: ParamDictType) -> None:
+    def apply_gradients(self, gradients: ParamDict) -> None:
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
@@ -299,11 +299,11 @@ class TfLearner(Learner):
             optim.set_weights(weight_array)
 
     @override(Learner)
-    def get_param_ref(self, param: ParamType) -> Hashable:
+    def get_param_ref(self, param: Param) -> Hashable:
         return param.ref()
 
     @override(Learner)
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> Sequence[Param]:
         return list(module.trainable_variables)
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:

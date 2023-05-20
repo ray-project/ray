@@ -19,7 +19,7 @@ from ray.rllib.utils.typing import (
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray.rllib.core.learner.learner import ParamDictType
+    from ray.rllib.core.learner.learner import ParamDict
     from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
     from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.tf_policy import TFPolicy
@@ -30,7 +30,7 @@ tf1, tf, tfv = try_import_tf()
 
 @PublicAPI
 def clip_gradients(
-    gradients_dict: "ParamDictType",
+    gradients_dict: "ParamDict",
     *,
     grad_clip: Optional[float] = None,
     grad_clip_by: str = "value",

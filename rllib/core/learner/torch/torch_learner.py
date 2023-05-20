@@ -16,8 +16,8 @@ from ray.rllib.core.learner.learner import (
     LEARNER_RESULTS_CURR_LR_KEY,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
-    ParamType,
-    ParamDictType,
+    ParamDict,
+    Param,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import (
@@ -104,7 +104,7 @@ class TorchLearner(Learner):
     @override(Learner)
     def compute_gradients(
         self, loss_per_module: Mapping[str, TensorType], **kwargs
-    ) -> ParamDictType:
+    ) -> ParamDict:
         for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients
             optim.zero_grad(set_to_none=True)
@@ -143,7 +143,7 @@ class TorchLearner(Learner):
         return gradients_dict
 
     @override(Learner)
-    def apply_gradients(self, gradients: ParamDictType) -> None:
+    def apply_gradients(self, gradients: ParamDict) -> None:
         # Make sure the parameters do not carry gradients on their own.
         for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
@@ -204,11 +204,11 @@ class TorchLearner(Learner):
             optim.load_state_dict(weight_dict_correct_device)
 
     @override(Learner)
-    def get_param_ref(self, param: ParamType) -> Hashable:
+    def get_param_ref(self, param: Param) -> Hashable:
         return param
 
     @override(Learner)
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> Sequence[Param]:
         return list(module.parameters())
 
     @override(Learner)

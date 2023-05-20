@@ -62,12 +62,12 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
-ParamType = Union["torch.Tensor", "tf.Variable"]
-ParamOptimizerPair = Tuple[Sequence[ParamType], Optimizer]
+Param = Union["torch.Tensor", "tf.Variable"]
+ParamOptimizerPair = Tuple[Sequence[Param], Optimizer]
 ParamOptimizerPairs = List[ParamOptimizerPair]
 NamedParamOptimizerPairs = Dict[str, ParamOptimizerPair]
 ParamRef = Hashable
-ParamDictType = Dict[ParamRef, ParamType]
+ParamDict = Dict[ParamRef, Param]
 
 # COMMON LEARNER LOSS_KEYS
 POLICY_LOSS_KEY = "policy_loss"
@@ -280,7 +280,7 @@ class Learner:
         # These are set for properly applying optimizers and adding or removing modules.
         self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
-        self._params: ParamDictType = {}
+        self._params: ParamDict = {}
         # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
         # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
@@ -447,7 +447,7 @@ class Learner:
     @abc.abstractmethod
     def compute_gradients(
         self, loss_per_module: Mapping[str, TensorType], **kwargs
-    ) -> ParamDictType:
+    ) -> ParamDict:
         """Computes the gradients based on the given losses.
 
         Args:
@@ -466,7 +466,7 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
-    def apply_gradients(self, gradients: ParamDictType) -> None:
+    def apply_gradients(self, gradients: ParamDict) -> None:
         """Applies the gradients to the MultiAgentRLModule parameters.
 
         Args:
@@ -523,7 +523,7 @@ class Learner:
         """Sets the weights of the underlying MultiAgentRLModule"""
 
     @abc.abstractmethod
-    def get_param_ref(self, param: ParamType) -> Hashable:
+    def get_param_ref(self, param: Param) -> Hashable:
         """Returns a hashable reference to a trainable parameter.
 
         This should be overriden in framework specific specialization. For example in
@@ -538,7 +538,7 @@ class Learner:
         """
 
     @abc.abstractmethod
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> Sequence[Param]:
         """Returns the list of parameters of a module.
 
         This should be overriden in framework specific learner. For example in torch it
@@ -572,7 +572,7 @@ class Learner:
         batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
         loss_per_module: Mapping[str, TensorType],
-        postprocessed_gradients: ParamDictType,
+        postprocessed_gradients: ParamDict,
         metrics_per_module: Dict[ModuleID, Dict[str, Any]],
     ) -> Mapping[str, Any]:
         """Compile results from the update in a numpy-friendly format.
@@ -978,7 +978,7 @@ class Learner:
         self,
         batch: NestedDict,
         **kwargs,
-    ) -> Tuple[Any, Any, ParamDictType, Any]:
+    ) -> Tuple[Any, Any, ParamDict, Any]:
         """Contains all logic for an in-graph/traceable update step.
 
         Framework specific subclasses must implement this method. This should include

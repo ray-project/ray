@@ -1,4 +1,4 @@
-from typing import Any, Dict, Mapping, Union
+from typing import Any, Dict, Mapping
 
 import numpy as np
 
@@ -16,7 +16,7 @@ class BaseTestingLearner(Learner):
         *,
         batch: NestedDict,
         fwd_out: Mapping[str, Any],
-        loss_per_module: Union[TensorType, Mapping[str, Any]],
+        loss_per_module: Mapping[str, TensorType],
         postprocessed_gradients: Dict[str, Any],
     ) -> Mapping[str, Any]:
         results = super().compile_results(
