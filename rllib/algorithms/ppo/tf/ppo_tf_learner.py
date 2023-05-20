@@ -135,7 +135,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         assert sampled_kl_values, "Sampled KL values are empty."
 
         results = super().additional_update_for_module(
-            module_id,
+            module_id=module_id,
             sampled_kl_values=sampled_kl_values,
             timestep=timestep,
         )

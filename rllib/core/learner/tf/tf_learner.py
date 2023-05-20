@@ -81,7 +81,7 @@ class TfLearner(Learner):
 
     @OverrideToImplementCustomLogic
     @override(Learner)
-    def configure_optimizer_for_module(
+    def configure_optimizers_for_module(
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
@@ -454,10 +454,12 @@ class TfLearner(Learner):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)
     def additional_update_for_module(
-        self, module_id: ModuleID, *, timestep: int, **kwargs
+        self, *, module_id: ModuleID, timestep: int, **kwargs
     ) -> Mapping[str, Any]:
 
-        results = super().additional_update_for_module(module_id, timestep=timestep)
+        results = super().additional_update_for_module(
+            module_id=module_id, timestep=timestep
+        )
 
         # Handle lr scheduling updates and apply new learning rates to the optimizers.
         new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
