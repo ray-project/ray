@@ -65,7 +65,7 @@ class TestLearner(unittest.TestCase):
         learner = _get_learner()
 
         params = learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
-        loss = {ALL_MODULES: sum([param.sum() for param in params])}
+        loss = {ALL_MODULES: sum(param.sum() for param in params)}
         gradients = learner.compute_gradients(loss)
 
         # type should be a mapping from ParamRefs to gradients
@@ -131,7 +131,7 @@ class TestLearner(unittest.TestCase):
             for param in params
         ]
         for _ in range(n_steps):
-            loss = {ALL_MODULES: sum([param.sum() for param in params])}
+            loss = {ALL_MODULES: sum(param.sum() for param in params)}
             gradients = learner.compute_gradients(loss)
             learner.apply_gradients(gradients)
 

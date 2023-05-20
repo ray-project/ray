@@ -74,6 +74,7 @@ class TfLearner(Learner):
         )
 
         self._enable_tf_function = self._framework_hyperparameters.eager_tracing
+        self._original_update_fn = self._update
 
         # This is a placeholder which will be filled by
         # `_make_distributed_strategy_if_necessary`.
@@ -372,14 +373,14 @@ class TfLearner(Learner):
                 module_spec=module_spec,
             )
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
+            self._update = tf.function(self._original_update_fn, reduce_retracing=True)
 
     @override(Learner)
     def remove_module(self, module_id: ModuleID) -> None:
         with self._strategy.scope():
             super().remove_module(module_id)
         if self._enable_tf_function:
-            self._update_fn = tf.function(self._do_update_fn, reduce_retracing=True)
+            self._update = tf.function(self._original_update_fn, reduce_retracing=True)
 
     def _make_distributed_strategy_if_necessary(self) -> "tf.distribute.Strategy":
         """Create a distributed strategy for the learner.
@@ -430,7 +431,7 @@ class TfLearner(Learner):
             super().build()
 
         if self._enable_tf_function:
-            self._update = tf.function(self._update, reduce_retracing=True)
+            self._update = tf.function(self._original_update_fn, reduce_retracing=True)
 
     @override(Learner)
     def _update(

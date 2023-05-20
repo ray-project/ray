@@ -12,6 +12,7 @@ from ray.rllib.policy.sample_batch import (
     SampleBatch,
     MultiAgentBatch,
 )
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.testing.utils import (
     get_learner_group,
@@ -145,7 +146,9 @@ class TestLearnerGroup(unittest.TestCase):
                 batch = reader.next()
                 results = learner_group.update(batch.as_multi_agent(), reduce_fn=None)
 
-                loss = np.mean([res[ALL_MODULES]["total_loss"] for res in results])
+                loss = np.mean(
+                    [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
+                )
                 min_loss = min(loss, min_loss)
                 print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
                 # The loss is initially around 0.69 (ln2). When it gets to around
@@ -277,7 +280,9 @@ class TestLearnerGroup(unittest.TestCase):
                 )
                 if not results:
                     continue
-                loss = np.mean([res[ALL_MODULES]["total_loss"] for res in results])
+                loss = np.mean(
+                    [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
+                )
                 min_loss = min(loss, min_loss)
                 print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
                 # The loss is initially around 0.69 (ln2). When it gets to around
