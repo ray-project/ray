@@ -69,9 +69,9 @@ class Stats:
     last_report_time: float = 0.0
 
     def report_stats(self):
-        # if time.time() - self.last_report_time < 10:
-        #     return
-        # self.last_report_time = time.time()
+        if time.time() - self.last_report_time < 1:
+             return
+        self.last_report_time = time.time()
         print(f"stats: {self}")
 
     def request_selected(self, requests: List[InferenceRequest]):
