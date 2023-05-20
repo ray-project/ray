@@ -76,8 +76,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _))
       .WillOnce(DoAll(SaveArg<1>(&create_cb), Return(Status::OK())));
-  ASSERT_TRUE(
-      task_submitter->SubmitTask(std::make_shared<TaskSpecification>(task_spec)).ok());
+  ASSERT_TRUE(task_submitter->SubmitTask(task_spec).ok());
   create_cb(Status::OK(), rpc::CreateActorReply());
 }
 
@@ -92,8 +91,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _))
       .WillOnce(DoAll(SaveArg<1>(&create_cb), Return(Status::OK())));
-  ASSERT_TRUE(
-      task_submitter->SubmitTask(std::make_shared<TaskSpecification>(task_spec)).ok());
+  ASSERT_TRUE(task_submitter->SubmitTask(task_spec).ok());
   create_cb(Status::IOError(""), rpc::CreateActorReply());
 }
 

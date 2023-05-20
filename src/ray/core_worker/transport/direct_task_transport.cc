@@ -22,32 +22,32 @@ namespace ray {
 namespace core {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(
-    std::shared_ptr<TaskSpecification> task_spec) {
-  RAY_LOG(DEBUG) << "Submit task " << task_spec->TaskId();
+    TaskSpecification task_spec) {
+  RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
-  resolver_.ResolveDependencies(*task_spec, [this, task_spec](Status status) mutable {
+  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {
     // NOTE: task_spec here is capture copied (from a stack variable) and also
     // mutable. (Mutations to the variable are expected to be shared inside and
     // outside of this closure).
-    task_finisher_->MarkDependenciesResolved(task_spec->TaskId());
+    task_finisher_->MarkDependenciesResolved(task_spec.TaskId());
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
       RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-          task_spec->TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
+          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
       return;
     }
-    RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec->TaskId();
-    if (task_spec->IsActorCreationTask()) {
+    RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
+    if (task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
       // gcs server directly after the in-memory dependent objects are resolved. For
       // more details please see the protocol of actor management based on gcs.
       // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
-      auto actor_id = task_spec->ActorCreationId();
-      auto task_id = task_spec->TaskId();
+      auto actor_id = task_spec.ActorCreationId();
+      auto task_id = task_spec.TaskId();
       RAY_LOG(DEBUG) << "Creating actor via GCS actor id = : " << actor_id;
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
-          *task_spec,
+          task_spec,
           [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
             if (status.ok() || status.IsCreationTaskError()) {
               rpc::PushTaskReply push_task_reply;
@@ -95,24 +95,24 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(
     bool keep_executing = true;
     {
       absl::MutexLock lock(&mu_);
-      if (cancelled_tasks_.find(task_spec->TaskId()) != cancelled_tasks_.end()) {
-        cancelled_tasks_.erase(task_spec->TaskId());
+      if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
+        cancelled_tasks_.erase(task_spec.TaskId());
         keep_executing = false;
       }
       if (keep_executing) {
-        task_spec->GetMutableMessage().set_dependency_resolution_timestamp_ms(
+        task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
             current_sys_time_ms());
         // Note that the dependencies in the task spec are mutated to only contain
         // plasma dependencies after ResolveDependencies finishes.
-        const SchedulingKey scheduling_key(task_spec->GetSchedulingClass(),
-                                           task_spec->GetDependencyIds(),
-                                           task_spec->IsActorCreationTask()
-                                               ? task_spec->ActorCreationId()
+        const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
+                                           task_spec.GetDependencyIds(),
+                                           task_spec.IsActorCreationTask()
+                                               ? task_spec.ActorCreationId()
                                                : ActorID::Nil(),
-                                           task_spec->GetRuntimeEnvHash());
+                                           task_spec.GetRuntimeEnvHash());
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-        scheduling_key_entry.task_queue.push_back(*task_spec);
-        scheduling_key_entry.resource_spec = *task_spec;
+        scheduling_key_entry.task_queue.push_back(task_spec);
+        scheduling_key_entry.resource_spec = task_spec;
 
         if (!scheduling_key_entry.AllWorkersBusy()) {
           // There are idle workers, so we don't need more
@@ -137,7 +137,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(
     }
     if (!keep_executing) {
       RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-          task_spec->TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
+          task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
     }
   });
   return Status::OK();
@@ -228,7 +228,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
       RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
       scheduling_key_entry.num_busy_workers++;
 
-      // task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
+      task_spec.GetMutableMessage().set_lease_grant_timestamp_ms(current_sys_time_ms());
       task_spec.EmitTaskMetrics();
 
       executing_tasks_.emplace(task_spec.TaskId(), addr);

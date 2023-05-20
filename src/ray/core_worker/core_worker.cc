@@ -361,8 +361,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
             RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
-            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(
-                std::make_shared<TaskSpecification>(spec)));
+            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
           }
         }
       },
@@ -952,8 +951,7 @@ void CoreWorker::InternalHeartbeat() {
     if (spec.IsActorTask()) {
       RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
     } else {
-      RAY_CHECK_OK(
-          direct_task_submitter_->SubmitTask(std::make_shared<TaskSpecification>(spec)));
+      RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
     }
   }
 
@@ -1940,8 +1938,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
     io_service_.post(
         [this, task_spec]() {
-          RAY_UNUSED(direct_task_submitter_->SubmitTask(
-              std::make_shared<TaskSpecification>(task_spec)));
+          RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
         },
         "CoreWorker.SubmitTask");
   }
@@ -2087,8 +2084,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                         << "Failed to register actor: " << task_spec.ActorCreationId()
                         << ". Error message: " << status.ToString();
                   } else {
-                    RAY_UNUSED(direct_task_submitter_->SubmitTask(
-                        std::make_shared<TaskSpecification>(task_spec)));
+                    RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
                   }
                 }));
           },
@@ -2103,8 +2099,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       }
       io_service_.post(
           [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(direct_task_submitter_->SubmitTask(
-                std::make_shared<TaskSpecification>(task_spec)));
+            RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
           },
           "CoreWorker.SubmitTask");
     }
