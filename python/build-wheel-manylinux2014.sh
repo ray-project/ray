@@ -129,3 +129,7 @@ done
 
 # Clean the build output so later operations is on a clean directory.
 git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
+
+if [ $BUILD_JAR ]; then
+  ./java/build-jar-multiplatform.sh linux
+fi
