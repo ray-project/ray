@@ -70,9 +70,10 @@ class Stats:
 
     def report_stats(self):
         if time.time() - self.last_report_time < 1:
-             return
+            return False
         self.last_report_time = time.time()
-        print(f"stats: {self}")
+        print(f"scheduler stats: {self}")
+        return True
 
     def request_selected(self, requests: List[InferenceRequest]):
         self.num_active_requests += len(requests)
@@ -164,7 +165,11 @@ class InferenceScheduler:
                 [batch_id, new_batch_id], in_process_requests + new_unfinished_requests
             )
             self._stats.iteration_finished()
-            self._stats.report_stats()
+            self._report_stats()
+
+    def _report_stats(self):
+        if self._stats.report_stats():
+            self._inference_worker.report_stats()
 
     def _select_new_requests(
         self,

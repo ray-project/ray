@@ -154,7 +154,8 @@ class NextTokenChooser:
             # inplace. This view is the output of a function that returns multiple views.
             # Such functions do not allow the output views to be modified inplace.
             # You should replace the inplace operation by an out-of-place one.
-            scores = self.repetition_processor(input_ids, scores.clone())
+            # scores = self.repetition_processor(input_ids, scores.clone())
+            pass
 
         if self.static_warper is None:
             next_logprob = torch.log_softmax(scores, -1)

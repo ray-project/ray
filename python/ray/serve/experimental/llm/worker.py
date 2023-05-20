@@ -58,3 +58,6 @@ class InferenceWorker:
             return filtered.id
 
         return None
+
+    def report_stats(self):
+        print(f"worker stats: {len(self._batch_state_cache)}")

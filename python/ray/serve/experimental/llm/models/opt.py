@@ -4,9 +4,10 @@ from typing import List, Tuple
 
 from ray.serve.experimental.llm.models.casual_lm import CausalLM
 
+
 class OPT(CausalLM):
     def forward(
-        self, input_ids, attention_mask, position_ids, past_key_values = None
+        self, input_ids, attention_mask, position_ids, past_key_values=None
     ) -> Tuple[torch.Tensor, List[Tuple[torch.Tensor, torch.Tensor]]]:
         """Overwrite forward to ignore position_ids"""
 
