@@ -69,9 +69,9 @@ class Stats:
     last_report_time: float = 0.0
 
     def report_stats(self):
-        # if time.time() - self.last_report_time < 1:
-        #     return False
-        # self.last_report_time = time.time()
+        if time.time() - self.last_report_time < 1:
+            return False
+        self.last_report_time = time.time()
         print(f"scheduler stats: {self}")
         return True
 
@@ -109,6 +109,7 @@ class InferenceScheduler:
         self._lock = Lock()
         self._stop = False
         self._stats = Stats()
+        assert inline, "Torch will leak memory if running in a different thread!"
         if not inline:
             self._thread = Thread(target=self._run_scheduling_loop)
             self._thread.start()

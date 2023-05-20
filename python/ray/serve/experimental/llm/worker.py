@@ -64,14 +64,14 @@ class InferenceWorker:
         return None
 
     def report_stats(self):
-        print(f"worker stats: {[(id, cache.stats()) for id, cache in self._batch_state_cache.items()]}")
+        #print(f"worker stats: {[(id, cache.stats()) for id, cache in self._batch_state_cache.items()]}")
         if self._model.device.type == "cuda":
-            gc.collect()
+            #gc.collect()
             print(f"memory allocated: {torch.cuda.memory_allocated(self._model.device) / 2 ** 30}")
             print(f"memory reserved: {torch.cuda.memory_reserved(self._model.device) / 2 ** 30}")
-            self.check_cuda_objects()
-            if torch.cuda.memory_allocated(self._model.device) / 2 ** 30 > 30:
-                self.debug_objects()
+            #self.check_cuda_objects()
+            #if torch.cuda.memory_allocated(self._model.device) / 2 ** 30 > 30:
+            #    self.debug_objects()
 
     def check_cuda_objects(self):
         from collections import defaultdict
