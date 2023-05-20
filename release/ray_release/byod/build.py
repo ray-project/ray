@@ -3,6 +3,7 @@ from typing import List
 import boto3
 import hashlib
 import subprocess
+import sys
 
 from ray_release.logger import logger
 from ray_release.test import Test
@@ -38,7 +39,7 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                     "-",
                 ],
                 stdin=build_context,
-                stdout=subprocess.DEVNULL,
+                stdout=sys.stderr,
                 env={"DOCKER_BUILDKIT": "1"},
             )
             subprocess.check_call(
