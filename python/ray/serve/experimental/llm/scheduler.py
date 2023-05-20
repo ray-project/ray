@@ -2,7 +2,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Optional
-from threading import Thread
+from threading import Thread, Lock
 from transformers import AutoTokenizer
 from ray.serve.experimental.llm.worker import InferenceWorker
 from ray.serve.experimental.llm.types import (
@@ -10,7 +10,7 @@ from ray.serve.experimental.llm.types import (
     GenerationRequest,
     Generation,
 )
-from ray.serve.experimental.llm.tokenstream import TokenStream
+from ray.serve.experimental.llm.tokenstream import FakeTokenStream
 from ray.serve.experimental.llm.queue import RequestQueue, InferenceRequest
 from ray.serve.experimental.llm.policy import RequestSelectionPolicy
 
@@ -69,12 +69,23 @@ class InferenceScheduler:
         self._request_selection_policy = request_selection_policy
         self._request_queue = request_queue
         self._loop = loop
+        self._lock = Lock()
+        self._stop = False
         self._thread = Thread(target=self._run_scheduling_loop)
         self._thread.start()
 
+    def stop(self):
+        with self._lock:
+            self._stop = True
+        self._thread.join()
+
+    def is_stopped(self) -> bool:
+        with self._lock:
+            return self._stop
+
     def process_request(
         self, input_text: str, params: SamplingParams, max_length: int = 1024
-    ) -> TokenStream:
+    ) -> FakeTokenStream:
         request = GenerationRequest(
             id=get_request_id(),
             input_text=input_text,
@@ -84,7 +95,7 @@ class InferenceScheduler:
         )
         return self._add_request(request)
 
-    def _add_request(self, request: GenerationRequest) -> TokenStream:
+    def _add_request(self, request: GenerationRequest) -> FakeTokenStream:
         pending_request = InferenceRequest.from_request(request, self._loop)
         self._request_queue.push(pending_request)
         return pending_request.output_stream
@@ -105,7 +116,7 @@ class InferenceScheduler:
         # 3. goto step 1.
         batch_id = None
         in_process_requests = []
-        while True:
+        while not self.is_stopped():
             # select new requests to process.
             logger.debug("select new requests to process")
             new_requests = self._select_new_requests(in_process_requests)
@@ -124,10 +135,14 @@ class InferenceScheduler:
         self,
         in_process_requests: List[InferenceRequest],
     ) -> List[InferenceRequest]:
-        if len(in_process_requests) == 0 and self._request_queue.empty():
+        while (
+            len(in_process_requests) == 0
+            and self._request_queue.empty()
+            and not self.is_stopped()
+        ):
             # if there is no in-process requests and no new requests in the queue,
             # wait for new requests to arrive in the queue.
-            self._request_queue.wait()
+            self._request_queue.wait(1)
 
         return self._request_selection_policy.select_new_requests(
             in_process_requests, self._request_queue

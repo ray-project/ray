@@ -1,4 +1,6 @@
+import time
 import asyncio
+from threading import RLock, Condition
 
 
 class _EndOfStream:
@@ -6,6 +8,45 @@ class _EndOfStream:
 
 
 EOS = _EndOfStream()
+
+
+class FakeTokenStream:
+    def __init__(self, loop=None):
+        self._lock = RLock()
+        self._cv = Condition(self._lock)
+
+        self._num_tokens = 0
+        self._end = False
+        self._data = []
+
+    def end(self):
+        with self._lock:
+            self._end = True
+            self._cv.notify_all()
+
+    def put(self, item):
+        with self._lock:
+            self._data.append(item)
+
+    def num_tokens(self):
+        with self._lock:
+            return len(self._data)
+
+    def last(self):
+        with self._lock:
+            return self._data[-1]
+
+    def finished(self):
+        with self._lock:
+            return self._end
+
+    def wait_until_finished(self, timeout=None):
+        start = time.time()
+        with self._cv:
+            while not self._end:
+                self._cv.wait(timeout)
+                if timeout is not None and time.time() - start >= timeout:
+                    return
 
 
 class TokenStream:

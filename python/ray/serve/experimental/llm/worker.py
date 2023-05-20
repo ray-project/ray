@@ -31,7 +31,8 @@ class InferenceWorker:
                 raise ValueError(f"Batch ID {batch_id} not found in cache.")
             batch_states.append(batch_state)
 
-        assert len(batch_states) > 0
+        if len(batch_states) == 0:
+            return [], None
 
         if len(batch_states) > 1:
             batch_state = self._model.concatenate_batches(batch_states)

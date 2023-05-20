@@ -1,45 +1,52 @@
+import time
 import pytest
 import asyncio
 from copy import deepcopy
 from ray.serve.experimental.llm.scheduler import InferenceScheduler, TransfomerTokenizer
 from ray.serve.experimental.llm.queue import RequestQueue
 from ray.serve.experimental.llm.policy import QuotaBasedRequestSelectionPolicy
+from ray.serve.experimental.llm.types import SamplingParams
+from ray.serve.experimental.llm.worker import InferenceWorker
+from ray.serve.experimental.llm.models.casual_lm import CausalLM
 
 
 @pytest.mark.asyncio
-async def test_pass_through(
-    default_worker, default_sampling_parameters, event_loop_in_different_thread
-):
+async def test_pass_through(default_worker):
+
+    params = SamplingParams(
+        temperature=1.0,
+        repetition_penalty=1.0,
+        top_k=0,
+        top_p=1.0,
+        typical_p=1.0,
+        do_sample=False,
+        max_new_tokens=64,
+        stop_sequences=[],
+        ignore_eos_token=False,
+        watermark=False,
+        seed=42,
+    )
     scheduler = InferenceScheduler(
         tokenizer=TransfomerTokenizer(
             pretrained_model_name_or_path="gpt2", padding_side="left"
         ),
+        # inference_worker=InferenceWorker(lambda: CausalLM("facebook/opt-6.7b")),
         inference_worker=default_worker,
         request_selection_policy=QuotaBasedRequestSelectionPolicy(),
         request_queue=RequestQueue(),
-        loop=event_loop_in_different_thread,
+        loop=None,
     )
-    token_streams = []
+    results = []
 
-    for i in range(100):
-        print(f"adding request {i}")
-        token_stream = scheduler.process_request(
-            "test", default_sampling_parameters, max_length=1024
-        )
-        token_streams.append(token_stream)
+    for _ in range(10):
+        for i in range(10):
+            result = scheduler.process_request("test", params, max_length=64)
+            results.append(result)
+        time.sleep(0.2)
 
-    async def verify_token_stream():
-        output = ""
-        async for entry in token_stream:
-            print(entry.token_text)
-            output = output + entry.token_text
-        return output
+    for result in results:
+        result.wait_until_finished()
+        print(result.last().generated_text)
+        assert result.num_tokens() == 64
 
-    future = asyncio.run_coroutine_threadsafe(
-        verify_token_stream(), event_loop_in_different_thread
-    )
-
-    import time
-
-    time.sleep(20)
-    # assert future.result() == "what"
+    scheduler.stop()
