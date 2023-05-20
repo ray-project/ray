@@ -54,7 +54,7 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                             "-",
                         ],
                         stdin=build_file,
-                        stdout=subprocess.DEVNULL,
+                        stdout=sys.stderr,
                         env=env,
                     )
                 except subprocess.CalledProcessError:
