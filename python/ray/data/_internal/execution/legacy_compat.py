@@ -228,7 +228,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
 
         # If the BlockList's read stage name is available, we assign it
         # as the operator's name, which is used as the task name.
-        task_name = "DoRead"
+        task_name = "Read"
         if isinstance(blocks, LazyBlockList):
             task_name = getattr(blocks, "_read_stage_name", task_name)
         return MapOperator.create(

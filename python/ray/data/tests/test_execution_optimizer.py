@@ -289,8 +289,8 @@ def test_repartition_e2e(
         _check_usage_record(["ReadRange", "Repartition"])
         ds_stats: DatasetStats = ds._plan.stats()
         if shuffle:
-            assert ds_stats.base_name == "DoRead->Repartition"
-            assert "DoRead->RepartitionMap" in ds_stats.stages
+            assert ds_stats.base_name == "ReadRange->Repartition"
+            assert "ReadRange->RepartitionMap" in ds_stats.stages
         else:
             assert ds_stats.base_name == "Repartition"
             assert "RepartitionSplit" in ds_stats.stages
@@ -344,7 +344,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
     physical_op = physical_plan.dag
 
     assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches"
+    assert physical_op.name == "ReadRange->MapBatches"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -364,7 +364,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimiz
     physical_op = physical_plan.dag
 
     assert op.name == "Filter"
-    assert physical_op.name == "DoRead->MapRows->MapBatches->FlatMap->Filter"
+    assert physical_op.name == "ReadRange->MapRows->MapBatches->FlatMap->Filter"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -388,7 +388,7 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
     physical_op = physical_plan.dag
 
     assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches->MapBatches"
+    assert physical_op.name == "ReadRange->MapBatches->MapBatches"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -433,7 +433,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     physical_op = physical_plan.dag
 
     assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches->MapBatches"
+    assert physical_op.name == "ReadRange->MapBatches->MapBatches"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -452,7 +452,7 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
     physical_op = physical_plan.dag
 
     assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches"
+    assert physical_op.name == "ReadRange->MapBatches"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -478,7 +478,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     upstream_physical_op = physical_op.input_dependencies[0]
     assert isinstance(upstream_physical_op, MapOperator)
     # Reads should fuse into actor compute.
-    assert upstream_physical_op.name == "DoRead->MapBatches"
+    assert upstream_physical_op.name == "ReadRange->MapBatches"
 
 
 def test_read_map_batches_operator_fusion_target_block_size(
@@ -498,7 +498,7 @@ def test_read_map_batches_operator_fusion_target_block_size(
 
     assert op.name == "MapBatches"
     # Ops are still fused.
-    assert physical_op.name == "DoRead->MapBatches->MapBatches->MapBatches"
+    assert physical_op.name == "ReadRange->MapBatches->MapBatches->MapBatches"
     assert isinstance(physical_op, MapOperator)
     # Target block size is set to max.
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
@@ -525,7 +525,7 @@ def test_read_map_batches_operator_fusion_callable_classes(
     physical_op = physical_plan.dag
 
     assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches->MapBatches"
+    assert physical_op.name == "ReadRange->MapBatches->MapBatches"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -560,7 +560,7 @@ def test_read_map_batches_operator_fusion_incompatible_callable_classes(
     upstream_physical_op = physical_op.input_dependencies[0]
     assert isinstance(upstream_physical_op, MapOperator)
     # Reads should still fuse with first map.
-    assert upstream_physical_op.name == "DoRead->MapBatches"
+    assert upstream_physical_op.name == "ReadRange->MapBatches"
 
 
 def test_read_map_batches_operator_fusion_incompatible_constructor_args(
@@ -604,7 +604,7 @@ def test_read_map_batches_operator_fusion_incompatible_constructor_args(
         physical_op = physical_op.input_dependencies[0]
     # First physical map operator is fused with read.
     assert isinstance(physical_op, MapOperator)
-    assert physical_op.name == "DoRead->MapBatches"
+    assert physical_op.name == "ReadRange->MapBatches"
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
@@ -626,8 +626,8 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     ds = ds.map_batches(fn, batch_size=None)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
     assert "RandomizeBlocks" not in ds.stats()
-    assert "DoRead->MapBatches->RandomizeBlocks" not in ds.stats()
-    assert "DoRead->MapBatches" in ds.stats()
+    assert "ReadRange->MapBatches->RandomizeBlocks" not in ds.stats()
+    assert "ReadRange->MapBatches" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlocks"])
 
 
@@ -643,7 +643,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    assert "DoRead->MapBatches->RandomShuffle" in ds.stats()
+    assert "ReadRange->MapBatches->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
 
     ds = ray.data.range(n)
@@ -652,7 +652,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
     # TODO(Scott): Update below assertion after supporting fusion in
     # the other direction (AllToAllOperator->MapOperator)
-    assert "DoRead->RandomShuffle->MapBatches" not in ds.stats()
+    assert "ReadRange->RandomShuffle->MapBatches" not in ds.stats()
     assert all(op in ds.stats() for op in ("DoRead", "RandomShuffle", "MapBatches"))
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
@@ -662,7 +662,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
         ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(5, n + 5))
-    assert f"DoRead->{'MapBatches->' * 5}RandomShuffle" in ds.stats()
+    assert f"ReadRange->{'MapBatches->' * 5}RandomShuffle" in ds.stats()
 
     # For interweaved map_batches and random_shuffle operations, we expect to fuse the
     # two pairs of MapBatches->RandomShuffle, but not the resulting
@@ -673,7 +673,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(2, n + 2))
-    assert "Stage 1 DoRead->MapBatches->RandomShuffle" in ds.stats()
+    assert "Stage 1 ReadRange->MapBatches->RandomShuffle" in ds.stats()
     assert "Stage 2 MapBatches->RandomShuffle"
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
@@ -693,10 +693,10 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
 
     # Operator fusion is only supported for shuffle repartition.
     if shuffle:
-        assert "DoRead->MapBatches->Repartition" in ds.stats()
+        assert "ReadRange->MapBatches->Repartition" in ds.stats()
     else:
-        assert "DoRead->MapBatches->Repartition" not in ds.stats()
-        assert "DoRead->MapBatches" in ds.stats()
+        assert "ReadRange->MapBatches->Repartition" not in ds.stats()
+        assert "ReadRange->MapBatches" in ds.stats()
         assert "Repartition" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
 
@@ -716,8 +716,8 @@ def test_read_map_batches_operator_fusion_with_sort_operator(
     ds = ds.sort("id")
     assert extract_values("id", ds.take_all()) == list(range(1, n + 1))
     # TODO(Scott): update the below assertions after we support fusion.
-    assert "DoRead->MapBatches->Sort" not in ds.stats()
-    assert "DoRead->MapBatches" in ds.stats()
+    assert "ReadRange->MapBatches->Sort" not in ds.stats()
+    assert "ReadRange->MapBatches" in ds.stats()
     assert "Sort" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Sort"])
 
@@ -746,8 +746,8 @@ def test_read_map_batches_operator_fusion_with_aggregate_operator(
     )
     agg_ds.take_all() == [{"id": 0, "foo": 0.0}, {"id": 1, "foo": 1.0}]
     # TODO(Scott): update the below assertions after we support fusion.
-    assert "DoRead->MapBatches->Aggregate" not in agg_ds.stats()
-    assert "DoRead->MapBatches" in agg_ds.stats()
+    assert "ReadRange->MapBatches->Aggregate" not in agg_ds.stats()
+    assert "ReadRange->MapBatches" in agg_ds.stats()
     assert "Aggregate" in agg_ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Aggregate"])
 
@@ -772,7 +772,7 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
         -18,
         18,
     ]
-    name = "DoRead->Filter->MapRows->MapBatches->FlatMap:"
+    name = "ReadRange->Filter(<lambda>)->MapRows(<lambda>)->MapBatches(<lambda>)->FlatMap(<lambda>):"
     assert name in ds.stats()
     _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
 
@@ -780,7 +780,7 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
 def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
     ds = ray.data.range(10, parallelism=2)
     ds.write_csv(tmp_path)
-    assert "DoRead->Write" in ds._write_ds.stats()
+    assert "ReadRange->Write" in ds._write_ds.stats()
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
@@ -1115,7 +1115,7 @@ def test_from_pandas_refs_e2e(
         assert values == rows
         assert "MapBatches" in ds2.stats()
         assert "FromPandasRefs" in ds2.stats()
-        assert ds2._plan._logical_plan.dag.name == "MapBatches"
+        assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas_refs(ray.put(df1))
@@ -1169,7 +1169,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     assert "MapBatches" in ds2.stats()
     assert "FromNumpyRefs" in ds2.stats()
-    assert ds2._plan._logical_plan.dag.name == "MapBatches"
+    assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
     _check_usage_record(["FromNumpyRefs", "MapBatches"])
 
     # Test from single NumPy ndarray.

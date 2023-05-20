@@ -67,6 +67,6 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
     return MapOperator.create(
         do_read,
         inputs,
-        name="DoRead",
+        name=op.name,
         ray_remote_args=op._ray_remote_args,
     )
