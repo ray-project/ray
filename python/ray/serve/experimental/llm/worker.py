@@ -1,4 +1,5 @@
 import torch
+import gc
 from typing import List, Callable, Tuple, Optional
 
 from ray.serve.experimental.llm.models.model import Model
@@ -65,3 +66,12 @@ class InferenceWorker:
         if self._model.device.type == "cuda":
             print(f"memory allocated: {torch.cuda.memory_allocated(self._model.device)}")
             print(f"memory reserved: {torch.cuda.memory_reserved(self._model.device)}")
+
+    def check_cuda_objects(self):
+        if self._model.device.type == "cuda":
+            for obj in gc.get_objects():
+                try:
+                    if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                        print(type(obj), obj.size())
+                except:
+                    pass
