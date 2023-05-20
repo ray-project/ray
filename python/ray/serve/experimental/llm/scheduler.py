@@ -69,9 +69,9 @@ class Stats:
     last_report_time: float = 0.0
 
     def report_stats(self):
-        if time.time() - self.last_report_time < 1:
-            return False
-        self.last_report_time = time.time()
+        # if time.time() - self.last_report_time < 1:
+        #     return False
+        # self.last_report_time = time.time()
         print(f"scheduler stats: {self}")
         return True
 
@@ -99,6 +99,7 @@ class InferenceScheduler:
         request_selection_policy: RequestSelectionPolicy,
         request_queue: RequestQueue,
         loop: asyncio.AbstractEventLoop,
+        inline: bool = False,
     ):
         self._tokenizer = tokenizer
         self._inference_worker = inference_worker
@@ -108,8 +109,9 @@ class InferenceScheduler:
         self._lock = Lock()
         self._stop = False
         self._stats = Stats()
-        self._thread = Thread(target=self._run_scheduling_loop)
-        self._thread.start()
+        if not inline:
+            self._thread = Thread(target=self._run_scheduling_loop)
+            self._thread.start()
 
     def stop(self):
         with self._lock:
@@ -229,7 +231,7 @@ class InferenceScheduler:
             assert (
                 requests[i].id == generation.request_id
             ), f"expect request id {requests[i].id} but got {generation.request_id}"
-            requests[i].output_stream.put(generation)
+            requests[i].output_stream.put(generation.token_text)
             if generation.stopped:
                 self._stats.request_finished()
                 requests[i].output_stream.end()

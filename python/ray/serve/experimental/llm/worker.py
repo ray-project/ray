@@ -1,4 +1,5 @@
 import torch
+import gc
 from typing import List, Callable, Tuple, Optional
 
 from ray.serve.experimental.llm.models.model import Model
@@ -61,7 +62,33 @@ class InferenceWorker:
         return None
 
     def report_stats(self):
-        print(f"worker stats: {len(self._batch_state_cache)}")
+        print(f"worker stats: {[(id, cache.stats()) for id, cache in self._batch_state_cache.items()]}")
         if self._model.device.type == "cuda":
-            print(f"memory allocated: {torch.cuda.memory_allocated(self._model.device)}")
-            print(f"memory reserved: {torch.cuda.memory_reserved(self._model.device)}")
+            gc.collect()
+            print(f"memory allocated: {torch.cuda.memory_allocated(self._model.device) / 2 ** 30}")
+            print(f"memory reserved: {torch.cuda.memory_reserved(self._model.device) / 2 ** 30}")
+            self.debug_objects()
+
+    def check_cuda_objects(self):
+        from collections import defaultdict
+        if self._model.device.type != "cuda":
+            return
+        d = defaultdict(int)
+
+        for obj in gc.get_objects():
+            try:
+                if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                    t = tuple(obj.size()) + (obj.dtype, obj.device)
+                    d[t] += 1
+            except:
+                pass
+
+        for count, obj_signature in sorted([(count, sig) for sig, count in d.items()], key=lambda x: x[0], reverse=True):
+            print(count, obj_signature)
+
+    def debug_objects(self):
+        objs = gc.get_objects()
+        tensors = [obj for obj in objs if torch.is_tensor(obj)]
+        leaked_tensors = [t for t in tensors if t.size() == torch.Size([20, 1, 1024])]
+        if len(leaked_tensors) >= 1000:
+            import pdb;pdb.set_trace()

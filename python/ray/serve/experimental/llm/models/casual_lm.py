@@ -153,6 +153,22 @@ class CausalLMBatch(Batch):
             max_tokens=max_tokens,
         )
 
+    def stats(self):
+        past_kv_shape = []
+        if self.past_key_values:
+            for keys, values in self.past_key_values:
+                past_kv_shape.append((keys.size(), values.size()))
+
+        return {
+            "request": len(self.requests),
+            "input_ids": self.input_ids.size(),
+            "attention_mask": self.attention_mask.size(),
+            "position_ids": self.position_ids.size(), 
+            "past_key_values": past_kv_shape,
+            "all_input_ids": [input_id.size() for input_id in self.all_input_ids]
+        }
+
+
     def filter(self, request_ids: List[int]) -> Optional["CausalLMBatch"]:
         if len(request_ids) == 0:
             raise ValueError("Batch must have at least one request")
