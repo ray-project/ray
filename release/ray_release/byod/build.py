@@ -87,8 +87,8 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                         os.path.join(RELEASE_BYOD_DIR, "byod.Dockerfile"),
                         RELEASE_BYOD_DIR,
                     ],
-                    stdout=subprocess.DEVNULL,
-                    env={"DOCKER_BUILDKIT": "1"},
+                    stdout=sys.stderr,
+                    env=env,
                 )
                 subprocess.check_call(
                     ["docker", "push", byod_image],
