@@ -365,7 +365,9 @@ class MultiAgentRLModule(RLModule):
             mapping from module ID to the output of the forward pass.
         """
 
-        module_ids = list(batch.shallow_keys())
+        module_ids = list(
+            batch.shallow_keys() if isinstance(batch, NestedDict) else batch.keys()
+        )
         for module_id in module_ids:
             self._check_module_exists(module_id)
 
