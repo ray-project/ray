@@ -193,22 +193,17 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertEqual(config.rl_module_spec.module_class, A)
 
     def test_learner_api(self):
-        # TODO (Kourosh): the default learner of PPO is not implemented yet. When
-        # that's done this test should be updated
-        class A:
-            pass
-
         config = (
             PPOConfig()
             .environment("CartPole-v1")
             .rollouts(enable_connectors=True)
-            .training(learner_class=A, _enable_learner_api=True)
+            .training(_enable_learner_api=True)
             .rl_module(_enable_rl_module_api=True)
             .framework("tf2")
         )
 
         config.validate()
-        self.assertEqual(config.learner_class, A)
+        self.assertEqual(config.learner_class, PPOTfLearner)
 
     def _assertEqualMARLSpecs(self, spec1, spec2):
         self.assertEqual(spec1.marl_module_class, spec2.marl_module_class)

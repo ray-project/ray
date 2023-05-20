@@ -170,17 +170,15 @@ class TestLearner(unittest.TestCase):
             # Check clipped gradients.
             for proc_grad, grad in zip(processed_grads, grads.values()):
                 l2_norm = np.sqrt(np.sum(grad**2.0))
-                if l2_norm > 1.0:
-                    check(proc_grad, grad * (1.0 / l2_norm))
+                if l2_norm > config.grad_clip:
+                    check(proc_grad, grad * (config.grad_clip / l2_norm))
 
             # Clip by global norm.
             config = config.copy(copy_frozen=False).training(
                 grad_clip=5.0,
                 grad_clip_by="global_norm",
             )
-            # TODO: remove this once validation does NOT cause HPs to be generated
-            #  anymore
-            config.validate()
+            # Freeze to be able to get the LearnerGroup config.
             config.freeze()
             learner_group = (
                 config.get_learner_group_config(module_spec=module_spec)
@@ -194,9 +192,9 @@ class TestLearner(unittest.TestCase):
             global_norm = np.sqrt(
                 np.sum(np.sum(grad**2.0) for grad in grads.values())
             )
-            if global_norm > 5.0:
+            if global_norm > config.grad_clip:
                 for proc_grad, grad in zip(processed_grads, grads.values()):
-                    check(proc_grad, grad * (5.0 / global_norm))
+                    check(proc_grad, grad * (config.grad_clip / global_norm))
 
     def test_apply_gradients(self):
         """Tests the apply_gradients correctness.

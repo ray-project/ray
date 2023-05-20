@@ -71,8 +71,9 @@ class TorchLearner(Learner):
         # Will be set during build.
         self._device = None
 
+    @OverrideToImplementCustomLogic
     @override(Learner)
-    def configure_optimizer_per_module(
+    def configure_optimizers_for_module(
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
@@ -84,13 +85,28 @@ class TorchLearner(Learner):
         return pair
 
     @override(Learner)
+    def _update(
+        self,
+        batch: NestedDict,
+        **kwargs,
+    ) -> Tuple:
+        """Performs a single update given a batch of data."""
+        fwd_out = self.module.forward_train(batch)
+        loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
+
+        gradients = self.compute_gradients(loss_per_module)
+        postprocessed_gradients = self.postprocess_gradients(gradients)
+        self.apply_gradients(postprocessed_gradients)
+        return fwd_out, loss_per_module, postprocessed_gradients, self._metrics
+
+    @override(Learner)
     def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]]
+        self, loss_per_module: Mapping[str, TensorType], **kwargs
     ) -> ParamDictType:
         for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients
             optim.zero_grad(set_to_none=True)
-        loss[self.TOTAL_LOSS_KEY].backward()
+        loss_per_module[ALL_MODULES].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
@@ -126,15 +142,15 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def apply_gradients(self, gradients: ParamDictType) -> None:
-        # make sure the parameters do not carry gradients on their own
+        # Make sure the parameters do not carry gradients on their own.
         for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
 
-        # set the gradient of the parameters
+        # Set the gradient of the parameters.
         for pid, grad in gradients.items():
             self._params[pid].grad = grad
 
-        # for each optimizer call its step function with the gradients
+        # For each optimizer call its step function.
         for optim in self._optimizer_parameters:
             optim.step()
 

@@ -21,8 +21,8 @@ LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
 @dataclass
-class ImpalaHyperparameters(LearnerHyperparameters):
-    """Hyperparameters for the ImpalaLearner sub-classes (framework specific).
+class ImpalaLearnerHyperparameters(LearnerHyperparameters):
+    """LearnerHyperparameters for the ImpalaLearner sub-classes (framework specific).
 
     These should never be set directly by the user. Instead, use the IMPALAConfig
     class to configure your algorithm.
@@ -71,21 +71,6 @@ class ImpalaLearner(Learner):
         )
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 
-        return results
-
-    @override(Learner)
-    def compile_results(
-        self,
-        batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        postprocessed_gradients: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        results = super().compile_results(
-            batch, fwd_out, postprocessed_loss, postprocessed_gradients
-        )
-        results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
-        results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
         return results
 
 

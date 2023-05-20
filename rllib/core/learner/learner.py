@@ -40,7 +40,11 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.metrics import LEARNER_STATS_KEY, ALL_MODULES
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED,
+)
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
@@ -220,7 +224,7 @@ class Learner:
                 # compute the loss based on batch and output of the forward pass
                 # to access the learner hyper-parameters use `self._hps`
 
-                return {self.TOTAL_LOSS_KEY: loss}
+                return {ALL_MODULES: loss}
     """
 
     framework: str = None
@@ -271,13 +275,22 @@ class Learner:
         # whether self.build has already been called
         self._is_built = False
 
-        # These are the attributes that are set during build
-        self._module: MultiAgentRLModule = None
+        # These are the attributes that are set during build.
+
+        # The actual MARLModule used by this Learner.
+        self._module: Optional[MultiAgentRLModule] = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
         self._params: ParamDictType = {}
+        # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
+        # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
+
+        # Registered metrics (one sub-dict per module ID) to be returned from
+        # `Learner.update()`. These metrics will be "compiled" automatically into
+        # the final results dict in the `self.compile_update_results()` method.
+        self._metrics = defaultdict(dict)
 
     @property
     def distributed(self) -> bool:
@@ -313,12 +326,12 @@ class Learner:
         """
         param_optimizer_pairs = []
         name_to_optim = {}
-        for module_id in self._module.keys():
-            if self._is_module_compatible_with_learner(self._module[module_id]):
+        for module_id in self.module.keys():
+            if self._is_module_compatible_with_learner(self.module[module_id]):
                 (
                     module_param_optimizer_pairs,
                     module_named_optims,
-                ) = self._configure_optimizers_per_module_helper(module_id)
+                ) = self._configure_optimizers_for_module_helper(module_id)
                 param_optimizer_pairs.extend(module_param_optimizer_pairs)
                 name_to_optim.update(module_named_optims)
                 self._module_optimizers[module_id].extend(
@@ -327,30 +340,30 @@ class Learner:
         self._named_optimizers = name_to_optim
         return param_optimizer_pairs
 
-    def _configure_optimizers_per_module_helper(
+    def _configure_optimizers_for_module_helper(
         self, module_id: ModuleID
     ) -> Tuple[ParamOptimizerPairs, Dict[str, Optimizer]]:
         """Configures the optimizers for the given module_id.
 
         This method is a helper method for processing the output of
-        configure_optimizer_per_module into a dictionary of names mapping to optimizers
+        configure_optimizers_for_module into a dictionary of names mapping to optimizers
         and a list of ParamOptimizerPairs. Developers should call this method
-        instead of configure_optimizer_per_module, but users should still override
-        configure_optimizer_per_module.
+        instead of configure_optimizers_for_module, but users should still override
+        configure_optimizers_for_module.
 
         Args:
             module_id: The module_id of the module to configure optimizers for.
 
         Returns:
-            A tuple of a list of ParamOptimizerPairs and a dictionary of names mapping
-            from optimizer names to optimizers.
+            A tuple consisting of: A list of ParamOptimizerPairs and a dict of names
+            mapping from optimizer names to optimizers.
 
         """
         pairs = []
         name_to_optim = {}
         pair_or_pairs: Union[
             ParamOptimizerPair, NamedParamOptimizerPairs
-        ] = self.configure_optimizer_per_module(module_id)
+        ] = self.configure_optimizers_for_module(module_id)
         if isinstance(pair_or_pairs, tuple):
             # pair_or_pairs is a single ParamOptimizerPair
             pair = pair_or_pairs
@@ -365,7 +378,7 @@ class Learner:
                 _, optim = pair
                 if not isinstance(name, str):
                     raise ValueError(
-                        "The output of configure_optimizer_per_module must be a "
+                        "The output of configure_optimizers_for_module must be a "
                         "NamedParamOptimizerPairs. The key of a "
                         "NamedParamOptimizerPairs must be a string."
                     )
@@ -373,7 +386,7 @@ class Learner:
                 pairs.append(pair)
         else:
             raise ValueError(
-                "The output of configure_optimizer_per_module must be a "
+                "The output of configure_optimizers_for_module must be a "
                 "ParamOptimizerPair or NamedParamOptimizerPairs."
             )
         return pairs, name_to_optim
@@ -403,7 +416,8 @@ class Learner:
             )
 
     @OverrideToImplementCustomLogic
-    def configure_optimizer_per_module(
+    @abc.abstractmethod
+    def configure_optimizers_for_module(
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         """Configures an optimizer for the given module_id.
@@ -430,26 +444,64 @@ class Learner:
         Returns:
             A ParamOptimizerPair or NamedParamOptimizerPairs for this module_id.
         """
-        raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
-    def compute_gradients(self, loss: Mapping[str, Any]) -> ParamDictType:
-        """Computes the gradients based on the loss.
+    def compute_gradients(
+        self, loss_per_module: Mapping[str, TensorType], **kwargs
+    ) -> ParamDictType:
+        """Computes the gradients based on the given losses.
 
         Args:
-            loss: The computed loss dict. It should include the key
-                `self.TOTAL_LOSS_KEY` that contains the total loss.
+            loss_per_module: Dict mapping module IDs to their individual total loss
+                terms, computed by the individual `compute_loss_for_module()` calls.
+                The overall total loss (sum of loss terms over all modules) is stored
+                under the `ALL_MODULES` key.
+            **kwargs: Forward compatibility kwargs.
+
         Returns:
-            The gradients in teh same format as self._params.
+            The gradients in the same (flat) format as self._params. Note that all
+            top-level structures, such as module IDs, will not be present anymore in
+            the returned dict. It will merely map parameter tensor references to their
+            respective gradient tensors.
         """
 
+    @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def apply_gradients(self, gradients: ParamDictType) -> None:
         """Applies the gradients to the MultiAgentRLModule parameters.
 
         Args:
-            gradients: A dictionary of gradients, in the same format as self._params.
+            gradients: A dictionary of gradients  in the same (flat) format as
+                self._params. Note that top-level structures, such as module IDs,
+                will not be present anymore in this dict. It will merely map gradient
+                tensor references to gradient tensors.
         """
+
+    def register_metric(self, module_id: str, key: str, value: Any) -> None:
+        """Registers a single key/value metric pair for loss and gradient stats.
+
+        Args:
+            module_id: The module_id to register the metric under. This may be
+                ALL_MODULES.
+            key: The name of the metric to register (below the given `module_id`).
+            value: The actual value of the metric. This might also be a tensor var (e.g.
+                from within a traced tf2 function).
+        """
+        self._metrics[module_id][key] = value
+
+    def register_metrics(self, module_id: str, metrics_dict: Dict[str, Any]) -> None:
+        """Registers a several key/value metric pairs for loss and gradient stats.
+
+        Args:
+            module_id: The module_id to register the metrics under. This may be
+                ALL_MODULES.
+            metrics_dict: A dict mapping names of metrics to be registered (below the
+                given `module_id`) to the actual values of these metrics. Values might
+                also be tensor vars (e.g. from within a traced tf2 function).
+        """
+        for key, value in metrics_dict.items():
+            self.register_metric(module_id, key, value)
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the weights of the underlying MultiAgentRLModule.
@@ -465,7 +517,7 @@ class Learner:
             A dictionary that holds the weights of the modules in a numpy-friendly
             format.
         """
-        module_states = self._module.get_state(module_ids)
+        module_states = self.module.get_state(module_ids)
         return convert_to_numpy({k: v for k, v in module_states.items()})
 
     @abc.abstractmethod
@@ -518,48 +570,51 @@ class Learner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def compile_results(
         self,
+        *,
         batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        postprocessed_gradients: Mapping[str, Any],
+        loss_per_module: Mapping[str, TensorType],
+        postprocessed_gradients: ParamDictType,
+        metrics_per_module: Dict[ModuleID, Dict[str, Any]],
     ) -> Mapping[str, Any]:
         """Compile results from the update in a numpy-friendly format.
 
         Args:
             batch: The batch that was used for the update.
             fwd_out: The output of the forward train pass.
-            postprocessed_loss: The loss after postprocessing.
-            postprocessed_gradients: The gradients after postprocessing.
+            loss_per_module: A dict mapping module IDs (including ALL_MODULES) to the
+                individual loss tensors as returned by calls to
+                `compute_loss_for_module(module_id=...)`.
+            postprocessed_gradients: The postprocessed gradients dict, (flat) mapping
+                gradient tensor refs to the already postprocessed gradient tensors.
+            metrics_per_module: The collected metrics dict mapping ModuleIDs to
+                metrics dicts. These metrics are collected during loss- and
+                gradient computation, gradient postprocessing, and gradient application.
 
         Returns:
-            A dictionary of results.
+            A dictionary of results sub-dicts per module (including ALL_MODULES).
         """
         if not isinstance(batch, MultiAgentBatch):
             raise ValueError(
                 f"batch must be a MultiAgentBatch, but got {type(batch)} instead."
             )
 
-        loss_numpy = convert_to_numpy(postprocessed_loss)
-
-        # We restructure the loss to be module_id -> LEARNER_STATS_KEY -> key-values.
-        # This matches what the legacy RLlib policies used to return.
+        # We compile the metrics to have the structure:
+        # top-leve key: module_id -> [key, e.g. self.TOTAL_LOSS_KEY] -> [value].
+        # Results will include all registered metrics under the respective module ID
+        # top-level key.
         module_learner_stats = defaultdict(dict)
-        for module_id in batch.policy_batches.keys():
-            module_learner_stats[module_id] = {LEARNER_STATS_KEY: loss_numpy[module_id]}
+        # Add the num agent|env steps trained counts for all modules.
+        module_learner_stats[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
+        module_learner_stats[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
 
-        # We put the stats for all modules under the ALL_MODULES key. e.g. average of
-        # the gradients across all modules will go here.
-        mean_abs_grads = [
-            np.mean(np.abs(grad))
-            for grad in convert_to_numpy(postprocessed_gradients.values())
-            if grad is not None
-        ]
+        loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
-        module_learner_stats[ALL_MODULES] = {
-            "mean_abs_postprocessed_gradients": np.mean(mean_abs_grads),
-            self.TOTAL_LOSS_KEY: loss_numpy[self.TOTAL_LOSS_KEY],
-        }
-
+        for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
+            module_learner_stats[module_id].update({
+                self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
+                **convert_to_numpy(metrics_per_module[module_id]),
+            })
         return dict(module_learner_stats)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -578,12 +633,12 @@ class Learner:
         self._check_is_built()
         module = module_spec.build()
 
-        self._module.add_module(module_id, module)
+        self.module.add_module(module_id, module)
 
         (
             param_optimizer_pair,
             name_to_optimizer,
-        ) = self._configure_optimizers_per_module_helper(module_id)
+        ) = self._configure_optimizers_for_module_helper(module_id)
 
         for (param_seq, optimizer) in param_optimizer_pair:
             self._optimizer_parameters[optimizer] = []
@@ -602,7 +657,7 @@ class Learner:
             module_id: The id of the module to remove.
         """
         self._check_is_built()
-        module = self._module[module_id]
+        module = self.module[module_id]
 
         if self._is_module_compatible_with_learner(module):
             parameters = self.get_parameters(module)
@@ -617,14 +672,14 @@ class Learner:
                 del self._named_optimizers[optim_name]
             del self._module_optimizers[module_id]
 
-        self._module.remove_module(module_id)
+        self.module.remove_module(module_id)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def build(self) -> None:
         """Builds the Learner.
 
         This method should be called before the learner is used. It is responsible for
-        setting up the module and optimizers.
+        setting up the RLModule and optimizers.
         """
         if self._is_built:
             logger.debug("Learner already built. Skipping build.")
@@ -661,7 +716,7 @@ class Learner:
 
         This method must be overridden multiagent-specific algorithm learners to
         specify the specific loss computation logic. If the algorithm is single agent
-        `compute_loss_per_module()` should be overriden instead.
+        `compute_loss_for_module()` should be overriden instead.
         The input "fwd_out" is the output "forward_train" method of the underlying
         MultiAgentRLModule. The input "batch" is the data that was used to compute
         "fwd_out". The returned dictionary must contain a key called "total_loss",
@@ -670,7 +725,7 @@ class Learner:
         compute the required tensors for loss calculation.
 
         Args:
-            fwd_out: Output from a call to `forward_train` on self._module during
+            fwd_out: Output from a call to `forward_train` on self.module during
                 training.
             batch: The data that was used to compute fwd_out.
 
@@ -680,30 +735,35 @@ class Learner:
             computing gradients through.
         """
         loss_total = None
-        results_all_modules = {}
+        loss_per_module = {}
         for module_id in fwd_out:
             module_batch = batch[module_id]
             module_fwd_out = fwd_out[module_id]
 
-            module_results = self.compute_loss_per_module(
-                module_id, module_batch, module_fwd_out
+            loss = self.compute_loss_for_module(
+                module_id=module_id,
+                batch=module_batch,
+                fwd_out=module_fwd_out,
             )
-            results_all_modules[module_id] = module_results
-            loss = module_results[self.TOTAL_LOSS_KEY]
+            loss_per_module[module_id] = loss
 
             if loss_total is None:
                 loss_total = loss
             else:
                 loss_total += loss
 
-        results_all_modules[self.TOTAL_LOSS_KEY] = loss_total
+        loss_per_module[ALL_MODULES] = loss_total
 
-        return results_all_modules
+        return loss_per_module
 
     @OverrideToImplementCustomLogic
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
-    ) -> Mapping[str, Any]:
+    def compute_loss_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        batch: SampleBatch,
+        fwd_out: Mapping[str, TensorType],
+    ) -> TensorType:
         """Computes the loss for a single module.
 
         Think of this as computing loss for a single agent. For multi-agent use-cases
@@ -716,15 +776,21 @@ class Learner:
             fwd_out: The output of the forward pass for this particular module.
 
         Returns:
-            A dictionary of losses. The dictionary
-            must contain one protected key "total_loss" which will be used for
-            computing gradients through.
+            A single total loss tensor. If you have more than one optimizer on the
+            provided `module_id` and would like to compute gradients separately using
+            these different optimizers, simply add up the individual loss terms for
+            each optimizer and return the sum. Also, for tracking the individual loss
+            terms, you can use the `Learner.register_metric(s)` APIs.
         """
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
     def additional_update(
-        self, module_ids_to_update: Sequence[ModuleID] = None, **kwargs
+        self,
+        *,
+        module_ids_to_update: Sequence[ModuleID] = None,
+        timestep: int,
+        **kwargs,
     ) -> Mapping[ModuleID, Any]:
         """Apply additional non-gradient based updates to this Trainer.
 
@@ -737,10 +803,10 @@ class Learner:
 
             class DQNLearner(TorchLearner):
 
-                def additional_update_per_module(self, module_id: ModuleID, tau: float):
+                def additional_update_for_module(self, module_id: ModuleID, tau: float):
                     # perform polyak averaging update
-                    main = self._module[module_id].main
-                    target = self._module[module_id].target
+                    main = self.module[module_id].main
+                    target = self.module[module_id].target
                     for param, target_param in zip(
                         main.parameters(), target.parameters()
                     ):
@@ -761,22 +827,30 @@ class Learner:
         Args:
             module_ids_to_update: The ids of the modules to update. If None, all
                 modules will be updated.
+            timestep: The current timestep.
             **kwargs: Keyword arguments to use for the additional update.
 
         Returns:
             A dictionary of results from the update
         """
         results_all_modules = {}
-        module_ids = module_ids_to_update or self._module.keys()
+        module_ids = module_ids_to_update or self.module.keys()
         for module_id in module_ids:
-            module_results = self.additional_update_per_module(module_id, **kwargs)
+            module_results = self.additional_update_for_module(
+                module_id=module_id,
+                timestep=timestep,
+                **kwargs,
+            )
             results_all_modules[module_id] = module_results
 
         return results_all_modules
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def additional_update_per_module(
-        self, module_id: ModuleID, **kwargs
+    def additional_update_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        timestep: int, **kwargs,
     ) -> Dict[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 
@@ -784,6 +858,7 @@ class Learner:
 
         Args:
             module_id: The id of the module to update.
+            timestep: The current global timestep (to be used with schedulers).
             **kwargs: Keyword arguments to use for the additional update.
 
         Returns:
@@ -844,7 +919,7 @@ class Learner:
         """
         self._check_is_built()
 
-        missing_module_ids = set(batch.policy_batches.keys()) - set(self._module.keys())
+        missing_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
         if len(missing_module_ids) > 0:
             raise ValueError(
                 "Batch contains module ids that are not in the learner: "
@@ -871,9 +946,20 @@ class Learner:
 
         results = []
         for minibatch in batch_iter(batch, minibatch_size, num_iters):
+            tensor_minibatch = self._convert_batch_type(minibatch)
+            fwd_out, loss_per_module, postprocessed_gradients, metrics_per_module = (
+                self._update(tensor_minibatch)
+            )
 
-            result = self._update(minibatch)
-            results.append(result)
+            result = self.compile_results(
+                batch=minibatch,
+                fwd_out=fwd_out,
+                loss_per_module=loss_per_module,
+                postprocessed_gradients=postprocessed_gradients,
+                metrics_per_module=metrics_per_module,
+            )
+            self._check_result(result)
+            results.append(convert_to_numpy(result))
 
         # Reduce results across all minibatches, if necessary.
         if len(results) == 1:
@@ -882,6 +968,31 @@ class Learner:
             if reduce_fn is None:
                 return results
             return reduce_fn(results)
+
+    @abc.abstractmethod
+    def _update(
+        self,
+        batch: NestedDict,
+        **kwargs,
+    ) -> Tuple[Any, Any, ParamDictType, Any]:
+        """Contains all logic for an in-graph/traceable update step.
+
+        Framework specific subclasses must implement this method. This should include
+        calls to the RLModule's `forward_train`, `compute_loss`, compute_gradients`,
+        `postprocess_gradients`, and `apply_gradients` methods and return a tuple
+        with all the individual results.
+
+        Args:
+            batch: The train batch already converted in to a (tensor) NestedDict.
+            **kwargs: Forward compatibility kwargs.
+
+        Returns:
+            A tuple consisting of: 1) The `forward_train()` output of the RLModule,
+            2) the loss_per_module dictionary mapping module IDs to individual loss
+            tensors, 3) the postprocessed_gradients dict mapping param references
+            to their respective gradient tensors, and 4) a metrics dict mapping module
+            IDs to metrics key/value pairs.
+        """
 
     def set_state(self, state: Mapping[str, Any]) -> None:
         """Set the state of the learner.
@@ -1000,7 +1111,7 @@ class Learner:
         self._check_is_built()
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        self._module.save_to_checkpoint(path / "module_state")
+        self.module.save_to_checkpoint(path / "module_state")
         self._save_optimizers(path / "optimizer_state")
         with open(path / "learner_state.json", "w") as f:
             metadata = self._get_metadata()
@@ -1021,7 +1132,7 @@ class Learner:
         path = pathlib.Path(path)
         del self._module
         # TODO(avnishn) from checkpoint doesn't currently support modules_to_load,
-        # but it should, so we will add it later.
+        #  but it should, so we will add it later.
         self._module_obj = MultiAgentRLModule.from_checkpoint(path / "module_state")
         self._reset()
         self.build()
@@ -1093,27 +1204,8 @@ class Learner:
                         f"module id. Valid module ids are: {list(self.module.keys())}."
                     )
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def _update(
-        self,
-        batch: MultiAgentBatch,
-    ) -> Mapping[str, Any]:
-        """Performs a single update given a batch of data."""
-        # TODO (Kourosh): remove the MultiAgentBatch from the type, it should be
-        #  NestedDict from the base class.
-        tensorbatch = self._convert_batch_type(batch)
-        fwd_out = self._module.forward_train(tensorbatch)
-        loss = self.compute_loss(fwd_out=fwd_out, batch=tensorbatch)
-
-        gradients = self.compute_gradients(loss)
-        postprocessed_gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(postprocessed_gradients)
-        results = self.compile_results(batch, fwd_out, loss, postprocessed_gradients)
-        self._check_result(results)
-        return convert_to_numpy(results)
-
     def _check_is_built(self):
-        if self._module is None:
+        if self.module is None:
             raise ValueError(
                 "Learner.build() must be called after constructing a "
                 "Learner and before calling any methods on it."

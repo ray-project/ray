@@ -45,7 +45,7 @@ class TestLearner(unittest.TestCase):
 
             if fw == "torch":
                 assert isinstance(rl_module, DiscreteBCTorchModule)
-            elif fw == "tf":
+            elif fw == "tf2":
                 assert isinstance(rl_module, DiscreteBCTFModule)
 
     def test_bc_algorithm_marl(self):
@@ -72,7 +72,7 @@ class TestLearner(unittest.TestCase):
 
                 if fw == "torch":
                     assert isinstance(rl_module, DiscreteBCTorchModule)
-                elif fw == "tf":
+                elif fw == "tf2":
                     assert isinstance(rl_module, DiscreteBCTFModule)
 
     def test_bc_algorithm_w_custom_marl_module(self):
@@ -129,7 +129,7 @@ class TestLearner(unittest.TestCase):
 
                 if fw == "torch":
                     assert isinstance(rl_module, BCTorchRLModuleWithSharedGlobalEncoder)
-                elif fw == "tf":
+                elif fw == "tf2":
                     assert isinstance(rl_module, BCTfRLModuleWithSharedGlobalEncoder)
 
 

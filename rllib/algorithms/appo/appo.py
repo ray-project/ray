@@ -15,7 +15,7 @@ import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.appo.appo_learner import (
-    AppoHyperparameters,
+    AppoLearnerHyperparameters,
     LEARNER_RESULTS_KL_KEY,
 )
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
@@ -242,9 +242,9 @@ class APPOConfig(ImpalaConfig):
         return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
     @override(ImpalaConfig)
-    def get_learner_hyperparameters(self) -> AppoHyperparameters:
+    def get_learner_hyperparameters(self) -> AppoLearnerHyperparameters:
         base_hps = super().get_learner_hyperparameters()
-        return AppoHyperparameters(
+        return AppoLearnerHyperparameters(
             use_kl_loss=self.use_kl_loss,
             kl_target=self.kl_target,
             kl_coeff=self.kl_coeff,

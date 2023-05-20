@@ -20,7 +20,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
     """Implements the IMPALA loss function in torch."""
 
     @override(TorchLearner)
-    def compute_loss_per_module(
+    def compute_loss_for_module(
         self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         action_dist_class_train = (
@@ -116,9 +116,15 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             + mean_entropy_loss
             * (self.entropy_coeff_scheduler.get_current_value(module_id))
         )
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "pi_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
-            ENTROPY_KEY: -mean_entropy_loss,
-        }
+
+        # Register important loss stats.
+        self.register_metrics(
+            module_id,
+            {
+                "pi_loss": mean_pi_loss,
+                "vf_loss": mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+            },
+        )
+        # Return the total loss.
+        return total_loss
