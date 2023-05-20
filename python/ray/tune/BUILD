@@ -1000,15 +1000,6 @@ py_test(
 )
 
 py_test(
-    name = "wandb_example",
-    size = "medium",
-    srcs = ["examples/wandb_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--mock-api"]
-)
-
-py_test(
     name = "xgboost_example",
     size = "small",
     srcs = ["examples/xgboost_example.py"],
