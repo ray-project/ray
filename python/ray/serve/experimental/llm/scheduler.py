@@ -229,7 +229,7 @@ class InferenceScheduler:
             assert (
                 requests[i].id == generation.request_id
             ), f"expect request id {requests[i].id} but got {generation.request_id}"
-            requests[i].output_stream.put(generation)
+            requests[i].output_stream.put(generation.token_text)
             if generation.stopped:
                 self._stats.request_finished()
                 requests[i].output_stream.end()
