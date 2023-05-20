@@ -4005,6 +4005,10 @@ void CoreWorker::RecordTaskLogStart(const std::string &stdout_path,
                                     const std::string &stderr_path,
                                     int64_t stdout_start_offset,
                                     int64_t stderr_start_offset) const {
+  RAY_LOG(INFO) << "RecordTaskLogStart: "
+                << worker_context_.GetCurrentTask()->DebugString() << stdout_path << " "
+                << stderr_path << " " << stdout_start_offset << " "
+                << stderr_start_offset;
   if (options_.is_local_mode) {
     return;
   }
@@ -4027,6 +4031,9 @@ void CoreWorker::RecordTaskLogStart(const std::string &stdout_path,
 
 void CoreWorker::RecordTaskLogEnd(int64_t stdout_end_offset,
                                   int64_t stderr_end_offset) const {
+  RAY_LOG(INFO) << "RecordTaskLogEnd: "
+                << worker_context_.GetCurrentTask()->DebugString();
+
   if (options_.is_local_mode) {
     return;
   }

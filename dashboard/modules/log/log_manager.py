@@ -16,10 +16,22 @@ from ray.util.state.state_manager import StateDataSourceClient
 # TODO(sang): Remove the usage of this class.
 from ray.dashboard.datacenter import DataSource
 
+from pydantic import BaseModel
+
 
 logger = logging.getLogger(__name__)
 
 WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
+
+
+class ResolvedStreamFileInfo(BaseModel):
+    node_id: str
+
+    filename: str
+
+    start_offset: Optional[int]
+
+    end_offset: Optional[int]
 
 
 class LogsManager:
@@ -76,7 +88,7 @@ class LogsManager:
         """
         node_id = options.node_id or self.ip_to_node_id(options.node_ip)
 
-        log_file_name, node_id = await self.resolve_filename(
+        res = await self.resolve_filename(
             node_id=node_id,
             log_filename=options.filename,
             actor_id=options.actor_id,
@@ -91,8 +103,8 @@ class LogsManager:
 
         keep_alive = options.media_type == "stream"
         stream = await self.client.stream_log(
-            node_id=node_id,
-            log_file_name=log_file_name,
+            node_id=res.node_id,
+            log_file_name=res.filename,
             keep_alive=keep_alive,
             lines=options.lines,
             interval=options.interval,
@@ -100,8 +112,8 @@ class LogsManager:
             # otherwise the stream will be terminated forcefully
             # after the deadline is expired.
             timeout=options.timeout if not keep_alive else None,
-            task_id=options.task_id,
-            attempt_number=options.attempt_number,
+            start_offset=res.start_offset,
+            end_offset=res.end_offset,
         )
 
         async for streamed_log in stream:
@@ -199,7 +211,7 @@ class LogsManager:
         timeout: int = DEFAULT_RPC_TIMEOUT,
         suffix: str = "out",
         submission_id: Optional[str] = None,
-    ) -> Tuple[str, str]:
+    ) -> ResolvedStreamFileInfo:
         """Return the file name given all options.
 
         Args:
@@ -215,6 +227,13 @@ class LogsManager:
                 resolving by other ids'. Default to "out".
             submission_id: The submission id for a submission job.
         """
+        start_offset = None
+        end_offset = None
+        if suffix not in ["out", "err"]:
+            raise ValueError(f"Suffix {suffix} is not supported. ")
+
+        # TODO(rickyx): We should make sure we do some sort of checking on the log
+        # filename
         if actor_id:
             if get_actor_fn is None:
                 raise ValueError("get_actor_fn needs to be specified for actor_id")
@@ -273,21 +292,48 @@ class LogsManager:
 
             worker_id = task.get("worker_id", None)
             node_id = task.get("node_id", None)
+            log_info = task.get("task_log_info", None)
+            actor_id = task.get("actor_id", None)
 
-            if worker_id is None or node_id is None:
+            if node_id is None:
+                raise FileNotFoundError(
+                    "Could not find log file for task attempt."
+                    f"{task_id}({attempt_number}) due to missing node info."
+                )
+
+            if log_info is None and actor_id is not None:
+                # This is a concurrent actor task. The logs will be interleaved.
+                # So we return the log file of the actor instead.
+                if worker_id is None:
+                    raise FileNotFoundError(
+                        "Could not find log file for task attempt."
+                        f"{task_id}({attempt_number}) due to missing worker id."
+                    )
+                log_filename = await self._resolve_worker_file(
+                    node_id=node_id,
+                    worker_id=worker_id,
+                    suffix=suffix,
+                    timeout=timeout,
+                    pid=None,
+                )
+            elif log_info is not None:
+                filename_key = "stdout_file" if suffix == "out" else "stderr_file"
+                log_filename = log_info.get(filename_key, None)
+                if log_filename is None:
+                    raise FileNotFoundError(
+                        f"Missing log filename info in {log_info} for task {task_id},"
+                        f"attempt {attempt_number}"
+                    )
+
+                start_offset = log_info.get(f"std{suffix}_start", None)
+                end_offset = log_info.get(f"std{suffix}_end", None)
+            else:
                 raise FileNotFoundError(
                     "Could not find log file for task attempt:"
                     f"{task_id}({attempt_number})."
-                    f"Worker id = {worker_id}, node id = {node_id}"
+                    f"Worker id = {worker_id}, node id = {node_id}, log_info = {log_info}"
                 )
 
-            log_filename = await self._resolve_worker_file(
-                node_id=node_id,
-                worker_id=worker_id,
-                pid=None,
-                suffix=suffix,
-                timeout=timeout,
-            )
         elif submission_id:
             node_id, log_filename = await self._resolve_job_filename(submission_id)
 
@@ -315,16 +361,24 @@ class LogsManager:
             raise FileNotFoundError(
                 "Could not find a log file. Please make sure the given "
                 "option exists in the cluster.\n"
-                f"\node_id: {node_id}\n"
-                f"\filename: {log_filename}\n"
+                f"\tnode_id: {node_id}\n"
+                f"\tfilename: {log_filename}\n"
                 f"\tactor_id: {actor_id}\n"
-                f"\task_id: {task_id}\n"
+                f"\ttask_id: {task_id}\n"
                 f"\tpid: {pid}\n"
                 f"\tsuffix: {suffix}\n"
                 f"\tsubmission_id: {submission_id}\n"
+                f"\tattempt_number: {attempt_number}\n"
             )
-        logger.info(f"Resolved log file: {log_filename} on node {node_id}")
-        return log_filename, node_id
+
+        res = ResolvedStreamFileInfo(
+            node_id=node_id,
+            filename=log_filename,
+            start_offset=start_offset,
+            end_offset=end_offset,
+        )
+        logger.info(f"Resolved log file: {res}")
+        return res
 
     def _categorize_log_files(self, log_files: List[str]) -> Dict[str, List[str]]:
         """Categorize the given log files after filterieng them out using a given glob.
