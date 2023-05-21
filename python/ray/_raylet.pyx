@@ -884,6 +884,7 @@ cdef execute_streaming_generator(
         actor_id,
         name_of_concurrency_group_to_execute,
         return_size,
+        uint64_t *num_streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error):
     """Execute a given generator and streaming-report the
@@ -968,6 +969,10 @@ cdef execute_streaming_generator(
                 is_retryable_error,
                 application_error
             )
+            # The task is retryable. Do not create an error object.
+            if (error_obj.first == CObjectID.Nil()):
+                raise e
+
             CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 error_obj,
                 generator_id,
@@ -1002,6 +1007,7 @@ cdef execute_streaming_generator(
                 False)  # finished
             generator_index += 1
 
+    num_streaming_generator_returns[0] = generator_index
     # Report the owner that there's no more objects.
     logger.debug(
         "Writes End of stream to a ObjectRefStream "
@@ -1118,6 +1124,9 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
 
     Returns:
         A Ray Object that contains the given error exception.
+        If the task is retryable, it sets "is_retryable_error" and
+        return nil object ID. In this case, the upper layer should
+        handle the problem.
     """
     cdef:
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
@@ -1141,7 +1150,8 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
         # Raise an exception directly and halt the execution
         # because there's no need to set the exception
         # for the return value when the task is retryable.
-        raise e
+        return c_pair[CObjectID, shared_ptr[CRayObject]](
+                CObjectID.Nil(), shared_ptr[CRayObject]())
 
     logger.debug(
         "Task failed with unretryable exception:"
@@ -1261,6 +1271,7 @@ cdef void execute_task(
         const c_string serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        uint64_t *num_streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error,
         # This parameter is only used for actor creation task to define
@@ -1453,6 +1464,7 @@ cdef void execute_task(
                                     actor_id,
                                     name_of_concurrency_group_to_execute,
                                     returns[0].size(),
+                                    num_streaming_generator_returns,
                                     is_retryable_error,
                                     application_error)
                             # Streaming generator output is not used, so set it to None.
@@ -1611,6 +1623,7 @@ cdef execute_task_with_cancellation_handler(
         const c_string serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        uint64_t *num_streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error,
         # This parameter is only used for actor creation task to define
@@ -1699,6 +1712,7 @@ cdef execute_task_with_cancellation_handler(
                      serialized_retry_exception_allowlist,
                      returns,
                      dynamic_returns,
+                     num_streaming_generator_returns,
                      is_retryable_error,
                      application_error,
                      c_defined_concurrency_groups,
@@ -1772,6 +1786,7 @@ cdef CRayStatus task_execution_handler(
         const c_string serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        uint64_t *num_streaming_generator_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
         c_string *application_error,
@@ -1798,6 +1813,7 @@ cdef CRayStatus task_execution_handler(
                         serialized_retry_exception_allowlist,
                         returns,
                         dynamic_returns,
+                        num_streaming_generator_returns,
                         is_retryable_error,
                         application_error,
                         defined_concurrency_groups,
@@ -3790,7 +3806,7 @@ cdef class CoreWorker:
                 owner_address,
                 CTaskID.Nil(),
                 make_optional[ObjectIDIndexType](
-                    <int>1 + <int>num_returns + <int>generator_index))
+                    <int>1 + <int>return_size + <int>generator_index))
 
     def delete_object_ref_stream(self, ObjectRef generator_id):
         cdef:

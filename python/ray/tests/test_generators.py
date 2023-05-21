@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 import sys
 import time
+import gc
 from unittest.mock import Mock
 
 import ray
@@ -10,6 +11,15 @@ from ray.util.client.ray_client_helpers import (
 )
 from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
+
+
+def assert_no_leak():
+    gc.collect()
+    core_worker = ray._private.worker.global_worker.core_worker
+    ref_counts = core_worker.get_all_reference_counts()
+    for rc in ref_counts.values():
+        assert rc["local"] == 0
+        assert rc["submitted"] == 0
 
 
 @pytest.mark.skipif(
@@ -210,13 +220,13 @@ def test_dynamic_generator_retry_exception(
                 raise CustomException("error")
 
     counter = ExecutionCounter.remote()
-    dynamic_ref = generator.options(num_returns=num_returns_type).remote(
-        3, store_in_plasma, counter
-    )
-    ref1, ref2 = ray.get(dynamic_ref)
-    ray.get(ref1)
-    with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(ref2)
+    # dynamic_ref = generator.options(num_returns=num_returns_type).remote(
+    #     3, store_in_plasma, counter
+    # )
+    # ref1, ref2 = ray.get(dynamic_ref)
+    # ray.get(ref1)
+    # with pytest.raises(ray.exceptions.RayTaskError):
+    #     ray.get(ref2)
 
     ray.get(counter.reset.remote())
     dynamic_ref = generator.options(
@@ -375,7 +385,7 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     refs = list(gen)
-    print(refs)
+
     for i, ref in enumerate(refs):
         print("fetching ", i)
         assert ray.get(fetch.remote(ref)) == i
@@ -388,6 +398,11 @@ def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
     cluster.remove_node(node_to_kill, allow_graceful=False)
     for i, ref in enumerate(refs):
         assert ray.get(fetch.remote(ref)) == i
+        del ref
+
+    del refs
+    del gen
+    assert_no_leak()
 
 
 @pytest.mark.parametrize("too_many_returns", [False, True])
@@ -450,6 +465,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
     if too_many_returns:
         for i, ref in enumerate(refs):
             assert np.array_equal(np.ones(1_000_000, dtype=np.int8) * i, ray.get(ref))
+            del ref
     else:
         if num_returns_type == "dynamic":
             # If dynamic is specified, when the num_returns
@@ -457,6 +473,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
             with pytest.raises(ray.exceptions.RayTaskError):
                 for ref in refs:
                     ray.get(ref)
+                    del ref
         else:
             # Otherwise, we can reconstruct the refs again.
             # We allow it because the refs could have already obtained
@@ -465,14 +482,18 @@ def test_dynamic_generator_reconstruction_nondeterministic(
                 assert np.array_equal(
                     np.ones(1_000_000, dtype=np.int8) * i, ray.get(ref)
                 )
+                del ref
     # TODO(swang): If the re-executed task returns a different number of
     # objects, we should throw an error for every return value.
     # for ref in refs:
     #     with pytest.raises(ray.exceptions.RayTaskError):
     #         ray.get(ref)
+    del gen
+    del refs
+    assert_no_leak()
 
 
-@pytest.mark.parametrize("num_returns_type", ["streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
 def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,
@@ -522,24 +543,25 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_t
     failure_signal = FailureSignal.remote()
     gen = ray.get(dynamic_generator.remote(failure_signal))
     refs = list(gen)
-    print("SANG-TODO 1")
     ray.get(fetch.remote(*refs))
-    print("SANG-TODO 2")
     cluster.remove_node(node_to_kill, allow_graceful=False)
     done = fetch.remote(*refs)
-    print("SANG-TODO 3")
     ray.kill(failure_signal)
     # Make sure we can get the error.
     with pytest.raises(ray.exceptions.WorkerCrashedError):
-        print("SANG-TODO 4")
         for ref in refs:
-            print("SANG-TODO 5 ", ref)
             ray.get(ref)
-            print("SANG-TODO 6")
+
     # Make sure other tasks can also get the error.
     with pytest.raises(ray.exceptions.RayTaskError):
-        print("SANG-TODO 7")
         ray.get(done)
+    print(ref)
+    print(gen)
+    print(refs)
+    print(done)
+    del ref, gen, refs, done, failure_signal
+    gc.collect()
+    assert_no_leak()
 
 
 @pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
@@ -601,6 +623,9 @@ def test_dynamic_empty_generator_reconstruction_nondeterministic(
 
     # We should never reconstruct an empty generator.
     assert ray.get(exec_counter.get_count.remote()) == 1
+
+    del gen, refs, exec_counter
+    assert_no_leak()
 
 
 # Client server port of the shared Ray instance

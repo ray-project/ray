@@ -94,12 +94,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+    uint64_t num_streaming_generator_returns = 0;
     bool is_retryable_error = false;
     std::string application_error = "";
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
                                 &dynamic_return_objects,
+                                &num_streaming_generator_returns,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
                                 &application_error);
@@ -114,6 +116,9 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       // the serialized error message. So we just record the error message directly while
       // executing the task.
       reply->set_task_execution_error(application_error);
+    }
+    if (num_streaming_generator_returns > 0) {
+      reply->set_num_streaming_generator_returns(num_streaming_generator_returns);
     }
 
     bool objects_valid = return_objects.size() == num_returns;

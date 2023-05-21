@@ -548,14 +548,16 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           auto &task_spec = tasks_to_fail.front();
           if (task_spec.IsActorCreationTask() &&
               error_type == rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED) {
-            RAY_UNUSED(task_finisher_->FailPendingTask(
+            RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
                 task_spec.TaskId(),
                 rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
                 &error_status,
-                &error_info));
+                &error_info,
+                true,
+                true));
           } else {
-            RAY_UNUSED(task_finisher_->FailPendingTask(
-                task_spec.TaskId(), error_type, &error_status, &error_info));
+            RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+                task_spec.TaskId(), error_type, &error_status, &error_info, true, true));
           }
           tasks_to_fail.pop_front();
         }
@@ -654,8 +656,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
                            << " was cancelled before it started running.";
-            RAY_UNUSED(
-                task_finisher_->FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED));
+            RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+                task_id, rpc::ErrorType::TASK_CANCELLED, nullptr, nullptr, true, true));
           } else if (!task_spec.GetMessage().retry_exceptions() ||
                      !reply.is_retryable_error() ||
                      !task_finisher_->RetryTaskIfPossible(
@@ -748,8 +750,13 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
           if (scheduling_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          RAY_UNUSED(task_finisher_->FailPendingTask(task_spec.TaskId(),
-                                                     rpc::ErrorType::TASK_CANCELLED));
+          RAY_UNUSED(
+              task_finisher_->FailOrRetryPendingTask(task_spec.TaskId(),
+                                                     rpc::ErrorType::TASK_CANCELLED,
+                                                     nullptr,
+                                                     nullptr,
+                                                     true,
+                                                     true));
           return Status::OK();
         }
       }

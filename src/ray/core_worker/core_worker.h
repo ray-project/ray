@@ -1397,6 +1397,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
+      uint64_t *num_streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
       std::string *application_error);

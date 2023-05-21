@@ -216,6 +216,23 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
   return ObjectID::FromIndex(TaskId(), return_index + 1);
 }
 
+size_t TaskSpecification::NumStreamingGeneratorReturns() const {
+  return message_->num_streaming_generator_returns();
+}
+
+ObjectID TaskSpecification::StreamingGeneratorReturnId(size_t generator_index) const {
+  // Streaming generator task has only 1 return ID.
+  RAY_CHECK_EQ(NumReturns(), 1);
+  RAY_CHECK(generator_index < 100 * 1000 * 1000);
+  // 2 for a single return from a generator task.
+  return ObjectID::FromIndex(TaskId(), 2 + generator_index);
+}
+
+void TaskSpecification::SetNumStreamingGeneratorReturns(
+    uint64_t num_streaming_generator_returns) {
+  message_->set_num_streaming_generator_returns(num_streaming_generator_returns);
+}
+
 bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynamic(); }
 
 // TODO(sang): Merge this with ReturnsDynamic once migrating to the

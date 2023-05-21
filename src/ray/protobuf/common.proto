@@ -428,6 +428,7 @@ message TaskSpec {
   // TODO(sang): Remove it once migrating to the streaming generator
   // by default.
   bool streaming_generator = 34;
+  uint64 num_streaming_generator_returns = 35;
 }
 
 message TaskInfoEntry {
