@@ -139,7 +139,6 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
-    ObjectRefStreamEoFError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -197,6 +196,10 @@ class ObjectRefGenerator:
 
     def __len__(self):
         return len(self._refs)
+
+
+class ObjectRefStreamEoFError(RayError):
+    pass
 
 
 class StreamingObjectRefGenerator:
@@ -271,7 +274,7 @@ class StreamingObjectRefGenerator:
                 # The generator task has failed already.
                 # We raise StopIteration
                 # to conform the next interface in Python.
-                raise StopIteration
+                raise StopIteration from None
             else:
                 # Otherwise, we should ray.get on the generator
                 # ref to find if the task has a system failure.
@@ -323,7 +326,7 @@ class StreamingObjectRefGenerator:
                     "Cannot access the core worker. "
                     "Did you already shutdown Ray via ray.shutdown()?")
         except ObjectRefStreamEoFError:
-            raise StopIteration
+            raise StopIteration from None
 
     def __del__(self):
         if hasattr(self.worker, "core_worker"):
