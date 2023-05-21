@@ -36,7 +36,7 @@ def run_tuner_n_rollout_workers_0_gpu(config):
     config = config.rollouts(num_rollout_workers=5)
     config = config.resources(
         num_cpus_per_learner_worker=1,
-        num_learner_workers=4,
+        num_learner_workers=2,
     )
 
     tuner = tune.Tuner(
@@ -94,7 +94,7 @@ def test_multi_node_training_smoke():
         .environment("CartPole-v1")
         .resources(
             num_gpus_per_learner_worker=1,
-            num_learner_workers=4,
+            num_learner_workers=2,
         )
         .rollouts(num_rollout_workers=2)
         .reporting(min_time_s_per_iteration=0, min_sample_timesteps_per_iteration=10)
