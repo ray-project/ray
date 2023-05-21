@@ -44,14 +44,14 @@ class TestLearner(unittest.TestCase):
                 batch = reader.next()
                 results = learner.update(batch.as_multi_agent())
 
-                loss = results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
-                min_loss = min(loss, min_loss)
-                print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
-                # The loss is initially around 0.69 (ln2). When it gets to around
-                # 0.57 the return of the policy gets to around 100.
-                if min_loss < 0.57:
-                    break
-            self.assertLess(min_loss, 0.57)
+            loss = results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
+            min_loss = min(loss, min_loss)
+            print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
+            # The loss is initially around 0.69 (ln2). When it gets to around
+            # 0.57 the return of the policy gets to around 100.
+            if min_loss < 0.57:
+                break
+        self.assertLess(min_loss, 0.57)
 
     def test_compute_gradients(self):
         """Tests the compute_gradients correctness.

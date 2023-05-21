@@ -222,7 +222,10 @@ class APPOConfig(ImpalaConfig):
 
             return APPOTfLearner
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(ImpalaConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -235,7 +238,10 @@ class APPOConfig(ImpalaConfig):
                 APPOTfRLModule as RLModule,
             )
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
         from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
 

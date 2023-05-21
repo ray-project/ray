@@ -32,7 +32,7 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -860,25 +860,26 @@ class Learner:
     ) -> Union[TensorType, Mapping[str, Any]]:
         """Computes the loss for the module being optimized.
 
-        This method must be overridden multiagent-specific algorithm learners to
+        This method must be overridden by multiagent-specific algorithm learners to
         specify the specific loss computation logic. If the algorithm is single agent
-        `compute_loss_for_module()` should be overriden instead.
-        The input "fwd_out" is the output "forward_train" method of the underlying
-        MultiAgentRLModule. The input "batch" is the data that was used to compute
-        "fwd_out". The returned dictionary must contain a key called "total_loss",
-        which will be used to compute gradients. It is recommended to not compute any
-        forward passes within this method, and to use the "forward_train" outputs to
-        compute the required tensors for loss calculation.
+        `compute_loss_for_module()` should be overridden instead.
+        `fwd_out` is the output of the `forward_train()` method of the underlying
+        MultiAgentRLModule. `batch` is the data that was used to compute `fwd_out`.
+        The returned dictionary must contain a key called
+        ALL_MODULES, which will be used to compute gradients. It is recommended
+        to not compute any forward passes within this method, and to use the
+        `forward_train()` outputs of the RLModule(s) to compute the required tensors for
+        loss calculations.
 
         Args:
-            fwd_out: Output from a call to `forward_train` on self.module during
-                training.
-            batch: The data that was used to compute fwd_out.
+            fwd_out: Output from a call to the `forward_train()` method of self.module
+                during training (`self.update()`).
+            batch: The training batch that was used to compute `fwd_out`.
 
         Returns:
-            A dictionary of losses. The dictionary
-            must contain one protected key "total_loss" which will be used for
-            computing gradients through.
+            A dictionary mapping module IDs to individual loss terms. The dictionary
+            must contain one protected key ALL_MODULES which will be used for computing
+            gradients through.
         """
         loss_total = None
         loss_per_module = {}
