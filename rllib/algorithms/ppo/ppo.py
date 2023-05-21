@@ -177,13 +177,14 @@ class PPOConfig(PGConfig):
         base_hps = super().get_learner_hyperparameters()
         return PPOLearnerHyperparameters(
             use_critic=self.use_critic,
+            use_kl_loss=self.use_kl_loss,
             kl_coeff=self.kl_coeff,
+            kl_target=self.kl_target,
             vf_loss_coeff=self.vf_loss_coeff,
             entropy_coeff=self.entropy_coeff,
             entropy_coeff_schedule=self.entropy_coeff_schedule,
             clip_param=self.clip_param,
             vf_clip_param=self.vf_clip_param,
-            kl_target=self.kl_target,
             **dataclasses.asdict(base_hps),
         )
 
