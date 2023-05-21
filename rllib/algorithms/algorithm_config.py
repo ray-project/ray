@@ -887,7 +887,9 @@ class AlgorithmConfig(_Config):
                 "via `config.training(_enable_learner_api=True)` (or set both to "
                 "False)."
             )
-
+        # TODO @Avnishn: This is a short-term work around due to
+        # https://github.com/ray-project/ray/issues/35409
+        # Remove this once we are able to specify placement group bundle index in RLlib
         if (
             self.num_cpus_per_learner_worker > 1
             and self.num_gpus_per_learner_worker > 0
@@ -3240,11 +3242,7 @@ class AlgorithmConfig(_Config):
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
-                num_cpus_per_learner_worker=(
-                    self.num_cpus_per_learner_worker
-                    if not self.num_gpus_per_learner_worker
-                    else 0
-                ),
+                num_cpus_per_learner_worker=self.num_cpus_per_learner_worker,
                 num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
                 local_gpu_idx=self.local_gpu_idx,
             )
