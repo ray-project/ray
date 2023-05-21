@@ -32,12 +32,12 @@ from ray._private.dict import (  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def _import_gputil():
+def _import_gpustat():
     try:
-        import GPUtil
+        import gpustat
     except ImportError:
-        GPUtil = None
-    return GPUtil
+        gpustat = None
+    return gpustat
 
 
 START_OF_TIME = time.time()
@@ -50,25 +50,25 @@ class UtilMonitor(Thread):
     It keeps track of CPU, RAM, GPU, VRAM usage (each gpu separately) by
     pinging for information every x seconds in a separate thread.
 
-    Requires psutil and GPUtil to be installed. Can be enabled with
+    Requires psutil and gpustat to be installed. Can be enabled with
     Tuner(param_space={"log_sys_usage": True}).
     """
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
-        GPUtil = _import_gputil()
-        self.GPUtil = GPUtil
-        if GPUtil is None and start:
-            logger.warning("Install gputil for GPU system monitoring.")
+        gpustat = _import_gpustat()
+        self.gpustat = gpustat
+        if gpustat is None and start:
+            logger.warning("Install gpustat for GPU system monitoring.")
 
         if psutil is None and start:
             logger.warning("Install psutil to monitor system performance.")
 
-        if GPUtil is None and psutil is None:
+        if gpustat is None and psutil is None:
             return
 
         super(UtilMonitor, self).__init__()
-        self.delay = delay  # Time between calls to GPUtil
+        self.delay = delay  # Time between calls to gpustat
         self.values = defaultdict(list)
         self.lock = threading.Lock()
         self.daemon = True
@@ -84,18 +84,18 @@ class UtilMonitor(Thread):
                 self.values["ram_util_percent"].append(
                     float(getattr(psutil.virtual_memory(), "percent"))
                 )
-            if self.GPUtil is not None:
+            if self.gpustat is not None:
                 gpu_list = []
                 try:
-                    gpu_list = self.GPUtil.getGPUs()
+                    gpu_list = self.gpustat.new_query()
                 except Exception:
-                    logger.debug("GPUtil failed to retrieve GPUs.")
+                    logger.debug("gpustat failed to retrieve GPUs.")
                 for gpu in gpu_list:
                     self.values["gpu_util_percent" + str(gpu.id)].append(
-                        float(gpu.load)
+                        float(gpu.utilization)
                     )
                     self.values["vram_util_percent" + str(gpu.id)].append(
-                        float(gpu.memoryUtil)
+                        float(gpu.memory_used / gpu.memory_total)
                     )
 
     def get_data(self):
@@ -451,11 +451,11 @@ def wait_for_gpu(
 ):
     """Checks if a given GPU has freed memory.
 
-    Requires ``gputil`` to be installed: ``pip install gputil``.
+    Requires ``gpustat`` to be installed: ``pip install gpustat``.
 
     Args:
         gpu_id: GPU id or uuid to check.
-            Must be found within GPUtil.getGPUs(). If none, resorts to
+            Must be found within gpustat.new_query(). If None, resorts to
             the first item returned from `ray.get_gpu_ids()`.
         target_util: The utilization threshold to reach to unblock.
             Set this to 0 to block until the GPU is completely free.
@@ -467,7 +467,7 @@ def wait_for_gpu(
         bool: True if free.
 
     Raises:
-        RuntimeError: If GPUtil is not found, if no GPUs are detected
+        RuntimeError: If gpustat is not found, if no GPUs are detected
             or if the check fails.
 
     Example:
@@ -488,10 +488,10 @@ def wait_for_gpu(
         tuner.fit()
 
     """
-    GPUtil = _import_gputil()
+    gpustat = _import_gpustat()
 
-    if GPUtil is None:
-        raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
+    if gpustat is None:
+        raise RuntimeError("gpustat must be installed if calling `wait_for_gpu`.")
 
     if gpu_id is None:
         gpu_id_list = ray.get_gpu_ids()
@@ -502,7 +502,7 @@ def wait_for_gpu(
             )
         gpu_id = gpu_id_list[0]
 
-    gpu_attr = "id"
+    gpu_attr = "index"
     if isinstance(gpu_id, str):
         if gpu_id.isdigit():
             # GPU ID returned from `ray.get_gpu_ids()` is a str representation
@@ -521,7 +521,7 @@ def wait_for_gpu(
         # the format of the input `gpu_id`
         return getattr(g, gpu_attr)
 
-    gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUs()}
+    gpu_ids = {gpu_id_fn(g) for g in gpustat.new_query()}
     if gpu_id not in gpu_ids:
         raise ValueError(
             f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
@@ -530,11 +530,11 @@ def wait_for_gpu(
         )
 
     for i in range(int(retry)):
-        gpu_object = next(g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
-        if gpu_object.memoryUtil > target_util:
+        gpu_object = next(g for g in gpustat.new_query() if gpu_id_fn(g) == gpu_id)
+        if gpu_object.memory_used > target_util:
             logger.info(
-                f"Waiting for GPU util to reach {target_util}. "
-                f"Util: {gpu_object.memoryUtil:0.3f}"
+                f"Waiting for gpu memory used to be less than {target_util}. "
+                f"Used: {gpu_object.memory_used:0.3f}"
             )
             time.sleep(delay_s)
         else:

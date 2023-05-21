@@ -137,18 +137,22 @@ class UnflattenDictTest(unittest.TestCase):
             unflatten_dict({"a/b": 2, "a/b/c": 3})
 
 
-class GPUUtilMock:
+class GpustatMock:
     class GPU:
         def __init__(self, id, uuid, util=None):
-            self.id = id
+            self.index = id
             self.uuid = uuid
-            self.util = [0.5, 0.0]
+            self.util = [12000, 0]
 
         @property
-        def memoryUtil(self):
+        def memory_used(self):
             if self.util:
                 return self.util.pop(0)
             return 0
+
+        @property
+        def memory_total(self):
+            return 24000
 
     def __init__(self, gpus, gpu_uuids):
         self.gpus = gpus
@@ -157,13 +161,13 @@ class GPUUtilMock:
             self.GPU(gpu, uuid) for gpu, uuid in zip(self.gpus, self.uuids)
         ]
 
-    def getGPUs(self):
+    def new_query(self):
         return self.gpu_list
 
 
 class GPUTest(unittest.TestCase):
     def setUp(self):
-        sys.modules["GPUtil"] = GPUUtilMock([0, 1], ["GPU-aaa", "GPU-bbb"])
+        sys.modules["gpustat"] = GpustatMock([0, 1], ["GPU-aaa", "GPU-bbb"])
 
     def testGPUWait1(self):
         wait_for_gpu(0, delay_s=0)
@@ -188,7 +192,7 @@ class GPUTest(unittest.TestCase):
     def testDefaultGPU(self):
         import sys
 
-        sys.modules["GPUtil"] = GPUUtilMock([0], ["GPU-aaa"])
+        sys.modules["gpustat"] = GpustatMock([0], ["GPU-aaa"])
         wait_for_gpu(delay_s=0)
 
 
