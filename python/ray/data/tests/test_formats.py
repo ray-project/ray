@@ -329,7 +329,7 @@ def test_get_read_tasks(shutdown_only):
 
     # Verify `_get_read_tasks` being executed on same node (head node).
     def verify_get_read_tasks():
-        from ray.experimental.state.api import list_tasks
+        from ray.util.state import list_tasks
 
         task_states = list_tasks(filters=[("name", "=", "_get_read_tasks")])
         # Verify only one task being executed on same node.

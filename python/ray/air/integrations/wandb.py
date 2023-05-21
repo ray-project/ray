@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import ray
 from ray import logger
 from ray.air import session
+from ray.air._internal import usage as air_usage
 from ray.air.util.node import _force_on_current_node
 
 from ray.tune.logger import LoggerCallback
@@ -104,10 +105,10 @@ def setup_wandb(
 
         .. code-block: python
 
-            from ray.air.integrations.wandb import wandb_setup
+            from ray.air.integrations.wandb import setup_wandb
 
             def training_loop(config):
-                wandb = wandb_setup(config)
+                wandb = setup_wandb(config)
                 # ...
                 wandb.log({"loss": 0.123})
 
@@ -159,13 +160,11 @@ def _setup_wandb(
 
     wandb_config = _config.pop("wandb", {}).copy()
 
-    # Deprecate: 2.4
+    # TODO(ml-team): Remove in 2.6.
     if wandb_config:
-        warnings.warn(
-            "Passing a `wandb` key in the config dict is deprecated and will raise an "
-            "error in the future. Please pass the actual arguments to `setup_wandb()` "
-            "instead.",
-            DeprecationWarning,
+        raise DeprecationWarning(
+            "Passing a `wandb` key in the config dict is deprecated."
+            "Please pass the actual arguments to `setup_wandb()` instead."
         )
 
     # If key file is specified, set
@@ -207,6 +206,10 @@ def _setup_wandb(
 
     run = _wandb.init(**wandb_init_kwargs)
     _run_wandb_process_run_info_hook(run)
+
+    # Record `setup_wandb` usage when everything has setup successfully.
+    air_usage.tag_setup_wandb()
+
     return run
 
 

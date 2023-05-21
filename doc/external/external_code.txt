@@ -1,0 +1,6 @@
+# Mapping from file to external URI.
+# If the file is touched in a PR, a comment is posted
+# by a bot to remind the user to update the contents at
+# the external URI
+doc/external/pytorch_tutorials_hyperparameter_tuning_tutorial.py https://pytorch.org/tutorials/beginner/hyperparameter_tuning_tutorial.html
+# Please keep this as the last line.

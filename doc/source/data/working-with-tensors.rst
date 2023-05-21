@@ -46,7 +46,7 @@ If your tensors have a fixed shape, Ray Data represents batches as regular ndarr
 Batches of variable-shape tensors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If your tensors vary in shape, Ray Data represents batches as ragged arrays.
+If your tensors vary in shape, Ray Data represents batches as arrays of object dtype.
 
 .. doctest::
 
@@ -58,7 +58,7 @@ If your tensors vary in shape, Ray Data represents batches as ragged arrays.
     >>> batch["image"].dtype
     dtype('O')
 
-Elements of ragged arrays are regular ndarrays.
+The individual elements of these object arrays are regular ndarrays.
 
 .. doctest::
 
@@ -68,6 +68,43 @@ Elements of ragged arrays are regular ndarrays.
     (375, 500, 3)
     >>> batch["image"][3].shape  # doctest: +SKIP
     (333, 465, 3)
+
+.. _transforming_tensors:
+
+Transforming tensor data
+------------------------
+
+Call :meth:`~ray.data.Dataset.map` or :meth:`~ray.data.Dataset.map_batches` to transform tensor data.
+
+.. testcode::
+
+    from typing import Any, Dict
+
+    import ray
+    import numpy as np
+
+    ds = ray.data.read_images("s3://anonymous@air-example-data/AnimalDetection")
+
+    def increase_brightness(row: Dict[str, Any]) -> Dict[str, Any]:
+        row["image"] = np.clip(row["image"] + 4, 0, 255)
+        return row
+
+    # Increase the brightness, record at a time.
+    ds.map(increase_brightness)
+
+    def batch_increase_brightness(batch: Dict[str, np.ndarray]) -> Dict:
+        batch["image"] = np.clip(batch["image"] + 4, 0, 255)
+        return batch
+
+    # Increase the brightness, batch at a time.
+    ds.map_batches(batch_increase_brightness)
+
+In this example, we return ``np.ndarray`` directly as the output. Ray Data will also treat
+returned lists of ``np.ndarray`` and objects implementing ``__array__`` (e.g., ``torch.Tensor``)
+as tensor data.
+
+For more information on transforming data, read
+:ref:`Transforming data <transforming_data>`.
 
 
 Saving tensor data
@@ -102,29 +139,3 @@ Save tensor data in Parquet or Numpy files. Other formats aren't supported.
             ds.write_numpy("/tmp/simple.npy", column="image")
 
 For more information on saving data, read :ref:`Saving data <loading_data>`.
-
-.. _transforming_variable_tensors:
-
-Transforming variable-shape tensor data
----------------------------------------
-
-Call :meth:`~ray.data.Dataset.map` to transform variable-shape tensor data. Don't use
-:meth:`~ray.data.Dataset.map_batches`.
-
-.. testcode::
-
-    from typing import Any, Dict
-
-    import ray
-    import numpy as np
-
-    ds = ray.data.read_images("s3://anonymous@air-example-data/AnimalDetection")
-
-    def increase_brightness(row: Dict[str, Any]) -> Dict[str, Any]:
-        row["image"] = np.clip(row["image"] + 4, 0, 255)
-        return row
-
-    ds.map(increase_brightness)
-
-For more information on transforming data, read
-:ref:`Transforming data <transforming_data>`.

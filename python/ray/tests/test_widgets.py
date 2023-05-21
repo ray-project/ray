@@ -1,11 +1,14 @@
 from unittest import mock
 
 import pytest
-from ray.widgets.util import ensure_notebook_deps, repr_fallback_if_colab
+from ray.widgets.util import repr_with_fallback
 
 
 @mock.patch("importlib.import_module")
-def test_ensure_notebook_dep_missing(mock_import_module, caplog):
+@mock.patch("ray.widgets.util.in_notebook")
+def test_ensure_notebook_dep_missing(
+    mock_in_notebook, mock_import_module, propagate_logs, caplog
+):
     """Test that missing notebook dependencies trigger a warning."""
 
     class MockDep:
@@ -17,8 +20,10 @@ def test_ensure_notebook_dep_missing(mock_import_module, caplog):
     mock_import_module.return_value = MockDep()
     mock_import_module.side_effect = raise_import_error
 
+    mock_in_notebook.return_value = True
+
     class DummyObject:
-        @ensure_notebook_deps(["somedep", "8"])
+        @repr_with_fallback(["somedep", "8"])
         def dummy_ipython_display(self):
             return
 
@@ -28,7 +33,10 @@ def test_ensure_notebook_dep_missing(mock_import_module, caplog):
 
 
 @mock.patch("importlib.import_module")
-def test_ensure_notebook_dep_outdated(mock_import_module, caplog):
+@mock.patch("ray.widgets.util.in_notebook")
+def test_ensure_notebook_dep_outdated(
+    mock_in_notebook, mock_import_module, propagate_logs, caplog
+):
     """Test that outdated notebook dependencies trigger a warning."""
 
     class MockDep:
@@ -36,8 +44,10 @@ def test_ensure_notebook_dep_outdated(mock_import_module, caplog):
 
     mock_import_module.return_value = MockDep()
 
+    mock_in_notebook.return_value = True
+
     class DummyObject:
-        @ensure_notebook_deps(["somedep", "8"])
+        @repr_with_fallback(["somedep", "8"])
         def dummy_ipython_display():
             return
 
@@ -47,7 +57,10 @@ def test_ensure_notebook_dep_outdated(mock_import_module, caplog):
 
 
 @mock.patch("importlib.import_module")
-def test_ensure_notebook_valid(mock_import_module, caplog):
+@mock.patch("ray.widgets.util.in_notebook")
+def test_ensure_notebook_valid(
+    mock_in_notebook, mock_import_module, propagate_logs, caplog
+):
     """Test that valid notebook dependencies don't trigger a warning."""
 
     class MockDep:
@@ -55,8 +68,10 @@ def test_ensure_notebook_valid(mock_import_module, caplog):
 
     mock_import_module.return_value = MockDep()
 
+    mock_in_notebook.return_value = True
+
     class DummyObject:
-        @ensure_notebook_deps(["somedep", "8"])
+        @repr_with_fallback(["somedep", "8"])
         def dummy_ipython_display(self):
             return
 
@@ -79,7 +94,7 @@ def test_repr_fallback_if_colab(kernel):
         mock_get_ipython.return_value = kernel
 
         class DummyObject:
-            @repr_fallback_if_colab
+            @repr_with_fallback()
             def _repr_mimebundle_(self, **kwargs):
                 return {
                     "fancy/mimetype": "A fancy repr",
@@ -94,7 +109,26 @@ def test_repr_fallback_if_colab(kernel):
             assert len(result) == 1
         else:
             assert len(result) == 2
-            assert "fancy/mimetype"
+            assert "fancy/mimetype" in result
+
+
+@mock.patch("ray.widgets.util.in_ipython_shell")
+def test_repr_fallback_if_ipython_shell(mock_in_ipython):
+    mock_in_ipython.return_value = True
+
+    class DummyObject:
+        @repr_with_fallback()
+        def _repr_mimebundle_(self, **kwargs):
+            return {
+                "fancy/mimetype": "A fancy repr",
+                "text/plain": "A simple repr",
+            }
+
+    obj = DummyObject()
+    result = obj._repr_mimebundle_()
+
+    assert "text/plain" in result
+    assert len(result) == 1
 
 
 if __name__ == "__main__":
