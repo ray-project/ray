@@ -1598,7 +1598,6 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   // NOTE: We panic if READ is called after DELETE. The
   // API caller should guarantee this doesn't happen.
   // So we don't test it.
-
   // WRITE 3. Should be ignored.
   auto dynamic_return_id3 = ObjectID::FromIndex(spec.TaskId(), 4);
   data = GenerateRandomBuffer();

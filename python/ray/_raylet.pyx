@@ -198,6 +198,149 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
+class ObjectRefStreamEoFError(RayError):
+    pass
+
+
+class StreamingObjectRefGenerator:
+    def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
+        # The reference to a generator task.
+        self._generator_ref = generator_ref
+        # The last time generator task has completed.
+        self._generator_task_completed_time = None
+        # The exception raised from a generator task.
+        self._generator_task_exception = None
+        # Ray's worker class. ray._private.worker.global_worker
+        self.worker = worker
+        assert hasattr(worker, "core_worker")
+        self.worker.core_worker.create_object_ref_stream(self._generator_ref)
+
+    def __iter__(self) -> "StreamingObjectRefGenerator":
+        return self
+
+    def __next__(self) -> ObjectRef:
+        """Waits until a next ref is available and returns the object ref.
+
+        Raises StopIteration if there's no more objects
+        to generate.
+
+        The object ref will contain an exception if the task fails.
+        When the generator task returns N objects, it can return
+        up to N + 1 objects (if there's a system failure, the
+        last object will contain a system level exception).
+        """
+        return self._next()
+
+    def _next(
+            self,
+            timeout_s: float = -1,
+            sleep_interval_s: float = 0.0001,
+            unexpected_network_failure_timeout_s: float = 30) -> ObjectRef:
+        """Waits for timeout_s and returns the object ref if available.
+
+        If an object is not available within the given timeout, it
+        returns a nil object reference.
+
+        If -1 timeout is provided, it means it waits infinitely.
+
+        Waiting is implemented as busy waiting. You can control
+        the busy waiting interval via sleep_interval_s.
+
+        Raises StopIteration if there's no more objects
+        to generate.
+
+        The object ref will contain an exception if the task fails.
+        When the generator task returns N objects, it can return
+        up to N + 1 objects (if there's a system failure, the
+        last object will contain a system level exception).
+
+        Args:
+            timeout_s: If the next object is not ready within
+                this timeout, it returns the nil object ref.
+            sleep_interval_s: busy waiting interval.
+            unexpected_network_failure_timeout_s: If the
+                task is finished, but the next ref is not
+                available within this time, it will hard fail
+                the generator.
+        """
+        obj = self._handle_next()
+        last_time = time.time()
+
+        # The generator ref will be None if the task succeeds.
+        # It will contain an exception if the task fails by
+        # a system error.
+        while obj.is_nil():
+            if self._generator_task_exception:
+                # The generator task has failed already.
+                # We raise StopIteration
+                # to conform the next interface in Python.
+                raise StopIteration from None
+            else:
+                # Otherwise, we should ray.get on the generator
+                # ref to find if the task has a system failure.
+                # Return the generator ref that contains the system
+                # error as soon as possible.
+                r, _ = ray.wait([self._generator_ref], timeout=0)
+                if len(r) > 0:
+                    try:
+                        ray.get(r)
+                    except Exception as e:
+                        # If it has failed, return the generator task ref
+                        # so that the ref will raise an exception.
+                        self._generator_task_exception = e
+                        return self._generator_ref
+                    finally:
+                        if self._generator_task_completed_time is None:
+                            self._generator_task_completed_time = time.time()
+
+            # Currently, since the ordering of intermediate result report
+            # is not guaranteed, it is possible that althoug the task
+            # has succeeded, all of the object references are not reported
+            # (e.g., when there are network failures).
+            # If all the object refs are not reported to the generator
+            # within 30 seconds, we consider is as an unreconverable error.
+            if self._generator_task_completed_time:
+                if (time.time() - self._generator_task_completed_time
+                        > unexpected_network_failure_timeout_s):
+                    # It means the next wasn't reported although the task
+                    # has been terminated 30 seconds ago.
+                    self._generator_task_exception = AssertionError
+                    assert False, "Unexpected network failure occured."
+
+            if timeout_s != -1 and time.time() - last_time > timeout_s:
+                return ObjectRef.nil()
+
+            # 100us busy waiting
+            time.sleep(sleep_interval_s)
+            obj = self._handle_next()
+        return obj
+
+    def _handle_next(self) -> ObjectRef:
+        try:
+            if hasattr(self.worker, "core_worker"):
+                obj = self.worker.core_worker.try_read_next_object_ref_stream(
+                    self._generator_ref)
+                return obj
+            else:
+                raise ValueError(
+                    "Cannot access the core worker. "
+                    "Did you already shutdown Ray via ray.shutdown()?")
+        except ObjectRefStreamEoFError:
+            raise StopIteration from None
+
+    def __del__(self):
+        if hasattr(self.worker, "core_worker"):
+            # NOTE: This can be called multiple times
+            # because python doesn't guarantee __del__ is called
+            # only once.
+            self.worker.core_worker.delete_object_ref_stream(self._generator_ref)
+
+    def __getstate__(self):
+        raise TypeError(
+            "You cannot return or pass a generator to other task. "
+            "Serializing a StreamingObjectRefGenerator is not allowed.")
+
+
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
         return 0
@@ -209,6 +352,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
+    elif status.IsObjectRefStreamEoF():
+        raise ObjectRefStreamEoFError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
@@ -3138,6 +3283,33 @@ cdef class CoreWorker:
     def record_task_log_end(self, int64_t out_end_offset, int64_t err_end_offset):
         CCoreWorkerProcess.GetCoreWorker() \
             .RecordTaskLogEnd(out_end_offset, err_end_offset)
+
+    def create_object_ref_stream(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+
+        CCoreWorkerProcess.GetCoreWorker().CreateObjectRefStream(c_generator_id)
+
+    def delete_object_ref_stream(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+
+        CCoreWorkerProcess.GetCoreWorker().DelObjectRefStream(c_generator_id)
+
+    def try_read_next_object_ref_stream(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            CObjectReference c_object_ref
+
+        check_status(
+            CCoreWorkerProcess.GetCoreWorker().TryReadObjectRefStream(
+                c_generator_id, &c_object_ref))
+        return ObjectRef(
+            c_object_ref.object_id(),
+            c_object_ref.owner_address().SerializeAsString(),
+            "",
+            # Already added when the ref is updated.
+            skip_adding_local_ref=True)
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
