@@ -491,12 +491,12 @@ class EagerTFPolicyV2(Policy):
                 ret = self._compute_actions_helper_rl_module_inference(input_dict)
         else:
             ret = self._compute_actions_helper(
-                input_dict=input_dict,
-                state_batches=state_batches,
+                input_dict,
+                state_batches,
                 # TODO: Passing episodes into a traced method does not work.
-                episodes=None if self.config["eager_tracing"] else episodes,
-                explore=explore,
-                timestep=timestep,
+                None if self.config["eager_tracing"] else episodes,
+                explore,
+                timestep,
             )
         # Update our global timestep by the batch size.
         self.global_timestep.assign_add(tree.flatten(ret[0])[0].shape.as_list()[0])
