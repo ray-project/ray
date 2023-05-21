@@ -366,7 +366,7 @@ class MultiAgentRLModule(RLModule):
         """
 
         module_ids = list(
-            batch.shallow_keys() if isinstance(batch, NestedDict) else batch.keys()
+            batch.shallow_keys() if isinstance(batch, NestedDict) else [k[0] for k in batch.keys()]
         )
         for module_id in module_ids:
             self._check_module_exists(module_id)

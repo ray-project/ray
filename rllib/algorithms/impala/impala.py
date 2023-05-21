@@ -481,7 +481,10 @@ class ImpalaConfig(AlgorithmConfig):
 
             return ImpalaTfLearner
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -500,7 +503,10 @@ class ImpalaConfig(AlgorithmConfig):
                 module_class=PPOTorchRLModule, catalog_class=PPOCatalog
             )
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
 
 def make_learner_thread(local_worker, config):

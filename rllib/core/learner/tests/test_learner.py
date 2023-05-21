@@ -114,7 +114,7 @@ class TestLearner(unittest.TestCase):
         )
 
         # TODO (sven): Enable torch once available for APPO.
-        for fw in framework_iterator(config, frameworks=("tf2")):
+        for _ in framework_iterator(config, frameworks=("tf2")):
             # Clip by value only.
             config.training(
                 grad_clip=0.75,
