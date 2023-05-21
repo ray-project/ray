@@ -40,7 +40,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.schema import ServeApplicationSchema
 
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -735,7 +735,7 @@ def test_snapshot_always_written_to_internal_kv(
     assert hello_deployment["status"] == "RUNNING"
 
 
-def test_serve_start_different_http_checkpoint_options_warning(caplog):
+def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 
