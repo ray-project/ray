@@ -47,7 +47,7 @@ def save_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
     algo.save_checkpoint(tmpdir)
     for _ in range(2):
         results = algo.train()
-    return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
+    return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
 
 
 @ray.remote
@@ -83,7 +83,7 @@ def load_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
     algo.load_checkpoint(tmpdir)
     for _ in range(2):
         results = algo.train()
-    return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
+    return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
 
 
 class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
