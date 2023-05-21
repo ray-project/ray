@@ -441,6 +441,11 @@ class TfLearner(Learner):
     ) -> Mapping[str, Any]:
         # TODO (Avnish): Match the base class's implementation.
         def helper(_batch):
+            # TODO (Kourosh, Sven): We need to go back to NestedDict because that's the
+            #  constraint on forward_train and compute_loss APIs. This seems to be
+            #  in-efficient. However, for tf>=2.12, it works also w/o this conversion
+            #  so remove this after we upgrade officially to tf==2.12.
+            _batch = NestedDict(_batch)
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
