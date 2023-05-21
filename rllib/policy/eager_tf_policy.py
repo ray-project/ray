@@ -516,12 +516,12 @@ def _build_eager_tf_policy(
             )
 
             ret = self._compute_actions_helper(
-                input_dict,
-                state_batches,
+                input_dict=input_dict,
+                state_batches=state_batches,
                 # TODO: Passing episodes into a traced method does not work.
-                None if self.config["eager_tracing"] else episodes,
-                explore,
-                timestep,
+                episodes=None if self.config["eager_tracing"] else episodes,
+                explore=explore,
+                timestep=timestep,
             )
             # Update our global timestep by the batch size.
             self.global_timestep.assign_add(tree.flatten(ret[0])[0].shape.as_list()[0])
