@@ -5,10 +5,7 @@ import time
 from unittest.mock import patch, Mock
 
 import ray
-from ray._raylet import (
-    StreamingObjectRefGenerator,
-    ObjectRefStreamEoFError
-)
+from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEoFError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
 
