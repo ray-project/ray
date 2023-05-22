@@ -17,7 +17,7 @@ class NodeProvider(metaclass=ABCMeta):
     """
 
     @abstractmethod
-    def create_nodes(self, instance_type: InstanceType, count: int) -> List[str]:
+    def create_nodes(self, instance_type_name: str, count: int) -> List[str]:
         """Create new nodes synchronously, returns all non-terminated nodes in the cluster.
         Note that create_nodes could fail partially.
         """
@@ -80,11 +80,11 @@ class NodeProviderAdapter(NodeProvider):
             filtered[instance_id] = instance
         return filtered
 
-    def create_nodes(self, instance_type: InstanceType, count: int) -> List[Instance]:
+    def create_nodes(self, instance_type_name: str, count: int) -> List[Instance]:
         created_nodes = self._node_launcher.launch_node(
             self._config.get_raw_config_mutable(),
             count,
-            instance_type.name,
+            instance_type_name,
         )
         # TODO: we should handle failures where the instance type is
         # not available
