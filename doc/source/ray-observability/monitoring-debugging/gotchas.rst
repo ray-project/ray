@@ -53,11 +53,10 @@ runs on another machine it won't.
 And I have this code:
 
 .. testcode::
-  :skipif: True
 
   import os
+  import ray
 
-  ray.init()
   @ray.remote
   def check_file():
     foo_exists = os.path.exists("/tmp/foo.txt")
@@ -69,6 +68,11 @@ And I have this code:
 
   ray.get(futures)
 
+.. testoutput::
+    :hide:
+    :options: +ELLIPSIS
+
+    ...
 
 then you will get a mix of True and False. If
 ``check_file()`` runs on the head node, or we're running
