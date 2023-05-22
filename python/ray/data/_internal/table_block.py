@@ -146,7 +146,10 @@ class TableBlockBuilder(BlockBuilder):
         assert self._columns
         if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
             return
-        block = self._table_from_pydict(self._columns)
+        columns = {
+            key: convert_udf_returns_to_numpy(col) for key, col in self._columns.items()
+        }
+        block = self._table_from_pydict(columns)
         self.add_block(block)
         self._uncompacted_size = SizeEstimator()
         self._columns.clear()
