@@ -613,10 +613,11 @@ class LearnerGroup:
         if self.is_local:
             module_keys = set(self._learner.module.keys())
         else:
+            workers = self._worker_manager.healthy_actor_ids()
             module_keys = set(
                 self._get_results(
                     self._worker_manager.foreach_actor(
-                        lambda w: w.module.keys(), remote_actor_ids=self._workers[0]
+                        lambda w: w.module.keys(), remote_actor_ids=[workers[0]]
                     )
                 )[0]
             )
@@ -719,7 +720,7 @@ class LearnerGroup:
                             shutil.rmtree(path)
 
             self._worker_manager.foreach_actor(
-                _load_module_state, remote_actor_ids=self._workers
+                _load_module_state, remote_actor_ids=workers
             )
 
     @staticmethod

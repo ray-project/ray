@@ -368,7 +368,7 @@ class TestLearnerGroup(unittest.TestCase):
     def test_load_module_state(self):
         fws = ["torch", "tf"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = LOCAL_SCALING_CONFIGS.keys()
+        scaling_modes = ["local-cpu", "multi-cpu-ddp", "multi-gpu-ddp"]
 
         test_iterator = itertools.product(fws, scaling_modes)
         for fw, scaling_mode in test_iterator:
@@ -376,7 +376,9 @@ class TestLearnerGroup(unittest.TestCase):
             # env will have agent ids 0 and 1
             env = MultiAgentCartPole({"num_agents": 2})
 
-            scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
+            scaling_config = REMOTE_SCALING_CONFIGS.get(
+                scaling_mode
+            ) or LOCAL_SCALING_CONFIGS.get(scaling_mode)
             learner_group = get_learner_group(
                 fw, env, scaling_config, eager_tracing=True, is_multi_agent=True
             )
@@ -439,6 +441,7 @@ class TestLearnerGroup(unittest.TestCase):
                     new_marl_module.add_module(module_id="0", module=module_0)
                     new_marl_module.add_module(module_id="1", module=module_1)
                     check(learner_group.get_weights(), new_marl_module.get_state())
+            del learner_group
 
 
 if __name__ == "__main__":
