@@ -407,6 +407,9 @@ class MultiAgentRLModuleSpec:
             the SingleAgentRLModuleSpec. This is useful if you want to load the weights
             of a MARL module and also manually load the weights of some of the RL
             modules within that MARL module from other checkpoints.
+        modules_to_load: A set of module ids to load from the checkpoint. This is
+            only used if load_state_path is set. If this is None, all modules are
+            loaded.
     """
 
     marl_module_class: Type[MultiAgentRLModule] = MultiAgentRLModule
@@ -414,6 +417,7 @@ class MultiAgentRLModuleSpec:
         SingleAgentRLModuleSpec, Dict[ModuleID, SingleAgentRLModuleSpec]
     ] = None
     load_state_path: Optional[str] = None
+    modules_to_load: Optional[Set[ModuleID]] = None
 
     def __post_init__(self):
         if self.module_specs is None:
