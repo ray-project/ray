@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Mapping
+from typing import Any, DefaultDict, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
@@ -12,7 +12,7 @@ from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
@@ -60,17 +60,6 @@ class PPOTfLearner(PPOLearner, TfLearner):
         if self.hps.kl_coeff > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = tf.reduce_mean(action_kl)
-            if tf.math.is_inf(mean_kl_loss):
-                logger.warning(
-                    "KL divergence is non-finite, this will likely destabilize "
-                    "your model and the training process. Action(s) in a "
-                    "specific state have near-zero probability. "
-                    "This can happen naturally in deterministic "
-                    "environments where the optimal policy has zero mass "
-                    "for a specific action. To fix this issue, consider "
-                    "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
-                    "config."
-                )
         else:
             mean_kl_loss = tf.constant(0.0, dtype=logp_ratio.dtype)
 
@@ -151,3 +140,32 @@ class PPOTfLearner(PPOLearner, TfLearner):
         results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
 
         return results
+
+    def compile_results(
+        self,
+        *,
+        batch: MultiAgentBatch,
+        fwd_out: Mapping[str, Any],
+        loss_per_module: Mapping[str, TensorType],
+        metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]]
+    ) -> Mapping[str, Any]:
+        if self.hps.kl_coeff > 0.0:
+            for metrics in metrics_per_module.values():
+                mean_kl_loss = metrics[LEARNER_RESULTS_KL_KEY]
+                if tf.math.is_inf(mean_kl_loss):
+                    logger.warning(
+                        "KL divergence is non-finite, this will likely destabilize "
+                        "your model and the training process. Action(s) in a "
+                        "specific state have near-zero probability. "
+                        "This can happen naturally in deterministic "
+                        "environments where the optimal policy has zero mass "
+                        "for a specific action. To fix this issue, consider "
+                        "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in "
+                        "your config."
+                    )
+        return super().compile_results(
+            batch=batch,
+            fwd_out=fwd_out,
+            loss_per_module=loss_per_module,
+            metrics_per_module=metrics_per_module,
+        )
