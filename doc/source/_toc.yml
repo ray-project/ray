@@ -372,6 +372,7 @@ parts:
               - file: cluster/vms/user-guides/launching-clusters/index
               - file: cluster/vms/user-guides/large-cluster-best-practices
               - file: cluster/vms/user-guides/configuring-autoscaling
+              - file: cluster/vms/user-guides/logging
               - file: cluster/vms/user-guides/community/index
                 title: Community-supported Cluster Managers
                 sections:
@@ -383,26 +384,40 @@ parts:
               sections:
               - file: cluster/vms/examples/ml-example
             - file: cluster/vms/references/index
+          - file: cluster/configure-manage-dashboard
           - file: cluster/running-applications/index
             title: Applications Guide
           - file: cluster/faq
           - file: cluster/package-overview
 
-      - file: ray-observability/monitoring-debugging/monitoring-debugging
+      - file: ray-observability/index
         title: "Monitoring and Debugging"
         sections:
+          - file: ray-observability/getting-started
+          - file: ray-observability/key-concepts
           - file: ray-observability/user-guides/index
             title: User Guides
             sections:
-              - file: ray-observability/user-guides/troubleshoot-apps/index
-                title: Troubleshooting Applications
+              - file: ray-observability/user-guides/debug-apps/index
+                title: Debugging Applications
                 sections:
-                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-failures
-                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-hangs
-                  - file: ray-observability/user-guides/troubleshoot-apps/optimize-performance
-                  - file: ray-observability/user-guides/troubleshoot-apps/ray-debugging
-                  - file: ray-observability/user-guides/troubleshoot-apps/ray-core-profiling
+                  - file: ray-observability/user-guides/debug-apps/general-troubleshoot
+                  - file: ray-observability/user-guides/debug-apps/debug-memory
+                  - file: ray-observability/user-guides/debug-apps/debug-hangs
+                  - file: ray-observability/user-guides/debug-apps/debug-failures
+                  - file: ray-observability/user-guides/debug-apps/optimize-performance
+                  - file: ray-observability/user-guides/debug-apps/ray-debugging
+                  - file: ray-observability/user-guides/debug-apps/ray-core-profiling
+              - file: ray-observability/user-guides/cli-sdk
+              - file: ray-observability/user-guides/configure-logging
+              - file: ray-observability/user-guides/add-app-metrics
               - file: ray-observability/user-guides/ray-tracing
+          - file: ray-observability/reference/index
+            title: Reference
+            sections:
+              - file: ray-observability/reference/api
+              - file: ray-observability/reference/cli
+              - file: ray-observability/reference/system-metrics
 
       - file: ray-references/api
         title: References

@@ -1,3 +1,45 @@
+.. _observability-programmatic:
+
+Monitoring with the CLI or SDK
+==============================
+
+Monitoring and debugging capabilities in Ray are available through a CLI or SDK.
+
+
+Monitoring Cluster State and Resource Demands
+---------------------------------------------
+You can monitor cluster usage and auto-scaling status by running (on the head node) a CLI command ``ray status``. It displays
+
+- **Cluster State**: Nodes that are up and running. Addresses of running nodes. Information about pending nodes and failed nodes.
+- **Autoscaling Status**: The number of nodes that are autoscaling up and down.
+- **Cluster Usage**: The resource usage of the cluster. E.g., requested CPUs from all Ray tasks and actors. Number of GPUs that are used.
+
+Here's an example output.
+
+.. code-block:: shell
+
+   $ ray status
+   ======== Autoscaler status: 2021-10-12 13:10:21.035674 ========
+   Node status
+   ---------------------------------------------------------------
+   Healthy:
+    1 ray.head.default
+    2 ray.worker.cpu
+   Pending:
+    (no pending nodes)
+   Recent failures:
+    (no failures)
+
+   Resources
+   ---------------------------------------------------------------
+   Usage:
+    0.0/10.0 CPU
+    0.00/70.437 GiB memory
+    0.00/10.306 GiB object_store_memory
+
+   Demands:
+    (no resource demands)
+
 .. _state-api-overview-ref:
 
 Monitoring Ray States
@@ -14,9 +56,6 @@ Ray state APIs allow users to conveniently access the current state (snapshot) o
 .. note::
 
     State API CLI commands are :ref:`stable <api-stability-stable>`, while python SDKs are :ref:`DeveloperAPI <developer-api-def>`. CLI usage is recommended over Python SDKs.
-
-Getting Started
----------------
 
 Run any workload. In this example, you will use the following script that runs 2 tasks and creates 2 actors.
 

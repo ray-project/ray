@@ -1,7 +1,7 @@
-.. _observability-troubleshoot-hangs:
+.. _observability-debug-hangs:
 
-Troubleshooting Hangs
-=====================
+Debugging Hangs
+===============
 
 Observing Ray Work
 ------------------

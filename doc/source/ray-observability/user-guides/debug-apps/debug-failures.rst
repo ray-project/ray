@@ -1,7 +1,7 @@
-.. _observability-troubleshoot-failures:
+.. _observability-debug-failures:
 
-Troubleshooting Failures
-========================
+Debugging Failures
+==================
 
 What Kind of Failures Exist in Ray?
 -----------------------------------

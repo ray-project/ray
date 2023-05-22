@@ -10,5 +10,5 @@ Ray Core API
     utility.rst
     exceptions.rst
     cli.rst
-    ../../ray-observability/api/state/cli.rst
-    ../../ray-observability/api/state/api.rst
+    ../../ray-observability/reference/cli.rst
+    ../../ray-observability/reference/api.rst
