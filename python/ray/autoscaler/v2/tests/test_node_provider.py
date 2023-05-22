@@ -21,7 +21,7 @@ class NodeProviderTest(unittest.TestCase):
     def setUp(self):
         self.base_provider = MockProvider()
         self.node_launcher = BaseNodeLauncher(
-            self.provider,
+            self.base_provider,
             ConcurrentCounter(),
             EventSummarizer(),
             NodeProviderAvailabilityTracker(),
@@ -33,5 +33,18 @@ class NodeProviderTest(unittest.TestCase):
             self.base_provider, self.node_launcher, self.instance_config_provider
         )
 
-    def tearDown(self):
-        pass
+    def test_create_nodes(self):
+        self.node_provider.create_nodes("test", 1)
+        self.assertEqual(len(self.base_provider.mock_nodes), 1)
+
+    def test_terminate_nodes(self):
+        self.node_provider.create_nodes("test", 1)
+        self.assertEqual(len(self.base_provider.mock_nodes), 1)
+
+    def test_get_nodes(self):
+        self.node_provider.create_nodes("test", 1)
+        self.assertEqual(len(self.base_provider.mock_nodes), 1)
+
+    def get_nodes_by_cloud_instance_id(self):
+        self.node_provider.create_nodes("test", 1)
+        self.assertEqual(len(self.base_provider.mock_nodes), 1)
