@@ -637,11 +637,14 @@ def run(
 
     ray._private.usage.usage_lib.record_library_usage("tune")
 
-    # Track environment variable usage here will also catch:
+    # Tracking environment variable usage here will also catch:
     # 1.) Tuner.fit() usage
     # 2.) Trainer.fit() usage
     # 3.) Ray client usage (env variables are inherited by the Ray runtime env)
     air_usage.tag_ray_air_env_vars()
+
+    # Track the entrypoint to AIR (tune.run vs. Tuner.fit vs. Trainer.fit)
+    air_usage.tag_air_entrypoint(trainer_api=_trainer_api, tuner_api=_tuner_api)
 
     all_start = time.time()
 

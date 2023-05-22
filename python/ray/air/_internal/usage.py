@@ -280,3 +280,14 @@ def tag_ray_air_env_vars() -> bool:
         return True
 
     return False
+
+
+def tag_air_entrypoint(trainer_api: bool, tuner_api: bool):
+    if not trainer_api and not tuner_api:
+        tag = "tune.run"
+    elif tuner_api and not trainer_api:
+        tag = "Tuner.fit"
+    elif trainer_api:
+        tag = "Trainer.fit"
+
+    record_extra_usage_tag(TagKey.AIR_ENTRYPOINT, tag)

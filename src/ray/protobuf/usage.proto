@@ -147,4 +147,6 @@ enum TagKey {
   AIR_CALLBACKS = 506;
   // Storage configuration for AIR experiment
   AIR_STORAGE_CONFIGURATION = 507;
+  // AIR entrypoint (Trainer.fit(), Tuner.fit(), tune.run)
+  AIR_ENTRYPOINT = 508;
 }

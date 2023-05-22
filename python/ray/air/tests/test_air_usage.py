@@ -49,9 +49,20 @@ def tuner(tmp_path):
     yield tune.Tuner(train_fn, run_config=air.RunConfig(storage_path=str(tmp_path)))
 
 
+@pytest.fixture
+def trainer(tmp_path):
+    from ray.train.data_parallel_trainer import DataParallelTrainer
+
+    yield DataParallelTrainer(
+        train_loop_per_worker=train_fn,
+        scaling_config=air.ScalingConfig(num_workers=2),
+        run_config=air.RunConfig(storage_path=str(tmp_path)),
+    )
+
+
 @pytest.fixture(scope="module")
-def ray_start_2_cpus():
-    address_info = ray.init(num_cpus=2)
+def ray_start_4_cpus():
+    address_info = ray.init(num_cpus=4)
     yield address_info
     ray.shutdown()
 
@@ -185,7 +196,7 @@ def test_tag_callbacks(mock_record, callback_classes_expected):
     assert callback_counts == expected
 
 
-def test_tag_env_vars(ray_start_2_cpus, mock_record, tuner):
+def test_tag_env_vars(ray_start_4_cpus, mock_record, tuner):
     """Test that env vars are recorded properly, and arbitrary user environment
     variables are ignored."""
     env_vars_to_record = {
@@ -199,6 +210,18 @@ def test_tag_env_vars(ray_start_2_cpus, mock_record, tuner):
 
     recorded_env_vars = json.loads(mock_record[TagKey.AIR_ENV_VARS])
     assert sorted(env_vars_to_record) == sorted(recorded_env_vars)
+
+
+@pytest.mark.parametrize("entrypoint", ["tune.run", "Tuner.fit", "Trainer.fit"])
+def test_tag_air_entrypoint(ray_start_4_cpus, mock_record, entrypoint, tuner, trainer):
+    if entrypoint == "tune.run":
+        tune.run(train_fn)
+    elif entrypoint == "Tuner.fit":
+        tuner.fit()
+    elif entrypoint == "Trainer.fit":
+        trainer.fit()
+
+    assert mock_record[TagKey.AIR_ENTRYPOINT] == entrypoint
 
 
 if __name__ == "__main__":
