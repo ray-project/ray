@@ -450,7 +450,7 @@ def test_gcs_fd_usage(shutdown_only):
     print("GCS connections", len(gcs_process.connections()))
     @ray.remote(runtime_env={"env_vars": {"Hello": "World"}})
     class A:
-        def f(self):p
+        def f(self):
             import os
             return os.environ.get("Hello")
     # In case there are still some pre-start workers, consume all of them
