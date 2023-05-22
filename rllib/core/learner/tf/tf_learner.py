@@ -438,6 +438,10 @@ class TfLearner(Learner):
     def _untraced_update(
         self,
         batch: NestedDict,
+        # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
+        #  eager_tracing=True mode.
+        #  It seems there may be a clash between the traced-by-tf function and the
+        #  traced-by-ray functions (for making the TfLearner class a ray actor).
         _ray_trace_ctx=None,
     ):
         def helper(_batch):
