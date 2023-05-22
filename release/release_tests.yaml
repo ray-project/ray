@@ -3437,7 +3437,7 @@
         cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
 
 
-- name: rllib_learner_e2e_module_spec_uncheckpointing
+- name: rllib_learner_e2e_module_loading
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -3450,7 +3450,7 @@
 
   run:
     timeout: 3600
-    script: pytest checkpointing_tests/test_rl_module_spec_uncheckpointing.py
+    script: pytest checkpointing_tests/test_e2e_rl_module_restore.py
 
     wait_for_nodes:
       num_nodes: 3

@@ -3,7 +3,6 @@ import pathlib
 import pprint
 from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type, Set
 
-import ray
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
 from ray.rllib.utils.nested_dict import NestedDict
@@ -409,9 +408,6 @@ class MultiAgentRLModuleSpec:
             the SingleAgentRLModuleSpec. This is useful if you want to load the weights
             of a MARL module and also manually load the weights of some of the RL
             modules within that MARL module from other checkpoints.
-        load_state_ip_addr: The ip address of the node that the checkpoint is on. This
-            is used to copy the checkpoint from the remote node to the local node if
-            necessary. If None, it will be set to the current node's ip address.
     """
 
     marl_module_class: Type[MultiAgentRLModule] = MultiAgentRLModule
@@ -419,7 +415,6 @@ class MultiAgentRLModuleSpec:
         SingleAgentRLModuleSpec, Dict[ModuleID, SingleAgentRLModuleSpec]
     ] = None
     load_state_path: Optional[str] = None
-    load_state_ip_addr: Optional[str] = None
 
     def __post_init__(self):
         if self.module_specs is None:
@@ -428,11 +423,6 @@ class MultiAgentRLModuleSpec:
                 "SingleAgentRLModuleSpec or a dictionary mapping from module IDs to "
                 "SingleAgentRLModuleSpecs for each individual module."
             )
-        if not self.load_state_ip_addr:
-            if self.load_state_path:
-                self.load_state_ip_addr = ray.util.get_node_ip_address()
-            else:
-                self.load_state_ip_addr = None
 
     def get_marl_config(self) -> "MultiAgentRLModuleConfig":
         """Returns the MultiAgentRLModuleConfig for this spec."""
@@ -466,20 +456,6 @@ class MultiAgentRLModuleSpec:
 
         module_config = self.get_marl_config()
         module = self.marl_module_class(module_config)
-        if self.load_state_path:
-            load_state_path = copy_state_from_remote_node_if_necessary(
-                self.load_state_path, self.load_state_ip_addr
-            )
-            modules_to_load = set()
-            # This applies to the case where a user wants to load the weights of a MARL
-            # module and also manually load the weights of some of the RL modules within
-            # that MARL module from other checkpoints. In this case, we should respect
-            # the RL Module weights that the user wants to load and not load the weights
-            # of those RL Modules from the MARL checkpoint.
-            for module_id in module_config.modules.keys():
-                if not module_config.modules[module_id].load_state_path:
-                    modules_to_load.add(module_id)
-            module.load_state(load_state_path, modules_to_load)
         return module
 
     def add_modules(

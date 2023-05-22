@@ -1,4 +1,3 @@
-import gymnasium as gym
 import tempfile
 import unittest
 
@@ -9,7 +8,6 @@ from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
@@ -23,15 +21,7 @@ MODULES = [DiscreteBCTorchModule, DiscreteBCTFModule]
 PPO_MODULES = {"tf2": PPOTfRLModule, "torch": PPOTorchRLModule}
 
 
-@ray.remote(num_gpus=1)
-def uncheckpoint_module_and_get_state(marl_module_spec):
-    # This function will be run on a separate ray node to test if the checkpoint is
-    # being copied across nodes correctly.
-    marl_module = marl_module_spec.build()
-    return marl_module.get_state()
-
-
-class TestRLModuleSpecUncheckpointing(unittest.TestCase):
+class TestE2ERLModuleRestore(unittest.TestCase):
     """Test RLModule Spec uncheckpointing across a multi node cluster."""
 
     def setUp(self) -> None:
@@ -39,71 +29,6 @@ class TestRLModuleSpecUncheckpointing(unittest.TestCase):
 
     def tearDown(self) -> None:
         ray.shutdown()
-
-    def test_uncheckpoint_different_node(self):
-        """Test if building a MultiAgentRLModule with heterogeneous checkpoints works.
-
-        This tests if we can load some modules from single agent rl modules and the rest
-        from a multi agent rl module checkpoint.
-
-        """
-        env = gym.make("CartPole-v1")
-        num_agents = 2
-        for module_class in MODULES:
-            module_specs = {}
-            for i in range(num_agents):
-                module_specs[f"module_{i}"] = SingleAgentRLModuleSpec(
-                    module_class=module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
-                    model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
-                )
-
-            marl_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
-            marl_module = marl_spec.build()
-            self.assertIsInstance(marl_module, MultiAgentRLModule)
-
-            single_agent_rl_spec = module_specs["module_1"]
-            single_agent_rl_module = single_agent_rl_spec.build()
-            self.assertIsInstance(single_agent_rl_module, module_class)
-
-            with tempfile.TemporaryDirectory() as single_agent_checkpoint_path:
-                single_agent_rl_module.save_to_checkpoint(single_agent_checkpoint_path)
-
-                spec_with_load_path = MultiAgentRLModuleSpec(
-                    module_specs=module_specs,
-                    load_state_path=single_agent_checkpoint_path,
-                )
-                with tempfile.TemporaryDirectory() as marl_checkpoint_path:
-                    marl_module.save_to_checkpoint(marl_checkpoint_path)
-
-                    module_specs["module_1"] = SingleAgentRLModuleSpec(
-                        module_class=module_class,
-                        observation_space=env.observation_space,
-                        action_space=env.action_space,
-                        model_config_dict={"fcnet_hiddens": [32 * (2)]},
-                        load_state_path=single_agent_checkpoint_path,
-                    )
-
-                    spec_with_load_path = MultiAgentRLModuleSpec(
-                        module_specs=module_specs,
-                        load_state_path=marl_checkpoint_path,
-                    )
-                    module_from_checkpoint_state = ray.get(
-                        uncheckpoint_module_and_get_state.remote(spec_with_load_path)
-                    )
-                    # module 0 in the loaded marl_module should be the same as module_0
-                    # in the original module
-                    check(
-                        marl_module.get_state()["module_0"],
-                        module_from_checkpoint_state["module_0"],
-                    )
-                    # module 1 in the loaded marl_module should have the same state as
-                    # the single_agent_rl_module, not the original marl_module
-                    check(
-                        single_agent_rl_module.get_state(),
-                        module_from_checkpoint_state["module_1"],
-                    )
 
     def test_e2e_uncheckpointing_test(self):
         """Test if we can build a PPO algorithm with a checkpointed MARL module e2e."""

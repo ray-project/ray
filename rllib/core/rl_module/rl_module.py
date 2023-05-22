@@ -4,7 +4,6 @@ import datetime
 import gymnasium as gym
 import json
 import pathlib
-import tempfile
 from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
@@ -36,7 +35,6 @@ from ray.rllib.utils.serialization import (
     serialize_type,
     deserialize_type,
 )
-from ray.tune.utils.file_transfer import sync_dir_between_nodes
 
 
 ModuleID = str
@@ -47,36 +45,6 @@ RLMODULE_STATE_DIR_NAME = "module_state_dir"
 RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
 RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
 RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
-
-
-@ExperimentalAPI
-def copy_state_from_remote_node_if_necessary(
-    load_state_path: str, load_state_ip_addr: str
-) -> str:
-    """Creates a copy of the module state directory dir on the current node.
-
-    A copy of the module state is only created if the the node that self.build() is
-    being called from is different from the ip address of the node that contains
-    self.load_state_path.
-
-    Returns:
-        The path to the module state directory on the current node.
-
-    """
-    current_node_ip_addr = ray.util.get_node_ip_address()
-
-    # If the current node is different from the node that contains the module state
-    # then copy the module state to the current node.
-    if current_node_ip_addr != load_state_ip_addr:
-        new_dir = tempfile.mkdtemp()
-        sync_dir_between_nodes(
-            load_state_ip_addr,
-            load_state_path,
-            current_node_ip_addr,
-            new_dir,
-        )
-        return new_dir
-    return load_state_path
 
 
 @ExperimentalAPI
@@ -104,12 +72,6 @@ class SingleAgentRLModuleSpec:
     catalog_class: Optional[Type["Catalog"]] = None
     load_state_path: Optional[str] = None
 
-    def __post_init__(self):
-        if self.load_state_path:
-            self._load_state_ip_addr = ray.util.get_node_ip_address()
-        else:
-            self._load_state_ip_addr = None
-
     def get_rl_module_config(self) -> "RLModuleConfig":
         """Returns the RLModule config for this spec."""
         return RLModuleConfig(
@@ -132,11 +94,6 @@ class SingleAgentRLModuleSpec:
 
         module_config = self.get_rl_module_config()
         module = self.module_class(module_config)
-        if self.load_state_path:
-            load_state_path = copy_state_from_remote_node_if_necessary(
-                self.load_state_path, self._load_state_ip_addr
-            )
-            module.load_state(pathlib.Path(load_state_path) / RLMODULE_STATE_DIR_NAME)
         return module
 
     @classmethod

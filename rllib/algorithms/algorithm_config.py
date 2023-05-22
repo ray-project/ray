@@ -3108,7 +3108,6 @@ class AlgorithmConfig(_Config):
                     marl_module_class=cur_marl_module_spec.marl_module_class,
                     module_specs=module_specs,
                     load_state_path=cur_marl_module_spec.load_state_path,
-                    load_state_ip_addr=cur_marl_module_spec.load_state_ip_addr,
                 )
             else:
                 # Default is multi-agent and user wants to override it. In this case,
@@ -3137,7 +3136,6 @@ class AlgorithmConfig(_Config):
                         k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                     },
                     load_state_path=cur_marl_module_spec.load_state_path,
-                    load_state_ip_addr=cur_marl_module_spec.load_state_ip_addr,
                 )
 
         # Make sure that policy_dict and marl_module_spec have similar keys
