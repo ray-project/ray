@@ -1,6 +1,6 @@
+import unittest
 import gymnasium as gym
 import torch
-import unittest
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import (
