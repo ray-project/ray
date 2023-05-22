@@ -340,6 +340,7 @@ def run(
     # a context object or similar.
     _tuner_api: bool = False,
     _trainer_api: bool = False,
+    _run_experiments_api: bool = False,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -569,9 +570,15 @@ def run(
         }
     else:
         error_message_map = {
-            "entrypoint": "tune.run(...)",
+            "entrypoint": (
+                "tune.run_experiments(...)" if _run_experiments_api else "tune.run(...)"
+            ),
             "search_space_arg": "config",
-            "restore_entrypoint": "tune.run(..., resume=True)",
+            "restore_entrypoint": (
+                "tune.run_experiments(..., resume=True)"
+                if _run_experiments_api
+                else "tune.run(..., resume=True)"
+            ),
         }
     _ray_auto_init(entrypoint=error_message_map["entrypoint"])
 
@@ -643,8 +650,13 @@ def run(
     # 3.) Ray client usage (env variables are inherited by the Ray runtime env)
     air_usage.tag_ray_air_env_vars()
 
-    # Track the entrypoint to AIR (tune.run vs. Tuner.fit vs. Trainer.fit)
-    air_usage.tag_air_entrypoint(trainer_api=_trainer_api, tuner_api=_tuner_api)
+    # Track the entrypoint to AIR:
+    # Tuner.fit / Trainer.fit / tune.run / tune.run_experiments
+    air_usage.tag_air_entrypoint(
+        trainer_api=_trainer_api,
+        tuner_api=_tuner_api,
+        run_experiments_api=_run_experiments_api,
+    )
 
     all_start = time.time()
 
@@ -1222,6 +1234,7 @@ def run_experiments(
             raise_on_failed_trial=raise_on_failed_trial,
             scheduler=scheduler,
             callbacks=callbacks,
+            _run_experiments_api=True,
         ).trials
     else:
         trials = []
@@ -1237,5 +1250,6 @@ def run_experiments(
                 raise_on_failed_trial=raise_on_failed_trial,
                 scheduler=scheduler,
                 callbacks=callbacks,
+                _run_experiments_api=True,
             ).trials
         return trials

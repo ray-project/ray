@@ -13,6 +13,7 @@ from ray.air import session
 from ray.air._internal import usage as air_usage
 from ray.air.integrations import wandb, mlflow, comet
 from ray.tune.callback import Callback
+from ray.tune.experiment.experiment import Experiment
 from ray.tune.logger import LoggerCallback
 from ray.tune.logger.aim import AimLoggerCallback
 from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
@@ -212,10 +213,15 @@ def test_tag_env_vars(ray_start_4_cpus, mock_record, tuner):
     assert sorted(env_vars_to_record) == sorted(recorded_env_vars)
 
 
-@pytest.mark.parametrize("entrypoint", ["tune.run", "Tuner.fit", "Trainer.fit"])
+@pytest.mark.parametrize(
+    "entrypoint", ["tune.run", "tune.run_experiments", "Tuner.fit", "Trainer.fit"]
+)
 def test_tag_air_entrypoint(ray_start_4_cpus, mock_record, entrypoint, tuner, trainer):
     if entrypoint == "tune.run":
         tune.run(train_fn)
+    elif entrypoint == "tune.run_experiments":
+        experiment_spec = Experiment("experiment", train_fn)
+        tune.run_experiments(experiments=experiment_spec)
     elif entrypoint == "Tuner.fit":
         tuner.fit()
     elif entrypoint == "Trainer.fit":
