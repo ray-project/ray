@@ -308,7 +308,12 @@ class Learner:
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
 
-        This method is responsible for setting up the optimizers that will be used to
+        Do not override this method for your custom algorithms (which require certain
+        optimizers), but rather override the `self.configure_optimizers_for_module(
+        module_id=..)` method and return those optimizers from there that you need for
+        the given module.
+
+        This method configures, creates, and returns the optimizers that will be used to
         train the model. The optimizers are responsible for updating the model's
         parameters during training, based on the computed gradients. The method should
         return a list of tuples, where each tuple consists of a list of model
@@ -470,7 +475,7 @@ class Learner:
         """Applies the gradients to the MultiAgentRLModule parameters.
 
         Args:
-            gradients: A dictionary of gradients  in the same (flat) format as
+            gradients: A dictionary of gradients in the same (flat) format as
                 self._params. Note that top-level structures, such as module IDs,
                 will not be present anymore in this dict. It will merely map gradient
                 tensor references to gradient tensors.
