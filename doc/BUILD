@@ -183,11 +183,21 @@ py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
     exclude = [
+        # Too large. Use a custom test below.
+        "source/ray-air/doc_code/computer_vision.py",
         "source/ray-air/doc_code/hf_trainer.py",  # Too large
         "source/ray-air/doc_code/predictors.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
+)
+
+py_test(
+    name = "computer_vision_test",
+    main = "source/ray-core/doc_code/computer_vision.py",
+    srcs = ["source/ray-air/doc_code/computer_vision.py"],
+    tags = ["exclusive", "team:ml"],
+    size = "enormous",
 )
 
 # --------------------------------------------------------------------
