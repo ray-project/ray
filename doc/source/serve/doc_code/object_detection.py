@@ -67,7 +67,7 @@ if __name__ == "__main__":
     import requests
     import os
 
-    ray.init(runtime_env={"pip": ["seaborn"]})
+    ray.init(runtime_env={"pip": ["seaborn", "ultralytics"]})
 
     with serve_session(entrypoint):
         image_url = "https://ultralytics.com/images/zidane.jpg"
