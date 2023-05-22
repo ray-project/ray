@@ -14,7 +14,6 @@ from ray.rllib.core.rl_module.rl_module import (
     RLMODULE_METADATA_FILE_NAME,
     RLMODULE_STATE_DIR_NAME,
     SingleAgentRLModuleSpec,
-    copy_state_from_remote_node_if_necessary,
 )
 
 # TODO (Kourosh): change this to module_id later to enforce consistency
@@ -448,7 +447,6 @@ class MultiAgentRLModuleSpec:
         Returns:
             The built module. If module_id is None, it returns the multi-agent module.
         """
-        copy_state_from_remote_node_if_necessary
         self._check_before_build()
 
         if module_id:
