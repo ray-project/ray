@@ -3242,7 +3242,11 @@ class AlgorithmConfig(_Config):
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
-                num_cpus_per_learner_worker=self.num_cpus_per_learner_worker,
+                num_cpus_per_learner_worker=(
+                    self.num_cpus_per_learner_worker
+                    if not self.num_gpus_per_learner_worker
+                    else 0
+                ),
                 num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
                 local_gpu_idx=self.local_gpu_idx,
             )
