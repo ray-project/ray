@@ -10,6 +10,7 @@ from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
 )
+from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
 from ray.core.generated.instance_manager_pb2 import Instance
@@ -23,11 +24,12 @@ class FakeCounter:
 class NodeProviderTest(unittest.TestCase):
     def setUp(self):
         self.base_provider = MockProvider()
+        self.availability_tracker = NodeProviderAvailabilityTracker()
         self.node_launcher = BaseNodeLauncher(
             self.base_provider,
             FakeCounter(),
             EventSummarizer(),
-            NodeProviderAvailabilityTracker(),
+            self.availability_tracker,
         )
         self.instance_config_provider = NodeProviderConfig(
             load_test_config("test_ray_complex.yaml")
@@ -79,10 +81,17 @@ class NodeProviderTest(unittest.TestCase):
             self.node_provider.get_non_terminated_nodes(),
             {"1": nodes1[0], "2": nodes1[1]},
         )
+        self.assertFalse(self.node_provider.is_readonly())
 
-    # def test_terminate_nodes(self):
-    #     self.node_provider.create_nodes("worker_nodes1", 1)
-    #     self.assertEqual(len(self.base_provider.mock_nodes), 1)
+    def test_create_node_failure(self):
+        self.base_provider.error_creates = NodeLaunchException(
+            "hello", "failed to create node", src_exc_info=None
+        )
+        self.assertEqual(self.node_provider.create_nodes("worker_nodes1", 1), [])
+        self.assertEqual(len(self.base_provider.mock_nodes), 0)
+        self.assertTrue(
+            "worker_nodes1" in self.availability_tracker.summary().node_availabilities
+        )
 
     # def test_get_nodes(self):
     #     self.node_provider.create_nodes("worker_nodes1", 1)
