@@ -28,6 +28,5 @@ py_test(
     tags = ["team:core"],
     deps = [
         "//:ray_lib",
-        "//ray/autoscaler/aws:example",
-    ],
+    ]
 )

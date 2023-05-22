@@ -24,11 +24,11 @@ class NodeProviderConfig(object):
 
     def _calculate_hashes(self) -> None:
         self._runtime_hash, self._file_mounts_contents_hash = hash_runtime_conf(
-            self._node_configs["file_mounts"],
-            self._node_configs["cluster_synced_files"],
+            self._node_configs.get("file_mounts", {}),
+            self._node_configs.get("cluster_synced_files", []),
             [
-                self._node_configs["worker_setup_commands"],
-                self._node_configs["worker_start_ray_commands"],
+                self._node_configs.get("worker_setup_commands", []),
+                self._node_configs.get("worker_start_ray_commands", []),
             ],
             generate_file_mounts_contents_hash=self._node_configs.get(
                 "generate_file_mounts_contents_hash", True
@@ -52,19 +52,13 @@ class NodeProviderConfig(object):
         docker_config.update(node_specific_docker_config)
         return docker_config
 
-    def get_worker_start_ray_commands(self, instance: Instance) -> List[str]:
-        if (
-            instance.num_successful_updates > 0
-            and not self._node_config_provider.restart_only
-        ):
+    def get_worker_start_ray_commands(self, num_successful_updates: int) -> List[str]:
+        if num_successful_updates > 0 and not self._node_config_provider.restart_only:
             return []
         return self._node_configs["worker_start_ray_commands"]
 
-    def get_worker_setup_commands(self, instance: Instance) -> List[str]:
-        if (
-            instance.num_successful_updates > 0
-            and self._node_config_provider.restart_only
-        ):
+    def get_worker_setup_commands(self, num_successful_updates: int) -> List[str]:
+        if num_successful_updates > 0 and self._node_config_provider.restart_only:
             return []
 
         return self._node_configs["available_node_types"][instance.name][
