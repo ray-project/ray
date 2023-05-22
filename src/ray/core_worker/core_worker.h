@@ -1078,6 +1078,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandlePollPushTaskResult(rpc::PollPushTaskResultRequest request,
+                                rpc::PollPushTaskResultReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
       rpc::DirectActorCallArgWaitCompleteRequest request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,

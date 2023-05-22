@@ -442,6 +442,77 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
   return it != object_ref_streams_.end();
 }
 
+bool TaskManager::HandleReportGeneratorItemReturns2(
+    const rpc::GeneratorReturnsMessage &request) {
+  const auto &generator_id = ObjectID::FromBinary(request.generator_id());
+  const auto &task_id = generator_id.TaskId();
+  int64_t item_index = request.item_index();
+  // Every generated object has the same task id.
+  RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
+                 << " generator_id: " << generator_id;
+  {
+    absl::MutexLock lock(&mu_);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    if (stream_it == object_ref_streams_.end()) {
+      // SANG-TODO add an unit test.
+      // Stream has been already deleted. Do not handle it.
+      return false;
+    }
+
+    if (request.finished()) {
+      RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << item_index;
+      stream_it->second.MarkEndOfStream(item_index);
+      RAY_CHECK(request.dynamic_return_objects_size() == 0);
+      return true;
+    }
+  }
+
+  // Handle the intermediate values.
+  // NOTE: Until we support the retry, this is always empty return value.
+  const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
+
+  // TODO(sang): Support the regular return values as well.
+  size_t num_objects_written = 0;
+  for (const auto &return_object : request.dynamic_return_objects()) {
+    const auto object_id = ObjectID::FromBinary(return_object.object_id());
+    RAY_LOG(DEBUG) << "Write an object " << object_id
+                   << " to the object ref stream of id " << generator_id;
+    bool index_not_used_yet = false;
+    {
+      absl::MutexLock lock(&mu_);
+      auto stream_it = object_ref_streams_.find(generator_id);
+      if (stream_it != object_ref_streams_.end()) {
+        index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
+      }
+      // TODO(sang): Update the reconstruct ids and task spec
+      // when we support retry.
+    }
+    // If the ref was written to a stream, we should also
+    // own the dynamically generated task return.
+    // NOTE: If we call this method while holding a lock, it can deadlock.
+    if (index_not_used_yet) {
+      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+      num_objects_written += 1;
+    }
+    // When an object is reported, the object is ready to be fetched.
+    // TODO(sang): It is possible this invairant is not true
+    // if tasks can be retried. For example, imagine the intermediate
+    // task return is reported after a task is resubmitted.
+    // It is okay now because we don't support retry yet. But when
+    // we support retry, we should guarantee it is not called
+    // after the task resubmission. We can do it by guaranteeing
+    // HandleReportGeneratorItemReturns is not called after the task
+    // CompletePendingTask.
+    reference_counter_->UpdateObjectReady(object_id);
+    HandleTaskReturn(object_id,
+                     return_object,
+                     NodeID::FromBinary(request.worker_addr().raylet_id()),
+                     /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
+  }
+
+  return num_objects_written != 0;
+}
+
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
@@ -513,10 +584,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   return num_objects_written != 0;
 }
 
-void TaskManager::CompletePendingTask(const TaskID &task_id,
-                                      const rpc::PushTaskReply &reply,
-                                      const rpc::Address &worker_addr,
-                                      bool is_application_error) {
+void TaskManager::CompletePendingTask(
+    const TaskID &task_id,
+    const rpc::TaskCompletedMessage &task_completed_message,
+    const rpc::Address &worker_addr,
+    bool is_application_error) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
   bool first_execution = false;
@@ -525,11 +597,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   std::vector<ObjectID> dynamic_return_ids;
   std::vector<ObjectID> dynamic_returns_in_plasma;
   std::vector<ObjectID> direct_return_ids;
-  if (reply.dynamic_return_objects_size() > 0) {
-    RAY_CHECK(reply.return_objects_size() == 1)
+  if (task_completed_message.dynamic_return_objects_size() > 0) {
+    RAY_CHECK(task_completed_message.return_objects_size() == 1)
         << "Dynamic generators only supported for num_returns=1";
-    const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
-    for (const auto &return_object : reply.dynamic_return_objects()) {
+    const auto generator_id =
+        ObjectID::FromBinary(task_completed_message.return_objects(0).object_id());
+    for (const auto &return_object : task_completed_message.dynamic_return_objects()) {
       const auto object_id = ObjectID::FromBinary(return_object.object_id());
       if (first_execution) {
         reference_counter_->AddDynamicReturn(object_id, generator_id);
@@ -546,7 +619,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  for (const auto &return_object : reply.return_objects()) {
+  for (const auto &return_object : task_completed_message.return_objects()) {
     const auto object_id = ObjectID::FromBinary(return_object.object_id());
     if (HandleTaskReturn(object_id,
                          return_object,
@@ -597,7 +670,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       SetTaskStatus(it->second,
                     rpc::TaskStatus::FAILED,
                     gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
-                                         reply.task_execution_error()));
+                                         task_completed_message.task_execution_error()));
     } else {
       SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     }
@@ -625,7 +698,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     }
   }
 
-  RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
+  RemoveFinishedTaskReferences(
+      spec, release_lineage, worker_addr, task_completed_message.borrowed_refs());
   if (min_lineage_bytes_to_evict > 0) {
     // Evict at least half of the current lineage.
     auto bytes_evicted = reference_counter_->EvictLineage(min_lineage_bytes_to_evict);

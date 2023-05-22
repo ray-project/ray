@@ -45,14 +45,15 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           task_spec,
           [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
             if (status.ok() || status.IsCreationTaskError()) {
-              rpc::PushTaskReply push_task_reply;
-              push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
+              rpc::TaskCompletedMessage task_completed_message;
+              task_completed_message.mutable_borrowed_refs()->CopyFrom(
+                  reply.borrowed_refs());
               if (status.IsCreationTaskError()) {
                 RAY_LOG(INFO) << "Actor creation failed and we will not be retrying the "
                                  "creation task, actor id = "
                               << actor_id << ", task id = " << task_id;
                 // Update the task execution error to be CreationTaskError.
-                push_task_reply.set_task_execution_error(status.ToString());
+                task_completed_message.set_task_execution_error(status.ToString());
               } else {
                 RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
               }
@@ -60,7 +61,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
               // task so just marking the task fails.
               task_finisher_->CompletePendingTask(
                   task_id,
-                  push_task_reply,
+                  task_completed_message,
                   reply.actor_address(),
                   /*is_application_error=*/status.IsCreationTaskError());
             } else {
@@ -595,78 +596,153 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
   task_finisher_->MarkTaskWaitingForExecution(task_id, addr.raylet_id, addr.worker_id);
-  client.PushNormalTask(
-      std::move(request),
-      [this,
-       task_spec,
-       task_id,
-       is_actor,
-       is_actor_creation,
-       scheduling_key,
-       addr,
-       assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        {
-          RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
-                         << addr.worker_id << " of raylet " << addr.raylet_id;
-          absl::MutexLock lock(&mu_);
-          executing_tasks_.erase(task_id);
-
-          // Decrement the number of tasks in flight to the worker
-          auto &lease_entry = worker_to_lease_entry_[addr];
-          RAY_CHECK(lease_entry.is_busy);
-          lease_entry.is_busy = false;
-
-          // Decrement the total number of tasks in flight to any worker with the current
-          // scheduling_key.
-          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          RAY_CHECK_GE(scheduling_key_entry.active_workers.size(), 1u);
-          RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
-          scheduling_key_entry.num_busy_workers--;
-
-          if (!status.ok()) {
-            RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
-            const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
-                [this, status, is_actor, task_id, addr](
-                    const Status &get_task_failure_cause_reply_status,
-                    const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
-                  HandleGetTaskFailureCause(status,
-                                            is_actor,
-                                            task_id,
-                                            addr,
-                                            get_task_failure_cause_reply_status,
-                                            get_task_failure_cause_reply);
-                };
-            auto &lease_entry = worker_to_lease_entry_[addr];
-            RAY_CHECK(lease_entry.lease_client);
-            lease_entry.lease_client->GetTaskFailureCause(lease_entry.task_id, callback);
-          }
-
-          if (!status.ok() || !is_actor_creation || reply.worker_exiting()) {
-            // Successful actor creation leases the worker indefinitely from the raylet.
-            OnWorkerIdle(addr,
-                         scheduling_key,
-                         /*error=*/!status.ok(),
-                         /*worker_exiting=*/reply.worker_exiting(),
-                         assigned_resources);
-          }
-        }
-        if (status.ok()) {
-          if (reply.was_cancelled_before_running()) {
-            RAY_LOG(DEBUG) << "Task " << task_id
-                           << " was cancelled before it started running.";
-            RAY_UNUSED(
-                task_finisher_->FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED));
-          } else if (!task_spec.GetMessage().retry_exceptions() ||
-                     !reply.is_retryable_error() ||
-                     !task_finisher_->RetryTaskIfPossible(
+  client.PushNormalTask(std::move(request),
+                        [this,
+                         task_spec,
                          task_id,
-                         gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
-                                              reply.task_execution_error()))) {
-            task_finisher_->CompletePendingTask(
-                task_id, reply, addr.ToProto(), reply.is_application_error());
-          }
-        }
-      });
+                         is_actor,
+                         is_actor_creation,
+                         scheduling_key,
+                         addr,
+                         assigned_resources,
+                         client](Status status, const rpc::PushTaskReply &reply) mutable {
+                          PollResultUntilTaskCompleted(reply,
+                                                       status,
+                                                       task_id,
+                                                       client,
+                                                       task_spec,
+                                                       is_actor,
+                                                       is_actor_creation,
+                                                       scheduling_key,
+                                                       addr,
+                                                       assigned_resources);
+                        });
+}
+
+void CoreWorkerDirectTaskSubmitter::PollResultUntilTaskCompleted(
+    const rpc::PushTaskReply &reply,
+    Status status,
+    const TaskID &task_id,
+    rpc::CoreWorkerClientInterface &client,
+    const TaskSpecification &task_spec,
+    bool is_actor,
+    bool is_actor_creation,
+    const SchedulingKey &scheduling_key,
+    const rpc::WorkerAddress &addr,
+    const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
+  if (reply.has_generator_returns_message()) {
+    task_finisher_->HandleReportGeneratorItemReturns2(reply.generator_returns_message());
+    rpc::PollPushTaskResultRequest req;
+    req.set_task_id(task_id.Binary());
+    client.PollPushTaskResult(
+        std::move(req),
+        [this,
+         task_spec,
+         task_id,
+         is_actor,
+         is_actor_creation,
+         scheduling_key,
+         addr,
+         assigned_resources,
+         client](Status status, const rpc::PollPushTaskResultReply &reply) mutable {
+          PollResultUntilTaskCompleted(reply.push_task_reply(),
+                                       status,
+                                       task_id,
+                                       client,
+                                       task_spec,
+                                       is_actor,
+                                       is_actor_creation,
+                                       scheduling_key,
+                                       addr,
+                                       assigned_resources);
+        });
+  } else {
+    const auto &task_completed_message = reply.task_completed_message();
+    HandleTaskCompleted(status,
+                        task_completed_message,
+                        task_id,
+                        task_spec,
+                        is_actor,
+                        is_actor_creation,
+                        scheduling_key,
+                        addr,
+                        assigned_resources);
+  }
+}
+
+void CoreWorkerDirectTaskSubmitter::HandleTaskCompleted(
+    const Status &status,
+    const rpc::TaskCompletedMessage &task_completed_message,
+    const TaskID &task_id,
+    const TaskSpecification &task_spec,
+    bool is_actor,
+    bool is_actor_creation,
+    const SchedulingKey &scheduling_key,
+    const rpc::WorkerAddress &addr,
+    const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
+  RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker " << addr.worker_id
+                 << " of raylet " << addr.raylet_id;
+  {
+    absl::MutexLock lock(&mu_);
+    executing_tasks_.erase(task_id);
+
+    // Decrement the number of tasks in flight to the worker
+    auto &lease_entry = worker_to_lease_entry_[addr];
+    RAY_CHECK(lease_entry.is_busy);
+    lease_entry.is_busy = false;
+
+    // Decrement the total number of tasks in flight to any worker with the current
+    // scheduling_key.
+    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    RAY_CHECK_GE(scheduling_key_entry.active_workers.size(), 1u);
+    RAY_CHECK_GE(scheduling_key_entry.num_busy_workers, 1u);
+    scheduling_key_entry.num_busy_workers--;
+
+    if (!status.ok()) {
+      RAY_LOG(DEBUG) << "Getting error from raylet for task " << task_id;
+      const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> callback =
+          [this, status, is_actor, task_id, addr](
+              const Status &get_task_failure_cause_reply_status,
+              const rpc::GetTaskFailureCauseReply &get_task_failure_cause_reply) {
+            HandleGetTaskFailureCause(status,
+                                      is_actor,
+                                      task_id,
+                                      addr,
+                                      get_task_failure_cause_reply_status,
+                                      get_task_failure_cause_reply);
+          };
+      auto &lease_entry = worker_to_lease_entry_[addr];
+      RAY_CHECK(lease_entry.lease_client);
+      lease_entry.lease_client->GetTaskFailureCause(lease_entry.task_id, callback);
+    }
+
+    if (!status.ok() || !is_actor_creation || task_completed_message.worker_exiting()) {
+      // Successful actor creation leases the worker indefinitely from the raylet.
+      OnWorkerIdle(addr,
+                   scheduling_key,
+                   /*error=*/!status.ok(),
+                   /*worker_exiting=*/task_completed_message.worker_exiting(),
+                   assigned_resources);
+    }
+  }
+
+  if (status.ok()) {
+    if (task_completed_message.was_cancelled_before_running()) {
+      RAY_LOG(DEBUG) << "Task " << task_id << " was cancelled before it started running.";
+      RAY_UNUSED(
+          task_finisher_->FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED));
+    } else if (!task_spec.GetMessage().retry_exceptions() ||
+               !task_completed_message.is_retryable_error() ||
+               !task_finisher_->RetryTaskIfPossible(
+                   task_id,
+                   gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                                        task_completed_message.task_execution_error()))) {
+      task_finisher_->CompletePendingTask(task_id,
+                                          task_completed_message,
+                                          addr.ToProto(),
+                                          task_completed_message.is_application_error());
+    }
+  }
 }
 
 void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(

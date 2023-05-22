@@ -232,8 +232,9 @@ class GcsActor {
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
-using CreateActorCallback = std::function<void(
-    std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;
+using CreateActorCallback = std::function<void(std::shared_ptr<GcsActor>,
+                                               const rpc::TaskCompletedMessage &reply,
+                                               const Status &status)>;
 
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
@@ -421,7 +422,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param reply The reply from the PushTask request from creation task executed on a
   /// remote worker.
   void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
-                              const rpc::PushTaskReply &reply);
+                              const rpc::TaskCompletedMessage &reply);
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
@@ -594,9 +595,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param creation_task_reply The reply from the worker that handles the push task
   /// request of the creation task.
   /// \param creation_task_status The status of the actor creation task.
-  void RunAndClearActorCreationCallbacks(const std::shared_ptr<GcsActor> &actor,
-                                         const rpc::PushTaskReply &creation_task_reply,
-                                         const Status &creation_task_status);
+  void RunAndClearActorCreationCallbacks(
+      const std::shared_ptr<GcsActor> &actor,
+      const rpc::TaskCompletedMessage &creation_task_reply,
+      const Status &creation_task_status);
 
   /// Callbacks of pending `RegisterActor` requests.
   /// Maps actor ID to actor registration callbacks, which is used to filter duplicated

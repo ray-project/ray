@@ -22,7 +22,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
   MOCK_METHOD(void,
               CompletePendingTask,
               (const TaskID &task_id,
-               const rpc::PushTaskReply &reply,
+               const rpc::TaskCompletedMessage &task_completed_message,
                const rpc::Address &actor_addr,
                bool is_application_error),
               (override));

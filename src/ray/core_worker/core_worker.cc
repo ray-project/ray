@@ -3111,6 +3111,10 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   }
 }
 
+void CoreWorker::HandlePollPushTaskResult(rpc::PollPushTaskResultRequest request,
+                                          rpc::PollPushTaskResultReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {}
+
 void CoreWorker::HandleDirectActorCallArgWaitComplete(
     rpc::DirectActorCallArgWaitCompleteRequest request,
     rpc::DirectActorCallArgWaitCompleteReply *reply,

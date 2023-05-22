@@ -32,13 +32,17 @@ namespace core {
 
 class TaskFinisherInterface {
  public:
-  virtual void CompletePendingTask(const TaskID &task_id,
-                                   const rpc::PushTaskReply &reply,
-                                   const rpc::Address &actor_addr,
-                                   bool is_application_error) = 0;
+  virtual void CompletePendingTask(
+      const TaskID &task_id,
+      const rpc::TaskCompletedMessage &task_completed_message,
+      const rpc::Address &actor_addr,
+      bool is_application_error) = 0;
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
                                    const rpc::RayErrorInfo &error_info) = 0;
+
+  virtual bool HandleReportGeneratorItemReturns2(
+      const rpc::GeneratorReturnsMessage &request) = 0;
 
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
@@ -210,7 +214,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] is_application_error Whether this is an Exception return.
   /// \return Void.
   void CompletePendingTask(const TaskID &task_id,
-                           const rpc::PushTaskReply &reply,
+                           const rpc::TaskCompletedMessage &task_completed_message,
                            const rpc::Address &worker_addr,
                            bool is_application_error) override;
 
@@ -219,6 +223,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request);
+
+  bool HandleReportGeneratorItemReturns2(
+      const rpc::GeneratorReturnsMessage &request) override;
 
   /// Delete the object ref stream.
   ///

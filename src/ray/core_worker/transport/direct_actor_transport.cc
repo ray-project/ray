@@ -39,6 +39,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
+  auto task_completed_message = reply->mutable_task_completed_message();
   // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
   // which doesn't work with std::move.
   TaskSpecification task_spec(
@@ -77,7 +78,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   }
 
-  auto accept_callback = [this, reply, task_spec, resource_ids](
+  auto accept_callback = [this, task_completed_message, task_spec, resource_ids](
                              rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -100,20 +101,20 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                                 resource_ids,
                                 &return_objects,
                                 &dynamic_return_objects,
-                                reply->mutable_borrowed_refs(),
+                                task_completed_message->mutable_borrowed_refs(),
                                 &is_retryable_error,
                                 &application_error);
-    reply->set_is_retryable_error(is_retryable_error);
-    reply->set_is_application_error(!application_error.empty());
+    task_completed_message->set_is_retryable_error(is_retryable_error);
+    task_completed_message->set_is_application_error(!application_error.empty());
     if (!status.ok()) {
       // System errors occurred while executing the task.
-      reply->set_task_execution_error(status.ToString());
+      task_completed_message->set_task_execution_error(status.ToString());
     } else if (!application_error.empty()) {
       // Application errors occurred while executing the task.
       // We could get the errors from return_objects, but it would require deserializing
       // the serialized error message. So we just record the error message directly while
       // executing the task.
-      reply->set_task_execution_error(application_error);
+      task_completed_message->set_task_execution_error(application_error);
     }
 
     bool objects_valid = return_objects.size() == num_returns;
@@ -137,13 +138,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
             << " objects dynamically";
       }
       for (const auto &dynamic_return : dynamic_return_objects) {
-        auto return_object_proto = reply->add_dynamic_return_objects();
+        auto return_object_proto = task_completed_message->add_dynamic_return_objects();
         SerializeReturnObject(
             dynamic_return.first, dynamic_return.second, return_object_proto);
       }
       for (size_t i = 0; i < return_objects.size(); i++) {
         const auto &return_object = return_objects[i];
-        auto return_object_proto = reply->add_return_objects();
+        auto return_object_proto = task_completed_message->add_return_objects();
         SerializeReturnObject(
             return_object.first, return_object.second, return_object_proto);
       }
@@ -169,7 +170,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         } else {
           // Set the actor repr name if it's customized by the actor.
           if (!actor_repr_name_.empty()) {
-            reply->set_actor_repr_name(actor_repr_name_);
+            task_completed_message->set_actor_repr_name(actor_repr_name_);
           }
           RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
                         << ", actor_id: " << task_spec.ActorCreationId()
@@ -180,7 +181,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     if (status.ShouldExitWorker()) {
       // Don't allow the worker to be reused, even though the reply status is OK.
       // The worker will be shutting down shortly.
-      reply->set_worker_exiting(true);
+      task_completed_message->set_worker_exiting(true);
       if (objects_valid) {
         // This happens when max_calls is hit. We still need to return the objects.
         send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -193,7 +194,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     }
   };
 
-  auto cancel_callback = [reply, task_spec](rpc::SendReplyCallback send_reply_callback) {
+  auto cancel_callback = [task_completed_message,
+                          task_spec](rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
       send_reply_callback(
@@ -201,7 +203,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
     } else {
       // We consider cancellation of normal tasks to be an in-band cancellation of a
       // successful RPC.
-      reply->set_was_cancelled_before_running(true);
+      task_completed_message->set_was_cancelled_before_running(true);
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   };

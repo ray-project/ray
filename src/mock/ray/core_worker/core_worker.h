@@ -46,6 +46,12 @@ class MockCoreWorker : public CoreWorker {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
+              PollPushTaskResult,
+              (rpc::PollPushTaskResultRequest request,
+               rpc::PollPushTaskResultReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
               HandleDirectActorCallArgWaitComplete,
               (rpc::DirectActorCallArgWaitCompleteRequest request,
                rpc::DirectActorCallArgWaitCompleteReply *reply,

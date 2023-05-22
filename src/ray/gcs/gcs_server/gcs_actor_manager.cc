@@ -279,16 +279,18 @@ void GcsActorManager::HandleCreateActor(rpc::CreateActorRequest request,
                 << ", actor id = " << actor_id;
   Status status = CreateActor(
       request,
-      [reply, send_reply_callback, actor_id](const std::shared_ptr<gcs::GcsActor> &actor,
-                                             const rpc::PushTaskReply &task_reply,
-                                             const Status &creation_task_status) {
+      [reply, send_reply_callback, actor_id](
+          const std::shared_ptr<gcs::GcsActor> &actor,
+          const rpc::TaskCompletedMessage &task_completed_message,
+          const Status &creation_task_status) {
         if (creation_task_status.IsSchedulingCancelled()) {
           // Actor creation is cancelled.
           reply->mutable_death_cause()->CopyFrom(
               actor->GetActorTableData().death_cause());
         } else {
           reply->mutable_actor_address()->CopyFrom(actor->GetAddress());
-          reply->mutable_borrowed_refs()->CopyFrom(task_reply.borrowed_refs());
+          reply->mutable_borrowed_refs()->CopyFrom(
+              task_completed_message.borrowed_refs());
         }
 
         RAY_LOG(INFO) << "Finished creating actor, job id = " << actor_id.JobId()
@@ -653,7 +655,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
     // requests to GCS server.
     // In this case, we can just reply.
     // TODO(swang): Need to pass ref count info.
-    callback(iter->second, rpc::PushTaskReply(), Status::OK());
+    callback(iter->second, rpc::TaskCompletedMessage(), Status::OK());
     return Status::OK();
   }
 
@@ -832,7 +834,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
     // therefore cancelled.
     RunAndClearActorCreationCallbacks(
         actor,
-        rpc::PushTaskReply(),
+        rpc::TaskCompletedMessage(),
         Status::SchedulingCancelled("Actor creation cancelled."));
     return;
   }
@@ -892,7 +894,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   // Inform all creation callbacks that the actor was cancelled, not created.
   RunAndClearActorCreationCallbacks(
       actor,
-      rpc::PushTaskReply(),
+      rpc::TaskCompletedMessage(),
       Status::SchedulingCancelled("Actor creation cancelled."));
 }
 
@@ -1223,8 +1225,9 @@ void GcsActorManager::OnActorSchedulingFailed(
   DestroyActor(actor->GetActorID(), death_cause);
 }
 
-void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
-                                             const rpc::PushTaskReply &reply) {
+void GcsActorManager::OnActorCreationSuccess(
+    const std::shared_ptr<GcsActor> &actor,
+    const rpc::TaskCompletedMessage &task_completed_message) {
   auto actor_id = actor->GetActorID();
   liftime_num_created_actors_++;
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
@@ -1235,7 +1238,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
     return;
   }
 
-  if (reply.is_application_error()) {
+  if (task_completed_message.is_application_error()) {
     RAY_LOG(INFO)
         << "Failed to create an actor due to the application failure, actor id = "
         << actor_id << ", job id = " << actor_id.JobId();
@@ -1243,7 +1246,9 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
     // be eventually destroyed as the CoreWorker runs the creation task will exit
     // eventually due to the creation task failure.
     RunAndClearActorCreationCallbacks(
-        actor, reply, Status::CreationTaskError(reply.task_execution_error()));
+        actor,
+        task_completed_message,
+        Status::CreationTaskError(task_completed_message.task_execution_error()));
   } else {
     RAY_LOG(INFO) << "Actor created successfully, actor id = " << actor_id
                   << ", job id = " << actor_id.JobId();
@@ -1262,7 +1267,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   auto worker_id = actor->GetWorkerID();
   auto node_id = actor->GetNodeID();
   mutable_actor_table_data->set_node_id(node_id.Binary());
-  mutable_actor_table_data->set_repr_name(reply.actor_repr_name());
+  mutable_actor_table_data->set_repr_name(task_completed_message.actor_repr_name());
   RAY_CHECK(!worker_id.IsNil());
   RAY_CHECK(!node_id.IsNil());
   RAY_CHECK(created_actors_[node_id].emplace(worker_id, actor_id).second);
@@ -1272,13 +1277,13 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor_id,
       actor_table_data,
-      [this, actor_id, actor_table_data, actor, reply](Status status) {
+      [this, actor_id, actor_table_data, actor, task_completed_message](Status status) {
         RAY_CHECK_OK(gcs_publisher_->PublishActor(
             actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_create_callbacks_.
-        RunAndClearActorCreationCallbacks(actor, reply, Status::OK());
+        RunAndClearActorCreationCallbacks(actor, task_completed_message, Status::OK());
       }));
 }
 
@@ -1564,12 +1569,12 @@ bool GcsActorManager::RemovePendingActor(std::shared_ptr<GcsActor> actor) {
 
 void GcsActorManager::RunAndClearActorCreationCallbacks(
     const std::shared_ptr<GcsActor> &actor,
-    const rpc::PushTaskReply &creation_task_reply,
+    const rpc::TaskCompletedMessage &task_completed_message,
     const Status &creation_task_status) {
   auto iter = actor_to_create_callbacks_.find(actor->GetActorID());
   if (iter != actor_to_create_callbacks_.end()) {
     for (auto &callback : iter->second) {
-      callback(actor, creation_task_reply, creation_task_status);
+      callback(actor, task_completed_message, creation_task_status);
     }
     actor_to_create_callbacks_.erase(iter);
   }

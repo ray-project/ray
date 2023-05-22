@@ -379,11 +379,11 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
         }
         io_service_.post(
             [this, task_spec = std::move(task.value().first)] {
-              rpc::PushTaskReply reply;
+              rpc::TaskCompletedMessage task_completed_message;
               rpc::Address addr;
-              HandlePushTaskReply(
+              HandleTaskCompletedMessage(
                   Status::IOError("The actor is temporarily unavailable."),
-                  reply,
+                  task_completed_message,
                   addr,
                   task_spec);
             },
@@ -460,28 +460,15 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   rpc::Address addr(queue.rpc_client->Addr());
   rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_spec](const Status &status, const rpc::PushTaskReply &reply) {
-        HandlePushTaskReply(status, reply, addr, task_spec);
+        const auto &task_completed_message = reply.task_completed_message();
+        HandleTaskCompletedMessage(status, task_completed_message, addr, task_spec);
       };
 
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, actor_id](const Status &status, const rpc::PushTaskReply &reply) {
-        rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
-        {
-          absl::MutexLock lock(&mu_);
-          auto it = client_queues_.find(actor_id);
-          RAY_CHECK(it != client_queues_.end());
-          auto &queue = it->second;
-          auto callback_it = queue.inflight_task_callbacks.find(task_id);
-          if (callback_it == queue.inflight_task_callbacks.end()) {
-            RAY_LOG(DEBUG) << "The task " << task_id
-                           << " has already been marked as failed. Ingore the reply.";
-            return;
-          }
-          reply_callback = std::move(callback_it->second);
-          queue.inflight_task_callbacks.erase(callback_it);
-        }
-        reply_callback(status, reply);
+      [this, task_id, actor_id, addr, task_spec](const Status &status,
+                                                 const rpc::PushTaskReply &reply) {
+        PollResultUntilTaskCompleted(actor_id, task_id, addr, task_spec, status, reply);
       };
 
   task_finisher_.MarkTaskWaitingForExecution(task_id,
@@ -490,9 +477,58 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
+void CoreWorkerDirectActorTaskSubmitter::PollResultUntilTaskCompleted(
+    const ActorID &actor_id,
+    const TaskID &task_id,
+    const rpc::Address &addr,
+    const TaskSpecification &task_spec,
     const Status &status,
-    const rpc::PushTaskReply &reply,
+    const rpc::PushTaskReply &reply) {
+  rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
+  std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
+  bool task_completed = false;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = client_queues_.find(actor_id);
+    RAY_CHECK(it != client_queues_.end());
+    auto &queue = it->second;
+    auto callback_it = queue.inflight_task_callbacks.find(task_id);
+    if (callback_it == queue.inflight_task_callbacks.end()) {
+      RAY_LOG(DEBUG) << "The task " << task_id
+                     << " has already been marked as failed. Ingore the reply.";
+      return;
+    }
+
+    if (reply.has_generator_returns_message()) {
+      task_completed = false;
+      client = queue.rpc_client;
+    } else {
+      task_completed = true;
+      reply_callback = std::move(callback_it->second);
+      queue.inflight_task_callbacks.erase(callback_it);
+    }
+  }
+
+  if (task_completed) {
+    reply_callback(status, reply);
+  } else {
+    RAY_CHECK(client != nullptr);
+    task_finisher_.HandleReportGeneratorItemReturns2(reply.generator_returns_message());
+    rpc::PollPushTaskResultRequest req;
+    req.set_task_id(task_id.Binary());
+    client->PollPushTaskResult(
+        std::move(req),
+        [this, task_spec, task_id, actor_id, addr](
+            Status status, const rpc::PollPushTaskResultReply &reply) mutable {
+          PollResultUntilTaskCompleted(
+              actor_id, task_id, addr, task_spec, status, reply.push_task_reply());
+        });
+  }
+}
+
+void CoreWorkerDirectActorTaskSubmitter::HandleTaskCompletedMessage(
+    const Status &status,
+    const rpc::TaskCompletedMessage &task_completed_message,
     const rpc::Address &addr,
     const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
@@ -504,12 +540,14 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
 
   if (task_skipped) {
     // NOTE(simon):Increment the task counter regardless of the status because the
-    // reply for a previously completed task. We are not calling CompletePendingTask
-    // because the tasks are pushed directly to the actor, not placed on any queues
-    // in task_finisher_.
+    // task_completed_message for a previously completed task. We are not calling
+    // CompletePendingTask because the tasks are pushed directly to the actor, not placed
+    // on any queues in task_finisher_.
   } else if (status.ok()) {
-    task_finisher_.CompletePendingTask(
-        task_id, reply, addr, reply.is_application_error());
+    task_finisher_.CompletePendingTask(task_id,
+                                       task_completed_message,
+                                       addr,
+                                       task_completed_message.is_application_error());
   } else {
     bool is_actor_dead = false;
     bool fail_immediatedly = false;

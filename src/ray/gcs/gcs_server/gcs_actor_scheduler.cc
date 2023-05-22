@@ -483,7 +483,8 @@ void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
                             << actor->GetActorID() << " on worker "
                             << worker->GetWorkerID() << " at node " << actor->GetNodeID()
                             << ", job id = " << actor->GetActorID().JobId();
-              schedule_success_handler_(actor, reply);
+              const auto &task_completed_message = reply.task_completed_message();
+              schedule_success_handler_(actor, task_completed_message);
             } else {
               RetryCreatingActorOnWorker(actor, worker);
             }

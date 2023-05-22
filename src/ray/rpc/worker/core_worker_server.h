@@ -30,6 +30,7 @@ namespace rpc {
 /// Disable gRPC server metrics since it incurs too high cardinality.
 #define RAY_CORE_WORKER_RPC_HANDLERS                                                     \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, PushTask, -1)           \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, PollPushTaskResult, -1) \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
       CoreWorkerService, DirectActorCallArgWaitComplete, -1)                             \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
@@ -62,6 +63,7 @@ namespace rpc {
 
 #define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PollPushTaskResult)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RayletNotifyGCSRestart)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \

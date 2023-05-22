@@ -118,6 +118,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void PushNormalTask(std::unique_ptr<PushTaskRequest> request,
                               const ClientCallback<PushTaskReply> &callback) {}
 
+  virtual void PollPushTaskResult(
+      const PollPushTaskResultRequest &request,
+      const ClientCallback<PollPushTaskResultReply> &callback) {}
+
   /// Notify a wait has completed for direct actor call arguments.
   ///
   /// \param[in] request The request message.
@@ -226,6 +230,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   };
 
   const rpc::Address &Addr() const override { return addr_; }
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         PollPushTaskResult,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          DirectActorCallArgWaitComplete,

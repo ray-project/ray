@@ -215,6 +215,30 @@ class CoreWorkerDirectTaskSubmitter {
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
 
+  void PollResultUntilTaskCompleted(
+      const rpc::PushTaskReply &reply,
+      Status status,
+      const TaskID &task_id,
+      rpc::CoreWorkerClientInterface &client,
+      const TaskSpecification &task_spec,
+      bool is_actor,
+      bool is_actor_creation,
+      const SchedulingKey &scheduling_key,
+      const rpc::WorkerAddress &addr,
+      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
+          &assigned_resources);
+
+  void HandleTaskCompleted(const Status &status,
+                           const rpc::TaskCompletedMessage &task_completed_message,
+                           const TaskID &task_id,
+                           const TaskSpecification &task_spec,
+                           bool is_actor,
+                           bool is_actor_creation,
+                           const SchedulingKey &scheduling_key,
+                           const rpc::WorkerAddress &addr,
+                           const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
+                               &assigned_resources);
+
   /// Handles result from GetTaskFailureCause.
   void HandleGetTaskFailureCause(
       const Status &task_execution_status,

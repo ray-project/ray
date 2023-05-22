@@ -69,27 +69,7 @@ message ActorHandle {
   int32 max_pending_calls = 13;
 }
 
-message PushTaskRequest {
-  // The ID of the worker this message is intended for.
-  bytes intended_worker_id = 1;
-  // The task to be pushed.
-  TaskSpec task_spec = 2;
-  // The sequence number of the task for this client. This must increase
-  // sequentially starting from zero for each actor handle. The server
-  // will guarantee tasks execute in this sequence, waiting for any
-  // out-of-order request messages to arrive as necessary.
-  // If set to -1, ordering is disabled and the task executes immediately.
-  int64 sequence_number = 3;
-  // The max sequence number the client has processed responses for. This
-  // is a performance optimization that allows the client to tell the server
-  // to cancel any PushTaskRequests with seqno <= this value, rather than
-  // waiting for the server to time out waiting for missing messages.
-  int64 client_processed_up_to = 4;
-  // Resource mapping ids assigned to the worker executing the task.
-  repeated ResourceMapEntry resource_mapping = 5;
-}
-
-message PushTaskReply {
+message TaskCompletedMessage {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
   // Dynamically created objects. These are objects whose refs were allocated
@@ -129,6 +109,58 @@ message PushTaskReply {
   // from the core worker. This is only set when the task execution failed.
   // Default to empty string (not set) when no error happens.
   string task_execution_error = 9;
+}
+
+message GeneratorReturnsMessage {
+  // The intermediate return object that's dynamically
+  // generated from the executor side.
+  repeated ReturnObject dynamic_return_objects = 1;
+  // The address of the executor.
+  Address worker_addr = 2;
+  // The index of the task return. It is used to
+  // reorder the intermediate return object
+  // because the ordering of this request
+  // is not guaranteed.
+  int64 item_index = 3;
+  bool finished = 4;
+  // The object ref id of the executor task that
+  // generates intermediate results.
+  bytes generator_id = 5;
+}
+
+message PushTaskRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // The task to be pushed.
+  TaskSpec task_spec = 2;
+  // The sequence number of the task for this client. This must increase
+  // sequentially starting from zero for each actor handle. The server
+  // will guarantee tasks execute in this sequence, waiting for any
+  // out-of-order request messages to arrive as necessary.
+  // If set to -1, ordering is disabled and the task executes immediately.
+  int64 sequence_number = 3;
+  // The max sequence number the client has processed responses for. This
+  // is a performance optimization that allows the client to tell the server
+  // to cancel any PushTaskRequests with seqno <= this value, rather than
+  // waiting for the server to time out waiting for missing messages.
+  int64 client_processed_up_to = 4;
+  // Resource mapping ids assigned to the worker executing the task.
+  repeated ResourceMapEntry resource_mapping = 5;
+}
+
+message PushTaskReply {
+  oneof task_result_one_of {
+    TaskCompletedMessage task_completed_message = 1;
+    GeneratorReturnsMessage generator_returns_message = 2;
+  }
+}
+
+message PollPushTaskResultRequest {
+  bytes task_id = 1;
+}
+
+message PollPushTaskResultReply {
+  PushTaskReply push_task_reply = 1;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -409,6 +441,8 @@ service CoreWorkerService {
       returns (RayletNotifyGCSRestartReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+  // SANG-TODO Add this.
+  rpc PollPushTaskResult(PollPushTaskResultRequest) returns (PollPushTaskResultReply);
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
