@@ -14,7 +14,8 @@ grpc::ChannelArguments GetGcsRpcClientArguments() {
   return arguments;
 }
 
-std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string &address, int port) {
+std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string &address,
+                                                               int port) {
   static std::shared_ptr<grpc::Channel> channel_;
   static std::mutex mu_;
   static std::string address_;
@@ -27,7 +28,7 @@ std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string
     channel_ = BuildChannel(address_, port_, GetGcsRpcClientArguments());
   }
 
-  if(address_ == address && port_ == port) {
+  if (address_ == address && port_ == port) {
     return channel_;
   } else {
     RAY_LOG(INFO) << "Generate a new GCS channel: " << address << ":" << port;
@@ -35,5 +36,5 @@ std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string
   }
 }
 
-}
-}
+}  // namespace rpc
+}  // namespace ray

@@ -169,7 +169,9 @@ class Executor {
 /// Client used for communicating with gcs server.
 class GcsRpcClient {
  public:
-  static std::shared_ptr<grpc::Channel> GetDefaultChannel(const std::string &address, int port);
+  static std::shared_ptr<grpc::Channel> GetDefaultChannel(const std::string &address,
+                                                          int port);
+
  public:
   /// Constructor. GcsRpcClient is not thread safe.
   ///
