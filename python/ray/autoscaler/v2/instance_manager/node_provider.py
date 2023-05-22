@@ -82,17 +82,17 @@ class NodeProviderAdapter(NodeProvider):
 
     @override
     def create_nodes(self, instance_type: InstanceType, count: int) -> List[Instance]:
-        result = self._node_launcher.launch_node(
+        created_nodes = self._node_launcher.launch_node(
             self._config.get_raw_config_mutable(),
             count,
             instance_type.name,
         )
         # TODO: we should handle failures where the instance type is
         # not available
-        if result:
+        if created_nodes:
             return [
                 self._get_instance(cloud_instance_id)
-                for cloud_instance_id in result.keys()
+                for cloud_instance_id in created_nodes.keys()
             ]
         return []
 
@@ -107,7 +107,7 @@ class NodeProviderAdapter(NodeProvider):
     @override
     def get_non_terminated_nodes(self):
         clould_instance_ids = self._provider.non_terminated_nodes()
-        return self.get_nodes_by_id(clould_instance_ids)
+        return self.get_nodes_by_cloud_id(clould_instance_ids)
 
     @override
     def get_nodes_by_cloud_id(
