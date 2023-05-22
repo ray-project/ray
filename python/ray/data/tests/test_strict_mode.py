@@ -183,38 +183,41 @@ def test_strict_compute(ray_start_regular_shared, enable_strict_mode):
 
 
 def test_strict_schema(ray_start_regular_shared, enable_strict_mode):
-    import pyarrow
+    import pyarrow as pa
+    from ray.data.extensions.tensor_extension import ArrowTensorType
     from ray.data._internal.pandas_block import PandasBlockSchema
 
     ds = ray.data.from_items([{"x": 2}])
     schema = ds.schema()
-    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
-    assert str(schema) == "Schema({'x': DataType(int64)})"
+    assert isinstance(schema.base_schema, pa.lib.Schema)
+    assert schema.names == ["x"]
+    assert schema.types == [pa.int64()]
 
     ds = ray.data.from_items([{"x": 2, "y": [1, 2]}])
     schema = ds.schema()
-    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
-    assert (
-        str(schema)
-        == "Schema({'x': DataType(int64), 'y': ListType(list<item: int64>)})"
-    )
+    assert isinstance(schema.base_schema, pa.lib.Schema)
+    assert schema.names == ["x", "y"]
+    assert schema.types == [pa.int64(), pa.list_(pa.int64())]
 
     ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
     schema = ds.schema()
-    assert isinstance(schema.base_schema, PandasBlockSchema)
-    assert str(schema) == (
-        "Schema({'x': DataType(int64), 'y': "
-        "<class 'object'>, 'z': <class 'object'>})"
-    )
+    assert schema.names == ["x", "y", "z"]
+    assert schema.types == [
+        pa.int64(),
+        object,
+        object,
+    ]
 
     ds = ray.data.from_numpy(np.ones((100, 10)))
     schema = ds.schema()
-    assert isinstance(schema.base_schema, pyarrow.lib.Schema)
-    assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
+    assert isinstance(schema.base_schema, pa.lib.Schema)
+    assert schema.names == ["data"]
+    assert schema.types == [ArrowTensorType(shape=(10,), dtype=pa.float64())]
 
     schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
-    assert str(schema) == "Schema({'data': numpy.ndarray(shape=(10,), dtype=double)})"
     assert isinstance(schema.base_schema, PandasBlockSchema)
+    assert schema.names == ["data"]
+    assert schema.types == [ArrowTensorType(shape=(10,), dtype=pa.float64())]
 
 
 def test_use_raw_dicts(ray_start_regular_shared, enable_strict_mode):

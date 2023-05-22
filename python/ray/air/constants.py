@@ -45,6 +45,36 @@ CHECKPOINT_ID_ATTR = "_current_checkpoint_id"
 # checkpointing.
 LAZY_CHECKPOINT_MARKER_FILE = ".lazy_checkpoint_marker"
 
+
+# The timestamp of when the result is generated.
+# Default to when the result is processed by tune.
+TIMESTAMP = "timestamp"
+
+# (Auto-filled) Time in seconds this iteration took to run.
+# This may be overridden to override the system-computed time difference.
+TIME_THIS_ITER_S = "time_this_iter_s"
+
+# (Auto-filled) The index of this training iteration.
+TRAINING_ITERATION = "training_iteration"
+
+# File that stores parameters of the trial.
+EXPR_PARAM_FILE = "params.json"
+
+# Pickle File that stores parameters of the trial.
+EXPR_PARAM_PICKLE_FILE = "params.pkl"
+
+# File that stores the progress of the trial.
+EXPR_PROGRESS_FILE = "progress.csv"
+
+# File that stores results of the trial.
+EXPR_RESULT_FILE = "result.json"
+
+# File that stores the pickled error file
+EXPR_ERROR_PICKLE_FILE = "error.pkl"
+
+# File that stores the error file
+EXPR_ERROR_FILE = "error.txt"
+
 # ==================================================
 #               Environment Variables
 # ==================================================
@@ -66,4 +96,7 @@ DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
 AIR_ENV_VARS = {
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     DISABLE_LAZY_CHECKPOINTING_ENV,
+    "RAY_AIR_FULL_TRACEBACKS",
+    "RAY_AIR_NEW_OUTPUT",
+    "RAY_AIR_RICH_LAYOUT",
 }

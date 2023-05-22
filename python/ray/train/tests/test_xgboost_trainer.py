@@ -115,7 +115,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         scaling_config=scale_config,
         label_column="target",
         params=params,
-        num_boost_round=5,
+        num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         resume_from_checkpoint=resume_from,
     )
@@ -246,7 +246,7 @@ def test_validation(ray_start_4_cpus):
 
 
 def test_distributed_data_loading(ray_start_4_cpus):
-    """Checks that XGBoostTrainer does distributed data loading for Datastreams."""
+    """Checks that XGBoostTrainer does distributed data loading for Datasets."""
 
     class DummyXGBoostTrainer(XGBoostTrainer):
         def _train(self, params, dtrain, **kwargs):

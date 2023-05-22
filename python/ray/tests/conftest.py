@@ -146,21 +146,42 @@ def get_default_fixture_ray_kwargs():
     return ray_kwargs
 
 
-@contextmanager
-def _setup_redis(request):
-    # Setup external Redis and env var for initialization.
-    redis_ports = []
-    for _ in range(redis_replicas()):
-        # max port for redis cluster
-        port = 55536
-        while port >= 55535:
-            with socket.socket() as s:
-                s.bind(("", 0))
-                port = s.getsockname()[1]
-        print("Picking port", port)
-        redis_ports.append(port)
+def is_process_listen_to_port(pid, port):
+    retry_num = 10
+    interval_time = 0.5
+    for _ in range(retry_num):
+        try:
+            proc = psutil.Process(pid)
+            for conn in proc.connections():
+                if conn.status == "LISTEN" and conn.laddr.port == port:
+                    return True
+        except Exception:
+            pass
+        finally:
+            time.sleep(interval_time)
+    print(
+        f"Process({pid}) has not listened to port {port} "
+        + f"for more than {retry_num * interval_time}s."
+    )
+    return False
 
-    with tempfile.TemporaryDirectory() as tmpdirname:
+
+def start_redis(db_dir):
+    retry_num = 0
+    while True:
+        is_need_restart = False
+        # Setup external Redis and env var for initialization.
+        redis_ports = []
+        for _ in range(redis_replicas()):
+            # max port for redis cluster
+            port = 55536
+            while port >= 55535:
+                with socket.socket() as s:
+                    s.bind(("", 0))
+                    port = s.getsockname()[1]
+            print("Picking port", port)
+            redis_ports.append(port)
+
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
@@ -174,12 +195,30 @@ def _setup_redis(request):
                 enable_tls=enable_tls,
                 replica_of=leader_port,
                 leader_id=leader_id,
-                db_dir=tmpdirname,
+                db_dir=db_dir,
             )
             if leader_port is None:
                 leader_port = port
                 leader_id = node_id
             processes.append(proc)
+            # Check if th redis has started successfully and is listening on the port.
+            if not is_process_listen_to_port(proc.process.pid, port):
+                is_need_restart = True
+                break
+
+        if is_need_restart:
+            retry_num += 1
+            for proc in processes:
+                proc.process.kill()
+
+            if retry_num > 5:
+                raise RuntimeError("Failed to start redis after {retry_num} attempts.")
+            print(
+                "Retry to start redis because the process failed to "
+                + f"listen to the port({port}), retry num:{retry_num}."
+            )
+            continue
+
         if redis_replicas() > 1:
             import redis
 
@@ -189,6 +228,13 @@ def _setup_redis(request):
 
         scheme = "rediss://" if enable_tls else ""
         address_str = f"{scheme}127.0.0.1:{redis_ports[-1]}"
+        return address_str, processes
+
+
+@contextmanager
+def _setup_redis(request):
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        address_str, processes = start_redis(tmpdirname)
         old_addr = os.environ.get("RAY_REDIS_ADDRESS")
         os.environ["RAY_REDIS_ADDRESS"] = address_str
         import uuid
