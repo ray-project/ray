@@ -14,7 +14,7 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
-from ray.data.tests.util import OPTIMIZER_ENABLED, column_udf, extract_values
+from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -295,7 +295,6 @@ def _assert_has_stages(stages, stage_names):
         assert stage.name == name
 
 
-@pytest.mark.skipif(OPTIMIZER_ENABLED, reason="Deprecated with new optimizer path.")
 def test_stage_linking(ray_start_regular_shared):
     # Test lazy dataset.
     ds = ray.data.range(10).lazy()
@@ -309,15 +308,10 @@ def test_stage_linking(ray_start_regular_shared):
     ds = ds.materialize()
     _assert_has_stages(ds._plan._stages_before_snapshot, ["Map"])
     assert len(ds._plan._stages_after_snapshot) == 0
-    # since the new optimizer path does not use the stage fusion path,
-    # but instead performs operator fusion, we expect _last_optimized_stages
-    # to be not updated (None)?
     _assert_has_stages(ds._plan._last_optimized_stages, ["ReadRange->Map"])
 
 
 def test_optimize_reorder(ray_start_regular_shared):
-    # The ReorderRandomizeBlocksRule optimizer rule collapses RandomizeBlocks operators,
-    # so we should not be fusing them to begin with.
     context = DataContext.get_current()
     context.optimize_fuse_stages = True
     context.optimize_fuse_read_stages = True
@@ -327,7 +321,7 @@ def test_optimize_reorder(ray_start_regular_shared):
     expect_stages(
         ds,
         2,
-        ["DoRead->MapBatches"],
+        ["ReadRange->MapBatches(dummy_map)", "RandomizeBlockOrder"],
     )
 
     ds2 = (
@@ -340,7 +334,7 @@ def test_optimize_reorder(ray_start_regular_shared):
     expect_stages(
         ds2,
         3,
-        ["DoRead", "Repartition", "MapBatches"],
+        ["ReadRange->RandomizeBlockOrder", "Repartition", "MapBatches(dummy_map)"],
     )
 
 
@@ -366,7 +360,7 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
     ds = ray.data.range(100).map_batches(lambda x: x)
     ds.write_csv(path)
     stats = ds._write_ds.stats()
-    assert "DoRead->MapBatches->Write" in stats, stats
+    assert "ReadRange->MapBatches(<lambda>)->Write" in stats, stats
 
     ds = (
         ray.data.range(100)
@@ -376,9 +370,9 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
     )
     ds.write_csv(path)
     stats = ds._write_ds.stats()
-    assert "DoRead->MapBatches" in stats, stats
+    assert "ReadRange->MapBatches(<lambda>)" in stats, stats
     assert "RandomShuffle" in stats, stats
-    assert "MapBatches->Write" in stats, stats
+    assert "MapBatches(<lambda>)->Write" in stats, stats
 
 
 def test_write_doesnt_reorder_randomize_block(ray_start_regular_shared, tmp_path):
@@ -389,7 +383,9 @@ def test_write_doesnt_reorder_randomize_block(ray_start_regular_shared, tmp_path
 
     # The randomize_block_order will switch order with the following map_batches,
     # but not the tailing write operator.
-    assert "DoRead->MapBatches->Write" in stats, stats
+    assert "ReadRange->MapBatches(<lambda>)" in stats, stats
+    assert "RandomizeBlockOrder" in stats, stats
+    assert "Write" in stats, stats
 
 
 def test_optimize_fuse(ray_start_regular_shared):
