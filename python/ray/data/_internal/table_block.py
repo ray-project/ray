@@ -117,10 +117,21 @@ class TableBlockBuilder(BlockBuilder):
             return True
         return self._concat_would_copy() and len(self._tables) > 1
 
-    def build(self) -> Block:
-        columns = {
-            key: convert_udf_returns_to_numpy(col) for key, col in self._columns.items()
-        }
+    def build(self, convert_to_numpy: bool = True) -> Block:
+        """Builds table from this builder's columns.
+
+        Args:
+         convert_to_numpy: Whether to convert this builder's column data from Python
+             lists into Numpy ndarrays prior to converting to a table. Defaults to
+             True.
+        """
+        if convert_to_numpy:
+            columns = {
+                key: convert_udf_returns_to_numpy(col)
+                for key, col in self._columns.items()
+            }
+        else:
+            columns = self._columns
         if columns:
             tables = [self._table_from_pydict(columns)]
         else:

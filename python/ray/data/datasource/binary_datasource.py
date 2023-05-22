@@ -51,7 +51,10 @@ class BinaryDatasource(FileBasedDatasource):
             else:
                 item = {self._COLUMN_NAME: data}
             builder.add(item)
-            return builder.build()
+            # Don't convert variable length binary data to Numpy arrays as it treats
+            # zero encoding as termination by default.
+            # https://github.com/ray-project/ray/issues/35586#issuecomment-1558148261
+            return builder.build(convert_to_numpy=False)
         else:
             if include_paths:
                 return [(path, data)]
