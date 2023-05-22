@@ -153,7 +153,7 @@ from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
-from ray._private.utils import decode, DeferSigint, Unbuffered
+from ray._private.utils import decode, DeferSigint
 
 cimport cpython
 
@@ -837,14 +837,6 @@ cdef void execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
-    def write_to_stdout_and_err_no_flush(msg):
-        if isinstance(sys.stdout, Unbuffered):
-            sys.stdout.writelines_no_flush(msg)
-            sys.stderr.writelines_no_flush(msg)
-        else:
-            sys.stdout.writelines(msg)
-            sys.stderr.writelines(msg)
-
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
         task_exception = False
         try:
@@ -894,16 +886,13 @@ cdef void execute_task(
 
             # Record the task id via magic token in the log file.
             # This will be used to locate the beginning of logs from a task.
-            if core_worker.current_actor_max_concurrency() == 1:
-                # We only do this for non concurrent actor tasks. For concurrent
-                # actors, there's significant overhead due to io contention, and
-                # since the logs are interleaving, they're not very useful.
-                attempt_number = core_worker.get_current_task_attempt_number()
-                task_attempt_magic_token = "{}{}-{}\n".format(
-                    ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
-                    attempt_number)
-                # Print on both .out and .err with buffering.
-                write_to_stdout_and_err_no_flush(task_attempt_magic_token)
+            attempt_number = core_worker.get_current_task_attempt_number()
+            task_attempt_magic_token = "{}{}-{}\n".format(
+                ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
+                attempt_number)
+            # Print on both .out and .err
+            print(task_attempt_magic_token, end="")
+            print(task_attempt_magic_token, file=sys.stderr, end="")
 
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
@@ -957,12 +946,12 @@ cdef void execute_task(
                 finally:
                     # Record the end of task via magic token in the log file.
                     # This will be used to locate the end of logs from a task.
-                    if core_worker.current_actor_max_concurrency() == 1:
-                        task_attempt_magic_token = "{}{}-{}\n".format(
-                            ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
-                            attempt_number)
-                        # Print on both .out and .err with buffering
-                        write_to_stdout_and_err_no_flush(task_attempt_magic_token)
+                    task_attempt_magic_token = "{}{}-{}\n".format(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
+                        attempt_number)
+                    # Print on both .out and .err
+                    print(task_attempt_magic_token, end="")
+                    print(task_attempt_magic_token, file=sys.stderr, end="")
 
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
@@ -3043,10 +3032,6 @@ cdef class CoreWorker:
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
-
-    def current_actor_max_concurrency(self):
-        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
-                .CurrentActorMaxConcurrency())
 
     def get_current_runtime_env(self) -> str:
         # This should never change, so we can safely cache it to avoid ser/de
