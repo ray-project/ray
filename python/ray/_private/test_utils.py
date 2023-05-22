@@ -1904,7 +1904,7 @@ def has_no_words(string, words):
 
 class MockNode:
     def __init__(self, node_id, tags, node_config, node_type, unique_ips=False):
-        self.node_id = node_id
+        self.node_id = str(node_id)
         self.state = "pending"
         self.tags = tags
         self.external_ip = "1.2.3.4"
@@ -2125,6 +2125,8 @@ class MockProvider(NodeProvider):
             self.ready_to_create.wait()
         if self.fail_creates:
             return
+
+        created_nodes = {}
         with self.lock:
             if self.cache_stopped:
                 for node in self.mock_nodes.values():
@@ -2132,15 +2134,19 @@ class MockProvider(NodeProvider):
                         count -= 1
                         node.state = "pending"
                         node.tags.update(tags)
+                        created_nodes[node.node_id] = node
             for _ in range(count):
-                self.mock_nodes[self.next_id] = MockNode(
+                new_node = MockNode(
                     self.next_id,
                     tags.copy(),
                     node_config,
                     tags.get(TAG_RAY_USER_NODE_TYPE),
                     unique_ips=self.unique_ips,
                 )
+                self.mock_nodes[new_node.node_id] = new_node
+                created_nodes[new_node.node_id] = new_node
                 self.next_id += 1
+        return created_nodes
 
     def set_node_tags(self, node_id, tags):
         with self.lock:

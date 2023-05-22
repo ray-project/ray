@@ -1,4 +1,4 @@
-vi # --------------------------------------------------------------------
+# --------------------------------------------------------------------
 # Tests from the python/ray/autoscaler/v2/tests directory.
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
@@ -38,4 +38,3 @@ py_test(
     tags = ["team:core"],
     deps = ["//:ray_lib",],
 )
-
