@@ -15,7 +15,11 @@ from ray._private.client_mode_hook import (
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
-from ray._raylet import PythonFunctionDescriptor, StreamingObjectRefGenerator
+from ray._raylet import (
+    STREAMING_GENERATOR_RETURN,
+    PythonFunctionDescriptor,
+    StreamingObjectRefGenerator,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -401,7 +405,7 @@ class RemoteFunction:
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""
-            if num_returns == -2:
+            if num_returns == STREAMING_GENERATOR_RETURN:
                 # Streaming generator will return a single ref
                 # that is for the generator task.
                 assert len(object_refs) == 1
