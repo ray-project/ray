@@ -33,6 +33,13 @@ def test_from_state_dict():
     assert actual_state_dict == expected_state_dict
 
 
+def test_pickle_large_model():
+    # TorchCheckpoint should be able to serialize large checkpoints(> 4 GiB)
+    data_dict = {"key": "1" * (4 * 1024 * 1024 * 1024 + 100)}
+    checkpoint = TorchCheckpoint(data_dict=data_dict)
+    pickled_checkpoint = pickle.dumps(checkpoint)
+
+
 if __name__ == "__main__":
     import sys
 
