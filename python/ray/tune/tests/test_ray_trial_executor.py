@@ -8,6 +8,7 @@ import unittest
 import ray
 from ray import tune
 from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all
 from ray.tune import Trainable
@@ -18,7 +19,7 @@ from ray.tune.execution.ray_trial_executor import (
     RayTrialExecutor,
 )
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_trainable
-from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
+from ray.tune.result import PID, TRIAL_ID
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment import Trial
 from ray.cluster_utils import Cluster
@@ -99,13 +100,14 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
             )
         msg = (
             "Ignore this message if the cluster is autoscaling. "
-            "You asked for 5.0 cpu and 3.0 gpu per trial, "
-            "but the cluster only has 4.0 cpu and 2.0 gpu. "
-            "Stop the tuning job and "
-            "adjust the resources requested per trial "
-            "(possibly via `resources_per_trial` "
-            "or via `num_workers` for rllib) "
-            "and/or add more resources to your Ray runtime."
+            "No trial is running and no new trial has been started "
+            "within the last 0 seconds. This could be due to the cluster not having "
+            "enough resources available. You asked for 5.0 CPUs and 3.0 GPUs per "
+            "trial, but the cluster only has 4.0 CPUs and 2.0 GPUs available. "
+            "Stop the tuning and adjust the required resources "
+            "(e.g. via the `ScalingConfig` or `resources_per_trial`, "
+            "or `num_workers` for rllib), "
+            "or add more resources to your cluster."
         )
         mocked_warn.assert_called_once_with(msg)
 

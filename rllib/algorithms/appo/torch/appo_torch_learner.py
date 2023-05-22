@@ -5,7 +5,7 @@ from ray.rllib.algorithms.appo.appo_learner import (
     AppoLearner,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_KL_KEY,
-    OLD_ACTION_DIST_KEY,
+    OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     make_time_major,
@@ -23,6 +23,7 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
@@ -32,13 +33,20 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
     """Implements APPO loss / update logic on top of ImpalaTorchLearner."""
 
     @override(TorchLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
 
         values = fwd_out[SampleBatch.VF_PREDS]
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
-        old_target_policy_dist = fwd_out[OLD_ACTION_DIST_KEY]
+        action_dist_cls_train = (
+            self.module[module_id].unwrapped().get_train_action_dist_cls()
+        )
+        target_policy_dist = action_dist_cls_train.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
+        old_target_policy_dist = action_dist_cls_train.from_logits(
+            fwd_out[OLD_ACTION_DIST_LOGITS_KEY]
+        )
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[SampleBatch.ACTIONS]
         )
@@ -129,17 +137,28 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         total_loss = (
             mean_pi_loss
             + (mean_vf_loss * self.hps.vf_loss_coeff)
-            + (mean_entropy_loss * self.hps.entropy_coeff)
+            + (
+                mean_entropy_loss
+                * self.entropy_coeff_scheduler.get_current_value(module_id)
+            )
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            POLICY_LOSS_KEY: mean_pi_loss,
-            VF_LOSS_KEY: mean_vf_loss,
-            ENTROPY_KEY: -mean_entropy_loss,
-            LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-        }
+        # Register important loss stats.
+        self.register_metrics(
+            module_id,
+            {
+                POLICY_LOSS_KEY: mean_pi_loss,
+                VF_LOSS_KEY: mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+                LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+                LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
+                    self.curr_kl_coeffs_per_module[module_id]
+                ),
+            },
+        )
+        # Return the total loss.
+        return total_loss
 
     @override(TorchLearner)
     def _make_modules_ddp_if_necessary(self) -> None:

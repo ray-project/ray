@@ -56,7 +56,6 @@ extensions = [
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
-    "sphinx_panels",
     "sphinx_design",
 ]
 
@@ -236,6 +235,7 @@ linkcheck_ignore = [
     "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
     # 403 Client Error: Forbidden for url.
     # They ratelimit bots.
+    "https://www.researchgate.net/publication/222573328_Stochastic_Gradient_Boosting",
     "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
     "https://dev.mysql.com/doc/connector-python/en/",
     # Returning 522s intermittently.
@@ -364,7 +364,8 @@ tag_mapping = {
     "trainTuneTensorflow": "TensorFlow,Training,Tuning",
     "trainTunePyTorch": "PyTorch,Training,Tuning",
     "trainBenchmark": "PyTorch,Training",
-    "trainLightning": "PyTorch,Lightning,Training"
+    "trainLightning": "PyTorch,Lightning,Training",
+    "trackLightning": "PyTorch,Lightning,Training,MLFlow"
     # TODO add and integrate tags for other libraries.
     # Tune has a proper example library
     # Serve, RLlib and AIR could use one.

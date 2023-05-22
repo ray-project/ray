@@ -1,4 +1,4 @@
-.. _writing-code-snippets:
+.. _writing-code-snippets_ref:
 
 ==========================
 How to write code snippets
@@ -227,7 +227,7 @@ the `doctest` directive and replace problematic sections with ellipsis. ::
 
         >>> import ray
         >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
-        Datastream(
+        Dataset(
            num_blocks=...,
            num_rows=...,
            schema={image: numpy.ndarray(shape=..., dtype=uint8)}
@@ -237,7 +237,7 @@ If you omit the `doctest` directive, append `# doctest: +ELLIPSIS` to your code 
 
     >>> import ray
     >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")  # doctest: +ELLIPSIS
-    Datastream(
+    Dataset(
        num_blocks=...,
        num_rows=...,
        schema={image: numpy.ndarray(shape=..., dtype=uint8)}
@@ -260,7 +260,7 @@ the `testoutput` directive and replace problematic sections with ellipsis. ::
     .. testoutput::
         :options: +ELLIPSIS
 
-        Datastream(
+        Dataset(
            num_blocks=...,
            num_rows=...,
            schema={image: numpy.ndarray(shape=..., dtype=uint8)}
@@ -280,7 +280,7 @@ If your output is nondeterministic and you want to display a sample output, add
         0.969461416250246
 
 If your output is hard to test and you don't want to display a sample output, add
-`:options: +SKIP` and `:hide:`. ::
+`:options: +ELLIPSIS` and `:hide:`. ::
 
     .. testcode::
 
@@ -288,9 +288,9 @@ If your output is hard to test and you don't want to display a sample output, ad
 
     .. testoutput::
         :hide:
-        :options: +SKIP
+        :options: +ELLIPSIS
 
-        ...  # Add ellipsis. Otherwise, Sphinx can't parse the block.
+        ...
 
 --------------------
 How to test examples

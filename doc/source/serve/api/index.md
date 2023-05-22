@@ -375,7 +375,7 @@ Content-Type: application/json
 (serve-rest-api-response-schema)=
 ## Response Schemas
 
-#### V1 REST API
+### V1 REST API
 ```{eval-rst}
 .. autosummary::
    :toctree: doc/
@@ -383,7 +383,7 @@ Content-Type: application/json
    schema.ServeStatusSchema
 ```
 
-#### V2 REST API
+### V2 REST API
 ```{eval-rst}
 .. autosummary::
    :toctree: doc/

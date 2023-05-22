@@ -3,7 +3,6 @@ from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_KL_KEY,
-    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY,
@@ -17,6 +16,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 
@@ -27,12 +27,12 @@ logger = logging.getLogger(__name__)
 class PPOTfLearner(PPOLearner, TfLearner):
     """Implements tf-specific PPO loss logic on top of PPOLearner.
 
-    This class implements the ppo loss under `_compute_loss_per_module()`.
+    This class implements the ppo loss under `self.compute_loss_for_module()`.
     """
 
     @override(TfLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         # TODO (Kourosh): batch type is NestedDict.
         # TODO (Kourosh): We may or may not user module_id. For example if we have an
@@ -40,14 +40,20 @@ class PPOTfLearner(PPOLearner, TfLearner):
         # learning rate for that agent.
         # TODO (Kourosh): come back to RNNs later
 
-        curr_action_dist = fwd_out[SampleBatch.ACTION_DIST]
-        action_dist_class = type(fwd_out[SampleBatch.ACTION_DIST])
-        prev_action_dist = action_dist_class.from_logits(
+        action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
+        action_dist_class_exploration = self.module[
+            module_id
+        ].get_exploration_action_dist_cls()
+        curr_action_dist = action_dist_class_train.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
+        prev_action_dist = action_dist_class_exploration.from_logits(
             batch[SampleBatch.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = tf.exp(
-            fwd_out[SampleBatch.ACTION_LOGP] - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
+            - batch[SampleBatch.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -62,13 +68,13 @@ class PPOTfLearner(PPOLearner, TfLearner):
                     "This can happen naturally in deterministic "
                     "environments where the optimal policy has zero mass "
                     "for a specific action. To fix this issue, consider "
-                    "setting the coefficient for the KL loss term to "
-                    "zero or increasing policy entropy."
+                    "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                    "config."
                 )
         else:
             mean_kl_loss = tf.constant(0.0, dtype=logp_ratio.dtype)
 
-        curr_entropy = fwd_out["entropy"]
+        curr_entropy = curr_action_dist.entropy()
         mean_entropy = tf.reduce_mean(curr_entropy)
 
         surrogate_loss = tf.minimum(
@@ -97,7 +103,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         total_loss = tf.reduce_mean(
             -surrogate_loss
             + self.hps.vf_loss_coeff * vf_loss_clipped
-            - self.curr_entropy_coeffs_per_module[module_id] * curr_entropy
+            - self.entropy_coeff_scheduler.get_current_value(module_id) * curr_entropy
         )
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
@@ -105,26 +111,31 @@ class PPOTfLearner(PPOLearner, TfLearner):
         if self.hps.kl_coeff > 0.0:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            POLICY_LOSS_KEY: -tf.reduce_mean(surrogate_loss),
-            VF_LOSS_KEY: mean_vf_loss,
-            LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
-            LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
-                batch[Postprocessing.VALUE_TARGETS], value_fn_out
-            ),
-            ENTROPY_KEY: mean_entropy,
-            LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-        }
+        # Register important loss stats.
+        self.register_metrics(
+            module_id,
+            {
+                POLICY_LOSS_KEY: -tf.reduce_mean(surrogate_loss),
+                VF_LOSS_KEY: mean_vf_loss,
+                LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
+                LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
+                    batch[Postprocessing.VALUE_TARGETS], value_fn_out
+                ),
+                ENTROPY_KEY: mean_entropy,
+                LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+            },
+        )
+        # Return the total loss.
+        return total_loss
 
     @override(PPOLearner)
-    def additional_update_per_module(
+    def additional_update_for_module(
         self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
     ) -> Dict[str, Any]:
         assert sampled_kl_values, "Sampled KL values are empty."
 
-        results = super().additional_update_per_module(
-            module_id,
+        results = super().additional_update_for_module(
+            module_id=module_id,
             sampled_kl_values=sampled_kl_values,
             timestep=timestep,
         )
@@ -138,12 +149,5 @@ class PPOTfLearner(PPOLearner, TfLearner):
         elif sampled_kl < 0.5 * self.hps.kl_target:
             curr_var.assign(curr_var * 0.5)
         results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
-
-        # Update entropy coefficient.
-        value = self.hps.entropy_coeff
-        if self.hps.entropy_coeff_schedule is not None:
-            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
-            self.curr_entropy_coeffs_per_module[module_id].assign(value)
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
 
         return results

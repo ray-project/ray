@@ -20,6 +20,10 @@
 /// The precision of fractional resource quantity.
 constexpr int kResourceUnitScaling = 10000;
 
+constexpr char kWorkerSetupHookKeyName[] = "FunctionsToRun";
+
+constexpr int kStreamingGeneratorReturn = -2;
+
 /// Length of Ray full-length IDs in bytes.
 constexpr size_t kUniqueIDSize = 28;
 

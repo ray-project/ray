@@ -1,3 +1,4 @@
+import os
 import argparse
 import base64
 import json
@@ -10,6 +11,7 @@ import ray._private.utils
 import ray.actor
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
+from ray._private.runtime_env.setup_hook import load_and_execute_setup_hook
 
 
 parser = argparse.ArgumentParser(
@@ -169,7 +171,6 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
-
     worker_launched_time_ms = time.time_ns() // 1e6
 
     if args.worker_type == "WORKER":
@@ -236,20 +237,29 @@ if __name__ == "__main__":
         worker_launched_time_ms=worker_launched_time_ms,
     )
 
+    worker = ray._private.worker.global_worker
+
     # Setup log file.
     out_file, err_file = node.get_log_file_handles(
         get_worker_log_file_name(args.worker_type)
     )
     configure_log_file(out_file, err_file)
-    ray._private.worker.global_worker.set_out_file(out_file)
-    ray._private.worker.global_worker.set_err_file(err_file)
+    worker.set_out_file(out_file)
+    worker.set_err_file(err_file)
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")
         ray._private.utils.try_import_each_module(module_names_to_import)
 
+    # If the worker setup function is configured, run it.
+    worker_setup_hook_key = os.getenv(ray_constants.WORKER_SETUP_HOOK_ENV_VAR)
+    if worker_setup_hook_key:
+        error = load_and_execute_setup_hook(worker_setup_hook_key)
+        if error is not None:
+            worker.core_worker.exit_worker("system", error)
+
     if mode == ray.WORKER_MODE:
-        ray._private.worker.global_worker.main_loop()
+        worker.main_loop()
     elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.

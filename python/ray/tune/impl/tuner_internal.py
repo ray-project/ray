@@ -90,6 +90,7 @@ class TunerInternal:
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
         _tuner_kwargs: Optional[Dict] = None,
+        _trainer_api: bool = False,
     ):
         from ray.train.trainer import BaseTrainer
 
@@ -102,6 +103,7 @@ class TunerInternal:
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
+        self._trainer_api = _trainer_api
 
         # Restore from Tuner checkpoint.
         if restore_path:
@@ -669,6 +671,12 @@ class TunerInternal:
             ),
             checkpoint_freq=checkpoint_freq,
             checkpoint_at_end=checkpoint_at_end,
+            checkpoint_keep_all_ranks=(
+                self._run_config.checkpoint_config._checkpoint_keep_all_ranks
+            ),
+            checkpoint_upload_from_workers=(
+                self._run_config.checkpoint_config._checkpoint_upload_from_workers
+            ),
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),
@@ -681,6 +689,7 @@ class TunerInternal:
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
             _tuner_api=True,
+            _trainer_api=self._trainer_api,
         )
 
     def _fit_internal(

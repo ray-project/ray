@@ -8,6 +8,9 @@ from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
+from ray.util.state import get_job
+from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.util.state.common import Humanify
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -62,7 +65,7 @@ from ray.dashboard.state_aggregator import (
     StateAPIManager,
     _convert_filters_type,
 )
-from ray.experimental.state.api import (
+from ray.util.state import (
     get_actor,
     get_node,
     get_objects,
@@ -84,7 +87,7 @@ from ray.experimental.state.api import (
     StateApiClient,
 )
 from ray._private.event.event_logger import get_event_id
-from ray.experimental.state.common import (
+from ray.util.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
@@ -102,16 +105,16 @@ from ray.experimental.state.common import (
     state_column,
 )
 from ray.dashboard.utils import ray_address_to_api_server_url
-from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
-from ray.experimental.state.state_cli import (
+from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
+from ray.util.state.state_cli import (
     AvailableFormat,
     format_list_api_output,
     _parse_filter,
     summary_state_cli_group,
 )
-from ray.experimental.state.state_cli import ray_get
-from ray.experimental.state.state_cli import ray_list
-from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
+from ray.util.state.state_cli import ray_get
+from ray.util.state.state_cli import ray_list
+from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
@@ -915,7 +918,7 @@ async def test_api_manager_list_tasks(state_api_manager):
     ]
     result = await state_api_manager.list_tasks(option=create_api_options())
     data_source_client.get_all_task_info.assert_any_await(
-        timeout=DEFAULT_RPC_TIMEOUT, job_id=None, exclude_driver=True
+        timeout=DEFAULT_RPC_TIMEOUT, filters=[], exclude_driver=True
     )
     data = result.result
     data = data
@@ -1533,8 +1536,14 @@ async def test_state_data_source_client(ray_start_cluster):
         entrypoint="ls",
     )
     result = await client.get_job_info()
-    assert list(result.keys())[0] == job_id
-    assert isinstance(result, dict)
+    assert isinstance(result[0], JobDetails)
+    found_job = False
+    for job in result:
+        if job.type != "DRIVER":
+            assert job.submission_id == job_id
+            found_job = True
+    assert found_job, result
+    assert isinstance(result, list)
 
     """
     Test tasks
@@ -1694,6 +1703,18 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     # work, otherwise it should have created the 2 prestarted task-only
     # workers prior to https://github.com/ray-project/ray/pull/33623
     assert result.total == 6
+
+
+def test_humanify():
+    raw_bytes = 1024
+    assert Humanify.memory(raw_bytes) == "1.000 KiB"
+    raw_bytes *= 1024
+    assert Humanify.memory(raw_bytes) == "1.000 MiB"
+    raw_bytes *= 1024
+    assert Humanify.memory(raw_bytes) == "1.000 GiB"
+    timestamp = 1610000000
+    assert "1970-01" in Humanify.timestamp(timestamp)
+    assert Humanify.duration(timestamp) == "18 days, 15:13:20"
 
 
 @pytest.mark.asyncio
@@ -2172,8 +2193,9 @@ def test_list_get_nodes(ray_start_cluster):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_jobs(shutdown_only):
+def test_list_get_jobs(shutdown_only):
     ray.init()
+    # Test submission job
     client = JobSubmissionClient(
         f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
@@ -2185,13 +2207,50 @@ def test_list_jobs(shutdown_only):
     def verify():
         job_data = list_jobs()[0]
         print(job_data)
-        job_id_from_api = job_data["job_id"]
-        correct_state = job_data["status"] == "SUCCEEDED"
-        correct_id = job_id == job_id_from_api
-        return correct_state and correct_id
+        job_id_from_api = job_data["submission_id"]
+        assert job_data["status"] == "SUCCEEDED"
+        assert job_id == job_id_from_api
+        return True
 
     wait_for_condition(verify)
-    print(list_jobs())
+
+    # Test driver jobs
+    script = """
+
+import ray
+
+ray.init("auto")
+
+@ray.remote
+def f():
+    pass
+
+ray.get(f.remote())
+"""
+    run_string_as_driver(script)
+
+    def verify():
+        jobs = list_jobs(filters=[("type", "=", "DRIVER")])
+        assert len(jobs) == 2, "1 test driver + 1 script run above"
+        for driver_job in jobs:
+            assert driver_job["driver_info"] is not None
+
+        sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
+        assert len(sub_jobs) == 1
+        assert sub_jobs[0]["submission_id"] is not None
+        return True
+
+    wait_for_condition(verify)
+
+    # Test GET api
+    def verify():
+        job = get_job(id=job_id)
+        assert job["submission_id"] == job_id
+        assert job["entrypoint"] == "ls"
+        assert job["status"] == "SUCCEEDED"
+        return True
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
