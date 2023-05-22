@@ -140,7 +140,6 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
-    ObjectRefStreamEoFError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -1194,7 +1193,6 @@ cdef execute_dynamic_generator_and_store_task_outputs(
             worker, generator,
             caller_address,
             dynamic_returns,
-            caller_address,
             generator_id)
     except Exception as error:
         is_retryable_error[0] = determine_if_retryable(
@@ -1732,11 +1730,11 @@ cdef execute_task_with_cancellation_handler(
                 actor,
                 actor_id,
                 execution_info.function_name,
-                task_type, title, caller_address, returns,
+                task_type, title, caller_address,
+                returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
-                NULL,
-                caller_address)
+                NULL)
     finally:
         with current_task_id_lock:
             current_task_id = None
@@ -3388,7 +3386,6 @@ cdef class CoreWorker:
                             const CAddress &caller_address,
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
                             *returns,
-                            const CAddress &caller_address,
                             CObjectID ref_generator_id=CObjectID.Nil()):
         cdef:
             CObjectID return_id
@@ -3583,15 +3580,6 @@ cdef class CoreWorker:
 
         eventloop, async_thread = self.get_event_loop(
             function_descriptor, specified_cgname)
-
-        # Increase recursion limit if necessary. In asyncio mode,
-        # we have many parallel callstacks (represented in fibers)
-        # that's suspended for execution. Python interpreter will
-        # mistakenly count each callstack towards recusion limit.
-        # We don't need to worry about stackoverflow here because
-        # the max number of callstacks is limited in direct actor
-        # transport with max_concurrency flag.
-        increase_recursion_limit()
 
         if inspect.isawaitable(func_or_coro):
             coroutine = func_or_coro
