@@ -102,7 +102,7 @@ class NodeProviderAdapter(NodeProvider):
         return self._provider.is_readonly()
 
     def get_non_terminated_nodes(self):
-        clould_instance_ids = self._provider.non_terminated_nodes()
+        clould_instance_ids = self._provider.non_terminated_nodes({})
         return self.get_nodes_by_cloud_instance_id(clould_instance_ids)
 
     def get_nodes_by_cloud_instance_id(
