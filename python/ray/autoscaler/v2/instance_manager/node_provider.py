@@ -1,6 +1,6 @@
 import logging
 from abc import ABCMeta, abstractmethod
-from typing import Dict, List, Set, override
+from typing import Dict, List, Set
 
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
@@ -80,7 +80,6 @@ class NodeProviderAdapter(NodeProvider):
             filtered[instance_id] = instance
         return filtered
 
-    @override
     def create_nodes(self, instance_type: InstanceType, count: int) -> List[Instance]:
         created_nodes = self._node_launcher.launch_node(
             self._config.get_raw_config_mutable(),
@@ -96,20 +95,16 @@ class NodeProviderAdapter(NodeProvider):
             ]
         return []
 
-    @override
     def async_terminate_nodes(self, clould_instance_ids: List[str]) -> None:
         self._provider.terminate_node(clould_instance_ids)
 
-    @override
     def is_readonly(self) -> bool:
         return self._provider.is_readonly()
 
-    @override
     def get_non_terminated_nodes(self):
         clould_instance_ids = self._provider.non_terminated_nodes()
         return self.get_nodes_by_cloud_id(clould_instance_ids)
 
-    @override
     def get_nodes_by_cloud_id(
         self,
         cloud_instance_ids: List[str],
