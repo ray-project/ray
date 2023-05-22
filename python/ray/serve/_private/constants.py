@@ -200,4 +200,8 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # When turned on, *all* HTTP responses will use Ray streaming object refs.
 RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
     os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
+
+# Serve HTTP proxy callback import path
+SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
+    "SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH", None
 )
