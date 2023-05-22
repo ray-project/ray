@@ -435,7 +435,7 @@ validate_wheels_commit_str() {
   echo "All wheels passed the sanity check and have the correct wheel commit set."
 }
 
-build_wheels() {
+build_wheels_and_jars() {
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
   mkdir -p .whl
@@ -466,11 +466,18 @@ build_wheels() {
       IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
       IMAGE_TAG="2022-12-20-b4884d9"
 
+      local MOUNT_ENV=()
+      if [ "${LINUX_JARS-}" == "1" ]; then
+        MOUNT_ENV+=(
+          -e "BUILD_JAR=1"
+        )
+      fi
+
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
+          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
       else
         rm -rf /ray-mount/*
         rm -rf /ray-mount/.whl || true
@@ -480,7 +487,7 @@ build_wheels() {
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
+          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
 
@@ -768,7 +775,7 @@ build() {
   fi
 
   if [[ "${NEED_WHEELS}" == "true" ]]; then
-    build_wheels
+    build_wheels_and_jars
   fi
 }
 
