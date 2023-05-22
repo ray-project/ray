@@ -1,7 +1,7 @@
 import copy
 from typing import Any, Dict, List
 
-from ray.autoscaler._private.util import hash_runtime_conf
+from ray.autoscaler._private.util import hash_runtime_conf, prepare_config
 from ray.core.generated.instance_manager_pb2 import Instance
 
 
@@ -16,7 +16,7 @@ class NodeProviderConfig(object):
         self.update_configs(node_configs)
 
     def update_configs(self, node_configs: Dict[str, Any]) -> None:
-        self._node_configs = node_configs
+        self._node_configs = prepare_config(node_configs)
         self._calculate_hashes()
         self._sync_continuously = self._node_configs.get(
             "generate_file_mounts_contents_hash", True
@@ -43,8 +43,6 @@ class NodeProviderConfig(object):
         )
 
     def get_docker_config(self, instance_type_name: str) -> Dict[str, Any]:
-        if "docker" not in self._node_configs:
-            return {}
         docker_config = copy.deepcopy(self._node_configs.get("docker", {}))
         node_specific_docker_config = self._node_configs["available_node_types"][
             instance_type_name
@@ -52,18 +50,22 @@ class NodeProviderConfig(object):
         docker_config.update(node_specific_docker_config)
         return docker_config
 
-    def get_worker_start_ray_commands(self, num_successful_updates: int) -> List[str]:
+    def get_worker_start_ray_commands(
+        self, num_successful_updates: int = 0
+    ) -> List[str]:
         if num_successful_updates > 0 and not self._node_config_provider.restart_only:
             return []
-        return self._node_configs["worker_start_ray_commands"]
+        return self._node_configs.get("worker_start_ray_commands", [])
 
-    def get_worker_setup_commands(self, num_successful_updates: int) -> List[str]:
+    def get_worker_setup_commands(
+        self, instance_type_name: str, num_successful_updates: int = 0
+    ) -> List[str]:
         if num_successful_updates > 0 and self._node_config_provider.restart_only:
             return []
-
-        return self._node_configs["available_node_types"][instance.name][
-            "worker_setup_commands"
-        ]
+        setup_command = self._node_configs.get("worker_setup_commands", [])
+        return self._node_configs["available_node_types"][instance_type_name].get(
+            "worker_setup_commands", setup_command
+        )
 
     def get_node_type_specific_config(
         self, instance_type_name: str, config_name: str
