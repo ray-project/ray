@@ -6,7 +6,7 @@ FROM "$BASE_IMAGE"
 ARG PIP_REQUIREMENTS
 ARG DEBIAN_REQUIREMENTS
 
-COPY $DEBIAN_REQUIREMENTS .
+COPY "$DEBIAN_REQUIREMENTS" .
 RUN <<EOF
 #!/bin/bash
 
@@ -16,5 +16,5 @@ sudo apt-get update -y \
 
 EOF
 
-COPY $PIP_REQUIREMENTS .
+COPY "$PIP_REQUIREMENTS" .
 RUN $HOME/anaconda3/bin/pip install --no-cache-dir install -r requirements_byod.txt
