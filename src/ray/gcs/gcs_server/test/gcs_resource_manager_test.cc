@@ -79,8 +79,7 @@ class GcsResourceManagerAutoscalerStateTest : public GcsResourceManagerTest {
     gcs_resource_manager_->UpdateFromResourceReport(resources_data);
   }
 
-  void UpdateResourceLoads(
-    const std::string &node_id,
+  void UpdateResourceLoads(const std::string &node_id,
                            std::vector<rpc::ResourceDemand> demands,
                            bool resource_load_changed = true) {
     rpc::ResourcesData data;
