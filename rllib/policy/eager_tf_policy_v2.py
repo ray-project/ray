@@ -613,9 +613,16 @@ class EagerTFPolicyV2(Policy):
                             "True."
                         )
 
-                action_dist = action_dist_cls.from_logits(
-                    output[SampleBatch.ACTION_DIST_INPUTS]
-                )
+                action_dist_inputs = output.get(SampleBatch.ACTION_DIST_INPUTS, None)
+                if action_dist_inputs is None:
+                    raise ValueError(
+                        "The RLModules must provide inputs to create the action "
+                        "distribution. These should be part of the output of the "
+                        "appropriate forward method under the key "
+                        "SampleBatch.ACTION_DIST_INPUTS."
+                    )
+
+                action_dist = action_dist_cls.from_logits(action_dist_inputs)
             else:
                 dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
                 action_dist = self.dist_class(dist_inputs, self.model)
