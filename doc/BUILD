@@ -194,7 +194,7 @@ py_test_run_all_subdirectory(
 
 py_test(
     name = "computer_vision_test",
-    main = "source/ray-core/doc_code/computer_vision.py",
+    main = "source/ray-air/doc_code/computer_vision.py",
     srcs = ["source/ray-air/doc_code/computer_vision.py"],
     tags = ["exclusive", "team:ml"],
     size = "enormous",
