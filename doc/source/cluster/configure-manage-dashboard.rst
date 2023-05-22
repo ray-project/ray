@@ -146,10 +146,12 @@ To disable the dashboard, use the following arguments `--include-dashboard`.
       .. testcode::
         :hide:
 
+        import ray
         ray.shutdown()
 
       .. testcode::
 
+        import ray
         ray.init(include_dashboard=False)
 
     .. tab-item:: VM Cluster Launcher

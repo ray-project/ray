@@ -171,9 +171,8 @@ Logging directory structure
 
 By default, Ray logs are stored in a ``/tmp/ray/session_*/logs`` directory.
 
-:::{note}
+..{note}:
 The default temp directory is ``/tmp/ray`` (for Linux and MacOS). To change the temp directory, specify it when you call ``ray start`` or ``ray.init()``. 
-:::
 
 A new Ray instance creates a new session ID to the temp directory. The latest session ID is symlinked to ``/tmp/ray/session_latest``.
 
