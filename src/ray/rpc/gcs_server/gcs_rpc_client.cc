@@ -31,7 +31,8 @@ std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string
   if (address_ == address && port_ == port) {
     return channel_;
   } else {
-    RAY_LOG(INFO) << "Generate a new GCS channel: " << address << ":" << port;
+    RAY_LOG(WARNING) << "Generate a new GCS channel: " << address << ":" << port
+                     << ". Potentially it will increase GCS socket numbers";
     return BuildChannel(address_, port_, GetGcsRpcClientArguments());
   }
 }
