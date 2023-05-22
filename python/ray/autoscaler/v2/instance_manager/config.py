@@ -2,7 +2,6 @@ import copy
 from typing import Any, Dict, List
 
 from ray.autoscaler._private.util import hash_runtime_conf, prepare_config
-from ray.core.generated.instance_manager_pb2 import Instance
 
 
 class NodeProviderConfig(object):
