@@ -46,7 +46,7 @@ SchedulingClass TaskSpecification::GetSchedulingClass(
   if (it == sched_cls_to_id_.end()) {
     sched_cls_id = ++next_sched_id_;
     // TODO(ekl) we might want to try cleaning up task types in these cases
-    if (sched_cls_id > 100) {
+    if (sched_cls_id > 100 && sched_cls_id <= 1000) {
       RAY_LOG(WARNING) << "More than " << sched_cls_id
                        << " types of tasks seen, this may reduce performance.";
     } else if (sched_cls_id > 1000) {
