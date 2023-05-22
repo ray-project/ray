@@ -5,19 +5,21 @@ from typing import Any, Mapping
 
 from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearner,
-    ImpalaHyperparameters,
+    ImpalaLearnerHyperparameters,
 )
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 
 
+LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
+LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
 OLD_ACTION_DIST_KEY = "old_action_dist"
 OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
 @dataclass
-class AppoHyperparameters(ImpalaHyperparameters):
+class AppoLearnerHyperparameters(ImpalaLearnerHyperparameters):
     """Hyperparameters for the APPOLearner sub-classes (framework specific).
 
     These should never be set directly by the user. Instead, use the APPOConfig
@@ -35,7 +37,7 @@ class AppoHyperparameters(ImpalaHyperparameters):
 
 
 class AppoLearner(ImpalaLearner):
-    """Adds KL coeff updates via `additional_updates_per_module()` to Impala logic.
+    """Adds KL coeff updates via `additional_update_for_module()` to Impala logic.
 
     Framework-specific sub-classes must override `_update_module_target_networks()`
     and `_update_module_kl_coeff()`
@@ -57,10 +59,10 @@ class AppoLearner(ImpalaLearner):
         self.curr_kl_coeffs_per_module.pop(module_id)
 
     @override(ImpalaLearner)
-    def additional_update_per_module(
+    def additional_update_for_module(
         self,
-        module_id: ModuleID,
         *,
+        module_id: ModuleID,
         last_update: int,
         mean_kl_loss_per_module: dict,
         timestep: int,
@@ -82,7 +84,9 @@ class AppoLearner(ImpalaLearner):
         #  updates.
         #  We should instead have the target / kl threshold update be based off
         #  of the train_batch_size * some target update frequency * num_sgd_iter.
-        results = super().additional_update_per_module(module_id, timestep=timestep)
+        results = super().additional_update_for_module(
+            module_id=module_id, timestep=timestep
+        )
 
         if (timestep - last_update) >= self.hps.target_update_frequency_ts:
             self._update_module_target_networks(module_id)
