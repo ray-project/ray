@@ -436,7 +436,9 @@ def read_datasource(
         owned_by_consumer=False,
     )
 
-    read_op = Read(datasource, read_tasks, ray_remote_args)
+    # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing
+    # LazyBlockList code path.
+    read_op = Read(datasource, requested_parallelism, ray_remote_args, read_args)
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(

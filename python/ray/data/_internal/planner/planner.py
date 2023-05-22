@@ -13,7 +13,6 @@ from ray.data._internal.logical.operators.from_arrow_operator import FromArrowRe
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.logical.operators.limit_operator import Limit
@@ -27,7 +26,6 @@ from ray.data._internal.planner.plan_from_pandas_op import (
 )
 from ray.data._internal.planner.plan_udf_map_op import _plan_udf_map_op
 from ray.data._internal.planner.plan_read_op import _plan_read_op
-from ray.data._internal.planner.plan_input_data_op import _plan_input_data_op
 from ray.data._internal.planner.plan_write_op import _plan_write_op
 from ray.data._internal.planner.plan_limit_op import _plan_limit_op
 
@@ -56,9 +54,6 @@ class Planner:
         if isinstance(logical_op, Read):
             assert not physical_children
             physical_op = _plan_read_op(logical_op)
-        elif isinstance(logical_op, InputData):
-            assert not physical_children
-            physical_op = _plan_input_data_op(logical_op)
         elif isinstance(logical_op, Write):
             assert len(physical_children) == 1
             physical_op = _plan_write_op(logical_op, physical_children[0])

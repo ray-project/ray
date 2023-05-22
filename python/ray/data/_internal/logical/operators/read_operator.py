@@ -1,7 +1,7 @@
-from typing import List, Dict, Any
+from typing import Any, Dict
 
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data.datasource.datasource import ReadTask, Datasource
+from ray.data.datasource.datasource import Datasource
 
 
 class Read(AbstractMap):
@@ -10,9 +10,11 @@ class Read(AbstractMap):
     def __init__(
         self,
         datasource: Datasource,
-        read_tasks: List[ReadTask],
+        parallelism: int = -1,
         ray_remote_args: Dict[str, Any] = None,
+        read_args: Dict[str, Any] = None,
     ):
         super().__init__("Read", None, ray_remote_args)
         self._datasource = datasource
-        self._read_tasks = read_tasks
+        self._parallelism = parallelism
+        self._read_args = read_args
