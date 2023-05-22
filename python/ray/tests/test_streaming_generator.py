@@ -657,6 +657,88 @@ def test_generator_dist_gather(ray_start_cluster):
     print(summary)
 
 
+def test_ray_serve_like_generator_stress_test(ray_start_cluster, monkeypatch):
+    """Mock the stressful Ray Serve workloads.
+
+    Ray Serve has a single actor that invokes many generator tasks.
+    All the actors are async actor for Ray Serve.
+    """
+    with monkeypatch.context() as m:
+        # Add a 10ms ~ 1 second delay to the RPC.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=10000:1000000",
+        )
+
+        cluster = ray_start_cluster
+        total_cpus = 20
+        # 5 nodes cluster, 4 CPUs each.
+        cluster.add_node(num_cpus=total_cpus // 5)
+        ray.init()
+        for _ in range(4):
+            cluster.add_node(num_cpus=total_cpus // 5)
+
+        @ray.remote(num_cpus=1)
+        class ProxyActor:
+            async def get_data(self, child):
+                await asyncio.sleep(0.1)
+                gen = child.get_data.options(num_returns="streaming").remote()
+                async for ref in gen:
+                    yield ref
+                    del ref
+
+        @ray.remote
+        class ChainActor:
+            def __init__(self, child=None):
+                self.child = child
+
+            async def get_data(self):
+                if not self.child:
+                    for i in range(10):
+                        await asyncio.sleep(0.1)
+                        yield np.ones(5 * 1024) * i
+                else:
+                    async for ref in self.child.get_data.options(
+                        num_returns="streaming"
+                    ).remote():
+                        yield ref
+
+        chain_actors = []
+        num_chain_actors = 16
+        for _ in range(num_chain_actors):
+            chain_actor = ChainActor.remote()
+            chain_actor_2 = ChainActor.remote(chain_actor)
+            chain_actor_3 = ChainActor.remote(chain_actor_2)
+            chain_actor_4 = ChainActor.remote(chain_actor_3)
+            chain_actors.append(chain_actor_4)
+
+        proxy_actor = ProxyActor.remote()
+
+        async def get_stream(proxy_actor, chain_actor):
+            i = 0
+            async for ref in proxy_actor.get_data.options(
+                num_returns="streaming"
+            ).remote(chain_actor):
+                for _ in range(5):
+                    ref = await ref
+                assert np.array_equal(np.ones(5 * 1024) * i, ref)
+                del ref
+                i += 1
+
+        async def main():
+            await asyncio.gather(
+                *[get_stream(proxy_actor, chain_actor) for chain_actor in chain_actors]
+            )
+            result = list_objects(raise_on_missing_output=False)
+            ref_types = set()
+            for r in result:
+                ref_types.add(r.reference_type)
+            # Verify no leaks
+            assert ref_types == {"ACTOR_HANDLE"}
+
+        asyncio.run(main())
+
+
 if __name__ == "__main__":
     import os
 
