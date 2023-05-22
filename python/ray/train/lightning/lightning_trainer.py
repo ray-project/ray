@@ -541,7 +541,7 @@ def _lightning_train_loop_per_worker(config):
 
     # Restore from a previously failed run
     checkpoint = session.get_checkpoint()
-    if checkpoint and "ckpt_path" not in trainer_fit_params:
+    if checkpoint:
         with checkpoint.as_directory() as ckpt_dir:
             trainer_fit_params["ckpt_path"] = f"{ckpt_dir}/{MODEL_KEY}"
             trainer.fit(lightning_module, **trainer_fit_params)
