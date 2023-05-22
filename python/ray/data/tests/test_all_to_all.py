@@ -1730,7 +1730,7 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-def test_random_shuffle_with_custom_resource(ray_start_cluster):
+def test_random_shuffle_with_custom_resource(ray_start_cluster, use_push_based_shuffle):
     cluster = ray_start_cluster
     # Create two nodes which have different custom resources.
     cluster.add_node(
