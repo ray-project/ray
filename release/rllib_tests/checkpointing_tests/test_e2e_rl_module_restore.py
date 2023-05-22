@@ -45,7 +45,7 @@ class TestE2ERLModuleRestore(unittest.TestCase):
 
         scaling_config = {
             "num_learner_workers": 2,
-            "num_gpus_per_learner_worker": 1,
+            "num_gpus_per_learner_worker": 0,
         }
 
         config = (
