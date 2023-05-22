@@ -18,7 +18,7 @@ def test_simple():
     assert config.get_worker_start_ray_commands
 
 
-def test_ray_start():
+def test_complex():
     raw_config = load_test_config("test_ray_complex.yaml")
     config = NodeProviderConfig(raw_config)
     assert config.get_head_setup_commands() == [
