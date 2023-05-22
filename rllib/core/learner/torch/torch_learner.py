@@ -105,7 +105,7 @@ class TorchLearner(Learner):
         self,
         batch: NestedDict,
         **kwargs,
-    ) -> Tuple:
+    ):
         """Performs a single update given a batch of data."""
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
@@ -113,7 +113,7 @@ class TorchLearner(Learner):
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        return fwd_out, loss_per_module, postprocessed_gradients, self._metrics
+        return fwd_out, loss_per_module, self._metrics
 
     @override(Learner)
     def compute_gradients(

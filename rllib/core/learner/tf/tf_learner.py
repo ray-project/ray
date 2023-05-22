@@ -11,6 +11,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Tuple,
     Union,
 )
 
@@ -79,7 +80,6 @@ class TfLearner(Learner):
         )
 
         self._enable_tf_function = self._framework_hyperparameters.eager_tracing
-        self._original_update_fn = self._update
 
         # This is a placeholder which will be filled by
         # `_make_distributed_strategy_if_necessary`.
@@ -362,14 +362,19 @@ class TfLearner(Learner):
                 module_spec=module_spec,
             )
         if self._enable_tf_function:
-            self._update = tf.function(self._original_update_fn, reduce_retracing=True)
+            self._possibly_traced_update = tf.function(
+                self._untraced_update, reduce_retracing=True
+            )
 
     @override(Learner)
     def remove_module(self, module_id: ModuleID) -> None:
         with self._strategy.scope():
             super().remove_module(module_id)
+
         if self._enable_tf_function:
-            self._update = tf.function(self._original_update_fn, reduce_retracing=True)
+            self._possibly_traced_update = tf.function(
+                self._untraced_update, reduce_retracing=True
+            )
 
     def _make_distributed_strategy_if_necessary(self) -> "tf.distribute.Strategy":
         """Create a distributed strategy for the learner.
@@ -420,21 +425,27 @@ class TfLearner(Learner):
             super().build()
 
         if self._enable_tf_function:
-            self._update = tf.function(self._original_update_fn, reduce_retracing=True)
+            self._possibly_traced_update = tf.function(
+                self._untraced_update, reduce_retracing=True
+            )
+        else:
+            self._possibly_traced_update = self._untraced_update
 
     @override(Learner)
-    def _update(
+    def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+        return self._possibly_traced_update(batch)
+
+    def _untraced_update(
         self,
         batch: NestedDict,
         _ray_trace_ctx=None,
-    ) -> Mapping[str, Any]:
-        # TODO (Avnish): Match the base class's implementation.
+    ):
         def helper(_batch):
             # TODO (Kourosh, Sven): We need to go back to NestedDict because that's the
             #  constraint on forward_train and compute_loss APIs. This seems to be
             #  in-efficient. However, for tf>=2.12, it works also w/o this conversion
             #  so remove this after we upgrade officially to tf==2.12.
-            _batch = NestedDict(_batch)
+            _batch = NestedDict(batch)
             with tf.GradientTape() as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
@@ -442,7 +453,7 @@ class TfLearner(Learner):
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
-            return fwd_out, loss_per_module, postprocessed_gradients, self._metrics
+            return fwd_out, loss_per_module, dict(self._metrics)
 
         return self._strategy.run(helper, args=(batch,))
 

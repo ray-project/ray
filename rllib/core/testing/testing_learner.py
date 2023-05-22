@@ -1,4 +1,4 @@
-from typing import Any, Dict, Mapping
+from typing import Any, DefaultDict, Dict, Mapping
 
 import numpy as np
 
@@ -18,14 +18,12 @@ class BaseTestingLearner(Learner):
         batch: NestedDict,
         fwd_out: Mapping[str, Any],
         loss_per_module: Mapping[str, TensorType],
-        postprocessed_gradients: Dict[str, Any],
-        metrics_per_module: Dict[ModuleID, Dict[str, Any]],
+        metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
     ) -> Mapping[str, Any]:
         results = super().compile_results(
             batch=batch,
             fwd_out=fwd_out,
             loss_per_module=loss_per_module,
-            postprocessed_gradients=postprocessed_gradients,
             metrics_per_module=metrics_per_module,
         )
         # this is to check if in the multi-gpu case, the weights across workers are
