@@ -434,8 +434,8 @@ class StateDataSourceClient:
         lines: int,
         interval: Optional[float],
         timeout: int,
-        start_offset: Optional[int],
-        end_offset: Optional[int],
+        start_offset: Optional[int] = None,
+        end_offset: Optional[int] = None,
     ) -> UnaryStreamCall:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
