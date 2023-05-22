@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import shutil
 import time
+from typing import Optional, Union
 
 import ray
 import ray.cloudpickle as pickle
@@ -23,7 +24,6 @@ from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search.basic_variant import _VariantIterator
 from ray.tune.search.variant_generator import (
     _count_variants,
-    _count_spec_samples,
     generate_variants,
     _flatten_resolved_vars,
     format_vars,
@@ -32,7 +32,7 @@ from ray.tune.experiment import Experiment, Trial
 
 
 class _BasicVariantGenerator(SearchAlgorithm):
-    def __init__(self, trainable_name: str, run_config, **kwargs):
+    def __init__(self, trainable_name: str, run_config: air.RunConfig, **kwargs):
         import uuid
 
         self.trainable_name = trainable_name
@@ -49,10 +49,8 @@ class _BasicVariantGenerator(SearchAlgorithm):
     def total_samples(self):
         return self._total_samples
 
-    def add_configurations(
-        self, param_space, num_samples=1, constant_grid_search=False
-    ):
-        grid_vals = _count_spec_samples(param_space, num_samples=1)
+    def add_configurations(self, param_space, constant_grid_search=False):
+        # grid_vals = _count_spec_samples(param_space, num_samples=1)
         # lazy_eval = grid_vals > SERIALIZATION_THRESHOLD
         # if lazy_eval:
         #     warnings.warn(
@@ -75,18 +73,6 @@ class _BasicVariantGenerator(SearchAlgorithm):
             ),
             # lazy_eval=lazy_eval,
         )
-
-        # self._trial_generator = _TrialIterator(
-        #     uuid_prefix=self._uuid_prefix,
-        #     num_samples=num_samples,
-        #     unresolved_spec=param_space,
-        #     constant_grid_search=self._constant_grid_search,
-        #    output_path="testing",
-        #     # points_to_evaluate=points_to_evaluate,
-        #     # lazy_eval=lazy_eval,
-        #     start=previous_samples,
-        #     random_state=self._random_state,
-        # )
 
     def _create_trial(self, resolved_vars, config):
         from pathlib import Path
@@ -166,22 +152,15 @@ class _BasicVariantGenerator(SearchAlgorithm):
         self.__dict__.update(state)
 
 
-def _print(msg):
-    print("=" * 50)
-    print(msg)
-    print("=" * 50)
-    print()
-
-
 class ExperimentRunner:
     def __init__(
         self,
         trainable: FunctionTrainable,
-        config: _Config,
+        config: Optional[Union[_Config, dict]],
         run_config: air.RunConfig,
         tune_config: tune.TuneConfig = None,
     ):
-        self._config = config
+        self._config = config or {}
         self._run_config = run_config
         self._trainable = trainable
         self._tune_config = tune_config  # TODO: handle tune config
@@ -202,7 +181,7 @@ class ExperimentRunner:
         self._new_tune_run()
 
     @classmethod
-    def restore(cls, path, trainable, config={}) -> "ExperimentRunner":
+    def restore(cls, path, trainable, config=None) -> "ExperimentRunner":
         path = Path(path).expanduser().resolve()
         with open(path / "exp_runner.pkl", "rb") as f:
             runner_state = pickle.load(f)
@@ -215,12 +194,18 @@ class ExperimentRunner:
         restored_runner._restored = True
         return restored_runner
 
+    def _print(self, msg):
+        print("=" * 50)
+        print(f"{'[RESTORED]' if self._restored else ''} {msg}")
+        print("=" * 50)
+        print()
+
     def _new_tune_run(self):
-        _print("Registering trainable")
+        self._print("Registering trainable")
 
         registered_trainable_name = Experiment.register_if_needed(self._trainable)
 
-        _print("Creating search alg")
+        self._print("Creating search alg")
         search_alg = _BasicVariantGenerator(
             trainable_name=registered_trainable_name, run_config=self._run_config
         )
@@ -231,10 +216,10 @@ class ExperimentRunner:
         )
         search_alg.add_configurations(config_as_dict)
 
-        _print("Creating tune controller")
+        self._print("Creating tune controller")
 
         if self._restored:
-            _print("tune controller resuming!!!")
+            self._print("tune controller resuming!!!")
 
         tune_controller = TuneController(
             search_alg=search_alg,
@@ -251,7 +236,7 @@ class ExperimentRunner:
             search_alg.total_samples,
         )
 
-        _print("Starting main tune loop.")
+        self._print("Starting main tune loop.")
         while not tune_controller.is_finished():
             tune_controller.step()
             _report_air_progress(tune_controller, air_progress_reporter)
@@ -265,7 +250,7 @@ class ExperimentRunner:
 
         _report_air_progress(tune_controller, air_progress_reporter, force=True)
 
-        _print("Experiment finished running!!")
+        self._print("Experiment finished running!!")
 
 
 class _BaseTrainer:
@@ -498,14 +483,15 @@ def run_with_tuner(restore: bool = False):
 
 
 if __name__ == "__main__":
-    runner_type = "Trainer"
+    runner_type = "exp_runner"
+    # runner_type = "trainer"
+    # runner_type = "tuner"
 
-    if runner_type == "ExperimentRunner":
-        run_with_exp_runner()
-        run_with_exp_runner(restore=True)
-    elif runner_type == "Tuner":
-        run_with_tuner()
-        run_with_tuner(restore=True)
-    elif runner_type == "Trainer":
-        run_with_trainer()
-        run_with_trainer(restore=True)
+    run_fns = {
+        "exp_runner": run_with_exp_runner,
+        "trainer": run_with_trainer,
+        "tuner": run_with_tuner,
+    }
+
+    run_fns[runner_type]()
+    run_fns[runner_type](restore=True)
