@@ -9,6 +9,7 @@ from ray.includes.common cimport (
     CPythonGcsPublisher,
     kWorkerSetupHookKeyName,
     kResourceUnitScaling,
+    kStreamingGeneratorReturn,
 )
 
 
@@ -30,3 +31,4 @@ cdef class GcsClientOptions:
 
 WORKER_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
 RESOURCE_UNIT_SCALING = kResourceUnitScaling
+STREAMING_GENERATOR_RETURN = kStreamingGeneratorReturn

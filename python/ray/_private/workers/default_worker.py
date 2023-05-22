@@ -171,7 +171,6 @@ if __name__ == "__main__":
     # https://github.com/ray-project/ray/pull/12225#issue-525059663.
     args = parser.parse_args()
     ray._private.ray_logging.setup_logger(args.logging_level, args.logging_format)
-
     worker_launched_time_ms = time.time_ns() // 1e6
 
     if args.worker_type == "WORKER":

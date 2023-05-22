@@ -58,6 +58,7 @@ struct Mocker {
                               owner_address,
                               1,
                               false,
+                              false,
                               required_resources,
                               required_placement_resources,
                               "",

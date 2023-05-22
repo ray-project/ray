@@ -117,7 +117,10 @@ def test_generator_returns(ray_start_regular, use_actors, store_in_plasma):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_generator_errors(ray_start_regular, use_actors, store_in_plasma):
+@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+def test_generator_errors(
+    ray_start_regular, use_actors, store_in_plasma, num_returns_type
+):
     remote_generator_fn = None
     if use_actors:
 
@@ -158,7 +161,7 @@ def test_generator_errors(ray_start_regular, use_actors, store_in_plasma):
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(ref3)
 
-    dynamic_ref = remote_generator_fn.options(num_returns="dynamic").remote(
+    dynamic_ref = remote_generator_fn.options(num_returns=num_returns_type).remote(
         3, store_in_plasma
     )
     ref1, ref2 = ray.get(dynamic_ref)
@@ -218,10 +221,13 @@ def test_dynamic_generator_retry_exception(ray_start_regular, store_in_plasma):
 
 @pytest.mark.parametrize("use_actors", [False, True])
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
+@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+def test_dynamic_generator(
+    ray_start_regular, use_actors, store_in_plasma, num_returns_type
+):
     if use_actors:
 
-        @ray.remote(num_returns="dynamic")
+        @ray.remote(num_returns=num_returns_type)
         def dynamic_generator(num_returns, store_in_plasma):
             for i in range(num_returns):
                 if store_in_plasma:
@@ -255,21 +261,34 @@ def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
         return True
 
     gen = ray.get(
-        remote_generator_fn.options(num_returns="dynamic").remote(10, store_in_plasma)
+        remote_generator_fn.options(num_returns=num_returns_type).remote(
+            10, store_in_plasma
+        )
     )
     for i, ref in enumerate(gen):
         assert ray.get(ref)[0] == i
 
     # Test empty generator.
     gen = ray.get(
-        remote_generator_fn.options(num_returns="dynamic").remote(0, store_in_plasma)
+        remote_generator_fn.options(num_returns=num_returns_type).remote(
+            0, store_in_plasma
+        )
     )
     assert len(list(gen)) == 0
 
     # Check that passing as task arg.
-    gen = remote_generator_fn.options(num_returns="dynamic").remote(10, store_in_plasma)
-    assert ray.get(read.remote(gen))
-    assert ray.get(read.remote(ray.get(gen)))
+    if num_returns_type == "dynamic":
+        gen = remote_generator_fn.options(num_returns=num_returns_type).remote(
+            10, store_in_plasma
+        )
+        assert ray.get(read.remote(gen))
+        assert ray.get(read.remote(ray.get(gen)))
+    else:
+        with pytest.raises(TypeError):
+            gen = remote_generator_fn.options(num_returns=num_returns_type).remote(
+                10, store_in_plasma
+            )
+            assert ray.get(read.remote(gen))
 
     # Also works if we override num_returns with a static value.
     ray.get(
@@ -279,7 +298,7 @@ def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
     )
 
     # Normal remote functions don't work with num_returns="dynamic".
-    @ray.remote(num_returns="dynamic")
+    @ray.remote(num_returns=num_returns_type)
     def static(num_returns):
         return list(range(num_returns))
 
@@ -289,7 +308,8 @@ def test_dynamic_generator(ray_start_regular, use_actors, store_in_plasma):
             ray.get(ref)
 
 
-def test_dynamic_generator_distributed(ray_start_cluster):
+@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+def test_dynamic_generator_distributed(ray_start_cluster, num_returns_type):
     cluster = ray_start_cluster
     # Head node with no resources.
     cluster.add_node(num_cpus=0)
@@ -297,7 +317,7 @@ def test_dynamic_generator_distributed(ray_start_cluster):
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    @ray.remote(num_returns="dynamic")
+    @ray.remote(num_returns=num_returns_type)
     def dynamic_generator(num_returns):
         for i in range(num_returns):
             yield np.ones(1_000_000, dtype=np.int8) * i

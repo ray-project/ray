@@ -135,7 +135,8 @@ Status TaskExecutor::ExecuteTask(
     std::string *application_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute,
-    bool is_reattempt) {
+    bool is_reattempt,
+    bool is_streaming_generator) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
                  << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
