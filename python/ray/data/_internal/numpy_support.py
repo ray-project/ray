@@ -78,7 +78,7 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
                     shapes.add((e.dtype, e.shape))
                 elif isinstance(e, bytes):
                     # Don't convert variable length binary data to Numpy arrays as it
-                    # treats ero encoding as termination by default.
+                    # treats zero encoding as termination by default.
                     # Per recommendation from
                     # https://github.com/apache/arrow/issues/26470,
                     # we use object dtype.
