@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import (
     Any,
     Callable,
+    DefaultDict,
     Dict,
     List,
     Hashable,
@@ -577,8 +578,7 @@ class Learner:
         batch: MultiAgentBatch,
         fwd_out: Mapping[str, Any],
         loss_per_module: Mapping[str, TensorType],
-        postprocessed_gradients: ParamDict,
-        metrics_per_module: Dict[ModuleID, Dict[str, Any]],
+        metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
     ) -> Mapping[str, Any]:
         """Compile results from the update in a numpy-friendly format.
 
@@ -590,7 +590,7 @@ class Learner:
                 `compute_loss_for_module(module_id=...)`.
             postprocessed_gradients: The postprocessed gradients dict, (flat) mapping
                 gradient tensor refs to the already postprocessed gradient tensors.
-            metrics_per_module: The collected metrics dict mapping ModuleIDs to
+            metrics_per_module: The collected metrics defaultdict mapping ModuleIDs to
                 metrics dicts. These metrics are collected during loss- and
                 gradient computation, gradient postprocessing, and gradient application.
 
@@ -961,11 +961,6 @@ class Learner:
             (
                 fwd_out,
                 loss_per_module,
-                # TODO (sven): Moving all grads around is probably expensive.
-                #  We might want to scrap that option here and ask users to use
-                #  register_metrics() inside their postprocee_gradients method for
-                #  the stats they care about.
-                postprocessed_gradients,
                 metrics_per_module,
             ) = self._update(tensor_minibatch)
 
@@ -973,9 +968,7 @@ class Learner:
                 batch=minibatch,
                 fwd_out=fwd_out,
                 loss_per_module=loss_per_module,
-                # TODO (sven): Same as above: expensive!
-                postprocessed_gradients=postprocessed_gradients,
-                metrics_per_module=metrics_per_module,
+                metrics_per_module=defaultdict(dict, **metrics_per_module),
             )
             self._check_result(result)
             # TODO (sven): Figure out whether `compile_metrics` should be forced
@@ -1003,7 +996,7 @@ class Learner:
         self,
         batch: NestedDict,
         **kwargs,
-    ) -> Tuple[Any, Any, ParamDict, Any]:
+    ) -> Tuple[Any, Any, Any]:
         """Contains all logic for an in-graph/traceable update step.
 
         Framework specific subclasses must implement this method. This should include
@@ -1018,8 +1011,7 @@ class Learner:
         Returns:
             A tuple consisting of: 1) The `forward_train()` output of the RLModule,
             2) the loss_per_module dictionary mapping module IDs to individual loss
-            tensors, 3) the postprocessed_gradients dict mapping param references
-            to their respective gradient tensors, and 4) a metrics dict mapping module
+            tensors, and 3) a metrics dict mapping module
             IDs to metrics key/value pairs.
         """
 
