@@ -9,6 +9,7 @@ from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
@@ -20,8 +21,8 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
     """Implements the IMPALA loss function in torch."""
 
     @override(TorchLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         action_dist_class_train = (
             self.module[module_id].unwrapped().get_train_action_dist_cls()
@@ -116,9 +117,15 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             + mean_entropy_loss
             * (self.entropy_coeff_scheduler.get_current_value(module_id))
         )
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "pi_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
-            ENTROPY_KEY: -mean_entropy_loss,
-        }
+
+        # Register important loss stats.
+        self.register_metrics(
+            module_id,
+            {
+                "pi_loss": mean_pi_loss,
+                "vf_loss": mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+            },
+        )
+        # Return the total loss.
+        return total_loss

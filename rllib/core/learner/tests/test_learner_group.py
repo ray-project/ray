@@ -12,6 +12,7 @@ from ray.rllib.policy.sample_batch import (
     SampleBatch,
     MultiAgentBatch,
 )
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.testing.utils import (
     get_learner_group,
@@ -19,7 +20,7 @@ from ray.rllib.core.testing.utils import (
     add_module_to_learner_or_learner_group,
 )
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
-from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.util.timer import _Timer
 
 
@@ -49,7 +50,7 @@ class RemoteTrainingHelper:
             import torch
 
             torch.manual_seed(0)
-        elif fw == "tf":
+        elif fw == "tf2":
             import tensorflow as tf
 
             # this is done by rllib already inside of the policy class, but we need to
@@ -113,7 +114,7 @@ class TestLearnerGroup(unittest.TestCase):
         ray.shutdown()
 
     def test_learner_group_local(self):
-        fws = ["tf", "torch"]
+        fws = ["torch", "tf2"]
 
         test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
 
@@ -126,7 +127,7 @@ class TestLearnerGroup(unittest.TestCase):
             ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
 
     def test_update_multigpu(self):
-        fws = ["tf", "torch"]
+        fws = ["torch", "tf2"]
         scaling_modes = REMOTE_SCALING_CONFIGS.keys()
         test_iterator = itertools.product(fws, scaling_modes)
 
@@ -145,7 +146,9 @@ class TestLearnerGroup(unittest.TestCase):
                 batch = reader.next()
                 results = learner_group.update(batch.as_multi_agent(), reduce_fn=None)
 
-                loss = np.mean([res[ALL_MODULES]["total_loss"] for res in results])
+                loss = np.mean(
+                    [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
+                )
                 min_loss = min(loss, min_loss)
                 print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
                 # The loss is initially around 0.69 (ln2). When it gets to around
@@ -155,8 +158,8 @@ class TestLearnerGroup(unittest.TestCase):
 
                 for res1, res2 in zip(results, results[1:]):
                     self.assertEqual(
-                        res1[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["mean_weight"],
-                        res2[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["mean_weight"],
+                        res1[DEFAULT_POLICY_ID]["mean_weight"],
+                        res2[DEFAULT_POLICY_ID]["mean_weight"],
                     )
 
             self.assertLess(min_loss, 0.57)
@@ -172,16 +175,12 @@ class TestLearnerGroup(unittest.TestCase):
             for module_id in results[i].keys():
                 if module_id == ALL_MODULES:
                     continue
-                current_weights = results[i][module_id][LEARNER_STATS_KEY][
-                    "mean_weight"
-                ]
-                prev_weights = results[i - 1][module_id][LEARNER_STATS_KEY][
-                    "mean_weight"
-                ]
+                current_weights = results[i][module_id]["mean_weight"]
+                prev_weights = results[i - 1][module_id]["mean_weight"]
                 self.assertEqual(current_weights, prev_weights)
 
     def test_add_remove_module(self):
-        fws = ["tf", "torch"]
+        fws = ["torch", "tf2"]
         scaling_modes = REMOTE_SCALING_CONFIGS.keys()
         test_iterator = itertools.product(fws, scaling_modes)
 
@@ -246,7 +245,7 @@ class TestLearnerGroup(unittest.TestCase):
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        fws = ["tf", "torch"]
+        fws = ["torch", "tf2"]
         # block=True only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
         scaling_modes = ["multi-gpu-ddp"]
@@ -281,7 +280,9 @@ class TestLearnerGroup(unittest.TestCase):
                 )
                 if not results:
                     continue
-                loss = np.mean([res[ALL_MODULES]["total_loss"] for res in results])
+                loss = np.mean(
+                    [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
+                )
                 min_loss = min(loss, min_loss)
                 print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
                 # The loss is initially around 0.69 (ln2). When it gets to around
@@ -291,14 +292,14 @@ class TestLearnerGroup(unittest.TestCase):
 
                 for res1, res2 in zip(results, results[1:]):
                     self.assertEqual(
-                        res1[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["mean_weight"],
-                        res2[DEFAULT_POLICY_ID][LEARNER_STATS_KEY]["mean_weight"],
+                        res1[DEFAULT_POLICY_ID]["mean_weight"],
+                        res2[DEFAULT_POLICY_ID]["mean_weight"],
                     )
             learner_group.shutdown()
             self.assertLess(min_loss, 0.57)
 
     def test_save_load_state(self):
-        fws = ["torch", "tf"]
+        fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = REMOTE_SCALING_CONFIGS.keys()
 

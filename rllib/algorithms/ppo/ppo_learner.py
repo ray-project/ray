@@ -57,11 +57,11 @@ class PPOLearner(Learner):
         )
 
     @override(Learner)
-    def additional_update_per_module(
+    def additional_update_for_module(
         self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
     ) -> Dict[str, Any]:
-        results = super().additional_update_per_module(
-            module_id,
+        results = super().additional_update_for_module(
+            module_id=module_id,
             sampled_kl_values=sampled_kl_values,
             timestep=timestep,
         )

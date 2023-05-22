@@ -62,7 +62,7 @@ class TestLearner(unittest.TestCase):
             batch = reader.next()
             results = learner.update(batch.as_multi_agent())
 
-            loss = results[ALL_MODULES]["total_loss"]
+            loss = results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
             min_loss = min(loss, min_loss)
             print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
             # The loss is initially around 0.69 (ln2). When it gets to around
@@ -95,7 +95,7 @@ class TestLearner(unittest.TestCase):
 
         with tf.GradientTape() as tape:
             params = learner.module[DEFAULT_POLICY_ID].trainable_variables
-            loss = {"total_loss": sum(tf.reduce_sum(param) for param in params)}
+            loss = {ALL_MODULES: sum(tf.reduce_sum(param) for param in params)}
             gradients = learner.compute_gradients(loss, tape)
 
         # type should be a mapping from ParamRefs to gradients
@@ -114,7 +114,7 @@ class TestLearner(unittest.TestCase):
         )
 
         # TODO (sven): Enable torch once available for APPO.
-        for fw in framework_iterator(config, frameworks=("tf2")):
+        for _ in framework_iterator(config, frameworks=("tf2")):
             # Clip by value only.
             config.training(
                 grad_clip=0.75,
@@ -170,17 +170,15 @@ class TestLearner(unittest.TestCase):
             # Check clipped gradients.
             for proc_grad, grad in zip(processed_grads, grads.values()):
                 l2_norm = np.sqrt(np.sum(grad**2.0))
-                if l2_norm > 1.0:
-                    check(proc_grad, grad * (1.0 / l2_norm))
+                if l2_norm > config.grad_clip:
+                    check(proc_grad, grad * (config.grad_clip / l2_norm))
 
             # Clip by global norm.
             config = config.copy(copy_frozen=False).training(
                 grad_clip=5.0,
                 grad_clip_by="global_norm",
             )
-            # TODO: remove this once validation does NOT cause HPs to be generated
-            #  anymore
-            config.validate()
+            # Freeze to be able to get the LearnerGroup config.
             config.freeze()
             learner_group = (
                 config.get_learner_group_config(module_spec=module_spec)
@@ -194,9 +192,9 @@ class TestLearner(unittest.TestCase):
             global_norm = np.sqrt(
                 np.sum(np.sum(grad**2.0) for grad in grads.values())
             )
-            if global_norm > 5.0:
+            if global_norm > config.grad_clip:
                 for proc_grad, grad in zip(processed_grads, grads.values()):
-                    check(proc_grad, grad * (5.0 / global_norm))
+                    check(proc_grad, grad * (config.grad_clip / global_norm))
 
     def test_apply_gradients(self):
         """Tests the apply_gradients correctness.
@@ -251,7 +249,7 @@ class TestLearner(unittest.TestCase):
         expected = [param - n_steps * lr * np.ones(param.shape) for param in params]
         for _ in range(n_steps):
             with tf.GradientTape() as tape:
-                loss = {"total_loss": sum(tf.reduce_sum(param) for param in params)}
+                loss = {ALL_MODULES: sum(tf.reduce_sum(param) for param in params)}
                 gradients = learner.compute_gradients(loss, tape)
                 learner.apply_gradients(gradients)
 

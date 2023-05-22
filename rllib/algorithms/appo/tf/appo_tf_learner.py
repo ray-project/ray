@@ -13,6 +13,7 @@ from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
@@ -22,8 +23,8 @@ class APPOTfLearner(AppoLearner, TfLearner):
     """Implements APPO loss / update logic on top of ImpalaTfLearner."""
 
     @override(TfLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
         action_dist_cls_train = self._module[module_id].get_train_action_dist_cls()
@@ -139,16 +140,21 @@ class APPOTfLearner(AppoLearner, TfLearner):
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            POLICY_LOSS_KEY: mean_pi_loss,
-            VF_LOSS_KEY: mean_vf_loss,
-            ENTROPY_KEY: -mean_entropy_loss,
-            LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-            LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
-                self.curr_kl_coeffs_per_module[module_id]
-            ),
-        }
+        # Register important loss stats.
+        self.register_metrics(
+            module_id,
+            {
+                POLICY_LOSS_KEY: mean_pi_loss,
+                VF_LOSS_KEY: mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+                LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+                LEARNER_RESULTS_CURR_KL_COEFF_KEY: (
+                    self.curr_kl_coeffs_per_module[module_id]
+                ),
+            },
+        )
+        # Return the total loss.
+        return total_loss
 
     @override(AppoLearner)
     def _update_module_target_networks(self, module_id: ModuleID):
