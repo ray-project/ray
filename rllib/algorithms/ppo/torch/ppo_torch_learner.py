@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, Mapping
 
 from ray.rllib.algorithms.ppo.ppo_learner import (
@@ -19,6 +20,8 @@ from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
+
+logger = logging.getLogger(__name__)
 
 
 class PPOTorchLearner(PPOLearner, TorchLearner):
@@ -60,6 +63,17 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         if self.hps.kl_coeff > 0.0:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = torch.mean(action_kl)
+            if mean_kl_loss.isinf():
+                logger.warning(
+                    "KL divergence is non-finite, this will likely destabilize "
+                    "your model and the training process. Action(s) in a "
+                    "specific state have near-zero probability. "
+                    "This can happen naturally in deterministic "
+                    "environments where the optimal policy has zero mass "
+                    "for a specific action. To fix this issue, consider "
+                    "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                    "config."
+                )
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
