@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
-        .rollouts(rollout_fragment_length="auto",num_rollout_workers=10)
+        .rollouts(rollout_fragment_length="auto", num_rollout_workers=10)
         .environment(MultiAgentCartPole, env_config={"num_agents": args.num_agents})
         .framework(args.framework)
         .training(num_sgd_iter=10, sgd_minibatch_size=2**9, train_batch_size=2**12)
