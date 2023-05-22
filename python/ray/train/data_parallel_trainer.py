@@ -83,7 +83,9 @@ class _Config:
 
 @dataclass
 class DataParallelTrainerConfig(_Config):
-    train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]]
+    train_loop_per_worker: Optional[
+        Union[Callable[[], None], Callable[[Dict], None]]
+    ] = None
     train_loop_config: Dict = dataclasses.field(default_factory=dict)
     backend_config: BackendConfig = dataclasses.field(
         default_factory=lambda: BackendConfig()
@@ -116,7 +118,6 @@ class DataParallelTrainable(FunctionTrainable):
     def _trainable_func(self, config, reporter, checkpoint_dir):
         run_config = self.run_config
 
-        print("\n\n", session.get_trial_dir(), "\n", config)
         config = DataParallelTrainerConfig(**config)
 
         scaling_config = config.scaling_config

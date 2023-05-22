@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import shutil
 import time
 
 import ray
@@ -279,22 +280,26 @@ class _DataParallelTrainer(_BaseTrainer):
         self.kwargs = kwargs
         self.run_config = run_config
 
+        self.runner = None
+
     def fit(self):
-        runner = ExperimentRunner(
-            self._trainable_cls,
-            config=self._config_cls(**self.kwargs),
-            run_config=self.run_config,
-        )
-        return runner.fit()
+        if not self.runner:
+            self.runner = ExperimentRunner(
+                self._trainable_cls,
+                config=self._config_cls(**self.kwargs),
+                run_config=self.run_config,
+            )
+        return self.runner.fit()
 
     @classmethod
-    def restore(cls, path, config={}) -> "ExperimentRunner":
-        runner = ExperimentRunner.restore(
+    def restore(cls, path, **kwargs) -> "ExperimentRunner":
+        trainer = _DataParallelTrainer()
+        trainer.runner = ExperimentRunner.restore(
             path,
             trainable=cls._trainable_cls,
-            config=config,
+            config=cls._config_cls(**kwargs),
         )
-        return runner.fit()
+        return trainer
 
 
 class _Tuner:
@@ -311,14 +316,17 @@ class _Tuner:
         self._run_config = run_config
         self._tune_config = tune_config
 
+        self.runner = None
+
     def fit(self):
-        runner = ExperimentRunner(
-            self._trainable,
-            config=self._config,
-            run_config=self._run_config,
-            tune_config=self._tune_config,
-        )
-        return runner.fit()
+        if not self.runner:
+            self.runner = ExperimentRunner(
+                self._trainable,
+                config=self._config,
+                run_config=self._run_config,
+                tune_config=self._tune_config,
+            )
+        return self.runner.fit()
 
     @classmethod
     def get_trainable_and_config(cls, trainable_or_trainer, param_space):
@@ -349,12 +357,13 @@ class _Tuner:
         trainable, config = _Tuner.get_trainable_and_config(
             trainable_or_trainer, param_space
         )
-        runner = ExperimentRunner.restore(
+        tuner = _Tuner(None)
+        tuner.runner = ExperimentRunner.restore(
             path,
             trainable=trainable,
-            config=param_space,
+            config=config,
         )
-        return runner.fit()
+        return tuner
 
 
 def train_loop(config):
@@ -380,59 +389,79 @@ def train_loop(config):
         )
 
 
-def run_with_exp_runner():
-    runner = ExperimentRunner(
-        DataParallelTrainable,
-        run_config=air.RunConfig(
-            storage_path="~/ray_results", name="foundation_experiment"
-        ),
-        # Use a dict
-        # config={
-        #     "scaling_config": air.ScalingConfig(num_workers=2),
-        #     "datasets": {
-        #         "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
-        #     },
-        #     "train_loop_per_worker": train_loop,
-        #     "train_loop_config": {"a": tune.grid_search([1, 2, 3])},
-        # },
-        # Or a data parallel trainer config dataclass
-        config=DataParallelTrainerConfig(
+def run_with_exp_runner(restore: bool = False):
+    storage_path = "~/ray_results"
+    name = "foundation_runner_with_exp_runner"
+    exp_path = Path(storage_path) / name
+
+    if not restore and Path(exp_path).exists():
+        shutil.rmtree(exp_path)
+
+    if restore:
+        runner = ExperimentRunner.restore(
+            path=str(exp_path),
+            trainable=DataParallelTrainable,
+        )
+    else:
+        runner = ExperimentRunner(
+            DataParallelTrainable,
+            run_config=air.RunConfig(storage_path=storage_path, name=name),
+            # Use a dict
+            # config={
+            #     "scaling_config": air.ScalingConfig(num_workers=2),
+            #     "datasets": {
+            #         "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
+            #     },
+            #     "train_loop_per_worker": train_loop,
+            #     "train_loop_config": {"a": tune.grid_search([1, 2, 3])},
+            # },
+            # Or a data parallel trainer config dataclass
+            config=DataParallelTrainerConfig(
+                train_loop_per_worker=train_loop,
+                train_loop_config={"a": tune.grid_search([1, 2, 3])},
+                scaling_config=air.ScalingConfig(num_workers=2),
+                datasets={
+                    "train": ray.data.from_items(
+                        [{"x": i, "y": 2 * i} for i in range(10)]
+                    )
+                },
+            ),
+        )
+
+    runner.fit()
+
+
+def run_with_trainer(restore: bool = False):
+    storage_path = "~/ray_results"
+    name = "foundation_run_with_trainer"
+    exp_path = Path(storage_path) / name
+
+    datasets = {"train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])}
+
+    if not restore and Path(exp_path).exists():
+        shutil.rmtree(exp_path)
+
+    if restore:
+        trainer = _DataParallelTrainer.restore(exp_path, datasets=datasets)
+    else:
+        trainer = _DataParallelTrainer(
             train_loop_per_worker=train_loop,
-            train_loop_config={"a": tune.grid_search([1, 2, 3])},
+            train_loop_config={"a": 1},
+            datasets=datasets,
             scaling_config=air.ScalingConfig(num_workers=2),
-            datasets={
-                "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
-            },
-        ),
-    )
-
-    runner.fit()
-
-
-def restore_with_exp_runner():
-    runner = ExperimentRunner.restore(
-        path="~/ray_results/foundation_experiment",
-        trainable=DataParallelTrainable,
-    )
-    runner.fit()
-
-
-def run_with_trainer():
-    trainer = _DataParallelTrainer(
-        train_loop_per_worker=train_loop,
-        train_loop_config={"a": 1},
-        scaling_config=air.ScalingConfig(num_workers=2),
-        datasets={
-            "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
-        },
-        run_config=air.RunConfig(
-            storage_path="~/ray_results", name="foundation_run_with_trainer"
-        ),
-    )
+            run_config=air.RunConfig(storage_path=storage_path, name=name),
+        )
     trainer.fit()
 
 
-def run_with_tuner():
+def run_with_tuner(restore: bool = False):
+    storage_path = "~/ray_results"
+    name = "foundation_run_with_tuner"
+    exp_path = Path(storage_path) / name
+
+    if not restore and Path(exp_path).exists():
+        shutil.rmtree(exp_path)
+
     trainer = _DataParallelTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config={"a": tune.grid_search([1, 2, 3])},
@@ -441,86 +470,42 @@ def run_with_tuner():
             "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
         },
         # run_config=air.RunConfig(
-        #     storage_path="~/ray_results", name="foundation_experimentation"
+        #     storage_path="~/ray_results", name="foundation_run_with_tuner"
         # ),
     )
-
-    tuner = _Tuner(
-        trainer,
-        param_space=DataParallelTrainerConfig(
-            train_loop_per_worker=train_loop,
-            train_loop_config={"a": tune.grid_search([1, 2, 3])},
-            scaling_config=air.ScalingConfig(num_workers=2),
-            datasets={
-                "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
-            },
-        ),
-        run_config=air.RunConfig(
-            storage_path="~/ray_results", name="foundation_run_with_tuner"
-        ),
+    param_space = DataParallelTrainerConfig(
+        train_loop_per_worker=train_loop,
+        train_loop_config={"a": tune.grid_search([1, 2, 3])},
+        scaling_config=air.ScalingConfig(num_workers=2),
+        datasets={
+            "train": ray.data.from_items([{"x": i, "y": 2 * i} for i in range(10)])
+        },
     )
+
+    if restore:
+        tuner = _Tuner.restore(
+            "~/ray_results/foundation_run_with_tuner",
+            trainable_or_trainer=trainer,
+            param_space=param_space,
+        )
+    else:
+        tuner = _Tuner(
+            trainer,
+            param_space=param_space,
+            run_config=air.RunConfig(storage_path=storage_path, name=name),
+        )
     tuner.fit()
 
 
 if __name__ == "__main__":
-    run_with_exp_runner()
-    restore_with_exp_runner()
+    runner_type = "Trainer"
 
-    # run_with_trainer()
-    # run_with_tuner()
-
-
-"""
-# Brainstorming
-
-### Ideal API
-
-def train_loop_per_worker(config):
-    pass
-
-class TorchTrainerConfig(TuneableConfig):
-    pass
-
-runner = ExperimentRunner(
-    TorchTrainer,
-    config=TorchTrainerConfig(
-        train_loop_per_worker=train_loop_per_worker,
-        train_loop_config={"lr": tune.uniform(0, 1)},
-        datasets={"train": ray.data.from_items(...)},
-        scaling_config=air.ScalingConfig(),
-    ),
-    run_config=air.RunConfig(
-    ),
-    tune_config=TuneConfig(searcher=OptunaSearch(), scheduler=ASHA())
-)
-
-# Can we make everything a callback??
-
-runner = ExperimentRunner(
-    TorchTrainer,
-    config=TorchTrainerConfig(
-        train_loop_per_worker=train_loop_per_worker,
-        train_loop_config={"lr": tune.uniform(0, 1)},
-        datasets={"train": ray.data.from_items(...)},
-        scaling_config=air.ScalingConfig(),
-        callbacks=[OptunaSearcher(), ]
-    ),
-    run_config=air.RunConfig(
-    ),
-    tune_config=TuneConfig(searcher=OptunaSearch(), scheduler=ASHA())
-)
-
-
-
-## How to deal with Tune specific stuff? Scheduler and searcher?
-## How to deal with multiple places to input the search space? E.g. directly through searchers?
-
-
-
-runner = (
-    ExperimentRunner(TorchTrainer, config=TorchTrainerConfig())
-    .config()
-    .tuning(searcher=)
-)
-
-"""
+    if runner_type == "ExperimentRunner":
+        run_with_exp_runner()
+        run_with_exp_runner(restore=True)
+    elif runner_type == "Tuner":
+        run_with_tuner()
+        run_with_tuner(restore=True)
+    elif runner_type == "Trainer":
+        run_with_trainer()
+        run_with_trainer(restore=True)
