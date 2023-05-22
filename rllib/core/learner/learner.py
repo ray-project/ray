@@ -35,6 +35,7 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
+    is_overridden,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
@@ -306,12 +307,21 @@ class Learner:
         self._module: Optional[MultiAgentRLModule] = None
         # These are set for properly applying optimizers and adding or removing modules.
         self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
-        self._optimizer_lr_schedules: Dict[Optimizer, Scheduler] = {}
         self._named_optimizers: Dict[str, Optimizer] = {}
         self._params: ParamDict = {}
         # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
         # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
+
+        self._user_configured_optimizers = (
+            is_overridden(self.configure_optimizers_for_module)
+            or is_overridden(self.configure_optimizers)
+        )
+        # Only manage optimizer's learning rate if user has NOT overridden
+        # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
+        # to handle lr-updates entirely in user's hands.
+        if not self._user_configured_optimizers:
+            self._optimizer_lr_schedules: Dict[Optimizer, Scheduler] = {}
 
         # Registered metrics (one sub-dict per module ID) to be returned from
         # `Learner.update()`. These metrics will be "compiled" automatically into
@@ -580,26 +590,15 @@ class Learner:
             A dictionary with the updated gradients and the exact same (flat) structure
             as the incoming `module_gradients_dict` arg.
         """
-        clip_gradients = self._get_clip_function()
-
         postprocessed_grads = {}
 
         # Loop through all optimizers of this `module_id`.
         for name in self._module_optimizers[module_id]:
-            optim_name = name[len(module_id) + 1:]
+            optim_name = name[len(module_id) + 1:]  # +1: underscore in `[module_id]_..`
             optimizer = self._named_optimizers[name]
-            grad_clip: Optional[float] = (
-                hps.grad_clip.get(optim_name) if isinstance(hps.grad_clip, dict)
-                else hps.grad_clip
-            )
-            if grad_clip is None:
+            if hps.grad_clip is None:
                 postprocessed_grads.update(module_gradients_dict)
             else:
-                grad_clip_by: Optional[str] = (
-                    hps.grad_clip_by.get(optim_name) if isinstance(hps.grad_clip_by,
-                                                                   dict)
-                    else hps.grad_clip_by
-                )
                 grad_dict_to_clip = {
                     ref: module_gradients_dict[ref]
                     for ref in self._optimizer_parameters[optimizer]
@@ -610,12 +609,12 @@ class Learner:
                 }
 
                 # Perform gradient clipping, if necessary.
-                global_norm = clip_gradients(
+                global_norm = self._get_clip_function()(
                     grad_dict_to_clip,
-                    grad_clip=grad_clip,
-                    grad_clip_by=grad_clip_by,
+                    grad_clip=hps.grad_clip,
+                    grad_clip_by=hps.grad_clip_by,
                 )
-                if grad_clip_by == "global_norm":
+                if hps.grad_clip_by == "global_norm":
                     self.register_metric(
                         module_id,
                         f"gradients_{optim_name}_global_norm",
@@ -828,7 +827,8 @@ class Learner:
                 optim = self._named_optimizers[optim_name]
                 del self._optimizer_parameters[optim]
                 del self._named_optimizers[optim_name]
-                del self._optimizer_lr_schedules[optim]
+                if not self._user_configured_optimizers:
+                    del self._optimizer_lr_schedules[optim]
             del self._module_optimizers[module_id]
 
         self.module.remove_module(module_id)
@@ -1022,23 +1022,19 @@ class Learner:
         """
         results = {}
 
-        # Handle lr scheduling updates and apply new learning rates to the optimizers.
-        for name, optimizer in self._named_optimizers.items():
-            # Only cover optimizers for this particular module.
-            if name not in self._module_optimizers[module_id]:
-                continue
+        # Handle lr-scheduling updates and apply new learning rates to the optimizers.
+        if not self._user_configured_optimizers:
+            assert len(self._module_optimizers[module_id]) == 1
 
-            new_lr = self._optimizer_lr_schedules[optimizer].update(timestep=timestep)
-            self._set_optimizer_lr(optimizer, lr=new_lr)
-            results.update({name: new_lr})
-        # In the simple case (only one optimizer for this module), publish current lr
-        # directly under LEARNER_RESULTS_CURR_LR_KEY, otherwise, return new lrs by
-        # optimizer name.
-        results = {
-            LEARNER_RESULTS_CURR_LR_KEY: (
-                results if len(results) > 1 else list(results.values())[0]
-            )
-        }
+            # Only cover optimizers mapped to this particular module.
+            for name, optimizer in self._module_optimizers[module_id].items():
+                optimizer = self._named_optimizers[name]
+                new_lr = self._optimizer_lr_schedules[optimizer].update(
+                    timestep=timestep
+                )
+                self._set_optimizer_lr(optimizer, lr=new_lr)
+                results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
+
         return results
 
     def update(
@@ -1391,21 +1387,19 @@ class Learner:
         return func(self, *_args, **_kwargs)
 
     def _pair_optim_with_lr_scheduler(self, hps, name, optim):
-        # Figure out the correct setting to use for this optimizer.
-        fixed_value_or_schedule = (
-            hps.learning_rate.get(name) if isinstance(hps.learning_rate, dict)
-            else hps.learning_rate
-        )
-
-        # Build learning rate scheduling tools (one Schedule per optimizer).
-        self._optimizer_lr_schedules[optim] = Scheduler(
-            fixed_value_or_schedule=fixed_value_or_schedule,
-            framework=self.framework,
-            device=self._device,
-        )
-        # Set the optimizer to the current (first) learning rate.
-        lr = self._optimizer_lr_schedules[optim].get_current_value()
-        self._set_optimizer_lr(optimizer=optim, lr=lr)
+        # Only manage optimizer's learning rate if user has NOT overridden
+        # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
+        # to handle lr-updates entirely in user's hands.
+        if not self._user_configured_optimizers:
+            # Build learning rate scheduling tools (one Schedule per optimizer).
+            self._optimizer_lr_schedules[optim] = Scheduler(
+                fixed_value_or_schedule=hps.learning_rate,
+                framework=self.framework,
+                device=self._device,
+            )
+            # Set the optimizer to the current (first) learning rate.
+            lr = self._optimizer_lr_schedules[optim].get_current_value()
+            self._set_optimizer_lr(optimizer=optim, lr=lr)
 
     @abc.abstractmethod
     def _get_tensor_variable(

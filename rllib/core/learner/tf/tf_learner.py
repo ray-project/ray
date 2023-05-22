@@ -5,7 +5,6 @@ import pathlib
 from typing import (
     Any,
     Hashable,
-    List,
     Mapping,
     Optional,
     Sequence,
