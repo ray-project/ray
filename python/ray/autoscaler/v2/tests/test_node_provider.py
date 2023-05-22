@@ -5,12 +5,7 @@ import sys
 import unittest
 
 import pytest  # noqa
-from ray._private.test_utils import (
-    MockNode,
-    MockProcessRunner,
-    MockProvider,
-    load_test_config,
-)
+from ray._private.test_utils import MockNode, MockProvider, load_test_config
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler._private.node_provider_availability_tracker import (
@@ -31,7 +26,9 @@ class NodeProviderTest(unittest.TestCase):
             EventSummarizer(),
             NodeProviderAvailabilityTracker(),
         )
-        self.instance_config_provider = NodeProviderConfig()
+        self.instance_config_provider = NodeProviderConfig(
+            load_test_config("test_multi_node.yaml")
+        )
         self.node_provider = NodeProviderAdapter(
             self.base_provider, self.node_launcher, self.instance_config_provider
         )
