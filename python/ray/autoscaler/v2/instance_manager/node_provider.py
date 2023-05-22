@@ -83,7 +83,7 @@ class NodeProviderAdapter(NodeProvider):
     @override
     def create_nodes(self, instance_type: InstanceType, count: int) -> List[Instance]:
         result = self._node_launcher.launch_node(
-            self._config.get_node_config(instance_type.name),
+            self._config.get_raw_config_mutable(),
             count,
             instance_type.name,
         )
