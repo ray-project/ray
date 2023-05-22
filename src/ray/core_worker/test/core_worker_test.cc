@@ -570,6 +570,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                               address,
                               num_returns,
                               false,
+                              false,
                               resources,
                               resources,
                               "",

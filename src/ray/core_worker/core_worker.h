@@ -1025,9 +1025,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// object to the task caller and have the resulting ObjectRef be owned by
   /// the caller. This is in contrast to static allocation, where the caller
   /// decides at task invocation time how many returns the task should have.
+  /// \param[in] owner_address The address of the owner who will own this
+  /// dynamically generated object.
   ///
   /// \param[out] The ObjectID that the caller should use to store the object.
-  ObjectID AllocateDynamicReturnId();
+  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address);
 
   /// Get a handle to an actor.
   ///

@@ -422,6 +422,12 @@ message TaskSpec {
   // This will be the actor creation task's task id for concurrent actors. Or
   // the main thread's task id for other cases.
   bytes submitter_task_id = 33;
+  // True if the task is a streaming generator. When it is true,
+  // returns_dynamic has to be true as well. This is a temporary flag
+  // until we migrate the generator implementatino to streaming.
+  // TODO(sang): Remove it once migrating to the streaming generator
+  // by default.
+  bool streaming_generator = 34;
 }
 
 message TaskInfoEntry {

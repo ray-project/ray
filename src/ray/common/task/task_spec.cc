@@ -218,6 +218,12 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
 
 bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynamic(); }
 
+// TODO(sang): Merge this with ReturnsDynamic once migrating to the
+// streaming generator.
+bool TaskSpecification::IsStreamingGenerator() const {
+  return message_->streaming_generator();
+}
+
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());
   std::vector<ObjectID> dynamic_return_ids;
