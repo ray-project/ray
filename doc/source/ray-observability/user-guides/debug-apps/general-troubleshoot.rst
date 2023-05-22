@@ -1,7 +1,7 @@
-.. _gotchas:
+.. _observability-general-troubleshoot:
 
-Ray Gotchas
-===========
+General Troubleshooting
+=======================
 
 Ray sometimes has some aspects of its behavior that might catch
 users off guard. There may be sound arguments for these design choices.
