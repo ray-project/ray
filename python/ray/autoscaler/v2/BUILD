@@ -20,3 +20,13 @@ py_test(
     tags = ["team:core"],
     deps = ["//:ray_lib",],
 )
+
+py_test(
+    name = "test_config",
+    size = "small",
+    srcs = ["tests/test_config.py"],
+    tags = ["team:core"],
+    deps = [
+        "//:ray_lib",
+    ]
+)
