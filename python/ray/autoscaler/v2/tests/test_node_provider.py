@@ -92,14 +92,10 @@ class NodeProviderTest(unittest.TestCase):
         self.assertTrue(
             "worker_nodes1" in self.availability_tracker.summary().node_availabilities
         )
-
-    # def test_get_nodes(self):
-    #     self.node_provider.create_nodes("worker_nodes1", 1)
-    #     self.assertEqual(len(self.base_provider.mock_nodes), 1)
-
-    # def get_nodes_by_cloud_instance_id(self):
-    #     self.node_provider.create_nodes("worker_nodes1", 1)
-    #     self.assertEqual(len(self.base_provider.mock_nodes), 1)
+        self.assertEqual(
+            self.node_provider.get_non_terminated_nodes(),
+            {},
+        )
 
 
 if __name__ == "__main__":
