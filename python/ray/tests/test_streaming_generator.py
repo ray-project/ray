@@ -10,9 +10,9 @@ from unittest.mock import patch, Mock
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.experimental.state.api import list_objects
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEoFError
 from ray.cloudpickle import dumps
-from ray.exceptions import ObjectRefStreamEoFError, WorkerCrashedError
+from ray.exceptions import WorkerCrashedError
 
 
 class MockedWorker:
@@ -66,12 +66,12 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
         )  # noqa
         with pytest.raises(StopIteration):
             ref = generator._next_sync(timeout_s=0)
-
         # Make sure we cannot serialize the generator.
         with pytest.raises(TypeError):
             dumps(generator)
 
         del generator
+        c.delete_object_ref_stream.assert_called()
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):

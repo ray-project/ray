@@ -143,6 +143,7 @@ cdef class CoreWorker:
     cdef store_task_outputs(
             self,
             worker, outputs,
+            const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             const CAddress &caller_address,
             CObjectID ref_generator_id=*)

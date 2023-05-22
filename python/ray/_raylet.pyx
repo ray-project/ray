@@ -206,6 +206,10 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
+class ObjectRefStreamEoFError(RayError):
+    pass
+
+
 class StreamingObjectRefGenerator:
     def __init__(self, generator_ref: ObjectRef, worker: "Worker"):
         # The reference to a generator task.
@@ -264,8 +268,6 @@ class StreamingObjectRefGenerator:
         last object will contain a system level exception).
 
         Args:
-            is_async: True if the generator is used inside
-                an async event loop. False otherwise.
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
             sleep_interval_s: busy waiting interval.
@@ -811,9 +813,9 @@ cdef store_task_errors(
         function_name,
         CTaskType task_type,
         proctitle,
+        const CAddress &caller_address,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_string* application_error,
-        const CAddress &caller_address):
+        c_string* application_error):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -857,8 +859,8 @@ cdef store_task_errors(
         errors.append(failure_object)
     num_errors_stored = core_worker.store_task_outputs(
         worker, errors,
-        returns,
-        caller_address)
+        caller_address,
+        returns)
 
     ray._private.utils.push_error_to_driver(
         worker,
@@ -1058,8 +1060,8 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
                 return_id, shared_ptr[CRayObject]()))
     core_worker.store_task_outputs(
         worker, [output],
-        &intermediate_result,
         caller_address,
+        &intermediate_result,
         generator_id)
 
     return intermediate_result.back()
@@ -1164,7 +1166,8 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
                 actor,  # actor
                 actor_id,  # actor id
                 function_name, task_type, title,
-                &intermediate_result, application_error, caller_address)
+                caller_address,
+                &intermediate_result, application_error)
 
     return intermediate_result.back()
 
@@ -1189,6 +1192,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
     try:
         core_worker.store_task_outputs(
             worker, generator,
+            caller_address,
             dynamic_returns,
             caller_address,
             generator_id)
@@ -1232,8 +1236,8 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         False,  # task_exception
                         None,  # actor
                         None,  # actor id
-                        function_name, task_type, title,
-                        dynamic_returns, application_error, caller_address)
+                        function_name, task_type, title, caller_address,
+                        dynamic_returns, application_error)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -1585,12 +1589,12 @@ cdef void execute_task(
                 # all generator tasks, both static and dynamic.
                 core_worker.store_task_outputs(
                     worker, outputs,
-                    returns,
-                    caller_address)
+                    caller_address,
+                    returns)
         except Exception as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
-                    task_type, title, returns, application_error, caller_address)
+                    task_type, title, caller_address, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -1728,7 +1732,7 @@ cdef execute_task_with_cancellation_handler(
                 actor,
                 actor_id,
                 execution_info.function_name,
-                task_type, title, returns,
+                task_type, title, caller_address, returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
                 NULL,
@@ -3381,6 +3385,7 @@ cdef class CoreWorker:
 
     cdef store_task_outputs(self,
                             worker, outputs,
+                            const CAddress &caller_address,
                             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]]
                             *returns,
                             const CAddress &caller_address,
