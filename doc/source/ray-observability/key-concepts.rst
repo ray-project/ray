@@ -10,7 +10,7 @@ Dashboard (Web UI)
 Ray supports the web-based dashboard to help users monitor the cluster. When a new cluster is started, the dashboard is available
 through the default address `localhost:8265` (port can be automatically incremented if port 8265 is already occupied).
 
-See :ref:`Ray Dashboard <ray-dashboard>` for more details.
+See :ref:`Getting Started <observability-getting-started>` for more details about the dashboard.
 
 Accessing Ray States
 --------------------

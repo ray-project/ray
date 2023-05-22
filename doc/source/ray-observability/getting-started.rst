@@ -49,7 +49,7 @@ Ray cluster comes with the dashboard. See :ref:`Cluster Monitoring <monitor-clus
 
   When using the Ray dashboard, it is highly recommended to also set up Prometheus and Grafana.
   They are necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
-  See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
+  See :ref:`Configuring and Managing the Dashboard <observability-configure-manage-dashboard>` to learn how to set up Prometheus and Grafana.
 
   .. _dash-workflow-cpu-memory-analysis:
 
@@ -145,7 +145,7 @@ The Serve view lets you monitor the status of your :ref:`Ray Serve <rayserve>` a
         <iframe width="560" height="315" src="https://www.youtube.com/embed/eqXfwM641a4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
-The initial page showcases your general Serve configurations, a list of the Serve applications, and, if you have :ref:`Grafana and Prometheus <ray-metrics>` configured, some high-level
+The initial page showcases your general Serve configurations, a list of the Serve applications, and, if you have :ref:`Grafana and Prometheus <observability-configure-manage-dashboard>` configured, some high-level
 metrics of all your Serve applications. Click the name of a Serve application to go to the Serve Application Detail Page.
 
 Serve Application Detail Page
@@ -154,17 +154,17 @@ Serve Application Detail Page
 This page shows the Serve application's configurations and metadata. It also lists the :ref:`Serve deployments and replicas <serve-key-concepts-deployment>`.
 Click the expand button of a deployment to see all the replicas in that deployment.
 
-For each deployment, there are two available actions. You can view the Deployment config and, if you configured :ref:`Grafana and Prometheus <ray-metrics>`, you can open
+For each deployment, there are two available actions. You can view the Deployment config and, if you configured :ref:`Grafana and Prometheus <observability-configure-manage-dashboard>`, you can open
 a Grafana dashboard with detailed metrics about that deployment.
 
-For each replica, there are two available actions. You can see the logs of that replica and, if you configured :ref:`Grafana and Prometheus <ray-metrics>`, you can open
+For each replica, there are two available actions. You can see the logs of that replica and, if you configured :ref:`Grafana and Prometheus <observability-configure-manage-dashboard>`, you can open
 a Grafana dashboard with detailed metrics about that replica. Click on the replica name to go to the Serve Replica Detail Page.
 
 
 Serve Replica Detail Page
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This page shows metadata about the Serve replica, high-level metrics about the replica if you configured :ref:`Grafana and Prometheus <ray-metrics>`, and
+This page shows metadata about the Serve replica, high-level metrics about the replica if you configured :ref:`Grafana and Prometheus <observability-configure-manage-dashboard>`, and
 a history of completed :ref:`tasks <core-key-concepts>` of that replica.
 
 
@@ -172,7 +172,7 @@ Serve Metrics
 ~~~~~~~~~~~~~
 
 Ray serve exports various time-series metrics to understand the status of your Serve application over time. More details of these metrics can be found :ref:`here <serve-production-monitoring-metrics>`.
-In order to store and visualize these metrics, you must set up Prometheus and Grafana by following the instructions :ref:`here <ray-metrics>`.
+In order to store and visualize these metrics, you must set up Prometheus and Grafana by following the instructions :ref:`here <observability-configure-manage-dashboard>`.
 
 These metrics are available in the Ray dashboard in the Serve page and the Serve Replica Detail page. They are also accessible as Grafana dashboards.
 Within the Grafana dashboard, use the dropdown filters on the top to filter metrics by route, deployment, or replica. Exact descriptions
@@ -251,7 +251,7 @@ See :ref:`System Metrics Page <system-metrics>` for available metrics.
 
 .. note::
 
-  The metrics view required the Prometheus and Grafana setup. See :ref:`Ray Metrics <ray-metrics>` to learn how to set up Prometheus and Grafana.
+  The metrics view required the Prometheus and Grafana setup. See :ref:`Configuring and Managing the Dashboard <observability-configure-manage-dashboard>` to learn how to set up Prometheus and Grafana.
 
 The metrics view lets you view visualizations of the time series metrics emitted by Ray.
 

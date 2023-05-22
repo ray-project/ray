@@ -8,7 +8,7 @@ Setting up the dashboard may require some configuration depending on your use mo
 Port forwarding
 ---------------
 
-:ref:`The dashboard <ray-dashboard>` provides detailed information about the state of the cluster,
+:ref:`The dashboard <observability-getting-started>` provides detailed information about the state of the cluster,
 including the running jobs, actors, workers, nodes, etc.
 By default, the :ref:`cluster launcher <vm-cluster-quick-start>` and :ref:`KubeRay operator <kuberay-quickstart>` will launch the dashboard, but will
 not publicly expose the port.
@@ -248,7 +248,7 @@ Then go to to the location of the binary and run grafana using the built in conf
     ./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
 
 Now, you can access grafana using the default grafana url, `http://localhost:3000`.
-You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same :ref:`metric graphs <system-metrics>` are also accessible via :ref:`Ray Dashboard <ray-dashboard>`.
+You can then see the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same :ref:`metric graphs <system-metrics>` are also accessible via :ref:`Ray Dashboard <observability-getting-started>`.
 
 .. tip::
 
@@ -288,7 +288,7 @@ For example, if Prometheus is hosted at port 9000 on a node with ip 55.66.77.88,
 Alternate Grafana host location
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 You can choose to run Grafana on a non-default port or on a different machine. If you choose to do this, the
-:ref:`Dashboard <ray-dashboard>` needs to be configured with a public address to that service so the web page
+:ref:`Dashboard <observability-getting-started>` needs to be configured with a public address to that service so the web page
 can load the graphs. This can be done with the `RAY_GRAFANA_HOST` env var when launching ray. The env var takes
 in the address to access Grafana. More info can be found :ref:`here <multi-node-metrics-grafana>`. Instructions
 to use an existing Grafana instance can be found :ref:`here <multi-node-metrics-grafana-existing>`.

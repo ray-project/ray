@@ -394,15 +394,16 @@ parts:
           - file: ray-observability/user-guides/index
             title: User Guides
             sections:
-              - file: ray-observability/user-guides/troubleshoot-apps/index
-                title: Troubleshooting Applications
+              - file: ray-observability/user-guides/debug-apps/index
+                title: Debugging Applications
                 sections:
-                  - file: ray-observability/user-guides/troubleshoot-apps/general-troubleshoot
-                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-failures
-                  - file: ray-observability/user-guides/troubleshoot-apps/troubleshoot-hangs
-                  - file: ray-observability/user-guides/troubleshoot-apps/optimize-performance
-                  - file: ray-observability/user-guides/troubleshoot-apps/ray-debugging
-                  - file: ray-observability/user-guides/troubleshoot-apps/ray-core-profiling
+                  - file: ray-observability/user-guides/debug-apps/general-troubleshoot
+                  - file: ray-observability/user-guides/debug-apps/debug-memory
+                  - file: ray-observability/user-guides/debug-apps/debug-hangs
+                  - file: ray-observability/user-guides/debug-apps/debug-failures
+                  - file: ray-observability/user-guides/debug-apps/optimize-performance
+                  - file: ray-observability/user-guides/debug-apps/ray-debugging
+                  - file: ray-observability/user-guides/debug-apps/ray-core-profiling
               - file: ray-observability/user-guides/cli-sdk
               - file: ray-observability/user-guides/configure-logging
               - file: ray-observability/user-guides/add-app-metrics
