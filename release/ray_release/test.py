@@ -8,6 +8,15 @@ DEFAULT_PYTHON_VERSION = tuple(
 class Test(dict):
     """A class represents a test to run on buildkite"""
 
+    def is_byod_cluster(self) -> bool:
+        """
+        Returns whether this test is running on a BYOD cluster.
+        """
+        return self["cluster"].get("byod", False)
+
+    def get_name(self) -> str:
+        return self["name"]
+
     def get_python_version(self) -> str:
         """
         Returns the python version to use for this test. If not specified, use
@@ -20,7 +29,9 @@ class Test(dict):
         Returns the ray docker image to use for this test. If the commit hash is not
         specified, use the nightly ray image.
         """
-        ray_version = os.environ.get("BUILDKITE_COMMIT", "")[:6] or "nightly"
+        # TDOD(can): re-enable this test once we have a custom image
+        # ray_version = os.environ.get("BUILDKITE_COMMIT", "")[:6] or "nightly"
+        ray_version = "nightly"
         python_version = f"py{self.get_python_version().replace('.',   '')}"
         return f"rayproject/ray:{ray_version}-{python_version}"
 

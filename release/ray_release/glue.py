@@ -127,7 +127,7 @@ def _load_test_configuration(
     # Instantiate managers and command runner
     try:
         cluster_manager = cluster_manager_cls(
-            test["name"],
+            test,
             anyscale_project,
             smoke_test=smoke_test,
         )
