@@ -5,7 +5,6 @@ from types import ModuleType
 from typing import Any, Dict, List, Optional
 
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -21,6 +20,10 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.utils import (
+    check_output_cmd,
+    SubprocessCalledProcessError,
+)
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 from ray.exceptions import RuntimeEnvSetupError
@@ -138,7 +141,6 @@ def upload_py_modules_if_needed(
 
 
 class PyModulesPlugin(RuntimeEnvPlugin):
-
     name = "py_modules"
 
     def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
@@ -185,19 +187,17 @@ class PyModulesPlugin(RuntimeEnvPlugin):
             "Running py_modules wheel install command: %s", str(pip_install_cmd)
         )
         try:
-            # TODO(architkulkarni): Use `await check_output_cmd` or similar.
-            exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
+            await check_output_cmd(pip_install_cmd, logger=logger)
+        except SubprocessCalledProcessError as exc:
+            if Path(module_dir).exists():
+                Path(module_dir).unlink()
+            raise RuntimeError(
+                f"Failed to install py_modules wheel {wheel_file}"
+                f"to {module_dir}:\n{exc.output}"
+            ) from exc
         finally:
             if Path(wheel_file).exists():
                 Path(wheel_file).unlink()
-
-            if exit_code != 0:
-                if Path(module_dir).exists():
-                    Path(module_dir).unlink()
-                raise RuntimeError(
-                    f"Failed to install py_modules wheel {wheel_file}"
-                    f"to {module_dir}:\n{output}"
-                )
         return module_dir
 
     async def create(
