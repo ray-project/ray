@@ -35,7 +35,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
+from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
 
 
@@ -618,7 +618,7 @@ def check_off_policyness(
     return off_policy_ness
 
 
-def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict:
+def check_train_results(train_results: ResultDict):
     """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
@@ -702,9 +702,11 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
         if pid == "__all__":
             continue
 
-        # Make sure each policy has the LEARNER_STATS_KEY under it.
-        assert LEARNER_STATS_KEY in policy_stats
-        learner_stats = policy_stats[LEARNER_STATS_KEY]
+        # On the new API stack, policy has no LEARNER_STATS_KEY under it anymore.
+        if LEARNER_STATS_KEY in policy_stats:
+            learner_stats = policy_stats[LEARNER_STATS_KEY]
+        else:
+            learner_stats = policy_stats
         for key, value in learner_stats.items():
             # Min- and max-stats should be single values.
             if key.startswith("min_") or key.startswith("max_"):

@@ -102,6 +102,8 @@ parts:
               - file: data/examples/ocr_example
                 title: Scaling OCR with Ray Data
               - file: data/examples/random-access
+              - file: data/examples/batch_inference_object_detection
+                title: Object Detection Batch Inference with PyTorch
           - file: data/faq
           - file: data/api/api
           - file: data/glossary
