@@ -30,6 +30,17 @@ def start_client_server_2_cpus():
 
 
 @pytest.fixture
+def legacy_progress_reporter():
+    old_val = os.environ.get("RAY_AIR_NEW_OUTPUT")
+    os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
+    yield
+    if old_val is None:
+        os.environ.pop("RAY_AIR_NEW_OUTPUT")
+    else:
+        os.environ["RAY_AIR_NEW_OUTPUT"] = old_val
+
+
+@pytest.fixture
 def start_client_server_4_cpus():
     ray.init(num_cpus=4)
     with ray_start_client_server() as client:
@@ -37,49 +48,51 @@ def start_client_server_4_cpus():
     ray.shutdown()
 
 
-def test_pbt_function(start_client_server_2_cpus):
+def test_pbt_function(legacy_progress_reporter, start_client_server_2_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.pbt_function import run_tune_pbt
 
     run_tune_pbt()
 
 
-def test_optuna_example(start_client_server):
+def test_optuna_example(legacy_progress_reporter, start_client_server):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.optuna_example import run_optuna_tune
 
     run_optuna_tune(smoke_test=True)
 
 
-def test_cifar10_pytorch(start_client_server_2_cpus):
+def test_cifar10_pytorch(legacy_progress_reporter, start_client_server_2_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.cifar10_pytorch import main
 
     main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
 
 
-def test_tune_mnist_keras(start_client_server_4_cpus):
+def test_tune_mnist_keras(legacy_progress_reporter, start_client_server_4_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.tune_mnist_keras import tune_mnist
 
     tune_mnist(num_training_iterations=5)
 
 
-def test_mnist_ptl_mini(start_client_server):
+def test_mnist_ptl_mini(legacy_progress_reporter, start_client_server):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.mnist_ptl_mini import tune_mnist
 
     tune_mnist(num_samples=1, num_epochs=1, gpus_per_trial=0)
 
 
-def test_xgboost_example(start_client_server):
+def test_xgboost_example(legacy_progress_reporter, start_client_server):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.xgboost_example import tune_xgboost
 
     tune_xgboost()
 
 
-def test_xgboost_dynamic_resources_example(start_client_server):
+def test_xgboost_dynamic_resources_example(
+    legacy_progress_reporter, start_client_server
+):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.xgboost_dynamic_resources_example import tune_xgboost
 
@@ -87,7 +100,7 @@ def test_xgboost_dynamic_resources_example(start_client_server):
     tune_xgboost(use_class_trainable=False)
 
 
-def test_mlflow_example(start_client_server):
+def test_mlflow_example(legacy_progress_reporter, start_client_server):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.mlflow_example import tune_with_callback, tune_with_setup
 
@@ -96,14 +109,14 @@ def test_mlflow_example(start_client_server):
     tune_with_setup(mlflow_tracking_uri, finish_fast=True)
 
 
-def test_pbt_transformers(start_client_server):
+def test_pbt_transformers(legacy_progress_reporter, start_client_server):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.pbt_transformers.pbt_transformers import tune_transformer
 
     tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)
 
 
-def test_jupyter_rich_output(start_client_server_4_cpus):
+def test_jupyter_rich_output(legacy_progress_reporter, start_client_server_4_cpus):
     assert ray.util.client.ray.is_connected()
 
     def dummy_objective(config):

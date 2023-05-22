@@ -223,10 +223,11 @@ py_test_run_all_subdirectory(
     include = ["source/data/doc_code/*.py"],
     exclude = [
         "source/ray-air/doc_code/predictors.py",
-        "source/data/doc_code/creating_datastreams_untested.py"
+        "source/data/doc_code/loading_data_untested.py",
+        "source/data/doc_code/torch_image_batch_trained.py"
     ],
     extra_srcs = [],
-    tags = ["exclusive", "team:core"],
+    tags = ["exclusive", "team:data"],
 )
 
 # --------------------------------------------------------------------
@@ -301,4 +302,16 @@ py_test(
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
+)
+
+# --------------------------------------------------------------------
+# Test all doc/external code
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["external/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "external"],
 )

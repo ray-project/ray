@@ -142,7 +142,7 @@ async def parse_and_validate_request(
 
 
 async def get_driver_jobs(
-    gcs_aio_client: GcsAioClient,
+    gcs_aio_client: GcsAioClient, timeout: Optional[int] = None
 ) -> Tuple[Dict[str, JobDetails], Dict[str, DriverInfo]]:
     """Returns a tuple of dictionaries related to drivers.
 
@@ -151,7 +151,7 @@ async def get_driver_jobs(
     It's keyed by the submission job's submission id.
     Only the last driver of a submission job is returned.
     """
-    reply = await gcs_aio_client.get_all_job_info()
+    reply = await gcs_aio_client.get_all_job_info(timeout=timeout)
 
     jobs = {}
     submission_job_drivers = {}

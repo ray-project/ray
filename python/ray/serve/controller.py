@@ -23,6 +23,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
     StatusOverview,
     ServeDeployMode,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
@@ -44,7 +45,10 @@ from ray.serve._private.deploy_utils import (
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
-from ray.serve._private.logging_utils import configure_component_logger
+from ray.serve._private.logging_utils import (
+    configure_component_logger,
+    get_component_logger_file_path,
+)
 from ray.serve._private.long_poll import LongPollHost
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
@@ -53,6 +57,7 @@ from ray.serve.schema import (
     ApplicationDetails,
     ServeInstanceDetails,
     HTTPOptionsSchema,
+    ServeActorDetails,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
@@ -161,6 +166,15 @@ class ServeController:
 
         # Keep track of single-app vs multi-app
         self.deploy_mode = ServeDeployMode.UNSET
+        # Controller actor details
+        self._actor_details = ServeActorDetails(
+            node_id=ray.get_runtime_context().get_node_id(),
+            node_ip=ray.util.get_node_ip_address(),
+            actor_id=ray.get_runtime_context().get_actor_id(),
+            actor_name=self.controller_name,
+            worker_id=ray._private.worker.global_worker.worker_id.hex(),
+            log_file_path=get_component_logger_file_path(),
+        )
 
         run_background_task(self.run_control_loop())
 
@@ -701,11 +715,15 @@ class ServeController:
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
         return ServeInstanceDetails(
+            controller_info=self._actor_details,
             proxy_location=http_config.location,
             http_options=HTTPOptionsSchema(
                 host=http_config.host,
                 port=http_config.port,
             ),
+            http_proxies=self.http_state.get_http_proxy_details()
+            if self.http_state
+            else None,
             deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)
@@ -778,6 +796,14 @@ class ServeController:
             )
             self.application_state_manager.delete_application(name)
         self.delete_deployments(deployments_to_delete)
+
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """Record multiplexed model ids for a replica of deployment
+        Args:
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
+        """
+        self.deployment_state_manager.record_multiplexed_replica_info(info)
 
 
 @ray.remote(num_cpus=0, max_calls=1)

@@ -1,4 +1,6 @@
 import contextlib
+import uuid
+
 import pytest
 import time
 import torch
@@ -11,7 +13,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
-from ray.air.config import ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import TrainingFailedError
 import ray.train as train
@@ -258,7 +260,6 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     (for example when used with Tune).
     """
     from ray.air.config import ScalingConfig
-    import time
 
     num_samples = 2
     num_workers = 2
@@ -269,6 +270,7 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     # Divide by two because of a 2 node cluster.
     gpus_per_node = total_gpus_required // 2
 
+    exception = None
     # Use the same number of cpus per node as gpus per node.
     with ray_start_2_node_cluster(
         num_cpus_per_node=gpus_per_node, num_gpus_per_node=gpus_per_node
@@ -290,12 +292,14 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
         @ray.remote(num_cpus=0)
         class TrialActor:
             def __init__(self, warmup_steps):
-                # adding warmup_steps to the config
-                # to avoid the error of checkpoint name conflict
-                time.sleep(2 * warmup_steps)
                 self.trainer = TorchTrainer(
                     train_fn,
                     torch_config=TorchConfig(backend="gloo"),
+                    run_config=RunConfig(
+                        # Use a unique name to avoid using the same
+                        # experiment directory
+                        name=f"test_tune_torch_get_device_gpu_{uuid.uuid4()}"
+                    ),
                     scaling_config=ScalingConfig(
                         num_workers=num_workers,
                         use_gpu=True,
@@ -313,8 +317,15 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
             def run(self):
                 return self.trainer.fit()
 
-        actors = [TrialActor.remote(1) for _ in range(num_samples)]
-        ray.get([actor.run.remote() for actor in actors])
+        try:
+            actors = [TrialActor.remote(1) for _ in range(num_samples)]
+            ray.get([actor.run.remote() for actor in actors])
+        except Exception as exc:
+            exception = exc
+
+    # Raise exception after Ray cluster has been shutdown to avoid corrupted state
+    if exception:
+        raise exception
 
 
 def test_torch_auto_unwrap(ray_start_4_cpus):

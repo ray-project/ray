@@ -2,11 +2,13 @@ import copy
 import logging
 import math
 import os
+import sys
 from typing import (
     Any,
     Callable,
     Container,
     Dict,
+    List,
     Mapping,
     Optional,
     Tuple,
@@ -15,6 +17,8 @@ from typing import (
     Union,
 )
 
+from packaging import version
+
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHyperparameters
@@ -22,15 +26,16 @@ from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
 )
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
+from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.env.wrappers.atari_wrappers import is_atari
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -51,6 +56,7 @@ from ray.rllib.utils.gym import (
     try_import_gymnasium_and_gym,
 )
 from ray.rllib.utils.policy import validate_policy_id
+from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     deserialize_type,
     NOT_SERIALIZABLE,
@@ -67,15 +73,14 @@ from ray.rllib.utils.typing import (
     ResultDict,
     SampleBatchType,
 )
-from ray.tune.tune import _Config
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
+from ray.tune.tune import _Config
 from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
-
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
 under input and input_config keys. E.g.
@@ -276,6 +281,17 @@ class AlgorithmConfig(_Config):
             "intra_op_parallelism_threads": 8,
             "inter_op_parallelism_threads": 8,
         }
+        # Torch compile settings
+        self.torch_compile_learner = False
+        self.torch_compile_learner_dynamo_backend = (
+            "aot_eager" if sys.platform == "darwin" else "inductor"
+        )
+        self.torch_compile_learner_dynamo_mode = "reduce-overhead"
+        self.torch_compile_worker = False
+        self.torch_compile_worker_dynamo_backend = (
+            "aot_eager" if sys.platform == "darwin" else "inductor"
+        )
+        self.torch_compile_worker_dynamo_mode = "reduce-overhead"
 
         # `self.environment()`
         self.env = None
@@ -315,6 +331,7 @@ class AlgorithmConfig(_Config):
         # `self.training()`
         self.gamma = 0.99
         self.lr = 0.001
+        self.lr_schedule = None
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
@@ -770,6 +787,15 @@ class AlgorithmConfig(_Config):
         else:
             _torch, _ = try_import_torch()
 
+        # Check if torch framework supports torch.compile.
+        if (
+            _torch is not None
+            and self.framework_str == "torch"
+            and version.parse(_torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
+            and (self.torch_compile_learner or self.torch_compile_worker)
+        ):
+            raise ValueError("torch.compile is only supported from torch 2.0.0")
+
         self._check_if_correct_nn_framework_installed(_tf1, _tf, _torch)
         self._resolve_tf_settings(_tf1, _tfv)
 
@@ -844,7 +870,7 @@ class AlgorithmConfig(_Config):
                 error=True,
             )
 
-        # RLModule API only works with connectors.
+        # RLModule API only works with connectors and with Learner API.
         if not self.enable_connectors and self._enable_rl_module_api:
             raise ValueError(
                 "RLModule API only works with connectors. "
@@ -853,39 +879,25 @@ class AlgorithmConfig(_Config):
             )
 
         # Learner API requires RLModule API.
-        if self._enable_learner_api and not self._enable_rl_module_api:
+        if self._enable_learner_api is not self._enable_rl_module_api:
             raise ValueError(
-                "Learner API requires RLModule API. "
-                "Please enable RLModule API via "
-                "`config.training(_enable_rl_module_api=True)`."
+                "Learner API requires RLModule API and vice-versa! "
+                "Enable RLModule API via "
+                "`config.rl_module(_enable_rl_module_api=True)` and the Learner API "
+                "via `config.training(_enable_learner_api=True)` (or set both to "
+                "False)."
             )
 
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
-            # enable RLModule API and connectors if env variable is set
+            # Enable RLModule API and connectors if env variable is set
             # (to be used in unittesting)
             self.rl_module(_enable_rl_module_api=True)
+            self.training(_enable_learner_api=True)
             self.enable_connectors = True
 
-        # Explore parameter cannot be False with RLModule API enabled.
-        # The reason is that `explore` is not just a parameter that will get passed
-        # down to the policy.compute_actions() anymore. It is a phase in which RLModule.
-        # forward_exploration() will get called during sampling. If user needs to
-        # really disable the stochasticity during this phase, they need to override the
-        # RLModule.forward_exploration() method or setup model parameters such that it
-        # will disable the stochasticity of this method (e.g. by setting the std to 0
-        # or setting temperature to 0 for the Categorical distribution).
-        if self._enable_rl_module_api and not self.explore:
-            raise ValueError(
-                "When RLModule API is enabled, explore parameter cannot be False. "
-                "Please set explore=None or disable RLModule API via "
-                "`config.rl_module(_enable_rl_module_api=False)`."
-                "If you want to disable the stochasticity during the exploration "
-                "phase, you can customize your RLModule and override the RLModule."
-                "forward_exploration() method "
-                "or setup model parameters such that it will disable the "
-                "stochasticity of this method (e.g. by setting the std to 0 or "
-                "setting temperature to 0 for the Categorical distribution)."
-            )
+        # LR-schedule checking.
+        if self._enable_learner_api:
+            Scheduler.validate(self.lr_schedule, "lr_schedule", "learning rate")
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -1201,6 +1213,12 @@ class AlgorithmConfig(_Config):
         eager_max_retraces: Optional[int] = NotProvided,
         tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
+        torch_compile_learner: Optional[bool] = NotProvided,
+        torch_compile_learner_dynamo_mode: Optional[str] = NotProvided,
+        torch_compile_learner_dynamo_backend: Optional[str] = NotProvided,
+        torch_compile_worker: Optional[bool] = NotProvided,
+        torch_compile_worker_dynamo_backend: Optional[str] = NotProvided,
+        torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1221,6 +1239,21 @@ class AlgorithmConfig(_Config):
             tf_session_args: Configures TF for single-process operation by default.
             local_tf_session_args: Override the following tf session args on the local
                 worker
+            torch_compile_learner: If True, forward_train methods on TorchRLModules
+            on the learner are compiled. If not specified, the default is to compile
+            forward train on the learner.
+            torch_compile_learner_dynamo_backend: The torch dynamo backend to use on
+                the learner.
+            torch_compile_learner_dynamo_mode: The torch dynamo mode to use on the
+                learner.
+            torch_compile_worker: If True, forward exploration and inference methods on
+                TorchRLModules on the workers are compiled. If not specified,
+                the default is to not compile forward methods on the workers because
+                retracing can be expensive.
+            torch_compile_worker_dynamo_backend: The torch dynamo backend to use on
+                the workers.
+            torch_compile_worker_dynamo_mode: The torch dynamo mode to use on the
+                workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1241,6 +1274,23 @@ class AlgorithmConfig(_Config):
             self.tf_session_args = tf_session_args
         if local_tf_session_args is not NotProvided:
             self.local_tf_session_args = local_tf_session_args
+
+        if torch_compile_learner is not NotProvided:
+            self.torch_compile_learner = torch_compile_learner
+        if torch_compile_learner_dynamo_backend is not NotProvided:
+            self.torch_compile_learner_dynamo_backend = (
+                torch_compile_learner_dynamo_backend
+            )
+        if torch_compile_learner_dynamo_mode is not NotProvided:
+            self.torch_compile_learner_dynamo_mode = torch_compile_learner_dynamo_mode
+        if torch_compile_worker is not NotProvided:
+            self.torch_compile_worker = torch_compile_worker
+        if torch_compile_worker_dynamo_backend is not NotProvided:
+            self.torch_compile_worker_dynamo_backend = (
+                torch_compile_worker_dynamo_backend
+            )
+        if torch_compile_worker_dynamo_mode is not NotProvided:
+            self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
 
         return self
 
@@ -1588,6 +1638,7 @@ class AlgorithmConfig(_Config):
         *,
         gamma: Optional[float] = NotProvided,
         lr: Optional[float] = NotProvided,
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
@@ -1602,6 +1653,11 @@ class AlgorithmConfig(_Config):
         Args:
             gamma: Float specifying the discount factor of the Markov Decision process.
             lr: The default learning rate.
+            lr_schedule: Learning rate schedule. In the format of
+                [[timestep, lr-value], [timestep, lr-value], ...]
+                Intermediary timesteps will be assigned to interpolated learning rate
+                values. A schedule config's first entry must start with timestep 0,
+                i.e.: [[0, initial_value], [...]].
             grad_clip: The value to use for gradient clipping. Depending on the
                 `grad_clip_by` setting, gradients will either be clipped by value,
                 norm, or global_norm (see docstring on `grad_clip_by` below for more
@@ -1653,6 +1709,8 @@ class AlgorithmConfig(_Config):
             self.gamma = gamma
         if lr is not NotProvided:
             self.lr = lr
+        if lr_schedule is not NotProvided:
+            self.lr_schedule = lr_schedule
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if grad_clip_by is not NotProvided:
@@ -1676,7 +1734,7 @@ class AlgorithmConfig(_Config):
                 deprecation_warning(
                     old="AlgorithmConfig.training(_use_default_native_models=True)",
                     help="_use_default_native_models is not supported "
-                    "anymore. To get rid of this error, set `experimental("
+                    "anymore. To get rid of this error, set `rl_module("
                     "_enable_rl_module_api` to True. Native models will "
                     "be better supported by the upcoming RLModule API.",
                     # Error out if user tries to enable this
@@ -2427,6 +2485,7 @@ class AlgorithmConfig(_Config):
                 By default if you call `config.rl_module(...)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
                 `config.rl_module(_enable_rl_module_api=True)`.
+
         Returns:
             This updated AlgorithmConfig object.
         """
@@ -2926,6 +2985,33 @@ class AlgorithmConfig(_Config):
                     f"{suggested_rollout_fragment_length}."
                 )
 
+    def get_torch_compile_learner_config(self):
+        """Returns the TorchCompileConfig to use on learners."""
+
+        from ray.rllib.core.rl_module.torch.torch_compile_config import (
+            TorchCompileConfig,
+        )
+
+        return TorchCompileConfig(
+            compile_forward_train=self.torch_compile_learner,
+            torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
+            torch_dynamo_mode=self.torch_compile_learner_dynamo_mode,
+        )
+
+    def get_torch_compile_worker_config(self):
+        """Returns the TorchCompileConfig to use on workers."""
+
+        from ray.rllib.core.rl_module.torch.torch_compile_config import (
+            TorchCompileConfig,
+        )
+
+        return TorchCompileConfig(
+            compile_forward_exploration=self.torch_compile_worker,
+            compile_forward_inference=self.torch_compile_worker,
+            torch_dynamo_backend=self.torch_compile_worker_dynamo_backend,
+            torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
+        )
+
     def get_default_rl_module_spec(self) -> ModuleSpec:
         """Returns the RLModule spec to use for this algorithm.
 
@@ -3129,6 +3215,9 @@ class AlgorithmConfig(_Config):
             .learner(
                 learner_class=self.learner_class,
                 # TODO (Kourosh): optimizer config can now be more complicated.
+                # TODO (Sven): Shouldn't optimizer config be part of learner HPs?
+                #  E.g. if we have a lr schedule, this will have to be managed by
+                #  the learner, NOT the optimizer directly.
                 optimizer_config={
                     "lr": self.lr,
                     "grad_clip": self.grad_clip,
@@ -3142,8 +3231,12 @@ class AlgorithmConfig(_Config):
                 num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
                 local_gpu_idx=self.local_gpu_idx,
             )
-            .framework(eager_tracing=self.eager_tracing)
         )
+
+        if self.framework_str == "torch":
+            config.framework(torch_compile_cfg=self.get_torch_compile_learner_config())
+        elif self.framework_str == "tf2":
+            config.framework(eager_tracing=self.eager_tracing)
 
         return config
 
@@ -3159,7 +3252,7 @@ class AlgorithmConfig(_Config):
         Note that LearnerHyperparameters should always be derived directly from a
         AlgorithmConfig object's own settings and considered frozen/read-only.
         """
-        return LearnerHyperparameters()
+        return LearnerHyperparameters(lr_schedule=self.lr_schedule)
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""

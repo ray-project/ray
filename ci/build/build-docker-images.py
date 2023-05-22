@@ -433,7 +433,9 @@ def build_or_pull_base_images(
 def prep_ray_ml():
     root_dir = _get_root_dir()
 
-    requirements_files = ["python/requirements.txt"]
+    requirements_files = [
+        "python/requirements.txt",
+    ]
     ml_requirements_files = [
         "python/requirements/ml/requirements_ml_docker.txt",
         "python/requirements/ml/requirements_dl.txt",
@@ -441,6 +443,7 @@ def prep_ray_ml():
         "python/requirements/ml/requirements_rllib.txt",
         "python/requirements/ml/requirements_train.txt",
         "python/requirements/ml/requirements_upstream.txt",
+        "python/requirements/ml/requirements_no_deps.txt",
     ]
     # We don't need these in the ml docker image
     ignore_requirements = [
@@ -598,13 +601,12 @@ def push_and_tag_images(
     image_list: Optional[List[str]] = None,
     suffix: Optional[str] = None,
 ):
-
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = _get_commit_sha()
     if _release_build():
         release_name = re.search("[0-9]+\.[0-9]+\.[0-9].*", _get_branch()).group(0)
-        date_tag = release_name
-        sha_tag = release_name
+        date_tag = release_name + "." + date_tag
+        sha_tag = release_name + "." + sha_tag
 
     for image_name in image_list:
         full_image_name = f"rayproject/{image_name}"

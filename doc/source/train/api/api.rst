@@ -85,6 +85,8 @@ PyTorch Training Loop Utilities
     ~train.torch.backward
     ~train.torch.enable_reproducibility
 
+.. _train-lightning-integration:
+
 PyTorch Lightning
 ~~~~~~~~~~~~~~~~~
 
@@ -150,15 +152,25 @@ LightGBM
     ~train.lightgbm.LightGBMCheckpoint
 
 
-HuggingFace
-~~~~~~~~~~~
+Hugging Face
+~~~~~~~~~~~~
+
+Transformers
+************
 
 .. autosummary::
     :toctree: doc/
 
-    ~train.huggingface.HuggingFaceTrainer
-    ~train.huggingface.HuggingFaceCheckpoint
-    ~train.huggingface.accelerate.AccelerateTrainer
+    ~train.huggingface.TransformersTrainer
+    ~train.huggingface.TransformersCheckpoint
+
+Accelerate
+**********
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.huggingface.AccelerateTrainer
 
 Scikit-Learn
 ~~~~~~~~~~~~
@@ -219,7 +231,7 @@ Restoration API for Built-in Trainers
 
 .. autosummary::
 
-    train.huggingface.HuggingFaceTrainer.restore
+    train.huggingface.TransformersTrainer.restore
 
 .. note::
 

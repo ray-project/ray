@@ -4,12 +4,12 @@ import json
 import logging
 import os
 import time
-from distutils.version import StrictVersion
 from functools import lru_cache, partial
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import boto3
 import botocore
+from packaging.version import Version
 
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CloudwatchHelper as cwh,
@@ -58,7 +58,7 @@ DEFAULT_AMI = {
 
 # todo: cli_logger should handle this assert properly
 # this should probably also happens somewhere else
-assert StrictVersion(boto3.__version__) >= StrictVersion(
+assert Version(boto3.__version__) >= Version(
     "1.4.8"
 ), "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
 
