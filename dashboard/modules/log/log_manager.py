@@ -25,12 +25,18 @@ WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err
 
 
 class ResolvedStreamFileInfo(BaseModel):
+    # The node id where the log file is located.
     node_id: str
 
+    # The log file path name. Could be a relative path relative to ray's logging folder,
+    # or an absolute path.
     filename: str
 
+    # Start offset in the log file to stream from. None to indicate beginning of
+    # the file, or determined by last tail lines.
     start_offset: Optional[int]
 
+    # End offset in the log file to stream from. None to indicate the end of the file.
     end_offset: Optional[int]
 
 
@@ -331,7 +337,8 @@ class LogsManager:
                 raise FileNotFoundError(
                     "Could not find log file for task attempt:"
                     f"{task_id}({attempt_number})."
-                    f"Worker id = {worker_id}, node id = {node_id}, log_info = {log_info}"
+                    f"Worker id = {worker_id}, node id = {node_id},"
+                    f"log_info = {log_info}"
                 )
 
         elif submission_id:

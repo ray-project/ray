@@ -384,7 +384,11 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         # be automatically terminated.
         lines = request.lines if request.lines else 1000
 
-        filepath = Path(self._dashboard_agent.log_dir) / request.log_file_name
+        if not Path(request.log_file_name).is_absolute():
+            filepath = Path(self._dashboard_agent.log_dir) / request.log_file_name
+        else:
+            filepath = Path(request.log_file_name)
+
         if not filepath.is_file():
             await context.send_initial_metadata(
                 [[log_consts.LOG_GRPC_ERROR, log_consts.FILE_NOT_FOUND]]
