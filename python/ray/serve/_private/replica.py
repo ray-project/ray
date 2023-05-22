@@ -217,7 +217,7 @@ def create_replica_wrapper(name: str):
             )
 
             if not isinstance(result, starlette.responses.StreamingResponse):
-                print("YIELDING NON-STREAMING")
+                # print("YIELDING NON-STREAMING")
                 yield result
             else:
                 gen = result.body_iterator
@@ -225,7 +225,7 @@ def create_replica_wrapper(name: str):
                 yield result
 
                 async for r in gen:
-                    print("YIELDING STREAMING")
+                    # print("YIELDING STREAMING")
                     yield r
 
         async def handle_request_from_java(
