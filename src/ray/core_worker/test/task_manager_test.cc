@@ -29,7 +29,8 @@ namespace core {
 
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies,
-                                   bool dynamic_returns = false) {
+                                   bool dynamic_returns = false,
+                                   bool streaming_generator = false) {
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
@@ -40,6 +41,9 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 
   if (dynamic_returns) {
     task.GetMutableMessage().set_returns_dynamic(true);
+  }
+  if (streaming_generator) {
+    task.GetMutableMessage().set_streaming_generator(true);
   }
 
   return task;
@@ -1598,7 +1602,6 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   // NOTE: We panic if READ is called after DELETE. The
   // API caller should guarantee this doesn't happen.
   // So we don't test it.
-
   // WRITE 3. Should be ignored.
   auto dynamic_return_id3 = ObjectID::FromIndex(spec.TaskId(), 4);
   data = GenerateRandomBuffer();

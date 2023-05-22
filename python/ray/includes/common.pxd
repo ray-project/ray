@@ -99,6 +99,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         @staticmethod
         CRayStatus NotFound()
 
+        @staticmethod
+        CRayStatus ObjectRefStreamEoF()
+
         c_bool ok()
         c_bool IsOutOfMemory()
         c_bool IsKeyError()
@@ -118,6 +121,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectUnknownOwner()
         c_bool IsRpcError()
         c_bool IsOutOfResource()
+        c_bool IsObjectRefStreamEoF()
 
         c_string ToString()
         c_string CodeAsString()
@@ -429,3 +433,4 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
 cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kWorkerSetupHookKeyName
     cdef int kResourceUnitScaling
+    cdef int kStreamingGeneratorReturn
