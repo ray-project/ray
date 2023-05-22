@@ -118,6 +118,9 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
+    // QQ: So this doesn't update total resources, but the below UpdateNodeResourceUsage
+    // updates the total resources info in `node_resource_usages_`.
+    // Do we ever expect a node to have total resources changed during it's lifetime?
     if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
             scheduling::NodeID(node_id.Binary()), data)) {
       RAY_LOG(INFO)
@@ -127,6 +130,16 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   }
 
   UpdateNodeResourceUsage(node_id, data);
+
+  // QQ:
+  // NOTE: we only bump the version if the available resources changes for a node.
+  // Since that's right now the only thing being used as part of the ClusterState for
+  // autoscalng. We should really have a way to unify:
+  //  1. cluster resource manager's resource view
+  //  2. node_resource_usage_ here...
+  if (data.resources_available_changed()) {
+    IncrementClusterResourceStateVersion();
+  }
 }
 
 void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
@@ -139,11 +152,13 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   if (data.resource_load_changed()) {
     (*iter->second.mutable_resource_load()) = data.resource_load();
     (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
+
+    IncrementClusterResourceStateVersion();
   }
 }
 
-const absl::flat_hash_map<NodeID, rpc::ResourcesData>
-    &GcsResourceManager::NodeResourceReportView() const {
+const absl::flat_hash_map<NodeID, rpc::ResourcesData> &
+GcsResourceManager::NodeResourceReportView() const {
   return node_resource_usages_;
 }
 
@@ -285,17 +300,26 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   data.set_node_manager_address(node.node_manager_address());
   node_resource_usages_.emplace(NodeID::FromBinary(node.node_id()), std::move(data));
   num_alive_nodes_++;
+
+  auto instance_id = node.instance_id();
+  auto version = IncrementClusterResourceStateVersion();
+  // Add a new node state.
+  AddNewNodeState(instance_id, node.node_id(), version);
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   node_resource_usages_.erase(node_id);
   cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
   num_alive_nodes_--;
+  RemoveNodeState(node_id);
+  IncrementClusterResourceStateVersion();
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(
     const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
   placement_group_load_ = absl::make_optional(placement_group_load);
+
+  IncrementClusterResourceStateVersion();
 }
 
 std::string GcsResourceManager::DebugString() const {
@@ -339,6 +363,111 @@ std::string GcsResourceManager::ToString() const {
   }
   ostr << indent_0 << "}\n";
   return ostr.str();
+}
+
+void GcsResourceManager::HandleGetClusterResourceState(
+    rpc::autoscaler::GetClusterResourceStateRequest request,
+    rpc::autoscaler::GetClusterResourceStateReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  // TODO: last_seen_cluster_resource_state_version not needed?
+  RAY_CHECK(request.last_seen_cluster_resource_state_version() <=
+            cluster_resource_state_version_);
+
+  reply->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
+  reply->set_cluster_resource_state_version(cluster_resource_state_version_);
+
+  GetNodeStates(reply);
+  GetPendingResourceRequests(reply);
+  GetPendingGangResourceRequests(reply);
+  GetClusterResourceConstraints(reply);
+
+  // QQ: should we use GCS_RPC_SEND_REPLY
+  // That would add another field in the reply, and introduce dep of `GcsStatus`.
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+}
+
+void GcsResourceManager::GetPendingGangResourceRequests(
+    rpc::autoscaler::GetClusterResourceStateReply *reply) {
+  // TODO
+  return;
+}
+
+void GcsResourceManager::GetClusterResourceConstraints(
+    rpc::autoscaler::GetClusterResourceStateReply *reply) {
+  // TODO
+  return;
+}
+
+void GcsResourceManager::GetPendingResourceRequests(
+    rpc::autoscaler::GetClusterResourceStateReply *reply) {
+  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+      aggregate_load;
+
+  for (const auto &usage : node_resource_usages_) {
+    // Aggregate the load reported by each raylet.
+    FillAggregateLoad(usage.second, &aggregate_load);
+  }
+
+  for (const auto &[shape, demand] : aggregate_load) {
+    // QQ: should backlog size to be included here?
+    auto num_pending = demand.num_infeasible_requests_queued();
+    if (num_pending > 0) {
+      auto pending_req = reply->add_pending_resource_requests();
+      pending_req->set_count(num_pending);
+      auto req = pending_req->mutable_request();
+      req->mutable_resources_bundle()->insert(shape.begin(), shape.end());
+    }
+  }
+}
+
+void GcsResourceManager::GetNodeStates(
+    rpc::autoscaler::GetClusterResourceStateReply *reply) {
+  for (auto &[_node_id, node_state] : node_states_) {
+    auto node_state_proto = reply->add_node_states();
+    node_state_proto->CopyFrom(node_state);
+
+    // QQ: There's node_resource_usages_ and cluster resource manager for the node
+    // resources? Why's seemingly 2 sources of truth?
+    //
+    // const auto &node_resource_data =
+    //     node_resource_usages_.at(NodeID::FromBinary(node_state.node_id()));
+
+    auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
+        scheduling::NodeID(node_state.node_id()));
+
+    // Copy resource available
+    const auto &available = node_resource_data.available.ToResourceMap();
+    node_state_proto->mutable_available_resources()->insert(available.begin(),
+                                                            available.end());
+
+    // Copy total resources
+    const auto &total = node_resource_data.total.ToResourceMap();
+    node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
+
+    // TODO: support dynamic labels.
+  }
+}
+
+void GcsResourceManager::RemoveNodeState(const NodeID &node_id) {
+  node_states_.erase(node_id);
+}
+
+void GcsResourceManager::AddNewNodeState(const std::string &instance_id,
+                                         const std::string &node_id,
+                                         int64_t version) {
+  rpc::autoscaler::NodeState node_state;
+  node_state.set_node_id(node_id);
+  node_state.set_instance_id(instance_id);
+  node_state.set_status(rpc::autoscaler::NodeState::ALIVE);
+  node_state.set_node_state_version(version);
+  node_states_.insert({NodeID::FromBinary(node_id), std::move(node_state)});
+}
+
+void GcsResourceManager::HandleReportAutoscalingState(
+    rpc::autoscaler::ReportAutoscalingStateRequest request,
+    rpc::autoscaler::ReportAutoscalingStateReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  // TODO
 }
 
 }  // namespace gcs
