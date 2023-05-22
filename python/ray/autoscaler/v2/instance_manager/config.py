@@ -68,18 +68,17 @@ class NodeProviderConfig(object):
     ) -> List[str]:
         if num_successful_updates > 0 and self._node_config_provider.restart_only:
             return []
-        setup_command = self._node_configs.get("worker_setup_commands", [])
-        return self._node_configs["available_node_types"][instance_type_name].get(
-            "worker_setup_commands", setup_command
+        return self.get_node_type_specific_config(
+            instance_type_name, "worker_setup_commands"
         )
 
     def get_node_type_specific_config(
         self, instance_type_name: str, config_name: str
     ) -> Any:
-        config = self._node_config_provider.get_config(config_name)
-        node_specific_config = self._node_configs["available_node_types"][
-            instance_type_name
-        ]
+        config = self.get_config(config_name)
+        node_specific_config = self._node_configs["available_node_types"].get(
+            instance_type_name, {}
+        )
         if config_name in node_specific_config:
             config = node_specific_config[config_name]
         return config

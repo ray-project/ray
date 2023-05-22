@@ -37,6 +37,10 @@ def test_ray_start():
         "echo ${echo hi}",
         "echo worker",
     ]
+    assert config.get_worker_start_ray_commands() == [
+        "ray stop",
+        "ray start --address=$RAY_HEAD_IP",
+    ]
     assert config.get_worker_setup_commands("worker_nodes1") == [
         "echo worker1",
     ]
@@ -46,6 +50,26 @@ def test_ray_start():
         "container_name": "ray_container",
         "pull_before_run": True,
     }
+
+    assert config.get_docker_config("worker_nodes") == {
+        "image": "anyscale/ray-ml:latest",
+        "container_name": "ray_container",
+        "pull_before_run": True,
+    }
+
+    assert config.get_docker_config("worker_nodes1") == {
+        "image": "anyscale/ray-ml:nightly",
+        "container_name": "ray_container",
+        "pull_before_run": True,
+    }
+
+    assert config.get_node_type_specific_config(
+        "worker_nodes", "initialization_commands"
+    ) == ["echo what"]
+
+    assert config.get_node_type_specific_config(
+        "worker_nodes1", "initialization_commands"
+    ) == ["echo init"]
 
 
 if __name__ == "__main__":
