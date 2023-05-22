@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 import io
-
+import pickle
 import torch
 import warnings
 
@@ -51,7 +51,12 @@ class TorchCheckpoint(Checkpoint):
         # are in the checkpoint dict can be properly deserialized on the
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
-        torch.save(data_dict, _buffer, pickle_module=ray.cloudpickle, pickle_protocol=5)
+        torch.save(
+            data_dict,
+            _buffer,
+            pickle_module=ray.cloudpickle,
+            pickle_protocol=pickle.HIGHEST_PROTOCOL,
+        )
         return {ENCODED_DATA_KEY: _buffer.getvalue()}
 
     def _decode_data_dict(self, data_dict: dict) -> dict:
