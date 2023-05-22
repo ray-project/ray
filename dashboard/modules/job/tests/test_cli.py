@@ -397,7 +397,7 @@ class TestSubmit:
                     "submit",
                     """--entrypoint-resources={"Custom":3""",
                     "--",
-                    "echo hello",
+                    "echo hello world",
                 ],
             )
             print(result.output)
