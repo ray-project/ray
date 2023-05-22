@@ -505,7 +505,7 @@ class Learner:
         """
 
     @OverrideToImplementCustomLogic
-    def postprocess_gradients(self, gradients_dict: ParamDictType) -> ParamDictType:
+    def postprocess_gradients(self, gradients_dict: ParamDict) -> ParamDict:
         """Applies potential postprocessing operations on the gradients.
 
         This method is called after gradients have been computed and modifies them
@@ -561,8 +561,8 @@ class Learner:
         *,
         module_id: ModuleID,
         hps: LearnerHyperparameters,
-        module_gradients_dict: ParamDictType,
-    ) -> ParamDictType:
+        module_gradients_dict: ParamDict,
+    ) -> ParamDict:
         """
 
         Args:
@@ -587,6 +587,7 @@ class Learner:
         # Loop through all optimizers of this `module_id`.
         for name in self._module_optimizers[module_id]:
             optim_name = name[len(module_id) + 1:]
+            optimizer = self._named_optimizers[name]
             grad_clip: Optional[float] = (
                 hps.grad_clip.get(optim_name) if isinstance(hps.grad_clip, dict)
                 else hps.grad_clip

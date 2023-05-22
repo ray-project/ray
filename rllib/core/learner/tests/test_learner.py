@@ -87,8 +87,8 @@ class TestLearner(unittest.TestCase):
         for fw in ["torch", "tf2"]:
             config = (
                 APPOConfig()
-                .framework(fw, eager_tracing=True)
                 .environment("CartPole-v1")
+                .framework(fw, eager_tracing=True)
                 .rollouts(rollout_fragment_length=50)
                 # Clip by value only.
                 .training(

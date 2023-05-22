@@ -78,8 +78,8 @@ class PPOLearner(Learner):
         results = super().additional_update_for_module(
             module_id=module_id,
             hps=hps,
-            sampled_kl_values=sampled_kl_values,
             timestep=timestep,
+            sampled_kl_values=sampled_kl_values,
         )
 
         # Update entropy coefficient via our Scheduler.
