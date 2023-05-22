@@ -597,19 +597,25 @@ class EagerTFPolicyV2(Policy):
             if self.config.get("_enable_rl_module_api", False):
                 if in_training:
                     output = self.model.forward_train(input_batch)
+                    action_dist_cls = self.model.get_train_action_dist_cls()
+                    if action_dist_cls is None:
+                        raise ValueError(
+                            "The RLModules must provide an appropriate action "
+                            "distribution class for training if is_eval_mode is False."
+                        )
                 else:
                     output = self.model.forward_exploration(input_batch)
+                    action_dist_cls = self.model.get_exploration_action_dist_cls()
+                    if action_dist_cls is None:
+                        raise ValueError(
+                            "The RLModules must provide an appropriate action "
+                            "distribution class for exploration if is_eval_mode is "
+                            "True."
+                        )
 
-                action_dist = output.get(SampleBatch.ACTION_DIST)
-
-                if action_dist is None:
-                    raise ValueError(
-                        "The model output must contain the key "
-                        "`SampleBatch.ACTION_DIST` when using the RL module API."
-                        "Make sure if is_eval_mode is True the forward_exploration "
-                        "returns this key, and if it is False the forward_train "
-                        "returns this key."
-                    )
+                action_dist = action_dist_cls.from_logits(
+                    output[SampleBatch.ACTION_DIST_INPUTS]
+                )
             else:
                 dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
                 action_dist = self.dist_class(dist_inputs, self.model)
