@@ -13,11 +13,14 @@ from ray.rllib.policy.sample_batch import (
     MultiAgentBatch,
 )
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.testing.utils import (
     get_learner_group,
     get_learner,
+    get_module_spec,
     add_module_to_learner_or_learner_group,
 )
+from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_STATS_KEY
 from ray.util.timer import _Timer
@@ -361,6 +364,81 @@ class TestLearnerGroup(unittest.TestCase):
             check(
                 weights_after_1_update_with_break, weights_after_1_update_without_break
             )
+
+    def test_load_module_state(self):
+        fws = ["torch", "tf"]
+        # this is expanded to more scaling modes on the release ci.
+        scaling_modes = LOCAL_SCALING_CONFIGS.keys()
+
+        test_iterator = itertools.product(fws, scaling_modes)
+        for fw, scaling_mode in test_iterator:
+            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+            # env will have agent ids 0 and 1
+            env = MultiAgentCartPole({"num_agents": 2})
+
+            scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
+            learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True, is_multi_agent=True
+            )
+            spec = get_module_spec(framework=fw, env=env)
+            learner_group.add_module(module_id="0", module_spec=spec)
+            learner_group.add_module(module_id="1", module_spec=spec)
+            learner_group.remove_module(DEFAULT_POLICY_ID)
+
+            module_0 = spec.build()
+            module_1 = spec.build()
+            marl_module = MultiAgentRLModule()
+            marl_module.add_module(module_id="0", module=module_0)
+            marl_module.add_module(module_id="1", module=module_1)
+
+            # Check if we can load just the MARL Module
+            with tempfile.TemporaryDirectory() as tmpdir:
+                marl_module.save_state(tmpdir)
+                old_learner_weights = learner_group.get_weights()
+                learner_group.load_module_state(marl_module_ckpt_dir=tmpdir)
+                # check the weights of the module in the learner group are the
+                # same as the weights of the newly created marl module
+                check(learner_group.get_weights(), marl_module.get_state())
+                learner_group.set_weights(old_learner_weights)
+
+            # Check if we can load just single agent RL Modules
+            with tempfile.TemporaryDirectory() as tmpdir:
+                module_0.save_state(tmpdir)
+                with tempfile.TemporaryDirectory() as tmpdir2:
+                    temp_module = spec.build()
+                    temp_module.save_state(tmpdir2)
+
+                    old_learner_weights = learner_group.get_weights()
+                    learner_group.load_module_state(
+                        rl_module_ckpt_dirs={"0": tmpdir, "1": tmpdir2}
+                    )
+                    # check the weights of the module in the learner group are the
+                    # same as the weights of the newly created marl module
+                    new_marl_module = MultiAgentRLModule()
+                    new_marl_module.add_module(module_id="0", module=module_0)
+                    new_marl_module.add_module(module_id="1", module=temp_module)
+                    check(learner_group.get_weights(), new_marl_module.get_state())
+                    learner_group.set_weights(old_learner_weights)
+
+            # Check if we can load a MARL Module and single agent RL Module
+            # at the same time. Check that the single agent RL Module is loaded
+            # over the sub module in the MARL Module
+            with tempfile.TemporaryDirectory() as tmpdir:
+                module_0 = spec.build()
+                marl_module = MultiAgentRLModule()
+                marl_module.add_module(module_id="0", module=module_0)
+                marl_module.add_module(module_id="1", module=spec.build())
+                marl_module.save_state(tmpdir)
+                with tempfile.TemporaryDirectory() as tmpdir2:
+                    module_1 = spec.build()
+                    module_1.save_state(tmpdir2)
+                    learner_group.load_module_state(
+                        marl_module_ckpt_dir=tmpdir, rl_module_ckpt_dirs={"1": tmpdir2}
+                    )
+                    new_marl_module = MultiAgentRLModule()
+                    new_marl_module.add_module(module_id="0", module=module_0)
+                    new_marl_module.add_module(module_id="1", module=module_1)
+                    check(learner_group.get_weights(), new_marl_module.get_state())
 
 
 if __name__ == "__main__":

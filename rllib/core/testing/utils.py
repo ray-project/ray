@@ -70,7 +70,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
         # TODO (Kourosh): Make this more multi-agent for example with policy ids "1",
         # and "2".
         return MultiAgentRLModuleSpec(
-            module_class=MultiAgentRLModule, module_specs={DEFAULT_POLICY_ID: spec}
+            marl_module_class=MultiAgentRLModule, module_specs={DEFAULT_POLICY_ID: spec}
         )
     else:
         return spec
