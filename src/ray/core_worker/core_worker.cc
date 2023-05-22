@@ -2278,6 +2278,20 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
   return Status::OK();
 }
 
+Status CoreWorker::BatchSubmitActorTask(const std::vector<ActorID> &actor_ids,
+                                        const RayFunction &function,
+                                        const std::vector<std::unique_ptr<TaskArg>> &args,
+                                        const TaskOptions &task_options,
+                                        std::vector<rpc::ObjectReference> &task_returns) {
+  for (const auto actor_id : actor_ids) {
+    auto status = SubmitActorTask(actor_id, function, args, task_options, task_returns);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  return Status::OK();
+}
+
 Status CoreWorker::CancelTask(const ObjectID &object_id,
                               bool force_kill,
                               bool recursive) {

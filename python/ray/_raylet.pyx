@@ -3001,6 +3001,60 @@ cdef class CoreWorker:
                     raise Exception(f"Failed to submit task to actor {actor_id} "
                                     f"due to {status.message()}")
 
+    def batch_submit_actor_task(self,
+                                Language language,
+                                actor_ids,
+                                FunctionDescriptor function_descriptor,
+                                args,
+                                c_string name,
+                                int num_returns,
+                                double num_method_cpus,
+                                c_string concurrency_group_name):
+        cdef:
+            c_vector[CActorID] c_actor_ids
+            unordered_map[c_string, double] c_resources
+            CRayFunction ray_function
+            c_vector[unique_ptr[CTaskArg]] args_vector
+            c_vector[CObjectReference] return_refs
+            c_vector[CObjectID] incremented_put_arg_ids
+
+        with self.profile_event(b"submit_task"):
+            if num_method_cpus > 0:
+                c_resources[b"CPU"] = num_method_cpus
+            ray_function = CRayFunction(
+                language.lang, function_descriptor.descriptor)
+            prepare_args_and_increment_put_refs(
+                self, language, args, &args_vector, function_descriptor,
+                &incremented_put_arg_ids)
+
+            for actor_id in actor_ids:
+                c_actor_ids.push_back((<ActorID>actor_id).native())
+            with nogil:
+                status = CCoreWorkerProcess.GetCoreWorker().BatchSubmitActorTask(
+                    c_actor_ids,
+                    ray_function,
+                    args_vector,
+                    CTaskOptions(
+                        name, num_returns, c_resources, concurrency_group_name),
+                    return_refs)
+            # These arguments were serialized and put into the local object
+            # store during task submission. The backend increments their local
+            # ref count initially to ensure that they remain in scope until we
+            # add to their submitted task ref count. Now that the task has
+            # been submitted, it's safe to remove the initial local ref.
+            for put_arg_id in incremented_put_arg_ids:
+                CCoreWorkerProcess.GetCoreWorker().RemoveLocalReference(
+                    put_arg_id)
+
+            if status.ok():
+                # The initial local reference is already acquired internally
+                # when adding the pending task.
+                return VectorToObjectRefs(return_refs,
+                                          skip_adding_local_ref=True)
+            else:
+                raise Exception(f"Failed to submit task to actors {actor_ids} "
+                                f"due to {status.message()}")
+
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:
             CActorID c_actor_id = actor_id.native()

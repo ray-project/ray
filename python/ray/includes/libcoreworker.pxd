@@ -123,6 +123,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[unique_ptr[CTaskArg]] &args,
             const CTaskOptions &options,
             c_vector[CObjectReference]&)
+        CRayStatus BatchSubmitActorTask(
+            const c_vector[CActorID] &actor_ids, const CRayFunction &function,
+            const c_vector[unique_ptr[CTaskArg]] &args,
+            const CTaskOptions &options,
+            c_vector[CObjectReference]&)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
