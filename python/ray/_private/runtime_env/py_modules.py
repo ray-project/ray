@@ -136,8 +136,19 @@ def upload_py_modules_if_needed(
     return runtime_env
 
 
-class PyModulesPlugin(RuntimeEnvPlugin):
+def _find_pip_packages_dir(module_dir: Path, uri: str) -> str:
+    for root, _dirs, _files in os.walk(module_dir):
+        if root.endswith(("site-packages", "dist-packages")):
+            return root
+    raise ValueError(
+        f"Local directory {module_dir} for URI {uri} does "
+        "not contain a site-packages or dist-packages directory on the cluster."
+        "Something may have gone wrong while downloading, unpacking or "
+        "installing the py_modules files."
+    )
 
+
+class PyModulesPlugin(RuntimeEnvPlugin):
     name = "py_modules"
 
     def __init__(
@@ -181,7 +192,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
             "pip",
             "install",
             wheel_file,
-            f"--target={module_dir}",
+            f"--prefix={module_dir}",
         ]
         logger.info(
             "Running py_modules wheel install command: %s", str(pip_install_cmd)
@@ -235,5 +246,8 @@ class PyModulesPlugin(RuntimeEnvPlugin):
                     "not exist on the cluster. Something may have gone wrong while "
                     "downloading, unpacking or installing the py_modules files."
                 )
-            module_dirs.append(str(module_dir))
+            if uri.endswith(".whl"):
+                module_dirs.append(_find_pip_packages_dir(module_dir, uri))
+            else:
+                module_dirs.append(str(module_dir))
         set_pythonpath_in_context(os.pathsep.join(module_dirs), context)
