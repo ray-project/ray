@@ -144,10 +144,9 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [KubDoc]: https://kubernetes.io/docs/concepts/cluster-administration/logging/
 [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 
-## Setting up loggers
+## Customizing Worker Loggers
 
-When using Ray, all of the tasks and actors are executed remotely in Ray's worker processes. 
-Since Python logger module creates a singleton logger per process, loggers should be configured on per task/actor basis. 
+When using Ray, all tasks and actors are executed remotely in Ray's worker processes. 
 
 :::{note}
 To stream logs to a driver, they should be flushed to stdout and stderr.
@@ -168,7 +167,8 @@ class Actor:
         logging.basicConfig(level=logging.INFO)
 
     def log(self, msg):
-        logging.info(msg)
+        logger = logging.getLogger(__name__)
+        logger.info(msg)
 
 actor = Actor.remote()
 ray.get(actor.log.remote("A log message for an actor."))
@@ -176,14 +176,15 @@ ray.get(actor.log.remote("A log message for an actor."))
 @ray.remote
 def f(msg):
     logging.basicConfig(level=logging.INFO)
-    logging.info(msg)
+    logger = logging.getLogger(__name__)
+    logger.info(msg)
 
-ray.get(f.remote("A log message for a task"))
+ray.get(f.remote("A log message for a task."))
 ```
 
 ```bash
-(pid=95193) INFO:root:A log message for a task
-(pid=95192) INFO:root:A log message for an actor.
+(Actor pid=179641) INFO:__main__:A log message for an actor.
+(f pid=177572) INFO:__main__:A log message for a task.
 ```
 ## Using structured logging
 

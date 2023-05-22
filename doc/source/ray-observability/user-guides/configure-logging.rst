@@ -5,6 +5,43 @@ Configuring Logging
 
 This guide helps you modify the default configuration of Ray's logging system.
 
+
+Internal Ray Logging Configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+When ``import ray`` is executed, Ray's logger is initialized, generating a sensible configuration given in ``python/ray/_private/log.py``. The default logging level is ``logging.INFO``.
+
+All Ray loggers are automatically configured in ``ray._private.ray_logging``. To change the Ray library logging configuration:
+
+.. code-block:: python
+
+   import logging
+
+   logger = logging.getLogger("ray")
+   logger # Modify the ray logging config
+
+Similarly, to modify the logging configuration for any Ray subcomponent, specify the appropriate logger name:
+
+.. code-block:: python
+
+   import logging
+
+   # First, get the handle for the logger you want to modify
+   ray_data_logger = logging.getLogger("ray.data")
+   ray_tune_logger = logging.getLogger("ray.tune")
+   ray_rllib_logger = logging.getLogger("ray.rllib")
+   ray_air_logger = logging.getLogger("ray.air")
+   ray_train_logger = logging.getLogger("ray.train")
+   ray_workflow_logger = logging.getLogger("ray.workflow")
+
+   # Modify the ray.data logging level
+   ray_data_logger.setLevel(logging.WARNING)
+
+   # Other loggers can be modified similarly.
+   # Here's how to add an aditional file handler for ray tune:
+   ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
+
+For more information about logging in workers, see :ref:`Customizing worker loggers`.
+
 Disabling logging to the driver
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
