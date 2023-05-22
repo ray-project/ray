@@ -3,6 +3,7 @@ import os
 import sys
 
 import pytest  # noqa
+
 from ray._private.test_utils import load_test_config
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 
