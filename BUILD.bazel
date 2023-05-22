@@ -104,6 +104,9 @@ cc_library(
         "src/ray/rpc/gcs_server/gcs_rpc_client.h",
         "src/ray/rpc/gcs_server/gcs_rpc_server.h",
     ],
+    srcs = [
+        "src/ray/rpc/gcs_server/gcs_rpc_client.cc",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [

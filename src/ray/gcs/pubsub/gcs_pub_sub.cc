@@ -16,6 +16,7 @@
 
 #include "absl/strings/str_cat.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {
 namespace gcs {
@@ -230,8 +231,7 @@ PythonGcsPublisher::PythonGcsPublisher(const std::string &gcs_address) {
 }
 
 Status PythonGcsPublisher::Connect() {
-  auto arguments = PythonGrpcChannelArguments();
-  channel_ = rpc::BuildChannel(gcs_address_, gcs_port_, arguments);
+  channel_ = rpc::GcsRpcClient::GetDefaultChannel(gcs_address_, gcs_port_);
   pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
   return Status::OK();
 }
