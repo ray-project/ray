@@ -60,13 +60,13 @@ And I have this code:
   @ray.remote
   def check_file():
     foo_exists = os.path.exists("/tmp/foo.txt")
-    print(f"Foo exists? {foo_exists}")
+    return foo_exists
 
   futures = []
   for _ in range(1000):
     futures.append(check_file.remote())
 
-  ray.get(futures)
+  print(ray.get(futures))
 
 .. testoutput::
     :hide:
