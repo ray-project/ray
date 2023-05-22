@@ -76,7 +76,7 @@ class Query:
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
-    def __init__(self):
+    def __init__(self, event_loop: asyncio.AbstractEventLoop):
         self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
 
         # The iterator used for load balancing among replicas. Using itertools
@@ -90,7 +90,13 @@ class ReplicaSet:
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
-        self.config_updated_event = asyncio.Event()
+
+        # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
+        # removed it alltogether. Call accordingly.
+        if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+            self.config_updated_event = asyncio.Event()
+        else:
+            self.config_updated_event = asyncio.Event(loop=event_loop)
 
         # A map from multiplexed model id to a list of replicas that have the
         # model loaded.
@@ -316,7 +322,7 @@ class Router:
             controller_handle: The controller handle.
         """
         self._event_loop = event_loop
-        self._replica_set = ReplicaSet()
+        self._replica_set = ReplicaSet(event_loop)
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(

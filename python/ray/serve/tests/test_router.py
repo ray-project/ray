@@ -79,7 +79,7 @@ async def test_replica_set(ray_instance):
             return self._num_queries
 
     # We will test a scenario with two replicas in the replica set.
-    rs = ReplicaSet()
+    rs = ReplicaSet(get_or_create_event_loop())
     replicas = [
         RunningReplicaInfo(
             deployment_name="my_deployment",
