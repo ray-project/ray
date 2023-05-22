@@ -19,18 +19,33 @@ def test_simple():
 
 
 def test_ray_start():
-    raw_config = load_test_config("test_ray_up_config.yaml")
+    raw_config = load_test_config("test_ray_complex.yaml")
     config = NodeProviderConfig(raw_config)
-    assert config.get_worker_start_ray_commands() == [
-        "ray stop",
-        "ray start --address=$RAY_HEAD_IP",
+    assert config.get_head_setup_commands() == [
+        "echo a",
+        "echo b",
+        "echo ${echo hi}",
+        "echo head",
     ]
-    assert config.get_worker_setup_commands("head_node") == [
+    assert config.get_head_start_ray_commands() == [
+        "ray stop",
+        "ray start --head --autoscaling-config=~/ray_bootstrap_config.yaml",
+    ]
+    assert config.get_worker_setup_commands("worker_nodes") == [
         "echo a",
         "echo b",
         "echo ${echo hi}",
         "echo worker",
     ]
+    assert config.get_worker_setup_commands("worker_nodes1") == [
+        "echo worker1",
+    ]
+
+    assert config.get_docker_config("head_node") == {
+        "image": "anyscale/ray-ml:latest",
+        "container_name": "ray_container",
+        "pull_before_run": True,
+    }
 
 
 if __name__ == "__main__":

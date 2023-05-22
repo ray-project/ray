@@ -57,6 +57,12 @@ class NodeProviderConfig(object):
             return []
         return self._node_configs.get("worker_start_ray_commands", [])
 
+    def get_head_setup_commands(self) -> List[str]:
+        return self._node_configs.get("head_setup_commands", [])
+
+    def get_head_start_ray_commands(self) -> List[str]:
+        return self._node_configs.get("head_start_ray_commands", [])
+
     def get_worker_setup_commands(
         self, instance_type_name: str, num_successful_updates: int = 0
     ) -> List[str]:
