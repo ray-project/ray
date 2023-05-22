@@ -8,15 +8,16 @@ from ray.rllib.core.learner.learner import (
     Learner,
     LearnerHyperparameters,
 )
-from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ResultDict, TensorType
+from ray.rllib.utils.typing import ResultDict
 
 
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
@@ -54,32 +55,14 @@ class ImpalaLearner(Learner):
         super().build()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
-        self.entropy_coeff_schedulers_per_module: Dict[ModuleID, Scheduler] = {
-            module_id: Scheduler(
+        self.entropy_coeff_schedulers_per_module: Dict[ModuleID, Scheduler] = (
+            LambdaDefaultDict(lambda module_id: Scheduler(
                 fixed_value_or_schedule=(
                     self.hps.get_hps_for_module(module_id).entropy_coeff
                 ),
                 framework=self.framework,
                 device=self._device,
-            ) for module_id in self.module.keys()
-        }
-
-    @override(Learner)
-    def add_module(
-        self,
-        *,
-        module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
-    ) -> None:
-        super().add_module(module_id=module_id, module_spec=module_spec)
-
-        hps = self.hps.get_hps_for_module(module_id)
-
-        # Make sure the new module has an entropy coeff scheduler to use.
-        self.entropy_coeff_schedulers_per_module[module_id] = Scheduler(
-            fixed_value_or_schedule=hps.entropy_coeff,
-            framework=self.framework,
-            device=self._device,
+            ))
         )
 
     @override(Learner)

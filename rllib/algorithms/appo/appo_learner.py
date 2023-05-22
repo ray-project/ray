@@ -7,8 +7,8 @@ from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearnerHyperparameters,
 )
 from ray.rllib.core.rl_module.marl_module import ModuleID
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.schedules.scheduler import Scheduler
 
@@ -50,26 +50,10 @@ class AppoLearner(ImpalaLearner):
 
         # The current kl coefficients per module as tensor variables
         # (framework specific).
-        self.curr_kl_coeffs_per_module: Dict[ModuleID, Scheduler] = {
-            module_id: self._get_tensor_variable(
+        self.curr_kl_coeffs_per_module: LambdaDefaultDict[ModuleID, Scheduler] = (
+            LambdaDefaultDict(lambda module_id: self._get_tensor_variable(
                 self.hps.get_hps_for_module(module_id).kl_coeff
-            )
-            for module_id in self.module.keys()
-        }
-
-    @override(ImpalaLearner)
-    def add_module(
-        self,
-        *,
-        module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
-    ) -> None:
-        super().add_module(module_id=module_id, module_spec=module_spec)
-
-        # Make sure the new module has a KL coefficient to use.
-        hps = self.hps.get_hps_for_module(module_id)
-        self.curr_kl_coeffs_per_module[module_id] = (
-            self._get_tensor_variable(hps.kl_coeff)
+            ))
         )
 
     @override(ImpalaLearner)
