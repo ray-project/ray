@@ -69,9 +69,6 @@ ParamOptimizerPairs = List[ParamOptimizerPair]
 NamedParamOptimizerPairs = Dict[str, ParamOptimizerPair]
 ParamRef = Hashable
 ParamDict = Dict[ParamRef, Param]
-# A single learning rate or a learning rate schedule (list of sub-lists, each of
-# the format: [ts (int), lr_to_reach_by_ts (float)]).
-LearningRateType = Union[float, List[List[Union[int, float]]]]
 
 # COMMON LEARNER LOSS_KEYS
 POLICY_LOSS_KEY = "policy_loss"

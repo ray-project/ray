@@ -50,7 +50,7 @@ RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
 @ExperimentalAPI
 @dataclass
 class SingleAgentRLModuleSpec:
-    """A utility spec class to make it constructing RLModules (in single-agent case) easier.
+    """Utility spec class to make constructing RLModules (in single-agent case) easier.
 
     Args:
         module_class: The RLModule class to use.
