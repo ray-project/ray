@@ -8,6 +8,7 @@ import unittest
 import ray
 from ray import tune
 from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
 from ray.rllib import _register_all
 from ray.tune import Trainable
@@ -18,7 +19,7 @@ from ray.tune.execution.ray_trial_executor import (
     RayTrialExecutor,
 )
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS, register_trainable
-from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
+from ray.tune.result import PID, TRIAL_ID
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment import Trial
 from ray.cluster_utils import Cluster
