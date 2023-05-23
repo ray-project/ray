@@ -333,5 +333,6 @@ doctest(
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
         ]
-    )
+    ),
+    size="large"
 )

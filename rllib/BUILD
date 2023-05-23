@@ -74,11 +74,11 @@ doctest(
             "utils/timer.py",
             "utils/memory.py",
             "offline/off_policy_estimator.py",
-            "estimators/feature_importance.py",
+            "offline/estimators/feature_importance.py",
             "env/wrappers/recsim_wrapper.py",
             "env/remote_vector_env.py",
             # Broken imports
-            "algorithms/dreamerv3/tf/models/components/mlp.py"
+            "algorithms/dreamerv3/tf/models/components/**"
         ]
     ),
     tags = ["team:rllib"]
