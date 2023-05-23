@@ -436,6 +436,8 @@ def read_datasource(
         owned_by_consumer=False,
     )
 
+    # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
+    # after removing LazyBlockList code path.
     read_op = Read(datasource, read_tasks, ray_remote_args)
     logical_plan = LogicalPlan(read_op)
 

@@ -60,7 +60,7 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
 
     inputs = InputDataBuffer(input_data_factory=get_input_data)
 
-    def do_read(blocks: Iterator[ReadTask], ctx: TaskContext) -> Iterator[Block]:
+    def do_read(blocks: Iterator[ReadTask], _: TaskContext) -> Iterator[Block]:
         for read_task in blocks:
             yield from read_task()
 
