@@ -9,7 +9,7 @@ from ray_release.alerts import (
     # tune_tests,
     # xgboost_tests,
 )
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.exception import ReleaseTestConfigError, ResultsAlert
 from ray_release.result import Result
 

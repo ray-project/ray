@@ -16,10 +16,11 @@ from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaHyperparameters,
+    ImpalaLearnerHyperparameters,
     _reduce_impala_results,
 )
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.core.learner.learner_group_config import ModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -371,16 +372,20 @@ class ImpalaConfig(AlgorithmConfig):
                 "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
             )
 
-        # Check `entropy_coeff` for correctness.
-        if self.entropy_coeff < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0!")
         # Entropy coeff schedule checking.
         if self._enable_learner_api:
+            if self.entropy_coeff_schedule is not None:
+                raise ValueError(
+                    "`entropy_coeff_schedule` is deprecated and must be None! Use the "
+                    "`entropy_coeff` setting to setup a schedule."
+                )
             Scheduler.validate(
-                self.entropy_coeff_schedule,
+                self.entropy_coeff,
                 "entropy_coeff_schedule",
                 "entropy coefficient",
             )
+        if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0")
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_rollout_workers:
@@ -398,10 +403,7 @@ class ImpalaConfig(AlgorithmConfig):
         # If two separate optimizers/loss terms used for tf, must also set
         # `_tf_policy_handles_more_than_one_loss` to True.
         if self._separate_vf_optimizer is True:
-            # Only supported to tf so far.
-            # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the
-            #  models to return separate sets of weights in order to create
-            #  the different torch optimizers).
+            # Only supported in tf on the old API stack.
             if self.framework_str not in ["tf", "tf2"]:
                 raise ValueError(
                     "`_separate_vf_optimizer` only supported to tf so far!"
@@ -427,9 +429,11 @@ class ImpalaConfig(AlgorithmConfig):
                 )
 
     @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> ImpalaHyperparameters:
-        base_hps = super().get_learner_hyperparameters()
-        learner_hps = ImpalaHyperparameters(
+    def get_learner_hyperparameters(
+        self, module_spec: Optional[ModuleSpec] = None
+    ) -> ImpalaLearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters(module_spec=module_spec)
+        learner_hps = ImpalaLearnerHyperparameters(
             rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
             discount_factor=self.gamma,
             entropy_coeff=self.entropy_coeff,
@@ -446,7 +450,7 @@ class ImpalaConfig(AlgorithmConfig):
             learner_hps.recurrent_seq_len is None
         ), (
             "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
-            "None in ImpalaHyperparameters!"
+            "None in ImpalaLearnerHyperparameters!"
         )
         return learner_hps
 
@@ -481,7 +485,10 @@ class ImpalaConfig(AlgorithmConfig):
 
             return ImpalaTfLearner
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -500,7 +507,10 @@ class ImpalaConfig(AlgorithmConfig):
                 module_class=PPOTorchRLModule, catalog_class=PPOCatalog
             )
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
 
 def make_learner_thread(local_worker, config):
@@ -1221,7 +1231,7 @@ class Impala(Algorithm):
         """Returns the kwargs to `LearnerGroup.additional_update()`.
 
         Should be overridden by subclasses to specify wanted/needed kwargs for
-        their own implementation of `Learner.additional_update_per_module()`.
+        their own implementation of `Learner.additional_update_for_module()`.
         """
         return {}
 

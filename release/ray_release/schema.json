@@ -45,9 +45,6 @@
 				"team": {
 					"type": "string"
 				},
-				"driver_setup": {
-					"type": "string"
-				},
 				"cluster": {
 					"$ref": "#/definitions/Cluster"
 				},
@@ -90,6 +87,9 @@
 				},
 				"cloud_name": {
 					"type": "string"
+				},
+				"byod": {
+					"$ref": "#/definitions/Byod"
 				}
 			},
 			"required": [
@@ -97,6 +97,26 @@
 				"cluster_env"
 			],
 			"title": "Cluster"
+		},
+		"Byod": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"type": {
+					"type": "string",
+					"enum": [
+						"cpu",
+						"gpu"
+					]
+				},
+				"pre_run_cmds": {
+					"type": "array"
+				}
+			},
+			"required": [
+				"type"
+			],
+			"title": "Byod"
 		},
 		"Run": {
 			"type": "object",
@@ -165,9 +185,6 @@
 					"type": "string"
 				},
 				"env": {
-					"type": "string"
-				},
-				"driver_setup": {
 					"type": "string"
 				},
 				"cluster": {
