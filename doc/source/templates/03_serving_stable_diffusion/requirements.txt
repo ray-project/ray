@@ -1,4 +1,0 @@
-fastapi==0.95.1
-ipywidgets
-matplotlib
-ray[serve]
