@@ -165,9 +165,5 @@ class RAY_EXPORT PythonGcsPublisher {
   int gcs_port_;
 };
 
-/// Construct the arguments for synchronous gRPC clients
-/// (the ones wrapped in Python)
-grpc::ChannelArguments PythonGrpcChannelArguments();
-
 }  // namespace gcs
 }  // namespace ray

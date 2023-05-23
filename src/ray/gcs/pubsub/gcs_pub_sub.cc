@@ -214,14 +214,6 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
   return Status::OK();
 }
 
-grpc::ChannelArguments PythonGrpcChannelArguments() {
-  grpc::ChannelArguments arguments;
-  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
-  return arguments;
-}
-
 PythonGcsPublisher::PythonGcsPublisher(const std::string &gcs_address) {
   std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
   RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
