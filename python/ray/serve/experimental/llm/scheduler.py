@@ -67,12 +67,16 @@ class Stats:
     num_input_tokens: int = 0
     num_iterations: int = 0
     last_report_time: float = 0.0
+    start_time: float = 0.0
 
     def report_stats(self):
         if time.time() - self.last_report_time < 1:
             return False
         self.last_report_time = time.time()
         print(f"scheduler stats: {self}")
+        elapsed = self.last_report_time - self.start_time
+        token_s = (self.num_input_tokens + self.num_tokens_generated) / elapsed
+        print(f"elapsed: {elapsed}, generated_tokens/s: {token_s}")
         return True
 
     def request_selected(self, requests: List[InferenceRequest]):
@@ -89,6 +93,9 @@ class Stats:
 
     def iteration_finished(self):
         self.num_iterations += 1
+
+    def start(self):
+        self.start_time = time.time()
 
 
 class InferenceScheduler:
@@ -142,6 +149,7 @@ class InferenceScheduler:
 
     def _run_scheduling_loop(self):
         """Schedule requests to be processed by the inference worker."""
+        self._stats.start()
 
         # The main schedule loop:
         #
