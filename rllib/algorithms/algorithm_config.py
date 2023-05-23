@@ -3226,7 +3226,7 @@ class AlgorithmConfig(_Config):
         if not self._is_frozen:
             raise ValueError(
                 "Cannot call `get_learner_group_config()` on an unfrozen "
-                "AlgorithmConfig! Please call `freeze()` first."
+                "AlgorithmConfig! Please call `AlgorithmConfig.freeze()` first."
             )
 
         config = (
@@ -3234,7 +3234,7 @@ class AlgorithmConfig(_Config):
             .module(module_spec)
             .learner(
                 learner_class=self.learner_class,
-                learner_hyperparameters=self.get_learner_hyperparameters(),
+                learner_hyperparameters=self.get_learner_hyperparameters(module_spec),
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
@@ -3251,7 +3251,9 @@ class AlgorithmConfig(_Config):
 
         return config
 
-    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
+    def get_learner_hyperparameters(
+        self, module_spec: Optional[ModuleSpec] = None
+    ) -> LearnerHyperparameters:
         """Returns a new LearnerHyperparameters instance for the respective Learner.
 
         The LearnerHyperparameters is a dataclass containing only those config settings
@@ -3262,12 +3264,41 @@ class AlgorithmConfig(_Config):
 
         Note that LearnerHyperparameters should always be derived directly from a
         AlgorithmConfig object's own settings and considered frozen/read-only.
+
+        Args:
+            module_spec: The SingleAgent- or MultiAgentRLModuleSpec to use to derive
+                per-module AlgorithmConfig overrides. If a `SingleAgentModuleSpec`, this
+                is ignored. If a `MultiAgentRLModuleSpec`, will check the individual
+                module's algorithm_config_override settings and create
+                sub-LearnerHyperparameter objects from these.
+
+        Returns:
+             A LearnerHyperparameters instance for the respective Learner.
         """
+        # Compile the per-module learner hyperparameter instances (if applicable).
+        per_module_overrides = {}
+        if (
+            isinstance(module_spec, MultiAgentRLModuleSpec)
+            and isinstance(module_spec.module_specs, dict)
+        ):
+            for module_id, sa_spec in module_spec.module_specs.items():
+                # Copy this AlgorithmConfig object (unfreeze copy), update copy from
+                # the single-agent RLModule provided config override (dict), then
+                # create a new LearnerHyperparameter object from this altered
+                # AlgorithmConfig.
+                if sa_spec.algorithm_config_overrides:
+                    per_module_overrides[module_id] = (
+                        self.copy(copy_frozen=False)
+                        .update_from_dict(sa_spec.algorithm_config_overrides or {})
+                        .get_learner_hyperparameters()
+                    )
+
         return LearnerHyperparameters(
             optimizer_type=self.optimizer_type,
             learning_rate=self.lr,
             grad_clip=self.grad_clip,
             grad_clip_by=self.grad_clip_by,
+            _per_module_overrides=per_module_overrides,
         )
 
     def __setattr__(self, key, value):

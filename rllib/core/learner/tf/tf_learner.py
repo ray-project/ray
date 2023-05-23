@@ -4,6 +4,7 @@ import numpy as np
 import pathlib
 from typing import (
     Any,
+    Callable,
     Hashable,
     Mapping,
     Optional,

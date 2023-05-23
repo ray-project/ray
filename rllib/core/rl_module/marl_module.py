@@ -30,7 +30,7 @@ class MultiAgentRLModule(RLModule):
 
     This class holds a mapping from module_ids to the underlying RLModules. It provides
     a convenient way of accessing each individual module, as well as accessing all of
-    them with only one api call. Whether or not a given module is trainable is
+    them with only one API call. Whether or not a given module is trainable is
     determined by the caller of this class (not the instance of this class itself).
 
     The extension of this class can include any arbitrary neural networks as part of
@@ -46,14 +46,16 @@ class MultiAgentRLModule(RLModule):
     communication with one another. The behavior of modules with such advanced
     communication would be undefined by default. To share parameters or communication
     between the underlying RLModules, you should implement your own
-    `MultiAgentRLModule`.
+    `MultiAgentRLModule` subclass.
     """
 
-    def __init__(self, config: "MultiAgentRLModuleConfig" = None) -> None:
-        if config is None:
-            config = MultiAgentRLModuleConfig()
+    def __init__(self, config: Optional["MultiAgentRLModuleConfig"] = None) -> None:
+        """Initializes a MultiagentRLModule instance.
 
-        super().__init__(config)
+        Args:
+            config: The MultiAgentRLModuleConfig to use.
+        """
+        super().__init__(config or MultiAgentRLModuleConfig())
 
     def setup(self):
         """Sets up the underlying RLModules."""

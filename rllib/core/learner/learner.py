@@ -53,7 +53,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
-from ray.rllib.utils.typing import TensorType, ResultDict
+from ray.rllib.utils.typing import LearningRateType, ResultDict, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
@@ -121,10 +121,10 @@ class LearnerHyperparameters:
     """
 
     # Parameters used for gradient postprocessing (clipping) and gradient application.
-    optimizer_type: Union[str, Dict[str, str]] = None
-    learning_rate: Union[LearningRateType, Dict[str, LearningRateType]] = None
-    grad_clip: Union[float, Dict[str, float]] = None
-    grad_clip_by: Union[str, Dict[str, str]] = None
+    optimizer_type: str = None
+    learning_rate: LearningRateType = None
+    grad_clip: float = None
+    grad_clip_by: str = None
 
     # Holds hyperparameters per module. This is not None only in the top-level
     # Learner's self.hps (whose self.module is a `MARLModule`) and then contains the correct
@@ -141,11 +141,20 @@ class LearnerHyperparameters:
         Returns:
             The module specific LearnerHyperparameter instance.
         """
+        # ModuleID found in our overrides dict. Return module specific HPs.
         if (
             self._per_module_overrides is not None
             and module_id in self._per_module_overrides
         ):
+            # In case, the per-module sub-HPs object is still a dict, convert
+            # it to a fully qualified LearnerHyperparameter object here first.
+            if isinstance(self._per_module_overrides[module_id], dict):
+                self._per_module_overrides[module_id] = (
+                    type(self)(**self._per_module_overrides[module_id])
+                )
+            # Return the module specific version of self.
             return self._per_module_overrides[module_id]
+        # ModuleID not found in overrides -> return self.
         else:
             return self
 
@@ -269,15 +278,9 @@ class Learner:
         learner_hyperparameters: Optional[LearnerHyperparameters] = None,
         framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
     ):
-        # TODO (Kourosh): convert optimizer configs to dataclasses
-        if module_spec is not None and module is not None:
+        if (module_spec is None) is (module is None):
             raise ValueError(
-                "Only one of module spec or module can be provided to Learner."
-            )
-
-        if module_spec is None and module is None:
-            raise ValueError(
-                "Either module_spec or module should be provided to Learner."
+                "Exactly one of `module_spec` or `module` must be provided to Learner!"
             )
 
         self._module_spec = module_spec
