@@ -63,7 +63,7 @@ You can add your `netrc` file to your VM container's home directory, so Ray can 
 
 ## Running on KubeRay: Secrets with netrc
 
-KubeRay can also obtain credentials from a `netrc` file for remote URIs. You can supply your `netrc` file using a Kubernetes secret and a Kubernetes volume with these steps:
+[KubeRay](https://ray-project.github.io/kuberay/) can also obtain credentials from a `netrc` file for remote URIs. You can supply your `netrc` file using a Kubernetes secret and a Kubernetes volume with these steps:
 
 1. Launch your Kubernetes cluster.
 2. Create your `netrc` file locally in your home directory.
