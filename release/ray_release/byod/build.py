@@ -8,10 +8,7 @@ import sys
 import time
 
 from ray_release.logger import logger
-from ray_release.test import (
-    Test,
-    DATAPLANE_ECR_REPO,
-)
+from ray_release.test import Test
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
 DATAPLANE_FILENAME = "dataplane.tgz"
@@ -30,15 +27,16 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
     for test in tests:
         if not test.is_byod_cluster():
             continue
-        to_be_built[test.get_ray_image()] = test.get_anyscale_byod_image()
+        to_be_built[test.get_ray_image()] = test
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
     timeout = BASE_IMAGE_WAIT_TIMEOUT
     # ray images are built on post-merge, so we can wait for them to be available
     while len(built) < len(to_be_built) and timeout > 0:
-        for ray_image, byod_image in to_be_built.items():
-            if _byod_image_exist(byod_image.replace(f"{DATAPLANE_ECR_REPO}:", "")):
+        for ray_image, test in to_be_built.items():
+            byod_image = test.get_anyscale_byod_image()
+            if _byod_image_exist(test):
                 logger.info(f"Image {byod_image} already exists")
                 built.add(ray_image)
                 continue
@@ -98,15 +96,15 @@ def _ray_image_exist(ray_image: str) -> bool:
     return p.returncode == 0
 
 
-def _byod_image_exist(image_tag: str) -> bool:
+def _byod_image_exist(test: Test) -> bool:
     """
     Checks if the given Anyscale BYOD image exists.
     """
     client = boto3.client("ecr")
     try:
         client.describe_images(
-            repositoryName="anyscale",
-            imageIds=[{"imageTag": image_tag}],
+            repositoryName=test.get_byod_repo(),
+            imageIds=[{"imageTag": test.get_byod_image_test()}],
         )
         return True
     except client.exceptions.ImageNotFoundException:

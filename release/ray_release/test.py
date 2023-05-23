@@ -4,8 +4,9 @@ from typing import Optional, List
 DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
 )
-DATAPLANE_ECR_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale/ray"
-DATAPLANE_ECR_ML_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale/ray-ml"
+DATAPLANE_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
+DATAPLANE_ECR_REPO = "anyscale/ray"
+DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 
 
 class Test(dict):
@@ -46,7 +47,10 @@ class Test(dict):
         """
         return self.get("python", ".".join(str(v) for v in DEFAULT_PYTHON_VERSION))
 
-    def _get_image_tag(self) -> str:
+    def get_byod_image_tag(self) -> str:
+        """
+        Returns the byod image tag to use for this test.
+        """
         ray_version = (
             os.environ.get("COMMIT_TO_TEST", "")[:6]
             or os.environ.get("BUILDKITE_COMMIT", "")[:6]
@@ -55,23 +59,28 @@ class Test(dict):
         python_version = f"py{self.get_python_version().replace('.',   '')}"
         return f"{ray_version}-{python_version}{image_suffix}"
 
+    def get_byod_repo(self) -> str:
+        """
+        Returns the byod repo to use for this test.
+        """
+        return (
+            DATAPLANE_ECR_ML_REPO
+            if self.get_byod_type() == "gpu"
+            else DATAPLANE_ECR_REPO
+        )
+
     def get_ray_image(self) -> str:
         """
         Returns the ray docker image to use for this test.
         """
         ray_project = "ray-ml" if self.get_byod_type() == "gpu" else "ray"
-        return f"rayproject/{ray_project}:{self._get_image_tag()}"
+        return f"rayproject/{ray_project}:{self.get_byod_image_tag()}"
 
     def get_anyscale_byod_image(self) -> str:
         """
         Returns the anyscale byod image to use for this test.
         """
-        repo = (
-            DATAPLANE_ECR_ML_REPO
-            if self.get_byod_type() == "gpu"
-            else DATAPLANE_ECR_REPO
-        )
-        return f"{repo}:{self._get_image_tag()}"
+        return f"{DATAPLANE_ECR}/{self.get_byod_repo()}:{self.get_byod_image_tag()}"
 
 
 class TestDefinition(dict):

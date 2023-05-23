@@ -4,6 +4,7 @@ import pytest
 
 from ray_release.test import (
     Test,
+    DATAPLANE_ECR,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_ML_REPO,
 )
@@ -46,7 +47,8 @@ def test_get_ray_image():
 def test_get_anyscale_byod_image():
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
     assert (
-        _stub_test({}).get_anyscale_byod_image() == f"{DATAPLANE_ECR_REPO}:123456-py37"
+        _stub_test({}).get_anyscale_byod_image()
+        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_REPO}:123456-py37"
     )
     assert (
         _stub_test(
@@ -59,7 +61,7 @@ def test_get_anyscale_byod_image():
                 },
             }
         ).get_anyscale_byod_image()
-        == f"{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
+        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
     )
 
 
