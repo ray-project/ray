@@ -20,6 +20,7 @@ from ray.core.generated import reporter_pb2_grpc
 from ray._private.ray_constants import (
     LOG_PREFIX_TASK_ATTEMPT_START,
     LOG_PREFIX_TASK_ATTEMPT_END,
+    LOG_PREFIX_TASK_ATTEMPT_TEMPLATE,
 )
 
 logger = logging.getLogger(__name__)
@@ -301,18 +302,23 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
 
     @classmethod
     async def _find_task_log_offsets(
-        cls, task_id: str, attempt_number: int, lines: int, f: io.BufferedIOBase
+        cls,
+        task_name: str,
+        task_id: str,
+        attempt_number: int,
+        lines: int,
+        f: io.BufferedIOBase,
     ) -> Tuple[int, int]:
         """Find the start and end offsets in the log file for a task attempt
         Current task log is in the format of below:
 
             :job_id:xxx
             :task_name:xxx
-            :task_attempt_start:<task_id>-<attempt_number>
+            :task_attempt_start:<task_name>_<task_id>_<attempt_number>
             ...
             actual user logs
             ...
-            :task_attempt_end:<task_id>-<attempt_number>
+            :task_attempt_end:<task_name>_<task_id>_<attempt_number>
             ... (other tasks)
 
 
@@ -321,8 +327,11 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         """
 
         # Find start
-        task_attempt_start_magic_line = (
-            f"{LOG_PREFIX_TASK_ATTEMPT_START}{task_id}-{attempt_number}\n"
+        task_attempt_start_magic_line = LOG_PREFIX_TASK_ATTEMPT_TEMPLATE.format(
+            prefix=LOG_PREFIX_TASK_ATTEMPT_START,
+            task_name=task_name,
+            task_id=task_id,
+            attempt_number=attempt_number,
         )
 
         # Offload the heavy IO CPU work to a thread pool to avoid blocking the
@@ -338,7 +347,8 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
 
         if task_attempt_magic_line_offset == -1:
             raise FileNotFoundError(
-                f"Log for task attempt({task_id},{attempt_number}) not found"
+                f"Log for task attempt({task_name}:{task_id},{attempt_number}) "
+                "not found"
             )
         start_offset = task_attempt_magic_line_offset + len(
             task_attempt_start_magic_line
@@ -346,8 +356,11 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
 
         # Find the end of the task log, which is the start of the next task log if any
         # with the LOG_PREFIX_TASK_ATTEMPT_END magic line.
-        task_attempt_end_magic_line = (
-            f"{LOG_PREFIX_TASK_ATTEMPT_END}{task_id}-{attempt_number}\n"
+        task_attempt_end_magic_line = LOG_PREFIX_TASK_ATTEMPT_TEMPLATE.format(
+            prefix=LOG_PREFIX_TASK_ATTEMPT_END,
+            task_name=task_name,
+            task_id=task_id,
+            attempt_number=attempt_number,
         )
         end_offset = await asyncio.get_running_loop().run_in_executor(
             _task_log_search_worker_pool,
@@ -384,6 +397,7 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
         # be automatically terminated.
         lines = request.lines if request.lines else 1000
         task_id = request.task_id if request.HasField("task_id") else None
+        task_name = request.task_name if request.HasField("task_name") else None
 
         filepath = Path(self._dashboard_agent.log_dir) / request.log_file_name
         if not filepath.is_file():
@@ -405,11 +419,12 @@ class LogAgentV1Grpc(dashboard_utils.DashboardAgentModule):
                         else 0
                     )
                     start_offset, end_offset = await self._find_task_log_offsets(
-                        task_id, attempt_number, lines, f
+                        task_name, task_id, attempt_number, lines, f
                     )
                     logger.info(
                         f"Tailing task logs from {start_offset} to {end_offset} for"
-                        f"task attempt({task_id}, {attempt_number}) in {f.name}"
+                        f"task attempt({task_name}: {task_id}, {attempt_number}) in "
+                        f"{f.name}"
                     )
                 elif lines != -1:  # Default tailing files
                     # If specified tail line number,
