@@ -79,6 +79,7 @@ from ray._private.ray_logging import (
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
 from ray._private.storage import _load_class
 from ray._private.utils import check_oversized_function, get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
@@ -1285,6 +1286,8 @@ def init(
     """
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
+    else:
+        logging.getLogger("ray").handlers.clear()
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -2173,6 +2176,10 @@ def connect(
         runtime_env = upload_working_dir_if_needed(
             runtime_env, scratch_dir, logger=logger
         )
+        runtime_env = upload_worker_setup_hook_if_needed(
+            runtime_env,
+            worker,
+        )
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
@@ -2499,6 +2506,11 @@ def get(
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
+        # TODO(sang): Should make StreamingObjectRefGenerator
+        # compatible to ray.get for dataset.
+        if isinstance(object_refs, ray._raylet.StreamingObjectRefGenerator):
+            return object_refs
+
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
             object_refs = [object_refs]
@@ -2816,6 +2828,10 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
+
+    if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
+        assert hasattr(object_ref, "_generator_ref")
+        object_ref = object_ref._generator_ref
 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(

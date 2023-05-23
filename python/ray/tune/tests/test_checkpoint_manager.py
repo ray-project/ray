@@ -12,7 +12,7 @@ from ray.air._internal.checkpoint_manager import (
     logger,
     CheckpointStorage,
 )
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 
 

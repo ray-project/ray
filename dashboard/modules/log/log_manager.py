@@ -2,23 +2,36 @@ import logging
 import re
 
 from collections import defaultdict
-from typing import List, Optional, Dict, AsyncIterable, Tuple, Callable
+from typing import List, Optional, Dict, AsyncIterable, Callable, Tuple
 
-from ray.experimental.state.common import (
+from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
+from ray.util.state.common import (
     GetLogOptions,
     protobuf_to_task_state_dict,
     DEFAULT_RPC_TIMEOUT,
 )
-from ray.experimental.state.exception import DataSourceUnavailable
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.util.state.exception import DataSourceUnavailable
+from ray.util.state.state_manager import StateDataSourceClient
 
 # TODO(sang): Remove the usage of this class.
 from ray.dashboard.datacenter import DataSource
+from pydantic import BaseModel
 
 
 logger = logging.getLogger(__name__)
 
 WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
+
+
+class ResolvedLogFileInfo(BaseModel):
+    # Node where the file lives
+    node_id: str
+
+    # File name of the log file
+    filename: str
+
+    # Task name if resolved through task id
+    task_name: Optional[str]
 
 
 class LogsManager:
@@ -75,7 +88,7 @@ class LogsManager:
         """
         node_id = options.node_id or self.ip_to_node_id(options.node_ip)
 
-        log_file_name, node_id = await self.resolve_filename(
+        resolved_file = await self.resolve_filename(
             node_id=node_id,
             log_filename=options.filename,
             actor_id=options.actor_id,
@@ -85,12 +98,13 @@ class LogsManager:
             get_actor_fn=DataSource.actors.get,
             timeout=options.timeout,
             suffix=options.suffix,
+            submission_id=options.submission_id,
         )
 
         keep_alive = options.media_type == "stream"
         stream = await self.client.stream_log(
-            node_id=node_id,
-            log_file_name=log_file_name,
+            node_id=resolved_file.node_id,
+            log_file_name=resolved_file.filename,
             keep_alive=keep_alive,
             lines=options.lines,
             interval=options.interval,
@@ -100,6 +114,7 @@ class LogsManager:
             timeout=options.timeout if not keep_alive else None,
             task_id=options.task_id,
             attempt_number=options.attempt_number,
+            task_name=resolved_file.task_name,
         )
 
         async for streamed_log in stream:
@@ -116,6 +131,35 @@ class LogsManager:
                 "a transient issue. Try again."
             )
         assert node_id is not None
+
+    async def _resolve_job_filename(self, sub_job_id: str) -> Tuple[str, str]:
+        """Return the log file name and node id for a given job submission id.
+
+        Args:
+            sub_job_id: The job submission id.
+
+        Returns:
+            The log file name and node id.
+        """
+        job_infos = await self.client.get_job_info(timeout=DEFAULT_RPC_TIMEOUT)
+        target_job = None
+        for job_info in job_infos:
+            if job_info.submission_id == sub_job_id:
+                target_job = job_info
+                break
+        if target_job is None:
+            logger.info(f"Submission job ID {sub_job_id} not found.")
+            return None, None
+
+        node_id = job_info.driver_node_id
+        if node_id is None:
+            raise ValueError(
+                f"Job {sub_job_id} has no driver node id info. "
+                "This is likely a bug. Please file an issue."
+            )
+
+        log_filename = JOB_LOGS_PATH_TEMPLATE.format(submission_id=sub_job_id)
+        return node_id, log_filename
 
     async def _resolve_worker_file(
         self,
@@ -167,7 +211,8 @@ class LogsManager:
         get_actor_fn: Optional[Callable[[str], Dict]] = None,
         timeout: int = DEFAULT_RPC_TIMEOUT,
         suffix: str = "out",
-    ) -> Tuple[str, str]:
+        submission_id: Optional[str] = None,
+    ) -> ResolvedLogFileInfo:
         """Return the file name given all options.
 
         Args:
@@ -181,7 +226,10 @@ class LogsManager:
                 specified by `node_id`.
             suffix: Log suffix if no `log_filename` is provided, when
                 resolving by other ids'. Default to "out".
+            submission_id: The submission id for a submission job.
         """
+        task_name = None
+
         if actor_id:
             if get_actor_fn is None:
                 raise ValueError("get_actor_fn needs to be specified for actor_id")
@@ -235,18 +283,19 @@ class LogsManager:
                     "Could not find log file for task attempt:"
                     f"{task_id}({attempt_number})"
                 )
-
             # Get the worker id and node id.
             task = protobuf_to_task_state_dict(task_event)
 
             worker_id = task.get("worker_id", None)
             node_id = task.get("node_id", None)
+            task_name = task.get("name", None)
 
-            if worker_id is None or node_id is None:
+            if worker_id is None or node_id is None or task_name is None:
                 raise FileNotFoundError(
                     "Could not find log file for task attempt:"
                     f"{task_id}({attempt_number})."
-                    f"Worker id = {worker_id}, node id = {node_id}"
+                    f"Worker id = {worker_id}, node id = {node_id}, "
+                    f"task name = {task_name}"
                 )
 
             log_filename = await self._resolve_worker_file(
@@ -255,6 +304,13 @@ class LogsManager:
                 pid=None,
                 suffix=suffix,
                 timeout=timeout,
+            )
+        elif submission_id:
+            node_id, log_filename = await self._resolve_job_filename(submission_id)
+
+            logger.info(
+                f"Resolving job {submission_id} on node {node_id} with "
+                f"filename {log_filename}"
             )
 
         elif pid:
@@ -282,9 +338,14 @@ class LogsManager:
                 f"\task_id: {task_id}\n"
                 f"\tpid: {pid}\n"
                 f"\tsuffix: {suffix}\n"
+                f"\tsubmission_id: {submission_id}\n"
             )
 
-        return log_filename, node_id
+        resolved_file = ResolvedLogFileInfo(
+            filename=log_filename, node_id=node_id, task_name=task_name
+        )
+        logger.info(f"Resolved log file: {resolved_file}")
+        return resolved_file
 
     def _categorize_log_files(self, log_files: List[str]) -> Dict[str, List[str]]:
         """Categorize the given log files after filterieng them out using a given glob.

@@ -126,6 +126,7 @@ Inspecting Metadata
    :toctree: doc/
 
    Dataset.count
+   Dataset.columns
    Dataset.schema
    Dataset.default_batch_format
    Dataset.num_blocks

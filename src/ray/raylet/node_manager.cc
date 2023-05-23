@@ -240,7 +240,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                     },
                     /*delay_executor*/
                     [this](std::function<void()> fn, int64_t delay_ms) {
-                      RAY_UNUSED(execute_after(io_service_, fn, delay_ms));
+                      RAY_UNUSED(execute_after(
+                          io_service_, fn, std::chrono::milliseconds(delay_ms)));
                     }),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
@@ -398,7 +399,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       std::move(options),
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(io_service_, task, delay_ms);
+        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
       /*runtime_env_agent_factory=*/
       [this](const std::string &ip_address, int port) {
@@ -1741,6 +1742,13 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
                                             rpc::UpdateResourceUsageReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  if (RayConfig::instance().use_ray_syncer()) {
+    RAY_LOG(WARNING)
+        << "There is a GCS outside of this cluster sending message to this raylet.";
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
   // When next_resource_seq_no_ == 0 it means it just started.
@@ -1757,6 +1765,7 @@ void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest requ
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
     if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
       RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
+      send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
   }

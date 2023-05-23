@@ -47,11 +47,9 @@ SchedulingClass TaskSpecification::GetSchedulingClass(
     sched_cls_id = ++next_sched_id_;
     // TODO(ekl) we might want to try cleaning up task types in these cases
     if (sched_cls_id > 100) {
-      RAY_LOG(WARNING) << "More than " << sched_cls_id
-                       << " types of tasks seen, this may reduce performance.";
-    } else if (sched_cls_id > 1000) {
-      RAY_LOG(ERROR) << "More than " << sched_cls_id
-                     << " types of tasks seen, this may reduce performance.";
+      RAY_LOG_EVERY_MS(WARNING, 1000)
+          << "More than " << sched_cls_id
+          << " types of tasks seen, this may reduce performance.";
     }
     sched_cls_to_id_[sched_cls] = sched_cls_id;
     sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
@@ -217,6 +215,12 @@ ObjectID TaskSpecification::ReturnId(size_t return_index) const {
 }
 
 bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynamic(); }
+
+// TODO(sang): Merge this with ReturnsDynamic once migrating to the
+// streaming generator.
+bool TaskSpecification::IsStreamingGenerator() const {
+  return message_->streaming_generator();
+}
 
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
   RAY_CHECK(message_->returns_dynamic());

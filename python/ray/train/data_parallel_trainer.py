@@ -1,3 +1,4 @@
+import copy
 import inspect
 import logging
 from pathlib import Path
@@ -21,7 +22,7 @@ from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-from ray.widgets.util import ensure_ipywidgets_dep, repr_fallback_if_colab
+from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -39,7 +40,8 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
     ):
         self.preprocessor = preprocessor
         super(_DataParallelCheckpointManager, self).__init__(
-            run_dir=run_dir, checkpoint_strategy=checkpoint_strategy
+            run_dir=run_dir,
+            checkpoint_strategy=checkpoint_strategy,
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
@@ -411,6 +413,7 @@ class DataParallelTrainer(BaseTrainer):
             num_gpus_per_worker=scaling_config.num_gpus_per_worker,
             additional_resources_per_worker=additional_resources_per_worker,
             max_retries=0,
+            checkpoint_config=self.run_config.checkpoint_config,
         )
 
         checkpoint_manager = self._checkpoint_manager_cls(
@@ -420,6 +423,17 @@ class DataParallelTrainer(BaseTrainer):
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)
 
+        # Disable TrainingIterator's CheckpointManager from handling
+        # checkpoints itself by setting num_to_keep to None.
+        # This is important because otherwise Trainer's CheckpointManager
+        # may delete a checkpoint prematurely, before the next checkpoint
+        # has been fully handled by Tune.
+        # TODO(jungong, justinvyu) : Trainer should not own a
+        # CheckpointManager.
+        checkpoint_strategy = copy.deepcopy(self.run_config.checkpoint_config)
+        checkpoint_strategy.num_to_keep = None
+        checkpoint_strategy.checkpoint_score_attribute = None
+
         training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
@@ -427,7 +441,8 @@ class DataParallelTrainer(BaseTrainer):
             dataset_spec=self._ingest_spec,
             checkpoint_manager=checkpoint_manager,
             checkpoint=self.resume_from_checkpoint,
-            checkpoint_strategy=None,
+            checkpoint_strategy=checkpoint_strategy,
+            storage_path=self.run_config.storage_path,
         )
 
         self._report(training_iterator)
@@ -443,8 +458,7 @@ class DataParallelTrainer(BaseTrainer):
         """
         return self._dataset_config.copy()
 
-    @ensure_ipywidgets_dep("8")
-    @repr_fallback_if_colab
+    @repr_with_fallback(["ipywidgets", "8"])
     def _repr_mimebundle_(self, **kwargs):
         """Return a mimebundle with an ipywidget repr and a simple text repr.
 
