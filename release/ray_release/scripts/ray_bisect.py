@@ -11,8 +11,10 @@ from ray_release.config import (
     read_and_validate_release_test_collection,
     parse_python_version,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
-    DEFAULT_PYTHON_VERSION,
+)
+from ray_release.test import (
     Test,
+    DEFAULT_PYTHON_VERSION,
 )
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 

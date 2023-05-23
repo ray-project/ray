@@ -12,7 +12,7 @@ from ray_release.alerts.handle import result_to_handle_map
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.exception import (
     ReleaseTestConfigError,
     ClusterEnvBuildError,

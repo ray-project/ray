@@ -6,13 +6,13 @@ from pathlib import Path
 import click
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
-    DEFAULT_PYTHON_VERSION,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
     as_smoke_test,
     find_test,
     parse_python_version,
     read_and_validate_release_test_collection,
 )
+from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
