@@ -379,6 +379,17 @@ class _CheckpointManager:
     def _get_checkpoint_score(
         self, checkpoint: _TrackedCheckpoint
     ) -> Tuple[bool, numbers.Number, int]:
+        """Get scoring tuple for a checkpoint, according to checkpoint strategy.
+
+        We sort checkpoints by this score. Checkpoints with a higher score are kept.
+        To achieve the desired ordering, we return a tuple of
+        (is_not_na: bool, metric: Number, checkpoint_id: int).
+
+        The first index means that checkpoints that are NaN are rated worst.
+        The second index sorts the checkpoints by metric value. The third index
+        sorts checkpoints with the same metric value by their ID - more recent
+        checkpoints are rated higher.
+        """
         checkpoint_score_attribute = (
             self._checkpoint_strategy.checkpoint_score_attribute
         )
