@@ -269,8 +269,6 @@ def get_initializer(name, framework="tf"):
             return nn.init.xavier_uniform_
         elif name == "xavier_normal":
             return nn.init.xavier_normal_
-        elif name == "truncate_normal":
-            return nn.init.trunc_normal_
     else:
         assert framework in ["tf", "tf2"], "Unsupported framework `{}`!".format(
             framework
@@ -283,9 +281,7 @@ def get_initializer(name, framework="tf"):
             return tf.keras.initializers.GlorotUniform
         elif name == "xavier_normal":
             return tf.keras.initializers.GlorotNormal
-        elif name == "truncate_normal":
-            return tf.keras.initializers.TruncatedNormal(stddev=1.0)
 
     raise ValueError(
-        "Unknown initializer ({}) for framework={}!".format(name, framework)
+        "Unknown activation ({}) for framework={}!".format(name, framework)
     )

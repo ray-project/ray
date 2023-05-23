@@ -1896,7 +1896,7 @@ py_test(
 py_test(
     name = "test_mlp_heads",
     tags = ["team:rllib", "core", "models"],
-    size = "large",
+    size = "medium",
     srcs = ["core/models/tests/test_mlp_heads.py"]
 )
 
