@@ -27,7 +27,7 @@ def _plan_from_numpy_refs_op(op: FromNumpyRefs) -> PhysicalOperator:
         blocks, metadata = map(list, zip(*res))
         metadata = ray.get(metadata)
         ref_bundles: List[RefBundle] = [
-            RefBundle([(block, block_metadata)], owns_blocks=False)
+            RefBundle([(block, block_metadata)], owns_blocks=True)
             for block, block_metadata in zip(blocks, metadata)
         ]
         return ref_bundles

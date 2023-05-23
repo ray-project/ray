@@ -5,7 +5,6 @@ import tempfile
 import ray
 
 STRICT_MODE = ray.data.DatasetContext.get_current().strict_mode
-OPTIMIZER_ENABLED = ray.data.DatasetContext.get_current().optimizer_enabled
 
 
 @ray.remote
