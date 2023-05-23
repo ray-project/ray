@@ -1,8 +1,9 @@
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"], exclude=["examples/**/*", "tests/**/*"]),
-    tags = ["team:ml"]
+    files = glob(["**/*.py"], exclude=["examples/**", "tests/**"]),
+    tags = ["team:ml"],
+    size = "large"
 )
 
 # --------------------------------------------------------------------

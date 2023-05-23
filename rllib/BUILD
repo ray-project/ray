@@ -77,8 +77,8 @@ doctest(
             "offline/estimators/feature_importance.py",
             "env/wrappers/recsim_wrapper.py",
             "env/remote_vector_env.py",
-            # Broken imports
-            "algorithms/dreamerv3/tf/models/**"
+            # Missing imports
+            "algorithms/dreamerv3/**"
         ]
     ),
     tags = ["team:rllib"]
