@@ -870,8 +870,8 @@
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
+    cluster_env: ../testing/cluster_envs/default_cluster_env_latest_py39.yaml
+    cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:
     timeout: 600
@@ -883,8 +883,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../testing/cluster_envs/default_cluster_env_latest_py39.yaml
+          cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
 
 - name: workspace_template_many_model_training
@@ -894,8 +894,8 @@
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/cpu/aws_release_test.yaml
+    cluster_env: ../testing/cluster_envs/default_cluster_env_latest_py39.yaml
+    cluster_compute: ../testing/compute_configs/cpu/aws.yaml
 
   run:
     timeout: 600
@@ -907,8 +907,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/cpu/gce_release_test.yaml
+          cluster_env: ../testing/cluster_envs/default_cluster_env_latest_py39.yaml
+          cluster_compute: ../testing/compute_configs/cpu/gce.yaml
 
 
 - name: workspace_template_serving_stable_diffusion
@@ -918,12 +918,12 @@
   frequency: nightly-3x
   team: ml
   cluster:
-    cluster_env: ../configs/release_test_cluster_env.yaml
-    cluster_compute: ../configs/compute/gpu/aws_release_test.yaml
+    cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
+    cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
   run:
     timeout: 600
-    script: pip install -r requirements.txt && jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -931,8 +931,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ../configs/release_test_cluster_env.yaml
-          cluster_compute: ../configs/compute/gpu/gce_release_test.yaml
+          cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
+          cluster_compute: ../testing/compute_configs/gpu/gce.yaml
 
 
 #######################
