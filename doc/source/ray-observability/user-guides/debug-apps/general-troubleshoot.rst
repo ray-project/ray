@@ -52,22 +52,27 @@ runs on another machine it won't.
 
 And I have this code:
 
-.. code-block:: python
+.. testcode::
 
   import os
+  import ray
 
-  ray.init()
   @ray.remote
   def check_file():
     foo_exists = os.path.exists("/tmp/foo.txt")
-    print(f"Foo exists? {foo_exists}")
+    return foo_exists
 
   futures = []
   for _ in range(1000):
     futures.append(check_file.remote())
 
-  ray.get(futures)
+  print(ray.get(futures))
 
+.. testoutput::
+    :hide:
+    :options: +ELLIPSIS
+
+    ...
 
 then you will get a mix of True and False. If
 ``check_file()`` runs on the head node, or we're running
@@ -93,8 +98,9 @@ group, the resources are never allocated and it hangs.
 apply it to an objective function, but that objective function makes use
 of Ray Tasks itself, e.g.
 
-.. code-block:: python
+.. testcode::
 
+  import ray
   from ray import air, tune
 
   def create_task_that_uses_resources():
@@ -112,8 +118,12 @@ of Ray Tasks itself, e.g.
   tuner.fit()
 
 This will error with message:
-ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
-because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
+
+.. testoutput::
+  :options: +SKIP
+
+    ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
+    because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
 
 **Expected behavior**: The above executes.
 
@@ -137,7 +147,9 @@ running the newest version of the function.
 Suppose you define a remote function ``f`` and then redefine it. Ray should use
 the newest version.
 
-.. code-block:: python
+.. testcode::
+
+  import ray
 
   @ray.remote
   def f():
@@ -147,7 +159,11 @@ the newest version.
   def f():
       return 2
 
-  ray.get(f.remote())  # This should be 2.
+  print(ray.get(f.remote()))  # This should be 2.
+
+.. testoutput::
+
+  2
 
 However, the following are cases where modifying the remote function will
 not update Ray to the new version (at least without stopping and restarting
@@ -185,14 +201,14 @@ Ray).
   A solution to this problem is to redefine ``f`` to reload ``file.py`` before
   it calls ``h``. For example, if inside ``file.py`` you have
 
-  .. code-block:: python
+  .. testcode::
 
     def h():
         return 1
 
   And you define remote function ``f`` as
 
-  .. code-block:: python
+  .. testcode::
 
     @ray.remote
     def f():
@@ -200,7 +216,7 @@ Ray).
 
   You can redefine ``f`` as follows.
 
-  .. code-block:: python
+  .. testcode::
 
     @ray.remote
     def f():
