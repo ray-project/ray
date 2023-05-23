@@ -52,7 +52,7 @@ In this example, the `machine github.com` line specifies that any access to `git
 
 :::{note}
 On Unix, name the `netrc` file as `.netrc`. On Windows, name the
-file, `_netrc`.
+file as `_netrc`.
 :::
 
 The `netrc` file requires owner read/write access, so make sure to run the `chmod` command after creating the file:
@@ -61,7 +61,7 @@ The `netrc` file requires owner read/write access, so make sure to run the `chmo
 chmod 600 "$HOME/.netrc"
 ```
 
-Add the `netrc` file to your VM container's home directory, so Ray can access the `runtime_env`'s private remote URI, even when they don't contain credentials.
+Add the `netrc` file to your VM container's home directory, so Ray can access the `runtime_env`'s private remote URIs, even when they don't contain credentials.
 
 ## Running on KubeRay: Secrets with netrc
 
