@@ -3,13 +3,15 @@ import pytest
 import numpy as np
 import sys
 import time
+import signal
 import gc
+import os
 
 from unittest.mock import patch, Mock
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.experimental.state.api import list_objects
+from ray.experimental.state.api import list_objects, list_actors
 from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEneOfStreamError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
@@ -767,6 +769,62 @@ def test_ray_serve_like_generator_stress_test(ray_start_cluster, monkeypatch):
             assert ref_types == {"ACTOR_HANDLE"}
 
         asyncio.run(main())
+
+
+def test_e2e_worker_failures(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, object_store_memory=1 * 1024 * 1024 * 1024)
+    ray.init()
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
+
+    @ray.remote(num_cpus=1, max_restarts=-1)
+    class Actor:
+        def __init__(self, child=None):
+            self.child = child
+
+        def get_data(self):
+            for _ in range(10):
+                time.sleep(1)
+                yield np.ones(5 * 1024 * 1024)
+
+    async def kill_actors():
+        for _ in range(10):
+            actors = list_actors()
+            actor_to_kill = actors[-1]
+            pid = actor_to_kill.pid
+            print(actor_to_kill)
+            print(pid)
+            if pid:
+                os.kill(pid, signal.SIGKILL)
+            await asyncio.sleep(1)
+
+    async def gather():
+        actor = Actor.remote()
+        finished = False
+        while not finished:
+            try:
+                async for ref in actor.get_data.options(num_returns="streaming").remote():
+                    val = await ref
+                    assert np.array_equal(np.ones(5 * 1024 * 1024), val)
+                    del ref
+                finished = True
+            except:
+                pass
+
+    async def main():
+        await asyncio.gather(gather(), gather(), gather(), gather(), kill_actors())
+        result = list_objects(raise_on_missing_output=False)
+        ref_types = set()
+        print(list_objects())
+        for r in result:
+            ref_types.add(r.reference_type)
+        # Verify no leaks
+        assert ref_types == {}
+
+    asyncio.run(main())
 
 
 if __name__ == "__main__":

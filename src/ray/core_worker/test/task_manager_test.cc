@@ -1676,6 +1676,62 @@ TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
   manager_.DelObjectRefStream(generator_id);
 }
 
+TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
+  /**
+   * Verify there's no leak when we delete a ObjectRefStream
+   * that has out of order WRITEs.
+   * WRITE index 1 -> Del -> Write index 0. Both 0 and 1 have to be
+   * deleted.
+   */
+  // Submit a generator task.
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  // CREATE
+  manager_.CreateObjectRefStream(generator_id);
+
+  // WRITE to index 1
+  auto dynamic_return_id_index_1 = ObjectID::FromIndex(spec.TaskId(), 3);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id_index_1,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_1));
+
+  // Delete the stream. This should remove references from ^.
+  manager_.DelObjectRefStream(generator_id);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
+
+  // WRITE to index 0. It should fail cuz the stream has been removed.
+  auto dynamic_return_id_index_0 = ObjectID::FromIndex(spec.TaskId(), 2);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id_index_0,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_0));
+
+  rpc::PushTaskReply reply;
+  manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
+
+  // There must be only a generator ID.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+}
+
 }  // namespace core
 }  // namespace ray
 
