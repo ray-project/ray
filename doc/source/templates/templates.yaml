@@ -6,7 +6,8 @@ batch-inference-ray-data:
   path: doc/source/templates/01_batch_inference
   labels:
     - Ray Data
-  cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+  cluster_env:
+    build_id: anyscaleray240-py39-gpu
   compute_config:
     GCP: doc/source/templates/configs/compute/gpu/gce.yaml
     AWS: doc/source/templates/configs/compute/gpu/aws.yaml
@@ -17,7 +18,8 @@ many-model-training-ray-tune:
   path: doc/source/templates/02_many_model_training
   labels:
     - Ray Tune
-  cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+  cluster_env:
+    build_id: anyscaleray240-py39-gpu
   compute_config:
     GCP: doc/source/templates/configs/compute/cpu/gce.yaml
     AWS: doc/source/templates/configs/compute/cpu/aws.yaml
@@ -28,7 +30,10 @@ serve-stable-diffusion-model-ray-serve:
   path: doc/source/templates/03_serving_stable_diffusion
   labels:
     - Ray Serve
-  cluster_env: doc/source/templates/configs/anyscale_cluster_env.yaml
+  cluster_env:
+    byod:
+      docker_image: us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/serve-stable-diffusion-model-ray-serve:2.4.0
+      ray_version: 2.4.0
   compute_config:
     GCP: doc/source/templates/configs/compute/gpu/gce.yaml
     AWS: doc/source/templates/configs/compute/gpu/aws.yaml
