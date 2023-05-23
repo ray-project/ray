@@ -26,7 +26,8 @@ def canonicalize(stats: str) -> str:
     s3 = re.sub("[0-9]+(\.[0-9]+)?", "N", s2)
     # Replace tabs with spaces.
     s4 = re.sub("\t", "    ", s3)
-    return s4
+    s5 = re.sub("Map\(.*?\)", "Map", s4)
+    return s5
 
 
 def dummy_map_batches(x):

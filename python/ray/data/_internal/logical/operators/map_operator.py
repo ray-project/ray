@@ -122,7 +122,7 @@ class MapRows(AbstractUDFMap):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "MapRows",
+            "Map",
             input_op,
             fn,
             compute=compute,
