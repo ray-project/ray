@@ -33,9 +33,9 @@ Context-aware progress reporting
 
 .. note::
 
-    This feature is *disabled by default* in Ray 2.5.
+    This feature is *enabled by default* in Ray 2.6.
 
-    To enable, set the environment variable ``RAY_AIR_NEW_OUTPUT=1``.
+    To disable, set the environment variable ``RAY_AIR_NEW_OUTPUT=0``.
 
 A context-aware output engine is available for Ray Train and Ray Tune runs.
 
