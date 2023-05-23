@@ -61,12 +61,20 @@ class _MLPConfig(ModelConfig):
             single layer will be built of size `output_dims[0]`.
         hidden_layer_activation: The activation function to use after each layer (
             except for the output).
+        hidden_layer_weight_initializer: The weight initializer to use for all hidden
+            layers. Either a torch.nn.[initializer fn] callable or an RLlib
+            recognized initializer name, e.g. "xavier_uniform".
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
             in between each hidden layer's output and its activation.
         output_dims: A 1D Tensor indicating the size of the output layer. This may be
             set to `None` in case no extra output layer should be built and only the
             layers specified by `hidden_layer_dims` will part of the network.
         output_activation: The activation function to use for the output layer, if any.
+        output_layer_weight_initializer: The initializer to use for the weights of
+                the output layer. Either a torch.nn.[initializer fn] callable or an
+                RLlib recognized initializer name, e.g. "xavier_uniform".
+                The default (`output_layer_weight_initializer=None`) is a truncated
+                normal initializer with std=0.01.
         use_bias: Whether to use bias on all dense layers in the network (including
             a possible output layer).
     """
@@ -74,9 +82,11 @@ class _MLPConfig(ModelConfig):
     input_dims: Union[List[int], Tuple[int]] = None
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
     hidden_layer_activation: str = "relu"
+    hidden_layer_weight_initializer: Optional[Union[str, Callable]] = "truncate_normal"
     hidden_layer_use_layernorm: bool = False
     output_dims: Optional[Union[List[int], Tuple[int]]] = None
     output_activation: str = "linear"
+    output_layer_weight_initializer: Optional[Union[str, Callable]] = None
     use_bias: bool = True
 
     def _validate(self, framework: str = "torch"):
