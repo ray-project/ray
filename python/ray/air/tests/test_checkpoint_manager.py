@@ -97,6 +97,40 @@ def test_keep_best_checkpoints():
     ] == [1, 0]
 
 
+def test_nested_get_checkpoint_score():
+    cpm = _CheckpointManager(
+        checkpoint_strategy=CheckpointConfig(
+            num_to_keep=2,
+            checkpoint_score_attribute="nested/attr",
+            checkpoint_score_order="max",
+        )
+    )
+
+    # Nested metric
+    assert cpm._get_checkpoint_score(
+        _TrackedCheckpoint(
+            dir_or_data=None,
+            metrics={
+                "foo": 2.0,
+                "nested": {"attr": 5},
+            },
+            storage_mode=CheckpointStorage.MEMORY,
+        )
+    ) == (True, 5.0, None)
+
+    # Non-nested metric containing `/`
+    assert cpm._get_checkpoint_score(
+        _TrackedCheckpoint(
+            dir_or_data=None,
+            metrics={
+                "foo": 2.0,
+                "nested/attr": 6,
+            },
+            storage_mode=CheckpointStorage.MEMORY,
+        )
+    ) == (True, 6.0, None)
+
+
 if __name__ == "__main__":
     import sys
 
