@@ -78,6 +78,8 @@ class TorchLearner(Learner):
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
 
+        # Use this str-to-torch-optim mapping to get the proper optimizer class, no
+        # matter upper/lower case.
         optimizers = {
             "sgd": torch.optim.SGD,
             "adam": torch.optim.Adam,
@@ -91,10 +93,8 @@ class TorchLearner(Learner):
             "adagrad": torch.optim.Adagrad,
             "adadelta": torch.optim.Adadelta,
         }
-
-        # Use keras' convenience method to get the proper optimizer class, no
-        # matter upper/lower case.
-        optim_class = optimizers.get(hps.optimizer_type)
+        # Use Adam as a last resort.
+        optim_class = optimizers.get(hps.optimizer_type or "adam")
         parameters = self.get_parameters(module)
         optim = optim_class(parameters)
         pair: ParamOptimizerPair = (parameters, optim)

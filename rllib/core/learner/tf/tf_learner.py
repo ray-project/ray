@@ -87,8 +87,8 @@ class TfLearner(Learner):
         module = self._module[module_id]
 
         # Use keras' convenience method to get the proper optimizer class, no
-        # matter upper/lower case.
-        optim = tf.keras.optimizers.get(hps.optimizer_type)
+        # matter upper/lower case. Use Adam as a last resort.
+        optim = tf.keras.optimizers.get(hps.optimizer_type or "adam")
         pair: ParamOptimizerPair = (self.get_parameters(module), optim)
 
         # This isn't strictly necessary, but makes it so that if a checkpoint is

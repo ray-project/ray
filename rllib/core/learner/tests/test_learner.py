@@ -274,7 +274,7 @@ class TestLearner(unittest.TestCase):
     def test_save_load_state(self):
         """Tests, whether a Learner's state is properly saved and restored."""
         for fw in framework_iterator(frameworks=("torch", "tf2")):
-            #
+            # Get a Learner instance for the framework and env.
             learner1 = get_learner(framework=fw, env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.save_state(tmpdir)
@@ -283,7 +283,7 @@ class TestLearner(unittest.TestCase):
                 learner2.load_state(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
-            # add a module then save/load and check states
+            # Add a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.add_module(
                     module_id="test",
@@ -293,7 +293,7 @@ class TestLearner(unittest.TestCase):
                 learner2.load_state(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
-            # remove a module then save/load and check states
+            # Remove a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.remove_module(module_id=DEFAULT_POLICY_ID)
                 learner1.save_state(tmpdir)
