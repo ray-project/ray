@@ -352,6 +352,7 @@ class Learner:
         """The hyper-parameters for the learner."""
         return self._hps
 
+    @OverrideToImplementCustomLogic
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
 
@@ -407,7 +408,6 @@ class Learner:
         Returns:
             A tuple consisting of: A list of ParamOptimizerPairs and a dict of names
             mapping from optimizer names to optimizers.
-
         """
         hps = self.hps.get_hps_for_module(module_id)
 
@@ -1040,10 +1040,11 @@ class Learner:
 
         # Handle lr-scheduling updates and apply new learning rates to the optimizers.
         if not self._user_configured_optimizers:
+            # Only cover the optimizer mapped to this particular module.
+            # There should only be one b/c otherwise, `self._user_configured_optimizers`
+            # must be True.
             assert len(self._module_optimizers[module_id]) == 1
-
-            # Only cover optimizers mapped to this particular module.
-            for name, optimizer in self._module_optimizers[module_id].items():
+            for name in self._module_optimizers[module_id]:
                 optimizer = self._named_optimizers[name]
                 new_lr = self._optimizer_lr_schedules[optimizer].update(
                     timestep=timestep
