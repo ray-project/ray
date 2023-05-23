@@ -89,6 +89,7 @@ Run any workload. In this example, you will use the following script that runs 2
     actors = [Actor.remote() for _ in range(2)]
 
 .. testcode::
+    :hide:
 
     # Wait for the tasks to be submitted.
     time.sleep(2)
