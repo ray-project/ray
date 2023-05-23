@@ -1,12 +1,11 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -21,8 +20,8 @@ LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
 @dataclass
-class ImpalaHyperparameters(LearnerHyperparameters):
-    """Hyperparameters for the ImpalaLearner sub-classes (framework specific).
+class ImpalaLearnerHyperparameters(LearnerHyperparameters):
+    """LearnerHyperparameters for the ImpalaLearner sub-classes (framework specific).
 
     These should never be set directly by the user. Instead, use the IMPALAConfig
     class to configure your algorithm.
@@ -60,10 +59,12 @@ class ImpalaLearner(Learner):
         )
 
     @override(Learner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, timestep: int
+    def additional_update_for_module(
+        self, *, module_id: ModuleID, timestep: int
     ) -> Dict[str, Any]:
-        results = super().additional_update_per_module(module_id, timestep=timestep)
+        results = super().additional_update_for_module(
+            module_id=module_id, timestep=timestep
+        )
 
         # Update entropy coefficient via our Scheduler.
         new_entropy_coeff = self.entropy_coeff_scheduler.update(
@@ -71,31 +72,6 @@ class ImpalaLearner(Learner):
         )
         results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
 
-        return results
-
-    @override(Learner)
-    def compile_results(
-        self,
-        *,
-        batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
-        loss_or_loss_stats: Union[TensorType, Mapping[str, Any]],
-        postprocessed_gradients: Mapping[str, Any],
-        compute_grad_stats: Mapping[str, Any],
-        postprocess_grad_stats: Mapping[str, Any],
-        apply_grad_stats: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        results = super().compile_results(
-            batch=batch,
-            fwd_out=fwd_out,
-            loss_or_loss_stats=loss_or_loss_stats,
-            postprocessed_gradients=postprocessed_gradients,
-            compute_grad_stats=compute_grad_stats,
-            postprocess_grad_stats=postprocess_grad_stats,
-            apply_grad_stats=apply_grad_stats,
-        )
-        results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
-        results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
         return results
 
 

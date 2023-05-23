@@ -20,18 +20,24 @@ from typing import (
     Union,
     Optional,
 )
+import threading
 
 import fastapi.encoders
 import numpy as np
 import pydantic
 import pydantic.json
 import requests
+import logging
 
 import ray
 import ray.util.serialization_addons
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, RAY_GCS_RPC_TIMEOUT_S
+from ray.serve._private.constants import (
+    HTTP_PROXY_TIMEOUT,
+    RAY_GCS_RPC_TIMEOUT_S,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
@@ -70,6 +76,8 @@ class DeploymentOptionUpdateType(str, Enum):
 # Type alias: objects that can be DEFAULT.VALUE have type Default[T]
 T = TypeVar("T")
 Default = Union[DEFAULT, T]
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def parse_request_item(request_item):
@@ -569,3 +577,77 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
                 return args[0]
 
     return None
+
+
+class MetricsPusher:
+    def __init__(
+        self,
+        metrics_process_func: Callable,
+        interval_s: float,
+        collection_callback: Callable,
+    ):
+        """
+        Args:
+            interval_s: the push interval.
+            collection_callback: a callable that returns the metric data points to
+            be sent to the the controller. The collection callback should take
+            no argument and returns a dictionary of str_key -> float_value.
+            metrics_process_func: actor handle function.
+        """
+        self.collection_callback = collection_callback
+        self.metrics_process_func = metrics_process_func
+        self.interval_s = interval_s
+        self.pusher_thread: Union[threading.Thread, None] = None
+        self.stop_event = threading.Event()
+
+    def start(self):
+        """Start a background thread to push metrics to controller.
+
+        We use this background so it will be not blocked by user's code and ensure
+        consistently metrics delivery. Python GIL will ensure that this thread gets
+        fair timeshare to execute and run.
+        """
+
+        def send_once():
+            data = self.collection_callback()
+
+            # TODO(simon): maybe wait for ack or handle controller failure?
+            return self.metrics_process_func(data=data, send_timestamp=time.time())
+
+        def send_forever():
+            last_ref: Optional[ray.ObjectRef] = None
+            last_send_succeeded: bool = True
+
+            while True:
+                start = time.time()
+                if self.stop_event.is_set():
+                    return
+
+                if ray.is_initialized():
+                    try:
+                        if last_ref:
+                            ready_refs, _ = ray.wait([last_ref], timeout=0)
+                            last_send_succeeded = len(ready_refs) == 1
+                        if last_send_succeeded:
+                            last_ref = send_once()
+                    except Exception as e:
+                        logger.warning(
+                            "Autoscaling metrics pusher thread "
+                            "is failing to send metrics to the controller "
+                            f": {e}"
+                        )
+
+                duration_s = time.time() - start
+                remaining_time = self.interval_s - duration_s
+                if remaining_time > 0:
+                    time.sleep(remaining_time)
+
+        self.pusher_thread = threading.Thread(target=send_forever)
+        # Making this a daemon thread so it doesn't leak upon shutdown, and it
+        # doesn't need to block the replica's shutdown.
+        self.pusher_thread.setDaemon(True)
+        self.pusher_thread.start()
+
+    def __del__(self):
+        self.stop_event.set()
+        self.pusher_thread.join()

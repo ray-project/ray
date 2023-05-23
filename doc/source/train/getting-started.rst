@@ -190,4 +190,4 @@ Here are examples for some of the commonly used trainers:
 Next Steps
 ----------
 
-* To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`.
+* To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`.
