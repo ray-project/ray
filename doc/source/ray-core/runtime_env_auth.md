@@ -61,7 +61,7 @@ The `netrc` file requires owner read/write access, so make sure to run the `chmo
 chmod 600 "$HOME/.netrc"
 ```
 
-You can add your `netrc` file to your VM container's home directory, so Ray can access your `runtime_env`'s private remote URI, even when they don't contain credentials.
+Add the `netrc` file to your VM container's home directory, so Ray can access the `runtime_env`'s private remote URI, even when they don't contain credentials.
 
 ## Running on KubeRay: Secrets with netrc
 
