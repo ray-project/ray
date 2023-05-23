@@ -40,14 +40,14 @@ class AsyncRequestsManager:
         >>>
         >>> workers = [MyActor.remote() for _ in range(3)] # doctest: +SKIP
         >>> manager = AsyncRequestsManager(workers, # doctest: +SKIP
-        ...                                max_remote_requests_in_flight_per_worker=2) # doctest: +SKIP # noqa
-        >>> manager.call(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2]) # doctest: +SKIP # noqa
+        ...                                max_remote_requests_in_flight_per_worker=2) # doctest: +SKIP
+        >>> manager.call(lambda worker, a, b: worker.task(a, b), fn_args=[1, 2]) # doctest: +SKIP
         >>> print(manager.get_ready()) # doctest: +SKIP
         >>> manager.call(lambda worker, a, b: worker.task(a, b), # doctest: +SKIP
         ...                fn_kwargs={"a": 1, "b": 2}) # doctest: +SKIP
         >>> time.sleep(2) # Wait for the tasks to finish. # doctest: +SKIP
         >>> print(manager.get_ready()) # doctest: +SKIP
-    """
+    """  # noqa: E501
 
     def __init__(
         self,

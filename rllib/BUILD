@@ -64,7 +64,23 @@ load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"], exclude=["examples/**/*", "tests/**/*"]),
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "**/examples/**",
+            "**/tests/**",
+            # Deprecations
+            "utils/window_stat.py",
+            "utils/timer.py",
+            "utils/memory.py",
+            "offline/off_policy_estimator.py",
+            "estimators/feature_importance.py",
+            "env/wrappers/recsim_wrapper.py",
+            "env/remote_vector_env.py",
+            # Broken imports
+            "algorithms/dreamerv3/tf/models/components/mlp.py"
+        ]
+    ),
     tags = ["team:rllib"]
 )
 

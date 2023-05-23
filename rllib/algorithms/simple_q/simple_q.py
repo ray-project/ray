@@ -83,7 +83,7 @@ class SimpleQConfig(AlgorithmConfig):
         >>>         "epsilon_timesteps": 5000,
         >>>     })
         >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
-        >>>                         .exploration(exploration_config=explore_config)\
+        ...                         .exploration(exploration_config=explore_config)\
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
@@ -95,7 +95,7 @@ class SimpleQConfig(AlgorithmConfig):
         >>>         "temperature": [1.0],
         >>>     })
         >>> config = SimpleQConfig().training(lr_schedule=[[1, 1e-3], [500, 5e-3]])\
-        >>>                         .exploration(exploration_config=explore_config)
+        ...                         .exploration(exploration_config=explore_config)
     """
 
     def __init__(self, algo_class=None):
