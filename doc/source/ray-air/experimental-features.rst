@@ -33,7 +33,7 @@ Context-aware progress reporting
 
 .. note::
 
-    This feature is *enabled by default* in Ray 2.5.
+    This feature is *enabled by default* in Ray 2.6.
 
     To disable, set the environment variable ``RAY_AIR_NEW_OUTPUT=0``.
 
