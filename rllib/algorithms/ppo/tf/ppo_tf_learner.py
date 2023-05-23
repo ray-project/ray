@@ -57,7 +57,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
-        if self.hps.kl_coeff > 0.0:
+        if self.hps.use_kl_loss:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = tf.reduce_mean(action_kl)
         else:
@@ -97,7 +97,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
-        if self.hps.kl_coeff > 0.0:
+        if self.hps.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
         # Register important loss stats.
@@ -130,14 +130,15 @@ class PPOTfLearner(PPOLearner, TfLearner):
         )
 
         # Update KL coefficient.
-        sampled_kl = sampled_kl_values[module_id]
-        curr_var = self.curr_kl_coeffs_per_module[module_id]
-        if sampled_kl > 2.0 * self.hps.kl_target:
-            # TODO (Kourosh) why not 2?
-            curr_var.assign(curr_var * 1.5)
-        elif sampled_kl < 0.5 * self.hps.kl_target:
-            curr_var.assign(curr_var * 0.5)
-        results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
+        if self.hps.use_kl_loss:
+            sampled_kl = sampled_kl_values[module_id]
+            curr_var = self.curr_kl_coeffs_per_module[module_id]
+            if sampled_kl > 2.0 * self.hps.kl_target:
+                # TODO (Kourosh) why not 2?
+                curr_var.assign(curr_var * 1.5)
+            elif sampled_kl < 0.5 * self.hps.kl_target:
+                curr_var.assign(curr_var * 0.5)
+            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
 
         return results
 

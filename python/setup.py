@@ -348,8 +348,8 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
-# Calls Bazel in PATH, falling back to the standard user installatation path
-# (~/.bazel/bin/bazel) if it isn't found.
+# Calls Bazel in PATH, falling back to the standard user installation path
+# (~/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
     first_candidate = os.getenv("BAZEL_PATH", "bazel")
@@ -359,7 +359,7 @@ def bazel_invoke(invoker, cmdline, *args, **kwargs):
         if mingw_dir:
             candidates.append(mingw_dir + "/bin/bazel.exe")
     else:
-        candidates.append(os.path.join(home, ".bazel", "bin", "bazel"))
+        candidates.append(os.path.join(home, "bin", "bazel"))
     result = None
     for i, cmd in enumerate(candidates):
         try:
