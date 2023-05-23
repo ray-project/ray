@@ -1,4 +1,3 @@
-import logging
 import numpy as np
 import math
 import pandas as pd
@@ -20,8 +19,6 @@ from ray.rllib.offline.offline_evaluation_utils import (
     compute_is_weights,
     compute_q_and_v_values,
 )
-
-logger = logging.getLogger()
 
 
 @DeveloperAPI

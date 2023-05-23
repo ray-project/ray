@@ -1,4 +1,3 @@
-import logging
 from typing import Dict, Any, Optional, List
 import math
 import numpy as np
@@ -15,8 +14,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.numpy import convert_to_numpy
-
-logger = logging.getLogger()
 
 
 @DeveloperAPI
