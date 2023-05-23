@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray._private.dict import flatten_dict
+from ray._private.dict import unflattened_lookup
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
@@ -74,7 +74,7 @@ class _TrackedCheckpoint:
         self.storage_mode = storage_mode
         self.rank = rank
 
-        self.metrics = flatten_dict(metrics) if metrics else {}
+        self.metrics = metrics or {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
         # If True, and the checkpoint is an AIR Checkpoint backed by
         # a local directory, will move files instead of copying them
@@ -382,15 +382,17 @@ class _CheckpointManager:
         checkpoint_score_attribute = (
             self._checkpoint_strategy.checkpoint_score_attribute
         )
-        if checkpoint_score_attribute not in checkpoint.metrics:
+        try:
+            checkpoint_result = unflattened_lookup(
+                checkpoint_score_attribute, checkpoint.metrics
+            )
+        except KeyError:
             logger.error(
                 f"Result dict has no key: {checkpoint_score_attribute}. "
                 f"checkpoint_score_attr must be set to a key in the "
                 f"result dict. Valid keys are: {list(checkpoint.metrics.keys())}"
             )
             checkpoint_result = float("-inf")
-        else:
-            checkpoint_result = checkpoint.metrics[checkpoint_score_attribute]
 
         checkpoint_score_order = self._checkpoint_strategy.checkpoint_score_order
         if checkpoint_score_order == MAX:
