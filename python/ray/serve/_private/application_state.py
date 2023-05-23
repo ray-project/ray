@@ -41,7 +41,7 @@ class ApplicationState:
 
         self._name = name
         self._deploy_obj_ref = deploy_obj_ref
-        self._app_msg = ""
+        self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
         self._deployment_params: List[Dict] = []
         # This set tracks old deployments that are being deleted
@@ -208,30 +208,30 @@ class ApplicationState:
                     # custom __str__ function.
                     self._update_status(
                         ApplicationStatus.DEPLOY_FAILED,
-                        app_msg=f"Deploying app '{self._name}' failed:\n{str(e)}",
+                        status_msg=f"Deploying app '{self._name}' failed:\n{str(e)}",
                     )
-                    logger.warning(self._app_msg)
+                    logger.warning(self._status_msg)
                     return
                 except RuntimeEnvSetupError:
                     self._update_status(
                         ApplicationStatus.DEPLOY_FAILED,
-                        app_msg=(
+                        status_msg=(
                             f"Runtime env setup for app '{self._name}' "
                             f"failed:\n{traceback.format_exc()}"
                         ),
                     )
-                    logger.warning(self._app_msg)
+                    logger.warning(self._status_msg)
                     return
                 except Exception:
                     self._update_status(
                         ApplicationStatus.DEPLOY_FAILED,
-                        app_msg=(
+                        status_msg=(
                             "Unexpected error occured while deploying "
                             f"application '{self._name}':"
                             f"\n{traceback.format_exc()}"
                         ),
                     )
-                    logger.warning(self._app_msg)
+                    logger.warning(self._status_msg)
                     return
             deployments_statuses = (
                 self._deployment_state_manager.get_deployment_statuses(self.deployments)
@@ -247,7 +247,7 @@ class ApplicationState:
             if len(unhealthy_deployment_names) != 0:
                 self._update_status(
                     ApplicationStatus.DEPLOY_FAILED,
-                    app_msg=(
+                    status_msg=(
                         "The following deployments are UNHEALTHY: "
                         f"{unhealthy_deployment_names}"
                     ),
@@ -267,7 +267,7 @@ class ApplicationState:
         """Return the application status information"""
         return ApplicationStatusInfo(
             self._status,
-            message=self._app_msg,
+            message=self._status_msg,
             deployment_timestamp=self._deployment_timestamp,
         )
 
@@ -287,9 +287,9 @@ class ApplicationState:
         }
         return {k: v for k, v in details.items() if v is not None}
 
-    def _update_status(self, status: ApplicationStatus, app_msg: str = ""):
+    def _update_status(self, status: ApplicationStatus, status_msg: str = ""):
         self._status = status
-        self._app_msg = app_msg
+        self._status_msg = status_msg
 
 
 class ApplicationStateManager:
