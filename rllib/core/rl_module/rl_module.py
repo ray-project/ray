@@ -327,7 +327,6 @@ class RLModule(abc.ABC):
             self.output_specs_inference()
         )
 
-    @abc.abstractmethod
     def setup(self):
         """Sets up the components of the module.
 
@@ -336,7 +335,6 @@ class RLModule(abc.ABC):
         abstraction can be used to create any component that your RLModule needs.
         """
 
-    @abc.abstractmethod
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for training.
 
@@ -349,8 +347,8 @@ class RLModule(abc.ABC):
         `Distribution.to_deterministic()`. See the documentation for `Distribution`
         for more detail.
         """
+        raise NotImplementedError
 
-    @abc.abstractmethod
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for exploration.
 
@@ -363,8 +361,8 @@ class RLModule(abc.ABC):
         `Distribution.to_deterministic()`. See the documentation for `Distribution`
         for more detail.
         """
+        raise NotImplementedError
 
-    @abc.abstractmethod
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for inference.
 
@@ -377,6 +375,7 @@ class RLModule(abc.ABC):
         `Distribution.to_deterministic()`. See the documentation for `Distribution`
         for more detail.
         """
+        raise NotImplementedError
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -504,7 +503,6 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    @abc.abstractmethod
     def save_state(self, path: Union[str, pathlib.Path]) -> None:
         """Saves the weights of this RLModule to path.
 
@@ -512,14 +510,15 @@ class RLModule(abc.ABC):
             path: The file path to save the checkpoint to.
 
         """
+        raise NotImplementedError
 
-    @abc.abstractmethod
     def load_state(self, path: Union[str, pathlib.Path]) -> None:
         """Loads the weights of an RLModule from path.
 
         Args:
             path: The directory to load the checkpoint from.
         """
+        raise NotImplementedError
 
     def _module_metadata(
         self,
@@ -610,9 +609,9 @@ class RLModule(abc.ABC):
         module = module_spec.build()
         return module
 
-    @abc.abstractmethod
     def _module_state_file_name(self) -> pathlib.Path:
         """The name of the file to save the module state to while checkpointing."""
+        raise NotImplementedError
 
     def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
         """Saves the module to a checkpoint directory.
