@@ -6,6 +6,7 @@ import time
 import signal
 import gc
 import os
+import random
 
 from unittest.mock import patch, Mock
 
@@ -727,7 +728,6 @@ def test_ray_serve_like_generator_stress_test(ray_start_cluster, monkeypatch):
             async def get_data(self):
                 if not self.child:
                     for i in range(10):
-                        await asyncio.sleep(0.1)
                         yield np.ones(5 * 1024) * i
                 else:
                     async for ref in self.child.get_data.options(
@@ -771,65 +771,81 @@ def test_ray_serve_like_generator_stress_test(ray_start_cluster, monkeypatch):
         asyncio.run(main())
 
 
-def test_e2e_worker_failures(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0, object_store_memory=1 * 1024 * 1024 * 1024)
-    ray.init()
-    cluster.add_node(num_cpus=2)
-    cluster.add_node(num_cpus=2)
-    cluster.add_node(num_cpus=2)
-    cluster.add_node(num_cpus=2)
+def test_e2e_worker_failures(ray_start_cluster, monkeypatch):
+    with monkeypatch.context() as m:
+        # Add a 10ms ~ 1 second delay to the RPC.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=10000:1000000",
+        )
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=0, object_store_memory=1 * 1024 * 1024 * 1024)
+        ray.init()
+        cluster.add_node(num_cpus=2)
+        cluster.add_node(num_cpus=2)
+        cluster.add_node(num_cpus=2)
+        cluster.add_node(num_cpus=2)
 
-    @ray.remote(num_cpus=1, max_restarts=-1)
-    class Actor:
-        def __init__(self, child=None):
-            self.child = child
+        @ray.remote(num_cpus=1, max_restarts=-1)
+        class Actor:
+            def __init__(self, child=None):
+                self.child = child
 
-        def get_data(self):
+            def get_data(self):
+                for _ in range(10):
+                    time.sleep(0.1)
+                    yield np.ones(5 * 1024 * 1024)
+
+        async def kill_actors():
             for _ in range(10):
-                time.sleep(1)
-                yield np.ones(5 * 1024 * 1024)
+                try:
+                    actors = list_actors(filters=[("STATE", "=", "ALIVE")])
+                    actor_to_kill = random.choice(actors)
+                    pid = actor_to_kill.pid
+                    if pid:
+                        print("kill!, ", actor_to_kill.actor_id)
+                        os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
 
-    async def kill_actors():
-        for _ in range(10):
-            actors = list_actors()
-            actor_to_kill = actors[-1]
-            pid = actor_to_kill.pid
-            print(actor_to_kill)
-            print(pid)
-            if pid:
-                os.kill(pid, signal.SIGKILL)
-            await asyncio.sleep(1)
+                await asyncio.sleep(0.1)
 
-    async def gather():
-        actor = Actor.remote()
-        finished = False
-        while not finished:
-            try:
-                async for ref in actor.get_data.options(num_returns="streaming").remote():
-                    val = await ref
-                    assert np.array_equal(np.ones(5 * 1024 * 1024), val)
-                    del ref
-                finished = True
-            except:
-                pass
+        async def gather():
+            actor = Actor.remote()
+            finished = False
+            while not finished:
+                try:
+                    print("retry")
+                    async for ref in actor.get_data.options(
+                        num_returns="streaming"
+                    ).remote():
+                        val = await ref
+                        assert np.array_equal(np.ones(5 * 1024 * 1024), val)
+                        del ref
+                    finished = True
+                except Exception:
+                    pass
 
-    async def main():
-        await asyncio.gather(gather(), gather(), gather(), gather(), kill_actors())
-        result = list_objects(raise_on_missing_output=False)
-        ref_types = set()
-        print(list_objects())
-        for r in result:
-            ref_types.add(r.reference_type)
-        # Verify no leaks
-        assert ref_types == {}
+        async def main():
+            await asyncio.gather(*[gather() for _ in range(8)], kill_actors())
 
-    asyncio.run(main())
+            gc.collect()
+
+            def verify():
+                result = list_objects(raise_on_missing_output=False)
+                print(result)
+                ref_types = set()
+                for r in result:
+                    ref_types.add(r.reference_type)
+                # Verify no leaks
+                return ref_types == set()
+
+            wait_for_condition(verify, timeout=400)
+
+        asyncio.run(main())
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
