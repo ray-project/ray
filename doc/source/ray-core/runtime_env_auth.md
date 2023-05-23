@@ -67,15 +67,15 @@ You can add your `netrc` file to your VM container's home directory, so Ray can 
 
 [KubeRay](https://ray-project.github.io/kuberay/) can also obtain credentials from a `netrc` file for remote URIs. You can supply your `netrc` file using a Kubernetes secret and a Kubernetes volume with these steps:
 
-1. Launch your Kubernetes cluster.
-2. Create your `netrc` file locally in your home directory.
-3. Store your `netrc` file's contents as a Kubernetes secret on your cluster:
+1\. Launch your Kubernetes cluster.
+2\. Create your `netrc` file locally in your home directory.
+3\. Store your `netrc` file's contents as a Kubernetes secret on your cluster:
 
 ```bash
 kubectl create secret generic netrc-secret --from-file=.netrc="$HOME/.netrc"
 ```
 
-4. Expose the secret to your KubeRay application using a mounted volume, and update the `NETRC` environment variable to point to the `netrc` file. You can include the following YAML in your KubeRay config.
+4\. Expose the secret to your KubeRay application using a mounted volume, and update the `NETRC` environment variable to point to the `netrc` file. You can include the following YAML in your KubeRay config.
 
 ```yaml
 headGroupSpec:
@@ -115,6 +115,6 @@ workerGroupSpecs:
             secretName: netrc-secret
 ```
 
-5. Apply your KubeRay config.
+5\. Apply your KubeRay config.
 
 Your KubeRay application can use the `netrc` file to access private remote URIs, even when they don't contain credentials.
