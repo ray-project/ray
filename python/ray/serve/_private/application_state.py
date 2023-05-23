@@ -208,7 +208,7 @@ class ApplicationState:
                     # custom __str__ function.
                     self._update_status(
                         ApplicationStatus.DEPLOY_FAILED,
-                        app_msg=(f"Deploying app '{self._name}' failed:\n{str(e)}"),
+                        app_msg=f"Deploying app '{self._name}' failed:\n{str(e)}",
                     )
                     logger.warning(self._app_msg)
                     return
