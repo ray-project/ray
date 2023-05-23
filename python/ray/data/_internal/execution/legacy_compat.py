@@ -3,7 +3,6 @@
 It should be deleted once we fully move to the new executor backend.
 """
 
-import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple, Any
 
 import ray
