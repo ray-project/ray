@@ -7,7 +7,7 @@ batch-inference-ray-data:
   labels:
     - Ray Data
   cluster_env:
-    build_id: anyscaleray240-py39-cu118
+    build_id: anyscaleray-ml240-py39-gpu
   compute_config:
     GCP: doc/source/templates/configs/compute/gpu/gce.yaml
     AWS: doc/source/templates/configs/compute/gpu/aws.yaml
@@ -19,7 +19,7 @@ many-model-training-ray-tune:
   labels:
     - Ray Tune
   cluster_env:
-    build_id: anyscaleray240-py39
+    build_id: anyscaleray-ml240-py39-gpu
   compute_config:
     GCP: doc/source/templates/configs/compute/cpu/gce.yaml
     AWS: doc/source/templates/configs/compute/cpu/aws.yaml
