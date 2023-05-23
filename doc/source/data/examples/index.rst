@@ -25,6 +25,11 @@ Computer Vision Examples
 
             Image Classification Batch Inference with PyTorch
 
+    
+    .. grid-item-card::
+
+        .. button-ref:: pytorch_object_detection_batch_prediction
+
 
 Simple Data Processing Examples
 -------------------------------
