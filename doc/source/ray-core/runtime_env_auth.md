@@ -41,7 +41,7 @@ In short, your remote URI is not treated as a secret, so it should not contain s
 The [.netrc file](https://www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html) contains credentials that Ray uses to automatically log into remote servers. You can set your credentials in this file instead of in the remote URI:
 
 ```bash
-# ~/.netrc
+# "$HOME/.netrc"
 
 machine github.com
 login username
@@ -51,7 +51,7 @@ password personal_access_token
 The `.netrc` file requires owner read/write access, so make sure to run the `chmod` command after creating the file:
 
 ```bash
-chmod 600 ~/.netrc
+chmod 600 "$HOME/.netrc"
 ```
 
 You can add your `.netrc` file to your VM container's home directory, so Ray can access your `runtime_env`'s private remote URI, even when they don't contain credentials.
@@ -65,7 +65,7 @@ KubeRay can also obtain credentials from a `.netrc` file for remote URIs. You ca
 3. Store your `.netrc` file's contents as a Kubernetes secret on your cluster:
 
 ```bash
-kubectl create secret generic netrc-secret --from-file=.netrc=~/.netrc
+kubectl create secret generic netrc-secret --from-file=.netrc="$HOME/.netrc"
 ```
 
 4. Expose the secret to your KubeRay application using a mounted volume, and update the `NETRC` environment variable to point to the `.netrc` file. You can include the following YAML in your KubeRay config.
