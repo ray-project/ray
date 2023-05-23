@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray._private.dict import unflattened_lookup
+from ray._private.dict import unflattened_lookup, flatten_dict
 from ray.air import Checkpoint, CheckpointConfig
 from ray.air.config import MAX
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
@@ -388,10 +388,11 @@ class _CheckpointManager:
                     checkpoint_score_attribute, checkpoint.metrics
                 )
             except KeyError:
+                valid_keys = list(flatten_dict(checkpoint.metrics).keys())
                 logger.error(
                     f"Result dict has no key: {checkpoint_score_attribute}. "
                     f"checkpoint_score_attr must be set to a key in the "
-                    f"result dict. Valid keys are: {list(checkpoint.metrics.keys())}"
+                    f"result dict. Valid keys are: {valid_keys}"
                 )
                 checkpoint_result = float("-inf")
         else:
