@@ -887,6 +887,20 @@ class AlgorithmConfig(_Config):
                 "via `config.training(_enable_learner_api=True)` (or set both to "
                 "False)."
             )
+        # TODO @Avnishn: This is a short-term work around due to
+        # https://github.com/ray-project/ray/issues/35409
+        # Remove this once we are able to specify placement group bundle index in RLlib
+        if (
+            self.num_cpus_per_learner_worker > 1
+            and self.num_gpus_per_learner_worker > 0
+        ):
+            raise ValueError(
+                "Cannot set both `num_cpus_per_learner_worker` and "
+                " `num_gpus_per_learner_worker` > 0! Users must set one"
+                " or the other due to issues with placement group"
+                " fragmentation. See "
+                "https://github.com/ray-project/ray/issues/35409 for more details."
+            )
 
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # Enable RLModule API and connectors if env variable is set
@@ -1149,7 +1163,8 @@ class AlgorithmConfig(_Config):
             num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
                 `num_learner_workers = 0`, any value greater than 0 will run the
                 training on a single GPU on the head node, while a value of 0 will run
-                the training on head node CPU cores.
+                the training on head node CPU cores. If num_gpus_per_learner_worker is
+                set, then num_cpus_per_learner_worker cannot be set.
             local_gpu_idx: if num_gpus_per_worker > 0, and num_workers<2, then this gpu
                 index will be used for training. This is an index into the available
                 cuda devices. For example if os.environ["CUDA_VISIBLE_DEVICES"] = "1"
@@ -3227,7 +3242,11 @@ class AlgorithmConfig(_Config):
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
-                num_cpus_per_learner_worker=self.num_cpus_per_learner_worker,
+                num_cpus_per_learner_worker=(
+                    self.num_cpus_per_learner_worker
+                    if not self.num_gpus_per_learner_worker
+                    else 0
+                ),
                 num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
                 local_gpu_idx=self.local_gpu_idx,
             )

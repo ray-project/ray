@@ -95,10 +95,10 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
-        .rollouts(rollout_fragment_length=500)
+        .rollouts(rollout_fragment_length="auto", num_rollout_workers=3)
         .environment(MultiAgentCartPole, env_config={"num_agents": args.num_agents})
         .framework(args.framework)
-        .training(num_sgd_iter=10)
+        .training(num_sgd_iter=10, sgd_minibatch_size=2**9, train_batch_size=2**12)
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         .rl_module(_enable_rl_module_api=True)
         .training(_enable_learner_api=True)
@@ -115,7 +115,7 @@ if __name__ == "__main__":
     results = tune.Tuner(
         "PPO",
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=air.RunConfig(stop=stop, verbose=3),
     ).fit()
 
     if args.as_test:
