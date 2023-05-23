@@ -16,7 +16,7 @@ from ray.rllib.utils.annotations import override
 
 
 @dataclass
-class DreamerV3Hyperparameters(LearnerHyperparameters):
+class DreamerV3LearnerHyperparameters(LearnerHyperparameters):
     """Hyperparameters for the DreamerV3Learner sub-classes (framework specific).
 
     These should never be set directly by the user. Instead, use the PPOConfig
@@ -49,20 +49,23 @@ class DreamerV3Hyperparameters(LearnerHyperparameters):
 class DreamerV3Learner(Learner):
     """DreamerV3 specific Learner class.
 
-    Only implements the `additional_update_per_module()` method to define the logic
+    Only implements the `additional_update_for_module()` method to define the logic
     for updating the critic EMA-copy after each training step.
     """
 
     @override(Learner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, timestep: int
+    def additional_update_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: DreamerV3LearnerHyperparameters,
+        timestep: int,
     ) -> Dict[str, Any]:
         """Updates the EMA weights of the critic network."""
 
         # Call the base class' method.
-        results = super().additional_update_per_module(
-            module_id,
-            timestep=timestep,
+        results = super().additional_update_for_module(
+            module_id=module_id, hps=hps, timestep=timestep
         )
 
         # Update EMA weights of the critic.

@@ -6,7 +6,6 @@ from typing import (
     Any,
     Callable,
     Hashable,
-    List,
     Mapping,
     Optional,
     Sequence,
@@ -126,8 +125,6 @@ class TfLearner(Learner):
                 if gradients[param_ref] is not None
             ]
             optim.apply_gradients(zip(gradient_list, variable_list))
-
-        return {}
 
     @override(Learner)
     def load_state(

@@ -33,7 +33,6 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import ALL_MODULES

@@ -17,7 +17,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ResultDict, TensorType
+from ray.rllib.utils.typing import ResultDict
 
 
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
