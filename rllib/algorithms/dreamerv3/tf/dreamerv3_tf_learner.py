@@ -17,10 +17,7 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
     DreamerV3LearnerHyperparameters,
 )
 from ray.rllib.core.rl_module.marl_module import ModuleID
-from ray.rllib.core.learner.learner import (
-    ParamDict,
-    NamedParamOptimizerPairs,
-)
+from ray.rllib.core.learner.learner import NamedParamOptimizerPairs
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -65,9 +62,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         )
 
         # Actor optimizer.
-        optim_actor = tf.keras.optimizers.Adam(
-            learning_rate=hps.actor_lr, epsilon=1e-5
-        )
+        optim_actor = tf.keras.optimizers.Adam(learning_rate=hps.actor_lr, epsilon=1e-5)
         optim_actor.build(dreamerv3_module.actor.trainable_variables)
         named_param_optimizer_pairs["actor"] = (
             self.get_parameters(dreamerv3_module.actor),
@@ -86,10 +81,10 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         return named_param_optimizer_pairs
 
-    #@override(TfLearner)
-    #def compute_gradients(
+    # @override(TfLearner)
+    # def compute_gradients(
     #    self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
-    #) -> Tuple[ParamDict, ResultDict]:
+    # ) -> Tuple[ParamDict, ResultDict]:
     #    """Computes gradients for all three components: world_model, actor, and critic.
 
     #    `loss` must be a dictionary containing total loss keys for all the components.
@@ -131,20 +126,25 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         Note that different grad global-norm clip values are used for the 3 components.
         """
         stats = {}
-        for name, optim in self._named_optimizers.items():
+        for name, optimizer in self._named_optimizers.items():
             # TODO (sven): DreamerV3 is single-agent only thus far.
             #  Remove `default_policy_` from name.
-            name = name[len(DEFAULT_POLICY_ID) + 1 :]  # +1 -> trailing underscore
+            # +1 -> trailing underscore
+            sub_module_name = name[len(DEFAULT_POLICY_ID) + 1 :]
+            hps: DreamerV3LearnerHyperparameters = self.hps.get_hps_for_module(
+                DEFAULT_POLICY_ID
+            )
+
             grads_sub_dict = {
                 param_ref: gradients_dict[param_ref]
-                for param_ref in self._optimizer_parameters[optim]
+                for param_ref in self._optimizer_parameters[optimizer]
             }
             # Figure out, which grad clip value to use.
             grad_clip = (
                 hps.world_model_grad_clip_by_global_norm
-                if name == "world_model"
+                if sub_module_name == "world_model"
                 else hps.actor_grad_clip_by_global_norm
-                if name == "actor"
+                if sub_module_name == "actor"
                 else hps.critic_grad_clip_by_global_norm
             )
             global_norm = clip_gradients(
@@ -152,8 +152,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 grad_clip=grad_clip,
                 grad_clip_by="global_norm",
             )
-            stats[name.upper() + "_gradients_global_norm"] = global_norm
-            stats[name.upper() + "_gradients_maxabs_after_clipping"] = tf.reduce_max(
+            # DreamerV3 stats have the format: [WORLD_MODEL|ACTOR|CRITIC]_[stats name].
+            stats[sub_module_name.upper() + "_gradients_global_norm"] = global_norm
+            stats[
+                sub_module_name.upper() + "_gradients_maxabs_after_clipping"
+            ] = tf.reduce_max(
                 [tf.reduce_max(tf.math.abs(g)) for g in grads_sub_dict.values()]
             )
             gradients_dict.update(grads_sub_dict)
@@ -171,6 +174,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         # World model losses.
         prediction_losses = self._compute_world_model_prediction_losses(
+            hps=hps,
             rewards=batch[SampleBatch.REWARDS],
             continues=(1.0 - batch["is_terminated"]),
             fwd_out=fwd_out,
@@ -179,7 +183,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         (
             L_dyn_B_T,
             L_rep_B_T,
-        ) = self._compute_world_model_dynamics_and_representation_loss(fwd_out=fwd_out)
+        ) = self._compute_world_model_dynamics_and_representation_loss(
+            hps=hps, fwd_out=fwd_out
+        )
         L_dyn = tf.reduce_mean(L_dyn_B_T)
         L_rep = tf.reduce_mean(L_rep_B_T)
         # Make sure values for L_rep and L_dyn are the same (they only differ in their
@@ -216,9 +222,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             # Learn critic in symlog'd space.
             rewards_t0_to_H_BxT=dream_data["rewards_dreamed_t0_to_H_B"],
             intrinsic_rewards_t1_to_H_BxT=(
-                dream_data["rewards_intrinsic_t1_to_H_B"]
-                if hps.use_curiosity
-                else None
+                dream_data["rewards_intrinsic_t1_to_H_B"] if hps.use_curiosity else None
             ),
             continues_t0_to_H_BxT=dream_data["continues_dreamed_t0_to_H_B"],
             value_predictions_t0_to_H_BxT=dream_data["values_dreamed_t0_to_H_B"],
@@ -303,6 +307,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
     def _compute_world_model_prediction_losses(
         self,
         *,
+        hps,
         rewards,
         continues,
         fwd_out,
@@ -392,7 +397,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         }
 
     def _compute_world_model_dynamics_and_representation_loss(
-        self, *, fwd_out
+        self, *, hps, fwd_out
     ) -> Tuple[TensorType, TensorType]:
         """Helper method computing the world-model's dynamics and representation losses.
 
@@ -446,9 +451,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             ),
         )
         # Unfold time rank back in.
-        L_dyn_B_T = tf.reshape(
-            L_dyn_BxT, (hps.batch_size_B, hps.batch_length_T)
-        )
+        L_dyn_B_T = tf.reshape(L_dyn_BxT, (hps.batch_size_B, hps.batch_length_T))
 
         L_rep_BxT = tf.math.maximum(
             1.0,
@@ -457,9 +460,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             ),
         )
         # Unfold time rank back in.
-        L_rep_B_T = tf.reshape(
-            L_rep_BxT, (hps.batch_size_B, hps.batch_length_T)
-        )
+        L_rep_B_T = tf.reshape(L_rep_BxT, (hps.batch_size_B, hps.batch_length_T))
 
         return L_dyn_B_T, L_rep_B_T
 

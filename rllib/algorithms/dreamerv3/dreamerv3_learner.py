@@ -19,7 +19,7 @@ from ray.rllib.utils.annotations import override
 class DreamerV3LearnerHyperparameters(LearnerHyperparameters):
     """Hyperparameters for the DreamerV3Learner sub-classes (framework specific).
 
-    These should never be set directly by the user. Instead, use the PPOConfig
+    These should never be set directly by the user. Instead, use the DreamerV3Config
     class to configure your algorithm.
     See `ray.rllib.algorithms.dreamerv3.dreamerv3::DreamerV3Config::training()` for
     more details on the individual properties.
