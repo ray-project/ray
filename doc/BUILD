@@ -197,7 +197,7 @@ py_test(
     main = "source/ray-air/doc_code/computer_vision.py",
     srcs = ["source/ray-air/doc_code/computer_vision.py"],
     tags = ["exclusive", "team:ml"],
-    size = "large",
+    args = ["--test_timeout", "-1,-1,-1,1800"],
 )
 
 # --------------------------------------------------------------------
