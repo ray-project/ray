@@ -3986,6 +3986,11 @@ class Dataset:
             if not blocks:
                 return []
             else:
+                # TODO(hchen): Here we generate the same number of blocks as
+                # the original Dataset. Because the old code path does this, and
+                # some unit tests implicily depend on this behavior.
+                # After we remove the old code path, we should consider merging
+                # some blocks for better perf.
                 return [
                     RefBundle(
                         blocks=[block_with_metadata],
