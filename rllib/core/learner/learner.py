@@ -128,11 +128,18 @@ class LearnerHyperparameters:
 
     # Holds hyperparameters per module. This is not None only in the top-level
     # Learner's self.hps (whose self.module is a `MARLModule`) and then contains the
-    # correct mappings from ModuleID to the .
+    # correct mappings from ModuleID to the derived LearnerHyperparameter objects.
+    # You can access a per-module HP sub-object by using the
+    # `get_hps_for_module(module_id=..)` API.
     _per_module_overrides: Optional[Dict[ModuleID, "LearnerHyperparameters"]] = None
 
     def get_hps_for_module(self, module_id: ModuleID) -> "LearnerHyperparameters":
         """Returns a LearnerHyperparameter instance, given a `module_id`.
+
+        This is useful for passing these module-specific HPs to a Learner's
+        `..._for_module(module_id=.., hps=..)` methods. Individual modules within
+        a MultiAgentRLModule can then override certain AlgorithmConfig settings
+        of the main config, e.g. the learning rate.
 
         Args:
             module_id: The module ID for which to return a specific

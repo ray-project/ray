@@ -48,8 +48,8 @@ class AppoLearner(ImpalaLearner):
     def build(self):
         super().build()
 
-        # The current kl coefficients per module as tensor variables
-        # (framework specific).
+        # The current kl coefficients per module as (framework specific) tensor
+        # variables.
         self.curr_kl_coeffs_per_module: LambdaDefaultDict[
             ModuleID, Scheduler
         ] = LambdaDefaultDict(
