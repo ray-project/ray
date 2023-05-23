@@ -26,8 +26,9 @@ class CoreWorker;
 
 namespace rpc {
 /// TODO(vitsai): Remove this when auth is implemented for node manager
-#define RAY_CORE_WORKER_RPC_SERVICE_HANDLER(METHOD) \
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED(METHOD, -1, AuthType::NO_AUTH)
+#define RAY_CORE_WORKER_RPC_SERVICE_HANDLER(METHOD)        \
+  RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
+      CoreWorkerService, METHOD, -1, AuthType::NO_AUTH)
 
 /// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 /// Disable gRPC server metrics since it incurs too high cardinality.
