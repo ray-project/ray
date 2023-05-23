@@ -7,14 +7,14 @@ def get_root_path() -> Path:
     """
     If we're running from a Ray repo, and just use the
     current file to get the doc directory.
-    ray/doc/source/examples/ -> ray/
+    ray/doc/source/templates/testing -> ray/
 
     For CI, the current file location is:
-    `<bazel_runfiles_dir>/doc/source/examples/validate.py`
+    `<bazel_runfiles_dir>/doc/source/templates/testing/validate.py`
     We can get the "ray root dir" in the same way:
-    <bazel_runfiles_dir>/doc/source/examples -> <bazel_runfiles_dir>/
+    <bazel_runfiles_dir>/doc/source/templates/testing -> <bazel_runfiles_dir>/
     """
-    root_path = Path(__file__).parent / ".." / ".." / ".."
+    root_path = Path(__file__).parent / ".." / ".." / ".." / ".."
     return root_path.resolve()
 
 

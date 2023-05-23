@@ -239,8 +239,8 @@ py_test_run_all_subdirectory(
 py_test(
     name = "templates_directory_validation",
     size = "small",
-    main = "source/templates/validate.py",
-    srcs = ["source/templates/validate.py"],
+    main = "source/templates/testing/validate.py",
+    srcs = ["source/templates/testing/validate.py"],
     data = glob(["source/templates/**/*"]),
     tags = ["exclusive", "team:ml"]
 )
