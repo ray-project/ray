@@ -786,6 +786,14 @@ tutorials and examples:
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
+        .. button-ref:: /data/examples/batch_inference_object_detection
+
+            Object Detection Batch Inference with PyTorch
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
         .. button-ref:: /data/examples/ocr_example
 
             Batch OCR processing using Ray Data
