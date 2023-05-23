@@ -156,7 +156,10 @@ class PPOConfig(PGConfig):
                 module_class=PPOTfRLModule, catalog_class=PPOCatalog
             )
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:
@@ -171,7 +174,10 @@ class PPOConfig(PGConfig):
 
             return PPOTfLearner
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(AlgorithmConfig)
     def get_learner_hyperparameters(self) -> PPOLearnerHyperparameters:
@@ -479,7 +485,7 @@ class PPO(Algorithm):
 
         if self.config._enable_learner_api:
             kl_dict = {
-                pid: train_results[pid][LEARNER_STATS_KEY][LEARNER_RESULTS_KL_KEY]
+                pid: train_results[pid][LEARNER_RESULTS_KL_KEY]
                 for pid in policies_to_update
             }
             # triggers a special update method on RLOptimizer to update the KL values.

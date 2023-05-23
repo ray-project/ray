@@ -109,7 +109,12 @@ If you need to directly access the future object, you can call:
     async def convert_to_asyncio_future():
         ref = some_task.remote()
         fut: asyncio.Future = asyncio.wrap_future(ref.future())
+        print(await fut)
     asyncio.run(convert_to_asyncio_future())
+
+.. testoutput::
+
+    1
 
 .. _async-ref-to-futures:
 
