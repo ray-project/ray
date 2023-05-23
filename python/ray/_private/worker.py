@@ -64,11 +64,6 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager, make_function_table_key
-from ray._private.gcs_pubsub import (
-    GcsErrorSubscriber,
-    GcsFunctionKeySubscriber,
-    GcsLogSubscriber,
-)
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
@@ -848,61 +843,6 @@ class Worker:
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
         sys.exit(0)
-
-    def print_logs(self):
-        """Prints log messages from workers on all nodes in the same job."""
-        import grpc
-
-        subscriber = self.gcs_log_subscriber
-        subscriber.subscribe()
-        exception_type = grpc.RpcError
-        localhost = services.get_node_ip_address()
-        try:
-            # Number of messages received from the last polling. When the batch
-            # size exceeds 100 and keeps increasing, the worker and the user
-            # probably will not be able to consume the log messages as rapidly
-            # as they are coming in.
-            # This is meaningful only for GCS subscriber.
-            last_polling_batch_size = 0
-            job_id_hex = self.current_job_id.hex()
-            while True:
-                # Exit if we received a signal that we should stop.
-                if self.threads_stopped.is_set():
-                    return
-
-                data = subscriber.poll()
-                # GCS subscriber only returns None on unavailability.
-                if data is None:
-                    last_polling_batch_size = 0
-                    continue
-
-                if (
-                    self._filter_logs_by_job
-                    and data["job"]
-                    and data["job"] != job_id_hex
-                ):
-                    last_polling_batch_size = 0
-                    continue
-
-                data["localhost"] = localhost
-                global_worker_stdstream_dispatcher.emit(data)
-
-                lagging = 100 <= last_polling_batch_size < subscriber.last_batch_size
-                if lagging:
-                    logger.warning(
-                        "The driver may not be able to keep up with the "
-                        "stdout/stderr of the workers. To avoid forwarding "
-                        "logs to the driver, use "
-                        "'ray.init(log_to_driver=False)'."
-                    )
-
-                last_polling_batch_size = subscriber.last_batch_size
-
-        except (OSError, exception_type) as e:
-            logger.error(f"print_logs: {e}")
-        finally:
-            # Close the pubsub client to avoid leaking file descriptors.
-            subscriber.close()
 
 
 @PublicAPI
@@ -1963,54 +1903,6 @@ def restore_tqdm():
     tqdm_ray.instance().unhide_bars()
 
 
-def listen_error_messages(worker, threads_stopped):
-    """Listen to error messages in the background on the driver.
-
-    This runs in a separate thread on the driver and pushes (error, time)
-    tuples to be published.
-
-    Args:
-        worker: The worker class that this thread belongs to.
-        threads_stopped (threading.Event): A threading event used to signal to
-            the thread that it should exit.
-    """
-
-    # TODO: we should just subscribe to the errors for this specific job.
-    worker.gcs_error_subscriber.subscribe()
-
-    try:
-        if _internal_kv_initialized():
-            # Get any autoscaler errors that occurred before the call to
-            # subscribe.
-            error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
-            if error_message is not None:
-                logger.warning(error_message.decode())
-
-        while True:
-            # Exit if received a signal that the thread should stop.
-            if threads_stopped.is_set():
-                return
-
-            _, error_data = worker.gcs_error_subscriber.poll()
-            if error_data is None:
-                continue
-            if error_data.job_id not in [
-                worker.current_job_id.binary(),
-                JobID.nil().binary(),
-            ]:
-                continue
-
-            error_message = error_data.error_message
-            if error_data.type == ray_constants.TASK_PUSH_ERROR:
-                # TODO(ekl) remove task push errors entirely now that we have
-                # the separate unhandled exception handler.
-                pass
-            else:
-                logger.warning(error_message)
-    except (OSError, ConnectionError) as e:
-        logger.error(f"listen_error_messages: {e}")
-
-
 @PublicAPI
 @client_mode_hook
 def is_initialized() -> bool:
@@ -2240,15 +2132,9 @@ def connect(
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
     worker_id = worker.worker_id
-    worker.gcs_error_subscriber = GcsErrorSubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
-    )
-    worker.gcs_log_subscriber = GcsLogSubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
-    )
-    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
-    )
+    worker.gcs_error_subscriber = None
+    worker.gcs_log_subscriber = None
+    worker.gcs_function_key_subscriber = None
 
     if driver_object_store_memory is not None:
         logger.warning(
@@ -2262,38 +2148,7 @@ def connect(
     # import thread until job_id is initialized.
     # (python/ray/_raylet.pyx maybe_initialize_job_config)
     if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
-        worker.import_thread = import_thread.ImportThread(
-            worker, mode, worker.threads_stopped
-        )
-        if (
-            worker.current_job_id != JobID.nil()
-            and ray._raylet.Config.start_python_importer_thread()
-        ):
-            worker.import_thread.start()
-
-    # If this is a driver running in SCRIPT_MODE, start a thread to print error
-    # messages asynchronously in the background. Ideally the scheduler would
-    # push messages to the driver's worker service, but we ran into bugs when
-    # trying to properly shutdown the driver's worker service, so we are
-    # temporarily using this implementation which constantly queries the
-    # scheduler for new error messages.
-    if mode == SCRIPT_MODE:
-        worker.listener_thread = threading.Thread(
-            target=listen_error_messages,
-            name="ray_listen_error_messages",
-            args=(worker, worker.threads_stopped),
-        )
-        worker.listener_thread.daemon = True
-        worker.listener_thread.start()
-        if log_to_driver:
-            global_worker_stdstream_dispatcher.add_handler(
-                "ray_print_logs", print_to_stdstream
-            )
-            worker.logger_thread = threading.Thread(
-                target=worker.print_logs, name="ray_print_logs"
-            )
-            worker.logger_thread.daemon = True
-            worker.logger_thread.start()
+        worker.import_thread = None
 
     if mode == SCRIPT_MODE:
         # TODO(rkn): Here we first export functions to run, then remote
@@ -2334,14 +2189,6 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        if hasattr(worker, "gcs_function_key_subscriber"):
-            worker.gcs_function_key_subscriber.close()
-        if hasattr(worker, "gcs_error_subscriber"):
-            worker.gcs_error_subscriber.close()
-        if hasattr(worker, "gcs_log_subscriber"):
-            worker.gcs_log_subscriber.close()
-        if hasattr(worker, "import_thread"):
-            worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "logger_thread"):
@@ -2354,7 +2201,6 @@ def disconnect(exiting_interpreter=False):
             print_worker_logs(leftover, sys.stdout)
         for leftover in stderr_deduplicator.flush():
             print_worker_logs(leftover, sys.stderr)
-        global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
