@@ -1,3 +1,5 @@
+import gymnasium as gym
+import shutil
 import tempfile
 import unittest
 
@@ -9,19 +11,19 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
+    MultiAgentRLModule
 )
-from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.utils.numpy import convert_to_numpy
 
 
-MODULES = [DiscreteBCTorchModule, DiscreteBCTFModule]
 PPO_MODULES = {"tf2": PPOTfRLModule, "torch": PPOTorchRLModule}
+NUM_AGENTS = 2
 
 
-class TestE2ERLModuleRestore(unittest.TestCase):
+class TestE2ERLModuleLoad(unittest.TestCase):
     """Test RLModule Spec uncheckpointing across a multi node cluster."""
 
     def setUp(self) -> None:
@@ -30,14 +32,8 @@ class TestE2ERLModuleRestore(unittest.TestCase):
     def tearDown(self) -> None:
         ray.shutdown()
 
-    def test_e2e_uncheckpointing_test(self):
-        """Test if we can build a PPO algorithm with a checkpointed MARL module e2e."""
-
-        # number of agents for the multi agent cartpole env
-        num_agents = 2
-
-        env = MultiAgentCartPole({"num_agents": num_agents})
-
+    @staticmethod
+    def get_ppo_config():
         def policy_mapping_fn(agent_id, episode, worker, **kwargs):
             # policy_id is policy_i where i is the agent id
             pol_id = f"policy_{agent_id}"
@@ -45,13 +41,13 @@ class TestE2ERLModuleRestore(unittest.TestCase):
 
         scaling_config = {
             "num_learner_workers": 2,
-            "num_gpus_per_learner_worker": 0,
+            "num_gpus_per_learner_worker": 1,
         }
 
         config = (
             PPOConfig()
             .rollouts(rollout_fragment_length=4)
-            .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
+            .environment(MultiAgentCartPole, env_config={"num_agents": NUM_AGENTS})
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
             .multi_agent(
                 policies={"policy_0", "policy_1"}, policy_mapping_fn=policy_mapping_fn
@@ -59,12 +55,19 @@ class TestE2ERLModuleRestore(unittest.TestCase):
             .training(_enable_learner_api=True)
             .resources(**scaling_config)
         )
+        return config
+
+    def test_e2e_load_simple_marl_module(self):
+        """Test if we can train a PPO algorithm with a checkpointed MARL module e2e."""
+        config = self.get_ppo_config()
+        env = MultiAgentCartPole({"num_agents": NUM_AGENTS})
         for fw in framework_iterator(
             config, frameworks=["tf2", "torch"], with_eager_tracing=True
         ):
+            # create a marl_module to load and save it to a checkpoint directory
             module_specs = {}
             module_class = PPO_MODULES[fw]
-            for i in range(num_agents):
+            for i in range(NUM_AGENTS):
                 module_specs[f"policy_{i}"] = SingleAgentRLModuleSpec(
                     module_class=module_class,
                     observation_space=env.observation_space,
@@ -72,33 +75,159 @@ class TestE2ERLModuleRestore(unittest.TestCase):
                     model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
                     catalog_class=PPOCatalog,
                 )
-
-            # create a separate MARL_spec to make a checkpoint
             marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
             marl_module = marl_module_spec.build()
             marl_module_weights = convert_to_numpy(marl_module.get_state())
+            marl_checkpoint_path = tempfile.mkdtemp()
+            marl_module.save_to_checkpoint(marl_checkpoint_path)
 
-            with tempfile.TemporaryDirectory() as marl_checkpoint_path:
-                marl_module.save_to_checkpoint(marl_checkpoint_path)
+            # create a new MARL_spec with the checkpoint from the previous one
+            marl_module_spec_from_checkpoint = MultiAgentRLModuleSpec(
+                module_specs=module_specs,
+                load_state_path=marl_checkpoint_path,
+            )
+            config = config.rl_module(
+                rl_module_spec=marl_module_spec_from_checkpoint,
+                _enable_rl_module_api=True,
+            )
 
-                # create a new MARL_spec with the checkpoint from the previous one
-                marl_module_spec_from_checkpoint = MultiAgentRLModuleSpec(
-                    module_specs=module_specs,
-                    load_state_path=marl_checkpoint_path,
+            # create the algorithm with multiple nodes and check if the weights
+            # are the same as the original MARL Module
+            algo = config.build()
+            algo_module_weights = algo.learner_group.get_weights()
+            check(algo_module_weights, marl_module_weights)
+            algo.train()
+            algo.stop()
+            del algo
+            shutil.rmtree(marl_checkpoint_path)
+    
+    def test_e2e_load_complex_marl_module(self):
+        """Test if we can train a PPO algorithm with a cpkt MARL and RL module e2e."""
+        config = self.get_ppo_config()
+        env = MultiAgentCartPole({"num_agents": NUM_AGENTS})
+        for fw in framework_iterator(
+            config, frameworks=["tf2", "torch"], with_eager_tracing=True
+        ):
+            # create a marl_module to load and save it to a checkpoint directory
+            module_specs = {}
+            module_class = PPO_MODULES[fw]
+            for i in range(NUM_AGENTS):
+                module_specs[f"policy_{i}"] = SingleAgentRLModuleSpec(
+                    module_class=module_class,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
+                    catalog_class=PPOCatalog,
                 )
-                config = config.rl_module(
-                    rl_module_spec=marl_module_spec_from_checkpoint,
-                    _enable_rl_module_api=True,
-                )
+            marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
+            marl_module = marl_module_spec.build()
+            marl_checkpoint_path = tempfile.mkdtemp()
+            marl_module.save_to_checkpoint(marl_checkpoint_path)
 
-                # create the algorithm with multiple nodes and check if the weights
-                # are the same as the original MARL Module
-                algo = config.build()
-                algo_module_weights = algo.learner_group.get_weights()
-                check(algo_module_weights, marl_module_weights)
-                algo.train()
-                algo.stop()
-                del algo
+            # create a RLModule to load and override the "policy_1" module with
+            module_to_swap_in = SingleAgentRLModuleSpec(
+                    module_class=module_class,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [64]},
+                    catalog_class=PPOCatalog,
+                ).build()
+            
+            module_to_swap_in_path = tempfile.mkdtemp()
+            module_to_swap_in.save_to_checkpoint(module_to_swap_in_path)
+
+            # create a new MARL_spec with the checkpoint from the marl_checkpoint
+            # and the module_to_swap_in_checkpoint
+            module_specs[f"policy_1"] = SingleAgentRLModuleSpec(
+                    module_class=module_class,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict={"fcnet_hiddens": [64]},
+                    catalog_class=PPOCatalog,
+                    load_state_path=module_to_swap_in_path
+            )
+            marl_module_spec_from_checkpoint = MultiAgentRLModuleSpec(
+                module_specs=module_specs,
+                load_state_path=marl_checkpoint_path,
+            )
+            config = config.rl_module(
+                rl_module_spec=marl_module_spec_from_checkpoint,
+                _enable_rl_module_api=True,
+            )
+
+            # create the algorithm with multiple nodes and check if the weights
+            # are the same as the original MARL Module
+            algo = config.build()
+            algo_module_weights = algo.learner_group.get_weights()
+            
+            marl_module_with_swapped_in_module = MultiAgentRLModule()
+            marl_module_with_swapped_in_module.add_module("policy_0", marl_module["policy_0"])
+            marl_module_with_swapped_in_module.add_module("policy_1", module_to_swap_in)
+
+            check(algo_module_weights, convert_to_numpy(marl_module_with_swapped_in_module.get_state()))
+            algo.train()
+            algo.stop()
+            del algo
+            shutil.rmtree(marl_checkpoint_path)
+
+    def test_e2e_load_rl_module(self):
+        """Test if we can train a PPO algorithm with a cpkt RL module e2e."""
+        scaling_config = {
+            "num_learner_workers": 2,
+            "num_gpus_per_learner_worker": 1,
+        }
+
+        config = (
+            PPOConfig()
+            .rollouts(rollout_fragment_length=4)
+            .environment("CartPole-v1")
+            .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
+            .training(_enable_learner_api=True)
+            .resources(**scaling_config)
+        )
+        env = gym.make("CartPole-v1")
+        for fw in framework_iterator(
+            config, frameworks=["tf2", "torch"], with_eager_tracing=True
+        ):
+            # create a marl_module to load and save it to a checkpoint directory
+            module_class = PPO_MODULES[fw]
+            module_spec = SingleAgentRLModuleSpec(
+                module_class=module_class,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+                catalog_class=PPOCatalog,
+            )
+            module = module_spec.build()
+            print(f"{DEFAULT_POLICY_ID}: {module.get_state()}")
+            
+            module_ckpt_path = tempfile.mkdtemp()
+            module.save_to_checkpoint(module_ckpt_path)
+
+            module_to_load_spec = SingleAgentRLModuleSpec(
+                module_class=module_class,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [32]},
+                catalog_class=PPOCatalog,
+                load_state_path=module_ckpt_path
+            )
+
+            config = config.rl_module(
+                rl_module_spec=module_to_load_spec,
+                _enable_rl_module_api=True,
+            )
+
+            # create the algorithm with multiple nodes and check if the weights
+            # are the same as the original MARL Module
+            algo = config.build()
+            algo_module_weights = algo.learner_group.get_weights()
+            
+            check(algo_module_weights[DEFAULT_POLICY_ID], convert_to_numpy(module.get_state()))
+            algo.train()
+            algo.stop()
+            del algo
+            shutil.rmtree(module_ckpt_path)
 
 
 if __name__ == "__main__":

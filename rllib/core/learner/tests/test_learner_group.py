@@ -367,7 +367,7 @@ class TestLearnerGroup(unittest.TestCase):
             )
 
     def test_load_module_state(self):
-        fws = ["torch", "tf"]
+        fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-cpu-ddp", "multi-gpu-ddp"]
 
@@ -396,7 +396,7 @@ class TestLearnerGroup(unittest.TestCase):
 
             # Check if we can load just the MARL Module
             with tempfile.TemporaryDirectory() as tmpdir:
-                marl_module.save_state(tmpdir)
+                marl_module.save_to_checkpoint(tmpdir)
                 old_learner_weights = learner_group.get_weights()
                 learner_group.load_module_state(marl_module_ckpt_dir=tmpdir)
                 # check the weights of the module in the learner group are the
@@ -406,10 +406,10 @@ class TestLearnerGroup(unittest.TestCase):
 
             # Check if we can load just single agent RL Modules
             with tempfile.TemporaryDirectory() as tmpdir:
-                module_0.save_state(tmpdir)
+                module_0.save_to_checkpoint(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     temp_module = spec.build()
-                    temp_module.save_state(tmpdir2)
+                    temp_module.save_to_checkpoint(tmpdir2)
 
                     old_learner_weights = learner_group.get_weights()
                     learner_group.load_module_state(
@@ -431,10 +431,10 @@ class TestLearnerGroup(unittest.TestCase):
                 marl_module = MultiAgentRLModule()
                 marl_module.add_module(module_id="0", module=module_0)
                 marl_module.add_module(module_id="1", module=spec.build())
-                marl_module.save_state(tmpdir)
+                marl_module.save_to_checkpoint(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     module_1 = spec.build()
-                    module_1.save_state(tmpdir2)
+                    module_1.save_to_checkpoint(tmpdir2)
                     learner_group.load_module_state(
                         marl_module_ckpt_dir=tmpdir, rl_module_ckpt_dirs={"1": tmpdir2}
                     )

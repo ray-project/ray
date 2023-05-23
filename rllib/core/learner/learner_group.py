@@ -18,6 +18,7 @@ from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
+    RLMODULE_STATE_DIR_NAME
 )
 from ray.rllib.core.learner.learner import LearnerSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -521,7 +522,7 @@ class LearnerGroup:
         Args:
             path: The path to load the state from.
         """
-        path = self._resolve_checkpoint_path(path)
+        path = str(self._resolve_checkpoint_path(path))
 
         if self.is_local:
             self._learner.load_state(path)
@@ -648,7 +649,7 @@ class LearnerGroup:
                     marl_module_ckpt_dir, modules_to_load=set(modules_to_load)
                 )
                 for module_id, path in rl_module_ckpt_dirs.items():
-                    self._learner.module[module_id].load_state(path)
+                    self._learner.module[module_id].load_state(path / RLMODULE_STATE_DIR_NAME)
 
             elif marl_module_ckpt_dir:
                 self._learner.module.load_state(
@@ -656,7 +657,7 @@ class LearnerGroup:
                 )
             else:
                 for module_id, path in rl_module_ckpt_dirs.items():
-                    self._learner.module[module_id].load_state(path)
+                    self._learner.module[module_id].load_state(path / RLMODULE_STATE_DIR_NAME)
         else:
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
             head_node_ip = ray.util.get_node_ip_address()
@@ -691,7 +692,10 @@ class LearnerGroup:
                                 target_ip=worker_node_ip,
                                 target_path=tmp_rl_module_ckpt_dirs[module_id],
                             )
-
+                            tmp_rl_module_ckpt_dirs[module_id] = pathlib.Path(
+                                tmp_rl_module_ckpt_dirs[module_id])
+                print("RLMODULES_CKPT_DIR ",  tmp_rl_module_ckpt_dirs)
+                print(rl_module_ckpt_dirs)
                 if tmp_marl_module_ckpt_dir and tmp_rl_module_ckpt_dirs:
                     # If both a MARLModule checkpoint and RLModule checkpoints are
                     # specified, load the MARLModule checkpoint first and then load
@@ -700,14 +704,14 @@ class LearnerGroup:
                         tmp_marl_module_ckpt_dir, modules_to_load=modules_to_load
                     )
                     for module_id, path in tmp_rl_module_ckpt_dirs.items():
-                        w.module[module_id].load_state(path)
+                        w.module[module_id].load_state(path / RLMODULE_STATE_DIR_NAME)
                 elif tmp_marl_module_ckpt_dir:
                     w.module.load_state(
                         tmp_marl_module_ckpt_dir, modules_to_load=modules_to_load
                     )
                 else:
                     for module_id, path in tmp_rl_module_ckpt_dirs.items():
-                        w.module[module_id].load_state(path)
+                        w.module[module_id].load_state(path / RLMODULE_STATE_DIR_NAME)
 
                 # remove the temporary directories on the worker if any were created
                 if worker_node_ip != head_node_ip:
@@ -732,7 +736,7 @@ class LearnerGroup:
             )
         if not path.exists():
             raise ValueError(f"Path {path} does not exist.")
-        path = str(path.absolute())
+        path = path.absolute()
         return path
 
     @staticmethod
