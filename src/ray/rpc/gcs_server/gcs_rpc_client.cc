@@ -18,7 +18,6 @@ namespace ray {
 namespace rpc {
 grpc::ChannelArguments GetGcsRpcClientArguments() {
   grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
-  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
   arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
                    ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
   arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
@@ -34,15 +33,23 @@ std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string
   static std::mutex mu_;
   static std::string address_;
   static int port_;
+  static bool proxy_enabled_ = false;
+  static bool use_tls_ = false;
 
   std::lock_guard<std::mutex> guard(mu_);
   if (channel_ == nullptr) {
     address_ = address;
     port_ = port;
+    proxy_enabled_ = ::RayConfig::instance().grpc_enable_http_proxy();
+    use_tls_ = ::RayConfig::instance().USE_TLS();
     channel_ = BuildChannel(address_, port_, GetGcsRpcClientArguments());
+    return channel_;
   }
 
-  if (address_ == address && port_ == port) {
+  if (address_ == address &&
+      port_ == port &&
+      proxy_enabled_ == ::RayConfig::instance().grpc_enable_http_proxy() &&
+      use_tls_ == ::RayConfig::instance().USE_TLS()) {
     return channel_;
   } else {
     RAY_LOG(WARNING) << "Generate a new GCS channel: " << address << ":" << port
