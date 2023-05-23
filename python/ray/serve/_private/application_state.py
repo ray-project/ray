@@ -92,7 +92,7 @@ class ApplicationState:
 
     def delete(self):
         """Delete the application"""
-        self._status = ApplicationStatus.DELETING
+        self._update_status(ApplicationStatus.DELETING)
 
     def deploy(self, deployment_params: List[Dict]) -> List[str]:
         """Deploy the application.
@@ -141,13 +141,13 @@ class ApplicationState:
                 "path in your application to avoid this issue."
             )
 
-        self._status = ApplicationStatus.DEPLOYING
+        self._update_status(ApplicationStatus.DEPLOYING)
         return cur_deployments_to_delete
 
     def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
         self._deploy_obj_ref = deploy_obj_ref
         self._deployment_timestamp = deployment_time
-        self._status = ApplicationStatus.DEPLOYING
+        self._update_status(ApplicationStatus.DEPLOYING)
 
     def _process_terminating_deployments(self):
         """Update the tracking for all deployments being deleted
@@ -202,27 +202,34 @@ class ApplicationState:
                     ray.get(finished[0])
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
                 except RayTaskError as e:
-                    self._status = ApplicationStatus.DEPLOY_FAILED
                     # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                     # here because the full details of the error is not displayed
                     # properly with traceback.format_exc(). RayTaskError has its own
                     # custom __str__ function.
-                    self._app_msg = f"Deploying app '{self._name}' failed:\n{str(e)}"
+                    self._update_status(
+                        ApplicationStatus.DEPLOY_FAILED,
+                        app_msg=(f"Deploying app '{self._name}' failed:\n{str(e)}"),
+                    )
                     logger.warning(self._app_msg)
                     return
                 except RuntimeEnvSetupError:
-                    self._status = ApplicationStatus.DEPLOY_FAILED
-                    self._app_msg = (
-                        f"Runtime env setup for app '{self._name}' "
-                        f"failed:\n{traceback.format_exc()}"
+                    self._update_status(
+                        ApplicationStatus.DEPLOY_FAILED,
+                        app_msg=(
+                            f"Runtime env setup for app '{self._name}' "
+                            f"failed:\n{traceback.format_exc()}"
+                        ),
                     )
                     logger.warning(self._app_msg)
                     return
                 except Exception:
-                    self._status = ApplicationStatus.DEPLOY_FAILED
-                    self._app_msg = (
-                        "Unexpected error occured while deploying application "
-                        f"'{self._name}':\n{traceback.format_exc()}"
+                    self._update_status(
+                        ApplicationStatus.DEPLOY_FAILED,
+                        app_msg=(
+                            "Unexpected error occured while deploying "
+                            f"application '{self._name}':"
+                            f"\n{traceback.format_exc()}"
+                        ),
                     )
                     logger.warning(self._app_msg)
                     return
@@ -232,12 +239,12 @@ class ApplicationState:
             num_health_deployments = 0
             for deployment_status in deployments_statuses:
                 if deployment_status.status == DeploymentStatus.UNHEALTHY:
-                    self._status = ApplicationStatus.DEPLOY_FAILED
+                    self._update_status(ApplicationStatus.DEPLOY_FAILED)
                     return
                 if deployment_status.status == DeploymentStatus.HEALTHY:
                     num_health_deployments += 1
             if num_health_deployments == len(deployments_statuses):
-                self._status = ApplicationStatus.RUNNING
+                self._update_status(ApplicationStatus.RUNNING)
 
             self._process_terminating_deployments()
 
@@ -268,6 +275,10 @@ class ApplicationState:
             for name in self.deployments
         }
         return {k: v for k, v in details.items() if v is not None}
+
+    def _update_status(self, status: ApplicationStatus, app_msg: str = ""):
+        self._status = status
+        self._app_msg = app_msg
 
 
 class ApplicationStateManager:
