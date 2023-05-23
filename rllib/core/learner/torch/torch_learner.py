@@ -3,7 +3,6 @@ import pathlib
 from typing import (
     Any,
     Callable,
-    Dict,
     Hashable,
     Mapping,
     Optional,
@@ -141,19 +140,6 @@ class TorchLearner(Learner):
         # For each optimizer call its step function.
         for optim in self._optimizer_parameters:
             optim.step()
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    @override(Learner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, *, timestep: int, **kwargs
-    ) -> Mapping[str, Any]:
-        results = super().additional_update_per_module(module_id, timestep=timestep)
-
-        # Handle lr scheduling updates and apply new learning rates to the optimizers.
-        new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
-        results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
-
-        return results
 
     @override(Learner)
     def set_weights(self, weights: Mapping[str, Any]) -> None:

@@ -432,9 +432,6 @@ class AlgorithmConfig(_Config):
         self.worker_restore_timeout_s = 1800
 
         # `self.rl_module()`
-        # TODO (sven): self.rl_module_spec should be a compiled property, not a
-        #  user-settable one. It's always deriveable from the obs-space, act-space,
-        #  module config dict, etc..
         self.rl_module_spec = None
         self._enable_rl_module_api = False
         # Helper to keep track of the original exploration config when dis-/enabling
@@ -2814,19 +2811,23 @@ class AlgorithmConfig(_Config):
         # Normal env (gym.Env or MultiAgentEnv): These should have the
         # `observation_space` and `action_space` properties.
         elif env is not None:
+            # `env` is a gymnasium.vector.Env.
             if hasattr(env, "single_observation_space") and isinstance(
                 env.single_observation_space, gym.Space
             ):
                 env_obs_space = env.single_observation_space
+            # `env` is a gymnasium.Env.
             elif hasattr(env, "observation_space") and isinstance(
                 env.observation_space, gym.Space
             ):
                 env_obs_space = env.observation_space
 
+            # `env` is a gymnasium.vector.Env.
             if hasattr(env, "single_action_space") and isinstance(
                 env.single_action_space, gym.Space
             ):
                 env_act_space = env.single_action_space
+            # `env` is a gymnasium.Env.
             elif hasattr(env, "action_space") and isinstance(
                 env.action_space, gym.Space
             ):
