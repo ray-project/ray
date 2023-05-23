@@ -195,8 +195,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertEqual(config.rl_module_spec.module_class, A)
 
     def test_learner_hyperparameters_per_module(self):
-        """Tests, whether per-module config overrides (multi-agent) work as expected.
-        """
+        """Tests, whether per-module config overrides (multi-agent) work as expected."""
+
         class A:
             pass
 
@@ -214,8 +214,10 @@ class TestAlgorithmConfig(unittest.TestCase):
             marl_module_class=A,
             module_specs={"module_1": spec1, "module_2": spec2, "module_3": spec3},
         )
-        hps = PPOConfig().training(kl_coeff=0.5).get_learner_hyperparameters(
-            module_spec=multi_agent_module_spec
+        hps = (
+            PPOConfig()
+            .training(kl_coeff=0.5)
+            .get_learner_hyperparameters(module_spec=multi_agent_module_spec)
         )
         # Default HPs.
         check(hps.optimizer_type, "adam")

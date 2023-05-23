@@ -115,9 +115,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
             pg_advantages * logp_ratio,
             (
                 pg_advantages
-                * tf.clip_by_value(
-                    logp_ratio, 1 - hps.clip_param, 1 + hps.clip_param
-                )
+                * tf.clip_by_value(logp_ratio, 1 - hps.clip_param, 1 + hps.clip_param)
             ),
         )
 
@@ -177,9 +175,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
             for old_var, current_var in zip(
                 target_network.variables, current_network.variables
             ):
-                updated_var = (
-                    hps.tau * current_var + (1.0 - hps.tau) * old_var
-                )
+                updated_var = hps.tau * current_var + (1.0 - hps.tau) * old_var
                 old_var.assign(updated_var)
 
     @override(AppoLearner)

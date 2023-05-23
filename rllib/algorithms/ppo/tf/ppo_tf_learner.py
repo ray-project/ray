@@ -75,9 +75,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
         surrogate_loss = tf.minimum(
             batch[Postprocessing.ADVANTAGES] * logp_ratio,
             batch[Postprocessing.ADVANTAGES]
-            * tf.clip_by_value(
-                logp_ratio, 1 - hps.clip_param, 1 + hps.clip_param
-            ),
+            * tf.clip_by_value(logp_ratio, 1 - hps.clip_param, 1 + hps.clip_param),
         )
 
         # Compute a value function loss.

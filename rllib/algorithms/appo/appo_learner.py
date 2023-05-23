@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping
+from typing import Any, Mapping
 
 from ray.rllib.algorithms.impala.impala_learner import (
     ImpalaLearner,
@@ -50,10 +50,12 @@ class AppoLearner(ImpalaLearner):
 
         # The current kl coefficients per module as tensor variables
         # (framework specific).
-        self.curr_kl_coeffs_per_module: LambdaDefaultDict[ModuleID, Scheduler] = (
-            LambdaDefaultDict(lambda module_id: self._get_tensor_variable(
+        self.curr_kl_coeffs_per_module: LambdaDefaultDict[
+            ModuleID, Scheduler
+        ] = LambdaDefaultDict(
+            lambda module_id: self._get_tensor_variable(
                 self.hps.get_hps_for_module(module_id).kl_coeff
-            ))
+            )
         )
 
     @override(ImpalaLearner)

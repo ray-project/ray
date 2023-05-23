@@ -127,8 +127,8 @@ class LearnerHyperparameters:
     grad_clip_by: str = None
 
     # Holds hyperparameters per module. This is not None only in the top-level
-    # Learner's self.hps (whose self.module is a `MARLModule`) and then contains the correct
-    # mappings from ModuleID to the .
+    # Learner's self.hps (whose self.module is a `MARLModule`) and then contains the
+    # correct mappings from ModuleID to the .
     _per_module_overrides: Optional[Dict[ModuleID, "LearnerHyperparameters"]] = None
 
     def get_hps_for_module(self, module_id: ModuleID) -> "LearnerHyperparameters":
@@ -149,8 +149,8 @@ class LearnerHyperparameters:
             # In case, the per-module sub-HPs object is still a dict, convert
             # it to a fully qualified LearnerHyperparameter object here first.
             if isinstance(self._per_module_overrides[module_id], dict):
-                self._per_module_overrides[module_id] = (
-                    type(self)(**self._per_module_overrides[module_id])
+                self._per_module_overrides[module_id] = type(self)(
+                    **self._per_module_overrides[module_id]
                 )
             # Return the module specific version of self.
             return self._per_module_overrides[module_id]
@@ -316,10 +316,9 @@ class Learner:
         # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
 
-        self._user_configured_optimizers = (
-            is_overridden(self.configure_optimizers_for_module)
-            or is_overridden(self.configure_optimizers)
-        )
+        self._user_configured_optimizers = is_overridden(
+            self.configure_optimizers_for_module
+        ) or is_overridden(self.configure_optimizers)
         # Only manage optimizer's learning rate if user has NOT overridden
         # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
         # to handle lr-updates entirely in user's hands.
@@ -551,11 +550,13 @@ class Learner:
             module_grads_dict = {}
             for name in self._module_optimizers[module_id]:
                 optimizer = self._named_optimizers[name]
-                module_grads_dict.update({
-                    ref: gradients_dict[ref]
-                    for ref in self._optimizer_parameters[optimizer]
-                    if ref in gradients_dict and gradients_dict[ref] is not None
-                })
+                module_grads_dict.update(
+                    {
+                        ref: gradients_dict[ref]
+                        for ref in self._optimizer_parameters[optimizer]
+                        if ref in gradients_dict and gradients_dict[ref] is not None
+                    }
+                )
             module_grads_dict = self.postprocess_gradients_for_module(
                 module_id=module_id,
                 hps=self.hps.get_hps_for_module(module_id),
@@ -597,7 +598,9 @@ class Learner:
 
         # Loop through all optimizers of this `module_id`.
         for name in self._module_optimizers[module_id]:
-            optim_name = name[len(module_id) + 1:]  # +1: underscore in `[module_id]_..`
+            optim_name = name[
+                len(module_id) + 1 :
+            ]  # +1: underscore in `[module_id]_..`
             optimizer = self._named_optimizers[name]
             if hps.grad_clip is None:
                 postprocessed_grads.update(module_gradients_dict)
@@ -771,10 +774,12 @@ class Learner:
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
         for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
-            module_learner_stats[module_id].update({
-                self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
-                **convert_to_numpy(metrics_per_module[module_id]),
-            })
+            module_learner_stats[module_id].update(
+                {
+                    self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
+                    **convert_to_numpy(metrics_per_module[module_id]),
+                }
+            )
         return dict(module_learner_stats)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -1008,7 +1013,8 @@ class Learner:
         *,
         module_id: ModuleID,
         hps: LearnerHyperparameters,
-        timestep: int, **kwargs,
+        timestep: int,
+        **kwargs,
     ) -> Dict[str, Any]:
         """Apply additional non-gradient based updates for a single module.
 

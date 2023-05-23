@@ -55,14 +55,16 @@ class ImpalaLearner(Learner):
         super().build()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
-        self.entropy_coeff_schedulers_per_module: Dict[ModuleID, Scheduler] = (
-            LambdaDefaultDict(lambda module_id: Scheduler(
+        self.entropy_coeff_schedulers_per_module: Dict[
+            ModuleID, Scheduler
+        ] = LambdaDefaultDict(
+            lambda module_id: Scheduler(
                 fixed_value_or_schedule=(
                     self.hps.get_hps_for_module(module_id).entropy_coeff
                 ),
                 framework=self.framework,
                 device=self._device,
-            ))
+            )
         )
 
     @override(Learner)

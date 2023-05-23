@@ -1,4 +1,4 @@
-from typing import Type, Optional, TYPE_CHECKING, Union, Dict
+from typing import Optional, Type, TYPE_CHECKING, Union
 
 from ray.rllib.core.learner.learner import (
     LearnerSpec,

@@ -88,9 +88,8 @@ class Scheduler:
         ):
             return
 
-        if (
-            not isinstance(fixed_value_or_schedule, (list, tuple))
-            or (len(fixed_value_or_schedule) < 2)
+        if not isinstance(fixed_value_or_schedule, (list, tuple)) or (
+            len(fixed_value_or_schedule) < 2
         ):
             raise ValueError(
                 f"Invalid `{schedule_name}` ({fixed_value_or_schedule}) specified! "

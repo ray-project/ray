@@ -20,7 +20,7 @@ from packaging import version
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.learner.learner import LearnerHyperparameters, LearningRateType
+from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
@@ -3277,9 +3277,8 @@ class AlgorithmConfig(_Config):
         """
         # Compile the per-module learner hyperparameter instances (if applicable).
         per_module_overrides = {}
-        if (
-            isinstance(module_spec, MultiAgentRLModuleSpec)
-            and isinstance(module_spec.module_specs, dict)
+        if isinstance(module_spec, MultiAgentRLModuleSpec) and isinstance(
+            module_spec.module_specs, dict
         ):
             for module_id, sa_spec in module_spec.module_specs.items():
                 # Copy this AlgorithmConfig object (unfreeze copy), update copy from
