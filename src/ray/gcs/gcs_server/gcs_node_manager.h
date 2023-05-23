@@ -14,7 +14,10 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include <boost/bimap.hpp>
+#include <boost/bimap/unordered_multiset_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 
 #include "absl/container/flat_hash_map.h"
@@ -129,7 +132,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// Drain the given node.
   /// Idempotent.
-  void DrainNode(const NodeID &node_id);
+  virtual void DrainNode(const NodeID &node_id);
 
  private:
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
@@ -171,8 +174,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// A map of NodeId <-> ip:port of raylet
   using NodeIDAddrBiMap =
       boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
-                   boost::bimaps::unordered_set_of<std::string>>;
+                   boost::bimaps::unordered_multiset_of<std::string>>;
   NodeIDAddrBiMap node_map_;
+
+  friend GcsMonitorServerTest;
 };
 
 }  // namespace gcs

@@ -57,7 +57,7 @@ class ComplexInputNetwork(TFModelV2):
         concat_size = 0
         for i, component in enumerate(self.flattened_input_space):
             # Image space.
-            if len(component.shape) == 3:
+            if len(component.shape) == 3 and isinstance(component, Box):
                 config = {
                     "conv_filters": model_config["conv_filters"]
                     if "conv_filters" in model_config

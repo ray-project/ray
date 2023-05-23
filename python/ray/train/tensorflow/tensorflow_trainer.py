@@ -65,7 +65,7 @@ class TensorflowTrainer(DataParallelTrainer):
             # Returns dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Returns the Ray Dataset shard for the given key.
+            # Returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
@@ -93,6 +93,9 @@ class TensorflowTrainer(DataParallelTrainer):
         from ray.air import session, Checkpoint
         from ray.air.config import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
+
+        # If using GPUs, set this to True.
+        use_gpu = False
 
         def build_model():
             # toy neural network : 1-layer
@@ -128,7 +131,7 @@ class TensorflowTrainer(DataParallelTrainer):
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=3),
+            scaling_config=ScalingConfig(num_workers=3, use_gpu=use_gpu),
             datasets={"train": train_dataset},
             train_loop_config={"num_epochs": 2},
         )
@@ -151,7 +154,7 @@ class TensorflowTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed

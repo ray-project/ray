@@ -101,15 +101,31 @@ std::vector<std::shared_ptr<msgpack::sbuffer>> NativeObjectStore::GetRaw(
   for (size_t i = 0; i < results.size(); i++) {
     const auto &meta = results[i]->GetMetadata();
     const auto &data_buffer = results[i]->GetData();
+    std::string meta_str = "";
     if (meta != nullptr) {
-      std::string meta_str((char *)meta->Data(), meta->Size());
+      meta_str = std::string((char *)meta->Data(), meta->Size());
       CheckException(meta_str, data_buffer);
     }
 
-    auto sbuffer = std::make_shared<msgpack::sbuffer>(data_buffer->Size());
-    sbuffer->write(reinterpret_cast<const char *>(data_buffer->Data()),
-                   data_buffer->Size());
-    result_sbuffers.push_back(sbuffer);
+    const char *data = nullptr;
+    size_t data_size = 0;
+    if (data_buffer) {
+      data = reinterpret_cast<const char *>(data_buffer->Data());
+      data_size = data_buffer->Size();
+    }
+    if (meta_str == METADATA_STR_RAW) {
+      // TODO(LarryLian) In order to minimize the modification,
+      // there is an extra serialization here, but the performance will be a little worse.
+      // This code can be optimized later to improve performance
+      auto raw_buffer = Serializer::Serialize(data, data_size);
+      auto sbuffer = std::make_shared<msgpack::sbuffer>(raw_buffer.size());
+      sbuffer->write(raw_buffer.data(), raw_buffer.size());
+      result_sbuffers.push_back(sbuffer);
+    } else {
+      auto sbuffer = std::make_shared<msgpack::sbuffer>(data_size);
+      sbuffer->write(data, data_size);
+      result_sbuffers.push_back(sbuffer);
+    }
   }
   return result_sbuffers;
 }

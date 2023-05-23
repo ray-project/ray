@@ -9,13 +9,18 @@ from pl_bolts.datamodules import MNISTDataModule
 import mlflow
 
 from ray import air, tune
-from ray.tune.integration.mlflow import mlflow_mixin
+from ray.air.integrations.mlflow import setup_mlflow
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
 
 
-@mlflow_mixin
 def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
+    setup_mlflow(
+        config,
+        experiment_name=config.get("experiment_name", None),
+        tracking_uri=config.get("tracking_uri", None),
+    )
+
     model = LightningMNISTClassifier(config, data_dir)
     dm = MNISTDataModule(
         data_dir=data_dir, num_workers=1, batch_size=config["batch_size"]
@@ -51,10 +56,8 @@ def tune_mnist(
         "layer_2": tune.choice([64, 128, 256]),
         "lr": tune.loguniform(1e-4, 1e-1),
         "batch_size": tune.choice([32, 64, 128]),
-        "mlflow": {
-            "experiment_name": experiment_name,
-            "tracking_uri": mlflow.get_tracking_uri(),
-        },
+        "experiment_name": experiment_name,
+        "tracking_uri": mlflow.get_tracking_uri(),
         "data_dir": os.path.join(tempfile.gettempdir(), "mnist_data_"),
         "num_epochs": num_epochs,
     }

@@ -11,7 +11,7 @@ def test_unlimited_persistent_checkpoints():
     cpm = _CheckpointManager(checkpoint_strategy=CheckpointConfig(num_to_keep=None))
 
     for i in range(10):
-        cpm.register_checkpoint(
+        cpm.register_checkpoints(
             _TrackedCheckpoint({"data": i}, storage_mode=CheckpointStorage.PERSISTENT)
         )
 
@@ -22,7 +22,7 @@ def test_limited_persistent_checkpoints():
     cpm = _CheckpointManager(checkpoint_strategy=CheckpointConfig(num_to_keep=2))
 
     for i in range(10):
-        cpm.register_checkpoint(
+        cpm.register_checkpoints(
             _TrackedCheckpoint({"data": i}, storage_mode=CheckpointStorage.PERSISTENT)
         )
 
@@ -41,7 +41,7 @@ def test_no_persistent_checkpoints():
     cpm = _CheckpointManager(checkpoint_strategy=_CheckpointConfig(num_to_keep=0))
 
     for i in range(10):
-        cpm.register_checkpoint(
+        cpm.register_checkpoints(
             _TrackedCheckpoint({"data": i}, storage_mode=CheckpointStorage.PERSISTENT)
         )
 
@@ -53,7 +53,7 @@ def test_dont_persist_memory_checkpoints():
     cpm._persist_memory_checkpoints = False
 
     for i in range(10):
-        cpm.register_checkpoint(
+        cpm.register_checkpoints(
             _TrackedCheckpoint({"data": i}, storage_mode=CheckpointStorage.MEMORY)
         )
 
@@ -65,7 +65,7 @@ def test_persist_memory_checkpoints():
     cpm._persist_memory_checkpoints = True
 
     for i in range(10):
-        cpm.register_checkpoint(
+        cpm.register_checkpoints(
             _TrackedCheckpoint({"data": i}, storage_mode=CheckpointStorage.MEMORY)
         )
 
@@ -83,7 +83,7 @@ def test_keep_best_checkpoints():
     cpm._persist_memory_checkpoints = True
 
     for i in range(10):
-        cpm.register_checkpoint(
+        cpm.register_checkpoints(
             _TrackedCheckpoint(
                 {"data": i},
                 storage_mode=CheckpointStorage.MEMORY,

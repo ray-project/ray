@@ -31,13 +31,9 @@ def __preprocessing_enabled(config: TrainerConfigDict):
     if config._disable_preprocessor_api:
         return False
     # Same conditions as in RolloutWorker.__init__.
-    if (
-        config.is_atari
-        and not config.model.get("custom_preprocessor")
-        and config.preprocessor_pref == "deepmind"
-    ):
+    if config.is_atari and config.preprocessor_pref == "deepmind":
         return False
-    if not config.model.get("custom_preprocessor") and config.preprocessor_pref is None:
+    if config.preprocessor_pref is None:
         return False
     return True
 
@@ -113,7 +109,7 @@ def create_connectors_for_policy(policy: "Policy", config: TrainerConfigDict):
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
 
     assert (
-        policy.agent_connectors is None and policy.agent_connectors is None
+        policy.agent_connectors is None and policy.action_connectors is None
     ), "Can not create connectors for a policy that already has connectors."
 
     policy.agent_connectors = get_agent_connectors_from_config(ctx, config)

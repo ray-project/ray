@@ -4,14 +4,19 @@ import random
 import time
 from collections import defaultdict
 import numpy as np
-from typing import List, Any, Generic, Optional, TYPE_CHECKING
+from typing import List, Any, Optional, TYPE_CHECKING
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import T, BlockAccessor
-from ray.data.context import DatasetContext, DEFAULT_SCHEDULING_STRATEGY
+from ray.data.block import BlockAccessor
+from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.util.annotations import PublicAPI
+
+try:
+    import pyarrow as pa
+except ImportError:
+    pa = None
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -19,8 +24,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
-class RandomAccessDataset(Generic[T]):
+@PublicAPI(stability="alpha")
+class RandomAccessDataset:
     """A class that provides distributed, random access to a Dataset.
 
     See: ``Dataset.to_random_access_dataset()``.
@@ -28,27 +33,27 @@ class RandomAccessDataset(Generic[T]):
 
     def __init__(
         self,
-        dataset: "Dataset[T]",
+        ds: "Dataset",
         key: str,
         num_workers: int,
     ):
         """Construct a RandomAccessDataset (internal API).
 
-        The constructor is a private API. Use ``dataset.to_random_access_dataset()``
+        The constructor is a private API. Use ``ds.to_random_access_dataset()``
         to construct a RandomAccessDataset.
         """
-        self._format = dataset.dataset_format()
-        if self._format not in ["arrow", "pandas"]:
-            raise ValueError("RandomAccessDataset only supports Arrow-format datasets.")
+        schema = ds.schema(fetch_if_missing=True)
+        if schema is None or isinstance(schema, type):
+            raise ValueError("RandomAccessDataset only supports Arrow-format blocks.")
 
         start = time.perf_counter()
         logger.info("[setup] Indexing dataset by sort key.")
-        sorted_ds = dataset.sort(key)
+        sorted_ds = ds.sort(key)
         get_bounds = cached_remote_fn(_get_bounds)
         blocks = sorted_ds.get_internal_block_refs()
 
         logger.info("[setup] Computing block range bounds.")
-        bounds = ray.get([get_bounds.remote(b, key, self._format) for b in blocks])
+        bounds = ray.get([get_bounds.remote(b, key) for b in blocks])
         self._non_empty_blocks = []
         self._lower_bound = None
         self._upper_bounds = []
@@ -60,14 +65,14 @@ class RandomAccessDataset(Generic[T]):
                 self._upper_bounds.append(b[1])
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         if ctx.scheduling_strategy != DEFAULT_SCHEDULING_STRATEGY:
             scheduling_strategy = ctx.scheduling_strategy
         else:
             scheduling_strategy = "SPREAD"
         self._workers = [
             _RandomAccessWorker.options(scheduling_strategy=scheduling_strategy).remote(
-                key, self._format
+                key
             )
             for _ in range(num_workers)
         ]
@@ -125,7 +130,7 @@ class RandomAccessDataset(Generic[T]):
 
         return block_to_workers, worker_to_blocks
 
-    def get_async(self, key: Any) -> ObjectRef[Optional[T]]:
+    def get_async(self, key: Any) -> ObjectRef[Any]:
         """Asynchronously finds the record for a single key.
 
         Args:
@@ -139,7 +144,7 @@ class RandomAccessDataset(Generic[T]):
             return ray.put(None)
         return self._worker_for(block_index).get.remote(block_index, key)
 
-    def multiget(self, keys: List[Any]) -> List[Optional[T]]:
+    def multiget(self, keys: List[Any]) -> List[Optional[Any]]:
         """Synchronously find the records for a list of keys.
 
         Args:
@@ -199,10 +204,9 @@ class RandomAccessDataset(Generic[T]):
 
 @ray.remote(num_cpus=0)
 class _RandomAccessWorker:
-    def __init__(self, key_field, dataset_format):
+    def __init__(self, key_field):
         self.blocks = None
         self.key_field = key_field
-        self.dataset_format = dataset_format
         self.num_accesses = 0
         self.total_time = 0
 
@@ -218,7 +222,10 @@ class _RandomAccessWorker:
 
     def multiget(self, block_indices, keys):
         start = time.perf_counter()
-        if self.dataset_format == "arrow" and len(set(block_indices)) == 1:
+        block = self.blocks[block_indices[0]]
+        if len(set(block_indices)) == 1 and isinstance(
+            self.blocks[block_indices[0]], pa.Table
+        ):
             # Fast path: use np.searchsorted for vectorized search on a single block.
             # This is ~3x faster than the naive case.
             block = self.blocks[block_indices[0]]
@@ -234,7 +241,7 @@ class _RandomAccessWorker:
         return result
 
     def ping(self):
-        return ray.get_runtime_context().node_id.hex()
+        return ray.get_runtime_context().get_node_id()
 
     def stats(self) -> dict:
         return {
@@ -248,7 +255,7 @@ class _RandomAccessWorker:
             return None
         block = self.blocks[block_index]
         column = block[self.key_field]
-        if self.dataset_format == "arrow":
+        if isinstance(block, pa.Table):
             column = _ArrowListWrapper(column)
         i = _binary_search_find(column, key)
         if i is None:
@@ -275,10 +282,10 @@ class _ArrowListWrapper:
         return len(self.arrow_col)
 
 
-def _get_bounds(block, key, dataset_format):
+def _get_bounds(block, key):
     if len(block) == 0:
         return None
     b = (block[key][0], block[key][len(block) - 1])
-    if dataset_format == "arrow":
+    if isinstance(block, pa.Table):
         b = (b[0].as_py(), b[1].as_py())
     return b

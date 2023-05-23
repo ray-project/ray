@@ -508,6 +508,19 @@ def test_imap(pool_4_processes, use_iter):
         result_iter.next()
 
 
+def test_imap_fail_on_non_iterable(pool):
+    def fn(_):
+        pass
+
+    non_iterable = 3
+
+    with pytest.raises(TypeError, match="object is not iterable"):
+        pool.imap(fn, non_iterable)
+
+    with pytest.raises(TypeError, match="object is not iterable"):
+        pool.imap_unordered(fn, non_iterable)
+
+
 @pytest.mark.parametrize("use_iter", [True, False])
 def test_imap_unordered(pool_4_processes, use_iter):
     def f(args):

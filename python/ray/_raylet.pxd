@@ -67,7 +67,8 @@ cdef extern from "Python.h":
 
     # You can find the cpython definition in Include/cpython/pystate.h#L59
     ctypedef struct CPyThreadState "PyThreadState":
-        int recursion_depth
+        int recursion_limit
+        int recursion_remaining
 
     # From Include/ceveal.h#67
     int Py_GetRecursionLimit()
@@ -141,6 +142,7 @@ cdef class CoreWorker:
     cdef store_task_outputs(
             self,
             worker, outputs,
+            const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             CObjectID ref_generator_id=*)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)

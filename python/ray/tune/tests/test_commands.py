@@ -4,6 +4,7 @@ import pytest
 import subprocess
 import sys
 import time
+from unittest import mock
 
 try:
     from cStringIO import StringIO
@@ -61,7 +62,11 @@ def test_time(start_ray, tmpdir):
     assert sum(times) / len(times) < 7.0, "CLI is taking too long!"
 
 
-def test_ls(start_ray, tmpdir):
+@mock.patch(
+    "ray.tune.cli.commands.print_format_output",
+    wraps=ray.tune.cli.commands.print_format_output,
+)
+def test_ls(mock_print_format_output, start_ray, tmpdir):
     """This test captures output of list_trials."""
     experiment_name = "test_ls"
     experiment_path = os.path.join(str(tmpdir), experiment_name)
@@ -71,28 +76,31 @@ def test_ls(start_ray, tmpdir):
         name=experiment_name,
         stop={"training_iteration": 1},
         num_samples=num_samples,
-        local_dir=str(tmpdir),
+        storage_path=str(tmpdir),
     )
 
     columns = ["episode_reward_mean", "training_iteration", "trial_id"]
     limit = 2
-    with Capturing() as output:
-        commands.list_trials(experiment_path, info_keys=columns, limit=limit)
-    lines = output.captured
+    commands.list_trials(experiment_path, info_keys=columns, limit=limit)
 
-    assert all(col in lines[1] for col in columns)
-    assert lines[1].count("|") == len(columns) + 1
-    assert len(lines) == 3 + limit + 1
+    # The dataframe that is printed as a table is the first arg of the last
+    # call made to `ray.tune.cli.commands.print_format_output`.
+    mock_print_format_output.assert_called()
+    args, _ = mock_print_format_output.call_args_list[-1]
+    df = args[0]
+    assert sorted(df.columns.to_list()) == sorted(columns), df
+    assert len(df.index) == limit, df
 
-    with Capturing() as output:
-        commands.list_trials(
-            experiment_path,
-            sort=["trial_id"],
-            info_keys=("trial_id", "training_iteration"),
-            filter_op="training_iteration == 1",
-        )
-    lines = output.captured
-    assert len(lines) == 3 + num_samples + 1
+    commands.list_trials(
+        experiment_path,
+        sort=["trial_id"],
+        info_keys=("trial_id", "training_iteration"),
+        filter_op="training_iteration == 1",
+    )
+    args, _ = mock_print_format_output.call_args_list[-1]
+    df = args[0]
+    assert sorted(df.columns.to_list()) == sorted(["trial_id", "training_iteration"])
+    assert len(df.index) == num_samples
 
     with pytest.raises(click.ClickException):
         commands.list_trials(
@@ -103,7 +111,11 @@ def test_ls(start_ray, tmpdir):
         commands.list_trials(experiment_path, info_keys=("asdf",))
 
 
-def test_ls_with_cfg(start_ray, tmpdir):
+@mock.patch(
+    "ray.tune.cli.commands.print_format_output",
+    wraps=ray.tune.cli.commands.print_format_output,
+)
+def test_ls_with_cfg(mock_print_format_output, start_ray, tmpdir):
     experiment_name = "test_ls_with_cfg"
     experiment_path = os.path.join(str(tmpdir), experiment_name)
     tune.run(
@@ -111,17 +123,21 @@ def test_ls_with_cfg(start_ray, tmpdir):
         name=experiment_name,
         stop={"training_iteration": 1},
         config={"test_variable": tune.grid_search(list(range(5)))},
-        local_dir=str(tmpdir),
+        storage_path=str(tmpdir),
     )
 
     columns = [CONFIG_PREFIX + "/test_variable", "trial_id"]
     limit = 4
-    with Capturing() as output:
-        commands.list_trials(experiment_path, info_keys=columns, limit=limit)
-    lines = output.captured
-    assert all(col in lines[1] for col in columns)
-    assert lines[1].count("|") == len(columns) + 1
-    assert len(lines) == 3 + limit + 1
+
+    commands.list_trials(experiment_path, info_keys=columns, limit=limit)
+
+    # The dataframe that is printed as a table is the first arg of the last
+    # call made to `ray.tune.cli.commands.print_format_output`.
+    mock_print_format_output.assert_called()
+    args, _ = mock_print_format_output.call_args_list[-1]
+    df = args[0]
+    assert sorted(df.columns.to_list()) == sorted(columns), df
+    assert len(df.index) == limit, df
 
 
 def test_lsx(start_ray, tmpdir):
@@ -135,7 +151,7 @@ def test_lsx(start_ray, tmpdir):
             name=experiment_name,
             stop={"training_iteration": 1},
             num_samples=1,
-            local_dir=project_path,
+            storage_path=project_path,
         )
 
     limit = 2

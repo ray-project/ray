@@ -1,6 +1,8 @@
+import itertools
 import logging
 import pathlib
 import posixpath
+import sys
 import urllib.parse
 from typing import (
     TYPE_CHECKING,
@@ -13,15 +15,20 @@ from typing import (
     Optional,
     Tuple,
     Union,
+    TypeVar,
 )
 
-from ray.data._internal.arrow_block import ArrowRow
-from ray.data._internal.block_list import BlockMetadata
+import numpy as np
+
+from ray.air._internal.remote_storage import _is_local_windows_path
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
@@ -45,6 +52,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# We should parallelize file size fetch operations beyond this threshold.
+FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
+
+# 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
+PATHS_PER_FILE_SIZE_FETCH_TASK = 16
+
+
 @DeveloperAPI
 class BlockWritePathProvider:
     """Abstract callable that provides concrete output paths when writing
@@ -60,7 +74,7 @@ class BlockWritePathProvider:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[ObjectRef[Block]] = None,
+        block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
@@ -77,7 +91,7 @@ class BlockWritePathProvider:
                 write a file out to the write path returned.
             dataset_uuid: Unique identifier for the dataset that this block
                 belongs to.
-            block: Object reference to the block to write.
+            block: The block to write.
             block_index: Ordered index of the block to write within its parent
                 dataset.
             file_format: File format string for the block that can be used as
@@ -94,7 +108,7 @@ class BlockWritePathProvider:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         dataset_uuid: Optional[str] = None,
-        block: Optional[ObjectRef[Block]] = None,
+        block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
@@ -175,7 +189,7 @@ class FileExtensionFilter(PathPartitionFilter):
 
 
 @DeveloperAPI
-class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
+class FileBasedDatasource(Datasource):
     """File-based datasource, for reading and writing files.
 
     This class should not be used directly, and should instead be subclassed
@@ -208,7 +222,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """
         buffer_size = open_args.pop("buffer_size", None)
         if buffer_size is None:
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             buffer_size = ctx.streaming_read_buffer_size
         return filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
 
@@ -257,10 +271,10 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             "then you need to implement `_convert_block_to_tabular_block."
         )
 
-    def do_write(
+    def write(
         self,
-        blocks: List[ObjectRef[Block]],
-        metadata: List[BlockMetadata],
+        blocks: Iterable[Block],
+        ctx: TaskContext,
         path: str,
         dataset_uuid: str,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -269,10 +283,9 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         write_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         _block_udf: Optional[Callable[[Block], Block]] = None,
-        ray_remote_args: Dict[str, Any] = None,
         **write_args,
-    ) -> List[ObjectRef[WriteResult]]:
-        """Creates and returns write tasks for a file-based datasource."""
+    ) -> WriteResult:
+        """Write blocks for a file-based datasource."""
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
         if try_create_dir:
@@ -287,14 +300,9 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         if open_stream_args is None:
             open_stream_args = {}
 
-        if ray_remote_args is None:
-            ray_remote_args = {}
-
         def write_block(write_path: str, block: Block):
             logger.debug(f"Writing {write_path} file.")
-            fs = filesystem
-            if isinstance(fs, _S3FileSystemWrapper):
-                fs = fs.unwrap()
+            fs = _unwrap_s3_serialization_workaround(filesystem)
             if _block_udf is not None:
                 block = _block_udf(block)
 
@@ -305,29 +313,30 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                     writer_args_fn=write_args_fn,
                     **write_args,
                 )
-
-        write_block = cached_remote_fn(write_block).options(**ray_remote_args)
+            # TODO: decide if we want to return richer object when the task
+            # succeeds.
+            return "ok"
 
         file_format = self._FILE_EXTENSION
         if isinstance(file_format, list):
             file_format = file_format[0]
 
-        write_tasks = []
+        builder = DelegatingBlockBuilder()
+        for block in blocks:
+            builder.add_block(block)
+        block = builder.build()
+
         if not block_path_provider:
             block_path_provider = DefaultBlockWritePathProvider()
-        for block_idx, block in enumerate(blocks):
-            write_path = block_path_provider(
-                path,
-                filesystem=filesystem,
-                dataset_uuid=dataset_uuid,
-                block=block,
-                block_index=block_idx,
-                file_format=file_format,
-            )
-            write_task = write_block.remote(write_path, block)
-            write_tasks.append(write_task)
-
-        return write_tasks
+        write_path = block_path_provider(
+            path,
+            filesystem=filesystem,
+            dataset_uuid=dataset_uuid,
+            block=block,
+            block_index=ctx.task_idx,
+            file_format=file_format,
+        )
+        return write_block(write_path, block)
 
     def _write_block(
         self,
@@ -364,6 +373,7 @@ class _FileBasedDatasourceReader(Reader):
         partitioning: Partitioning = None,
         # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
+        ignore_missing_paths: bool = False,
         **reader_args,
     ):
         _check_pyarrow_version()
@@ -374,11 +384,27 @@ class _FileBasedDatasourceReader(Reader):
         self._partition_filter = partition_filter
         self._partitioning = partitioning
         self._block_udf = _block_udf
+        self._ignore_missing_paths = ignore_missing_paths
         self._reader_args = reader_args
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        self._paths, self._file_sizes = meta_provider.expand_paths(
-            paths, self._filesystem
+        self._paths, self._file_sizes = map(
+            list,
+            zip(
+                *meta_provider.expand_paths(
+                    paths,
+                    self._filesystem,
+                    partitioning,
+                    ignore_missing_paths=ignore_missing_paths,
+                )
+            ),
         )
+
+        if ignore_missing_paths and len(self._paths) == 0:
+            raise ValueError(
+                "None of the provided paths exist. "
+                "The 'ignore_missing_paths' field is set to True."
+            )
+
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
             path_to_size = dict(zip(self._paths, self._file_sizes))
@@ -400,6 +426,7 @@ class _FileBasedDatasourceReader(Reader):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
 
+        ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
         reader_args = self._reader_args
         partitioning = self._partitioning
@@ -420,10 +447,9 @@ class _FileBasedDatasourceReader(Reader):
             read_paths: List[str],
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
+            DataContext._set_current(ctx)
             logger.debug(f"Reading {len(read_paths)} files.")
-            if isinstance(fs, _S3FileSystemWrapper):
-                fs = fs.unwrap()
-            ctx = DatasetContext.get_current()
+            fs = _unwrap_s3_serialization_workaround(filesystem)
             output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
             )
@@ -675,48 +701,6 @@ def _resolve_paths_and_filesystem(
     return resolved_paths, filesystem
 
 
-def _expand_directory(
-    path: str,
-    filesystem: "pyarrow.fs.FileSystem",
-    exclude_prefixes: Optional[List[str]] = None,
-) -> List[str]:
-    """
-    Expand the provided directory path to a list of file paths.
-
-    Args:
-        path: The directory path to expand.
-        filesystem: The filesystem implementation that should be used for
-            reading these files.
-        exclude_prefixes: The file relative path prefixes that should be
-            excluded from the returned file set. Default excluded prefixes are
-            "." and "_".
-
-    Returns:
-        A list of file paths contained in the provided directory.
-    """
-    if exclude_prefixes is None:
-        exclude_prefixes = [".", "_"]
-
-    from pyarrow.fs import FileSelector
-
-    selector = FileSelector(path, recursive=True)
-    files = filesystem.get_file_info(selector)
-    base_path = selector.base_dir
-    filtered_paths = []
-    for file_ in files:
-        if not file_.is_file:
-            continue
-        file_path = file_.path
-        if not file_path.startswith(base_path):
-            continue
-        relative = file_path[len(base_path) :]
-        if any(relative.startswith(prefix) for prefix in exclude_prefixes):
-            continue
-        filtered_paths.append((file_path, file_))
-    # We sort the paths to guarantee a stable order.
-    return zip(*sorted(filtered_paths, key=lambda x: x[0]))
-
-
 def _is_url(path) -> bool:
     return urllib.parse.urlparse(path).scheme != ""
 
@@ -733,6 +717,11 @@ def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
     """
+    if sys.platform == "win32" and _is_local_windows_path(path):
+        # Represent as posix path such that downstream functions properly handle it.
+        # This is executed when 'file://' is NOT included in the path.
+        return pathlib.Path(path).as_posix()
+
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
     netloc = parsed.netloc
@@ -741,7 +730,20 @@ def _unwrap_protocol(path):
         # credentialed path, and we need to strip off the credentials.
         netloc = parsed.netloc.split("@")[-1]
 
-    return netloc + parsed.path + query
+    parsed_path = parsed.path
+    # urlparse prepends the path with a '/'. This does not work on Windows
+    # so if this is the case strip the leading slash.
+    if (
+        sys.platform == "win32"
+        and not netloc
+        and len(parsed_path) >= 3
+        and parsed_path[0] == "/"  # The problematic leading slash
+        and parsed_path[1].isalpha()  # Ensure it is a drive letter.
+        and parsed_path[2:4] in (":", ":/")
+    ):
+        parsed_path = parsed_path[1:]
+
+    return netloc + parsed_path + query
 
 
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
@@ -753,6 +755,15 @@ def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
     if isinstance(filesystem, pa.fs.S3FileSystem):
         return _S3FileSystemWrapper(filesystem)
     return filesystem
+
+
+def _unwrap_s3_serialization_workaround(
+    filesystem: Union["pyarrow.fs.FileSystem", "_S3FileSystemWrapper"]
+):
+    if isinstance(filesystem, _S3FileSystemWrapper):
+        return filesystem.unwrap()
+    else:
+        return filesystem
 
 
 class _S3FileSystemWrapper:
@@ -795,3 +806,31 @@ def _resolve_kwargs(
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)
     return kwargs
+
+
+Uri = TypeVar("Uri")
+Meta = TypeVar("Meta")
+
+
+def _fetch_metadata_parallel(
+    uris: List[Uri],
+    fetch_func: Callable[[List[Uri]], List[Meta]],
+    desired_uris_per_task: int,
+    **ray_remote_args,
+) -> Iterator[Meta]:
+    """Fetch file metadata in parallel using Ray tasks."""
+    remote_fetch_func = cached_remote_fn(fetch_func, num_cpus=0.5)
+    if ray_remote_args:
+        remote_fetch_func = remote_fetch_func.options(**ray_remote_args)
+    # Choose a parallelism that results in a # of metadata fetches per task that
+    # dominates the Ray task overhead while ensuring good parallelism.
+    # Always launch at least 2 parallel fetch tasks.
+    parallelism = max(len(uris) // desired_uris_per_task, 2)
+    metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
+    fetch_tasks = []
+    for uri_chunk in np.array_split(uris, parallelism):
+        if len(uri_chunk) == 0:
+            continue
+        fetch_tasks.append(remote_fetch_func.remote(uri_chunk))
+    results = metadata_fetch_bar.fetch_until_complete(fetch_tasks)
+    yield from itertools.chain.from_iterable(results)

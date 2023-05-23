@@ -14,19 +14,40 @@ from ray._private.test_utils import (
 )
 
 
-def test_logger_config():
+def test_dedup_logs():
+    script = """
+import ray
+import time
+
+@ray.remote
+def verbose():
+    print(f"hello world, id={time.time()}")
+    time.sleep(1)
+
+ray.init(num_cpus=4)
+ray.get([verbose.remote() for _ in range(10)])
+"""
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+
+    assert out_str.count("hello") == 2
+    assert out_str.count("RAY_DEDUP_LOGS") == 1
+    assert out_str.count("[repeated 9x across cluster]") == 1
+
+
+def test_logger_config_with_ray_init():
+    """Test that the logger is correctly configured when ray.init is called."""
+
     script = """
 import ray
 
 ray.init(num_cpus=1)
     """
 
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
-
-    print(out_str, err_str)
-    assert "INFO worker.py:" in err_str, err_str
+    out_str = run_string_as_driver(script)
+    assert "INFO" in out_str, out_str
+    assert "ray._private.worker" in out_str, out_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -177,6 +198,30 @@ ray.get([f.remote() for _ in range(15)])
     assert "Tip:" not in err_str
 
 
+def test_autoscaler_prefix():
+    script = """
+import ray
+import time
+
+ray.init(num_cpus=1)
+
+@ray.remote(num_cpus=1)
+class A:
+    pass
+
+a = A.remote()
+b = A.remote()
+time.sleep(25)
+    """
+
+    proc = run_string_as_driver_nonblocking(script)
+    out_str = proc.stdout.read().decode("ascii")
+    err_str = proc.stderr.read().decode("ascii")
+
+    print(out_str, err_str)
+    assert "(autoscaler" in out_str
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fail_importing_actor(ray_start_regular, error_pubsub):
     script = f"""
@@ -315,6 +360,7 @@ ray._private.utils.push_error_to_driver(
     assert "Hello there" in err_str, err_str
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_disable_driver_logs_breakpoint():
     script = """
 import time
@@ -454,17 +500,13 @@ ray.init()
     """
     output = run_string_as_driver(script)
     lines = output.strip("\n").split("\n")
-    for line in lines:
-        print(line)
     lines = [line for line in lines if "The object store is using /tmp" not in line]
-    assert len(lines) == 1
-    line = lines[0]
-    print(line)
-    assert "Started a local Ray instance." in line
+    assert len(lines) >= 1
+    assert "Started a local Ray instance." in output
     if os.environ.get("RAY_MINIMAL") == "1":
-        assert "View the dashboard" not in line
+        assert "View the dashboard" not in output
     else:
-        assert "View the dashboard" in line
+        assert "View the dashboard" in output
 
 
 def test_output_ray_cluster(call_ray_start):
@@ -474,15 +516,13 @@ ray.init()
     """
     output = run_string_as_driver(script)
     lines = output.strip("\n").split("\n")
-    for line in lines:
-        print(line)
-    assert len(lines) == 2
-    assert "Connecting to existing Ray cluster at address:" in lines[0]
-    assert "Connected to Ray cluster." in lines[1]
+    assert len(lines) >= 1
+    assert "Connecting to existing Ray cluster at address:" in output
+    assert "Connected to Ray cluster." in output
     if os.environ.get("RAY_MINIMAL") == "1":
-        assert "View the dashboard" not in lines[1]
+        assert "View the dashboard" not in output
     else:
-        assert "View the dashboard" in lines[1]
+        assert "View the dashboard" in output
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -624,8 +664,7 @@ time.sleep(5)
     assert actor_repr not in out
 
 
-@pytest.mark.parametrize("pull_based", [True, False])
-def test_node_name_in_raylet_death(pull_based):
+def test_node_name_in_raylet_death():
     NODE_NAME = "RAY_TEST_RAYLET_DEATH_NODE_NAME"
     script = f"""
 import time
@@ -633,22 +672,14 @@ import os
 
 WAIT_BUFFER_SECONDS=5
 
-if {pull_based}:
-    os.environ["RAY_pull_based_healthcheck"]="true"
-    os.environ["RAY_health_check_initial_delay_ms"]="0"
-    os.environ["RAY_health_check_period_ms"]="1000"
-    os.environ["RAY_health_check_timeout_ms"]="10"
-    os.environ["RAY_health_check_failure_threshold"]="2"
-    sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
-        int(os.environ["RAY_health_check_failure_threshold"])
-    sleep_time += WAIT_BUFFER_SECONDS
-else:
-    NUM_HEARTBEATS=10
-    HEARTBEAT_PERIOD=500
-    os.environ["RAY_pull_based_healthcheck"]="false"
-    os.environ["RAY_num_heartbeats_timeout"]=str(NUM_HEARTBEATS)
-    os.environ["RAY_raylet_heartbeat_period_milliseconds"]=str(HEARTBEAT_PERIOD)
-    sleep_time = NUM_HEARTBEATS * HEARTBEAT_PERIOD / 1000 + WAIT_BUFFER_SECONDS
+os.environ["RAY_pull_based_healthcheck"]="true"
+os.environ["RAY_health_check_initial_delay_ms"]="0"
+os.environ["RAY_health_check_period_ms"]="1000"
+os.environ["RAY_health_check_timeout_ms"]="10"
+os.environ["RAY_health_check_failure_threshold"]="2"
+sleep_time = float(os.environ["RAY_health_check_period_ms"]) / 1000.0 * \
+    int(os.environ["RAY_health_check_failure_threshold"])
+sleep_time += WAIT_BUFFER_SECONDS
 
 import ray
 

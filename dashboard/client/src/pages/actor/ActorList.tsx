@@ -1,26 +1,30 @@
-import { Grid } from "@material-ui/core";
-import dayjs from "dayjs";
-import React, { useState } from "react";
-import ActorTable from "../../components/ActorTable";
+import React from "react";
+import ActorTable, { ActorTableProps } from "../../components/ActorTable";
 import { Actor } from "../../type/actor";
 import { useActorList } from "./hook/useActorList";
 
 /**
  * Represent the embedable actors page.
  */
-const ActorList = ({ jobId = null }: { jobId?: string | null }) => {
-  const [timeStamp] = useState(dayjs());
+const ActorList = ({
+  jobId = null,
+  detailPathPrefix = "",
+  ...actorTableProps
+}: {
+  jobId?: string | null;
+  detailPathPrefix?: string;
+} & Pick<ActorTableProps, "filterToActorId" | "onFilterChange">) => {
   const data: { [actorId: string]: Actor } | undefined = useActorList();
   const actors: { [actorId: string]: Actor } = data ? data : {};
 
   return (
     <div>
-      <Grid container alignItems="center">
-        <Grid item>
-          Last updated: {timeStamp.format("YYYY-MM-DD HH:mm:ss")}
-        </Grid>
-      </Grid>
-      <ActorTable actors={actors} jobId={jobId} />
+      <ActorTable
+        actors={actors}
+        jobId={jobId}
+        detailPathPrefix={detailPathPrefix}
+        {...actorTableProps}
+      />
     </div>
   );
 };

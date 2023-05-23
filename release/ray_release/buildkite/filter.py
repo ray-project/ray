@@ -1,9 +1,19 @@
 import re
 from collections import defaultdict
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Any
 
 from ray_release.buildkite.settings import Frequency, get_frequency
-from ray_release.config import Test
+from ray_release.test import Test
+
+
+def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:
+    curr = lookup
+    for k in flat_key.split(delimiter):
+        try:
+            curr = curr.get(k, {})
+        except Exception:
+            return None
+    return curr
 
 
 def filter_tests(
@@ -11,6 +21,7 @@ def filter_tests(
     frequency: Frequency,
     test_attr_regex_filters: Optional[Dict[str, str]] = None,
     prefer_smoke_tests: bool = False,
+    run_jailed_tests: bool = False,
 ) -> List[Tuple[Test, bool]]:
     if test_attr_regex_filters is None:
         test_attr_regex_filters = {}
@@ -20,16 +31,15 @@ def filter_tests(
         # First, filter by string attributes
         attr_mismatch = False
         for attr, regex in test_attr_regex_filters.items():
-            if not re.fullmatch(regex, test[attr]):
+            if not re.fullmatch(regex, _unflattened_lookup(test, attr) or ""):
                 attr_mismatch = True
                 break
         if attr_mismatch:
             continue
+        if not run_jailed_tests and test.get("jailed", False):
+            continue
 
         test_frequency = get_frequency(test["frequency"])
-        if test_frequency == Frequency.DISABLED:
-            # Skip disabled tests
-            continue
 
         if frequency == Frequency.ANY or frequency == test_frequency:
             if prefer_smoke_tests and "smoke_test" in test:

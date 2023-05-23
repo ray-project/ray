@@ -1,18 +1,8 @@
 .. _observability:
 
-Observability
-=============
+Monitoring and Debugging
+========================
 
-.. toctree::
-    :maxdepth: 2
-    :caption: Observability, Debugging, and Profiling
+This section covers how to **monitor and debug Ray applications and clusters**.
 
-    overview
-    ../ray-core/ray-dashboard.rst
-    state/state-api.rst
-    ray-debugging.rst
-    ray-logging.rst
-    ray-metrics.rst
-    ray-tracing.rst
-    ../ray-contribute/debugging.rst
-    ../ray-contribute/profiling.rst
+

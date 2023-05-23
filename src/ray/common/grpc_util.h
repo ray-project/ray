@@ -22,6 +22,7 @@
 #include <sstream>
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 
 namespace ray {
@@ -147,6 +148,17 @@ template <class K, class V>
 inline absl::flat_hash_map<K, V> MapFromProtobuf(
     const ::google::protobuf::Map<K, V> &pb_map) {
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
+}
+
+inline grpc::ChannelArguments CreateDefaultChannelArguments() {
+  grpc::ChannelArguments arguments;
+  if (::RayConfig::instance().grpc_client_keepalive_time_ms() > 0) {
+    arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS,
+                     ::RayConfig::instance().grpc_client_keepalive_time_ms());
+    arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
+                     ::RayConfig::instance().grpc_client_keepalive_timeout_ms());
+  }
+  return arguments;
 }
 
 }  // namespace ray

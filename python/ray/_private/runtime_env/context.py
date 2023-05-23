@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from ray.util.annotations import DeveloperAPI
 from ray.core.generated.common_pb2 import Language
 from ray._private.services import get_ray_jars_dir
+from ray._private.utils import update_envs
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class RuntimeEnvContext:
         return RuntimeEnvContext(**json.loads(json_string))
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
-        os.environ.update(self.env_vars)
+        update_envs(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
             executable = self.py_executable
@@ -66,7 +67,7 @@ class RuntimeEnvContext:
         else:
             executable = "exec "
 
-        passthrough_args = [s.replace(" ", "\ ") for s in passthrough_args]
+        passthrough_args = [s.replace(" ", r"\ ") for s in passthrough_args]
         exec_command = " ".join([f"{executable}"] + passthrough_args)
         command_str = " ".join(self.command_prefix + [exec_command])
         # TODO(SongGuyang): We add this env to command for macOS because it doesn't

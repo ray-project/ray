@@ -17,6 +17,7 @@ import ray
 from ray import tune
 from ray.air import CheckpointConfig, ScalingConfig
 from ray.air._internal.remote_storage import _ensure_directory
+from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.tune import (
     register_env,
@@ -31,8 +32,7 @@ from ray.tune.callback import Callback
 from ray.tune.experiment import Experiment
 from ray.tune.trainable import wrap_function
 from ray.tune.logger import Logger, LegacyLoggerCallback
-from ray.tune.execution.ray_trial_executor import _noop_logger_creator
-from ray.tune.resources import Resources
+from ray.tune.experiment.trial import _noop_logger_creator
 from ray.tune.result import (
     TIMESTEPS_TOTAL,
     DONE,
@@ -40,9 +40,7 @@ from ray.tune.result import (
     NODE_IP,
     PID,
     EPISODES_TOTAL,
-    TRAINING_ITERATION,
     TIMESTEPS_THIS_ITER,
-    TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TRIAL_ID,
     EXPERIMENT_TAG,
@@ -156,7 +154,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             "time_since_restore",
             "experiment_id",
             "date",
-            "warmup_time",
         }
 
         self.assertEqual(len(class_output), len(results))
@@ -261,7 +258,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
         class B(Trainable):
             @classmethod
             def default_resource_request(cls, config):
-                return Resources(cpu=config["cpu"], gpu=config["gpu"])
+                return PlacementGroupFactory(
+                    [{"CPU": config["cpu"], "GPU": config["gpu"]}]
+                )
 
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
@@ -667,9 +666,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
             train,
             config={"t1": tune.grid_search([1, 2, 3])},
             trial_dirname_creator=custom_trial_dir,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
         ).trials
-        logdirs = {t.logdir for t in trials}
+        logdirs = {t.local_path for t in trials}
         assert len(logdirs) == 3
         assert all(custom_name in dirpath for dirpath in logdirs)
 
@@ -679,9 +678,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 reporter(test=i)
 
         trials = tune.run(
-            train, config={"t1": tune.grid_search([1, 2, 3])}, local_dir=self.tmpdir
+            train, config={"t1": tune.grid_search([1, 2, 3])}, storage_path=self.tmpdir
         ).trials
-        logdirs = {t.logdir for t in trials}
+        logdirs = {t.local_path for t in trials}
         for i in [1, 2, 3]:
             assert any(f"t1={i}" in dirpath for dirpath in logdirs)
         for t in trials:
@@ -734,7 +733,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "id": tune.grid_search(list(range(5))),
             },
             verbose=1,
-            local_dir=tmpdir,
+            storage_path=tmpdir,
         )
         trials = tune.run(test, raise_on_failed_trial=False, **config).trials
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
@@ -862,7 +861,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         analysis = tune.run(TestTrainable, num_samples=10, stop={TRAINING_ITERATION: 1})
         for trial in analysis.trials:
-            path = os.path.join(trial.logdir, "marker")
+            path = os.path.join(trial.local_path, "marker")
             assert os.path.exists(path)
 
     def testReportTimeStep(self):
@@ -871,7 +870,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         results1 = [dict(mean_accuracy=5, done=i == 99) for i in range(100)]
         logs1, _ = self.checkAndReturnConsistentLogs(results1)
 
-        self.assertTrue(all(log[TIMESTEPS_TOTAL] is None for log in logs1))
+        self.assertTrue(all(TIMESTEPS_TOTAL not in log for log in logs1))
 
         # Test that no timesteps_this_iter are logged if only timesteps_total
         # are returned.
@@ -891,7 +890,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertFalse(any(hasattr(log, TIMESTEPS_THIS_ITER) for log in logs2))
 
         # Test that timesteps_total and episodes_total are reported when
-        # timesteps_this_iter and episodes_this_iter despite only return zeros.
+        # timesteps_this_iter and episodes_this_iter are provided by user,
+        # despite only return zeros.
         results3 = [
             dict(timesteps_this_iter=0, episodes_this_iter=0) for i in range(10)
         ]
@@ -1055,8 +1055,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 pass  # delete
 
         class TestDurable(Trainable):
-            def has_custom_syncer(self):
-                return bool(self.custom_syncer)
+            def has_syncer(self):
+                return isinstance(self.sync_config.syncer, Syncer)
 
         upload_dir = "s3://test-bucket/path"
 
@@ -1065,9 +1065,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
             exp = Experiment(
                 name="test_durable_sync",
                 run=trainable_cls,
-                sync_config=tune.SyncConfig(
-                    syncer=sync_to_cloud, upload_dir=upload_dir
-                ),
+                storage_path=upload_dir,
+                sync_config=tune.SyncConfig(syncer=sync_to_cloud),
             )
 
             searchers = BasicVariantGenerator()
@@ -1076,17 +1075,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                custom_syncer=trial.custom_syncer,
+                sync_config=trial.sync_config,
             )
             return actor
 
-        # This actor should create a default aws syncer, so check should fail
-        actor1 = _create_remote_actor(TestDurable, None)
-        self.assertFalse(ray.get(actor1.has_custom_syncer.remote()))
+        # This actor should create a default syncer, so check should pass
+        actor1 = _create_remote_actor(TestDurable, "auto")
+        self.assertTrue(ray.get(actor1.has_syncer.remote()))
 
         # This actor should create a custom syncer, so check should pass
         actor2 = _create_remote_actor(TestDurable, CustomSyncer())
-        self.assertTrue(ray.get(actor2.has_custom_syncer.remote()))
+        self.assertTrue(ray.get(actor2.has_syncer.remote()))
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
@@ -1172,27 +1171,27 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Do not log to file
         [trial] = tune.run("f1", log_to_file=False).trials
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stderr")))
 
         # Log to default files
         [trial] = tune.run("f1", log_to_file=True).trials
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "stdout")))
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "stderr")))
-        with open(os.path.join(trial.logdir, "stdout"), "rt") as fp:
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "stdout")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "stderr")))
+        with open(os.path.join(trial.local_path, "stdout"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT", content)
-        with open(os.path.join(trial.logdir, "stderr"), "rt") as fp:
+        with open(os.path.join(trial.local_path, "stderr"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDERR", content)
             self.assertIn("LOG_STDERR", content)
 
         # Log to one file
         [trial] = tune.run("f1", log_to_file="combined").trials
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "combined")))
-        with open(os.path.join(trial.logdir, "combined"), "rt") as fp:
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stderr")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "combined")))
+        with open(os.path.join(trial.local_path, "combined"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT", content)
             self.assertIn("PRINT_STDERR", content)
@@ -1200,15 +1199,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Log to two files
         [trial] = tune.run("f1", log_to_file=("alt.stdout", "alt.stderr")).trials
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stdout")))
-        self.assertFalse(os.path.exists(os.path.join(trial.logdir, "stderr")))
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "alt.stdout")))
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "alt.stderr")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stdout")))
+        self.assertFalse(os.path.exists(os.path.join(trial.local_path, "stderr")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "alt.stdout")))
+        self.assertTrue(os.path.exists(os.path.join(trial.local_path, "alt.stderr")))
 
-        with open(os.path.join(trial.logdir, "alt.stdout"), "rt") as fp:
+        with open(os.path.join(trial.local_path, "alt.stdout"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDOUT", content)
-        with open(os.path.join(trial.logdir, "alt.stderr"), "rt") as fp:
+        with open(os.path.join(trial.local_path, "alt.stderr"), "rt") as fp:
             content = fp.read()
             self.assertIn("PRINT_STDERR", content)
             self.assertIn("LOG_STDERR", content)
@@ -1317,7 +1316,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # Per default, the directory should be named `test_trial_dir_{date}`
         with tempfile.TemporaryDirectory() as tmp_dir:
-            tune.run(test_trial_dir, local_dir=tmp_dir)
+            tune.run(test_trial_dir, storage_path=tmp_dir)
 
             subdirs = list(os.listdir(tmp_dir))
             self.assertNotIn("test_trial_dir", subdirs)
@@ -1330,7 +1329,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # If we set an explicit name, no date should be appended
         with tempfile.TemporaryDirectory() as tmp_dir:
-            tune.run(test_trial_dir, local_dir=tmp_dir, name="my_test_exp")
+            tune.run(test_trial_dir, storage_path=tmp_dir, name="my_test_exp")
 
             subdirs = list(os.listdir(tmp_dir))
             self.assertIn("my_test_exp", subdirs)
@@ -1344,7 +1343,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         # Don't append date if we set the env variable
         os.environ["TUNE_DISABLE_DATED_SUBDIR"] = "1"
         with tempfile.TemporaryDirectory() as tmp_dir:
-            tune.run(test_trial_dir, local_dir=tmp_dir)
+            tune.run(test_trial_dir, storage_path=tmp_dir)
 
             subdirs = list(os.listdir(tmp_dir))
             self.assertIn("test_trial_dir", subdirs)
@@ -1806,55 +1805,24 @@ class ApiTestFast(unittest.TestCase):
         self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
 
     def testSearcherSchedulerStr(self):
-        def train(config):
-            tune.report(metric=1)
-
         capture = {}
 
         class MockTrialRunner(TrialRunner):
-            def __init__(
-                self,
-                search_alg=None,
-                scheduler=None,
-                local_checkpoint_dir=None,
-                remote_checkpoint_dir=None,
-                sync_config=None,
-                stopper=None,
-                resume=False,
-                server_port=None,
-                fail_fast=False,
-                checkpoint_period=None,
-                trial_executor=None,
-                callbacks=None,
-                metric=None,
-                trial_checkpoint_config=None,
-                driver_sync_trial_checkpoints=True,
-            ):
-                # should be converted from strings at this case
-                # and not None
+            def __init__(self, search_alg=None, scheduler=None, **kwargs):
+                # should be converted from strings at this case and not None
                 capture["search_alg"] = search_alg
                 capture["scheduler"] = scheduler
                 super().__init__(
                     search_alg=search_alg,
                     scheduler=scheduler,
-                    local_checkpoint_dir=local_checkpoint_dir,
-                    remote_checkpoint_dir=remote_checkpoint_dir,
-                    sync_config=sync_config,
-                    stopper=stopper,
-                    resume=resume,
-                    server_port=server_port,
-                    fail_fast=fail_fast,
-                    checkpoint_period=checkpoint_period,
-                    trial_executor=trial_executor,
-                    callbacks=callbacks,
-                    metric=metric,
-                    trial_checkpoint_config=trial_checkpoint_config,
-                    driver_sync_trial_checkpoints=True,
+                    **kwargs,
                 )
 
-        with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
+        with patch("ray.tune.tune.TrialRunner", MockTrialRunner), patch(
+            "os.environ", {"TUNE_NEW_EXECUTION": "0"}
+        ):
             tune.run(
-                train,
+                lambda config: tune.report(metric=1),
                 search_alg="random",
                 scheduler="async_hyperband",
                 metric="metric",
@@ -1889,45 +1857,19 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
         capture = {}
 
         class MockTrialRunner(TrialRunner):
-            def __init__(
-                self,
-                search_alg=None,
-                scheduler=None,
-                local_checkpoint_dir=None,
-                remote_checkpoint_dir=None,
-                sync_config=None,
-                stopper=None,
-                resume=False,
-                server_port=None,
-                fail_fast=False,
-                checkpoint_period=None,
-                trial_executor=None,
-                callbacks=None,
-                metric=None,
-                trial_checkpoint_config=None,
-                driver_sync_trial_checkpoints=True,
-            ):
+            def __init__(self, search_alg=None, scheduler=None, **kwargs):
+                # should be converted from strings at this case and not None
                 capture["search_alg"] = search_alg
                 capture["scheduler"] = scheduler
                 super().__init__(
                     search_alg=search_alg,
                     scheduler=scheduler,
-                    local_checkpoint_dir=local_checkpoint_dir,
-                    remote_checkpoint_dir=remote_checkpoint_dir,
-                    sync_config=sync_config,
-                    stopper=stopper,
-                    resume=resume,
-                    server_port=server_port,
-                    fail_fast=fail_fast,
-                    checkpoint_period=checkpoint_period,
-                    trial_executor=trial_executor,
-                    callbacks=callbacks,
-                    metric=metric,
-                    trial_checkpoint_config=trial_checkpoint_config,
-                    driver_sync_trial_checkpoints=driver_sync_trial_checkpoints,
+                    **kwargs,
                 )
 
-        with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
+        with patch("ray.tune.tune.TrialRunner", MockTrialRunner), patch(
+            "os.environ", {"TUNE_NEW_EXECUTION": "0"}
+        ):
             tune.run(
                 train,
                 config={"a": tune.randint(0, 2)},

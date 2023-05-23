@@ -116,12 +116,14 @@ def test_arrow_size_add_block(ray_start_regular_shared):
 
 
 def test_split_read_csv(ray_start_regular_shared, tmp_path):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.block_splitting_enabled = True
 
     def gen(name):
         path = os.path.join(tmp_path, name)
-        ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE).write_csv(path)
+        ray.data.range(1000, parallelism=1).map(
+            lambda _: {"out": LARGE_VALUE}
+        ).write_csv(path)
         return ray.data.read_csv(path)
 
     # 20MiB
@@ -146,21 +148,28 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
         assert 80 < x < 120, (x, nrow)
 
     # Disabled.
-    ctx.target_max_block_size = 1_000_000
-    ctx.block_splitting_enabled = False
+    # Setting infinite block size effectively disables block splitting.
+    ctx.target_max_block_size = float("inf")
     ds4 = gen("out4")
     assert ds4._block_num_rows() == [1000]
 
 
 def test_split_read_parquet(ray_start_regular_shared, tmp_path):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.block_splitting_enabled = True
 
     def gen(name):
         path = os.path.join(tmp_path, name)
-        ray.data.range(200000, parallelism=1).map(
-            lambda _: uuid.uuid4().hex
-        ).write_parquet(path)
+        ds = (
+            ray.data.range(200000, parallelism=1)
+            .map(lambda _: {"out": uuid.uuid4().hex})
+            .materialize()
+        )
+        # Fully execute the operations prior to write, because with
+        # parallelism=1, there is only one task; so the write operator
+        # will only write to one file, even though there are multiple
+        # blocks created by block splitting.
+        ds.write_parquet(path)
         return ray.data.read_parquet(path, parallelism=200)
 
     # 20MiB
@@ -172,7 +181,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
     ctx.target_max_block_size = 3_000_000
     ds2 = gen("out2")
     nrow = ds2._block_num_rows()
-    assert 2 < len(nrow) < 4, nrow
+    assert 3 < len(nrow) < 5, nrow
     for x in nrow[:-1]:
         assert 50000 < x < 75000, (x, nrow)
 
@@ -186,22 +195,17 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
-def test_split_map(ray_start_regular_shared, use_actors):
+def test_split_map(shutdown_only, use_actors):
+    ray.shutdown()
+    ray.init(num_cpus=2)
     kwargs = {}
     if use_actors:
-        kwargs = {"compute": "actors"}
-    # Simple block
-    ctx = ray.data.context.DatasetContext.get_current()
-    ctx.target_max_block_size = 20_000_000
-    ctx.block_splitting_enabled = True
-    ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE, **kwargs)
-    nblocks = len(ds1.map(lambda x: x, **kwargs).get_internal_block_refs())
-    assert nblocks == 1, nblocks
-    ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds1.map(lambda x: x, **kwargs).get_internal_block_refs())
-    assert 4 < nblocks < 7 or use_actors, nblocks
+        kwargs = {"compute": ray.data.ActorPoolStrategy()}
 
     # Arrow block
+    ctx = ray.data.context.DataContext.get_current()
+    ctx.target_max_block_size = 20_000_000
+    ctx.block_splitting_enabled = True
     ctx.target_max_block_size = 20_000_000
     ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE, **kwargs)
     nblocks = len(ds2.map(lambda x: x, **kwargs).get_internal_block_refs())
@@ -211,25 +215,17 @@ def test_split_map(ray_start_regular_shared, use_actors):
     assert 4 < nblocks < 7 or use_actors, nblocks
 
     # Disabled.
-    ctx.target_max_block_size = 1_000_000
-    ctx.block_splitting_enabled = False
+    # Setting infinite block size effectively disables block splitting.
+    ctx.target_max_block_size = float("inf")
     ds3 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE, **kwargs)
     nblocks = len(ds3.map(lambda x: x, **kwargs).get_internal_block_refs())
     assert nblocks == 1, nblocks
 
 
 def test_split_flat_map(ray_start_regular_shared):
-    # Simple block
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = 20_000_000
     ctx.block_splitting_enabled = True
-    ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
-    nblocks = len(ds1.flat_map(lambda x: [x]).get_internal_block_refs())
-    assert nblocks == 1, nblocks
-    ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds1.flat_map(lambda x: [x]).get_internal_block_refs())
-    assert 4 < nblocks < 7, nblocks
-
     # Arrow block
     ctx.target_max_block_size = 20_000_000
     ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
@@ -241,17 +237,9 @@ def test_split_flat_map(ray_start_regular_shared):
 
 
 def test_split_map_batches(ray_start_regular_shared):
-    # Simple block
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.target_max_block_size = 20_000_000
     ctx.block_splitting_enabled = True
-    ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
-    nblocks = len(ds1.map_batches(lambda x: x, batch_size=16).get_internal_block_refs())
-    assert nblocks == 1, ds1._block_num_rows()
-    ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds1.map_batches(lambda x: x, batch_size=16).get_internal_block_refs())
-    assert 4 < nblocks < 7, ds1._block_num_rows()
-
     # Arrow block
     ctx.target_max_block_size = 20_000_000
     ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)

@@ -10,7 +10,6 @@ from ray.rllib.execution.rollout_ops import (
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     COMPUTE_GRADS_TIMER,
@@ -19,6 +18,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import ResultDict
 
@@ -178,14 +178,16 @@ class A2C(A3C):
         # apply the averaged gradient in one SGD step. This conserves GPU
         # memory, allowing for extremely large experience batches to be
         # used.
-        if self.config.count_steps_by == "agent_steps":
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config.microbatch_size
-            )
-        else:
-            train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config.microbatch_size
-            )
+        with self._timers[SAMPLE_TIMER]:
+            if self.config.count_steps_by == "agent_steps":
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, max_agent_steps=self.config.microbatch_size
+                )
+            else:
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers, max_env_steps=self.config.microbatch_size
+                )
+
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
 
@@ -238,20 +240,3 @@ class A2C(A3C):
         train_results = {DEFAULT_POLICY_ID: info}
 
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.a2c.A2CConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(A2CConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.agents.a3c.a2c.A2C_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.a2c.a2c.A2CConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-A2C_DEFAULT_CONFIG = _deprecated_default_config()

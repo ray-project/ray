@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.marwil.marwil import (
-    DEFAULT_CONFIG,
     MARWIL,
     MARWILConfig,
 )
@@ -15,6 +14,4 @@ __all__ = [
     "MARWILTF1Policy",
     "MARWILTF2Policy",
     "MARWILTorchPolicy",
-    # Deprecated.
-    "DEFAULT_CONFIG",
 ]

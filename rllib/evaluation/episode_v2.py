@@ -1,5 +1,6 @@
 import random
 from collections import defaultdict
+import numpy as np
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
@@ -295,7 +296,7 @@ class EpisodeV2:
 
             if (
                 not pre_batch.is_single_trajectory()
-                or len(set(pre_batch[SampleBatch.EPS_ID])) > 1
+                or len(np.unique(pre_batch[SampleBatch.EPS_ID])) > 1
             ):
                 raise ValueError(
                     "Batches sent to postprocessing must only contain steps "

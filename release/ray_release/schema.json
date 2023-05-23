@@ -15,28 +15,27 @@
 				"working_dir": {
 					"type": "string"
 				},
-                "env": {
+				"env": {
 					"type": "string"
-				},
-				"legacy": {
-					"$ref": "#/definitions/Legacy"
 				},
 				"stable": {
 					"type": "boolean"
 				},
-                "python": {
+				"jailed": {
+					"type": "boolean"
+				},
+				"python": {
 					"type": "string",
 					"enum": [
-						"3.6",
 						"3.7",
 						"3.8",
 						"3.9"
-                    ]
+					]
 				},
 				"frequency": {
 					"type": "string",
 					"enum": [
-						"disabled",
+						"manual",
 						"multi",
 						"nightly",
 						"nightly-3x",
@@ -44,9 +43,6 @@
 					]
 				},
 				"team": {
-					"type": "string"
-				},
-				"driver_setup": {
 					"type": "string"
 				},
 				"cluster": {
@@ -91,6 +87,9 @@
 				},
 				"cloud_name": {
 					"type": "string"
+				},
+				"byod": {
+					"$ref": "#/definitions/Byod"
 				}
 			},
 			"required": [
@@ -99,22 +98,25 @@
 			],
 			"title": "Cluster"
 		},
-		"Legacy": {
+		"Byod": {
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"test_name": {
-					"type": "string"
+				"type": {
+					"type": "string",
+					"enum": [
+						"cpu",
+						"gpu"
+					]
 				},
-				"test_suite": {
-					"type": "string"
+				"pre_run_cmds": {
+					"type": "array"
 				}
 			},
 			"required": [
-				"test_name",
-				"test_suite"
+				"type"
 			],
-			"title": "Legacy"
+			"title": "Byod"
 		},
 		"Run": {
 			"type": "object",
@@ -126,16 +128,8 @@
 						"command",
 						"sdk_command",
 						"job",
-						"client"
-					]
-				},
-				"file_manager": {
-					"type": "string",
-					"enum": [
-
-						"sdk",
 						"client",
-						"job"
+						"anyscale_job"
 					]
 				},
 				"wait_for_nodes": {
@@ -155,6 +149,9 @@
 				},
 				"long_running": {
 					"type": "boolean"
+				},
+				"artifact_path": {
+					"type": "string"
 				}
 			},
 			"required": [
@@ -187,10 +184,7 @@
 				"working_dir": {
 					"type": "string"
 				},
-                "env": {
-					"type": "string"
-				},
-                "driver_setup": {
+				"env": {
 					"type": "string"
 				},
 				"cluster": {
@@ -199,13 +193,13 @@
 				"run": {
 					"type": "object"
 				},
-                "alert": {
+				"alert": {
 					"type": "string"
 				},
 				"frequency": {
 					"type": "string",
 					"enum": [
-						"disabled",
+						"manual",
 						"multi",
 						"nightly",
 						"nightly-3x",

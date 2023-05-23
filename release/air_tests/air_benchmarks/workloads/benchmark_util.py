@@ -4,16 +4,10 @@ import subprocess
 from collections import defaultdict
 from contextlib import closing
 from pathlib import Path
+from ray.air.util.node import _force_on_node
 
 import ray
 from typing import Any, List, Dict, Union, Callable
-
-
-def _schedule_remote_fn_on_node(node_ip: str, remote_fn, *args, **kwargs):
-    return remote_fn.options(resources={f"node:{node_ip}": 0.01}).remote(
-        *args,
-        **kwargs,
-    )
 
 
 def schedule_remote_fn_on_all_nodes(
@@ -31,7 +25,12 @@ def schedule_remote_fn_on_all_nodes(
         if exclude_head and node_ip == head_ip:
             continue
 
-        future = _schedule_remote_fn_on_node(node_ip, remote_fn, *args, **kwargs)
+        node_id = node["NodeID"]
+
+        future = _force_on_node(node_id, remote_fn).remote(
+            *args,
+            **kwargs,
+        )
         futures.append(future)
     return futures
 

@@ -1,22 +1,28 @@
+import os
 import time
 import json
 import sys
+import signal
 from collections import Counter
-from dataclasses import dataclass
 from typing import List, Tuple
 from unittest.mock import MagicMock
 
 import pytest
-from ray._private import gcs_utils
+from ray.util.state import get_job
+from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.util.state.common import Humanify
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
+from ray._raylet import ActorID
 from ray._private.test_utils import (
+    run_string_as_driver,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
 )
@@ -59,7 +65,7 @@ from ray.dashboard.state_aggregator import (
     StateAPIManager,
     _convert_filters_type,
 )
-from ray.experimental.state.api import (
+from ray.util.state import (
     get_actor,
     get_node,
     get_objects,
@@ -81,11 +87,12 @@ from ray.experimental.state.api import (
     StateApiClient,
 )
 from ray._private.event.event_logger import get_event_id
-from ray.experimental.state.common import (
+from ray.util.state.common import (
     DEFAULT_LIMIT,
     DEFAULT_RPC_TIMEOUT,
     ActorState,
     ListApiOptions,
+    SummaryApiOptions,
     NodeState,
     ObjectState,
     PlacementGroupState,
@@ -98,16 +105,16 @@ from ray.experimental.state.common import (
     state_column,
 )
 from ray.dashboard.utils import ray_address_to_api_server_url
-from ray.experimental.state.exception import DataSourceUnavailable, RayStateApiException
-from ray.experimental.state.state_cli import (
+from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
+from ray.util.state.state_cli import (
     AvailableFormat,
     format_list_api_output,
     _parse_filter,
     summary_state_cli_group,
 )
-from ray.experimental.state.state_cli import ray_get
-from ray.experimental.state.state_cli import ray_list
-from ray.experimental.state.state_manager import IdToIpMap, StateDataSourceClient
+from ray.util.state.state_cli import ray_get
+from ray.util.state.state_cli import ray_list
+from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
@@ -126,6 +133,18 @@ Unit tests
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
     manager = StateAPIManager(data_source_client)
+    yield manager
+
+
+@pytest.fixture
+def state_api_manager_e2e(ray_start_with_dashboard):
+    address_info = ray_start_with_dashboard
+    gcs_address = address_info["gcs_address"]
+    gcs_aio_client = GcsAioClient(address=gcs_address)
+    gcs_channel = gcs_aio_client.channel.channel()
+    state_api_data_source_client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    manager = StateAPIManager(state_api_data_source_client)
+
     yield manager
 
 
@@ -151,6 +170,9 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
         pid=1234,
         class_name=class_name,
         address=Address(raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id),
+        job_id=b"123",
+        node_id=None,
+        ray_namespace="",
     )
 
 
@@ -174,7 +196,14 @@ def generate_node_data(id):
     )
 
 
-def generate_worker_data(id, pid=1234):
+def generate_worker_data(
+    id,
+    pid=1234,
+    worker_launch_time_ms=1,
+    worker_launched_time_ms=2,
+    start_time_ms=3,
+    end_time_ms=4,
+):
     return WorkerTableData(
         worker_address=Address(
             raylet_id=id, ip_address="127.0.0.1", port=124, worker_id=id
@@ -184,6 +213,10 @@ def generate_worker_data(id, pid=1234):
         worker_type=WorkerType.WORKER,
         pid=pid,
         exit_type=None,
+        worker_launch_time_ms=worker_launch_time_ms,
+        worker_launched_time_ms=worker_launched_time_ms,
+        start_time_ms=start_time_ms,
+        end_time_ms=end_time_ms,
     )
 
 
@@ -280,6 +313,7 @@ def create_api_options(
     limit: int = DEFAULT_LIMIT,
     filters: List[Tuple[str, SupportedFilterType]] = None,
     detail: bool = False,
+    exclude_driver: bool = True,
 ):
     if not filters:
         filters = []
@@ -287,8 +321,9 @@ def create_api_options(
         limit=limit,
         timeout=timeout,
         filters=filters,
-        _server_timeout_multiplier=1.0,
+        server_timeout_multiplier=1.0,
         detail=detail,
+        exclude_driver=exclude_driver,
     )
 
 
@@ -312,14 +347,17 @@ def test_ray_address_to_api_server_url(shutdown_only):
 
 
 def test_state_schema():
+    import pydantic
+    from pydantic.dataclasses import dataclass
+
     @dataclass
     class TestSchema(StateSchema):
         column_a: int
         column_b: int = state_column(filterable=False)
         column_c: int = state_column(filterable=True)
         column_d: int = state_column(filterable=False, detail=False)
-        column_e: int = state_column(filterable=False, detail=True)
         column_f: int = state_column(filterable=True, detail=False)
+        column_e: int = state_column(filterable=False, detail=True)
         column_g: int = state_column(filterable=True, detail=True)
 
     # Correct input validation should work without an exception.
@@ -334,7 +372,7 @@ def test_state_schema():
     )
 
     # Incorrect input type.
-    with pytest.raises(AssertionError):
+    with pytest.raises(pydantic.ValidationError):
         TestSchema(
             column_a=1,
             column_b=1,
@@ -480,6 +518,87 @@ def test_state_api_client_periodic_warning(shutdown_only, capsys, clear_loggers)
 
 
 @pytest.mark.asyncio
+async def test_api_manager_e2e_list_actors(state_api_manager_e2e):
+    @ray.remote
+    class Actor:
+        pass
+
+    a = Actor.remote()
+    script = """
+import ray
+
+ray.init("auto")
+
+@ray.remote
+class Actor:
+    pass
+
+    def ready(self):
+        pass
+
+b = Actor.remote()
+ray.get(b.ready.remote())
+del b
+    """
+
+    run_string_as_driver(script)
+
+    async def verify():
+        result = await state_api_manager_e2e.list_actors(option=create_api_options())
+        print(result)
+        assert result.total == 2
+        assert result.num_after_truncation == 2
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        # Test actor id filtering on source
+        result = await state_api_manager_e2e.list_actors(
+            option=create_api_options(filters=[("actor_id", "=", a._actor_id.hex())])
+        )
+        print(result)
+        assert result.num_after_truncation == 2
+        assert len(result.result) == 1
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        # Test state filtering on source
+        result = await state_api_manager_e2e.list_actors(
+            option=create_api_options(filters=[("state", "=", "ALIVE")])
+        )
+        assert result.num_after_truncation == 2
+        assert len(result.result) == 1
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        # Test job filtering on source
+        cur_job_id = ray.get_runtime_context().get_job_id()
+        result = await state_api_manager_e2e.list_actors(
+            option=create_api_options(filters=[("job_id", "=", cur_job_id)])
+        )
+        assert result.num_after_truncation == 2
+        assert len(result.result) == 1
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+    async def verify():
+        with pytest.raises(ValueError):
+            await state_api_manager_e2e.list_actors(
+                option=create_api_options(filters=[("state", "=", "DEEEED")])
+            )
+
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+
+@pytest.mark.asyncio
 async def test_api_manager_list_actors(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     actor_id = b"1234"
@@ -522,9 +641,7 @@ async def test_api_manager_list_actors(state_api_manager):
         result = await state_api_manager.list_actors(
             option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
-    result = await state_api_manager.list_actors(
-        option=create_api_options(filters=[("state", "=", "DEAD")])
-    )
+
     assert len(result.result) == 1
 
     """
@@ -800,12 +917,14 @@ async def test_api_manager_list_tasks(state_api_manager):
         )
     ]
     result = await state_api_manager.list_tasks(option=create_api_options())
-    data_source_client.get_all_task_info.assert_any_await(timeout=DEFAULT_RPC_TIMEOUT)
+    data_source_client.get_all_task_info.assert_any_await(
+        timeout=DEFAULT_RPC_TIMEOUT, filters=[], exclude_driver=True
+    )
     data = result.result
     data = data
     assert len(data) == 2
     assert result.total == 2
-
+    print(data)
     verify_schema(TaskState, data[0])
     assert data[0]["node_id"] == node_id.hex()
     verify_schema(TaskState, data[1])
@@ -859,6 +978,209 @@ async def test_api_manager_list_tasks(state_api_manager):
         option=create_api_options(filters=[("task_id", "=", bytearray(id).hex())])
     )
     assert len(result.result) == 1
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 8, 0),
+    reason=("Not passing in CI although it works locally. Will handle it later."),
+)
+@pytest.mark.asyncio
+async def test_api_manager_list_tasks_events(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+
+    node_id = NodeID.from_random()
+    data_source_client.get_all_task_info = AsyncMock()
+    id = b"1234"
+    func_or_class = "f"
+
+    # Generate a task event.
+
+    task_info = TaskInfoEntry(
+        task_id=id,
+        name=func_or_class,
+        func_or_class_name=func_or_class,
+        type=TaskType.NORMAL_TASK,
+    )
+    current = time.time_ns()
+    second = int(1e9)
+    state_updates = TaskStateUpdate(
+        node_id=node_id.binary(),
+        pending_args_avail_ts=current,
+        submitted_to_worker_ts=current + second,
+        running_ts=current + (2 * second),
+        finished_ts=current + (3 * second),
+    )
+
+    """
+    Test basic.
+    """
+    events = TaskEvents(
+        task_id=id,
+        job_id=b"0001",
+        attempt_number=0,
+        task_info=task_info,
+        state_updates=state_updates,
+    )
+    data_source_client.get_all_task_info.side_effect = [generate_task_data([events])]
+    result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
+    result = result.result[0]
+    assert "events" in result
+    assert result["state"] == "FINISHED"
+    expected_events = [
+        {
+            "state": "PENDING_ARGS_AVAIL",
+            "created_ms": current // 1e6,
+        },
+        {
+            "state": "SUBMITTED_TO_WORKER",
+            "created_ms": (current + second) // 1e6,
+        },
+        {
+            "state": "RUNNING",
+            "created_ms": (current + 2 * second) // 1e6,
+        },
+        {
+            "state": "FINISHED",
+            "created_ms": (current + 3 * second) // 1e6,
+        },
+    ]
+    for actual, expected in zip(result["events"], expected_events):
+        assert actual == expected
+    assert result["start_time_ms"] == (current + 2 * second) // 1e6
+    assert result["end_time_ms"] == (current + 3 * second) // 1e6
+
+    """
+    Test only start_time_ms is updated.
+    """
+    state_updates = TaskStateUpdate(
+        node_id=node_id.binary(),
+        pending_args_avail_ts=current,
+        submitted_to_worker_ts=current + second,
+        running_ts=current + (2 * second),
+    )
+    events = TaskEvents(
+        task_id=id,
+        job_id=b"0001",
+        attempt_number=0,
+        task_info=task_info,
+        state_updates=state_updates,
+    )
+    data_source_client.get_all_task_info.side_effect = [generate_task_data([events])]
+    result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
+    result = result.result[0]
+    assert result["start_time_ms"] == (current + 2 * second) // 1e6
+    assert result["end_time_ms"] is None
+
+    """
+    Test None of start & end time is updated.
+    """
+    state_updates = TaskStateUpdate(
+        pending_args_avail_ts=current,
+        submitted_to_worker_ts=current + second,
+    )
+    events = TaskEvents(
+        task_id=id,
+        job_id=b"0001",
+        attempt_number=0,
+        task_info=task_info,
+        state_updates=state_updates,
+    )
+    data_source_client.get_all_task_info.side_effect = [generate_task_data([events])]
+    result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
+    result = result.result[0]
+    assert result["start_time_ms"] is None
+    assert result["end_time_ms"] is None
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 8, 0),
+    reason=("Not passing in CI although it works locally. Will handle it later."),
+)
+@pytest.mark.asyncio
+async def test_api_manager_summarize_tasks(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+
+    node_id = NodeID.from_random()
+    first_task_name = "1"
+    second_task_name = "2"
+    data_source_client.get_all_task_info = AsyncMock()
+    id = b"1234"
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(
+                    id, first_task_name, func_or_class=first_task_name, node_id=node_id
+                ),
+                generate_task_event(
+                    b"2345",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                ),
+                generate_task_event(
+                    b"3456",
+                    second_task_name,
+                    func_or_class=second_task_name,
+                    node_id=None,
+                ),
+                generate_task_event(
+                    b"4567",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                    job_id=b"0002",
+                ),
+            ]
+        )
+    ]
+    result = await state_api_manager.summarize_tasks(option=SummaryApiOptions())
+    data = result.result.node_id_to_summary["cluster"].summary
+    assert len(data) == 2  # 2 task names
+    assert result.total == 4  # 4 total tasks
+
+    assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 3
+    assert data[second_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
+
+    """
+    With job_id filter
+    """
+    data_source_client.get_all_task_info.side_effect = [
+        generate_task_data(
+            [
+                generate_task_event(
+                    id, first_task_name, func_or_class=first_task_name, node_id=node_id
+                ),
+                generate_task_event(
+                    b"2345",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                ),
+                generate_task_event(
+                    b"3456",
+                    second_task_name,
+                    func_or_class=second_task_name,
+                    node_id=None,
+                ),
+                generate_task_event(
+                    b"4567",
+                    first_task_name,
+                    func_or_class=first_task_name,
+                    node_id=node_id,
+                    job_id=b"0002",
+                ),
+            ]
+        )
+    ]
+    result = await state_api_manager.summarize_tasks(
+        option=SummaryApiOptions(filters=[("job_id", "=", b"0002".hex())])
+    )
+    data = result.result.node_id_to_summary["cluster"].summary
+    assert len(data) == 1  # 1 task name
+    assert result.total == 4  # 4 total task (across all jobs)
+    assert result.num_filtered == 1  # 1 total task (for single job)
+
+    assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
 
 @pytest.mark.skipif(
@@ -1214,8 +1536,14 @@ async def test_state_data_source_client(ray_start_cluster):
         entrypoint="ls",
     )
     result = await client.get_job_info()
-    assert list(result.keys())[0] == job_id
-    assert isinstance(result, dict)
+    assert isinstance(result[0], JobDetails)
+    found_job = False
+    for job in result:
+        if job.type != "DRIVER":
+            assert job.submission_id == job_id
+            found_job = True
+    assert found_job, result
+    assert isinstance(result, list)
 
     """
     Test tasks
@@ -1370,8 +1698,23 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     """
     result = await client.get_all_worker_info(limit=2)
     assert len(result.worker_table_data) == 2
-    # Driver + 3 workers for actors.
-    assert result.total == 4
+    # Driver + 3 workers for actors + 2 prestarted task-only workers
+    # TODO(clarng): prestart worker on worker lease request doesn't
+    # work, otherwise it should have created the 2 prestarted task-only
+    # workers prior to https://github.com/ray-project/ray/pull/33623
+    assert result.total == 6
+
+
+def test_humanify():
+    raw_bytes = 1024
+    assert Humanify.memory(raw_bytes) == "1.000 KiB"
+    raw_bytes *= 1024
+    assert Humanify.memory(raw_bytes) == "1.000 MiB"
+    raw_bytes *= 1024
+    assert Humanify.memory(raw_bytes) == "1.000 GiB"
+    timestamp = 1610000000
+    assert "1970-01" in Humanify.timestamp(timestamp)
+    assert Humanify.duration(timestamp) == "18 days, 15:13:20"
 
 
 @pytest.mark.asyncio
@@ -1617,6 +1960,13 @@ def test_cli_apis_sanity_check(ray_start_cluster):
         )
     )
 
+    # Test get task by ID
+    wait_for_condition(
+        lambda: verify_output(
+            ray_get, ["tasks", task.task_id().hex()], ["task_id", task.task_id().hex()]
+        )
+    )
+
     # Test get placement groups by id
     wait_for_condition(
         lambda: verify_output(
@@ -1801,20 +2151,29 @@ def test_list_get_pgs(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_get_nodes(shutdown_only):
-    ray.init()
+def test_list_get_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, node_name="head_node")
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=1, node_name="worker_node")
 
     def verify():
         nodes = list_nodes()
-        assert nodes[0]["state"] == "ALIVE"
-        assert is_hex(nodes[0]["node_id"])
+        for node in nodes:
+            assert node["state"] == "ALIVE"
+            assert is_hex(node["node_id"])
+            assert (
+                node["is_head_node"]
+                if node["node_name"] == "head_node"
+                else not node["is_head_node"]
+            )
 
         # Check with legacy API
         check_nodes = ray.nodes()
         assert len(check_nodes) == len(nodes)
 
-        sorted(check_nodes, key=lambda n: n["NodeID"])
-        sorted(nodes, key=lambda n: n["node_id"])
+        check_nodes = sorted(check_nodes, key=lambda n: n["NodeID"])
+        nodes = sorted(nodes, key=lambda n: n["node_id"])
 
         for check_node, node in zip(check_nodes, nodes):
             assert check_node["NodeID"] == node["node_id"]
@@ -1825,19 +2184,18 @@ def test_list_get_nodes(shutdown_only):
         for node in nodes:
             get_node_data = get_node(node["node_id"])
             assert get_node_data == node
-
         return True
 
     wait_for_condition(verify)
-    print(list_nodes())
 
 
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_jobs(shutdown_only):
+def test_list_get_jobs(shutdown_only):
     ray.init()
+    # Test submission job
     client = JobSubmissionClient(
         f"http://{ray._private.worker.global_worker.node.address_info['webui_url']}"
     )
@@ -1849,13 +2207,50 @@ def test_list_jobs(shutdown_only):
     def verify():
         job_data = list_jobs()[0]
         print(job_data)
-        job_id_from_api = job_data["job_id"]
-        correct_state = job_data["status"] == "SUCCEEDED"
-        correct_id = job_id == job_id_from_api
-        return correct_state and correct_id
+        job_id_from_api = job_data["submission_id"]
+        assert job_data["status"] == "SUCCEEDED"
+        assert job_id == job_id_from_api
+        return True
 
     wait_for_condition(verify)
-    print(list_jobs())
+
+    # Test driver jobs
+    script = """
+
+import ray
+
+ray.init("auto")
+
+@ray.remote
+def f():
+    pass
+
+ray.get(f.remote())
+"""
+    run_string_as_driver(script)
+
+    def verify():
+        jobs = list_jobs(filters=[("type", "=", "DRIVER")])
+        assert len(jobs) == 2, "1 test driver + 1 script run above"
+        for driver_job in jobs:
+            assert driver_job["driver_info"] is not None
+
+        sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
+        assert len(sub_jobs) == 1
+        assert sub_jobs[0]["submission_id"] is not None
+        return True
+
+    wait_for_condition(verify)
+
+    # Test GET api
+    def verify():
+        job = get_job(id=job_id)
+        assert job["submission_id"] == job_id
+        assert job["entrypoint"] == "ls"
+        assert job["status"] == "SUCCEEDED"
+        return True
+
+    wait_for_condition(verify)
 
 
 @pytest.mark.skipif(
@@ -1866,10 +2261,12 @@ def test_list_get_workers(shutdown_only):
     ray.init()
 
     def verify():
-        workers = list_workers()
+        workers = list_workers(detail=True)
         assert is_hex(workers[0]["worker_id"])
         # +1 to take into account of drivers.
         assert len(workers) == ray.cluster_resources()["CPU"] + 1
+        # End time should be 0 as it is not configured yet.
+        assert workers[0]["end_time_ms"] == 0
 
         # Test get worker returns the same result
         workers = list_workers(detail=True)
@@ -1880,7 +2277,19 @@ def test_list_get_workers(shutdown_only):
         return True
 
     wait_for_condition(verify)
-    print(list_workers())
+
+    # Kill the worker
+    workers = list_workers()
+    os.kill(workers[-1]["pid"], signal.SIGKILL)
+
+    def verify():
+        workers = list_workers(detail=True, filters=[("is_alive", "=", "False")])
+        assert len(workers) == 1
+        assert workers[0]["end_time_ms"] != 0
+        return True
+
+    wait_for_condition(verify)
+    print(list_workers(detail=True))
 
 
 @pytest.mark.skipif(
@@ -1932,7 +2341,7 @@ def test_list_get_tasks(shutdown_only):
     def impossible():
         pass
 
-    out = [f.remote() for _ in range(2)]  # noqa
+    out = [f.options(name=f"f_{i}").remote() for i in range(2)]  # noqa
     g_out = g.remote(f.remote())  # noqa
     im = impossible.remote()  # noqa
 
@@ -1947,7 +2356,7 @@ def test_list_get_tasks(shutdown_only):
         waiting_for_execution = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
+                    lambda task: task["state"] == "SUBMITTED_TO_WORKER",
                     tasks,
                 )
             )
@@ -1956,7 +2365,7 @@ def test_list_get_tasks(shutdown_only):
         scheduled = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "PENDING_NODE_ASSIGNMENT",
+                    lambda task: task["state"] == "PENDING_NODE_ASSIGNMENT",
                     tasks,
                 )
             )
@@ -1965,7 +2374,7 @@ def test_list_get_tasks(shutdown_only):
         waiting_for_dep = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
+                    lambda task: task["state"] == "PENDING_ARGS_AVAIL",
                     tasks,
                 )
             )
@@ -1974,7 +2383,7 @@ def test_list_get_tasks(shutdown_only):
         running = len(
             list(
                 filter(
-                    lambda task: task["scheduling_state"] == "RUNNING",
+                    lambda task: task["state"] == "RUNNING",
                     tasks,
                 )
             )
@@ -1988,20 +2397,110 @@ def test_list_get_tasks(shutdown_only):
             assert get_task_data == task
 
         # Test node id.
-        tasks = list_tasks(
-            filters=[("scheduling_state", "=", "PENDING_NODE_ASSIGNMENT")]
-        )
+        tasks = list_tasks(filters=[("state", "=", "PENDING_NODE_ASSIGNMENT")])
         for task in tasks:
             assert task["node_id"] is None
 
-        tasks = list_tasks(filters=[("scheduling_state", "=", "RUNNING")])
+        tasks = list_tasks(filters=[("state", "=", "RUNNING")])
         for task in tasks:
             assert task["node_id"] == node_id
+
+        tasks = list_tasks(filters=[("job_id", "=", job_id)])
+        for task in tasks:
+            assert task["job_id"] == job_id
+
+        tasks = list_tasks(filters=[("name", "=", "f_0")])
+        assert len(tasks) == 1
 
         return True
 
     wait_for_condition(verify)
     print(list_tasks())
+
+
+def test_pg_worker_id_tasks(shutdown_only):
+    ray.init(num_cpus=1)
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    pg.wait()
+
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    class A:
+        def ready(self):
+            return os.getpid()
+
+    ray.get(
+        f.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+        ).remote()
+    )
+
+    def verify():
+        tasks = list_tasks(detail=True)
+        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        assert len(tasks) == 1
+        assert len(workers) == 1
+
+        assert tasks[0]["placement_group_id"] == pg.id.hex()
+        assert tasks[0]["worker_id"] == workers[0]["worker_id"]
+
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks(detail=True))
+
+    a = A.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
+    pid = ray.get(a.ready.remote())
+
+    def verify():
+        actors = list_actors(detail=True)
+        workers = list_workers(detail=True, filters=[("pid", "=", pid)])
+        assert len(actors) == 1
+        assert len(workers) == 1
+
+        assert actors[0]["placement_group_id"] == pg.id.hex()
+        return True
+
+    wait_for_condition(verify)
+    print(list_actors(detail=True))
+
+
+def test_parent_task_id(shutdown_only):
+    """Test parent task id set up properly"""
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def child():
+        pass
+
+    @ray.remote
+    def parent():
+        ray.get(child.remote())
+
+    ray.get(parent.remote())
+
+    def verify():
+        tasks = list_tasks(detail=True)
+        assert len(tasks) == 2, "Expect 2 tasks to finished"
+        parent_task_id = None
+        child_parent_task_id = None
+        for task in tasks:
+            if task["func_or_class_name"] == "parent":
+                parent_task_id = task["task_id"]
+            elif task["func_or_class_name"] == "child":
+                child_parent_task_id = task["parent_task_id"]
+
+        assert (
+            parent_task_id == child_parent_task_id
+        ), "Child should have the parent task id"
+        return True
+
+    wait_for_condition(verify)
 
 
 def test_list_get_task_multiple_attempt_all_failed(shutdown_only):
@@ -2020,7 +2519,7 @@ def test_list_get_task_multiple_attempt_all_failed(shutdown_only):
         assert len(task_attempts) == 3  # 2 retries + 1 initial run
         for task_attempt in task_attempts:
             assert task_attempt["job_id"] == job_id
-            assert task_attempt["scheduling_state"] == "FAILED"
+            assert task_attempt["state"] == "FAILED"
             assert task_attempt["node_id"] == node_id
 
         assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
@@ -2067,10 +2566,10 @@ def test_list_get_task_multiple_attempt_finished_after_retry(shutdown_only):
 
     def verify(task_attempts):
         assert len(task_attempts) == 3
-        for task_attempt in task_attempts[:-1]:
-            assert task_attempt["scheduling_state"] == "FAILED"
+        for task_attempt in task_attempts[1:]:
+            assert task_attempt["state"] == "FAILED"
 
-        task_attempts[-1]["scheduling_state"] == "FINISHED"
+        task_attempts[0]["state"] == "FINISHED"
 
         assert {task_attempt["attempt_number"] for task_attempt in task_attempts} == {
             0,
@@ -2103,7 +2602,6 @@ def test_list_actor_tasks(shutdown_only):
         for task in tasks:
             assert task["job_id"] == job_id
         for task in tasks:
-            print(task)
             assert task["actor_id"] == actor_id
         # Actor.__init__: 1 finished
         # Actor.call: 1 running, 9 waiting for execution (queued).
@@ -2112,7 +2610,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"] == "SUBMITTED_TO_WORKER",
+                        lambda task: task["state"] == "SUBMITTED_TO_WORKER",
                         tasks,
                     )
                 )
@@ -2123,8 +2621,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"]
-                        == "PENDING_NODE_ASSIGNMENT",
+                        lambda task: task["state"] == "PENDING_NODE_ASSIGNMENT",
                         tasks,
                     )
                 )
@@ -2135,7 +2632,7 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"] == "PENDING_ARGS_AVAIL",
+                        lambda task: task["state"] == "PENDING_ARGS_AVAIL",
                         tasks,
                     )
                 )
@@ -2146,13 +2643,17 @@ def test_list_actor_tasks(shutdown_only):
             len(
                 list(
                     filter(
-                        lambda task: task["scheduling_state"] == "RUNNING",
+                        lambda task: task["state"] == "RUNNING",
                         tasks,
                     )
                 )
             )
             == 1
         )
+
+        # Filters with actor id.
+        assert len(list_tasks(filters=[("actor_id", "=", actor_id)])) == 11
+        assert len(list_tasks(filters=[("actor_id", "!=", actor_id)])) == 0
 
         return True
 
@@ -2208,21 +2709,20 @@ def test_list_runtime_envs(shutdown_only):
 
     def verify():
         result = list_runtime_envs(detail=True)
-        correct_num = len(result) == 2
+        assert len(result) == 2
 
         failed_runtime_env = result[0]
-        correct_failed_state = (
+        assert (
             not failed_runtime_env["success"]
-            and failed_runtime_env.get("error")
-            and failed_runtime_env["ref_cnt"] == "0"
+            and failed_runtime_env["error"]
+            and failed_runtime_env["ref_cnt"] == 0
         )
 
         successful_runtime_env = result[1]
-        correct_successful_state = (
-            successful_runtime_env["success"]
-            and successful_runtime_env["ref_cnt"] == "2"
+        assert (
+            successful_runtime_env["success"] and successful_runtime_env["ref_cnt"] == 2
         )
-        return correct_num and correct_failed_state and correct_successful_state
+        return True
 
     wait_for_condition(verify)
 
@@ -2245,6 +2745,10 @@ def test_limit(shutdown_only):
     assert output == list_actors(limit=2)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Failed on Windows",
+)
 def test_network_failure(shutdown_only):
     """When the request fails due to network failure,
     verifies it raises an exception."""
@@ -2343,7 +2847,8 @@ async def test_cli_format_print(state_api_manager):
         actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
     )
     result = await state_api_manager.list_actors(option=create_api_options())
-    result = result.result
+    print(result)
+    result = [ActorState(**d) for d in result.result]
     # If the format is not yaml, it will raise an exception.
     yaml.load(
         format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML),
@@ -2540,12 +3045,6 @@ def test_detail(shutdown_only):
 
     a = Actor.remote()
     ray.get(a.ready.remote())
-
-    actor_state = list_actors()[0]
-    actor_state_in_detail = list_actors(detail=True)[0]
-
-    assert set(actor_state.keys()) == ActorState.base_columns()
-    assert set(actor_state_in_detail.keys()) == ActorState.columns()
 
     """
     Test CLI
@@ -2965,16 +3464,17 @@ def test_get_id_not_found(shutdown_only):
     """
     ray.init()
     runner = CliRunner()
-    result = runner.invoke(ray_get, ["actors", "1234"])
-    assert result.exit_code == 0
-    assert "Resource with id=1234 not found in the cluster." in result.output
+    id = ActorID.from_random().hex()
+    result = runner.invoke(ray_get, ["actors", id])
+    assert result.exit_code == 0, str(result.exception) + result.output
+    assert f"Resource with id={id} not found in the cluster." in result.output
 
 
 def test_core_state_api_usage_tags(shutdown_only):
     from ray._private.usage.usage_lib import TagKey, get_extra_usage_tags_to_report
 
     ctx = ray.init()
-    gcs_client = gcs_utils.GcsClient(address=ctx.address_info["gcs_address"])
+    gcs_client = ray._raylet.GcsClient(address=ctx.address_info["gcs_address"])
     list_actors()
     list_tasks()
     list_jobs()
@@ -3009,7 +3509,6 @@ def test_core_state_api_usage_tags(shutdown_only):
 
 
 if __name__ == "__main__":
-    import os
     import sys
 
     if os.environ.get("PARALLEL_CI"):

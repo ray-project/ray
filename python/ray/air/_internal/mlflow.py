@@ -4,6 +4,8 @@ from packaging import version
 from copy import deepcopy
 from typing import TYPE_CHECKING, Dict, Optional
 
+from ray._private.dict import flatten_dict
+
 if TYPE_CHECKING:
     from mlflow.entities import Run
     from mlflow.tracking import MlflowClient
@@ -41,7 +43,8 @@ class _MLflowLoggerUtil:
         registry_uri: Optional[str] = None,
         experiment_id: Optional[str] = None,
         experiment_name: Optional[str] = None,
-        tracking_token=None,
+        tracking_token: Optional[str] = None,
+        artifact_location: Optional[str] = None,
         create_experiment_if_not_exists: bool = True,
     ):
         """
@@ -62,13 +65,16 @@ class _MLflowLoggerUtil:
                 ``experiment_name`` will be used instead. This argument takes
                 precedence over ``experiment_name`` if both are passed in.
             experiment_name: The experiment name to use for logging.
-                If None is passed in here, the
-                the MLFLOW_EXPERIMENT_NAME environment variables is used to
-                determine the experiment name.
+                If None is passed in here, the MLFLOW_EXPERIMENT_NAME environment
+                variable is used to determine the experiment name.
                 If the experiment with the name already exists with MLflow,
                 it will be reused. If not, a new experiment will be created
                 with the provided name if
                 ``create_experiment_if_not_exists`` is set to True.
+            artifact_location: The location to store run artifacts.
+                If not provided, MLFlow picks an appropriate default.
+                Ignored if experiment already exists.
+            tracking_token: Tracking token used to authenticate with MLflow.
             create_experiment_if_not_exists: Whether to create an
                 experiment with the provided name if it does not already
                 exist. Defaults to True.
@@ -127,7 +133,9 @@ class _MLflowLoggerUtil:
                 "Existing experiment not found. Creating new "
                 f"experiment with name: {experiment_name}"
             )
-            self.experiment_id = self._mlflow.create_experiment(name=experiment_name)
+            self.experiment_id = self._mlflow.create_experiment(
+                name=experiment_name, artifact_location=artifact_location
+            )
             return
 
         if create_experiment_if_not_exists:
@@ -182,7 +190,7 @@ class _MLflowLoggerUtil:
         """Starts a new run and possibly sets it as the active run.
 
         Args:
-            tags (Optional[Dict]): Tags to set for the new run.
+            tags: Tags to set for the new run.
             set_active: Whether to set the new run as the active run.
                 If an active run already exists, then that run is returned.
 
@@ -256,6 +264,7 @@ class _MLflowLoggerUtil:
             params_to_log: Dictionary of parameters to log.
             run_id (Optional[str]): The ID of the run to log to.
         """
+        params_to_log = flatten_dict(params_to_log)
 
         if run_id and self._run_exists(run_id):
             client = self._get_client()
@@ -278,6 +287,7 @@ class _MLflowLoggerUtil:
             metrics_to_log: Dictionary of metrics to log.
             run_id (Optional[str]): The ID of the run to log to.
         """
+        metrics_to_log = flatten_dict(metrics_to_log)
         metrics_to_log = self._parse_dict(metrics_to_log)
 
         if run_id and self._run_exists(run_id):

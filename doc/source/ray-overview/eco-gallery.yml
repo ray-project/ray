@@ -1,11 +1,10 @@
 meta:
-  section-titles: true
-  container: container pb-12
-  column: col-md-12 px-2 py-2
-  img-top-cls: pt-10 w-50 d-block mx-auto
+  grid: 1 2 2 3
+  gutter: 1
+  class-container: container pb-3
 
-buttons:
-  classes: btn-outline-info btn-block
+classes:
+  class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
 projects:
   - name: Classy Vision Integration
@@ -52,7 +51,7 @@ projects:
     website: https://horovod.readthedocs.io/en/stable/ray_include.html
     repo: https://github.com/horovod/horovod
     image: ../images/horovod.png
-  - name: Hugging Face Integration
+  - name: Hugging Face Transformers Integration
     section_title: Hugging Face Transformers
     description: State-of-the-art Natural Language Processing for
       Pytorch and TensorFlow 2.0. It integrates with Ray for distributed
@@ -146,7 +145,7 @@ projects:
       random forests, gradient boosting, k-means and DBSCAN, and is designed to
       interoperate with the Python numerical and scientific libraries NumPy and SciPy.
     website: https://docs.ray.io/en/master/joblib.html
-    repo: https://docs.ray.io/en/master/joblib.html
+    repo: https://github.com/scikit-learn/scikit-learn
     image: ../images/scikit.png
   - name: Seldon Alibi Integration
     section_title: Seldon Alibi
@@ -157,6 +156,16 @@ projects:
     website: https://github.com/SeldonIO/alibi
     repo: https://github.com/SeldonIO/alibi
     image: ../images/seldon.png
+  - name: Sematic Integration
+    section_title: Sematic
+    description: Sematic is an open-source ML pipelining tool written in Python.
+      It enables users to write end-to-end pipelines that can seamlessly transition between
+      your laptop and the cloud, with rich visualizations, traceability,
+      reproducibility, and usability as first-class citizens. This integration
+      enables dynamic allocation of Ray clusters within Sematic pipelines.
+    website: https://docs.sematic.dev/integrations/ray
+    repo: https://github.com/sematic-ai/sematic
+    image: ../images/sematic.png
   - name: spaCy Integration
     section_title: spaCy
     description: spaCy is a library for advanced Natural Language Processing in Python
@@ -180,3 +189,11 @@ projects:
     website: https://github.com/ray-project/lightgbm_ray
     repo: https://github.com/ray-project/lightgbm_ray
     image: ../images/lightgbm_logo.png
+  - name: Volcano Integration
+    section_title: Volcano
+    description: Volcano is system for running high-performance workloads 
+      on Kubernetes. It features powerful batch scheduling capabilities required by ML
+      and other data-intensive workloads.
+    website: https://github.com/volcano-sh/volcano/releases/tag/v1.7.0
+    repo: https://github.com/volcano-sh/volcano/
+    image: ./images/volcano.png

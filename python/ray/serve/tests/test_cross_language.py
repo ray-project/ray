@@ -37,7 +37,7 @@ def test_controller_starts_java_replica(shutdown_only):  # noqa: F811
             deployment_config_proto_bytes=config.to_proto_bytes(),
             replica_config_proto_bytes=replica_config.to_proto_bytes(),
             route_prefix=None,
-            deployer_job_id=ray.get_runtime_context().job_id,
+            deployer_job_id=ray.get_runtime_context().get_job_id(),
         )
     )
     assert updating

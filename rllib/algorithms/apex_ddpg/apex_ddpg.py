@@ -4,7 +4,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, Deprecated
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import (
     ResultDict,
 )
@@ -147,20 +147,3 @@ class ApexDDPG(DDPG, ApexDQN):
     def training_step(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
         return ApexDQN.training_step(self)
-
-
-# Deprecated: Use ray.rllib.algorithms.apex_ddpg.ApexDDPGConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ApexDDPGConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.ddpg.apex.APEX_DDPG_DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.apex_ddpg.apex_ddpg::ApexDDPGConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-APEX_DDPG_DEFAULT_CONFIG = _deprecated_default_config()

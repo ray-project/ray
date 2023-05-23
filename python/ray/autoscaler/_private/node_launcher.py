@@ -65,7 +65,6 @@ class BaseNodeLauncher:
         self.log("Got {} nodes to launch.".format(count))
         self._launch_node(config, count, node_type)
         self.pending.dec(node_type, count)
-        self.prom_metrics.pending_nodes.set(self.pending.value)
 
     def _launch_node(self, config: Dict[str, Any], count: int, node_type: str):
         if self.node_types:

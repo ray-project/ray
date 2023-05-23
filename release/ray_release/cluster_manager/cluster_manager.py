@@ -8,8 +8,10 @@ from ray_release.aws import (
 )
 from ray_release.anyscale_util import get_project_name
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
+from ray_release.test import Test
 from ray_release.exception import CloudInfoError
 from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
+from ray_release.logger import logger
 
 if TYPE_CHECKING:
     from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
@@ -18,20 +20,20 @@ if TYPE_CHECKING:
 class ClusterManager(abc.ABC):
     def __init__(
         self,
-        test_name: str,
+        test: Test,
         project_id: str,
         sdk: Optional["AnyscaleSDK"] = None,
         smoke_test: bool = False,
     ):
         self.sdk = sdk or get_anyscale_sdk()
 
-        self.test_name = test_name
+        self.test = test
         self.smoke_test = smoke_test
         self.project_id = project_id
         self.project_name = get_project_name(self.project_id, self.sdk)
 
         self.cluster_name = (
-            f"{test_name}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
+            f"{test.get_name()}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
         )
         self.cluster_id = None
 
@@ -54,17 +56,15 @@ class ClusterManager(abc.ABC):
         # Add flags for redisless Ray
         self.cluster_env.setdefault("env_vars", {})
         self.cluster_env["env_vars"]["MATCH_AUTOSCALER_AND_RAY_IMAGES"] = "1"
-        self.cluster_env["env_vars"]["RAY_gcs_storage"] = "memory"
-        self.cluster_env["env_vars"]["RAY_bootstrap_with_gcs"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_ENABLED"] = "1"
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
         self.cluster_env["env_vars"][
             "RAY_USAGE_STATS_EXTRA_TAGS"
-        ] = f"test_name={self.test_name};smoke_test={self.smoke_test}"
+        ] = f"test_name={self.test.get_name()};smoke_test={self.smoke_test}"
 
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
-            f"__env__{self.test_name}__"
+            f"__env__{self.test.get_name().replace('.', '_')}__"
             f"{dict_hash(self.cluster_env)}"
         )
 
@@ -90,7 +90,7 @@ class ClusterManager(abc.ABC):
 
         self.cluster_compute_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
-            f"__compute__{self.test_name}__"
+            f"__compute__{self.test.get_name()}__"
             f"{dict_hash(self.cluster_compute)}"
         )
 
@@ -127,7 +127,13 @@ class ClusterManager(abc.ABC):
     def start_cluster(self, timeout: float = 600.0):
         raise NotImplementedError
 
-    def terminate_cluster(self):
+    def terminate_cluster(self, wait: bool = False):
+        try:
+            self.terminate_cluster_ex(wait=False)
+        except Exception as e:
+            logger.exception(f"Could not terminate cluster: {e}")
+
+    def terminate_cluster_ex(self, wait: bool = False):
         raise NotImplementedError
 
     def get_cluster_address(self) -> str:

@@ -41,7 +41,6 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-from __future__ import print_function
 
 import builtins
 import dis
@@ -57,7 +56,7 @@ import warnings
 
 from .compat import pickle
 from collections import OrderedDict
-from typing import Generic, Union, Tuple, Callable
+from typing import ClassVar, Generic, Union, Tuple, Callable
 from pickle import _getattribute
 
 try:  # pragma: no branch
@@ -65,11 +64,6 @@ try:  # pragma: no branch
     from typing_extensions import Literal, Final
 except ImportError:
     _typing_extensions = Literal = Final = None
-
-if sys.version_info >= (3, 5, 3):
-    from typing import ClassVar
-else:  # pragma: no cover
-    ClassVar = None
 
 if sys.version_info >= (3, 8):
     from types import CellType
@@ -328,11 +322,10 @@ def _extract_code_globals(co):
     """
     out_names = _extract_code_globals_cache.get(co)
     if out_names is None:
-        names = co.co_names
         # We use a dict with None values instead of a set to get a
         # deterministic order (assuming Python 3.6+) and avoid introducing
         # non-deterministic pickle bytes as a results.
-        out_names = {names[oparg]: None for _, oparg in _walk_global_ops(co)}
+        out_names = {name: None for name in _walk_global_ops(co)}
 
         # Declaring a function inside another one using the "def ..."
         # syntax generates a constant code object corresponding to the one
@@ -412,8 +405,7 @@ def cell_set(cell, value):
 
     In Python3.7, cell_contents is writeable, so setting the contents of a cell
     can be done simply using
-    >>> cell = ... # doctest: +SKIP
-    >>> cell.cell_contents = value # doctest: +SKIP
+    >>> cell.cell_contents = value
 
     In earlier Python3 versions, the cell_contents attribute of a cell is read
     only, but this limitation can be worked around by leveraging the Python 3
@@ -527,13 +519,12 @@ def _builtin_type(name):
 
 def _walk_global_ops(code):
     """
-    Yield (opcode, argument number) tuples for all
-    global-referencing instructions in *code*.
+    Yield referenced name for all global-referencing instructions in *code*.
     """
     for instr in dis.get_instructions(code):
         op = instr.opcode
         if op in GLOBAL_OPS:
-            yield op, instr.arg
+            yield instr.argval
 
 
 def _extract_class_dict(cls):
@@ -621,44 +612,20 @@ def parametrized_type_hint_getinitargs(obj):
     elif type(obj) is type(ClassVar):
         initargs = (ClassVar, obj.__type__)
     elif type(obj) is type(Generic):
-        parameters = obj.__parameters__
-        if len(obj.__parameters__) > 0:
-            # in early Python 3.5, __parameters__ was sometimes
-            # preferred to __args__
-            initargs = (obj.__origin__, parameters)
-
-        else:
-            initargs = (obj.__origin__, obj.__args__)
+        initargs = (obj.__origin__, obj.__args__)
     elif type(obj) is type(Union):
-        if sys.version_info < (3, 5, 3):  # pragma: no cover
-            initargs = (Union, obj.__union_params__)
-        else:
-            initargs = (Union, obj.__args__)
+        initargs = (Union, obj.__args__)
     elif type(obj) is type(Tuple):
-        if sys.version_info < (3, 5, 3):  # pragma: no cover
-            initargs = (Tuple, obj.__tuple_params__)
-        else:
-            initargs = (Tuple, obj.__args__)
+        initargs = (Tuple, obj.__args__)
     elif type(obj) is type(Callable):
-        if sys.version_info < (3, 5, 3):  # pragma: no cover
-            args = obj.__args__
-            result = obj.__result__
-            if args != Ellipsis:
-                if isinstance(args, tuple):
-                    args = list(args)
-                else:
-                    args = [args]
+        (*args, result) = obj.__args__
+        if len(args) == 1 and args[0] is Ellipsis:
+            args = Ellipsis
         else:
-            (*args, result) = obj.__args__
-            if len(args) == 1 and args[0] is Ellipsis:
-                args = Ellipsis
-            else:
-                args = list(args)
+            args = list(args)
         initargs = (Callable, (args, result))
     else:  # pragma: no cover
-        raise pickle.PicklingError(
-            "Cloudpickle Error: Unknown type {}".format(type(obj))
-        )
+        raise pickle.PicklingError(f"Cloudpickle Error: Unknown type {type(obj)}")
     return initargs
 
 
@@ -739,7 +706,7 @@ def instance(cls):
 
 
 @instance
-class _empty_cell_value(object):
+class _empty_cell_value:
     """sentinel for empty closures"""
 
     @classmethod
@@ -768,7 +735,7 @@ def _fill_function(*args):
         keys = ["globals", "defaults", "dict", "module", "closure_values"]
         state = dict(zip(keys, args[1:]))
     else:
-        raise ValueError("Unexpected _fill_value arguments: %r" % (args,))
+        raise ValueError(f"Unexpected _fill_value arguments: {args!r}")
 
     # - At pickling time, any dynamic global variable used by func is
     #   serialized by value (in state['globals']).
@@ -810,6 +777,12 @@ def _fill_function(*args):
                 cell_set(cell, value)
 
     return func
+
+
+def _make_function(code, globals, name, argdefs, closure):
+    # Setting __builtins__ in globals is needed for nogil CPython.
+    globals["__builtins__"] = __builtins__
+    return types.FunctionType(code, globals, name, argdefs, closure)
 
 
 def _make_empty_cell():
@@ -940,18 +913,13 @@ def _make_typevar(name, bound, constraints, covariant, contravariant, class_trac
 
 
 def _decompose_typevar(obj):
-    try:
-        class_tracker_id = _get_or_create_tracker_id(obj)
-    except TypeError:  # pragma: nocover
-        # TypeVar instances are not weakref-able in Python 3.5.3
-        class_tracker_id = None
     return (
         obj.__name__,
         obj.__bound__,
         obj.__constraints__,
         obj.__covariant__,
         obj.__contravariant__,
-        class_tracker_id,
+        _get_or_create_tracker_id(obj),
     )
 
 
@@ -969,13 +937,13 @@ def _typevar_reduce(obj):
 
 
 def _get_bases(typ):
-    if '__orig_bases__' in getattr(typ, '__dict__', {}):
+    if "__orig_bases__" in getattr(typ, "__dict__", {}):
         # For generic types (see PEP 560)
         # Note that simply checking `hasattr(typ, '__orig_bases__')` is not
         # correct.  Subclasses of a fully-parameterized generic class does not
         # have `__orig_bases__` defined, but `hasattr(typ, '__orig_bases__')`
         # will return True because it's defined in the base class.
-        bases_attr = '__orig_bases__'
+        bases_attr = "__orig_bases__"
     else:
         # For regular class objects
         bases_attr = "__bases__"

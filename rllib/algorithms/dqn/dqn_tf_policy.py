@@ -479,7 +479,7 @@ def postprocess_nstep_and_prio(
 
 DQNTFPolicy = build_tf_policy(
     name="DQNTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.dqn.dqn.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.dqn.dqn.DQNConfig(),
     make_model=build_q_model,
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=build_q_losses,

@@ -411,7 +411,7 @@ def apply_gradients_fn(policy, optimizer, grads_and_vars):
 CQLTFPolicy = build_tf_policy(
     name="CQLTFPolicy",
     loss_fn=cql_loss,
-    get_default_config=lambda: ray.rllib.algorithms.cql.cql.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.cql.cql.CQLConfig(),
     validate_spaces=validate_spaces,
     stats_fn=cql_stats,
     postprocess_fn=postprocess_trajectory,

@@ -10,7 +10,7 @@ import ray
 from ray import serve
 
 from ray._private.test_utils import wait_for_condition
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import pytest_runtest_makereport, propagate_logs  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -78,6 +78,8 @@ def _shared_serve_instance():
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
+    # Clear all applications to avoid naming & route_prefix collisions.
+    _shared_serve_instance.delete_all_apps()
     # Clear all state between tests to avoid naming collisions.
     _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.

@@ -42,38 +42,23 @@ ds.schema()
 # -> petal.width: double
 # -> variety: string
 # __create_from_python_end__
-# fmt: on 
+# fmt: on
 
 # fmt: off
 # __create_from_files_begin__
 # Create from CSV.
-# Tip: "example://" is a convenient protocol to access the
-# python/ray/data/examples/data directory.
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
 # Dataset(num_blocks=1, num_rows=150,
-#         schema={sepal.length: float64, sepal.width: float64,
-#                 petal.length: float64, petal.width: float64, variety: object})
+#         schema={sepal length (cm): double, sepal width (cm): double, 
+#         petal length (cm): double, petal width (cm): double, target: int64})
 
 # Create from Parquet.
-ds = ray.data.read_parquet("example://iris.parquet")
+ds = ray.data.read_parquet("s3://anonymous@air-example-data/iris.parquet")
 # Dataset(num_blocks=1, num_rows=150,
-#         schema={sepal.length: float64, sepal.width: float64,
-#                 petal.length: float64, petal.width: float64, variety: object})
+#         schema={sepal.length: double, sepal.width: double, 
+#         petal.length: double, petal.width: double, variety: string})
 
 # __create_from_files_end__
-# fmt: on
-
-# fmt: off
-# __save_dataset_begin__
-# Write to Parquet files in /tmp/iris.
-ds.write_parquet("/tmp/iris")
-# -> /tmp/iris/data_000000.parquet
-
-# Use repartition to control the number of output files:
-ds.repartition(2).write_parquet("/tmp/iris2")
-# -> /tmp/iris2/data_000000.parquet
-# -> /tmp/iris2/data_000001.parquet
-# __save_dataset_end__
 # fmt: on
 
 # fmt: off
@@ -90,7 +75,7 @@ ds = ds.repartition(10)
 def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
     return df[(df["sepal.length"] < 5.5) & (df["petal.length"] > 3.5)]
 
-transformed_ds = ds.map_batches(transform_batch)
+transformed_ds = ds.map_batches(transform_batch, batch_format="pandas")
 # Dataset(num_blocks=10, num_rows=3,
 #         schema={sepal.length: float64, sepal.width: float64,
 #                 petal.length: float64, petal.width: float64, variety: object})
@@ -103,54 +88,4 @@ transformed_ds.show()
 # -> {'sepal.length': 4.9, 'sepal.width': 2.5,
 #     'petal.length': 4.5, 'petal.width': 1.7, 'variety': 'Virginica'}
 # __data_transform_end__
-# fmt: on
-
-# fmt: off
-# __data_access_begin__
-@ray.remote
-def consume(data) -> int:
-    num_batches = 0
-    for batch in data.iter_batches(batch_size=10):
-        num_batches += 1
-    return num_batches
-
-ray.get(consume.remote(ds))
-# -> 15
-# __data_access_end__
-# fmt: on
-
-# fmt: off
-# __dataset_split_begin__
-@ray.remote
-class Worker:
-    def __init__(self, rank: int):
-        pass
-
-    def train(self, shard) -> int:
-        for batch in shard.iter_batches(batch_size=256):
-            pass
-        return shard.count()
-
-workers = [Worker.remote(i) for i in range(4)]
-# -> [Actor(Worker, ...), Actor(Worker, ...), ...]
-
-shards = ds.split(n=4, locality_hints=workers)
-# -> [
-#       Dataset(num_blocks=3, num_rows=45,
-#               schema={sepal.length: double, sepal.width: double,
-#                       petal.length: double, petal.width: double, variety: string}),
-#       Dataset(num_blocks=3, num_rows=45,
-#               schema={sepal.length: double, sepal.width: double,
-#                       petal.length: double, petal.width: double, variety: string}),
-#       Dataset(num_blocks=2, num_rows=30,
-#               schema={sepal.length: double, sepal.width: double,
-#                       petal.length: double, petal.width: double, variety: string}),
-#       Dataset(num_blocks=2, num_rows=30,
-#               schema={sepal.length: double, sepal.width: double,
-#                       petal.length: double, petal.width: double, variety: string}),
-#    ]
-
-ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
-# -> [45, 45, 30, 30]
-# __dataset_split_end__
 # fmt: on

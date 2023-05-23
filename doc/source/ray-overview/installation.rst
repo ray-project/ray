@@ -3,7 +3,7 @@
 Installing Ray
 ==============
 
-Ray currently officially supports x86_64 and Apple silicon (M1) hardware.
+Ray currently officially supports x86_64, aarch64 (ARM) for Linux, and Apple silicon (M1) hardware.
 Ray on Windows is currently in beta.
 
 Official Releases
@@ -11,25 +11,66 @@ Official Releases
 
 From Wheels
 ~~~~~~~~~~~
-You can install the latest official version of Ray from PyPI on linux, windows
-and macos as follows:
+You can install the latest official version of Ray from PyPI on Linux, Windows,
+and macOS by choosing the option that best matches your use case.
 
-.. code-block:: bash
+.. tab-set::
 
-  # Install Ray with support for the dashboard + cluster launcher
-  pip install -U "ray[default]"
+    .. tab-item:: Recommended
 
-  # Install Ray with minimal dependencies
-  # pip install -U ray
+        **For machine learning applications**
 
-To install Ray libraries:
+        .. code-block:: shell
 
-.. code-block:: bash
+          pip install -U "ray[air]"
 
-  pip install -U "ray[air]" # installs Ray + dependencies for Ray AI Runtime
-  pip install -U "ray[tune]"  # installs Ray + dependencies for Ray Tune
-  pip install -U "ray[rllib]"  # installs Ray + dependencies for Ray RLlib
-  pip install -U "ray[serve]"  # installs Ray + dependencies for Ray Serve
+          # For reinforcement learning support, install RLlib instead.
+          # pip install -U "ray[rllib]"
+
+        **For general Python applications**
+
+        .. code-block:: shell
+
+          pip install -U "ray[default]"
+
+          # If you don't want Ray Dashboard or Cluster Launcher, install Ray with minimal dependencies instead.
+          # pip install -U "ray"
+
+    .. tab-item:: Advanced
+
+        .. list-table::
+          :widths: 2 3
+          :header-rows: 1
+
+          * - Command
+            - Installed components
+          * - `pip install -U "ray"`
+            - Core
+          * - `pip install -U "ray[default]"`
+            - Core, Dashboard, Cluster Launcher
+          * - `pip install -U "ray[data]"`
+            - Core, Data
+          * - `pip install -U "ray[train]"`
+            - Core, Train
+          * - `pip install -U "ray[tune]"`
+            - Core, Tune
+          * - `pip install -U "ray[serve]"`
+            - Core, Dashboard, Cluster Launcher, Serve
+          * - `pip install -U "ray[rllib]"`
+            - Core, Tune, RLlib
+          * - `pip install -U "ray[air]"`
+            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve
+          * - `pip install -U "ray[all]"`
+            - Core, Dashboard, Cluster Launcher, Data, Train, Tune, Serve, RLlib
+
+        .. tip::
+
+          You can combine installation extras. 
+          For example, to install Ray with Dashboard, Cluster Launcher, and Train support, you can run:
+
+          .. code-block:: shell
+
+            pip install -U "ray[default,train]"
 
 .. _install-nightlies:
 
@@ -48,16 +89,41 @@ You can install the nightly Ray wheels via the following links. These daily rele
   # Install Ray with minimal dependencies
   # pip install -U LINK_TO_WHEEL.whl
 
+.. tab-set::
 
-====================  ====================  =======================
-       Linux                 MacOS          Windows (beta)
-====================  ====================  =======================
-`Linux Python 3.10`_  `MacOS Python 3.10`_  `Windows Python 3.10`_
-`Linux Python 3.9`_   `MacOS Python 3.9`_   `Windows Python 3.9`_
-`Linux Python 3.8`_   `MacOS Python 3.8`_   `Windows Python 3.8`_
-`Linux Python 3.7`_   `MacOS Python 3.7`_   `Windows Python 3.7`_
-`Linux Python 3.6`_   `MacOS Python 3.6`_
-====================  ====================  =======================
+    .. tab-item:: Linux
+
+        =============================================== ================================================
+               Linux (x86_64)                                   Linux (arm64/aarch64)
+        =============================================== ================================================
+        `Linux Python 3.10 (x86_64)`_                    `Linux Python 3.10 (aarch64)`_
+        `Linux Python 3.9 (x86_64)`_                     `Linux Python 3.9 (aarch64)`_
+        `Linux Python 3.8 (x86_64)`_                     `Linux Python 3.8 (aarch64)`_
+        `Linux Python 3.7 (x86_64)`_                     `Linux Python 3.7 (aarch64)`_
+        `Linux Python 3.11 (x86_64) (EXPERIMENTAL)`_     `Linux Python 3.11 (aarch64) (EXPERIMENTAL)`_
+        =============================================== ================================================
+
+    .. tab-item:: MacOS
+
+        ================================  ================================
+         MacOS (x86_64)                    MacOS (arm64)
+        ================================  ================================
+        `MacOS Python 3.10 (x86_64)`_      `MacOS Python 3.10 (arm64)`_
+        `MacOS Python 3.9 (x86_64)`_       `MacOS Python 3.9 (arm64)`_
+        `MacOS Python 3.8 (x86_64)`_       `MacOS Python 3.8 (arm64)`_
+        `MacOS Python 3.7 (x86_64)`_
+        ================================  ================================
+
+    .. tab-item:: Windows (beta)
+
+        .. list-table::
+           :header-rows: 1
+
+           * - Windows (beta)
+           * - `Windows Python 3.10`_
+           * - `Windows Python 3.9`_
+           * - `Windows Python 3.8`_
+           * - `Windows Python 3.7`_
 
 .. note::
 
@@ -68,17 +134,33 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
   :ref:`Usage stats <ref-usage-stats>` collection is enabled by default (can be :ref:`disabled <usage-disable>`) for nightly wheels including both local clusters started via ``ray.init()`` and remote clusters via cli.
 
-.. _`Linux Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
-.. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
-.. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
-.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
+.. note::
 
-.. _`MacOS Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_10_15_universal2.whl
-.. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
-.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
-.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp36-cp36m-macosx_10_15_intel.whl
+  Python 3.11 support is experimental.
+
+.. _`Linux Python 3.11 (x86_64) (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl
+.. _`Linux Python 3.10 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
+.. _`Linux Python 3.9 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
+.. _`Linux Python 3.8 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
+.. _`Linux Python 3.7 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+
+.. _`Linux Python 3.11 (aarch64) (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_aarch64.whl
+.. _`Linux Python 3.10 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_aarch64.whl
+.. _`Linux Python 3.9 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_aarch64.whl
+.. _`Linux Python 3.8 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-manylinux2014_aarch64.whl
+.. _`Linux Python 3.7 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_aarch64.whl
+
+
+.. _`MacOS Python 3.10 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_10_15_universal2.whl
+.. _`MacOS Python 3.9 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.8 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.7 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+
+
+.. _`MacOS Python 3.10 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_11_0_arm64.whl
+.. _`MacOS Python 3.9 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_11_0_arm64.whl
+.. _`MacOS Python 3.8 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_11_0_arm64.whl
+
 
 .. _`Windows Python 3.10`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-win_amd64.whl
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-win_amd64.whl
@@ -105,7 +187,7 @@ Here's a summary of the variations:
 
 * For Python 3.8 and 3.9, the ``m`` before the OS version should be deleted and the OS version for MacOS should read ``macosx_10_15_x86_64`` instead of ``macosx_10_15_intel``.
 
-* For MacOS, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instad of ``macosx_10_15``.
+* For MacOS, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instead of ``macosx_10_15``.
 
 .. _ray-install-java:
 
@@ -182,14 +264,15 @@ You can install and use Ray C++ API as follows.
 
 .. note::
 
-  If you build Ray from source, please remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
+  If you build Ray from source, remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
 
 .. _apple-silcon-supprt:
 
 M1 Mac (Apple Silicon) Support
 ------------------------------
 
-Ray has experimental support for machines running Apple Silicon (such as M1 macs). To get started:
+Ray has experimental support for machines running Apple Silicon (such as M1 macs).
+Multi-node clusters are untested. To get started with local Ray development:
 
 #. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
 
@@ -207,7 +290,7 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 
 #. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs.
 
-   * ``pip uninstall grpcio; conda install grpcio=1.43.0``
+   * ``pip uninstall grpcio; conda install grpcio=1.43.0 -c conda-forge``
 
 #. Install Ray as you normally would.
 
@@ -222,7 +305,8 @@ Ray has experimental support for machines running Apple Silicon (such as M1 macs
 Windows Support
 ---------------
 
-Windows support is currently in beta. Please submit any issues you encounter on
+Windows support is currently in beta, and multi-node Ray clusters are untested.
+Please submit any issues you encounter on
 `GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
@@ -254,7 +338,7 @@ on the AUR page of ``python-ray`` `here`_.
 
 Installing From conda-forge
 ---------------------------
-Ray can also be installed as a conda package on linux and windows
+Ray can also be installed as a conda package on Linux and Windows.
 
 .. code-block:: bash
 
@@ -268,7 +352,7 @@ Ray can also be installed as a conda package on linux and windows
   # Install Ray with minimal dependencies
   # conda install -c conda-forge ray
 
-To install Ray libraries, you can use ``pip`` as above or ``conda``/``mamba``
+To install Ray libraries, use ``pip`` as above or ``conda``/``mamba``.
 
 .. code-block:: bash
 
@@ -411,3 +495,27 @@ that you've cloned the git repository.
 .. code-block:: bash
 
   python -m pytest -v python/ray/tests/test_mini.py
+
+
+Installed Python dependencies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Our docker images are shipped with pre-installed Python dependencies
+required for Ray and its libraries.
+
+We publish the dependencies that are installed in our ``ray`` and ``ray-ml``
+Docker images for Python 3.9.
+
+.. tabs::
+
+    .. group-tab:: ray (Python 3.9)
+
+        Ray version: nightly (`0d880e3 <https://github.com/ray-project/ray/commit/0d880e351d3c52bcb84207e397c531088c11ffda>`_)
+
+        .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
+
+    .. group-tab:: ray-ml (Python 3.9)
+
+        Ray version: nightly (`0d880e3 <https://github.com/ray-project/ray/commit/0d880e351d3c52bcb84207e397c531088c11ffda>`_)
+
+        .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt

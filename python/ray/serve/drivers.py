@@ -3,7 +3,8 @@ import logging
 from typing import Any, Callable, Optional, Union, Dict
 import ray
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
+from ray._private.tls_utils import add_port_to_grpc_server
+from ray.serve._private.utils import install_serve_encoders_to_fastapi, record_serve_tag
 from ray.util.annotations import PublicAPI
 
 import starlette
@@ -43,6 +44,11 @@ class DAGDriver:
             http_adapter: a callable function or import string to convert
                 HTTP requests to Ray Serve input.
         """
+
+        record_serve_tag("SERVE_DAG_DRIVER_USED", "1")
+        if http_adapter is not None:
+            record_serve_tag("SERVE_HTTP_ADAPTER_USED", "1")
+
         install_serve_encoders_to_fastapi()
         http_adapter = load_http_adapter(http_adapter)
         self.app = FastAPI()
@@ -136,16 +142,29 @@ class gRPCIngress:
 
         self.setup_complete = asyncio.Event()
         self.running_task = get_or_create_event_loop().create_task(self.run())
+        record_serve_tag("SERVE_GRPC_INGRESS_USED", "1")
 
     async def run(self):
         """Start gRPC Server"""
-
         logger.info(
             "Starting gRPC server with on node:{} "
             "listening on port {}".format(ray.util.get_node_ip_address(), self.port)
         )
+        address = "[::]:{}".format(self.port)
+        try:
+            # Depending on whether RAY_USE_TLS is on, `add_port_to_grpc_server`
+            # can create a secure or insecure channel
+            self.grpc_port = add_port_to_grpc_server(self.server, address)
+        except Exception:
+            # TODO(SongGuyang): Catch the exception here because there is
+            # port conflict issue which brought from static port. We should
+            # remove this after we find better port resolution.
+            logger.exception(
+                "Failed to add port to grpc server. GRPC service will be disabled"
+            )
+            self.server = None
+            self.grpc_port = None
 
-        self.server.add_insecure_port("[::]:{}".format(self.port))
         self.setup_complete.set()
         await self.server.start()
         await self.server.wait_for_termination()

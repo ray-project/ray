@@ -17,21 +17,7 @@ BACKOFF_S = 5
 
 
 def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
-    """Wait until the Ray head container is ready. Then start the autoscaler.
-
-    For kuberay's autoscaler integration, the autoscaler runs in a sidecar container
-    in the same pod as the main Ray container, which runs the rest of the Ray
-    processes.
-
-    The logging configuration here is for the sidecar container, but we need the
-    logs to go to the same place as the head node logs because the autoscaler is
-    allowed to send scaling events to Ray drivers' stdout. The implementation of
-    this feature involves the autoscaler communicating to another Ray process
-    (the log monitor) via logs in that directory.
-
-    However, the Ray head container sets up the log directory. Thus, we set up
-    logging only after the Ray head is ready.
-    """
+    """Wait until the Ray head container is ready. Then start the autoscaler."""
     head_ip = get_node_ip_address()
     ray_address = f"{head_ip}:6379"
     while True:
@@ -55,6 +41,8 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
             print(f"Will check again in {BACKOFF_S} seconds.")
             time.sleep(BACKOFF_S)
 
+    # The Ray head container sets up the log directory. Thus, we set up logging
+    # only after the Ray head is ready.
     _setup_logging()
 
     # autoscaling_config_producer reads the RayCluster CR from K8s and uses the CR
@@ -83,7 +71,9 @@ def _setup_logging() -> None:
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
     """
     log_dir = os.path.join(
-        ray._private.utils.get_ray_temp_dir(), ray._private.node.SESSION_LATEST, "logs"
+        ray._private.utils.get_ray_temp_dir(),
+        ray._private.ray_constants.SESSION_LATEST,
+        "logs",
     )
     # The director should already exist, but try (safely) to create it just in case.
     try_to_create_directory(log_dir)
@@ -96,8 +86,16 @@ def _setup_logging() -> None:
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
         max_bytes=ray_constants.LOGGING_ROTATE_BYTES,
         backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        logger_name="ray",  # Root of the logging hierarchy for Ray code.
     )
-    # Logs will also be written to the container's stdout.
+
+    # For the autoscaler, the root logger _also_ needs to write to stderr, not just
+    # ray_constants.MONITOR_LOG_FILE_NAME.
+    level = logging.getLevelName(ray_constants.LOGGER_LEVEL.upper())
+    stderr_handler = logging._StderrHandler()
+    stderr_handler.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
+    stderr_handler.setLevel(level)
+    logging.root.setLevel(level)
+    logging.root.addHandler(stderr_handler)
+
     # The stdout handler was set up in the Ray CLI entry point.
     # See ray.scripts.scripts::cli().

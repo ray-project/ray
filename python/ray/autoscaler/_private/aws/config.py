@@ -4,12 +4,12 @@ import json
 import logging
 import os
 import time
-from distutils.version import StrictVersion
 from functools import lru_cache, partial
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import boto3
 import botocore
+from packaging.version import Version
 
 from ray.autoscaler._private.aws.cloudwatch.cloudwatch_helper import (
     CloudwatchHelper as cwh,
@@ -36,6 +36,8 @@ SECURITY_GROUP_TEMPLATE = RAY + "-{}"
 DEFAULT_AMI_NAME = "AWS Deep Learning AMI (Ubuntu 18.04) V61.0"
 
 # Obtained from https://aws.amazon.com/marketplace/pp/B07Y43P7X5 on 6/10/2022.
+# TODO(alex) : write a unit test to make sure we update AMI version used in
+# ray/autoscaler/aws/example-full.yaml whenever we update this dict.
 DEFAULT_AMI = {
     "us-east-1": "ami-0dd6adfad4ad37eec",  # US East (N. Virginia)
     "us-east-2": "ami-0c77cd5ca05bf1281",  # US East (Ohio)
@@ -56,7 +58,7 @@ DEFAULT_AMI = {
 
 # todo: cli_logger should handle this assert properly
 # this should probably also happens somewhere else
-assert StrictVersion(boto3.__version__) >= StrictVersion(
+assert Version(boto3.__version__) >= Version(
     "1.4.8"
 ), "Boto3 version >= 1.4.8 required, try `pip install -U boto3`"
 

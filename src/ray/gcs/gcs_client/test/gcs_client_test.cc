@@ -105,13 +105,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs_client_.reset();
 
     server_io_service_->stop();
-    rpc::DrainAndResetServerCallExecutor();
+    rpc::DrainServerCallExecutor();
     server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
     if (!no_redis_) {
       TestSetupUtil::FlushAllRedisServers();
     }
+    rpc::ResetServerCallExecutor();
   }
 
   void RestartGcsServer() {
@@ -356,13 +357,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return resource_map;
   }
 
-  bool ReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> heartbeat) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
-        heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool ReportResourceUsage(const std::shared_ptr<rpc::ResourcesData> resources) {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
@@ -520,11 +514,7 @@ TEST_P(GcsClientTest, TestActorInfo) {
   ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
 
   // Subscribe to any update operations of an actor.
-  std::atomic<int> actor_update_count(0);
-  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
-                                            const gcs::ActorTableData &data) {
-    ++actor_update_count;
-  };
+  auto on_subscribe = [](const ActorID &actor_id, const gcs::ActorTableData &data) {};
   ASSERT_TRUE(SubscribeActor(actor_id, on_subscribe));
 
   // Register an actor to GCS.
@@ -887,9 +877,7 @@ TEST_P(GcsClientTest, TestGcsTableReload) {
 
 TEST_P(GcsClientTest, TestGcsRedisFailureDetector) {
   // Stop redis.
-  if (no_redis_) {
-    return;
-  }
+  GTEST_SKIP() << "Skip this test for now since the failure will crash GCS";
   TestSetupUtil::ShutDownRedisServers();
 
   // Sleep 3 times of gcs_redis_heartbeat_interval_milliseconds to make sure gcs_server

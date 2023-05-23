@@ -470,6 +470,27 @@ Status NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
   return Status::OK();
 }
 
+Status NodeInfoAccessor::AsyncCheckSelfAlive(
+    const std::function<void(Status, bool)> &callback, int64_t timeout_ms = -1) {
+  rpc::CheckAliveRequest request;
+  auto node_addr = local_node_info_.node_manager_address() + ":" +
+                   std::to_string(local_node_info_.node_manager_port());
+  RAY_CHECK(callback != nullptr);
+  request.add_raylet_address(node_addr);
+  client_impl_->GetGcsRpcClient().CheckAlive(
+      request,
+      [callback](auto status, const auto &reply) {
+        if (status.ok()) {
+          RAY_CHECK(reply.raylet_alive().size() == 1);
+          callback(status, reply.raylet_alive()[0]);
+        } else {
+          callback(status, true);
+        }
+      },
+      timeout_ms);
+  return Status::OK();
+}
+
 Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
                                         const StatusCallback &callback) {
   RAY_LOG(DEBUG) << "Draining node, node id = " << node_id;
@@ -555,28 +576,6 @@ bool NodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
   return removed_nodes_.count(node_id) == 1;
 }
 
-Status NodeInfoAccessor::AsyncReportHeartbeat(
-    const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-    const StatusCallback &callback) {
-  rpc::ReportHeartbeatRequest request;
-  request.mutable_heartbeat()->CopyFrom(*data_ptr);
-  static auto *rpc_client = [this]() -> rpc::GcsRpcClient * {
-    auto io_service = new instrumented_io_context;
-    auto client_call_manager = new rpc::ClientCallManager(*io_service);
-    new boost::asio::io_service::work(*io_service);
-    new std::thread([io_service]() { io_service->run(); });
-    const auto addr = client_impl_->GetGcsServerAddress();
-    return new rpc::GcsRpcClient(addr.first, addr.second, *client_call_manager);
-  }();
-  rpc_client->ReportHeartbeat(
-      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
-        if (callback) {
-          callback(status);
-        }
-      });
-  return Status::OK();
-}
-
 void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   bool is_alive = (node_info.state() == GcsNodeInfo::ALIVE);
@@ -618,7 +617,7 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   } else {
     node.set_node_id(node_info.node_id());
     node.set_state(rpc::GcsNodeInfo::DEAD);
-    node.set_timestamp(node_info.timestamp());
+    node.set_end_time_ms(node_info.end_time_ms());
   }
 
   // If the notification is new, call registered callback.
@@ -780,7 +779,6 @@ Status NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
 
 Status TaskInfoAccessor::AsyncAddTaskEventData(
     std::unique_ptr<rpc::TaskEventData> data_ptr, StatusCallback callback) {
-  RAY_LOG(DEBUG) << "Adding task events." << data_ptr->DebugString();
   rpc::AddTaskEventDataRequest request;
   // Prevent copy here
   request.mutable_data()->Swap(data_ptr.get());

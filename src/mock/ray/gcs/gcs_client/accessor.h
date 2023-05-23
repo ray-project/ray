@@ -133,6 +133,10 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (const NodeID &node_id, const StatusCallback &callback),
               (override));
   MOCK_METHOD(Status,
+              AsyncCheckSelfAlive,
+              (const std::function<void(Status, bool)> &callback, int64_t timeout_ms),
+              (override));
+  MOCK_METHOD(Status,
               AsyncGetAll,
               (const MultiItemCallback<rpc::GcsNodeInfo> &callback),
               (override));
@@ -150,11 +154,6 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (),
               (const, override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
-  MOCK_METHOD(Status,
-              AsyncReportHeartbeat,
-              (const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
-               const StatusCallback &callback),
-              (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,
               AsyncGetInternalConfig,

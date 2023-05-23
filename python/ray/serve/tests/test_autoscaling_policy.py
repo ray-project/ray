@@ -15,12 +15,16 @@ from ray.serve._private.autoscaling_policy import (
     calculate_desired_num_replicas,
 )
 from ray.serve._private.common import DeploymentInfo
-from ray.serve._private.deployment_state import ReplicaState
+from ray.serve._private.common import ReplicaState
 from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import (
+    CONTROL_LOOP_PERIOD_S,
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 from ray.serve.controller import ServeController
 from ray.serve.deployment import Deployment
-import ray.experimental.state.api as state_api
+import ray.util.state as state_api
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 
 import ray
@@ -58,23 +62,29 @@ class TestCalculateDesiredNumReplicas:
             )
             assert min_replicas <= desired_num_replicas <= max_replicas
 
-    def test_scale_up(self):
+    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
+    def test_scale_up(self, target_requests):
         config = AutoscalingConfig(
-            min_replicas=0, max_replicas=100, target_num_ongoing_requests_per_replica=1
+            min_replicas=0,
+            max_replicas=100,
+            target_num_ongoing_requests_per_replica=target_requests,
         )
         num_replicas = 10
-        num_ongoing_requests = [2.0] * num_replicas
+        num_ongoing_requests = [2 * target_requests] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
         assert 19 <= desired_num_replicas <= 21  # 10 * 2 = 20
 
-    def test_scale_down(self):
+    @pytest.mark.parametrize("target_requests", [0.5, 1.0, 1.5])
+    def test_scale_down(self, target_requests):
         config = AutoscalingConfig(
-            min_replicas=0, max_replicas=100, target_num_ongoing_requests_per_replica=1
+            min_replicas=0,
+            max_replicas=100,
+            target_num_ongoing_requests_per_replica=target_requests,
         )
         num_replicas = 10
-        num_ongoing_requests = [0.5] * num_replicas
+        num_ongoing_requests = [0.5 * target_requests] * num_replicas
         desired_num_replicas = calculate_desired_num_replicas(
             autoscaling_config=config, current_num_ongoing_requests=num_ongoing_requests
         )
@@ -102,28 +112,38 @@ class TestCalculateDesiredNumReplicas:
         assert 5 <= desired_num_replicas <= 8  # 10 + 0.5 * (2.5 - 10) = 6.25
 
 
-def get_running_replicas(controller: ServeController, deployment: Deployment) -> List:
+def get_running_replicas(
+    controller: ServeController, deployment: Deployment, app_name
+) -> List:
     """Get the replicas currently running for given deployment"""
+    if app_name:
+        deployment_name = app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment.name
+    else:
+        deployment_name = deployment.name
     replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(deployment.name)
+        controller._dump_replica_states_for_testing.remote(deployment_name)
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return running_replicas
 
 
 def get_running_replica_tags(
-    controller: ServeController, deployment: Deployment
+    controller: ServeController,
+    deployment: Deployment,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
 ) -> List:
     """Get the replica tags of running replicas for given deployment"""
-    running_replicas = get_running_replicas(controller, deployment)
+    running_replicas = get_running_replicas(controller, deployment, app_name)
     return [replica.replica_tag for replica in running_replicas]
 
 
 def get_num_running_replicas(
-    controller: ServeController, deployment: Deployment
+    controller: ServeController,
+    deployment: Deployment,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
 ) -> int:
     """Get the amount of replicas currently running for given deployment"""
-    running_replicas = get_running_replicas(controller, deployment)
+    running_replicas = get_running_replicas(controller, deployment, app_name)
     return len(running_replicas)
 
 
@@ -161,7 +181,11 @@ def test_assert_no_replicas_deprovisioned():
         assert_no_replicas_deprovisioned(replica_tags_2, replica_tags_1)
 
 
-def get_deployment_start_time(controller: ServeController, deployment: Deployment):
+def get_deployment_start_time(
+    controller: ServeController,
+    deployment: Deployment,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+):
     """Return start time for given deployment"""
     deployment_route_list = DeploymentRouteList.FromString(
         ray.get(controller.list_deployments.remote())
@@ -173,7 +197,11 @@ def get_deployment_start_time(controller: ServeController, deployment: Deploymen
         )
         for deployment_route in deployment_route_list.deployment_routes
     }
-    deployment_info, _route_prefix = deployments[deployment.name]
+    if app_name:
+        deployment_name = app_name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment.name
+    else:
+        deployment_name = deployment.name
+    deployment_info, _route_prefix = deployments[deployment_name]
     return deployment_info.start_time_ms
 
 
@@ -667,7 +695,6 @@ def test_e2e_intermediate_downscaling(serve_instance):
     controller = serve_instance._controller
     start_time = get_deployment_start_time(controller, A)
 
-    A.get_handle()
     [handle.remote() for _ in range(50)]
 
     wait_for_condition(
@@ -824,19 +851,19 @@ def test_e2e_raise_min_replicas(serve_instance):
     print("Deployed A.")
 
     controller = serve_instance._controller
-    start_time = get_deployment_start_time(controller, A)
+    start_time = get_deployment_start_time(controller, A, app_name=None)
 
-    assert get_num_running_replicas(controller, A) == 0
+    assert get_num_running_replicas(controller, A, app_name=None) == 0
 
     handle = A.get_handle()
     [handle.remote() for _ in range(1)]
     print("Issued one request.")
 
     time.sleep(2)
-    assert get_num_running_replicas(controller, A) == 1
+    assert get_num_running_replicas(controller, A, app_name=None) == 1
     print("Scale up to 1 replica.")
 
-    first_deployment_replicas = get_running_replica_tags(controller, A)
+    first_deployment_replicas = get_running_replica_tags(controller, A, app_name=None)
 
     A.options(
         autoscaling_config={
@@ -853,14 +880,16 @@ def test_e2e_raise_min_replicas(serve_instance):
     ).deploy()
     print("Redeployed A with min_replicas set to 2.")
 
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) >= 2)
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, A, app_name=None) >= 2
+    )
     time.sleep(5)
 
     # Confirm that autoscaler doesn't scale above 2 even after waiting
-    assert get_num_running_replicas(controller, A) == 2
+    assert get_num_running_replicas(controller, A, app_name=None) == 2
     print("Autoscaled to 2 without issuing any new requests.")
 
-    second_deployment_replicas = get_running_replica_tags(controller, A)
+    second_deployment_replicas = get_running_replica_tags(controller, A, app_name=None)
 
     # Confirm that none of the original replicas were de-provisioned
     assert_no_replicas_deprovisioned(
@@ -872,12 +901,14 @@ def test_e2e_raise_min_replicas(serve_instance):
     print("Completed request.")
 
     # As the queue is drained, we should scale back down.
-    wait_for_condition(lambda: get_num_running_replicas(controller, A) <= 2)
-    assert get_num_running_replicas(controller, A) > 1
+    wait_for_condition(
+        lambda: get_num_running_replicas(controller, A, app_name=None) <= 2
+    )
+    assert get_num_running_replicas(controller, A, app_name=None) > 1
     print("Stayed at 2 replicas.")
 
     # Make sure start time did not change for the deployment
-    assert get_deployment_start_time(controller, A) == start_time
+    assert get_deployment_start_time(controller, A, app_name=None) == start_time
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -897,7 +928,15 @@ def test_e2e_initial_replicas(serve_instance):
 
     # f should start with initial_replicas (2) deployments
     actors = state_api.list_actors(
-        filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+        filters=[
+            (
+                "class_name",
+                "=",
+                f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
+                f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f",
+            ),
+            ("state", "=", "ALIVE"),
+        ]
     )
     print(actors)
     assert len(actors) == 2
@@ -905,7 +944,15 @@ def test_e2e_initial_replicas(serve_instance):
     # f should scale down to min_replicas (1) deployments
     def check_one_replica():
         actors = state_api.list_actors(
-            filters=[("class_name", "=", "ServeReplica:f"), ("state", "=", "ALIVE")]
+            filters=[
+                (
+                    "class_name",
+                    "=",
+                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
+                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f",
+                ),
+                ("state", "=", "ALIVE"),
+            ]
         )
         return len(actors) == 1
 
@@ -940,7 +987,12 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     def check_two_replicas():
         actors = state_api.list_actors(
             filters=[
-                ("class_name", "=", "ServeReplica:scaler"),
+                (
+                    "class_name",
+                    "=",
+                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
+                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}scaler",
+                ),
                 ("state", "=", "ALIVE"),
             ]
         )
@@ -963,12 +1015,25 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     def check_num_replicas(live: int, dead: int):
         live_actors = state_api.list_actors(
             filters=[
-                ("class_name", "=", "ServeReplica:scaler"),
+                (
+                    "class_name",
+                    "=",
+                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
+                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}scaler",
+                ),
                 ("state", "=", "ALIVE"),
             ]
         )
         dead_actors = state_api.list_actors(
-            filters=[("class_name", "=", "ServeReplica:scaler"), ("state", "=", "DEAD")]
+            filters=[
+                (
+                    "class_name",
+                    "=",
+                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
+                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}scaler",
+                ),
+                ("state", "=", "DEAD"),
+            ]
         )
 
         return len(live_actors) == live and len(dead_actors) == dead
@@ -1057,7 +1122,15 @@ app = g.bind()
 
     def check_num_replicas(num: int):
         actors = state_api.list_actors(
-            filters=[("class_name", "=", "ServeReplica:g"), ("state", "=", "ALIVE")]
+            filters=[
+                (
+                    "class_name",
+                    "=",
+                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
+                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}g",
+                ),
+                ("state", "=", "ALIVE"),
+            ]
         )
         return len(actors) == num
 

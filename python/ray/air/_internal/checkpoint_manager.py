@@ -55,6 +55,7 @@ class _TrackedCheckpoint:
             into `"evaluation/episode_reward_mean"`.
         node_ip: IP of the node where the checkpoint was generated. Defaults
             to the current node.
+        rank: Rank of the node where the checkpoint was generated. Defaults to 0.
     """
 
     def __init__(
@@ -64,12 +65,14 @@ class _TrackedCheckpoint:
         checkpoint_id: Optional[int] = None,
         metrics: Optional[Dict] = None,
         node_ip: Optional[str] = None,
+        rank: Optional[int] = 0,
     ):
         from ray.tune.result import NODE_IP
 
         self.dir_or_data = dir_or_data
         self.id = checkpoint_id
         self.storage_mode = storage_mode
+        self.rank = rank
 
         self.metrics = flatten_dict(metrics) if metrics else {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
@@ -133,7 +136,31 @@ class _TrackedCheckpoint:
         except Exception as e:
             logger.warning(f"Checkpoint deletion failed: {e}")
 
-    def to_air_checkpoint(self) -> Optional[Checkpoint]:
+    def to_air_checkpoint(
+        self, local_to_remote_path_fn: Optional[Callable[[str], str]] = None
+    ) -> Optional[Checkpoint]:
+        """Converter from a `_TrackedCheckpoint` to a `ray.air.Checkpoint`.
+
+        This method Resolves the checkpoint data if it is an object reference.
+
+        This method handles multiple types of checkpoint data:
+        - If the data is a string (local checkpoint path), this returns a
+          directory-backed checkpoint.
+            - If a `local_to_remote_path_fn` is provided, this converts
+              local path to a remote URI, then returns a URI-backed checkpoint.
+        - If the data is bytes or a dictionary, it returns an in-memory
+          bytes/dict-backed checkpoint.
+
+        Args:
+            local_to_remote_path_fn: Function that takes in this checkpoint's local
+                directory path and returns the corresponding remote URI in the cloud.
+                This should only be specified if the data was synced to cloud.
+                Only applied during conversion to AIR checkpoint and only
+                if ``dir_or_data`` is or resolves to a directory path.
+
+        Returns:
+            Checkpoint: The AIR checkpoint backed by the resolved data.
+        """
         from ray.tune.trainable.util import TrainableUtil
 
         checkpoint_data = self.dir_or_data
@@ -144,22 +171,32 @@ class _TrackedCheckpoint:
         if isinstance(checkpoint_data, ray.ObjectRef):
             checkpoint_data = ray.get(checkpoint_data)
 
+        if isinstance(checkpoint_data, Checkpoint):
+            return checkpoint_data
+
         if isinstance(checkpoint_data, str):
-            try:
-                checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
-            except FileNotFoundError:
-                if log_once("checkpoint_not_available"):
-                    logger.error(
-                        f"The requested checkpoint is not available on this node, "
-                        f"most likely because you are using Ray client or disabled "
-                        f"checkpoint synchronization. To avoid this, enable checkpoint "
-                        f"synchronization to cloud storage by specifying a "
-                        f"`SyncConfig`. The checkpoint may be available on a different "
-                        f"node - please check this location on worker nodes: "
-                        f"{checkpoint_data}"
-                    )
-                return None
-            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            # Prefer cloud checkpoints
+            if local_to_remote_path_fn:
+                checkpoint = Checkpoint.from_uri(
+                    local_to_remote_path_fn(checkpoint_data)
+                )
+            else:
+                try:
+                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_data)
+                except FileNotFoundError:
+                    if log_once("checkpoint_not_available"):
+                        logger.error(
+                            f"The requested checkpoint is not available on this node, "
+                            f"most likely because you are using Ray client or disabled "
+                            f"checkpoint synchronization. To avoid this, enable "
+                            f"checkpoint synchronization to cloud storage by "
+                            f"specifying a `SyncConfig`. The checkpoint may be "
+                            f"available on a different  node - please check this "
+                            f"location on worker nodes: "
+                            f"{checkpoint_data}"
+                        )
+                    return None
+                checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
             checkpoint = Checkpoint.from_bytes(checkpoint_data)
         elif isinstance(checkpoint_data, dict):
@@ -262,7 +299,7 @@ class _CheckpointManager:
         # always available).
         self._checkpoints_to_clean_up = set()
 
-        self._delete_fn = delete_fn
+        self.set_delete_fn(delete_fn)
 
     def set_delete_fn(
         self, delete_fn: Optional[Callable[["_TrackedCheckpoint"], None]]
@@ -275,7 +312,10 @@ class _CheckpointManager:
         """
         self._delete_fn = delete_fn
 
-    def register_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def register_checkpoints(
+        self,
+        checkpoints: Union[_TrackedCheckpoint, List[_TrackedCheckpoint]],
+    ):
         """Register new checkpoint and add to bookkeeping.
 
         This method will register a new checkpoint and add it to the internal
@@ -284,23 +324,27 @@ class _CheckpointManager:
         checkpoints should be deleted.
 
         Args:
-            checkpoint: Tracked checkpoint object to add to bookkeeping.
+            checkpoints: Tracked checkpoint object to add to bookkeeping.
         """
-        checkpoint.id = checkpoint.id or self._latest_checkpoint_id
+        if not isinstance(checkpoints, list):
+            checkpoints = [checkpoints]
 
-        if checkpoint.storage_mode == CheckpointStorage.MEMORY:
-            self._replace_latest_memory_checkpoint(checkpoint)
+        for checkpoint in checkpoints:
+            checkpoint.id = checkpoint.id or self._latest_checkpoint_id
 
-            if self._persist_memory_checkpoints:
-                persisted_checkpoint = copy.copy(checkpoint)
-                persisted_checkpoint.storage_mode = CheckpointStorage.PERSISTENT
+            if checkpoint.storage_mode == CheckpointStorage.MEMORY:
+                self._replace_latest_memory_checkpoint(checkpoint)
+
+                if self._persist_memory_checkpoints:
+                    persisted_checkpoint = copy.copy(checkpoint)
+                    persisted_checkpoint.storage_mode = CheckpointStorage.PERSISTENT
+                else:
+                    persisted_checkpoint = None
             else:
-                persisted_checkpoint = None
-        else:
-            persisted_checkpoint = checkpoint
+                persisted_checkpoint = checkpoint
 
-        if persisted_checkpoint and self._checkpoint_strategy.num_to_keep != 0:
-            self._process_persistent_checkpoint(persisted_checkpoint)
+            if persisted_checkpoint and self._checkpoint_strategy.num_to_keep != 0:
+                self._process_persistent_checkpoint(persisted_checkpoint)
 
         self._latest_checkpoint_id += 1
 
@@ -371,8 +415,20 @@ class _CheckpointManager:
             checkpoint.id,
         )
 
-    def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
+    def _process_persistent_checkpoint(
+        self,
+        checkpoint: _TrackedCheckpoint,
+        next_checkpoint_path: Optional[str] = None,
+    ):
+        # Note(jungong) : Track rank0 checkpoint as the best / worst checkpoint.
+        # That is because we only care about the data for checkpoints
+        # from non-rank0 workers. They do not represent a different Trial
+        # checkpoint as the rank0 one.
+        if checkpoint.rank > 0:
+            return
+
         assert checkpoint.storage_mode == CheckpointStorage.PERSISTENT
+        next_checkpoint_path = next_checkpoint_path or self._get_next_checkpoint_path()
 
         checkpoint_score = self._get_checkpoint_score(checkpoint)
         wrapped_checkpoint = _HeapCheckpointWrapper(
@@ -380,20 +436,19 @@ class _CheckpointManager:
         )
 
         if self._checkpoint_strategy.num_to_keep is None:
-            # Keep all checkpoints
-            checkpoint.commit(path=self._get_next_checkpoint_path())
+            checkpoint.commit(path=next_checkpoint_path)
             self._replace_latest_persisted_checkpoint(checkpoint)
             self._top_persisted_checkpoints.append(wrapped_checkpoint)
         elif (
             len(self._top_persisted_checkpoints) < self._checkpoint_strategy.num_to_keep
         ):
+            checkpoint.commit(path=next_checkpoint_path)
             # Heap is not full yet, so keep this checkpoint
-            checkpoint.commit(path=self._get_next_checkpoint_path())
             heapq.heappush(self._top_persisted_checkpoints, wrapped_checkpoint)
             self._replace_latest_persisted_checkpoint(checkpoint)
         elif wrapped_checkpoint.priority >= self._top_persisted_checkpoints[0].priority:
+            checkpoint.commit(path=next_checkpoint_path)
             # Priority is higher than current worst checkpoint, so replace worst
-            checkpoint.commit(path=self._get_next_checkpoint_path())
             worst_checkpoint = heapq.heappushpop(
                 self._top_persisted_checkpoints, wrapped_checkpoint
             ).tracked_checkpoint

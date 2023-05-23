@@ -1,5 +1,10 @@
 load("//bazel:python.bzl", "py_test_module_list")
 
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
@@ -20,7 +25,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["team:ml", "exclusive"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
 )
 
 py_test(
@@ -35,6 +40,14 @@ py_test(
     name = "test_automl_searcher",
     size = "small",
     srcs = ["tests/test_automl_searcher.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
+    name = "test_callbacks",
+    size = "small",
+    srcs = ["tests/test_callbacks.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
@@ -108,7 +121,7 @@ py_test(
     name = "test_experiment_analysis",
     size = "medium",
     srcs = ["tests/test_experiment_analysis.py"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -145,14 +158,6 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_comet",
-    size = "small",
-    srcs = ["tests/test_integration_comet.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
@@ -161,25 +166,20 @@ py_test(
 )
 
 py_test(
-    name = "test_integration_wandb",
-    size = "small",
-    srcs = ["tests/test_integration_wandb.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_integration_mlflow",
-    size = "small",
-    srcs = ["tests/test_integration_mlflow.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"]
-)
-
-py_test(
     name = "test_logger",
     size = "small",
     srcs = ["tests/test_logger.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml"],
+)
+
+py_test(
+    name = "test_multi_tenancy",
+    size = "medium",
+    srcs = [
+        "tests/test_multi_tenancy.py",
+        "tests/_test_multi_tenancy_run.py"
+    ],
     deps = [":tune_lib"],
     tags = ["team:ml"],
 )
@@ -236,7 +236,7 @@ py_test(
     name = "test_result_grid",
     size = "medium",
     srcs = ["tests/test_result_grid.py"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -254,6 +254,14 @@ py_test(
     srcs = ["tests/test_sample.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "medium_instance"],
+)
+
+py_test(
+    name = "test_placeholder",
+    size = "small",
+    srcs = ["tests/test_placeholder.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
 )
 
 py_test(
@@ -289,10 +297,18 @@ py_test(
 )
 
 py_test(
+    name = "test_util_object_cache",
+    size = "small",
+    srcs = ["tests/test_util_object_cache.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_syncer",
     size = "medium",
     srcs = ["tests/test_syncer.py"],
-    deps = [":tune_lib"],
+    deps = [":tune_lib", ":conftest"],
     tags = ["team:ml", "exclusive"],
 )
 
@@ -456,6 +472,7 @@ py_test(
     tags = ["team:ml", "exclusive"],
 )
 
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests directory.
 # Covers all remaining tests that do not start with `test_`.
@@ -484,6 +501,69 @@ py_test(
     srcs = ["tests/tutorial.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "no_main"],
+)
+
+
+# --------------------------------------------------------------------
+# Tests from the python/ray/tune/tests/execution directory.
+# Covers all remaining tests that do not start with `test_`.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_actor_caching",
+    size = "small",
+    srcs = ["tests/execution/test_actor_caching.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_callback_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_callback_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_checkpointing_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_checkpointing_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_control_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_control_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_errors_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_errors_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_resources_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_resources_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_search_alg_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_search_alg_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
 )
 
 # --------------------------------------------------------------------
@@ -531,7 +611,7 @@ py_test(
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"]
+    tags = ["team:ml", "exclusive", "example", "exclude_new_execution"]
 )
 
 py_test(
@@ -920,15 +1000,6 @@ py_test(
 )
 
 py_test(
-    name = "wandb_example",
-    size = "medium",
-    srcs = ["examples/wandb_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--mock-api"]
-)
-
-py_test(
     name = "xgboost_example",
     size = "small",
     srcs = ["examples/xgboost_example.py"],
@@ -963,6 +1034,20 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
+
+# --------------------------------------------------------------------
+# Tests from the python/ray/tune/tests/output directory.
+# Please keep these sorted alphabetically.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "test_output",
+    size = "small",
+    srcs = ["tests/output/test_output.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
 
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.

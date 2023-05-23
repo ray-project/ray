@@ -132,10 +132,11 @@ Status TaskExecutor::ExecuteTask(
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
     bool *is_retryable_error,
-    bool *is_application_error,
+    std::string *application_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute,
-    bool is_reattempt) {
+    bool is_reattempt,
+    bool is_streaming_generator) {
   RAY_LOG(DEBUG) << "Execute task type: " << TaskType_Name(task_type)
                  << " name:" << task_name;
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
@@ -149,19 +150,36 @@ Status TaskExecutor::ExecuteTask(
   // TODO(Clark): Support exception allowlist for retrying application-level
   // errors for C++.
   *is_retryable_error = false;
-  *is_application_error = false;
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
   ArgsBufferList ray_args_buffer;
   for (size_t i = 0; i < args_buffer.size(); i++) {
     auto &arg = args_buffer.at(i);
+    std::string meta_str = "";
+    if (arg->GetMetadata() != nullptr) {
+      meta_str = std::string((const char *)arg->GetMetadata()->Data(),
+                             arg->GetMetadata()->Size());
+    }
     msgpack::sbuffer sbuf;
-    if (cross_lang) {
-      sbuf.write((const char *)(arg->GetData()->Data()) + XLANG_HEADER_LEN,
-                 arg->GetData()->Size() - XLANG_HEADER_LEN);
+    const char *arg_data = nullptr;
+    size_t arg_data_size = 0;
+    if (arg->GetData()) {
+      arg_data = reinterpret_cast<const char *>(arg->GetData()->Data());
+      arg_data_size = arg->GetData()->Size();
+    }
+    if (meta_str == METADATA_STR_RAW) {
+      // TODO(LarryLian) In order to minimize the modification,
+      // there is an extra serialization here, but the performance will be a little worse.
+      // This code can be optimized later to improve performance
+      const auto &raw_buffer = Serializer::Serialize(arg_data, arg_data_size);
+      sbuf.write(raw_buffer.data(), raw_buffer.size());
+    } else if (cross_lang) {
+      RAY_CHECK(arg_data != nullptr)
+          << "Task " << task_name << " no." << i << " arg data is null.";
+      sbuf.write(arg_data + XLANG_HEADER_LEN, arg_data_size - XLANG_HEADER_LEN);
     } else {
-      sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+      sbuf.write(arg_data, arg_data_size);
     }
 
     ray_args_buffer.push_back(std::move(sbuf));
@@ -198,7 +216,8 @@ Status TaskExecutor::ExecuteTask(
     std::string meta_str = std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
     meta_buffer = std::make_shared<ray::LocalMemoryBuffer>(
         reinterpret_cast<uint8_t *>(&meta_str[0]), meta_str.size(), true);
-    *is_application_error = true;
+    // Pass formatted exception string to CoreWorker
+    *application_error = status.ToString();
 
     msgpack::sbuffer buf;
     if (cross_lang) {

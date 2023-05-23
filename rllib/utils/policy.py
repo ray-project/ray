@@ -86,7 +86,7 @@ def create_policy_for_framework(
     session_creator: Optional[Callable[[], "tf1.Session"]] = None,
     seed: Optional[int] = None,
 ):
-    """Frame specific policy creation logics.
+    """Framework-specific policy creation logics.
 
     Args:
         policy_id: Policy ID.
@@ -102,6 +102,9 @@ def create_policy_for_framework(
 
     if isinstance(merged_config, AlgorithmConfig):
         merged_config = merged_config.to_dict()
+
+    # add policy_id to merged_config
+    merged_config["__policy_id"] = policy_id
 
     framework = merged_config.get("framework", "tf")
     # Tf.

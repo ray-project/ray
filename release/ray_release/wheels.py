@@ -4,12 +4,14 @@ import re
 import shlex
 import subprocess
 import sys
+from datetime import datetime
 import tempfile
 import time
 import urllib.request
 from typing import Optional, List, Tuple
 
-from ray_release.config import DEFAULT_PYTHON_VERSION, parse_python_version
+from ray_release.config import parse_python_version
+from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.template import set_test_env_var
 from ray_release.exception import (
     RayWheelsUnspecifiedError,
@@ -19,10 +21,12 @@ from ray_release.exception import (
 )
 from ray_release.logger import logger
 from ray_release.util import url_exists, python_version_str, resolve_url
+from ray_release.aws import upload_to_s3
 
 DEFAULT_BRANCH = "master"
 DEFAULT_GIT_OWNER = "ray-project"
 DEFAULT_GIT_PACKAGE = "ray"
+RELEASE_MANUAL_WHEEL_BUCKET = "ray-release-manual-wheels"
 
 REPO_URL_TPL = "https://github.com/{owner}/{package}.git"
 INIT_URL_TPL = (
@@ -128,6 +132,33 @@ def parse_wheels_filename(
         return ray_version, None
 
     return ray_version, python_version
+
+
+def get_ray_wheels_url_from_local_wheel(ray_wheels: str) -> Optional[str]:
+    """Upload a local wheel file to S3 and return the downloadable URI
+
+    The uploaded object will have local user and current timestamp encoded
+    in the upload key path, e.g.:
+    "ubuntu_2022_01_01_23:59:99/ray-3.0.0.dev0-cp37-cp37m-manylinux_x86_64.whl"
+
+    Args:
+        ray_wheels: File path with `file://` prefix.
+
+    Return:
+        Downloadable HTTP URL to the uploaded wheel on S3.
+    """
+    wheel_path = ray_wheels[len("file://") :]
+    wheel_name = os.path.basename(wheel_path)
+    if not os.path.exists(wheel_path):
+        logger.error(f"Local wheel file: {wheel_path} not found")
+        return None
+
+    bucket = RELEASE_MANUAL_WHEEL_BUCKET
+    unique_dest_path_prefix = (
+        f'{os.getlogin()}_{datetime.now().strftime("%Y_%m_%d_%H:%M:%S")}'
+    )
+    key_path = f"{unique_dest_path_prefix}/{wheel_name}"
+    return upload_to_s3(wheel_path, bucket, key_path)
 
 
 def get_ray_wheels_url(
@@ -243,6 +274,17 @@ def find_ray_wheels_url(
         set_test_env_var("RAY_VERSION", ray_version)
 
         return get_ray_wheels_url(repo_url, branch, commit, ray_version, python_version)
+
+    # If this is a local wheel file.
+    if ray_wheels.startswith("file://"):
+        logger.info(f"Getting wheel url from local wheel file: {ray_wheels}")
+        ray_wheels_url = get_ray_wheels_url_from_local_wheel(ray_wheels)
+        if ray_wheels_url is None:
+            raise RayWheelsNotFoundError(
+                f"Couldn't get wheel urls from local wheel file({ray_wheels}) by "
+                "uploading it to S3."
+            )
+        return ray_wheels_url
 
     # If this is a URL, return
     if ray_wheels.startswith("https://") or ray_wheels.startswith("http://"):
@@ -396,3 +438,12 @@ def install_matching_ray_locally(ray_wheels: Optional[str]):
     for module_name in RELOAD_MODULES:
         if module_name in sys.modules:
             importlib.reload(sys.modules[module_name])
+
+
+def parse_commit_from_wheel_url(url: str) -> str:
+    # url is expected to be in the format of
+    # https://s3-us-west-2.amazonaws.com/ray-wheels/master/0e0c15065507f01e8bfe78e49b0d0de063f81164/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl  # noqa
+    regex = r"/([0-9a-f]{40})/"
+    match = re.search(regex, url)
+    if match:
+        return match.group(1)
