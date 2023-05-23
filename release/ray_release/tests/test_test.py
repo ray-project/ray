@@ -61,7 +61,7 @@ def test_get_anyscale_byod_image():
                 },
             }
         ).get_anyscale_byod_image()
-        == f"{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
+        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
     )
     os.environ["BUILDKITE_PULL_REQUEST"] = "1234"
     assert (
