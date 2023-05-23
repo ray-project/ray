@@ -13,12 +13,8 @@ from ray.rllib.utils.nested_dict import NestedDict
 torch, nn = try_import_torch()
 
 
-class PPOTorchRLModule(PPORLModule, TorchRLModule):
+class PPOTorchRLModule(TorchRLModule, PPORLModule):
     framework: str = "torch"
-
-    def __init__(self, *args, **kwargs):
-        TorchRLModule.__init__(self, *args, **kwargs)
-        PPORLModule.__init__(self, *args, **kwargs)
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
