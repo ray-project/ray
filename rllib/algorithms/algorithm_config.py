@@ -2499,7 +2499,9 @@ class AlgorithmConfig(_Config):
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
                 By default if you call `config.rl_module(...)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
-                `config.rl_module(_enable_rl_module_api=True)`.
+                `config.rl_module(_enable_rl_module_api=True)`. This also disables
+                loss initialization in Policies by calling
+                config._disable_initialize_loss_from_dummy_batch=True.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2508,6 +2510,9 @@ class AlgorithmConfig(_Config):
             self.rl_module_spec = rl_module_spec
 
         if _enable_rl_module_api is not NotProvided:
+            # Loss initialization is not compatible with RL Modules
+            self.experimental(_disable_initialize_loss_from_dummy_batch=True)
+
             self._enable_rl_module_api = _enable_rl_module_api
             if _enable_rl_module_api is True and self.exploration_config:
                 logger.warning(
