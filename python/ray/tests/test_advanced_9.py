@@ -271,8 +271,8 @@ def test_gcs_connection_no_leak(ray_start_cluster):
 
     def get_gcs_num_of_connections():
         p = psutil.Process(gcs_server_pid)
-        print(">>", p.num_fds())
-        return p.num_fds()
+        print(">>", len(p.connections()))
+        return len(p.connections())
 
     # Wait for everything to be ready.
     import time
