@@ -2508,7 +2508,8 @@ class AlgorithmConfig(_Config):
             self.rl_module_spec = rl_module_spec
 
         if _enable_rl_module_api is not NotProvided or self._enable_rl_module_api:
-            self._enable_rl_module_api = _enable_rl_module_api
+            if not self._enable_rl_module_api:
+                self._enable_rl_module_api = _enable_rl_module_api
             if _enable_rl_module_api is True and self.exploration_config:
                 logger.warning(
                     "Setting `exploration_config={}` because you set "
