@@ -738,7 +738,6 @@ class Algorithm(Trainable):
             rl_module_ckpt_dirs = {}
             marl_module_ckpt_dir = module_spec.load_state_path
             modules_to_load = module_spec.modules_to_load
-            print("Module_spec: ", module_spec )
             for module_id, sub_module_spec in module_spec.module_specs.items():
                 if sub_module_spec.load_state_path:
                     rl_module_ckpt_dirs[module_id] = sub_module_spec.load_state_path

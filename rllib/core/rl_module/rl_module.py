@@ -145,10 +145,6 @@ class SingleAgentRLModuleSpec:
         """Updates this spec with the given other spec. Works like dict.update()."""
         if not isinstance(other, SingleAgentRLModuleSpec):
             raise ValueError("Can only update with another SingleAgentRLModuleSpec.")
-        if self.load_state_path:
-            raise ValueError(
-                "Cannot update a spec that already has a load_state_path set."
-            )
 
         # If the field is None in the other, keep the current field, otherwise update
         # with the new value.
@@ -157,6 +153,7 @@ class SingleAgentRLModuleSpec:
         self.action_space = other.action_space or self.action_space
         self.model_config_dict = other.model_config_dict or self.model_config_dict
         self.catalog_class = other.catalog_class or self.catalog_class
+        self.load_state_path = other.load_state_path or self.load_state_path
 
 
 @ExperimentalAPI

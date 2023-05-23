@@ -546,11 +546,6 @@ class MultiAgentRLModuleSpec:
         """
         assert type(other) is MultiAgentRLModuleSpec
 
-        if self.load_state_path:
-            raise ValueError(
-                "Cannot update a spec that already has a load_state_path set."
-            )
-
         if isinstance(other.module_specs, dict):
             self.add_modules(other.module_specs, overwrite=overwrite)
         else:

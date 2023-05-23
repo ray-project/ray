@@ -11,7 +11,7 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
-    MultiAgentRLModule
+    MultiAgentRLModule,
 )
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -100,7 +100,7 @@ class TestE2ERLModuleLoad(unittest.TestCase):
             algo.stop()
             del algo
             shutil.rmtree(marl_checkpoint_path)
-    
+
     def test_e2e_load_complex_marl_module(self):
         """Test if we can train a PPO algorithm with a cpkt MARL and RL module e2e."""
         config = self.get_ppo_config()
@@ -126,25 +126,25 @@ class TestE2ERLModuleLoad(unittest.TestCase):
 
             # create a RLModule to load and override the "policy_1" module with
             module_to_swap_in = SingleAgentRLModuleSpec(
-                    module_class=module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
-                    model_config_dict={"fcnet_hiddens": [64]},
-                    catalog_class=PPOCatalog,
-                ).build()
-            
+                module_class=module_class,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [64]},
+                catalog_class=PPOCatalog,
+            ).build()
+
             module_to_swap_in_path = tempfile.mkdtemp()
             module_to_swap_in.save_to_checkpoint(module_to_swap_in_path)
 
             # create a new MARL_spec with the checkpoint from the marl_checkpoint
             # and the module_to_swap_in_checkpoint
-            module_specs[f"policy_1"] = SingleAgentRLModuleSpec(
-                    module_class=module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
-                    model_config_dict={"fcnet_hiddens": [64]},
-                    catalog_class=PPOCatalog,
-                    load_state_path=module_to_swap_in_path
+            module_specs["policy_1"] = SingleAgentRLModuleSpec(
+                module_class=module_class,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict={"fcnet_hiddens": [64]},
+                catalog_class=PPOCatalog,
+                load_state_path=module_to_swap_in_path,
             )
             marl_module_spec_from_checkpoint = MultiAgentRLModuleSpec(
                 module_specs=module_specs,
@@ -159,12 +159,17 @@ class TestE2ERLModuleLoad(unittest.TestCase):
             # are the same as the original MARL Module
             algo = config.build()
             algo_module_weights = algo.learner_group.get_weights()
-            
+
             marl_module_with_swapped_in_module = MultiAgentRLModule()
-            marl_module_with_swapped_in_module.add_module("policy_0", marl_module["policy_0"])
+            marl_module_with_swapped_in_module.add_module(
+                "policy_0", marl_module["policy_0"]
+            )
             marl_module_with_swapped_in_module.add_module("policy_1", module_to_swap_in)
 
-            check(algo_module_weights, convert_to_numpy(marl_module_with_swapped_in_module.get_state()))
+            check(
+                algo_module_weights,
+                convert_to_numpy(marl_module_with_swapped_in_module.get_state()),
+            )
             algo.train()
             algo.stop()
             del algo
@@ -199,8 +204,7 @@ class TestE2ERLModuleLoad(unittest.TestCase):
                 catalog_class=PPOCatalog,
             )
             module = module_spec.build()
-            print(f"{DEFAULT_POLICY_ID}: {module.get_state()}")
-            
+
             module_ckpt_path = tempfile.mkdtemp()
             module.save_to_checkpoint(module_ckpt_path)
 
@@ -210,7 +214,7 @@ class TestE2ERLModuleLoad(unittest.TestCase):
                 action_space=env.action_space,
                 model_config_dict={"fcnet_hiddens": [32]},
                 catalog_class=PPOCatalog,
-                load_state_path=module_ckpt_path
+                load_state_path=module_ckpt_path,
             )
 
             config = config.rl_module(
@@ -222,8 +226,11 @@ class TestE2ERLModuleLoad(unittest.TestCase):
             # are the same as the original MARL Module
             algo = config.build()
             algo_module_weights = algo.learner_group.get_weights()
-            
-            check(algo_module_weights[DEFAULT_POLICY_ID], convert_to_numpy(module.get_state()))
+
+            check(
+                algo_module_weights[DEFAULT_POLICY_ID],
+                convert_to_numpy(module.get_state()),
+            )
             algo.train()
             algo.stop()
             del algo

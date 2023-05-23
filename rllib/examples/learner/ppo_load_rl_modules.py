@@ -41,7 +41,7 @@ if __name__ == "__main__":
         model_config_dict={"fcnet_hiddens": [32]},
         catalog_class=PPOCatalog,
         observation_space=env.observation_space,
-        action_space=env.action_space
+        action_space=env.action_space,
     ).build()
 
     CHECKPOINT_DIR = tempfile.mkdtemp()
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         module_class=module_class,
         model_config_dict={"fcnet_hiddens": [32]},
         catalog_class=PPOCatalog,
-        load_state_path=CHECKPOINT_DIR
+        load_state_path=CHECKPOINT_DIR,
     )
 
     # train a PPO algorithm with the loaded module
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         run_config=air.RunConfig(
             stop={"training_iteration": 1},
             failure_config=air.FailureConfig(fail_fast="raise"),
-        )
+        ),
     )
     tuner.fit()
     shutil.rmtree(CHECKPOINT_DIR)
