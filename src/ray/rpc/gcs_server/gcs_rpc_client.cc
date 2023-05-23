@@ -58,7 +58,9 @@ std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string
     //   connect to a different GCS.
     if (channel_ != nullptr) {
       RAY_LOG(WARNING) << "Generate a new GCS channel: " << address << ":" << port
-                       << ". Potentially it will increase GCS socket numbers";
+                       << ". Potentially it will increase GCS socket numbers."
+                       << " This could only happen in testing or in the same driver "
+                       << " it tries to connect to different GCS clusters.";
     }
     channel_ = BuildChannel(address, port, GetGcsRpcClientArguments());
   }
