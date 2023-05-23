@@ -72,7 +72,6 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
                 udf_return_col = [np.array(e) for e in udf_return_col]
             shapes = set()
             has_object = False
-            dtype = None
             for e in udf_return_col:
                 if isinstance(e, np.ndarray):
                     shapes.add((e.dtype, e.shape))
