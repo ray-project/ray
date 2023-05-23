@@ -2151,14 +2151,19 @@ def test_list_get_pgs(shutdown_only):
     sys.platform == "win32",
     reason="Failed on Windows",
 )
-def test_list_get_nodes(ray_start_cluster):
+def test_list_get_nodes(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, node_name="worker_node")
+    with monkeypatch.context() as m:
+        m.setenv(
+            "RAY_cloud_instance_id",
+            "test_cloud_id",
+        )
+        cluster.add_node(num_cpus=1, node_name="worker_node")
 
     def verify():
-        nodes = list_nodes()
+        nodes = list_nodes(detail=True)
         for node in nodes:
             assert node["state"] == "ALIVE"
             assert is_hex(node["node_id"])
@@ -2167,6 +2172,9 @@ def test_list_get_nodes(ray_start_cluster):
                 if node["node_name"] == "head_node"
                 else not node["is_head_node"]
             )
+
+            if node["node_name"] == "worker_node":
+                assert node["instance_id"] == "test_cloud_id"
 
         # Check with legacy API
         check_nodes = ray.nodes()
