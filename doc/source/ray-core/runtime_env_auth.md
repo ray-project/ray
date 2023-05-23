@@ -69,7 +69,7 @@ Add the `netrc` file to your VM container's home directory, so Ray can access th
 
 1\. Launch your Kubernetes cluster.
 2\. Create the `netrc` file locally in your home directory.
-3\. Store your `netrc` file's contents as a Kubernetes secret on your cluster:
+3\. Store the `netrc` file's contents as a Kubernetes secret on your cluster:
 
 ```bash
 kubectl create secret generic netrc-secret --from-file=.netrc="$HOME/.netrc"
