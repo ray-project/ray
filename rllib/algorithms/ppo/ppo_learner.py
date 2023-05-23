@@ -26,6 +26,7 @@ class PPOLearnerHyperparameters(LearnerHyperparameters):
     individual properties.
     """
 
+    use_kl_loss: bool = None
     kl_coeff: float = None
     kl_target: float = None
     use_critic: bool = None

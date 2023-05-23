@@ -60,20 +60,9 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
-        if self.hps.kl_coeff > 0.0:
+        if self.hps.use_kl_loss:
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = torch.mean(action_kl)
-            if mean_kl_loss.isinf():
-                logger.warning(
-                    "KL divergence is non-finite, this will likely destabilize "
-                    "your model and the training process. Action(s) in a "
-                    "specific state have near-zero probability. "
-                    "This can happen naturally in deterministic "
-                    "environments where the optimal policy has zero mass "
-                    "for a specific action. To fix this issue, consider "
-                    "setting `kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
-                    "config."
-                )
         else:
             mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
@@ -107,7 +96,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Add mean_kl_loss (already processed through `reduce_mean_valid`),
         # if necessary.
-        if self.hps.kl_coeff > 0.0:
+        if self.hps.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
         # Register important loss stats.
@@ -140,13 +129,14 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         )
 
         # Update KL coefficient.
-        sampled_kl = sampled_kl_values[module_id]
-        curr_var = self.curr_kl_coeffs_per_module[module_id]
-        if sampled_kl > 2.0 * self.hps.kl_target:
-            # TODO (Kourosh) why not 2?
-            curr_var.data *= 1.5
-        elif sampled_kl < 0.5 * self.hps.kl_target:
-            curr_var.data *= 0.5
-        results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
+        if self.hps.use_kl_loss:
+            sampled_kl = sampled_kl_values[module_id]
+            curr_var = self.curr_kl_coeffs_per_module[module_id]
+            if sampled_kl > 2.0 * self.hps.kl_target:
+                # TODO (Kourosh) why not 2?
+                curr_var.data *= 1.5
+            elif sampled_kl < 0.5 * self.hps.kl_target:
+                curr_var.data *= 0.5
+            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
 
         return results
