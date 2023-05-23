@@ -78,7 +78,7 @@ doctest(
             "env/wrappers/recsim_wrapper.py",
             "env/remote_vector_env.py",
             # Broken imports
-            "algorithms/dreamerv3/tf/models/components/**"
+            "algorithms/dreamerv3/tf/models/**"
         ]
     ),
     tags = ["team:rllib"]

@@ -326,11 +326,11 @@ class LightningTrainer(TorchTrainer):
             result = trainer.fit()
             result
 
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
+        .. testoutput::
+            :hide:
+            :options: +ELLIPSIS
 
-        ...
+            ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
