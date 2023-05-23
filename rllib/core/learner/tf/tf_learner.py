@@ -4,6 +4,7 @@ import numpy as np
 import pathlib
 from typing import (
     Any,
+    Callable,
     Hashable,
     List,
     Mapping,
@@ -16,7 +17,7 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
-    LEARNER_RESULTS_CURR_LR_KEY,
+    LearnerHyperparameters,
     ParamOptimizerPair,
     NamedParamOptimizerPairs,
     Param,
@@ -32,10 +33,8 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import clip_gradients
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
@@ -84,15 +83,15 @@ class TfLearner(Learner):
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID
+        self, module_id: ModuleID, hps: LearnerHyperparameters
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        lr = self.lr_scheduler.get_current_value(module_id)
-        optim = tf.keras.optimizers.Adam(learning_rate=lr)
-        pair: ParamOptimizerPair = (
-            self.get_parameters(module),
-            optim,
-        )
+
+        # Use keras' convenience method to get the proper optimizer class, no
+        # matter upper/lower case.
+        optim = tf.keras.optimizers.get(hps.optimizer_type)
+        pair: ParamOptimizerPair = (self.get_parameters(module), optim)
+
         # This isn't strictly necessary, but makes it so that if a checkpoint is
         # computed before training actually starts, then it will be the same in
         # shape / size as a checkpoint after training starts.
@@ -110,26 +109,7 @@ class TfLearner(Learner):
         return grads
 
     @override(Learner)
-    def postprocess_gradients(
-        self,
-        gradients_dict: Mapping[str, Any],
-    ) -> Tuple[ParamDictType, ResultDict]:
-
-        # Perform gradient clipping, if necessary.
-        clip_by = self._optimizer_config.get("grad_clip_by")
-        global_norm = clip_gradients(
-            gradients_dict,
-            grad_clip=self._optimizer_config.get("grad_clip"),
-            grad_clip_by=clip_by,
-        )
-        stats = {}
-        if clip_by == "global_norm":
-            stats["gradients_global_norm"] = global_norm
-
-        return gradients_dict, stats
-
-    @override(Learner)
-    def apply_gradients(self, gradients: ParamDict) -> None:
+    def apply_gradients(self, gradients: ParamDict):
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
@@ -478,31 +458,6 @@ class TfLearner(Learner):
 
         return self._strategy.run(helper, args=(batch,))
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    @override(Learner)
-    def additional_update_for_module(
-        self, *, module_id: ModuleID, timestep: int, **kwargs
-    ) -> Mapping[str, Any]:
-
-        results = super().additional_update_for_module(
-            module_id=module_id, timestep=timestep
-        )
-
-        # Handle lr scheduling updates and apply new learning rates to the optimizers.
-        new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
-
-        # Not sure why we need to do this here besides setting the original
-        # tf Variable `self.curr_lr_per_module[module_id]`. But when tf creates the
-        # optimizer, it seems to detach its lr value from the given variable.
-        # Thus, updating this variable is NOT sufficient to update the actual
-        # optimizer's learning rate, so we have to explicitly set it here.
-        if self.hps.lr_schedule is not None:
-            self._named_optimizers[module_id].lr = new_lr
-
-        results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
-
-        return results
-
     @override(Learner)
     def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
         return tf.Variable(
@@ -519,3 +474,20 @@ class TfLearner(Learner):
                 )
             ),
         )
+
+    @staticmethod
+    @override(Learner)
+    def _set_optimizer_lr(optimizer: "tf.Optimizer", lr: float) -> None:
+        # Not sure why we need to do this here besides setting the original
+        # tf Variable via our schedule objects. But when tf creates the
+        # optimizer, it seems to detach its lr value from the given variable.
+        # Thus, updating this variable is NOT sufficient to update the actual
+        # optimizer's learning rate, so we have to explicitly set it here.
+        optimizer.lr = lr
+
+    @staticmethod
+    @override(Learner)
+    def _get_clip_function() -> Callable:
+        from ray.rllib.utils.tf_utils import clip_gradients
+
+        return clip_gradients

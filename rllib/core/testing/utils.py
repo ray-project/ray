@@ -92,7 +92,9 @@ def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
 
 @DeveloperAPI
 def get_learner(
+    *,
     framework: str,
+    eager_tracing: bool = True,
     env: "gym.Env",
     learning_rate: float = 1e-3,
     is_multi_agent: bool = False,
@@ -109,13 +111,20 @@ def get_learner(
         A learner.
 
     """
-
+    # Get our testing (BC) Learner class (given the framework).
     _cls = get_learner_class(framework)
+    # Get our RLModule spec to use.
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
-    # adding learning rate as a configurable parameter to avoid hardcoding it
+    # Adding learning rate as a configurable parameter to avoid hardcoding it
     # and information leakage across tests that rely on knowing the LR value
     # that is used in the learner.
-    return _cls(module_spec=spec, optimizer_config={"lr": learning_rate})
+    learner = _cls(
+        module_spec=spec,
+        learner_group_scaling_config=LearnerGroupScalingConfig(),
+        framework_hyperparameters=FrameworkHyperparameters(eager_tracing=eager_tracing),
+    )
+    learner.build()
+    return learner
 
 
 @DeveloperAPI
@@ -152,7 +161,6 @@ def get_learner_group(
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
-        optimizer_config={"lr": learning_rate},
         learner_group_scaling_config=scaling_config,
         framework_hyperparameters=framework_hps,
     )

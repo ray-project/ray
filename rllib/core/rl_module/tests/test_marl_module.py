@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec, RLModuleConfig
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
@@ -14,13 +15,14 @@ from ray.rllib.utils.test_utils import check
 
 class TestMARLModule(unittest.TestCase):
     def test_from_config(self):
-
+        """Tests whether a MultiAgentRLModule can be constructed from a config."""
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
         module1 = SingleAgentRLModuleSpec(
             module_class=DiscreteBCTorchModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
+            algorithm_config_overrides=AlgorithmConfig.overrides(lr=0.001),
             model_config_dict={"fcnet_hiddens": [32]},
         )
 
@@ -39,6 +41,7 @@ class TestMARLModule(unittest.TestCase):
         self.assertEqual(set(marl_module.keys()), {"module1", "module2"})
         self.assertIsInstance(marl_module["module1"], DiscreteBCTorchModule)
         self.assertIsInstance(marl_module["module2"], DiscreteBCTorchModule)
+        check(marl_module["module1"].config.algorithm_config_overrides, {"lr": 0.001})
 
     def test_as_multi_agent(self):
 
