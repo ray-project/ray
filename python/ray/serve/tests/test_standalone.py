@@ -735,7 +735,7 @@ def test_snapshot_always_written_to_internal_kv(
     assert hello_deployment["status"] == "RUNNING"
 
 
-def test_serve_start_different_http_checkpoint_options_warning(caplog):
+def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 

@@ -87,6 +87,9 @@
 				},
 				"cloud_name": {
 					"type": "string"
+				},
+				"byod": {
+					"type": "boolean"
 				}
 			},
 			"required": [
