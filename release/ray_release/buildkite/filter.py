@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import List, Optional, Tuple, Dict, Any
 
 from ray_release.buildkite.settings import Frequency, get_frequency
-from ray_release.config import Test
+from ray_release.test import Test
 
 
 def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:
