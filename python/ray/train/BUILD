@@ -17,7 +17,7 @@ doctest(
 doctest(
     files = ["python/ray/train/huggingface/accelerate/accelerate_trainer.py"],
     tags = ["team:ml"],
-    use_gpu = True
+    gpu = True
 )
 
 # --------------------------------------------------------------------
