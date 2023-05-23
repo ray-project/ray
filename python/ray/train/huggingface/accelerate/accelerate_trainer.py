@@ -124,9 +124,6 @@ class AccelerateTrainer(TorchTrainer):
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig
 
-            # If using GPUs, set this to True.
-            use_gpu = False
-
             # Define NN layers archicture, epochs, and number of workers
             input_size = 1
             layer_size = 32
@@ -204,7 +201,7 @@ class AccelerateTrainer(TorchTrainer):
             )
 
             # Define scaling and run configs
-            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
+            scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
             run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
 
             trainer = AccelerateTrainer(

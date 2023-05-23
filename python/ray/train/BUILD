@@ -1,9 +1,23 @@
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"], exclude=["examples/**", "tests/**"]),
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "examples/**",
+            "tests/**",
+            # GPU tests
+            "python/ray/train/huggingface/accelerate/accelerate_trainer.py"
+        ]
+    ),
     tags = ["team:ml"],
     size = "large"
+)
+
+doctest(
+    files = ["python/ray/train/huggingface/accelerate/accelerate_trainer.py"],
+    tags = ["team:ml"],
+    use_gpu = True
 )
 
 # --------------------------------------------------------------------
