@@ -34,7 +34,7 @@ In this example, `personal_access_token` is a secret credential that authenticat
 1. Ray may log the URIs used in your `runtime_env`, which means the Ray logs could contain your credentials.
 2. Ray stores your remote dependency package in a local directory, and it uses a parsed version of the remote URI–including your credential–as the directory's name.
 
-In short, your remote URI is not treated as a secret, so it should not contain secret info. Instead you should use a `netrc` file.
+In short, your remote URI is not treated as a secret, so it should not contain secret info. Instead, use a `netrc` file.
 
 ## Running on VMs: the netrc File
 
