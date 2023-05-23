@@ -4439,6 +4439,22 @@
         cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
+- name: microbenchmark_byod
+  group: core-daily-test
+  team: core
+  frequency: manual
+  working_dir: microbenchmark
+
+  python: "3.7"
+
+  cluster:
+    byod: true
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 - name: microbenchmark
   group: core-daily-test
