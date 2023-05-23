@@ -875,7 +875,7 @@
 
   run:
     timeout: 600
-    script: pip install -r requirements.txt && jupyter nbconvert --to script --output _test batch_inference.ipynb && ipython _test.py
+    script: pip install --user -r requirements.txt --upgrade && jupyter nbconvert --to script --output _test batch_inference.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
