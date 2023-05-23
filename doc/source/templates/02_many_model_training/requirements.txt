@@ -1,3 +1,8 @@
 ipywidgets
 pandas>=1.5.3
+matplotlib
+numpy==1.23.5
+pyarrow==11.0.0
 ray[tune]
+scikit-learn==1.2.2
+statsforecast==1.5.0
