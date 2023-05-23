@@ -31,24 +31,23 @@ std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string
                                                                int port) {
   static std::shared_ptr<grpc::Channel> channel_;
   static std::mutex mu_;
+
   static std::string address_;
   static int port_;
-  static bool proxy_enabled_ = false;
-  static bool use_tls_ = false;
-
   std::lock_guard<std::mutex> guard(mu_);
+  // Don't reuse channel if proxy or tls is set
+  if (::RayConfig::instance().grpc_enable_http_proxy() ||
+      ::RayConfig::instance().USE_TLS()) {
+    return BuildChannel(address, port, GetGcsRpcClientArguments());
+  }
+
   if (channel_ == nullptr) {
     address_ = address;
     port_ = port;
-    proxy_enabled_ = ::RayConfig::instance().grpc_enable_http_proxy();
-    use_tls_ = ::RayConfig::instance().USE_TLS();
-    channel_ = BuildChannel(address_, port_, GetGcsRpcClientArguments());
-    return channel_;
+    channel_ = BuildChannel(address, port, GetGcsRpcClientArguments());
   }
 
-  if (address_ == address && port_ == port &&
-      proxy_enabled_ == ::RayConfig::instance().grpc_enable_http_proxy() &&
-      use_tls_ == ::RayConfig::instance().USE_TLS()) {
+  if (address_ == address && port_ == port) {
     return channel_;
   } else {
     RAY_LOG(WARNING) << "Generate a new GCS channel: " << address << ":" << port
