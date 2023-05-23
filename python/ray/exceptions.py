@@ -18,6 +18,9 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import setproctitle
 
+TRACEBACK_COLOR = colorama.Fore.CYAN
+END_COLOR = colorama.Fore.RESET
+
 
 @PublicAPI
 class RayError(Exception):
@@ -186,9 +189,9 @@ class RayTaskError(RayError):
             if line.startswith("Traceback "):
                 if colorize:
                     traceback_line = (
-                        f"{colorama.Fore.CYAN}"
+                        f"{TRACEBACK_COLOR}"
                         f"{self.proctitle}()"
-                        f"{colorama.Fore.RESET} "
+                        f"{END_COLOR} "
                         f"(pid={self.pid}, ip={self.ip}"
                     )
                 else:

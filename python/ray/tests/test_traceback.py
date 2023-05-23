@@ -5,7 +5,7 @@ import threading
 import pytest
 import ray
 
-from ray.exceptions import RayTaskError, RayActorError
+from ray.exceptions import RayTaskError, RayActorError, TRACEBACK_COLOR, END_COLOR
 
 """This module tests stacktrace of Ray.
 
@@ -404,12 +404,6 @@ def test_serialization_error_message(shutdown_only):
 def test_ray_task_error_traceback_no_colorize():
     """Check that RayTaskError doesn't use colorize when its disabled."""
 
-    # colorama should not be used when colorize is disabled
-    ray.exceptions.colorama = None
-    RayTaskError = ray.exceptions.RayTaskError
-
-    print(ray.exceptions.colorama)
-
     err = RayTaskError(
         function_name="test_func",
         traceback_str="""Traceback (most recent call last):
@@ -424,14 +418,17 @@ ZeroDivisionError: division by zero
         actor_id=11,
     )
 
-    err.get_formatted_traceback(colorize=False)
+    color_sequences = [TRACEBACK_COLOR, END_COLOR]
 
-    with pytest.raises(AttributeError):
-        err.get_formatted_traceback(colorize=True)
+    no_color_traceback = err.get_formatted_traceback(colorize=False)
+    for sequence in color_sequences:
+        assert sequence not in no_color_traceback
 
-    # __str__ should return colored traceback
-    with pytest.raises(AttributeError):
-        str(err)
+    colored_tracebacks = [err.get_formatted_traceback(colorize=True), str(err)]
+
+    for traceback in colored_tracebacks:
+        for sequence in color_sequences:
+            assert sequence in traceback
 
 
 if __name__ == "__main__":
