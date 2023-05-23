@@ -207,7 +207,10 @@ class ApplicationState:
                     # here because the full details of the error is not displayed
                     # properly with traceback.format_exc(). RayTaskError has its own
                     # custom __str__ function.
-                    self._app_msg = f"Deploying app '{self._name}' failed:\n{str(e)}"
+                    self._app_msg = (
+                        f"Deploying app '{self._name}' failed:"
+                        f"\n{e.get_formatted_traceback(colorize=False)}"
+                    )
                     logger.warning(self._app_msg)
                     return
                 except RuntimeEnvSetupError:
