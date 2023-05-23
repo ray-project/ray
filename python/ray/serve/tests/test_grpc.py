@@ -45,8 +45,7 @@ def use_tls(request):
         key_filepath, cert_filepath, temp_dir = setup_tls()
     yield request.param
     if request.param:
-        pass
-        # teardown_tls(key_filepath, cert_filepath, temp_dir)
+        teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 
 def tls_enabled():
