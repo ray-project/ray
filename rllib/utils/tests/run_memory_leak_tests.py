@@ -51,8 +51,8 @@ parser.add_argument(
 parser.add_argument(
     "--to-check",
     nargs="+",
-    default=["env", "policy", "rollout_worker"],
-    help="List of 'env', 'policy', 'rollout_worker', 'model'.",
+    default=["env", "policy", "rollout_worker", "learner"],
+    help="List of 'env', 'policy', 'rollout_worker', 'model', 'learner'.",
 )
 
 # Obsoleted arg, use --dir instead.
