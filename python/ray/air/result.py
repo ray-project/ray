@@ -122,7 +122,7 @@ class Result:
     def _validate_trial_dir(trial_dir: str):
         """Check the validity of the local trial folder."""
 
-        assert os.path.exists(trial_dir), f"Trail folder {trial_dir} doesn't exists!"
+        assert os.path.exists(trial_dir), f"Trial folder {trial_dir} doesn't exists!"
 
         all_files = os.listdir(trial_dir)
         for file in Result._restore_required_files:
@@ -149,7 +149,7 @@ class Result:
             json_list = [json.loads(line) for line in f if line]
             metrics_df = pd.json_normalize(json_list, sep="/")
 
-        metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
+        latest_metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
 
         # Restore all checkpoints from the checkpoint folders
         ckpt_dirs = [
