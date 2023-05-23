@@ -27,7 +27,7 @@ from ray_release.buildkite.step import (
     RELEASE_QUEUE_CLIENT,
     DOCKER_PLUGIN_KEY,
 )
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.wheels import (
     DEFAULT_BRANCH,
