@@ -16,6 +16,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 
@@ -26,12 +27,12 @@ logger = logging.getLogger(__name__)
 class PPOTfLearner(PPOLearner, TfLearner):
     """Implements tf-specific PPO loss logic on top of PPOLearner.
 
-    This class implements the ppo loss under `_compute_loss_per_module()`.
+    This class implements the ppo loss under `self.compute_loss_for_module()`.
     """
 
     @override(TfLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         # TODO (Kourosh): batch type is NestedDict.
         # TODO (Kourosh): We may or may not user module_id. For example if we have an
@@ -110,26 +111,31 @@ class PPOTfLearner(PPOLearner, TfLearner):
         if self.hps.kl_coeff > 0.0:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            POLICY_LOSS_KEY: -tf.reduce_mean(surrogate_loss),
-            VF_LOSS_KEY: mean_vf_loss,
-            LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
-            LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
-                batch[Postprocessing.VALUE_TARGETS], value_fn_out
-            ),
-            ENTROPY_KEY: mean_entropy,
-            LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-        }
+        # Register important loss stats.
+        self.register_metrics(
+            module_id,
+            {
+                POLICY_LOSS_KEY: -tf.reduce_mean(surrogate_loss),
+                VF_LOSS_KEY: mean_vf_loss,
+                LEARNER_RESULTS_VF_LOSS_UNCLIPPED_KEY: mean_vf_unclipped_loss,
+                LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
+                    batch[Postprocessing.VALUE_TARGETS], value_fn_out
+                ),
+                ENTROPY_KEY: mean_entropy,
+                LEARNER_RESULTS_KL_KEY: mean_kl_loss,
+            },
+        )
+        # Return the total loss.
+        return total_loss
 
     @override(PPOLearner)
-    def additional_update_per_module(
+    def additional_update_for_module(
         self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
     ) -> Dict[str, Any]:
         assert sampled_kl_values, "Sampled KL values are empty."
 
-        results = super().additional_update_per_module(
-            module_id,
+        results = super().additional_update_for_module(
+            module_id=module_id,
             sampled_kl_values=sampled_kl_values,
             timestep=timestep,
         )
