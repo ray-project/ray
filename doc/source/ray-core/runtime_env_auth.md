@@ -4,7 +4,7 @@
 This section helps you:
 
 * Avoid leaking remote URI credentials in your `runtime_env`
-* provide credentials safely in KubeRay
+* Provide credentials safely in KubeRay
 * understand best practices when authenticating your remote URI
 
 ## Authenticating Remote URIs
