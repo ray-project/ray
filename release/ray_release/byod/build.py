@@ -16,6 +16,8 @@ from ray_release.test import (
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
 DATAPLANE_FILENAME = "dataplane.tgz"
 DATAPLANE_DIGEST = "f9b0055085690ddad2faa804bb6b38addbcf345b9166f2204928a7ece1c8a39b"
+BASE_IMAGE_WAIT_TIMEOUT = 7200
+BASE_IMAGE_WAIT_DURATION = 30
 
 
 def build_anyscale_byod_images(tests: List[Test]) -> None:
@@ -32,40 +34,43 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
-    timeout = 0
+    timeout = BASE_IMAGE_WAIT_TIMEOUT
     # ray images are built on post-merge, so we can wait for them to be available
-    while len(built) < len(to_be_built) and timeout < 7200:
+    while len(built) < len(to_be_built) and timeout > 0:
         for ray_image, byod_image in to_be_built.items():
             if _byod_image_exist(byod_image.replace(f"{DATAPLANE_ECR_REPO}:", "")):
                 logger.info(f"Image {byod_image} already exists")
                 built.add(ray_image)
                 continue
+            if not _ray_image_exist(ray_image):
+                # TODO(can): instead of waiting for the base image to be built, we can
+                #  build it ourselves
+                logger.info(
+                    f"Image {ray_image} does not exist yet. "
+                    f"Wait for another {timeout}s..."
+                )
+                time.sleep(BASE_IMAGE_WAIT_DURATION)
+                timeout -= BASE_IMAGE_WAIT_DURATION
+                continue
             logger.info(f"Building {byod_image} from {ray_image}")
             with open(DATAPLANE_FILENAME, "rb") as build_file:
-                try:
-                    subprocess.check_call(
-                        [
-                            "docker",
-                            "build",
-                            "--build-arg",
-                            f"BASE_IMAGE={ray_image}",
-                            "-t",
-                            byod_image,
-                            "-",
-                        ],
-                        stdin=build_file,
-                        stdout=sys.stderr,
-                        env=env,
-                    )
-                except subprocess.CalledProcessError:
-                    # If the ray image does not exist yet, we will retry later
-                    logger.info(f"Retry for another {7200 - timeout}s ...")
-                    time.sleep(30)
-                    timeout += 30
-                    continue
+                subprocess.check_call(
+                    [
+                        "docker",
+                        "build",
+                        "--build-arg",
+                        f"BASE_IMAGE={ray_image}",
+                        "-t",
+                        byod_image,
+                        "-",
+                    ],
+                    stdin=build_file,
+                    stdout=sys.stderr,
+                    env=env,
+                )
                 subprocess.check_call(
                     ["docker", "push", byod_image],
-                    stdout=subprocess.DEVNULL,
+                    stdout=sys.stderr,
                 )
                 built.add(ray_image)
 
@@ -83,6 +88,14 @@ def _download_dataplane_build_file() -> None:
     with open(DATAPLANE_FILENAME, "rb") as build_context:
         digest = hashlib.sha256(build_context.read()).hexdigest()
         assert digest == DATAPLANE_DIGEST, "Mismatched dataplane digest found!"
+
+
+def _ray_image_exist(ray_image: str) -> bool:
+    """
+    Checks if the given image exists in Docker
+    """
+    p = subprocess.run(["docker", "manifest", "inspect", ray_image])
+    return p.returncode == 0
 
 
 def _byod_image_exist(image_tag: str) -> bool:
