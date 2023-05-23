@@ -104,7 +104,7 @@ def _byod_image_exist(test: Test) -> bool:
     try:
         client.describe_images(
             repositoryName=test.get_byod_repo(),
-            imageIds=[{"imageTag": test.get_byod_image_test()}],
+            imageIds=[{"imageTag": test.get_byod_image_tag()}],
         )
         return True
     except client.exceptions.ImageNotFoundException:
