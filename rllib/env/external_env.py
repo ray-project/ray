@@ -53,15 +53,12 @@ class ExternalEnv(threading.Thread):
         self,
         action_space: gym.Space,
         observation_space: gym.Space,
-        max_concurrent: int = 100,
     ):
         """Initializes an ExternalEnv instance.
 
         Args:
             action_space: Action space of the env.
             observation_space: Observation space of the env.
-            max_concurrent: Max number of active episodes to allow at
-                once. Exceeding this limit raises an error.
         """
 
         threading.Thread.__init__(self)
@@ -72,7 +69,6 @@ class ExternalEnv(threading.Thread):
         self._episodes = {}
         self._finished = set()
         self._results_avail_condition = threading.Condition()
-        self._max_concurrent_episodes = max_concurrent
 
     @PublicAPI
     def run(self):
@@ -377,11 +373,6 @@ class ExternalEnvWrapper(BaseEnv):
                 results = self._poll()
                 if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
-        limit = self.external_env._max_concurrent_episodes
-        assert len(results[0]) < limit, (
-            "Too many concurrent episodes, were some leaked? This "
-            "ExternalEnv was created with max_concurrent={}".format(limit)
-        )
         return results
 
     @override(BaseEnv)
