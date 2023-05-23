@@ -31,6 +31,26 @@ class WorkerContext {
  public:
   WorkerContext(WorkerType worker_type, const WorkerID &worker_id, const JobID &job_id);
 
+  // Return the generator return ID.
+  ///
+  /// By default, it deduces a generator return ID from a current task
+  /// from the context. However, it also supports manual specification of
+  /// put index and task id to support `AllocateDynamicReturnId`.
+  /// See the docstring of AllocateDynamicReturnId for more details.
+  ///
+  /// The caller should either not specify both task_id AND put_index
+  /// or specify both at the same time. Otherwise it will panic.
+  ///
+  /// \param[in] task_id The task id of the dynamically generated return ID.
+  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// worker context.
+  /// \param[in] put_index The equivalent of the return value of
+  /// WorkerContext::GetNextPutIndex.
+  /// If std::nullopt is specified, it will deduce the put index from the
+  /// current worker context.
+  const ObjectID GetGeneratorReturnId(const TaskID &task_id,
+                                      std::optional<ObjectIDIndexType> put_index);
+
   const WorkerType GetWorkerType() const;
 
   const WorkerID &GetWorkerID() const;

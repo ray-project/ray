@@ -256,8 +256,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// generator task.
   bool ObjectRefStreamExists(const ObjectID &generator_id);
 
-  /// Asynchronously read object reference of the next index from the
+  /// Read object reference of the next index from the
   /// object stream of a generator_id.
+  /// This API always return immediately.
   ///
   /// The caller should ensure the ObjectRefStream is already created
   /// via CreateObjectRefStream.
@@ -266,7 +267,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
-  /// \return KeyError if it reaches to EoF. Ok otherwise.
+  /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
 
   /// Returns true if task can be retried.

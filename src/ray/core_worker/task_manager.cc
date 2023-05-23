@@ -38,7 +38,7 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
                    << " has no more objects.";
     *object_id_out = ObjectID::Nil();
-    return Status::ObjectRefStreamEoF("");
+    return Status::ObjectRefEndOfStream("");
   }
 
   auto it = item_index_to_refs_.find(next_index_);
@@ -393,7 +393,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
       const auto &status = TryReadObjectRefStreamInternal(generator_id, &object_id);
 
       // keyError means the stream reaches to EoF.
-      if (status.IsObjectRefStreamEoF()) {
+      if (status.IsObjectRefEndOfStream()) {
         break;
       }
 
