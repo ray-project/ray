@@ -8,7 +8,7 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.numpy_support import is_array_like
+from ray.data._internal.numpy_support import is_array_like, convert_udf_returns_to_numpy
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import _is_tensor_schema
 
@@ -118,8 +118,11 @@ class TableBlockBuilder(BlockBuilder):
         return self._concat_would_copy() and len(self._tables) > 1
 
     def build(self) -> Block:
-        if self._columns:
-            tables = [self._table_from_pydict(self._columns)]
+        columns = {
+            key: convert_udf_returns_to_numpy(col) for key, col in self._columns.items()
+        }
+        if columns:
+            tables = [self._table_from_pydict(columns)]
         else:
             tables = []
         tables.extend(self._tables)
@@ -143,7 +146,10 @@ class TableBlockBuilder(BlockBuilder):
         assert self._columns
         if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
             return
-        block = self._table_from_pydict(self._columns)
+        columns = {
+            key: convert_udf_returns_to_numpy(col) for key, col in self._columns.items()
+        }
+        block = self._table_from_pydict(columns)
         self.add_block(block)
         self._uncompacted_size = SizeEstimator()
         self._columns.clear()

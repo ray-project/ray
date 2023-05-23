@@ -11,6 +11,7 @@ import click
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step
+from ray_release.byod.build import build_anyscale_byod_images
 from ray_release.config import (
     read_and_validate_release_test_collection,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
@@ -151,6 +152,8 @@ def main(
             "Empty test collection. The selected frequency or filter did "
             "not return any tests to run. Adjust your filters."
         )
+    logger.info("Build anyscale BYOD images")
+    build_anyscale_byod_images([test for test, _ in filtered_tests])
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
