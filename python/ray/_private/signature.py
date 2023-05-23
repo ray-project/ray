@@ -103,7 +103,7 @@ def flatten_args(signature_parameters: list, args, kwargs):
         TypeError: Raised if arguments do not fit in the function signature.
 
     Example:
-        >>> flatten_args([1, 2, 3], {"a": 4})
+        >>> flatten_args([1, 2, 3], {"a": 4})  # doctest: +SKIP
         [None, 1, None, 2, None, 3, "a", 4]
     """
 

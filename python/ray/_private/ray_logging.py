@@ -109,9 +109,9 @@ class StandardStreamInterceptor:
     Example:
         >>> from contextlib import redirect_stdout
         >>> logger = logging.getLogger("ray_logger")
-        >>> hook = StandardStreamHook(logger)
-        >>> with redirect_stdout(hook):
-        >>>     print("a") # stdout will be delegated to logger.
+        >>> hook = StandardStreamHook(logger)  # doctest: +SKIP
+        >>> with redirect_stdout(hook):  # doctest: +SKIP
+        ...     print("a") # stdout will be delegated to logger.  # doctest: +SKIP
 
     Args:
         logger: Python logger that will receive messages streamed to

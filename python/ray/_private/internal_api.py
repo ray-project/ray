@@ -181,9 +181,9 @@ def free(object_refs: list, local_only: bool = False):
     when the ref count is down to 0.
 
     Examples:
-        >>> x_id = f.remote()
-        >>> ray.get(x_id)  # wait for x to be created first
-        >>> free([x_id])  # unpin & delete x globally
+        >>> x_id = f.remote()  # doctest: +SKIP
+        >>> ray.get(x_id)  # wait for x to be created first  # doctest: +SKIP
+        >>> free([x_id])  # unpin & delete x globally  # doctest: +SKIP
 
     Args:
         object_refs (List[ObjectRef]): List of object refs to delete.
