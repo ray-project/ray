@@ -38,7 +38,7 @@ In short, your remote URI is not treated as a secret, so it should not contain s
 
 ## Running on VMs: the netrc File
 
-The [netrc file](https://www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html) contains credentials that Ray uses to automatically log into remote servers. You can set your credentials in this file instead of in the remote URI:
+The [netrc file](https://www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html) contains credentials that Ray uses to automatically log into remote servers. Set your credentials in this file instead of in the remote URI:
 
 ```bash
 # "$HOME/.netrc"
