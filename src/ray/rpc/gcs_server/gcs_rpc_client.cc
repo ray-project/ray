@@ -46,8 +46,7 @@ std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string
     return channel_;
   }
 
-  if (address_ == address &&
-      port_ == port &&
+  if (address_ == address && port_ == port &&
       proxy_enabled_ == ::RayConfig::instance().grpc_enable_http_proxy() &&
       use_tls_ == ::RayConfig::instance().USE_TLS()) {
     return channel_;

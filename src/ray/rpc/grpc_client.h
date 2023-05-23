@@ -68,6 +68,8 @@ inline std::shared_ptr<grpc::Channel> BuildChannel(
     std::string private_key = ReadCert(server_key_file);
     std::string cacert = ReadCert(root_cert_file);
 
+    RAY_LOG(INFO) << "Setup TLS:";
+
     grpc::SslCredentialsOptions ssl_opts;
     ssl_opts.pem_root_certs = cacert;
     ssl_opts.pem_private_key = private_key;
