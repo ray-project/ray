@@ -237,12 +237,23 @@ class ApplicationState:
                 self._deployment_state_manager.get_deployment_statuses(self.deployments)
             )
             num_health_deployments = 0
+            unhealthy_deployment_names = []
             for deployment_status in deployments_statuses:
                 if deployment_status.status == DeploymentStatus.UNHEALTHY:
-                    self._update_status(ApplicationStatus.DEPLOY_FAILED)
-                    return
+                    unhealthy_deployment_names.append(deployment_status.name)
                 if deployment_status.status == DeploymentStatus.HEALTHY:
                     num_health_deployments += 1
+
+            if len(unhealthy_deployment_names) != 0:
+                self._update_status(
+                    ApplicationStatus.DEPLOY_FAILED,
+                    app_msg=(
+                        "The following deployments are UNHEALTHY: "
+                        f"{unhealthy_deployment_names}"
+                    ),
+                )
+                return
+
             if num_health_deployments == len(deployments_statuses):
                 self._update_status(ApplicationStatus.RUNNING)
 
