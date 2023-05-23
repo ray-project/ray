@@ -7,7 +7,7 @@ doctest(
             "examples/**",
             "tests/**",
             # GPU tests
-            "python/ray/train/huggingface/accelerate/accelerate_trainer.py"
+            "huggingface/accelerate/accelerate_trainer.py"
         ]
     ),
     tags = ["team:ml"],
@@ -15,7 +15,7 @@ doctest(
 )
 
 doctest(
-    files = ["python/ray/train/huggingface/accelerate/accelerate_trainer.py"],
+    files = ["huggingface/accelerate/accelerate_trainer.py"],
     tags = ["team:ml"],
     gpu = True
 )
