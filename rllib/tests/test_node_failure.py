@@ -5,7 +5,7 @@ import unittest
 import ray
 from ray._private.test_utils import get_other_nodes
 from ray.cluster_utils import Cluster
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 
 

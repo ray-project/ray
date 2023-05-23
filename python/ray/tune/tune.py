@@ -16,6 +16,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Tuple,
     Type,
     Union,
     TYPE_CHECKING,
@@ -228,6 +229,59 @@ def _ray_auto_init(entrypoint: str):
         )
 
 
+def _resolve_and_validate_storage_path(
+    storage_path: str, local_dir: Optional[str], sync_config: Optional[SyncConfig]
+) -> Tuple[str, str, Optional[str], SyncConfig]:
+    # TODO(ml-team): Simplify/remove this in 2.6 when `local_dir`
+    # and `SyncConfig(upload_dir)` are hard-deprecated.
+    sync_config = sync_config or SyncConfig()
+
+    # Resolve storage_path
+    local_path, remote_path = _resolve_storage_path(
+        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
+    )
+
+    if sync_config.upload_dir:
+        assert remote_path == sync_config.upload_dir
+        warnings.warn(
+            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
+            "in the future. Pass `RunConfig.storage_path` instead."
+        )
+        # Set upload_dir to None to avoid further downstream resolution.
+        # Copy object first to not alter user input.
+        sync_config = copy.copy(sync_config)
+        sync_config.upload_dir = None
+
+    if local_dir:
+        assert local_path == local_dir
+        warnings.warn(
+            "Passing a `local_dir` is deprecated and will be removed "
+            "in the future. Pass `storage_path` instead or set the"
+            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
+        )
+        local_path = local_dir
+
+    if not remote_path:
+        # If no remote path is set, try to get Ray Storage URI
+        remote_path = _get_storage_uri()
+        if remote_path:
+            logger.info(
+                "Using configured Ray storage URI as storage path: " f"{remote_path}"
+            )
+
+    sync_config.validate_upload_dir(remote_path)
+
+    if not local_path:
+        local_path = _get_defaults_results_dir()
+
+    storage_path = storage_path or remote_path or local_path
+
+    if storage_path != local_path and local_path:
+        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+
+    return storage_path, local_path, remote_path, sync_config
+
+
 class _Config(abc.ABC):
     def to_dict(self) -> dict:
         """Converts this configuration to a dict format."""
@@ -395,11 +449,12 @@ def run(
             training workers.
         checkpoint_upload_from_workers: Whether to upload checkpoint files
             directly from distributed training workers.
-        verbose: 0, 1, or 2. Verbosity mode.
-            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
-            If ``RAY_AIR_NEW_OUTPUT=0``, uses the old verbosity settings:
+        verbose: 0, 1, 2, or 3. Verbosity mode.
             0 = silent, 1 = only status updates, 2 = status and brief
-            results, 3 = status and detailed results.
+            results, 3 = status and detailed results. Defaults to 3.
+            If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
+            uses the new context-aware verbosity settings:
+            0 = silent, 1 = default, 2 = verbose.
         progress_reporter: Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
@@ -630,50 +685,18 @@ def run(
             f"Got '{type(config)}' instead."
         )
 
-    sync_config = sync_config or SyncConfig()
-
-    # Resolve storage_path
-    local_path, remote_path = _resolve_storage_path(
-        storage_path, local_dir, sync_config.upload_dir, error_location="tune.run"
+    (
+        storage_path,
+        local_path,
+        remote_path,
+        sync_config,
+    ) = _resolve_and_validate_storage_path(
+        storage_path=storage_path, local_dir=local_dir, sync_config=sync_config
     )
 
-    if sync_config.upload_dir:
-        assert remote_path == sync_config.upload_dir
-        warnings.warn(
-            "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
-            "in the future. Pass `RunConfig.storage_path` instead."
-        )
-        # Set upload_dir to None to avoid further downstream resolution.
-        # Copy object first to not alter user input.
-        sync_config = copy.copy(sync_config)
-        sync_config.upload_dir = None
-
-    if local_dir:
-        assert local_path == local_dir
-        warnings.warn(
-            "Passing a `local_dir` is deprecated and will be removed "
-            "in the future. Pass `storage_path` instead or set the"
-            "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
-        )
-        local_path = local_dir
-
-    if not remote_path:
-        # If no remote path is set, try to get Ray Storage URI
-        remote_path = _get_storage_uri()
-        if remote_path:
-            logger.info(
-                "Using configured Ray storage URI as storage path: " f"{remote_path}"
-            )
-
-    sync_config.validate_upload_dir(remote_path)
-
-    if not local_path:
-        local_path = _get_defaults_results_dir()
-
-    storage_path = storage_path or remote_path or local_path
-
-    if storage_path != local_path and local_path:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+    air_usage.tag_ray_air_storage_config(
+        local_path=local_path, remote_path=remote_path, sync_config=sync_config
+    )
 
     checkpoint_score_attr = checkpoint_score_attr or ""
     if checkpoint_score_attr.startswith("min-"):
@@ -887,7 +910,11 @@ def run(
 
     progress_metrics = _detect_progress_metrics(_get_trainable(run_or_experiment))
 
-    # Create syncer callbacks
+    # NOTE: Report callback telemetry before populating the list with default callbacks.
+    # This tracks user-specified callback usage.
+    air_usage.tag_callbacks(callbacks)
+
+    # Create default logging + syncer callbacks
     callbacks = _create_default_callbacks(
         callbacks,
         sync_config=sync_config,
@@ -993,7 +1020,11 @@ def run(
         )
     else:
         air_progress_reporter = _detect_air_reporter(
-            air_verbosity, search_alg.total_samples, metric=metric, mode=mode
+            air_verbosity,
+            search_alg.total_samples,
+            metric=metric,
+            mode=mode,
+            config=config,
         )
 
     # rich live context manager has to be called encapsulating

@@ -56,6 +56,11 @@ python_grpc_compile(
     deps = [":instance_manager_proto"],
 )
 
+cc_proto_library(
+    name ="instance_manager_cc_proto",
+    deps = [":instance_manager_proto"],
+)
+
 proto_library(
     name = "runtime_env_common_proto",
     srcs = ["runtime_env_common.proto"],
