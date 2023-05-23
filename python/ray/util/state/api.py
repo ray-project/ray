@@ -1187,15 +1187,35 @@ def get_log(
     """Retrieve log file based on file name or some entities ids (pid, actor id, task id).
 
     Examples:
-        >>> import ray
-        >>> from ray.util.state import get_log # doctest: +SKIP
-        # To connect to an existing ray instance if there is
-        >>> ray.init("auto") # doctest: +SKIP
-        # Node IP could be retrieved from list_nodes() or ray.nodes()
-        >>> node_ip = "172.31.47.143"  # doctest: +SKIP
-        >>> filename = "gcs_server.out" # doctest: +SKIP
-        >>> for l in get_log(filename=filename, node_ip=node_ip): # doctest: +SKIP
-        >>>    print(l) # doctest: +SKIP
+        .. testcode::
+            :hide:
+
+            import ray
+            import time
+
+            ray.shutdown()
+            ray.init()
+
+            # Wait for the node to be registered to the dashboard
+            time.sleep(5)
+
+        .. testcode::
+
+            import ray
+            from ray.util.state import get_log
+
+            # Node id could be retrieved from list_nodes() or ray.nodes()
+            node_id = ray.nodes()[0]["NodeID"]
+            filename = "raylet.out"
+            for l in get_log(filename=filename, node_id=node_id):
+               print(l)
+
+        .. testoutput::
+            :options: +SKIP
+
+            [2023-05-19 12:35:18,347 I 4259 68399276] (raylet) io_service_pool.cc:35: IOServicePool is running with 1 io_service.
+            [2023-05-19 12:35:18,348 I 4259 68399276] (raylet) store_runner.cc:32: Allowing the Plasma store to use up to 2.14748GB of memory.
+            [2023-05-19 12:35:18,348 I 4259 68399276] (raylet) store_runner.cc:48: Starting object store with directory /tmp, fallback /tmp/ray, and huge page support disabled
 
     Args:
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
