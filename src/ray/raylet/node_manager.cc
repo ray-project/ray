@@ -1742,6 +1742,13 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
                                             rpc::UpdateResourceUsageReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  if (RayConfig::instance().use_ray_syncer()) {
+    RAY_LOG(WARNING)
+        << "There is a GCS outside of this cluster sending message to this raylet.";
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
   // When next_resource_seq_no_ == 0 it means it just started.
@@ -1758,6 +1765,7 @@ void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest requ
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
     if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
       RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
+      send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
   }
