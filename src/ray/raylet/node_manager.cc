@@ -1743,7 +1743,8 @@ void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest requ
                                             rpc::UpdateResourceUsageReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
   if (RayConfig::instance().use_ray_syncer()) {
-    RAY_LOG(INFO) << "There is a GCS outside of this cluster sending message to this raylet.";
+    RAY_LOG(INFO)
+        << "There is a GCS outside of this cluster sending message to this raylet.";
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
   }
