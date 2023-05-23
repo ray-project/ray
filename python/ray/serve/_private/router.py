@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 from dataclasses import dataclass
 import itertools
 import logging
@@ -6,7 +7,6 @@ import pickle
 import random
 import sys
 from typing import Any, Dict, List, Optional
-from collections import defaultdict
 
 import ray
 from ray.actor import ActorHandle
@@ -77,13 +77,9 @@ class Query:
 class ReplicaSet:
     """Data structure representing a set of replica actor handles"""
 
-    def __init__(
-        self,
-        deployment_name,
-        event_loop: asyncio.AbstractEventLoop,
-    ):
-        self.deployment_name = deployment_name
+    def __init__(self, event_loop: asyncio.AbstractEventLoop):
         self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
+
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
         # replicas.
@@ -102,19 +98,6 @@ class ReplicaSet:
             self.config_updated_event = asyncio.Event()
         else:
             self.config_updated_event = asyncio.Event(loop=event_loop)
-
-        self.num_queued_queries = 0
-        self.num_queued_queries_gauge = metrics.Gauge(
-            "serve_deployment_queued_queries",
-            description=(
-                "The current number of queries to this deployment waiting"
-                " to be assigned to a replica."
-            ),
-            tag_keys=("deployment", "route", "application"),
-        )
-        self.num_queued_queries_gauge.set_default_tags(
-            {"deployment": self.deployment_name}
-        )
 
         # A map from multiplexed model id to a list of replicas that have the
         # model loaded.
@@ -301,14 +284,6 @@ class ReplicaSet:
         and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
         """
-        self.num_queued_queries += 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "route": query.metadata.route,
-                "application": query.metadata.app_name,
-            },
-        )
         await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
@@ -331,14 +306,7 @@ class ReplicaSet:
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
             assigned_ref = self._try_assign_replica(query)
-        self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "route": query.metadata.route,
-                "application": query.metadata.app_name,
-            },
-        )
+
         return assigned_ref
 
 
@@ -355,7 +323,7 @@ class Router:
             controller_handle: The controller handle.
         """
         self._event_loop = event_loop
-        self._replica_set = ReplicaSet(deployment_name, event_loop)
+        self._replica_set = ReplicaSet(event_loop)
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
@@ -364,6 +332,17 @@ class Router:
             tag_keys=("deployment", "route", "application"),
         )
         self.num_router_requests.set_default_tags({"deployment": deployment_name})
+
+        self.num_queued_queries = 0
+        self.num_queued_queries_gauge = metrics.Gauge(
+            "serve_deployment_queued_queries",
+            description=(
+                "The current number of queries to this deployment waiting"
+                " to be assigned to a replica."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+        self.num_queued_queries_gauge.set_default_tags({"deployment": deployment_name})
 
         self.long_poll_client = LongPollClient(
             controller_handle,
@@ -394,23 +373,41 @@ class Router:
         return {self.deployment_name: self.get_num_queued_queries()}
 
     def get_num_queued_queries(self):
-        return self._replica_set.num_queued_queries
+        return self.num_queued_queries
 
     async def assign_request(
         self,
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ):
+    ) -> ray.ObjectRef:
         """Assign a query and returns an object ref represent the result"""
 
         self.num_router_requests.inc(
             tags={"route": request_meta.route, "application": request_meta.app_name}
         )
-        return await self._replica_set.assign_replica(
+        self.num_queued_queries += 1
+        self.num_queued_queries_gauge.set(
+            self.num_queued_queries,
+            tags={
+                "application": request_meta.app_name,
+            },
+        )
+
+        result: ray.ObjectRef = await self._replica_set.assign_replica(
             Query(
                 args=list(request_args),
                 kwargs=request_kwargs,
                 metadata=request_meta,
             )
         )
+
+        self.num_queued_queries -= 1
+        self.num_queued_queries_gauge.set(
+            self.num_queued_queries,
+            tags={
+                "application": request_meta.app_name,
+            },
+        )
+
+        return result
