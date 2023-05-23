@@ -42,6 +42,12 @@ class EpisodeEnvAwareLSTMPolicy(RandomPolicy):
                         space=state_space
                     )
 
+            def compile(self, *args, **kwargs):
+                """Dummy method for compatibility with TorchRLModule.
+
+                This is hit when RolloutWorker tries to compile TorchRLModule."""
+                pass
+
         self.model = _fake_model(self.state_space, self.action_space)
 
         self.view_requirements = dict(
@@ -132,6 +138,12 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
                         space=state_space, used_for_compute_actions=False
                     ),
                 }
+
+            def compile(self, *args, **kwargs):
+                """Dummy method for compatibility with TorchRLModule.
+
+                This is hit when RolloutWorker tries to compile TorchRLModule."""
+                pass
 
             # We need to provide at least an initial state if we want agent collector
             # to build episodes with state_in_ and state_out_
