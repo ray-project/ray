@@ -208,7 +208,7 @@ def compute_gae_for_sample_batch(
             #  This implementation right now will compute even the action_dist which
             #  will not be needed but takes time to compute.
             if policy.framework == "torch":
-                input_dict = convert_to_torch_tensor(input_dict)
+                input_dict = convert_to_torch_tensor(input_dict, device=policy.device)
             # TODO (sven): Fix this once we support RNNs on the new stack.
             input_dict[STATE_IN] = input_dict[SampleBatch.SEQ_LENS] = None
             input_dict = NestedDict(input_dict)
