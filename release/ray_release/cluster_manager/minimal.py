@@ -38,9 +38,9 @@ class MinimalClusterManager(ClusterManager):
         while not self.cluster_env_id:
             result = self.sdk.search_cluster_environments(
                 dict(
-                    project_id=self.project_id,
                     name=dict(equals=self.cluster_env_name),
                     paging=dict(count=50, paging_token=paging_token),
+                    project_id=None if self.test.is_byod_cluster() else self.project_id,
                 )
             )
             paging_token = result.metadata.next_paging_token
