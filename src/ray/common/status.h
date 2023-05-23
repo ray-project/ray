@@ -115,7 +115,8 @@ enum class StatusCode : char {
   ObjectUnknownOwner = 29,
   RpcError = 30,
   OutOfResource = 31,
-  ObjectRefStreamEoF = 32
+  // Meaning the ObjectRefStream reaches to the end of stream.
+  ObjectRefEndOfStream = 32
 };
 
 #if defined(__clang__)
@@ -147,8 +148,8 @@ class RAY_EXPORT Status {
     return Status(StatusCode::KeyError, msg);
   }
 
-  static Status ObjectRefStreamEoF(const std::string &msg) {
-    return Status(StatusCode::ObjectRefStreamEoF, msg);
+  static Status ObjectRefEndOfStream(const std::string &msg) {
+    return Status(StatusCode::ObjectRefEndOfStream, msg);
   }
 
   static Status TypeError(const std::string &msg) {
@@ -259,7 +260,9 @@ class RAY_EXPORT Status {
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }
   bool IsOutOfDisk() const { return code() == StatusCode::OutOfDisk; }
   bool IsKeyError() const { return code() == StatusCode::KeyError; }
-  bool IsObjectRefStreamEoF() const { return code() == StatusCode::ObjectRefStreamEoF; }
+  bool IsObjectRefEndOfStream() const {
+    return code() == StatusCode::ObjectRefEndOfStream;
+  }
   bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsIOError() const { return code() == StatusCode::IOError; }
   bool IsTypeError() const { return code() == StatusCode::TypeError; }

@@ -10,7 +10,7 @@ from unittest.mock import patch, Mock
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.experimental.state.api import list_objects
-from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEoFError
+from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEneOfStreamError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
 
@@ -60,8 +60,8 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
             assert new_ref == ref
 
         # When try_read_next_object_ref_stream raises a
-        # ObjectRefStreamEoFError, it should raise a stop iteration.
-        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEoFError(
+        # ObjectRefStreamEneOfStreamError, it should raise a stop iteration.
+        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEneOfStreamError(
             ""
         )  # noqa
         with pytest.raises(StopIteration):
@@ -166,12 +166,42 @@ async def test_streaming_object_ref_generator_unit_async(mocked_worker):
             assert new_ref == ref
 
         # When try_read_next_object_ref_stream raises a
-        # ObjectRefStreamEoFError, it should raise a stop iteration.
-        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEoFError(
+        # ObjectRefStreamEneOfStreamError, it should raise a stop iteration.
+        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEneOfStreamError(
             ""
         )  # noqa
         with pytest.raises(StopAsyncIteration):
             ref = await generator._next_async(timeout_s=0)
+
+
+@pytest.mark.asyncio
+async def test_async_ref_generator_task_failed_unit(mocked_worker):
+    """
+    Verify when a task is failed by a system error,
+    the generator ref is returned.
+    """
+    with patch("ray.get") as mocked_ray_get:
+        with patch("ray.wait") as mocked_ray_wait:
+            c = mocked_worker.core_worker
+            generator_ref = ray.ObjectRef.from_random()
+            generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
+
+            # Simulate the worker failure happens.
+            mocked_ray_wait.return_value = [generator_ref], []
+            mocked_ray_get.side_effect = WorkerCrashedError()
+
+            c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
+            ref = await generator._next_async(timeout_s=0)
+            # If the generator task fails by a systsem error,
+            # meaning the ref will raise an exception
+            # it should be returned.
+            assert ref == generator_ref
+
+            # Once exception is raised, it should always
+            # raise stopIteration regardless of what
+            # the ref contains now.
+            with pytest.raises(StopAsyncIteration):
+                ref = await generator._next_async(timeout_s=0)
 
 
 def test_generator_basic(shutdown_only):

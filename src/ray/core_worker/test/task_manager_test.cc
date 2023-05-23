@@ -1268,7 +1268,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   }
   // READ (EoF)
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
   ASSERT_EQ(obj_id, ObjectID::Nil());
   // DELETE
   manager_.DelObjectRefStream(generator_id);
@@ -1315,13 +1315,13 @@ TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
   ObjectID obj_id;
   // READ (EoF)
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
   ASSERT_EQ(obj_id, ObjectID::Nil());
   // DELETE
   manager_.DelObjectRefStream(generator_id);
 }
 
-TEST_F(TaskManagerTest, TestObjectRefStreamEoF) {
+TEST_F(TaskManagerTest, TestObjectRefEndOfStream) {
   /**
    * Test that after writing EoF, write/read doesn't work.
    * CREATE WRITE WRITEEoF, WRITE(verify no op) DELETE
@@ -1364,7 +1364,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEoF) {
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
   // READ (doesn't works because EoF is already written)
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamIndexDiscarded) {
@@ -1529,7 +1529,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
 
   // Nothing more to read.
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
 
   manager_.DelObjectRefStream(generator_id);
 }
@@ -1670,7 +1670,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
 
   // READ (EoF)
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
   ASSERT_EQ(obj_id, ObjectID::Nil());
   // DELETE
   manager_.DelObjectRefStream(generator_id);
