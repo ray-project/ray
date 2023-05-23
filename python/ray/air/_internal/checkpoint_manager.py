@@ -382,16 +382,19 @@ class _CheckpointManager:
         checkpoint_score_attribute = (
             self._checkpoint_strategy.checkpoint_score_attribute
         )
-        try:
-            checkpoint_result = unflattened_lookup(
-                checkpoint_score_attribute, checkpoint.metrics
-            )
-        except KeyError:
-            logger.error(
-                f"Result dict has no key: {checkpoint_score_attribute}. "
-                f"checkpoint_score_attr must be set to a key in the "
-                f"result dict. Valid keys are: {list(checkpoint.metrics.keys())}"
-            )
+        if checkpoint_score_attribute:
+            try:
+                checkpoint_result = unflattened_lookup(
+                    checkpoint_score_attribute, checkpoint.metrics
+                )
+            except KeyError:
+                logger.error(
+                    f"Result dict has no key: {checkpoint_score_attribute}. "
+                    f"checkpoint_score_attr must be set to a key in the "
+                    f"result dict. Valid keys are: {list(checkpoint.metrics.keys())}"
+                )
+                checkpoint_result = float("-inf")
+        else:
             checkpoint_result = float("-inf")
 
         checkpoint_score_order = self._checkpoint_strategy.checkpoint_score_order
