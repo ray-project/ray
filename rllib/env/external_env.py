@@ -13,6 +13,7 @@ from ray.rllib.utils.typing import (
     EnvType,
     MultiEnvDict,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
@@ -53,6 +54,7 @@ class ExternalEnv(threading.Thread):
         self,
         action_space: gym.Space,
         observation_space: gym.Space,
+        max_concurrent: int = None,
     ):
         """Initializes an ExternalEnv instance.
 
@@ -69,6 +71,14 @@ class ExternalEnv(threading.Thread):
         self._episodes = {}
         self._finished = set()
         self._results_avail_condition = threading.Condition()
+        if max_concurrent is not None:
+            deprecation_warning(
+                "The `max_concurrent` argument has been deprecated. Please configure"
+                "the number of episodes using the `rollout_fragment_length` and"
+                "`batch_mode` arguments. Please raise an issue on the Ray Github if "
+                "these arguments do not support your expected use case for ExternalEnv",
+                error=True,
+            )
 
     @PublicAPI
     def run(self):
