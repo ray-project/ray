@@ -58,7 +58,6 @@ def tls_enabled():
 )
 @pytest.mark.parametrize("use_tls", [True], indirect=True)
 def test_deploy_basic(use_tls):
-    print(os.environ)
     if use_tls:
         run_string_as_driver(
             """

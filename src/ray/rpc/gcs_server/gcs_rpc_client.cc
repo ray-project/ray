@@ -36,6 +36,9 @@ std::shared_ptr<grpc::Channel> GcsRpcClient::GetDefaultChannel(const std::string
   static int port_;
   std::lock_guard<std::mutex> guard(mu_);
   // Don't reuse channel if proxy or tls is set
+  // TODO: Reuse the channel even it's tls.
+  // Right now, if we do this, python/ray/serve/tests/test_grpc.py
+  // will fail.
   if (::RayConfig::instance().grpc_enable_http_proxy() ||
       ::RayConfig::instance().USE_TLS()) {
     return BuildChannel(address, port, GetGcsRpcClientArguments());
