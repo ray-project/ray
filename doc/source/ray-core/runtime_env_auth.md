@@ -75,7 +75,7 @@ Add the `netrc` file to your VM container's home directory, so Ray can access th
 kubectl create secret generic netrc-secret --from-file=.netrc="$HOME/.netrc"
 ```
 
-4\. Expose the secret to your KubeRay application using a mounted volume, and update the `NETRC` environment variable to point to the `netrc` file. You can include the following YAML in your KubeRay config.
+4\. Expose the secret to your KubeRay application using a mounted volume, and update the `NETRC` environment variable to point to the `netrc` file. Include the following YAML in your KubeRay config.
 
 ```yaml
 headGroupSpec:
