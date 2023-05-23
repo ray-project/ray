@@ -5943,6 +5943,8 @@
   group: data-tests
   working_dir: nightly_tests
 
+  stable: false
+
   frequency: nightly
   team: data
   cluster:
