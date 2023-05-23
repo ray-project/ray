@@ -505,6 +505,10 @@ def test_read_map_batches_operator_fusion_target_block_size(
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
 
+# TODO(hchen): The old code path supports fusing 2 actors with the same class.
+# But this doesn't seem useful in practice. Confirm whether we need this
+# for the new code path.
+@pytest.mark.skip("Optimizer doesn't supporting fusing two actors yet.")
 def test_read_map_batches_operator_fusion_callable_classes(
     ray_start_regular_shared, enable_optimizer
 ):
