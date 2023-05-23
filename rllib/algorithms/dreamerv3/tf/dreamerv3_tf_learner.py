@@ -63,6 +63,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             self.get_parameters(dreamerv3_module.world_model),
             optim_world_model,
         )
+
         # Actor optimizer.
         optim_actor = tf.keras.optimizers.Adam(
             learning_rate=hps.actor_lr, epsilon=1e-5
@@ -72,6 +73,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             self.get_parameters(dreamerv3_module.actor),
             optim_actor,
         )
+
         # Critic optimizer.
         optim_critic = tf.keras.optimizers.Adam(
             learning_rate=hps.critic_lr, epsilon=1e-5
@@ -166,6 +168,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         batch: SampleBatch,
         fwd_out: Mapping[str, TensorType],
     ) -> Union[Mapping[str, Any], TensorType]:
+
         # World model losses.
         prediction_losses = self._compute_world_model_prediction_losses(
             rewards=batch[SampleBatch.REWARDS],
@@ -235,16 +238,16 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         #    L_disagree = self._compute_disagree_loss(dream_data=dream_data)
 
         # Compile all the results to return.
-        results = critic_loss_results.copy()
+        metrics = critic_loss_results.copy()
 
         # Add actor loss results.
         if hps.train_actor:
-            results.update(actor_loss_results)
+            metrics.update(actor_loss_results)
 
         # Add computed value targets.
-        results["VALUE_TARGETS_H_B"] = value_targets
+        metrics["VALUE_TARGETS_H_B"] = value_targets
         # Add our dream data.
-        results["dream_data"] = dream_data
+        metrics["dream_data"] = dream_data
 
         # if hps.use_curiosity:
         #    results["DISAGREE_L_total"] = L_disagree
@@ -256,7 +259,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         #    )
 
         # Add world model loss results.
-        results.update(
+        metrics.update(
             {
                 "WORLD_MODEL_learned_initial_h": (
                     self.module[module_id].world_model.initial_h
@@ -285,17 +288,17 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 "WORLD_MODEL_L_total": L_world_model_total,
             }
         )
+        # And register all the computed metrics.
+        self.register_metrics(module_id=module_id, metrics_dict=metrics)
 
-        # Provide total loss key, even though it's not needed by any tape/optimizer.
-        results[self.TOTAL_LOSS_KEY] = (
+        # Return the total loss as a sum of all individual losses.
+        return (
             L_world_model_total
             + critic_loss_results["CRITIC_L_total"]
             + actor_loss_results["ACTOR_L_total"]
             if hps.train_actor
             else 0.0
         )
-
-        return results
 
     def _compute_world_model_prediction_losses(
         self,
