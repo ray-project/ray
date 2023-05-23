@@ -3995,10 +3995,12 @@ class Dataset:
                     RefBundle(
                         blocks=[block_with_metadata],
                         owns_blocks=False,
-                    ) for block_with_metadata in blocks.get_blocks_with_metadata()
+                    )
+                    for block_with_metadata in blocks.get_blocks_with_metadata()
                 ]
 
-        # Create a new logical plan whose input is the existing data from the the old Dataset.
+        # Create a new logical plan whose input is the existing data
+        # from the the old Dataset.
         copy._logical_plan = LogicalPlan(InputData(input_data_factory=get_input_data))
 
         return copy
