@@ -38,7 +38,7 @@ class PPOCatalog(Catalog):
         - Value Function Head: The head used to compute the value function.
 
     The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
-    for the policy and value function. See implementations of PPORLModuleBase for
+    for the policy and value function. See implementations of PPORLModule for
     more details.
 
     Any custom ActorCriticEncoder can be built by overriding the
@@ -79,13 +79,19 @@ class PPOCatalog(Catalog):
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
-        self.pi_head_config = MLPHeadConfig(
+        pi_head_config_class = (
+            FreeLogStdMLPHeadConfig
+            if self.model_config_dict["free_log_std"]
+            else MLPHeadConfig
+        )
+        self.pi_head_config = pi_head_config_class(
             input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dims=None,  # We don't know the output dimension yet, because it
-            # depends on the action distribution input dimension
+            # We don't know the output dimension yet, because it depends on the
+            # action distribution input dimension.
+            output_dims=None,
         )
 
         self.vf_head_config = MLPHeadConfig(
@@ -101,7 +107,7 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the encoder from the encoder_config.
         This can be overridden to build a custom ActorCriticEncoder as a means of
-        configuring the behavior of a PPORLModuleBase implementation.
+        configuring the behavior of a PPORLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -126,7 +132,7 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a PPORLModuleBase implementation.
+        the behavior of a PPORLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -144,10 +150,6 @@ class PPOCatalog(Catalog):
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
             )
-            self.pi_head_config = FreeLogStdMLPHeadConfig(
-                mlp_head_config=self.pi_head_config
-            )
-
         return self.pi_head_config.build(framework=framework)
 
     def build_vf_head(self, framework: str) -> Model:
@@ -155,7 +157,7 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the head from the vf_head_config.
         This can be overridden to build a custom value function head as a means of
-        configuring the behavior of a PPORLModuleBase implementation.
+        configuring the behavior of a PPORLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".

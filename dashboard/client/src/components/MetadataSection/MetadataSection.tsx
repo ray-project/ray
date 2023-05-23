@@ -4,7 +4,6 @@ import {
   IconButton,
   Link,
   makeStyles,
-  Paper,
   Tooltip,
   Typography,
 } from "@material-ui/core";
@@ -12,6 +11,7 @@ import copy from "copy-to-clipboard";
 import React, { useState } from "react";
 import { RiFileCopyLine } from "react-icons/ri";
 import { Link as RouterLink } from "react-router-dom";
+import { Section } from "../../common/Section";
 import { HelpInfo } from "../Tooltip";
 
 export type StringOnlyMetadataContent = {
@@ -30,6 +30,9 @@ type CopyableMetadataContent = StringOnlyMetadataContent & {
   readonly copyableValue: string;
 };
 
+type CopyAndLinkableMetadataContent = LinkableMetadataContent &
+  CopyableMetadataContent;
+
 export type Metadata = {
   readonly label: string;
   readonly labelTooltip?: string | JSX.Element;
@@ -39,6 +42,7 @@ export type Metadata = {
     | StringOnlyMetadataContent
     | LinkableMetadataContent
     | CopyableMetadataContent
+    | CopyAndLinkableMetadataContent
     | JSX.Element;
 
   /**
@@ -55,7 +59,6 @@ const useStyles = makeStyles((theme) =>
       gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
       rowGap: theme.spacing(1),
       columnGap: theme.spacing(4),
-      padding: theme.spacing(2),
     },
     label: {
       color: theme.palette.text.secondary,
@@ -93,6 +96,28 @@ export const MetadataContentField: React.FC<{
   const classes = useStyles();
   const [copyIconClicked, setCopyIconClicked] = useState<boolean>(false);
 
+  const copyElement = content && "copyableValue" in content && (
+    <Tooltip
+      placement="top"
+      title={copyIconClicked ? "Copied" : "Click to copy"}
+    >
+      <IconButton
+        aria-label="copy"
+        onClick={() => {
+          setCopyIconClicked(true);
+          copy(content.copyableValue);
+        }}
+        // Set up mouse events to avoid text changing while tooltip is visible
+        onMouseEnter={() => setCopyIconClicked(false)}
+        onMouseLeave={() => setTimeout(() => setCopyIconClicked(false), 333)}
+        size="small"
+        className={classes.button}
+      >
+        <RiFileCopyLine />
+      </IconButton>
+    </Tooltip>
+  );
+
   if (content === undefined || "value" in content) {
     return content === undefined || !("link" in content) ? (
       <div className={classes.contentContainer}>
@@ -104,47 +129,31 @@ export const MetadataContentField: React.FC<{
         >
           {content?.value ?? "-"}
         </Typography>
-        {content && "copyableValue" in content && (
-          <Tooltip
-            placement="top"
-            title={copyIconClicked ? "Copied" : "Click to copy"}
-          >
-            <IconButton
-              aria-label="copy"
-              onClick={() => {
-                setCopyIconClicked(true);
-                copy(content.copyableValue);
-              }}
-              // Set up mouse events to avoid text changing while tooltip is visible
-              onMouseEnter={() => setCopyIconClicked(false)}
-              onMouseLeave={() =>
-                setTimeout(() => setCopyIconClicked(false), 333)
-              }
-              size="small"
-              className={classes.button}
-            >
-              <RiFileCopyLine />
-            </IconButton>
-          </Tooltip>
-        )}
+        {copyElement}
       </div>
     ) : content.link.startsWith("http") ? (
-      <Link
-        className={classes.content}
-        href={content.link}
-        data-testid={`metadata-content-for-${label}`}
-      >
-        {content.value}
-      </Link>
+      <div className={classes.contentContainer}>
+        <Link
+          className={classes.content}
+          href={content.link}
+          data-testid={`metadata-content-for-${label}`}
+        >
+          {content.value}
+        </Link>
+        {copyElement}
+      </div>
     ) : (
-      <Link
-        className={classes.content}
-        component={RouterLink}
-        to={content.link}
-        data-testid={`metadata-content-for-${label}`}
-      >
-        {content.value}
-      </Link>
+      <div className={classes.contentContainer}>
+        <Link
+          className={classes.content}
+          component={RouterLink}
+          to={content.link}
+          data-testid={`metadata-content-for-${label}`}
+        >
+          {content.value}
+        </Link>
+        {copyElement}
+      </div>
     );
   }
   return <div data-testid={`metadata-content-for-${label}`}>{content}</div>;
@@ -193,15 +202,8 @@ export const MetadataSection = ({
   metadataList: Metadata[];
 }) => {
   return (
-    <Box marginTop={1} marginBottom={4}>
-      {header && (
-        <Box paddingBottom={2}>
-          <Typography variant="h2">{header}</Typography>
-        </Box>
-      )}
-      <Paper variant="outlined">
-        <MetadataList metadataList={metadataList} />
-      </Paper>
-    </Box>
+    <Section title={header} marginTop={1} marginBottom={4}>
+      <MetadataList metadataList={metadataList} />
+    </Section>
   );
 };

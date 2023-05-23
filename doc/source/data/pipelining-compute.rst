@@ -1,8 +1,13 @@
 .. _pipelining_datasets:
 
-==================
-Pipelining Compute 
-==================
+=============================
+DatasetPipelines (deprecated)
+=============================
+
+.. warning::
+
+  DatasetPipelines are deprecated now that Dataset provides pipelined execution
+  by default. For more detail, see :ref:`Streaming Execution <streaming_execution>`.
 
 Dataset pipelines allow Dataset transformations to be executed incrementally on *windows* of the base data, instead of on all of the data at once. This can be used for streaming data loading into ML training, or to execute batch transformations on large datasets without needing to load the entire dataset into cluster memory.
 

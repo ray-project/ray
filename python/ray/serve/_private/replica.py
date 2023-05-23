@@ -7,6 +7,7 @@ import os
 import pickle
 import time
 from typing import Any, Callable, Optional, Tuple, Dict
+import traceback
 
 import starlette.responses
 
@@ -14,11 +15,14 @@ import ray
 from ray import cloudpickle
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
-from ray.util import metrics
+from ray.serve import metrics
 from ray._private.async_compat import sync_to_async
 
-from ray.serve._private.autoscaling_metrics import start_metrics_pusher
-from ray.serve._private.common import HEALTH_CHECK_CONCURRENCY_GROUP, ReplicaTag
+from ray.serve._private.common import (
+    HEALTH_CHECK_CONCURRENCY_GROUP,
+    ReplicaTag,
+    ServeComponentType,
+)
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
@@ -30,13 +34,18 @@ from ray.serve._private.constants import (
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import ASGIHTTPSender
-from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
+from ray.serve._private.logging_utils import (
+    access_log_msg,
+    configure_component_logger,
+    get_component_logger_file_path,
+)
 from ray.serve._private.router import Query, RequestMetadata
 from ray.serve._private.utils import (
     parse_import_path,
     parse_request_item,
     wrap_to_ray_error,
     merge_dict,
+    MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
 
@@ -68,9 +77,10 @@ def create_replica_wrapper(name: str):
             version: DeploymentVersion,
             controller_name: str,
             detached: bool,
+            app_name: str = None,
         ):
             configure_component_logger(
-                component_type="deployment",
+                component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
             )
@@ -121,6 +131,7 @@ def create_replica_wrapper(name: str):
                 replica_tag,
                 controller_name,
                 servable_object=None,
+                app_name=app_name,
             )
 
             assert controller_name, "Must provide a valid controller_name"
@@ -128,6 +139,9 @@ def create_replica_wrapper(name: str):
             controller_handle = ray.get_actor(
                 controller_name, namespace=SERVE_NAMESPACE
             )
+
+            # Indicates whether the replica has finished initializing.
+            self._init_finish_event = asyncio.Event()
 
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
@@ -152,18 +166,20 @@ def create_replica_wrapper(name: str):
                     replica_tag,
                     controller_name,
                     servable_object=_callable,
+                    app_name=app_name,
                 )
 
                 self.replica = RayServeReplica(
                     _callable,
                     deployment_name,
                     replica_tag,
-                    deployment_config,
-                    deployment_config.user_config,
+                    deployment_config.autoscaling_config,
                     version,
                     is_function,
                     controller_handle,
+                    app_name,
                 )
+                self._init_finish_event.set()
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
@@ -213,40 +229,52 @@ def create_replica_wrapper(name: str):
             to PENDING_INITIALIZATION startup state.
 
             Returns:
-                The PID, actor ID, node ID, node IP of the replica.
+                The PID, actor ID, node ID, node IP, and log filepath id of the replica.
             """
+
             return (
                 os.getpid(),
                 ray.get_runtime_context().get_actor_id(),
+                ray._private.worker.global_worker.worker_id.hex(),
                 ray.get_runtime_context().get_node_id(),
                 ray.util.get_node_ip_address(),
+                get_component_logger_file_path(),
             )
 
         async def is_initialized(
-            self, user_config: Optional[Any] = None, _after: Optional[Any] = None
+            self,
+            deployment_config: DeploymentConfig = None,
+            _after: Optional[Any] = None,
         ):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
-            await self._initialize_replica()
+            try:
+                await self._initialize_replica()
+                metadata = await self.reconfigure(deployment_config)
 
-            metadata = await self.reconfigure(user_config)
-
-            # A new replica should not be considered healthy until it passes an
-            # initial health check. If an initial health check fails, consider
-            # it an initialization failure.
-            await self.check_health()
-            return metadata
+                # A new replica should not be considered healthy until it passes an
+                # initial health check. If an initial health check fails, consider
+                # it an initialization failure.
+                await self.check_health()
+                return metadata
+            except Exception:
+                raise RuntimeError(traceback.format_exc()) from None
 
         async def reconfigure(
-            self, user_config: Optional[Any] = None
+            self, deployment_config: DeploymentConfig
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            if user_config is not None:
-                await self.replica.reconfigure(user_config)
+            try:
+                await self.replica.reconfigure(deployment_config)
+                return await self.get_metadata()
+            except Exception:
+                raise RuntimeError(traceback.format_exc()) from None
 
-            return self.get_metadata()
-
-        def get_metadata(self) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            return self.replica.deployment_config, self.replica.version
+        async def get_metadata(
+            self,
+        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            # Wait for replica initialization to finish
+            await self._init_finish_event.wait()
+            return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
             if self.replica is not None:
@@ -273,20 +301,20 @@ class RayServeReplica:
         _callable: Callable,
         deployment_name: str,
         replica_tag: ReplicaTag,
-        deployment_config: DeploymentConfig,
-        user_config: Any,
+        autoscaling_config: Any,
         version: DeploymentVersion,
         is_function: bool,
         controller_handle: ActorHandle,
+        app_name: str,
     ) -> None:
-        self.deployment_config = deployment_config
         self.deployment_name = deployment_name
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
-        self.user_config = user_config
         self.version = version
+        self.deployment_config = None
         self.rwlock = aiorwlock.RWLock()
+        self.app_name = app_name
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
         if not callable(user_health_check):
@@ -303,10 +331,7 @@ class RayServeReplica:
             description=(
                 "The number of queries that have been processed in this replica."
             ),
-            tag_keys=("deployment", "replica", "route"),
-        )
-        self.request_counter.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
+            tag_keys=("route",),
         )
 
         self.error_counter = metrics.Counter(
@@ -314,10 +339,7 @@ class RayServeReplica:
             description=(
                 "The number of exceptions that have occurred in this replica."
             ),
-            tag_keys=("deployment", "replica", "route"),
-        )
-        self.error_counter.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
+            tag_keys=("route",),
         )
 
         self.restart_counter = metrics.Counter(
@@ -325,43 +347,31 @@ class RayServeReplica:
             description=(
                 "The number of times this replica has been restarted due to failure."
             ),
-            tag_keys=("deployment", "replica"),
-        )
-        self.restart_counter.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
         )
 
         self.processing_latency_tracker = metrics.Histogram(
             "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "replica", "route"),
-        )
-        self.processing_latency_tracker.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
+            tag_keys=("route",),
         )
 
         self.num_processing_items = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
-            tag_keys=("deployment", "replica"),
-        )
-        self.num_processing_items.set_default_tags(
-            {"deployment": self.deployment_name, "replica": self.replica_tag}
         )
 
         self.restart_counter.inc()
 
-        self._shutdown_wait_loop_s = deployment_config.graceful_shutdown_wait_loop_s
-
-        if deployment_config.autoscaling_config:
+        if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
-            config = deployment_config.autoscaling_config
-            start_metrics_pusher(
-                interval_s=config.metrics_interval_s,
-                collection_callback=self._collect_autoscaling_metrics,
-                metrics_process_func=process_remote_func,
+            config = autoscaling_config
+            self.metrics_pusher = MetricsPusher(
+                process_remote_func,
+                config.metrics_interval_s,
+                self._collect_autoscaling_metrics,
             )
+            self.metrics_pusher.start()
 
     async def check_health(self):
         await self.user_health_check()
@@ -476,26 +486,36 @@ class RayServeReplica:
 
         return result, success
 
-    async def reconfigure(self, user_config: Any):
+    async def reconfigure(self, deployment_config: DeploymentConfig):
         async with self.rwlock.writer_lock:
-            self.user_config = user_config
-            self.version = DeploymentVersion(
-                self.version.code_version, user_config=user_config
+            user_config_changed = False
+            if (
+                self.deployment_config is None
+                or self.deployment_config.user_config != deployment_config.user_config
+            ):
+                user_config_changed = True
+            self.deployment_config = deployment_config
+            self.version = DeploymentVersion.from_deployment_version(
+                self.version, self.deployment_config
             )
-            if self.is_function:
-                raise ValueError("deployment_def must be a class to use user_config")
-            elif not hasattr(self.callable, RECONFIGURE_METHOD):
-                raise RayServeException(
-                    "user_config specified but deployment "
-                    + self.deployment_name
-                    + " missing "
-                    + RECONFIGURE_METHOD
-                    + " method"
+
+            if self.deployment_config.user_config is not None and user_config_changed:
+                if self.is_function:
+                    raise ValueError(
+                        "deployment_def must be a class to use user_config"
+                    )
+                elif not hasattr(self.callable, RECONFIGURE_METHOD):
+                    raise RayServeException(
+                        "user_config specified but deployment "
+                        + self.deployment_name
+                        + " missing "
+                        + RECONFIGURE_METHOD
+                        + " method"
+                    )
+                reconfigure_method = sync_to_async(
+                    getattr(self.callable, RECONFIGURE_METHOD)
                 )
-            reconfigure_method = sync_to_async(
-                getattr(self.callable, RECONFIGURE_METHOD)
-            )
-            await reconfigure_method(user_config)
+                await reconfigure_method(self.deployment_config.user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         async with self.rwlock.reader_lock:
@@ -506,7 +526,10 @@ class RayServeReplica:
             # handle can pass the correct request context to subsequent replicas.
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(
-                    request.metadata.route, request.metadata.request_id
+                    request.metadata.route,
+                    request.metadata.request_id,
+                    self.app_name,
+                    request.metadata.multiplexed_model_id,
                 )
             )
 
@@ -538,7 +561,7 @@ class RayServeReplica:
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            await asyncio.sleep(self._shutdown_wait_loop_s)
+            await asyncio.sleep(self.deployment_config.graceful_shutdown_wait_loop_s)
             method_stat = self._get_handle_request_stats()
             # The handle_request method wasn't even invoked.
             if method_stat is None:
@@ -549,8 +572,9 @@ class RayServeReplica:
             else:
                 logger.info(
                     "Waiting for an additional "
-                    f"{self._shutdown_wait_loop_s}s to shut down because "
-                    f"there are {self.num_ongoing_requests} ongoing requests."
+                    f"{self.deployment_config.graceful_shutdown_wait_loop_s}s to shut "
+                    f"down because there are {self.num_ongoing_requests} ongoing "
+                    "requests."
                 )
 
         # Explicitly call the del method to trigger clean up.

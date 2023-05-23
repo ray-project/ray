@@ -4,7 +4,7 @@ import tempfile
 import unittest
 import pytorch_lightning as pl
 import torch
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 
 from torch.utils.data import DataLoader, Dataset
 
@@ -118,7 +118,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             train,
             stop={TRAINING_ITERATION: 10},
             keep_checkpoints_num=100,
-            local_dir=tmpdir,
+            storage_path=tmpdir,
         )
 
         checkpoints = [
@@ -149,7 +149,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
             train,
             stop={TRAINING_ITERATION: 10},
             keep_checkpoints_num=100,
-            local_dir=tmpdir,
+            storage_path=tmpdir,
         )
 
         checkpoints = [

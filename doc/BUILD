@@ -131,6 +131,7 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+         "source/serve/doc_code/object_detection.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -141,6 +142,7 @@ py_test_run_all_subdirectory(
     include = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/object_detection.py",
     ],
     exclude = [],
     extra_srcs = [],
@@ -221,10 +223,63 @@ py_test_run_all_subdirectory(
     include = ["source/data/doc_code/*.py"],
     exclude = [
         "source/ray-air/doc_code/predictors.py",
-        "source/data/doc_code/creating_datasets_untested.py"
+        "source/data/doc_code/loading_data_untested.py",
+        "source/data/doc_code/torch_image_batch_trained.py"
     ],
     extra_srcs = [],
-    tags = ["exclusive", "team:core"],
+    tags = ["exclusive", "team:data"],
+)
+
+# --------------------------------------------------------------------
+# Test all Workspace template notebooks in doc/source/templates
+# as smoke tests.
+# --------------------------------------------------------------------
+
+filegroup(
+    name = "workspace_templates",
+    srcs = glob([
+        "source/templates/tests/**/*.ipynb",
+        "source/templates/tests/**/requirements.txt"
+    ]),
+    visibility = ["//doc:__subpackages__"]
+)
+
+# Validate that all the paths and yamls within the templates.yaml file are valid.
+
+py_test(
+    name = "templates_directory_validation",
+    size = "small",
+    main = "source/templates/validate.py",
+    srcs = ["source/templates/validate.py"],
+    data = glob(["source/templates/**/*"]),
+    tags = ["exclusive", "team:ml"]
+)
+
+# Templates that only require CPU
+
+py_test_run_all_notebooks(
+    size = "large",
+    # TODO(justinvyu): Merge tests/ with the regular versions of the templates.
+    include = ["source/templates/tests/02_many_model_training/many_model_training.ipynb"],
+    exclude = [],
+    data = ["//doc:workspace_templates"],
+    tags = ["exclusive", "team:ml", "ray_air"],
+    env = {"SMOKE_TEST": "1"},
+)
+
+# Templates that require GPU
+
+py_test_run_all_notebooks(
+    size = "large",
+    include = [
+        # TODO(justinvyu): Merge tests/ with the regular versions of the templates.
+        "source/templates/tests/01_batch_inference/batch_inference.ipynb",
+        "source/templates/tests/03_serving_stable_diffusion/serving_stable_diffusion.ipynb"
+    ],
+    exclude = [],
+    data = ["//doc:workspace_templates"],
+    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
+    env = {"SMOKE_TEST": "1"},
 )
 
 # --------------
@@ -249,12 +304,14 @@ py_test(
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
 )
 
-py_test(
-    name = "lightning_mnist_example",
+# --------------------------------------------------------------------
+# Test all doc/external code
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
     size = "large",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "gpu", "ray_air"],
-    data = ["//doc/source/train/examples/lightning:lightning_mnist_example"],
-    args = ["--path", "doc/source/train/examples/lightning/lightning_mnist_example.ipynb"]
+    include = ["external/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "external"],
 )

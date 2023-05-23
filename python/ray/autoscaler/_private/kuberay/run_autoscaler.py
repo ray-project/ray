@@ -71,7 +71,9 @@ def _setup_logging() -> None:
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
     """
     log_dir = os.path.join(
-        ray._private.utils.get_ray_temp_dir(), ray._private.node.SESSION_LATEST, "logs"
+        ray._private.utils.get_ray_temp_dir(),
+        ray._private.ray_constants.SESSION_LATEST,
+        "logs",
     )
     # The director should already exist, but try (safely) to create it just in case.
     try_to_create_directory(log_dir)
@@ -84,8 +86,16 @@ def _setup_logging() -> None:
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
         max_bytes=ray_constants.LOGGING_ROTATE_BYTES,
         backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        logger_name="ray",  # Root of the logging hierarchy for Ray code.
     )
-    # Logs will also be written to the container's stdout.
+
+    # For the autoscaler, the root logger _also_ needs to write to stderr, not just
+    # ray_constants.MONITOR_LOG_FILE_NAME.
+    level = logging.getLevelName(ray_constants.LOGGER_LEVEL.upper())
+    stderr_handler = logging._StderrHandler()
+    stderr_handler.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
+    stderr_handler.setLevel(level)
+    logging.root.setLevel(level)
+    logging.root.addHandler(stderr_handler)
+
     # The stdout handler was set up in the Ray CLI entry point.
     # See ray.scripts.scripts::cli().

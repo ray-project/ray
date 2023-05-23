@@ -1,9 +1,9 @@
-Cluster Monitoring
-------------------
+Scraping and Persisting Metrics
+===============================
 
 Ray ships with the following observability features:
 
-1. :ref:`The dashboard <ray-dashboard>`, for viewing cluster state.
+1. :ref:`The dashboard <observability-getting-started>`, for viewing cluster state.
 2. CLI tools such as the :ref:`Ray state APIs <state-api-overview-ref>` and :ref:`ray status <monitor-cluster>`, for checking application and cluster status.
 3. :ref:`Prometheus metrics <multi-node-metrics>` for internal and custom user-defined metrics.
 
@@ -16,37 +16,39 @@ The rest of this page will focus on how to access these services when running a 
 Monitoring the cluster via the dashboard
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-:ref:`The dashboard <ray-dashboard>` provides detailed information about the state of the cluster,
+:ref:`The dashboard <observability-getting-started>` provides detailed information about the state of the cluster,
 including the running jobs, actors, workers, nodes, etc.
 By default, the :ref:`cluster launcher <vm-cluster-quick-start>` and :ref:`KubeRay operator <kuberay-quickstart>` will launch the dashboard, but will
 not publicly expose the port.
 
-.. tabbed:: If using the VM cluster launcher
+.. tab-set::
 
-    You can securely port-forward local traffic to the dashboard via the ``ray
-    dashboard`` command.
+    .. tab-item:: If using the VM cluster launcher
 
-    .. code-block:: shell
+        You can securely port-forward local traffic to the dashboard via the ``ray
+        dashboard`` command.
 
-        $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
+        .. code-block:: shell
 
-    The dashboard will now be visible at ``http://localhost:8265``.
+            $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
 
-.. tabbed:: If using Kubernetes
+        The dashboard will now be visible at ``http://localhost:8265``.
 
-    The KubeRay operator makes the dashboard available via a Service targeting
-    the Ray head pod, named ``<RayCluster name>-head-svc``. You can access the
-    dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
+    .. tab-item:: If using Kubernetes
 
-    You can also view the dashboard from outside the Kubernetes cluster by
-    using port-forwarding:
+        The KubeRay operator makes the dashboard available via a Service targeting
+        the Ray head pod, named ``<RayCluster name>-head-svc``. You can access the
+        dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
 
-    .. code-block:: shell
+        You can also view the dashboard from outside the Kubernetes cluster by
+        using port-forwarding:
 
-        $ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
+        .. code-block:: shell
 
-    For more information about configuring network access to a Ray cluster on
-    Kubernetes, see the :ref:`networking notes <kuberay-networking>`.
+            $ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
+
+        For more information about configuring network access to a Ray cluster on
+        Kubernetes, see the :ref:`networking notes <kuberay-networking>`.
 
 
 Using Ray Cluster CLI tools
@@ -63,43 +65,45 @@ These CLI commands can be run on any node in a Ray Cluster. Examples for
 executing these commands from a machine outside the Ray Cluster are provided
 below.
 
-.. tabbed:: If using the VM cluster launcher
+.. tab-set::
 
-    Execute a command on the cluster using ``ray exec``:
+    .. tab-item:: If using the VM cluster launcher
 
-    .. code-block:: shell
+        Execute a command on the cluster using ``ray exec``:
 
-        $ ray exec <cluster config file> "ray status"
+        .. code-block:: shell
 
-.. tabbed:: If using Kubernetes
+            $ ray exec <cluster config file> "ray status"
 
-    Execute a command on the cluster using ``kubectl exec`` and the configured
-    RayCluster name. We will use the Service targeting the Ray head pod to
-    execute a CLI command on the cluster.
+    .. tab-item:: If using Kubernetes
 
-    .. code-block:: shell
+        Execute a command on the cluster using ``kubectl exec`` and the configured
+        RayCluster name. We will use the Service targeting the Ray head pod to
+        execute a CLI command on the cluster.
 
-        # First, find the name of the Ray head service.
-        $ kubectl get pod | grep <RayCluster name>-head
-        # NAME                                             READY   STATUS    RESTARTS   AGE
-        # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
+        .. code-block:: shell
 
-        # Then, use the name of the Ray head service to run `ray status`.
-        $ kubectl exec <RayCluster name>-head-xxxxx -- ray status
+            # First, find the name of the Ray head service.
+            $ kubectl get pod | grep <RayCluster name>-head
+            # NAME                                             READY   STATUS    RESTARTS   AGE
+            # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
+
+            # Then, use the name of the Ray head service to run `ray status`.
+            $ kubectl exec <RayCluster name>-head-xxxxx -- ray status
 
 .. _multi-node-metrics:
 
 Prometheus
 ^^^^^^^^^^
 Ray supports Prometheus for emitting and recording time-series metrics.
-See :ref:`metrics <ray-metrics>` for more details of the metrics emitted.
+See :ref:`metrics <dash-metrics-view>` for more details of the metrics emitted.
 To use Prometheus in a Ray cluster, decide where to host it, then configure
 it so that it can scrape the metrics from Ray.
 
 Scraping metrics
 ################
 
-Ray runs a metrics agent per node to export :ref:`metrics <ray-metrics>` about Ray core as well as
+Ray runs a metrics agent per node to export :ref:`metrics <dash-metrics-view>` about Ray core as well as
 custom user-defined metrics. Each metrics agent collects metrics from the local
 node and exposes these in a Prometheus format. You can then scrape each
 endpoint to access Ray's metrics.
@@ -120,7 +124,7 @@ The service discovery file is generated on the :ref:`head node <cluster-head-nod
 Ray will periodically update this file with the addresses of all metrics agents in the cluster.
 
 Ray automatically produces a Prometheus config which scrapes the file for service discovery found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
-You can choose to use this config or modify your own to enable this behavior. The details of the config can be seen below and full documentation can be found at `here <https://prometheus.io/docs/prometheus/latest/configuration/configuration/>`.
+You can choose to use this config or modify your own to enable this behavior. The details of the config can be seen below and full documentation can be found `here <https://prometheus.io/docs/prometheus/latest/configuration/configuration/>`_.
 
 With this config, Prometheus will automatically update the addresses that it scrapes based on the contents of Ray's service discovery file.
 

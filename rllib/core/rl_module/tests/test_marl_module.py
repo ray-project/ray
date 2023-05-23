@@ -7,11 +7,9 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleConfig,
 )
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.core.testing.utils import DEFAULT_POLICY_ID
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.utils.test_utils import check
-
-
-DEFAULT_POLICY_ID = "default_policy"
 
 
 class TestMARLModule(unittest.TestCase):

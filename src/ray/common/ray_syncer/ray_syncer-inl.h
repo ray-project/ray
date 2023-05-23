@@ -63,6 +63,9 @@ class NodeState {
     return cluster_view_;
   }
 
+  /// Remove a node from the cluster view.
+  bool RemoveNode(const std::string &node_id);
+
  private:
   /// For local nodes
   std::array<const ReporterInterface *, kComponentArraySize> reporters_ = {nullptr};
@@ -229,7 +232,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       node_versions[message->message_type()] = message->version();
       message_processor_(message);
     } else {
-      RAY_LOG_EVERY_N(WARNING, 100)
+      RAY_LOG_EVERY_MS(WARNING, 1000)
           << "Drop message received from " << NodeID::FromBinary(message->node_id())
           << " because the message version " << message->version()
           << " is older than the local version " << node_versions[message->message_type()]
@@ -286,8 +289,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           if (ok) {
             SendNext();
           } else {
-            RAY_LOG_EVERY_N(ERROR, 100) << "Failed to send the message to: "
-                                        << NodeID::FromBinary(GetRemoteNodeID());
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to send the message to: "
+                                         << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
           }
         },
@@ -302,8 +305,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
             ReceiveUpdate(std::move(msg));
             StartPull();
           } else {
-            RAY_LOG_EVERY_N(ERROR, 100) << "Failed to read the message from: "
-                                        << NodeID::FromBinary(GetRemoteNodeID());
+            RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read the message from: "
+                                         << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
           }
         },

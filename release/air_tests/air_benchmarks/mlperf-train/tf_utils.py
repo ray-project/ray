@@ -328,7 +328,7 @@ def build_tf_dataset(
     if dataset_cache:
         # Improve training / eval performance when data is in remote storage and
         # can fit into worker memory.
-        dataset = dataset.cache()
+        dataset = dataset.materialize()
 
     return process_record_dataset(
         dataset=dataset,

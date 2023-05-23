@@ -12,24 +12,34 @@ pip install gradio
 ```
 
 Additionally, you can optionally install `pydot` and `graphviz`. This will allow this tool to incorporate the complementary [graphical illustration](pydot-visualize-dag) of the nodes and edges.
-::::{tabbed} MacOS
+
+::::{tab-set}
+
+:::{tab-item} MacOS
+
 ```
 pip install -U pydot && brew install graphviz
 ```
-::::
 
-::::{tabbed} Windows
+:::
+
+:::{tab-item} Windows
+
 ```
 pip install -U pydot && winget install graphviz
 ```
-::::
 
-::::{tabbed} Linux
+:::
+
+:::{tab-item} Linux
+
 ```
 pip install -U pydot && sudo apt-get install -y graphviz
 ```
-::::
 
+:::
+
+::::
 
 Also, for the [quickstart example](gradio-vis-quickstart), install the `transformers` module to pull models through [HuggingFace's Pipelines](https://huggingface.co/docs/transformers/main_classes/pipelines).
 ```console
@@ -111,7 +121,7 @@ new_root_node = DAGDriver.bind(old_root_node)
 
 Since the Gradio UI is set at deploy time, the type of Gradio component used to display intermediate outputs of the graph is also statically determined from the graph deployed. It is important that the correct Gradio component is used for each graph node.
 
-The developer simply needs to specify the return type annotation of each function or method in the deployment graph.
+Specify the return type annotation of each function or method in the deployment graph.
 :::{note}
 If no return type annotation is specified for a node, then the Gradio component for that node will default to a [Gradio Textbox](https://gradio.app/docs/#textbox).
 :::

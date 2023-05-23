@@ -171,6 +171,16 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+py_test(
+    name = "learning_tests_cartpole_appo_w_rl_modules_and_learner",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
+    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/cartpole-appo-w-rl-modules-and-learner.yaml"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
 # py_test(
 #    name = "learning_tests_cartpole_appo_vtrace",
 #    main = "tests/run_regression_tests.py",
@@ -590,26 +600,14 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_pendulum_ppo_with_rl_module_torch",
+    name = "learning_tests_pendulum_ppo_with_rl_module",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "no_tf_static_graph"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
-
-# TODO (Kourosh): tf2 is way slower than torch, eager mode is no enabled, I wonder if
-# it would get faster with eager mode once it is enabled.
-# py_test(
-#     name = "learning_tests_pendulum_ppo_with_rl_module_tf2_eager",
-#     main = "tests/run_regression_tests.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "tf2_only", "no_tf_static_graph"],
-#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#     srcs = ["tests/run_regression_tests.py"],
-#     data = ["tuned_examples/ppo/pendulum-ppo-with-rl-module.yaml"],
-#     args = ["--dir=tuned_examples/ppo"]
-# )
 
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
@@ -807,7 +805,7 @@ py_test(
 py_test(
     name = "test_algorithm_config",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "small",
+    size = "medium",
     srcs = ["algorithms/tests/test_algorithm_config.py"],
 )
 
@@ -931,7 +929,7 @@ py_test(
     name = "test_appo_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/appo/tests/tf/test_appo_learner.py"]
+    srcs = ["algorithms/appo/tests/test_appo_learner.py"]
 )
 
 # ARS
@@ -1161,7 +1159,7 @@ py_test(
 py_test(
     name = "test_ppo_learner",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_learner.py"]
 )
 
@@ -1677,14 +1675,16 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-sh_test(
-    name = "env/tests/test_local_inference_unity3d",
-    tags = ["team:rllib", "env"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "unity3d", "8850"],
-    data = glob(["examples/serving/*.py"]),
-)
+# Tests with unity 3d and external envs currently don't work
+# see: https://github.com/ray-project/ray/issues/34290 for more details
+# sh_test(
+#     name = "env/tests/test_local_inference_unity3d",
+#     tags = ["team:rllib", "env"],
+#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#     args = ["local", "unity3d", "8850"],
+#     data = glob(["examples/serving/*.py"]),
+# )
 
 py_test(
     name = "env/tests/test_multi_agent_env",
@@ -1720,14 +1720,16 @@ sh_test(
     data = glob(["examples/serving/*.py"]),
 )
 
-sh_test(
-    name = "env/tests/test_remote_inference_unity3d",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "small",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "unity3d", "8860"],
-    data = glob(["examples/serving/*.py"]),
-)
+# Tests with unity 3d and external envs currently don't work
+# see: https://github.com/ray-project/ray/issues/34290 for more details
+# sh_test(
+#     name = "env/tests/test_remote_inference_unity3d",
+#     tags = ["team:rllib", "env", "exclusive"],
+#     size = "small",
+#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#     args = ["remote", "unity3d", "8860"],
+#     data = glob(["examples/serving/*.py"]),
+# )
 
 py_test(
     name = "env/tests/test_remote_worker_envs",
@@ -1854,6 +1856,7 @@ py_test(
 # Tag: core
 # --------------------------------------------------------------------
 
+# Catalog
 py_test(
     name = "test_catalog",
     tags = ["team:rllib", "core"],
@@ -1861,12 +1864,89 @@ py_test(
     srcs = ["core/models/tests/test_catalog.py"]
 )
 
+# Default Models
+py_test(
+    name = "test_base_models",
+    tags = ["team:rllib", "core"],
+    size = "small",
+    srcs = ["core/models/tests/test_base_models.py"]
+)
+
+py_test(
+    name = "test_cnn_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "large",
+    srcs = ["core/models/tests/test_cnn_encoders.py"]
+)
+
+py_test(
+    name = "test_cnn_transpose_heads",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_cnn_transpose_heads.py"]
+)
+
+py_test(
+    name = "test_mlp_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_encoders.py"]
+)
+
+py_test(
+    name = "test_mlp_heads",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_mlp_heads.py"]
+)
+
+py_test(
+    name = "test_recurrent_encoders",
+    tags = ["team:rllib", "core", "models"],
+    size = "medium",
+    srcs = ["core/models/tests/test_recurrent_encoders.py"]
+)
+
+# Specs
+py_test(
+    name = "test_check_specs",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_check_specs.py"]
+)
+
+py_test(
+    name = "test_tensor_spec",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_tensor_spec.py"]
+)
+
+py_test(
+    name = "test_spec_dict",
+    tags = ["team:rllib", "models"],
+    size = "small",
+    srcs = ["core/models/specs/tests/test_spec_dict.py"]
+)
+
+# RLModule
 py_test(
     name = "test_torch_rl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"]
+    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
+    args = ["TestRLModule"],
 )
+
+# TODO(Artur): Comment this back in as soon as we can test with GPU
+# py_test(
+#    name = "test_torch_rl_module_gpu",
+#    main = "core/rl_module/torch/tests/test_torch_rl_module.py",
+#    tags = ["team:rllib", "core", "gpu", "exclusive"],
+#    size = "medium",
+#    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
+#    args = ["TestRLModuleGPU"],
+# )
 
 py_test(
     name = "test_tf_rl_module",
@@ -1889,34 +1969,7 @@ py_test(
     srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
 )
 
-py_test(
-    name = "test_tf_mlp_head",
-    tags = ["team:rllib", "core", "models"],
-    size = "medium",
-    srcs = ["core/models/tf/tests/test_tf_mlp_head.py"]
-)
-
-py_test(
-    name = "test_torch_cnn_encoder",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_cnn_encoder.py"]
-)
-
-py_test(
-    name = "test_torch_mlp_encoder",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_encoder.py"]
-)
-
-py_test(
-    name = "test_torch_mlp_head",
-    tags = ["team:rllib", "core", "models"],
-    size = "small",
-    srcs = ["core/models/torch/tests/test_torch_mlp_head.py"]
-)
-
+# Learner
 py_test(
     name = "test_learner_group",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
@@ -1947,6 +2000,13 @@ py_test(
 )
 
 py_test(
+    name ="tests/test_algorithm_save_load_checkpoint_learner",
+    tags = ["team:rllib", "core"],
+    size = "medium",
+    srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
+)
+
+py_test(
     name = "test_bc_algorithm",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -1965,13 +2025,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "large",
     srcs = ["models/tests/test_attention_nets.py"]
-)
-
-py_test(
-    name = "test_check_specs",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_check_specs.py"]
 )
 
 py_test(
@@ -2024,14 +2077,6 @@ py_test(
     srcs = ["models/tests/test_preprocessors.py"]
 )
 
-# Test Tensor specs
-py_test(
-    name = "test_tensor_spec",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_tensor_spec.py"]
-)
-
 # test abstract base models
 py_test(
     name = "test_base_model",
@@ -2046,14 +2091,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "small",
     srcs = ["models/tests/test_torch_model.py"]
-)
-
-# test ModelSpec
-py_test(
-    name = "test_spec_dict",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["models/specs/tests/test_spec_dict.py"]
 )
 
 
@@ -2263,8 +2300,8 @@ py_test(
 
 py_test(
     name = "utils/tests/test_torch_utils",
-    tags = ["team:rllib", "utils"],
-    size = "small",
+    tags = ["team:rllib", "utils", "gpu"],
+    size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"]
 )
 
@@ -2301,6 +2338,13 @@ py_test(
 )
 
 # ReplayBuffers
+py_test(
+    name = "test_episode_replay_buffer",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_episode_replay_buffer.py"]
+)
+
 py_test(
     name = "test_multi_agent_mixin_replay_buffer",
     tags = ["team:rllib", "utils"],
@@ -2425,6 +2469,16 @@ py_test(
     args = ["TestCheckpointRestorePG"]
 )
 
+
+py_test(
+    name = "tests/test_checkpoint_restore_pg_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
+    size = "large",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePG"]
+)
+
 py_test(
     name = "tests/test_checkpoint_restore_off_policy",
     main = "tests/test_algorithm_checkpoint_restore.py",
@@ -2434,10 +2488,29 @@ py_test(
     args = ["TestCheckpointRestoreOffPolicy"]
 )
 
+
+py_test(
+    name = "tests/test_checkpoint_restore_off_policy_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
+    size = "large",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
+)
+
 py_test(
     name = "tests/test_checkpoint_restore_evolution_algos",
     main = "tests/test_algorithm_checkpoint_restore.py",
     tags = ["team:rllib", "tests_dir"],
+    size = "medium",
+    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreEvolutionAlgos"]
+)
+
+py_test(
+    name = "tests/test_checkpoint_restore_evolution_algos_gpu",
+    main = "tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "tests_dir", "gpu"],
     size = "medium",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreEvolutionAlgos"]
@@ -2641,6 +2714,16 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_supported_multi_agent_multi_gpu",
+    main = "tests/test_supported_multi_agent.py",
+    tags = ["team:rllib", "tests_dir", "multi_gpu"],
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentMultiGPU"]
+)
+
+
+py_test(
     name = "tests/test_supported_multi_agent_pg",
     main = "tests/test_supported_multi_agent.py",
     tags = ["team:rllib", "tests_dir"],
@@ -2695,9 +2778,18 @@ py_test(
  )
 
 py_test(
+    name="tests/test_supported_spaces_dqn",
+    main="tests/test_supported_spaces.py",
+    tags=["team:rllib", "tests_dir"],
+    size="large",
+    srcs=["tests/test_supported_spaces.py"],
+    args=["TestSupportedSpacesDQN"]
+)
+
+py_test(
      name = "tests/test_supported_spaces_ppo_no_preproceesor_gpu",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "multi_gpu", "exclusive"],
+     tags = ["team:rllib", "gpu", "no_cpu"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
@@ -3286,6 +3378,14 @@ py_test(
     size = "small",
     srcs = ["examples/eager_execution.py"],
     args = ["--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/env/greyscale_env",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "medium",
+    srcs = ["examples/env/greyscale_env.py"],
+    args = ["--stop-iters=1 --as-test --framework torch"]
 )
 
 py_test(
@@ -3944,10 +4044,6 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/connectors/run_connector_policy.py"],
-    data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022",
-    ]),
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-08062022"]
 )
 
 py_test(
@@ -3956,10 +4052,6 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/connectors/adapt_connector_policy.py"],
-    data = glob([
-        "tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022",
-    ]),
-    args = ["--checkpoint_file=tests/data/checkpoints/APPO_CartPole-v0_checkpoint-6-07092022"]
 )
 
 py_test(
@@ -3968,11 +4060,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
     srcs = ["examples/connectors/self_play_with_policy_checkpoint.py"],
-    data = glob([
-        "tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
-    ]),
     args = [
-        "--checkpoint_file=tests/data/checkpoints/PPO_open_spiel_checkpoint-6",
         "--train_iteration=1"  # Smoke test.
     ]
 )
@@ -4125,7 +4213,7 @@ py_test(
     name = "examples/documentation/saving_and_loading_algos_and_policies",
     main = "examples/documentation/saving_and_loading_algos_and_policies.py",
     tags = ["team:rllib", "documentation", "no_main"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/documentation/saving_and_loading_algos_and_policies.py"],
 )
 

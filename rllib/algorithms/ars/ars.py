@@ -113,6 +113,15 @@ class ARSConfig(AlgorithmConfig):
                 observation_filter="NoFilter",
             )
         )
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -348,6 +357,10 @@ class Worker(FaultAwareApply):
             eval_lengths=eval_lengths,
         )
 
+    def stop(self):
+        """Releases all resources used by this RolloutWorker."""
+        pass
+
 
 def get_policy_class(config: AlgorithmConfig):
     if config.framework_str == "torch":
@@ -526,12 +539,16 @@ class ARS(Algorithm):
             "episodes_this_iter": noisy_lengths.size,
             "episodes_so_far": self.episodes_so_far,
         }
-        result = dict(
-            episode_reward_mean=np.mean(self.reward_list[-self.report_length :]),
-            episode_len_mean=eval_lengths.mean(),
-            timesteps_this_iter=noisy_lengths.sum(),
-            info=info,
-        )
+
+        reward_mean = np.mean(self.reward_list[-self.report_length :])
+        result = {
+            "sampler_results": {
+                "episode_reward_mean": reward_mean,
+                "episode_len_mean": eval_lengths.mean(),
+            },
+            "timesteps_this_iter": noisy_lengths.sum(),
+            "info": info,
+        }
 
         return result
 

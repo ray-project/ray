@@ -14,6 +14,8 @@ from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
+NOT_SERIALIZABLE = "__not_serializable__"
+
 gym, old_gym = try_import_gymnasium_and_gym()
 
 old_gym_text_class = None
@@ -21,7 +23,30 @@ if old_gym:
     old_gym_text_class = getattr(old_gym.spaces, "Text", None)
 
 
-NOT_SERIALIZABLE = "__not_serializable__"
+@DeveloperAPI
+def convert_numpy_to_python_primitives(obj: Any):
+    """Convert an object that is a numpy type to a python type.
+
+    If the object is not a numpy type, it is returned unchanged.
+
+    Args:
+        obj: The object to convert.
+    """
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.bool_):
+        return bool(obj)
+    elif isinstance(obj, np.str_):
+        return str(obj)
+    elif isinstance(obj, np.ndarray):
+        ret = obj.tolist()
+        for i, v in enumerate(ret):
+            ret[i] = convert_numpy_to_python_primitives(v)
+        return ret
+    else:
+        return obj
 
 
 def _serialize_ndarray(array: np.ndarray) -> str:

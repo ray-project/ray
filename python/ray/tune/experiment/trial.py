@@ -1,3 +1,4 @@
+import warnings
 from collections import deque
 import copy
 import json
@@ -15,9 +16,16 @@ from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
+from ray._private.dict import unflatten_dict
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.constants import (
+    EXPR_ERROR_PICKLE_FILE,
+    EXPR_ERROR_FILE,
+    TRAINING_ITERATION,
+)
+
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
@@ -30,17 +38,16 @@ from ray.tune.logger import NoopLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import (
-    DEFAULT_RESULTS_DIR,
     DONE,
     NODE_IP,
     PID,
-    TRAINING_ITERATION,
     TRIAL_ID,
     DEBUG_METRICS,
     TRIAL_INFO,
     STDOUT_FILE,
     STDERR_FILE,
     DEFAULT_EXPERIMENT_NAME,
+    _get_defaults_results_dir,
 )
 from ray.tune.syncer import SyncConfig
 from ray.tune.execution.placement_groups import (
@@ -50,11 +57,13 @@ from ray.tune.execution.placement_groups import (
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
+from ray.tune.utils.util import _split_remote_local_path
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
+_DEFAULT_WIN_MAX_PATH_LENGTH = 260
 logger = logging.getLogger(__name__)
 
 
@@ -179,6 +188,13 @@ class _TrialInfo:
     @trial_resources.setter
     def trial_resources(self, new_resources: PlacementGroupFactory):
         self._trial_resources = new_resources
+
+
+def _get_max_path_length() -> int:
+    if hasattr(os, "pathconf"):
+        return os.pathconf("/", "PC_PATH_MAX")
+    # Windows
+    return _DEFAULT_WIN_MAX_PATH_LENGTH
 
 
 def _create_unique_logdir_name(root: str, relative_logdir: str) -> str:
@@ -364,9 +380,9 @@ class Trial:
         self._orig_experiment_path = experiment_path
         self._orig_experiment_dir_name = experiment_dir_name
 
-        # Rename for better code readability
-        local_experiment_path = experiment_path
-        remote_experiment_path = None
+        local_experiment_path, remote_experiment_path = _split_remote_local_path(
+            experiment_path, None
+        )
 
         # Backwards compatibility for `local_dir`
         if local_dir:
@@ -386,14 +402,31 @@ class Trial:
 
         # Set default experiment dir name
         if not local_experiment_path:
-            local_experiment_path = str(Path(DEFAULT_RESULTS_DIR) / experiment_dir_name)
+            local_experiment_path = str(
+                Path(_get_defaults_results_dir()) / experiment_dir_name
+            )
             os.makedirs(local_experiment_path, exist_ok=True)
 
         # Set remote experiment path if upload_dir is set
         if self.sync_config.upload_dir:
-            remote_experiment_path = str(
-                URI(self.sync_config.upload_dir) / experiment_dir_name
-            )
+            if remote_experiment_path:
+                if not remote_experiment_path.startswith(self.sync_config.upload_dir):
+                    raise ValueError(
+                        f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
+                        f"pointing to remote storage were passed, but they do not "
+                        f"point to the same location. Got: "
+                        f"`experiment_path={experiment_path}` and "
+                        f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
+                    )
+                warnings.warn(
+                    "If `experiment_path` points to a remote storage location, "
+                    "do not set `SyncConfig.upload_dir`. ",
+                    DeprecationWarning,
+                )
+            else:
+                remote_experiment_path = str(
+                    URI(self.sync_config.upload_dir) / experiment_dir_name
+                )
 
         # Finally, set properties
         self._local_experiment_path = local_experiment_path
@@ -599,6 +632,7 @@ class Trial:
     @last_result.setter
     def last_result(self, val: dict):
         self._last_result = val
+        self.invalidate_json_state()
 
     def get_runner_ip(self) -> Optional[str]:
         if self.location.hostname:
@@ -801,6 +835,14 @@ class Trial:
             )
         assert self.local_path
         logdir_path = Path(self.local_path)
+        max_path_length = _get_max_path_length()
+        if len(str(logdir_path)) >= max_path_length:
+            logger.warning(
+                f"The path to the trial log directory is too long "
+                f"(max length: {max_path_length}. "
+                f"Consider using `trial_dirname_creator` to shorten the path. "
+                f"Path: {logdir_path}"
+            )
         logdir_path.mkdir(parents=True, exist_ok=True)
 
         self.invalidate_json_state()
@@ -887,10 +929,10 @@ class Trial:
             self.num_failures += 1
 
         if self.local_path:
-            self.error_filename = "error.txt"
+            self.error_filename = EXPR_ERROR_FILE
             if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
-                self.pickled_error_filename = "error.pkl"
+                self.pickled_error_filename = EXPR_ERROR_PICKLE_FILE
                 with open(self.pickled_error_file, "wb") as f:
                     cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
@@ -952,7 +994,8 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = self.restoring_from.metrics
+        self.last_result = unflatten_dict(self.restoring_from.metrics)
+        self.last_result.setdefault("config", self.config)
         self.restoring_from = None
         self.num_restore_failures = 0
         self.invalidate_json_state()
@@ -1023,7 +1066,8 @@ class Trial:
                         self.metric_analysis[metric][key] = sum(
                             self.metric_n_steps[metric][str(n)]
                         ) / len(self.metric_n_steps[metric][str(n)])
-        self.invalidate_json_state()
+
+        # json state is invalidated in last_result.setter
 
     def get_trainable_cls(self):
         if self.stub:

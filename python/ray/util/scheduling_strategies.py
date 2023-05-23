@@ -43,24 +43,26 @@ class NodeAffinitySchedulingStrategy:
 
     Attributes:
         node_id: the hex id of the node where the task or actor should run.
-        soft: If set to true, the task or actor will be scheduled on the node, unless
-            the target does not exist (e.g. the node dies), is infeasible,
-            or has insufficient resources at the time of scheduling. If it does
-            not schedule on the node it will find another node using the default
-            scheduling policy.
-            If set to false, the task or actor will be scheduled on the node, unless
-            the target doesn't exist (e.g. the node dies) or is infeasible.
-            If it does not schedule on the node the task will fail with
-            TaskUnschedulableError or ActorUnschedulableError.
+        soft: whether the scheduler should run the task or actor somewhere else
+            if the target node doesn't exist (e.g. the node dies) or is infeasible
+            during scheduling.
+            If the node exists and is feasible, the task or actor
+            will only be scheduled there.
+            This means if the node doesn't have the available resources,
+            the task or actor will wait indefinitely until resources become available.
+            If the node doesn't exist or is infeasible, the task or actor
+            will fail if soft is False
+            or be scheduled somewhere else if soft is True.
     """
 
-    def __init__(self, node_id: str, soft: bool):
+    def __init__(self, node_id: str, soft: bool, _spill_on_unavailable: bool = False):
         # This will be removed once we standardize on node id being hex string.
         if not isinstance(node_id, str):
             node_id = node_id.hex()
 
         self.node_id = node_id
         self.soft = soft
+        self._spill_on_unavailable = _spill_on_unavailable
 
 
 SchedulingStrategyT = Union[

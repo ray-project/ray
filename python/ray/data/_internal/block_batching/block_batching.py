@@ -1,7 +1,7 @@
 import collections
 import itertools
-import sys
 from typing import Any, Callable, Iterator, Optional, TypeVar, Union
+from contextlib import nullcontext
 
 import ray
 from ray.data._internal.block_batching.interfaces import BlockPrefetcher
@@ -17,19 +17,10 @@ from ray.data._internal.block_batching.util import (
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import Block, DataBatch
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 T = TypeVar("T")
-
-if sys.version_info >= (3, 7):
-    from contextlib import nullcontext
-else:
-    from contextlib import contextmanager
-
-    @contextmanager
-    def nullcontext(enter_result=None):
-        yield enter_result
 
 
 def batch_block_refs(
@@ -84,7 +75,7 @@ def batch_block_refs(
     """
     if stats:
         stats._legacy_iter_batches = True
-    context = DatasetContext.get_current()
+    context = DataContext.get_current()
 
     if (
         prefetch_blocks > 0
@@ -95,7 +86,7 @@ def batch_block_refs(
     else:
         prefetcher = WaitBlockPrefetcher()
 
-    eager_free = clear_block_after_read and DatasetContext.get_current().eager_free
+    eager_free = clear_block_after_read and DataContext.get_current().eager_free
 
     block_iter = resolve_block_refs(
         _prefetch_blocks(
