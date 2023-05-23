@@ -1,7 +1,7 @@
 import logging
 
 from ray.autoscaler._private.updater import NodeUpdater
-from ray.autoscaler._private.util import with_head_node_ip, with_envs
+from ray.autoscaler._private.util import with_envs, with_head_node_ip
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 from ray.core.generated.instance_manager_pb2 import Instance
@@ -51,6 +51,10 @@ class RayInstaller(object):
                 head_node_ip,
             ),
             setup_commands=with_head_node_ip(setup_commands, head_node_ip),
+            # This will prepend envs to the begin of the ray start commands, e.g.
+            # `export RAY_HEAD_IP=<head_node_ip>; \
+            #  export RAY_cloud_instance_id=<instance_id>; \
+            #  ray start --head ...`
             ray_start_commands=with_envs(
                 ray_start_commands,
                 {
