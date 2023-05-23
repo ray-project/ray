@@ -162,8 +162,14 @@ class RayTaskError(RayError):
 
         return cls(self.cause)
 
-    def __str__(self):
-        """Format a RayTaskError as a string."""
+    def get_formatted_traceback(self, colorize=True):
+        """Reformats the traceback string nicely.
+
+        Args:
+            colorize: Whether to insert colorama characters that colorize the
+                traceback.
+        """
+
         lines = self.traceback_str.strip().split("\n")
         out = []
         code_from_internal_file = False
@@ -178,12 +184,17 @@ class RayTaskError(RayError):
         for i, line in enumerate(lines):
             # Convert traceback to the readable information.
             if line.startswith("Traceback "):
-                traceback_line = (
-                    f"{colorama.Fore.CYAN}"
-                    f"{self.proctitle}()"
-                    f"{colorama.Fore.RESET} "
-                    f"(pid={self.pid}, ip={self.ip}"
-                )
+                if colorize:
+                    traceback_line = (
+                        f"{colorama.Fore.CYAN}"
+                        f"{self.proctitle}()"
+                        f"{colorama.Fore.RESET} "
+                        f"(pid={self.pid}, ip={self.ip}"
+                    )
+                else:
+                    traceback_line = (
+                        f"{self.proctitle}()" f"(pid={self.pid}, ip={self.ip}"
+                    )
                 if self.actor_repr:
                     traceback_line += (
                         f", actor_id={self._actor_id}, repr={self.actor_repr})"
@@ -226,6 +237,10 @@ class RayTaskError(RayError):
             else:
                 out.append(line)
         return "\n".join(out)
+
+    def __str__(self):
+        """Format a RayTaskError as a string."""
+        return self.get_formatted_traceback()
 
 
 @PublicAPI

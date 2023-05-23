@@ -401,6 +401,39 @@ def test_serialization_error_message(shutdown_only):
     )
 
 
+def test_ray_task_error_traceback_no_colorize():
+    """Check that RayTaskError doesn't use colorize when its disabled."""
+
+    # colorama should not be used when colorize is disabled
+    ray.exceptions.colorama = None
+    RayTaskError = ray.exceptions.RayTaskError
+
+    print(ray.exceptions.colorama)
+
+    err = RayTaskError(
+        function_name="test_func",
+        traceback_str="""Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ZeroDivisionError: division by zero
+""",
+        cause=ZeroDivisionError,
+        proctitle="test proctitle",
+        pid=122,
+        ip="1.1.1.1",
+        actor_repr="test_actor_repr",
+        actor_id=11,
+    )
+
+    err.get_formatted_traceback(colorize=False)
+
+    with pytest.raises(AttributeError):
+        err.get_formatted_traceback(colorize=True)
+
+    # __str__ should return colored traceback
+    with pytest.raises(AttributeError):
+        str(err)
+
+
 if __name__ == "__main__":
     import pytest
     import os
