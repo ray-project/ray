@@ -9,15 +9,17 @@ import sys
 import textwrap
 import time
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 
 import ray
 from ray._private.dict import flatten_dict
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.experimental.tqdm_ray import safe_print
 from ray.air.util.node import _force_on_current_node
+from ray.air.constants import EXPR_ERROR_FILE, TRAINING_ITERATION
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print
 from ray.tune.result import (
@@ -32,7 +34,6 @@ from ray.tune.result import (
     PID,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
     TRIAL_ID,
 )
 from ray.tune.experiment.trial import DEBUG_PRINT_INTERVAL, Trial, _Location
@@ -49,14 +50,6 @@ try:
 except ImportError:
     from collections import Mapping, MutableMapping
 
-try:
-    from tabulate import tabulate
-except ImportError:
-    raise ImportError(
-        "ray.tune in ray > 0.7.5 requires 'tabulate'. "
-        "Please re-run 'pip install ray[tune]' or "
-        "'pip install ray[rllib]'."
-    )
 
 IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
@@ -1380,7 +1373,7 @@ class TrialProgressCallback(Callback):
         elif has_verbosity(Verbosity.V2_TRIAL_NORM):
             metric_name = self._metric or "_metric"
             metric_value = result.get(metric_name, -99.0)
-            error_file = os.path.join(trial.local_path, "error.txt")
+            error_file = os.path.join(trial.local_path, EXPR_ERROR_FILE)
 
             info = ""
             if done:
@@ -1524,7 +1517,7 @@ def _detect_reporter(**kwargs) -> TuneReporterBase:
 
 def _detect_progress_metrics(
     trainable: Optional[Union["Trainable", Callable]]
-) -> Optional[List[str]]:
+) -> Optional[Collection[str]]:
     """Detect progress metrics to report."""
     if not trainable:
         return None

@@ -202,10 +202,10 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   TaskOptions options{"", 1, resources};
   RayFunction func{Language::PYTHON,
                    FunctionDescriptorBuilder::BuildPython("GetWorkerPid", "", "", "")};
-
-  auto return_ids = ObjectRefsToIds(CoreWorkerProcess::GetCoreWorker()
-                                        .SubmitActorTask(actor_id, func, args, options)
-                                        .value());
+  std::vector<rpc::ObjectReference> task_returns;
+  auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+      actor_id, func, args, options, task_returns);
+  auto return_ids = ObjectRefsToIds(task_returns);
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));
@@ -298,8 +298,10 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
           Language::PYTHON,
           FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
-      auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
+      std::vector<rpc::ObjectReference> task_returns;
+      auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+          actor_id, func, args, options, task_returns);
+      auto return_ids = ObjectRefsToIds(task_returns);
       ASSERT_EQ(return_ids.size(), 1);
 
       std::vector<std::shared_ptr<RayObject>> results;
@@ -344,8 +346,10 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     RayFunction func(
         Language::PYTHON,
         FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
-    auto return_ids =
-        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
+    std::vector<rpc::ObjectReference> task_returns;
+    auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+        actor_id, func, args, options, task_returns);
+    auto return_ids = ObjectRefsToIds(task_returns);
 
     ASSERT_EQ(return_ids.size(), 1);
 
@@ -409,8 +413,10 @@ void CoreWorkerTest::TestActorRestart(
           Language::PYTHON,
           FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
-      auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
+      std::vector<rpc::ObjectReference> task_returns;
+      auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+          actor_id, func, args, options, task_returns);
+      auto return_ids = ObjectRefsToIds(task_returns);
       ASSERT_EQ(return_ids.size(), 1);
       // Verify if it's expected data.
       std::vector<std::shared_ptr<RayObject>> results;
@@ -453,8 +459,10 @@ void CoreWorkerTest::TestActorFailure(
           Language::PYTHON,
           FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
-      auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
+      std::vector<rpc::ObjectReference> task_returns;
+      auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+          actor_id, func, args, options, task_returns);
+      auto return_ids = ObjectRefsToIds(task_returns);
 
       ASSERT_EQ(return_ids.size(), 1);
       all_results.emplace_back(std::make_pair(return_ids[0], buffer1));
@@ -611,8 +619,10 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
         Language::PYTHON,
         FunctionDescriptorBuilder::BuildPython("MergeInputArgsAsOutput", "", "", ""));
 
-    auto return_ids =
-        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
+    std::vector<rpc::ObjectReference> task_returns;
+    auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+        actor_id, func, args, options, task_returns);
+    auto return_ids = ObjectRefsToIds(task_returns);
     ASSERT_EQ(return_ids.size(), 1);
     object_ids.emplace_back(return_ids[0]);
   }

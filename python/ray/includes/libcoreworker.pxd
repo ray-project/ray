@@ -42,6 +42,7 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CSchedulingStrategy,
+    CWorkerExitType,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -117,10 +118,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CPlacementGroupID &placement_group_id)
         CRayStatus WaitPlacementGroupReady(
             const CPlacementGroupID &placement_group_id, int64_t timeout_seconds)
-        optional[c_vector[CObjectReference]] SubmitActorTask(
+        CRayStatus SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
-            const CTaskOptions &options)
+            const CTaskOptions &options,
+            c_vector[CObjectReference]&)
         CRayStatus KillActor(
             const CActorID &actor_id, c_bool force_kill,
             c_bool no_restart)
@@ -144,12 +146,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool PinExistingReturnObject(
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
-            const CObjectID& generator_id
-        )
+            const CObjectID& generator_id)
         CObjectID AllocateDynamicReturnId()
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
+        int64_t GetCurrentTaskAttemptNumber()
         CNodeID GetCurrentNodeId()
         int64_t GetTaskDepth()
         c_bool GetCurrentTaskRetryExceptions()
@@ -234,6 +236,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 int64_t timeout_ms,
                 c_vector[shared_ptr[CObjectLocation]] *results)
         CRayStatus TriggerGlobalGC()
+        CRayStatus ReportGeneratorItemReturns(
+            const pair[CObjectID, shared_ptr[CRayObject]] &dynamic_return_object,
+            const CObjectID &generator_id,
+            const CAddress &caller_address,
+            int64_t item_index,
+            c_bool finished)
         c_string MemoryUsageString()
 
         CWorkerContext &GetWorkerContext()
@@ -253,8 +261,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobConfig GetJobConfig()
 
-        c_bool IsExiting() const
-
         int64_t GetNumTasksSubmitted() const
 
         int64_t GetNumLeasesRequested() const
@@ -269,6 +275,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         void RecordTaskLogEnd(int64_t stdout_end_offset,
                               int64_t stderr_end_offset) const
+
+        void Exit(const CWorkerExitType exit_type,
+                  const c_string &detail,
+                  const shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes)
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type

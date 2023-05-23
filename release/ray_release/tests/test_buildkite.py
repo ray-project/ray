@@ -2,7 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
-from typing import Dict
+from typing import Dict, Callable
 from unittest.mock import patch
 
 import yaml
@@ -29,7 +29,6 @@ from ray_release.buildkite.step import (
 )
 from ray_release.config import Test
 from ray_release.exception import ReleaseTestConfigError
-from ray_release.tests.test_glue import MockReturn
 from ray_release.wheels import (
     DEFAULT_BRANCH,
 )
@@ -41,6 +40,20 @@ class MockBuildkiteAgent:
 
     def __call__(self, key: str):
         return self.return_dict.get(key, None)
+
+
+class MockReturn:
+    return_dict = {}
+
+    def __getattribute__(self, item):
+        return_dict = object.__getattribute__(self, "return_dict")
+        if item in return_dict:
+            mocked = return_dict[item]
+            if isinstance(mocked, Callable):
+                return mocked()
+            else:
+                return lambda *a, **kw: mocked
+        return object.__getattribute__(self, item)
 
 
 class MockBuildkitePythonAPI(MockReturn):
@@ -271,7 +284,6 @@ class BuildkiteSettingsTest(unittest.TestCase):
             "ray_release.buildkite.settings.get_buildkite_prompt_value",
             self.buildkite_mock,
         ):
-
             # With no buildkite variables, default settings shouldn't be updated
             updated_settings = settings.copy()
             update_settings_from_buildkite(updated_settings)

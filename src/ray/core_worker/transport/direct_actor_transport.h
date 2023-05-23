@@ -30,6 +30,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -83,7 +84,7 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandleTask(rpc::PushTaskRequest request,
+  void HandleTask(const rpc::PushTaskRequest &request,
                   rpc::PushTaskReply *reply,
                   rpc::SendReplyCallback send_reply_callback);
 

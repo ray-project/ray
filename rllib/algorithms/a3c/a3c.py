@@ -6,6 +6,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     GRAD_WAIT_TIMER,
@@ -58,6 +59,17 @@ class A3CConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a A3CConfig instance."""
+        deprecation_warning(
+            old="rllib/algorithms/a3c/a3c.py",
+            new="rllib_contrib/a3c/",
+            help=(
+                "This algorithm will be "
+                "deprecated from RLlib in future releases. It is being moved to the "
+                "ray/rllib_contrib directory. See "
+                "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                "for more details."
+            ),
+        )
         super().__init__(algo_class=algo_class or A3C)
 
         # fmt: off
@@ -67,7 +79,13 @@ class A3CConfig(AlgorithmConfig):
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
+
         self.grad_clip = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.lr_schedule = None
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
