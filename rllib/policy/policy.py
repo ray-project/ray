@@ -1433,6 +1433,10 @@ class Policy(metaclass=ABCMeta):
                 self.view_requirements[key] = ViewRequirement()
                 self.view_requirements[key].used_for_compute_actions = False
             # TODO (kourosh) Why did we use to make used_for_compute_actions True here?
+
+        if self.config.get("_enable_learner_api", False):
+            return
+
         new_batch = self._get_dummy_batch_from_view_requirements(sample_batch_size)
         # Make sure the dummy_batch will return numpy arrays when accessed
         self._dummy_batch.set_get_interceptor(None)
