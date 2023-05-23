@@ -44,6 +44,7 @@ from ray._private.thirdparty.tabulate.tabulate import (
     DataRow,
 )
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.callback import Callback
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
@@ -52,7 +53,6 @@ from ray.tune.result import (
     MEAN_LOSS,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
 )
 from ray.tune.experiment.trial import Trial
 
@@ -99,6 +99,9 @@ class AirVerbosity(IntEnum):
     DEFAULT = 1
     VERBOSE = 2
 
+    def __repr__(self):
+        return str(self.value)
+
 
 IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
@@ -106,7 +109,7 @@ IS_NOTEBOOK = ray.widgets.util.in_notebook()
 def get_air_verbosity(
     verbose: Union[int, AirVerbosity, Verbosity]
 ) -> Optional[AirVerbosity]:
-    if os.environ.get("RAY_AIR_NEW_OUTPUT", "0") == "0":
+    if os.environ.get("RAY_AIR_NEW_OUTPUT", "1") == "0":
         return None
 
     if isinstance(verbose, AirVerbosity):

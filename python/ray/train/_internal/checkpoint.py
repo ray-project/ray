@@ -13,13 +13,13 @@ from ray.train._internal.session import TrainingResult
 from ray.train._internal.utils import construct_path
 from ray.train.constants import (
     CHECKPOINT_RANK_KEY,
-    TIMESTAMP,
     TRAIN_CHECKPOINT_SUBDIR,
     TUNE_CHECKPOINT_ID,
     TUNE_INSTALLED,
     CHECKPOINT_METADATA_KEY,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
+from ray.air.constants import TIMESTAMP
 
 if TUNE_INSTALLED:
     from ray import tune

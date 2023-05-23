@@ -2272,13 +2272,22 @@ class Algorithm(Trainable):
         # resources for remote learner workers
         learner_bundles = []
         if cf._enable_learner_api and cf.num_learner_workers > 0:
-            learner_bundles = [
-                {
-                    "CPU": cf.num_cpus_per_learner_worker,
-                    "GPU": cf.num_gpus_per_learner_worker,
-                }
-                for _ in range(cf.num_learner_workers)
-            ]
+            # can't specify cpus for learner workers at the same
+            # time as gpus
+            if cf.num_gpus_per_learner_worker:
+                learner_bundles = [
+                    {
+                        "GPU": cf.num_gpus_per_learner_worker,
+                    }
+                    for _ in range(cf.num_learner_workers)
+                ]
+            elif cf.num_cpus_per_learner_worker:
+                learner_bundles = [
+                    {
+                        "CPU": cf.num_cpus_per_learner_worker,
+                    }
+                    for _ in range(cf.num_learner_workers)
+                ]
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
