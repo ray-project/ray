@@ -683,7 +683,7 @@ Here is a list of different use cases and corresponding URLs:
     runtime_env = {"working_dir": ("https://github.com"
                                    "/[username]/[repository]/archive/[commit hash].zip")}
 
-- Example: Retrieve package from a private GitHub repository using a Personal Access Token. **Warning: this is not a best practice**. See :ref:`this document <runtime-env-auth>` to learn how to authenticate private dependencies safely.
+- Example: Retrieve package from a private GitHub repository using a Personal Access Token **during development**. **For production** see :ref:`this document <runtime-env-auth>` to learn how to authenticate private dependencies safely.
 
 .. testcode::
 
