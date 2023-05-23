@@ -48,6 +48,8 @@ def main(upload: bool) -> None:
     """
     )
 
+    connect.commit()
+
     if upload:
         boto3.client("s3").upload_file(
             DB_NAME,
