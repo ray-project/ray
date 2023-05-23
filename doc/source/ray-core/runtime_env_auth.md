@@ -51,7 +51,7 @@ password personal_access_token
 In this example, the `machine github.com` line specifies that any access to `github.com` should be authenticated using the provided `login` and `password`.
 
 :::{note}
-On Unix, the `netrc` file should be named `.netrc`. On Windows, the
+On Unix, name the `netrc` file as `.netrc`. On Windows, name the
 file should be named `_netrc`.
 :::
 
