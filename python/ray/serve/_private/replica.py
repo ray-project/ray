@@ -18,8 +18,11 @@ from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray._private.async_compat import sync_to_async
 
-from ray.serve._private.autoscaling_metrics import start_metrics_pusher
-from ray.serve._private.common import HEALTH_CHECK_CONCURRENCY_GROUP, ReplicaTag
+from ray.serve._private.common import (
+    HEALTH_CHECK_CONCURRENCY_GROUP,
+    ReplicaTag,
+    ServeComponentType,
+)
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
@@ -42,6 +45,7 @@ from ray.serve._private.utils import (
     parse_request_item,
     wrap_to_ray_error,
     merge_dict,
+    MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
 
@@ -76,7 +80,7 @@ def create_replica_wrapper(name: str):
             app_name: str = None,
         ):
             configure_component_logger(
-                component_type="deployment",
+                component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
                 component_id=replica_tag,
             )
@@ -362,11 +366,12 @@ class RayServeReplica:
         if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
             config = autoscaling_config
-            start_metrics_pusher(
-                interval_s=config.metrics_interval_s,
-                collection_callback=self._collect_autoscaling_metrics,
-                metrics_process_func=process_remote_func,
+            self.metrics_pusher = MetricsPusher(
+                process_remote_func,
+                config.metrics_interval_s,
+                self._collect_autoscaling_metrics,
             )
+            self.metrics_pusher.start()
 
     async def check_health(self):
         await self.user_health_check()
@@ -521,7 +526,10 @@ class RayServeReplica:
             # handle can pass the correct request context to subsequent replicas.
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(
-                    request.metadata.route, request.metadata.request_id
+                    request.metadata.route,
+                    request.metadata.request_id,
+                    self.app_name,
+                    request.metadata.multiplexed_model_id,
                 )
             )
 

@@ -22,10 +22,6 @@
 #  # on. This must be a string!
 #  python: "3.7"
 #
-#  # Optional location of a bash setup script to run on the driver
-#  # when setting up the local environment. Relative to working_dir
-#  driver_setup: setup_driver.sh
-#
 #  # Cluster information
 #  cluster:
 #    # Location of cluster env, relative to working_dir
@@ -842,8 +838,8 @@
   run:
     timeout: 4700
     script: python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
-  
-  
+
+
 - name: air_example_opt_deepspeed_batch_inference
   group: AIR examples
   working_dir: air_examples/opt_deepspeed_batch_inference
@@ -1474,7 +1470,6 @@
     cluster_env: horovod/app_config.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
-  driver_setup: horovod/driver_setup_latest.sh
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
@@ -1503,7 +1498,6 @@
     cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
-  driver_setup: horovod/driver_setup_master.sh
   run:
     timeout: 1200
     script: python horovod/horovod_user_test.py
@@ -1532,7 +1526,6 @@
     cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
-  driver_setup: train/driver_setup.sh
   run:
     timeout: 36000
     script: python train/train_tensorflow_mnist_test.py
@@ -1561,7 +1554,6 @@
     cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
-  driver_setup: train/driver_setup.sh
   run:
     timeout: 36000
     script: python train/train_torch_linear_test.py
@@ -1646,7 +1638,6 @@
     cluster_env: ray-lightning/app_config.yaml
     cluster_compute: ray-lightning/compute_tpl_aws.yaml
 
-  driver_setup: ray-lightning/driver_setup.sh
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
@@ -1675,7 +1666,6 @@
     cluster_env: ray-lightning/app_config_master.yaml
     cluster_compute: ray-lightning/compute_tpl_aws.yaml
 
-  driver_setup: ray-lightning/driver_setup.sh
   run:
     timeout: 1200
     script: python ray-lightning/ray_lightning_user_test.py
@@ -1704,7 +1694,6 @@
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
-  driver_setup: tune_rllib/driver_setup.sh
   run:
     timeout: 2000
     script: python tune_rllib/run_connect_tests.py
@@ -3311,6 +3300,34 @@
 # Train tests
 ########################
 
+- name: train_horovod_multi_node_test_byod
+  group: Train tests
+  working_dir: train_tests/horovod
+
+  frequency: manual
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        - sudo apt-get install curl
+        - pip3 install pytest awscli
+        - pip3 install 'ray[tune]'
+        - pip3 install torch torchvision
+        - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_TENSORFLOW=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_PYTORCH=1 pip3 install -U horovod
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_aws.yaml
+
+  run:
+    timeout: 3000
+    script: python train_horovod_multi_node_test.py
+
+    wait_for_nodes:
+      num_nodes: 2
+
+  alert: default 
+
 - name: train_horovod_multi_node_test
   group: Train tests
   working_dir: train_tests/horovod
@@ -4450,6 +4467,23 @@
         cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
+- name: microbenchmark_byod
+  group: core-daily-test
+  team: core
+  frequency: manual
+  working_dir: microbenchmark
+
+  python: "3.7"
+
+  cluster:
+    byod: 
+      type: cpu
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 - name: microbenchmark
   group: core-daily-test
@@ -5364,6 +5398,61 @@
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
+- name: streaming_data_ingest_benchmark_100gb_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --new_streaming --use-gpu
+    wait_for_nodes:
+      num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
+
+# This test case will early stop the data ingestion iteration on the GPU actors.
+# This is a common usage in PyTorch Lightning
+# (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
+# There was a bug in Ray Data that caused GPU memoy leak (see #34819).
+# We add this test case to cover this scenario.
+- name: streaming_data_ingest_benchmark_100gb_gpu_early_stop
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --new_streaming --use-gpu --early-stop
+    wait_for_nodes:
+      num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
 
 - name: aggregate_benchmark
   group: data-tests

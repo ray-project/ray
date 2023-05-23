@@ -19,6 +19,10 @@ import numpy as np
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
+from ray.data._internal.numpy_support import (
+    convert_udf_returns_to_numpy,
+    is_valid_udf_return,
+)
 from ray.data._internal.table_block import (
     TableBlockAccessor,
     TableBlockBuilder,
@@ -154,7 +158,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
     @staticmethod
     def numpy_to_block(
         batch: Union[np.ndarray, Dict[str, np.ndarray], Dict[str, list]],
-        passthrough_arrow_not_implemented_errors: bool = False,
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
@@ -163,7 +166,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if isinstance(batch, np.ndarray):
             batch = {TENSOR_COLUMN_NAME: batch}
         elif not isinstance(batch, collections.abc.Mapping) or any(
-            not isinstance(col, (list, np.ndarray)) for col in batch.values()
+            not is_valid_udf_return(col) for col in batch.values()
         ):
             raise ValueError(
                 "Batch must be an ndarray or dictionary of ndarrays when converting "
@@ -172,31 +175,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
             )
         new_batch = {}
         for col_name, col in batch.items():
-            if isinstance(col, list):
-                # Try to convert list values into an numpy array via
-                # np.array(), so users don't need to manually cast.
-                # NOTE: we don't cast generic iterables, since types like
-                # `str` are also Iterable.
-                try:
-                    col = np.array(col)
-                except Exception:
-                    raise ValueError(
-                        "Failed to convert column values to numpy array: "
-                        f"({_truncated_repr(col)})."
-                    )
+            # Coerce to np.ndarray format if possible.
+            col = convert_udf_returns_to_numpy(col)
             # Use Arrow's native *List types for 1-dimensional ndarrays.
             if col.dtype.type is np.object_ or col.ndim > 1:
-                try:
-                    col = ArrowTensorArray.from_numpy(col)
-                except pa.ArrowNotImplementedError as e:
-                    if passthrough_arrow_not_implemented_errors:
-                        raise e
-                    raise ValueError(
-                        "Failed to convert multi-dimensional ndarray of dtype "
-                        f"{col.dtype} to our tensor extension since this dtype is not "
-                        "supported by Arrow. If encountering this due to string data, "
-                        'cast the ndarray to a string dtype, e.g. a.astype("U").'
-                    ) from e
+                col = ArrowTensorArray.from_numpy(col)
             new_batch[col_name] = col
         return pa.Table.from_pydict(new_batch)
 
