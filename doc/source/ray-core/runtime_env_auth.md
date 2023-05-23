@@ -9,7 +9,7 @@ This section helps you:
 
 ## Authenticating Remote URIs
 
-You can add dependencies to your `runtime_env` with [remote URIs](remote-uris). This is straightfoward for files hosted publicly, since you can simply paste the public URI into your `runtime_env`:
+You can add dependencies to your `runtime_env` with [remote URIs](remote-uris). This is straightforward for files hosted publicly, because you simply paste the public URI into your `runtime_env`:
 
 ```python
 runtime_env = {"working_dir": (
