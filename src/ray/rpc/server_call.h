@@ -31,9 +31,9 @@ namespace rpc {
 
 // Authentication type of ServerCall.
 enum class AuthType {
-  NO_AUTH,  // Do not authenticate (accept all).
-  LAZY,     // Accept missing token, but reject wrong token.
-  STRICT,   // Reject missing token and wrong token.
+  NO_AUTH,      // Do not authenticate (accept all).
+  LAZY_AUTH,    // Accept missing token, but reject wrong token.
+  STRICT_AUTH,  // Reject missing token and wrong token.
 };
 
 /// Get the thread pool for the gRPC server.
@@ -149,7 +149,7 @@ using HandleRequestFunction = void (ServiceHandler::*)(Request,
 template <class ServiceHandler,
           class Request,
           class Reply,
-          AuthType EnableAuth = AuthType::STRICT>
+          AuthType EnableAuth = AuthType::STRICT_AUTH>
 class ServerCallImpl : public ServerCall {
  public:
   /// Constructor.
@@ -196,7 +196,7 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequest() override {
     bool auth_success = true;
-    if constexpr (EnableAuth == AuthType::STRICT) {
+    if constexpr (EnableAuth == AuthType::STRICT_AUTH) {
       RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
       auto &metadata = context_.client_metadata();
       if (auto it = metadata.find(kClusterIdKey);
@@ -206,7 +206,7 @@ class ServerCallImpl : public ServerCall {
                        << (it == metadata.end() ? "No token!" : it->second);
         auth_success = false;
       }
-    } else if constexpr (EnableAuth == AuthType::LAZY) {
+    } else if constexpr (EnableAuth == AuthType::LAZY_AUTH) {
       RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
       auto &metadata = context_.client_metadata();
       if (auto it = metadata.find(kClusterIdKey);
@@ -398,7 +398,7 @@ template <class GrpcService,
           class ServiceHandler,
           class Request,
           class Reply,
-          AuthType EnableAuth = AuthType::STRICT>
+          AuthType EnableAuth = AuthType::STRICT_AUTH>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
 

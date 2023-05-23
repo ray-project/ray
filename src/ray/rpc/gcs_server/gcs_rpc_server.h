@@ -322,7 +322,7 @@ class NodeInfoGrpcService : public GrpcService {
         NodeInfoGcsService,
         RegisterClient,
         RayConfig::instance().gcs_max_active_rpcs_per_handler(),
-        AuthType::LAZY);
+        AuthType::LAZY_AUTH);
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
@@ -472,7 +472,8 @@ class AutoscalerStateGrpcService : public GrpcService {
   grpc::Service &GetGrpcService() override { return service_; }
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      ClusterID const &cluster_id) override {
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterResourceState);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(ReportAutoscalingState);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(RequestClusterResourceConstraint);
