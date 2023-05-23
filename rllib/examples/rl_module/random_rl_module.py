@@ -1,12 +1,10 @@
 from typing import Mapping, Any
 from ray.rllib.core.rl_module import RLModule
+import pathlib
 import gymnasium as gym
 
 
 class RandomRLModule(RLModule):
-    def __init__(self, action_space):
-        self.action_space = action_space
-
     def _forward_inference(self, batch, **kwargs):
         # TODO (Kourosh): Implement this when we completely replace RandomPolicy.
         raise NotImplementedError
@@ -23,6 +21,12 @@ class RandomRLModule(RLModule):
         return {}
 
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
+        pass
+
+    def _module_state_file_name(self) -> pathlib.Path:
+        return pathlib.Path("random_rl_module_dummy_state")
+
+    def save_state(self, path) -> None:
         pass
 
     @classmethod
