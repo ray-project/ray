@@ -42,6 +42,14 @@ message PlacementConstraint {
   AntiAffinityConstraint anti_affinity = 1;
 }
 
+// QQ: why do embed this constraint? Why not have constrains
+// associated with a list of ResourceRequest(which is essentially a bundle).
+// Is there any case where a GangResourceRequest will have resources bundles
+// with different constraints?
+// message GangResourceRequest {
+//   repeated ResourceRequest requests = 1;
+//   repeated PlacementConstraint constrains = 2;
+// }
 message ResourceRequest {
   // resource requirements for the request.
   map<string, double> resources_bundle = 1;

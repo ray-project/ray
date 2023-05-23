@@ -34,6 +34,9 @@ class GcsMonitorServerTest;
 
 using raylet::ClusterTaskManager;
 namespace gcs {
+
+constexpr char kPlacementGroupAntiAffinityLabelName[] = "_PG";
+
 /// Ideally, the logic related to resource calculation should be moved from
 /// `gcs_resoruce_manager` to `cluster_resource_manager`, and all logic related to
 /// resource modification should directly depend on `cluster_resource_manager`, while

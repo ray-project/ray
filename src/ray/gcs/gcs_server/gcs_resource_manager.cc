@@ -388,7 +388,42 @@ void GcsResourceManager::HandleGetClusterResourceState(
 
 void GcsResourceManager::GetPendingGangResourceRequests(
     rpc::autoscaler::GetClusterResourceStateReply *reply) {
-  // TODO
+  // Get the gang resource requests from the placement group load.
+  if (!placement_group_load_.has_value()) {
+    return;
+  }
+
+  for (const auto &pg_data : placement_group_load_.value()->placement_group_data()) {
+    auto gang_resource_req = reply->add_pending_gang_resource_requests();
+    if (!(pg_data.state() == rpc::PlacementGroupTableData::PENDING ||
+          pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING)) {
+      continue;
+    }
+
+    absl::optional<rpc::PlacementConstraint> anti_affinity_constraint = absl::nullopt;
+    // TODO: how to handle soft anti-affinity?
+    if (pg_data.strategy() == rpc::PlacementStrategy::STRICT_SPREAD) {
+      anti_affinity_constraint = rpc::PlacementConstraint();
+      anti_affinity_constraint->mutable_anti_affinity()->set_label_name(
+          kPlacementGroupAntiAffinityLabelName);
+      anti_affinity_constraint->mutable_anti_affinity()->set_label_value(
+          pg_data.placement_group_id());
+    }
+
+    for (const auto &bundle : pg_data.bundles()) {
+      // Add the resources.
+      auto resource_req = gang_resource_req->add_requests();
+      resource_req->mutable_resources_bundle()->insert(bundle.unit_resources().begin(),
+                                                       bundle.unit_resources().end());
+
+      // Add the placement constraint.
+      if (anti_affinity_constraint.has_value()) {
+        resource_req->add_placement_constraints()->CopyFrom(
+            anti_affinity_constraint.value());
+      }
+    }
+  }
+
   return;
 }
 
