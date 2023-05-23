@@ -52,7 +52,7 @@ In this example, the `machine github.com` line specifies that any access to `git
 
 :::{note}
 On Unix, name the `netrc` file as `.netrc`. On Windows, name the
-file should be named `_netrc`.
+file, `_netrc`.
 :::
 
 The `netrc` file requires owner read/write access, so make sure to run the `chmod` command after creating the file:
