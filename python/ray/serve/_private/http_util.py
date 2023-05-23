@@ -158,6 +158,23 @@ class ASGIHTTPSender(Send):
         return RawASGIResponse(self.messages)
 
 
+class ASGIHTTPQueueSender(Send, asyncio.Queue):
+    """TODO: doc and better name"""
+
+    def __init__(self):
+        asyncio.Queue.__init__(self)
+        self._new_message = asyncio.Event()
+
+    async def __call__(self, message: Dict[str, Any]):
+        assert message["type"] in ("http.response.start", "http.response.body")
+        print("PUTTING MESSAGE!", message)
+        await self.put(message)
+        self._new_message.set()
+    
+    async def wait(self):
+        await self._new_message.wait()
+
+
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     """Transform the `cls`'s methods and class annotations to FastAPI routes.
 

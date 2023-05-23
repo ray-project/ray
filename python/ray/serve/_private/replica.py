@@ -10,6 +10,7 @@ from typing import Any, Callable, Optional, Tuple, Dict
 import traceback
 
 import starlette.responses
+from starlette.types import Send
 
 import ray
 from ray import cloudpickle
@@ -34,7 +35,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve._private.http_util import ASGIHTTPSender
+from ray.serve._private.http_util import ASGIHTTPSender, ASGIHTTPQueueSender
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
@@ -212,21 +213,28 @@ def create_replica_wrapper(name: str):
 
             # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs, request_metadata)
-            _, result = await self.replica.handle_request(
-                query, should_convert_streaming_response=False
-            )
+            queue = ASGIHTTPQueueSender()
+            from ray._private.utils import get_or_create_event_loop
+            print("GETTING LOOP")
+            loop = get_or_create_event_loop()
+            print("CREATING TASK!")
+            task = loop.create_task(self.replica.handle_request(
+                query, asgi_sender=queue,
+            ))
+            print("TASK CREATED")
 
-            if not isinstance(result, starlette.responses.StreamingResponse):
-                # print("YIELDING NON-STREAMING")
-                yield result
-            else:
-                gen = result.body_iterator
-                result.body_iterator = None
-                yield result
+            while True:
+                done, pending = await asyncio.wait([task, queue.wait()], return_when=asyncio.FIRST_COMPLETED)
+                while not queue.empty():
+                    val = queue.get_nowait()
+                    print("YIELDING VAL:", val)
+                    yield val
 
-                async for r in gen:
-                    # print("YIELDING STREAMING")
-                    yield r
+                if task in done:
+                    break
+            
+            if task.exception() is not None:
+                raise task.exception() from None
 
         async def handle_request_from_java(
             self,
@@ -447,23 +455,28 @@ class RayServeReplica:
             return self.callable
         return getattr(self.callable, method_name)
 
-    async def convert_streaming_response(self, response: Any) -> Any:
-        if isinstance(response, starlette.responses.StreamingResponse):
+    async def handle_http_response(self, response: Any, asgi_sender: Optional[Send] = None) -> Any:
+        print("IN handle_http_response")
+        async def mock_receive():
+            # This is called in a tight loop in response() just to check
+            # for an http disconnect.  So rather than return immediately
+            # we should suspend execution to avoid wasting CPU cycles.
+            never_set_event = asyncio.Event()
+            await never_set_event.wait()
 
-            async def mock_receive():
-                # This is called in a tight loop in response() just to check
-                # for an http disconnect.  So rather than return immediately
-                # we should suspend execution to avoid wasting CPU cycles.
-                never_set_event = asyncio.Event()
-                await never_set_event.wait()
-
+        if asgi_sender is not None and isinstance(response, starlette.responses.Response):
+            print("STREAMING BACK RESPONSE")
+            await response(scope=None, receive=mock_receive, send=asgi_sender)
+        elif isinstance(response, starlette.responses.StreamingResponse):
+            print("CONSUMING RESPONSE INTO SYNC")
             sender = ASGIHTTPSender()
             await response(scope=None, receive=mock_receive, send=sender)
             return sender.build_asgi_response()
+
         return response
 
     async def invoke_single(
-        self, request_item: Query, *, should_convert_streaming_response: bool = True
+        self, request_item: Query, *, asgi_sender: Optional[Send] = None
     ) -> Tuple[Any, bool]:
         """Executes the provided request on this replica.
 
@@ -476,6 +489,11 @@ class RayServeReplica:
         )
 
         args, kwargs = parse_request_item(request_item)
+        if asgi_sender is not None and hasattr(self.callable, "_serve_app"):
+            print("GOT FASTAPI, ADDING KWARG!")
+            kwargs["sender"] = asgi_sender
+        else:
+            print("NO FASTAPI")
 
         method_to_call = None
         success = True
@@ -499,9 +517,7 @@ class RayServeReplica:
                     # call with non-empty args
                     result = await method_to_call(*args, **kwargs)
 
-            if should_convert_streaming_response:
-                result = await self.convert_streaming_response(result)
-
+            result = await self.handle_http_response(result, asgi_sender=asgi_sender)
             self.request_counter.inc(tags={"route": request_item.metadata.route})
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
@@ -551,8 +567,9 @@ class RayServeReplica:
                 await reconfigure_method(self.deployment_config.user_config)
 
     async def handle_request(
-        self, request: Query, *, should_convert_streaming_response: bool = True
+        self, request: Query, *, asgi_sender: Optional[Send] = None
     ) -> asyncio.Future:
+        print("HANDLE REQUEST")
         async with self.rwlock.reader_lock:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
@@ -568,7 +585,7 @@ class RayServeReplica:
             start_time = time.time()
             result, success = await self.invoke_single(
                 request,
-                should_convert_streaming_response=should_convert_streaming_response,
+                asgi_sender=asgi_sender,
             )
             latency_ms = (time.time() - start_time) * 1000
             self.processing_latency_tracker.observe(

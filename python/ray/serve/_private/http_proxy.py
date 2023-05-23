@@ -113,10 +113,23 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             assignment_result = await assignment_task
 
             if isinstance(assignment_result, ray._raylet.StreamingObjectRefGenerator):
-                obj_ref_generator = assignment_result
-                object_ref = await obj_ref_generator.__anext__()
+                try:
+                    obj_ref_generator = assignment_result
+                    status_code = None
+                    # TODO: handle errors.
+                    async for obj_ref in obj_ref_generator:
+                        print("GOT obj_ref!!!")
+                        result = await obj_ref
+                        if status_code is None:
+                            status_code = str(result["status"])
+                        print("GOT RESULT!", result)
+                        await send(result)
+
+                    return status_code
+                except Exception as e:
+                    logger.exception(e)
+                    raise e
             else:
-                obj_ref_generator = None
                 object_ref = assignment_result
 
             # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
@@ -169,16 +182,6 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
-
-    if obj_ref_generator is not None and isinstance(
-        result, starlette.responses.StreamingResponse
-    ):
-
-        async def obj_ref_generator_wrapper():
-            async for obj_ref in obj_ref_generator:
-                yield await obj_ref
-
-        result.body_iterator = obj_ref_generator_wrapper()
 
     if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
         await result(scope, receive, send)
@@ -450,6 +453,9 @@ class HTTPProxy:
             )
         )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
+        if status_code is None:
+            # TODO: fix this!!!
+            status_code = "TODO"
 
         self.request_counter.inc(
             tags={
