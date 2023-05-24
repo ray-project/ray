@@ -89,7 +89,7 @@
 					"type": "string"
 				},
 				"byod": {
-					"type": "boolean"
+					"$ref": "#/definitions/Byod"
 				}
 			},
 			"required": [
@@ -97,6 +97,26 @@
 				"cluster_env"
 			],
 			"title": "Cluster"
+		},
+		"Byod": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"type": {
+					"type": "string",
+					"enum": [
+						"cpu",
+						"gpu"
+					]
+				},
+				"pre_run_cmds": {
+					"type": "array"
+				}
+			},
+			"required": [
+				"type"
+			],
+			"title": "Byod"
 		},
 		"Run": {
 			"type": "object",

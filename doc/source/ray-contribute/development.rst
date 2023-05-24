@@ -382,7 +382,7 @@ run the following (via ``-c`` ``fastbuild``/``dbg``/``opt``, respectively):
  bazel build -c fastbuild //:ray_pkg
 
 This will rebuild Ray with the appropriate options (which may take a while).
-If you need to build all targets, you can use ``"//:*"`` instead of
+If you need to build all targets, you can use ``"//:all"`` instead of
 ``//:ray_pkg``.
 
 To make this change permanent, you can add an option such as the following
