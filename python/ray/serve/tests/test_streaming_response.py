@@ -7,15 +7,20 @@ import requests
 from starlette.responses import StreamingResponse
 from starlette.requests import Request
 
+import ray
+from ray._private.test_utils import SignalActor
+
 from ray import serve
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
 
-def make_streaming_request() -> Generator[str, None, None]:
-    r = requests.get("http://localhost:8000", stream=True)
-    r.raise_for_status()
-    for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
-        yield chunk
+@ray.remote
+class StreamingRequester:
+    def make_request(self) -> Generator[str, None, None]:
+        r = requests.get("http://localhost:8000", stream=True)
+        r.raise_for_status()
+        for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
+            yield chunk
 
 
 @pytest.mark.skipif(
@@ -24,37 +29,93 @@ def make_streaming_request() -> Generator[str, None, None]:
 )
 @pytest.mark.parametrize("use_fastapi", [False, True])
 def test_basic(serve_instance, use_fastapi: bool):
+    async def hi_gen():
+        for i in range(10):
+            yield f"hi_{i}"
+            await asyncio.sleep(0.01)
+
     if use_fastapi:
         app = FastAPI()
 
         @serve.deployment
         @serve.ingress(app)
         class SimpleGenerator:
-            async def hi_gen(self):
-                for i in range(10):
-                    yield f"hi_{i}"
-                    await asyncio.sleep(0.01)
-
             @app.get("/")
             def stream_hi(self, request: Request) -> StreamingResponse:
-                return StreamingResponse(self.hi_gen(), media_type="text/plain")
+                return StreamingResponse(hi_gen(), media_type="text/plain")
 
     else:
 
         @serve.deployment
         class SimpleGenerator:
-            async def hi_gen(self):
-                for i in range(10):
-                    yield f"hi_{i}"
-                    await asyncio.sleep(0.01)
-
             def __call__(self, request: Request) -> StreamingResponse:
-                return StreamingResponse(self.hi_gen(), media_type="text/plain")
+                return StreamingResponse(hi_gen(), media_type="text/plain")
 
     serve.run(SimpleGenerator.bind())
 
-    for i, chunk in enumerate(make_streaming_request()):
+    r = requests.get("http://localhost:8000", stream=True)
+    r.raise_for_status()
+    for i, chunk in enumerate(r.iter_content(chunk_size=None, decode_unicode=True)):
         assert chunk == f"hi_{i}"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Streaming feature flag is disabled.",
+)
+@pytest.mark.parametrize("use_fastapi", [False, True])
+def test_response_actually_streamed(serve_instance, use_fastapi: bool):
+    """Checks that responses are streamed as they are yielded."""
+    signal_actor = SignalActor.remote()
+
+    async def wait_on_signal_generator():
+        yield "before signal"
+        await signal_actor.wait.remote()
+        yield "after signal"
+
+    if use_fastapi:
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class SimpleGenerator:
+            @app.get("/")
+            def stream(self, request: Request) -> StreamingResponse:
+                return StreamingResponse(
+                    wait_on_signal_generator(), media_type="text/plain"
+                )
+
+    else:
+
+        @serve.deployment
+        class SimpleGenerator:
+            def __call__(self, request: Request) -> StreamingResponse:
+                return StreamingResponse(
+                    wait_on_signal_generator(), media_type="text/plain"
+                )
+
+    serve.run(SimpleGenerator.bind())
+
+    requester = StreamingRequester.remote()
+    gen = requester.make_request.options(num_returns="streaming").remote()
+
+    # Check that we get the first response before the signal is sent
+    # (so the generator is still hanging after the first yield).
+    obj_ref = next(gen)
+    assert ray.get(obj_ref) == "before signal"
+
+    # Check that the next obj_ref is not ready yet.
+    obj_ref = gen._next_sync(timeout_s=0.01)
+    assert obj_ref.is_nil()
+
+    # Now send signal to actor, second yield happens.
+    ray.get(signal_actor.send.remote())
+    obj_ref = next(gen)
+    assert ray.get(obj_ref) == "after signal"
+
+    # Client should be done getting messages.
+    with pytest.raises(StopIteration):
+        next(gen)
 
 
 if __name__ == "__main__":

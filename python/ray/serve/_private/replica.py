@@ -374,8 +374,6 @@ class RayServeReplica:
 
         self.user_health_check = sync_to_async(user_health_check)
 
-        self.num_ongoing_requests = 0
-
         self.request_counter = metrics.Counter(
             "serve_deployment_request_counter",
             description=(
@@ -495,13 +493,13 @@ class RayServeReplica:
             if isinstance(result, starlette.responses.Response):
                 # Case where the user returns a Response directly.
                 await result(scope=None, receive=mock_receive, send=asgi_sender)
-            else:
+            elif result is not None:
                 # Case where the user returns a plain object (not a Response).
                 response = Response(result)
                 await response.send(scope=None, receive=mock_receive, send=asgi_sender)
 
             result = None
-        elif isinstance(response, starlette.responses.StreamingResponse):
+        elif isinstance(result, starlette.responses.StreamingResponse):
             sender = ASGIHTTPSender()
             await result(scope=None, receive=mock_receive, send=sender)
             result = sender.build_asgi_response()
@@ -654,14 +652,15 @@ class RayServeReplica:
             # The handle_request method wasn't even invoked.
             if method_stat is None:
                 break
+            num_ongoing_requests = method_stat["running"] + method_stat["pending"]
             # The handle_request method has 0 inflight requests.
-            if method_stat["running"] + method_stat["pending"] == 0:
+            if num_ongoing_requests == 0:
                 break
             else:
                 logger.info(
                     "Waiting for an additional "
                     f"{self.deployment_config.graceful_shutdown_wait_loop_s}s to shut "
-                    f"down because there are {self.num_ongoing_requests} ongoing "
+                    f"down because there are {num_ongoing_requests} ongoing "
                     "requests."
                 )
 
