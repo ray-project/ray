@@ -240,8 +240,18 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
             async def __call__(
                 self, request: Request, asgi_sender: Optional[Send] = None
             ) -> Optional[ASGIApp]:
+                """Calls into the wrapped ASGI app.
+
+                If asgi_sender is provided, it's passed into the app and nothing is
+                returned.
+
+                If no asgi_sender is provided, an ASGI response will be built and
+                returned.
+                """
+                build_and_return_response = False
                 if asgi_sender is None:
                     asgi_sender = ASGIHTTPSender()
+                    build_and_return_response = True
 
                 await self._serve_app(
                     request.scope,
@@ -249,7 +259,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                     asgi_sender,
                 )
 
-                if asgi_sender is None:
+                if build_and_return_response:
                     return asgi_sender.build_asgi_response()
 
             # NOTE: __del__ must be async so that we can run asgi shutdown
