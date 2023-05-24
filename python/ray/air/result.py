@@ -9,13 +9,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
-    EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
     EXPR_ERROR_PICKLE_FILE,
     TRAINING_ITERATION,
 )
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="beta")
@@ -54,7 +57,7 @@ class Result:
     _local_path: Optional[str] = None
     _remote_path: Optional[str] = None
     _items_to_repr = ["error", "metrics", "path", "checkpoint"]
-    _restore_required_files = [EXPR_RESULT_FILE, EXPR_PROGRESS_FILE]
+    _restore_required_files = [EXPR_RESULT_FILE]
     # Deprecate: raise in 2.5, remove in 2.6
     log_dir: Optional[Path] = None
 
@@ -122,11 +125,13 @@ class Result:
     def _validate_trial_dir(trial_dir: str):
         """Check the validity of the local trial folder."""
 
-        assert os.path.exists(trial_dir), f"Trial folder {trial_dir} doesn't exists!"
+        if not os.path.exists(trial_dir):
+            raise RuntimeError(f"Trial folder {trial_dir} doesn't exists!")
 
         all_files = os.listdir(trial_dir)
         for file in Result._restore_required_files:
-            assert file in all_files, f"{file} not found in the trial folder!"
+            if file not in all_files:
+                raise RuntimeError(f"{file} not found in the trial folder!")
 
     @classmethod
     def from_path(cls, path: str) -> "Result":
@@ -179,11 +184,11 @@ class Result:
         # Restore the trial error if it exists
         error = None
         error_file_path = Path(local_path) / EXPR_ERROR_PICKLE_FILE
-        if os.path.exists(error_file_path):
+        if error_file_path.exists():
             error = pickle.load(open(error_file_path, "rb"))
 
         return Result(
-            metrics=metrics,
+            metrics=latest_metrics,
             checkpoint=latest_checkpoint,
             _local_path=local_path,
             _remote_path=None,
@@ -194,7 +199,7 @@ class Result:
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(self, metric: str, mode: str) -> Optional[Checkpoint]:
-        """Gets best persistent checkpoint of this trial.
+        """Get the best checkpoint from this trial based on a specific metric.
 
         Any checkpoints without an associated metric value will be filtered out.
 
@@ -206,12 +211,20 @@ class Result:
             :class:`Checkpoint <ray.air.Checkpoint>` object, or None if there is
             no valid checkpoint associated with the metric.
         """
-        assert self.best_checkpoints, "No checkpoint exists in the trial directory!"
+        if not self.best_checkpoints:
+            raise RuntimeError("No checkpoint exists in the trial directory!")
 
-        assert mode in [
-            "max",
-            "min",
-        ], f'Unsupported mode: {mode}. Please choose from ["min", "max"]!'
+        if mode not in ["max", "min"]:
+            raise ValueError(
+                f'Unsupported mode: {mode}. Please choose from ["min", "max"]!'
+            )
+
+        if metric not in self.metrics:
+            logger.warning(
+                f"Invalid metric name {metric}! "
+                f"You may choose from the following metrics: {self.metrics.keys()}."
+            )
+            return None
 
         op = max if mode == "max" else min
         valid_checkpoints = [
