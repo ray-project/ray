@@ -11,6 +11,7 @@ from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
+from ray._private.test_utils import wait_for_condition
 
 from unittest.mock import patch
 
@@ -269,7 +270,7 @@ def test_dataset__repr__(ray_start_regular_shared):
     assert len(ds.take_all()) == n
     ds = ds.materialize()
 
-    assert canonicalize(repr(ds._plan.stats().to_summary())) == (
+    expected_stats = (
         "DatasetStatsSummary(\n"
         "   dataset_uuid=U,\n"
         "   base_name=None,\n"
@@ -304,9 +305,24 @@ def test_dataset__repr__(ray_start_regular_shared):
         ")"
     )
 
+    def check_stats():
+        stats = canonicalize(repr(ds._plan.stats().to_summary()))
+        assert stats == expected_stats
+        return True
+
+    # TODO(hchen): The reason why `wait_for_condition` is needed here is because
+    # `to_summary` depedens on an external actor to record the stats, which makes
+    # it non-deterministic. See the todo in `to_summary`.
+    # We should make it deterministic and refine this test.
+    wait_for_condition(
+        check_stats,
+        timeout=10,
+        retry_interval_ms=1000,
+    )
+
     ds2 = ds.map_batches(lambda x: x).materialize()
     assert len(ds2.take_all()) == n
-    assert canonicalize(repr(ds2._plan.stats().to_summary())) == (
+    expected_stats = (
         "DatasetStatsSummary(\n"
         "   dataset_uuid=U,\n"
         "   base_name=MapBatches(<lambda>),\n"
@@ -376,6 +392,17 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      ),\n"
         "   ],\n"
         ")"
+    )
+
+    def check_stats():
+        stats = canonicalize(repr(ds2._plan.stats().to_summary()))
+        assert stats == expected_stats
+        return True
+
+    wait_for_condition(
+        check_stats,
+        timeout=10,
+        retry_interval_ms=1000,
     )
 
 
