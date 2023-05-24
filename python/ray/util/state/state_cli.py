@@ -892,8 +892,7 @@ Example:
 
     Note: If a task is from a concurrent actor (i.e. an async actor or
     a threaded actor), the log of the tasks are expected to be interleaved.
-    Therefore, querying the task log might include other actor task logs from
-    the same actor.
+    Please use `ray logs actor --id <actor_id>` for the entire actor log.
 
     ```
     ray logs task --id <TASK_ID> --err
@@ -1297,8 +1296,7 @@ def log_task(
 
     Note: If a task is from a concurrent actor (i.e. an async actor or
     a threaded actor), the log of the tasks are expected to be interleaved.
-    Therefore, querying the task log might include other actor task logs from
-    the same actor.
+    Please use `ray logs actor --id <actor_id>` for the entire actor log.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
