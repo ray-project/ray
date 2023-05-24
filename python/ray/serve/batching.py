@@ -299,20 +299,19 @@ def batch(
         raise ValueError("batch_wait_timeout_s must be a float >= 0")
 
     def _batch_decorator(_func):
-        async def generator_batch_handler(initial_future: asyncio.Future):
+        async def batch_handler_generator(first_future: asyncio.Future):
             """Generator that handles generator batch functions."""
 
-            future = initial_future
+            future = first_future
             while True:
                 async_response: _GeneratorIterResponse = await future
-                yield async_response.result
                 if async_response.next_future == END_ASYNC_ITER_TOKEN:
-                    raise StopAsyncIteration
+                    break
                 else:
                     future = async_response.next_future
-
-        @wraps(_func)
-        async def batch_wrapper(*args, **kwargs):
+                yield async_response.result
+        
+        def enqueue_request(args, kwargs):
             self = extract_self_if_method_call(args, _func)
             flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
 
@@ -339,14 +338,22 @@ def batch(
 
             future = get_or_create_event_loop().create_future()
             batch_queue.put(_SingleRequest(self, flattened_args, future))
+            return future
+        
+        @wraps(_func)
+        def generator_batch_wrapper(*args, **kwargs):
+            first_future = enqueue_request(args, kwargs)
+            return batch_handler_generator(first_future) 
 
-            if isasyncgenfunction(_func):
-                return generator_batch_handler(future)
-            else:
-                # This will raise if the underlying call raised an exception.
-                return await future
+        @wraps(_func)
+        async def batch_wrapper(*args, **kwargs):
+            # This will raise if the underlying call raised an exception.
+            return await enqueue_request(args, kwargs)
 
-        return batch_wrapper
+        if isasyncgenfunction(_func):
+            return generator_batch_wrapper
+        else:
+            return batch_wrapper
 
     # Unfortunately, this is required to handle both non-parametrized
     # (@serve.batch) and parametrized (@serve.batch(**kwargs)) usage.

@@ -4,6 +4,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray.serve.exceptions import RayServeException
 from ray._private.utils import get_or_create_event_loop
 
 
@@ -289,6 +290,84 @@ async def test_batch_args_kwargs(mode, use_class):
 
     result = await asyncio.gather(*coros)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "out-of-order"])
+@pytest.mark.parametrize("use_class", [True, False])
+@pytest.mark.parametrize("generator_length", [0, 2, 5])
+async def test_batch_generator_basic(mode, use_class, generator_length):
+    if use_class:
+
+        class MultipleArgs:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, key1, key2):
+                for gen_idx in range(generator_length):
+                    yield [(gen_idx, key1[i], key2[i]) for i in range(len(key1))]
+
+        instance = MultipleArgs()
+        func = instance.method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def func(key1, key2):
+            for gen_idx in range(generator_length):
+                yield [(gen_idx, key1[i], key2[i]) for i in range(len(key1))]
+
+    if mode == "args":
+        generators = [func("hi1", "hi2"), func("hi3", "hi4")]
+    elif mode == "kwargs":
+        generators = [func(key1="hi1", key2="hi2"), func(key1="hi3", key2="hi4")]
+    elif mode == "mixed":
+        generators = [func("hi1", key2="hi2"), func("hi3", key2="hi4")]
+    elif mode == "out-of-order":
+        generators = [func(key2="hi2", key1="hi1"), func(key2="hi4", key1="hi3")]
+
+    results = [
+        [result async for result in generators[0]],
+        [result async for result in generators[1]],
+    ]
+
+    assert results == [
+        [(gen_idx, "hi1", "hi2") for gen_idx in range(generator_length)],
+        [(gen_idx, "hi3", "hi4") for gen_idx in range(generator_length)],
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", ["runtime_error", "mismatched_lengths"])
+async def test_batch_generator_exceptions(error_type):
+    GENERATOR_LENGTH = 5
+    ERROR_IDX = 2
+    ERROR_MSG = "Testing error"
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+    async def func(key1, key2):
+        for gen_idx in range(GENERATOR_LENGTH):
+            results = [(gen_idx, key1[i], key2[i]) for i in range(len(key1))]
+            if gen_idx == ERROR_IDX:
+                if error_type == "runtime_error":
+                    raise RuntimeError(ERROR_MSG)
+                elif error_type == "mismatched_lengths":
+                    yield results * 2
+            yield results
+
+    generators = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    for generator in generators:
+        for _ in range(ERROR_IDX):
+            await generator.__anext__()
+
+        if error_type == "runtime_error":
+            with pytest.raises(RuntimeError, match=ERROR_MSG):
+                await generator.__anext__()
+        elif error_type == "mismatched_lengths":
+            with pytest.raises(RayServeException):
+                await generator.__anext__()
+
+        with pytest.raises(StopAsyncIteration):
+            await generator.__anext__()
 
 
 if __name__ == "__main__":
