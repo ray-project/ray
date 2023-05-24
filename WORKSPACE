@@ -27,9 +27,10 @@ crates_repository(
             build_script_data = [
                 "@//wasm:wasmedge_pkg",
             ],
-            data = [
-                "@//wasm:wasmedge_pkg",
-            ],
+            build_script_env = {
+                "WASMEDGE_INCLUDE_DIR": "$${pwd}/../../../../../execroot/com_github_ray_project_ray/python/ray/wasm/wasmedge/include",
+                "WASMEDGE_LIB_DIR": "$${pwd}/../../../../../execroot/com_github_ray_project_ray/python/ray/wasm/wasmedge/lib64",
+            },
         )],
     },
 )

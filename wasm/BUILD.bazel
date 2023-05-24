@@ -247,7 +247,8 @@ genrule(
         PY_WASM_DIR="$$WORK_DIR/python/ray/wasm" &&
         mkdir -p "$$PY_WASM_DIR" &&
         WASMEDGE_DIR="$$PY_WASM_DIR/wasmedge" &&
-        rm -rf $$WASMEDGE_DIR && 
+        rm -rf \"$$WASMEDGE_DIR\" &&
+        mkdir -p \"$$WASMEDGE_DIR\" &&
         """ + select({
         "@bazel_tools//src/conditions:darwin": """WASMEDGE_SRC_BIN="$(location @com_github_wasmedge_darwin_x86_64//:wasmedge_bin)" &&""",
         "@bazel_tools//src/conditions:windows": """# TODO: Add Windows support. &&""",
@@ -255,13 +256,10 @@ genrule(
     }) + """ 
         WASMEDGE_SRC_BIN_DIR="$$(dirname $$WASMEDGE_SRC_BIN)" &&
         WASMEDGE_SRC_DIR="$$(dirname \"$$WASMEDGE_SRC_BIN_DIR\")" &&
-        WASMEDGE_SRC_INCLUDE_DIR="$$WASMEDGE_SRC_DIR/include" &&
-        WASMEDGE_SRC_LIB_DIR="$$WASMEDGE_SRC_DIR/lib*" &&
-        sudo rm -r -f /usr/local/include/wasmedge &&
-        sudo cp -r -f $$WASMEDGE_SRC_INCLUDE_DIR/wasmedge /usr/local/include/ &&
-        sudo cp -r -f $$WASMEDGE_SRC_LIB_DIR/* /usr/local/lib &&
-        echo "$$WORK_DIR" > $@
+        cp -r -f \"$$WASMEDGE_SRC_DIR/.\" \"$$WASMEDGE_DIR\" &&
+        if [ -d \"$$WASMEDGE_DIR/lib\" ]; then ln -s \"$$WASMEDGE_DIR/lib\" \"$$WASMEDGE_DIR/lib64\"; fi &&
+        echo "$$WASMEDGE_DIR" > $@
     """,
-    local = True,
+    local = 1,
     visibility = ["//visibility:public"],
 )
