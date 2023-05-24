@@ -174,6 +174,19 @@ class Executor {
 /// Client used for communicating with gcs server.
 class GcsRpcClient {
  public:
+  static std::shared_ptr<grpc::Channel> CreateGcsChannel(const std::string &address,
+                                                         int port) {
+    grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
+    arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
+                     ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
+    arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
+                     ::RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
+    arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
+                     ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
+    return BuildChannel(address, port, arguments);
+  }
+
+ public:
   /// Constructor. GcsRpcClient is not thread safe.
   ///
   /// \param[in] address Address of gcs server.
@@ -190,16 +203,7 @@ class GcsRpcClient {
         gcs_port_(port),
         io_context_(&client_call_manager.GetMainService()),
         timer_(std::make_unique<boost::asio::deadline_timer>(*io_context_)) {
-    grpc::ChannelArguments arguments = CreateDefaultChannelArguments();
-    arguments.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS,
-                     ::RayConfig::instance().gcs_grpc_max_reconnect_backoff_ms());
-    arguments.SetInt(GRPC_ARG_MIN_RECONNECT_BACKOFF_MS,
-                     ::RayConfig::instance().gcs_grpc_min_reconnect_backoff_ms());
-    arguments.SetInt(GRPC_ARG_INITIAL_RECONNECT_BACKOFF_MS,
-                     ::RayConfig::instance().gcs_grpc_initial_reconnect_backoff_ms());
-
-    channel_ = BuildChannel(address, port, arguments);
-
+    channel_ = CreateGcsChannel(address, port);
     // If not the reconnection will continue to work.
     auto deadline =
         std::chrono::system_clock::now() +
