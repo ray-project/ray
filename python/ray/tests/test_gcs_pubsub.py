@@ -5,7 +5,6 @@ import re
 
 import ray
 from ray._private.gcs_pubsub import (
-    GcsFunctionKeySubscriber,
     GcsAioPublisher,
     GcsAioErrorSubscriber,
     GcsAioLogSubscriber,

@@ -221,7 +221,7 @@ grpc::ChannelArguments PythonGrpcChannelArguments() {
   return arguments;
 }
 
-std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch& log_batch) {
+std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch &log_batch) {
   return std::vector<std::string>(log_batch.lines().begin(), log_batch.lines().end());
 }
 
@@ -303,12 +303,14 @@ Status PythonGcsPublisher::PublishFunctionKey(
   return DoPublishWithRetries(request, -1, -1);
 }
 
-PythonGcsSubscriber::PythonGcsSubscriber(
-    const std::string &gcs_address,
-    rpc::ChannelType channel_type,
-    const std::string& subscriber_id,
-    const std::string& worker_id
-  ) : channel_type_(channel_type), subscriber_id_(subscriber_id), worker_id_(worker_id), closed_(false) {
+PythonGcsSubscriber::PythonGcsSubscriber(const std::string &gcs_address,
+                                         rpc::ChannelType channel_type,
+                                         const std::string &subscriber_id,
+                                         const std::string &worker_id)
+    : channel_type_(channel_type),
+      subscriber_id_(subscriber_id),
+      worker_id_(worker_id),
+      closed_(false) {
   std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
   RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
   RAY_CHECK(address.size() == 2);
@@ -348,7 +350,8 @@ Status PythonGcsSubscriber::Subscribe() {
   cmd->mutable_subscribe_message();
 
   rpc::GcsSubscriberCommandBatchReply reply;
-  grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
+  grpc::Status status =
+      pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
   if (status.ok()) {
     return Status::OK();
@@ -357,7 +360,7 @@ Status PythonGcsSubscriber::Subscribe() {
   }
 }
 
-Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
+Status PythonGcsSubscriber::DoPoll(rpc::PubMessage *message) {
   absl::MutexLock lock(&mu_);
 
   while (queue_.size() == 0) {
@@ -373,7 +376,8 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
     rpc::GcsSubscriberPollReply reply;
     // Drop the lock while in RPC
     mu_.Unlock();
-    grpc::Status status = pubsub_stub_->GcsSubscriberPoll(current_polling_context_.get(), request, &reply);
+    grpc::Status status =
+        pubsub_stub_->GcsSubscriberPoll(current_polling_context_.get(), request, &reply);
     mu_.Lock();
 
     if (status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
@@ -389,21 +393,23 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
     if (publisher_id_ != reply.publisher_id()) {
       if (publisher_id_ != "") {
         RAY_LOG(DEBUG) << "Replied publisher_id " << reply.publisher_id()
-          << " different from " << publisher_id_ << ", this should only happen"
-          << " during GCS failover.";
+                       << " different from " << publisher_id_
+                       << ", this should only happen"
+                       << " during GCS failover.";
       }
       publisher_id_ = reply.publisher_id();
       max_processed_sequence_id_ = 0;
     }
     last_batch_size_ = reply.pub_messages().size();
-    for (auto& message : reply.pub_messages()) {
+    for (auto &message : reply.pub_messages()) {
       if (message.sequence_id() <= max_processed_sequence_id_) {
         RAY_LOG(WARNING) << "Ignoring out of order message " << message.sequence_id();
         continue;
       }
       max_processed_sequence_id_ = message.sequence_id();
       if (message.channel_type() != channel_type_) {
-        RAY_LOG(WARNING) << "Ignoring message from unsubscribed channel " << message.channel_type();
+        RAY_LOG(WARNING) << "Ignoring message from unsubscribed channel "
+                         << message.channel_type();
         continue;
       }
       queue_.emplace_back(std::move(message));
@@ -416,7 +422,7 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage* message) {
   return Status::OK();
 }
 
-Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* data) {
+Status PythonGcsSubscriber::PollError(std::string *key_id, rpc::ErrorTableData *data) {
   rpc::PubMessage message;
   RAY_RETURN_NOT_OK(DoPoll(&message));
   *key_id = message.key_id();
@@ -424,7 +430,7 @@ Status PythonGcsSubscriber::PollError(std::string* key_id, rpc::ErrorTableData* 
   return Status::OK();
 }
 
-Status PythonGcsSubscriber::PollLogs(std::string* key_id, rpc::LogBatch* data) {
+Status PythonGcsSubscriber::PollLogs(std::string *key_id, rpc::LogBatch *data) {
   rpc::PubMessage message;
   RAY_RETURN_NOT_OK(DoPoll(&message));
   *key_id = message.key_id();
@@ -432,7 +438,8 @@ Status PythonGcsSubscriber::PollLogs(std::string* key_id, rpc::LogBatch* data) {
   return Status::OK();
 }
 
-Status PythonGcsSubscriber::PollFunctionKey(std::string* key_id, rpc::PythonFunction* data) {
+Status PythonGcsSubscriber::PollFunctionKey(std::string *key_id,
+                                            rpc::PythonFunction *data) {
   rpc::PubMessage message;
   RAY_RETURN_NOT_OK(DoPoll(&message));
   *key_id = message.key_id();
@@ -459,11 +466,12 @@ Status PythonGcsSubscriber::Close() {
   cmd->mutable_unsubscribe_message();
 
   rpc::GcsSubscriberCommandBatchReply reply;
-  grpc::Status status = pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
+  grpc::Status status =
+      pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
   if (!status.ok()) {
-    RAY_LOG(DEBUG) << "Error while closing the subscriber: "
-      << status.error_message() << " [code " << status.error_code() << "]";
+    RAY_LOG(DEBUG) << "Error while closing the subscriber: " << status.error_message()
+                   << " [code " << status.error_code() << "]";
   }
   return Status::OK();
 }

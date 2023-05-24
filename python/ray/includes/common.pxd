@@ -371,7 +371,9 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
     cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
 
-        CPythonGcsSubscriber(const c_string& gcs_address, CChannelType channel_type, const c_string& subscriber_id, const c_string& worker_id)
+        CPythonGcsSubscriber(
+            const c_string& gcs_address, CChannelType channel_type,
+            const c_string& subscriber_id, const c_string& worker_id)
 
         CRayStatus Connect()
 
@@ -394,7 +396,8 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":
         RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",
         RAY_LOG_CHANNEL "ray::rpc::ChannelType::RAY_LOG_CHANNEL",
-        RAY_PYTHON_FUNCTION_CHANNEL "ray::rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL",
+        RAY_PYTHON_FUNCTION_CHANNEL \
+            "ray::rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL",
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const

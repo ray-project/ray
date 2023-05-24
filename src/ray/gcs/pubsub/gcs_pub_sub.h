@@ -168,12 +168,10 @@ class RAY_EXPORT PythonGcsPublisher {
 // This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsSubscriber {
  public:
-  explicit PythonGcsSubscriber(
-    const std::string &gcs_address,
-    rpc::ChannelType channel_type,
-    const std::string& subscriber_id,
-    const std::string& worker_id
-  );
+  explicit PythonGcsSubscriber(const std::string &gcs_address,
+                               rpc::ChannelType channel_type,
+                               const std::string &subscriber_id,
+                               const std::string &worker_id);
 
   /// Connect to the subscriber service of the GCS.
   /// This function must be called before calling other functions.
@@ -185,17 +183,17 @@ class RAY_EXPORT PythonGcsSubscriber {
   ///
   /// Before the registration, published messages in the channel
   /// will not be saved for the subscriber.
-  Status Subscribe( );
+  Status Subscribe();
 
   /// Polls for new error message.
   /// Both key_id and data are out parameters.
-  Status PollError(std::string* key_id, rpc::ErrorTableData* data);
+  Status PollError(std::string *key_id, rpc::ErrorTableData *data);
 
   /// Polls for new log messages.
-  Status PollLogs(std::string* key_id, rpc::LogBatch* data);
+  Status PollLogs(std::string *key_id, rpc::LogBatch *data);
 
   /// Polls for new function key messages.
-  Status PollFunctionKey(std::string* key_id, rpc::PythonFunction* data);
+  Status PollFunctionKey(std::string *key_id, rpc::PythonFunction *data);
 
   /// Closes the subscriber and its active subscription.
   Status Close();
@@ -203,7 +201,7 @@ class RAY_EXPORT PythonGcsSubscriber {
   int64_t last_batch_size();
 
  private:
-  Status DoPoll(rpc::PubMessage* message);
+  Status DoPoll(rpc::PubMessage *message);
 
   mutable absl::Mutex mu_;
 
@@ -228,7 +226,7 @@ grpc::ChannelArguments PythonGrpcChannelArguments();
 
 /// Get the .lines() attribute of a LogBatch as a std::vector
 /// (this is needed so it can be wrapped in Cython)
-std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch& log_batch);
+std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch &log_batch);
 
 }  // namespace gcs
 }  // namespace ray
