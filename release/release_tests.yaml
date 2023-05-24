@@ -884,7 +884,7 @@
         frequency: manual
         cluster:
           cluster_env: ../testing/cluster_envs/default_cluster_env_latest_ml_py39.yaml
-          cluster_compute: ../testing/compute_configs/gpu/aws.yaml
+          cluster_compute: ../testing/compute_configs/gpu/gce.yaml
 
 
 - name: workspace_template_many_model_training
