@@ -61,7 +61,6 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
@@ -666,17 +665,8 @@ class Algorithm(Trainable):
             # the num worker is set to 0 to avoid creating shards. The dataset will not
             # be repartioned to num_workers blocks.
             logger.info("Creating evaluation dataset ...")
-            ds, _ = get_dataset_and_shards(self.evaluation_config, num_workers=0)
-
-            # Dataset should be in form of one episode per row. in case of bandits each
-            # row is just one time step. To make the computation more efficient later
-            # we remove the time dimension here.
-            parallelism = self.evaluation_config.evaluation_num_workers or 1
-            batch_size = max(ds.count() // parallelism, 1)
-            self.evaluation_dataset = ds.map_batches(
-                remove_time_dim,
-                batch_size=batch_size,
-                batch_format="pandas",
+            self.evaluation_dataset, _ = get_dataset_and_shards(
+                self.evaluation_config, num_workers=0
             )
             logger.info("Evaluation dataset created")
 
@@ -2272,13 +2262,22 @@ class Algorithm(Trainable):
         # resources for remote learner workers
         learner_bundles = []
         if cf._enable_learner_api and cf.num_learner_workers > 0:
-            learner_bundles = [
-                {
-                    "CPU": cf.num_cpus_per_learner_worker,
-                    "GPU": cf.num_gpus_per_learner_worker,
-                }
-                for _ in range(cf.num_learner_workers)
-            ]
+            # can't specify cpus for learner workers at the same
+            # time as gpus
+            if cf.num_gpus_per_learner_worker:
+                learner_bundles = [
+                    {
+                        "GPU": cf.num_gpus_per_learner_worker,
+                    }
+                    for _ in range(cf.num_learner_workers)
+                ]
+            elif cf.num_cpus_per_learner_worker:
+                learner_bundles = [
+                    {
+                        "CPU": cf.num_cpus_per_learner_worker,
+                    }
+                    for _ in range(cf.num_learner_workers)
+                ]
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
