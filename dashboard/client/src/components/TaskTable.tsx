@@ -69,10 +69,6 @@ const TaskTable = ({
           - Log: view log messages of the worker that ran this task. You can
           only view all the logs of the worker and a worker can run multiple
           tasks.
-          <br />
-          - ActorLog: for actor tasks on concurrent actors, view the log
-          messages of the actor. Logs from different actor tasks on concurrent
-          actor might interleave.
           <br />- Error: For tasks that have failed, show a stack trace for the
           faiure.
         </Typography>
@@ -334,18 +330,11 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
       ? `Error Type: ${task.error_type}\n\n${task.error_message}`
       : undefined;
 
-  const taskLog =
-    task.task_log_info === null && task.actor_id !== null ? (
-      <ActorLink actorId={task.actor_id}>Actor Log</ActorLink>
-    ) : (
+  return (
+    <React.Fragment>
       <Link component={RouterLink} to={`tasks/${task.task_id}`}>
         Log
       </Link>
-    );
-
-  return (
-    <React.Fragment>
-      {taskLog}
       <br />
 
       {errorDetails && (
