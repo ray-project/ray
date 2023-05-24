@@ -5,7 +5,7 @@
 | Dimension                                                    | Quantity |
 | ---------                                                    | -------- |
 | # nodes in cluster (with trivial task workload)<sup>+</sup>  | 3k+      |
-| # actors in cluster (with trivial workload)<sup>+</sup>      | 15k+     |
+| # actors in cluster (with trivial workload)<sup>+</sup>      | 20k+     |
 | # simultaneously running tasks<sup>++</sup>                  | 15k+     |
 | # simultaneously running placement groups<sup>++</sup>       | 1k+      |
 
