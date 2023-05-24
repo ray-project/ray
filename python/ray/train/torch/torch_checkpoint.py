@@ -64,8 +64,8 @@ class TorchCheckpoint(Checkpoint):
             pickle_module=ray.cloudpickle,
             pickle_protocol=pickle.HIGHEST_PROTOCOL
             # Using pickle.HIGHEST_PROTOCOL here because it's 5 for Python 3.8+,
-            # but 4 for 3.7. We are not using ray.cloudpickle for backward
-            # compatibility because its default protocol is always 5.
+            # but 4 for 3.7. For backward compatibility, we are not using
+            # ray.cloudpickle because its default protocol is always 5.
         )
         return {ENCODED_DATA_KEY: _buffer.getvalue()}
 
