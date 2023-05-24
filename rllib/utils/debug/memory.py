@@ -181,8 +181,11 @@ def check_memory_leaks(
             "this test."
         )
 
-        dummy_batch = algorithm.get_policy()._get_dummy_batch_from_view_requirements(
-            batch_size=16).as_multi_agent()
+        dummy_batch = (
+            algorithm.get_policy()
+            ._get_dummy_batch_from_view_requirements(batch_size=16)
+            .as_multi_agent()
+        )
 
         print("Looking for leaks in Learner")
 
