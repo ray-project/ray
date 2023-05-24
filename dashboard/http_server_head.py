@@ -35,6 +35,7 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 ENV_VAR_DASHBOARD_UI_ROUTE_PREFIX = "RAY_DASHBOARD_UI_ROUTE_PREFIX"
 DASHBOARD_UI_ROUTE_PREFIX = os.environ.get(ENV_VAR_DASHBOARD_UI_ROUTE_PREFIX, None)
 
+
 def setup_static_dir():
     build_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "client", "build"
