@@ -113,8 +113,7 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     def _multi_binary(sp: gym.spaces.MultiBinary) -> Dict:
         return {
             "space": "multi-binary",
-            "n": int(sp.n),
-            "dtype": sp.dtype.str,
+            "n": sp.n,
         }
 
     def _multi_discrete(sp: gym.spaces.MultiDiscrete) -> Dict:
