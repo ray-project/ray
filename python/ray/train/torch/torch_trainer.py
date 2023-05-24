@@ -202,9 +202,11 @@ class TorchTrainer(DataParallelTrainer):
 
                     # Report and record metrics, checkpoint model at end of each
                     # epoch
-                    session.report({"loss": loss.item(), "epoch": epoch},
-                                         checkpoint=Checkpoint.from_dict(
-                                         dict(epoch=epoch, model=model.state_dict()))
+                    session.report(
+                        {"loss": loss.item(), "epoch": epoch},
+                        checkpoint=Checkpoint.from_dict(
+                            dict(epoch=epoch, model=model.state_dict())
+                        ),
                     )
 
             torch.manual_seed(42)
@@ -220,14 +222,12 @@ class TorchTrainer(DataParallelTrainer):
                 train_loop_per_worker=train_loop_per_worker,
                 scaling_config=scaling_config,
                 run_config=run_config,
-                datasets={"train": train_dataset})
+                datasets={"train": train_dataset},
+            )
 
             result = trainer.fit()
 
             best_checkpoint_loss = result.metrics['loss']
-
-            # Assert loss is less 0.09
-            assert best_checkpoint_loss <= 0.09   # doctest: +SKIP
 
     .. testoutput::
         :hide:
