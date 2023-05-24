@@ -158,7 +158,7 @@ class ASGIHTTPSender(Send):
         return RawASGIResponse(self.messages)
 
 
-class ASGIHTTPQueueSender(Send, asyncio.Queue):
+class ASGIHTTPQueueSender(Send):
     """TODO: doc and better name"""
 
     def __init__(self):
