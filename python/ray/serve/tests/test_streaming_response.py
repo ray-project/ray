@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 from typing import Generator
 
@@ -28,11 +27,15 @@ class StreamingRequester:
     reason="Streaming feature flag is disabled.",
 )
 @pytest.mark.parametrize("use_fastapi", [False, True])
-def test_basic(serve_instance, use_fastapi: bool):
-    async def hi_gen():
+@pytest.mark.parametrize("use_async", [False, True])
+def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
+    async def hi_gen_async():
         for i in range(10):
             yield f"hi_{i}"
-            await asyncio.sleep(0.01)
+
+    def hi_gen_sync():
+        for i in range(10):
+            yield f"hi_{i}"
 
     if use_fastapi:
         app = FastAPI()
@@ -42,14 +45,16 @@ def test_basic(serve_instance, use_fastapi: bool):
         class SimpleGenerator:
             @app.get("/")
             def stream_hi(self, request: Request) -> StreamingResponse:
-                return StreamingResponse(hi_gen(), media_type="text/plain")
+                gen = hi_gen_async() if use_async else hi_gen_sync()
+                return StreamingResponse(gen, media_type="text/plain")
 
     else:
 
         @serve.deployment
         class SimpleGenerator:
             def __call__(self, request: Request) -> StreamingResponse:
-                return StreamingResponse(hi_gen(), media_type="text/plain")
+                gen = hi_gen_async() if use_async else hi_gen_sync()
+                return StreamingResponse(gen, media_type="text/plain")
 
     serve.run(SimpleGenerator.bind())
 
@@ -116,6 +121,55 @@ def test_response_actually_streamed(serve_instance, use_fastapi: bool):
     # Client should be done getting messages.
     with pytest.raises(StopIteration):
         next(gen)
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Streaming feature flag is disabled.",
+)
+@pytest.mark.parametrize("use_fastapi", [False, True])
+def test_metadata_preserved(serve_instance, use_fastapi: bool):
+    """Check that status code, headers, and media type are preserved."""
+
+    def hi_gen():
+        for i in range(10):
+            yield f"hi_{i}"
+
+    if use_fastapi:
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class SimpleGenerator:
+            @app.get("/")
+            def stream_hi(self, request: Request) -> StreamingResponse:
+                return StreamingResponse(
+                    hi_gen(),
+                    status_code=301,
+                    headers={"hello": "world"},
+                    media_type="foo/bar",
+                )
+
+    else:
+
+        @serve.deployment
+        class SimpleGenerator:
+            def __call__(self, request: Request) -> StreamingResponse:
+                return StreamingResponse(
+                    hi_gen(),
+                    status_code=301,
+                    headers={"hello": "world"},
+                    media_type="foo/bar",
+                )
+
+    serve.run(SimpleGenerator.bind())
+
+    r = requests.get("http://localhost:8000", stream=True)
+    assert r.status_code == 301
+    assert r.headers["hello"] == "world"
+    assert r.headers["content-type"] == "foo/bar"
+    for i, chunk in enumerate(r.iter_content(chunk_size=None)):
+        assert chunk == f"hi_{i}".encode("utf-8")
 
 
 if __name__ == "__main__":
