@@ -875,7 +875,7 @@
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test batch_inference.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -899,7 +899,7 @@
 
   run:
     timeout: 600
-    script: pip install --user -r requirements.txt && jupyter nbconvert --to script --output _test many_model_training.ipynb && ipython _test.py
+    script: pip install --user -r requirements.txt && jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws
@@ -923,7 +923,7 @@
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test serving_stable_diffusion.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
 
   variations:
       - __suffix__: aws

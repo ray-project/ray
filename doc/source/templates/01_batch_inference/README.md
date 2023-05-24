@@ -9,6 +9,6 @@
 
 ## Getting Started
 
-**When the workspace is up and running, start coding by clicking on the Jupyter or VSCode icon above. Open the `batch_inference.ipynb` file and follow the instructions there.**
+**When the workspace is up and running, start coding by clicking on the Jupyter or VSCode icon above. Open the `start.ipynb` file and follow the instructions there.**
 
 By the end, we will have classified around 4000 images using the pre-trained ResNet model and saved these predictions to a local directory.
