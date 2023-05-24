@@ -15,6 +15,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 #include "absl/strings/str_cat.h"
+#include "ray/rpc/grpc_client.h"
 
 namespace ray {
 namespace gcs {
@@ -26,7 +27,7 @@ Status GcsPublisher::PublishActor(const ActorID &id,
   msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
   msg.set_key_id(id.Binary());
   *msg.mutable_actor_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
@@ -40,7 +41,7 @@ Status GcsPublisher::PublishJob(const JobID &id,
   msg.set_channel_type(rpc::ChannelType::GCS_JOB_CHANNEL);
   msg.set_key_id(id.Binary());
   *msg.mutable_job_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
@@ -54,7 +55,7 @@ Status GcsPublisher::PublishNodeInfo(const NodeID &id,
   msg.set_channel_type(rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
   msg.set_key_id(id.Binary());
   *msg.mutable_node_info_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
@@ -68,7 +69,7 @@ Status GcsPublisher::PublishWorkerFailure(const WorkerID &id,
   msg.set_channel_type(rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
   msg.set_key_id(id.Binary());
   *msg.mutable_worker_delta_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
@@ -82,7 +83,7 @@ Status GcsPublisher::PublishError(const std::string &id,
   msg.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
   msg.set_key_id(id);
   *msg.mutable_error_info_message() = message;
-  publisher_->Publish(msg);
+  publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
   }
@@ -210,6 +211,92 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
       std::move(subscribe_item_callback),
       std::move(subscription_failure_callback)));
   return Status::OK();
+}
+
+grpc::ChannelArguments PythonGrpcChannelArguments() {
+  grpc::ChannelArguments arguments;
+  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
+  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
+  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
+  return arguments;
+}
+
+PythonGcsPublisher::PythonGcsPublisher(const std::string &gcs_address) {
+  std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
+  RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
+  RAY_CHECK(address.size() == 2);
+  gcs_address_ = address[0];
+  gcs_port_ = std::stoi(address[1]);
+}
+
+Status PythonGcsPublisher::Connect() {
+  auto arguments = PythonGrpcChannelArguments();
+  channel_ = rpc::BuildChannel(gcs_address_, gcs_port_, arguments);
+  pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
+  return Status::OK();
+}
+
+constexpr int MAX_GCS_PUBLISH_RETRIES = 60;
+
+Status PythonGcsPublisher::DoPublishWithRetries(const rpc::GcsPublishRequest &request,
+                                                int64_t num_retries,
+                                                int64_t timeout_ms) {
+  int count = num_retries == -1 ? MAX_GCS_PUBLISH_RETRIES : num_retries;
+  rpc::GcsPublishReply reply;
+  grpc::Status status;
+  while (count > 0) {
+    grpc::ClientContext context;
+    if (timeout_ms != -1) {
+      context.set_deadline(std::chrono::system_clock::now() +
+                           std::chrono::milliseconds(timeout_ms));
+    }
+    status = pubsub_stub_->GcsPublish(&context, request, &reply);
+    if (status.error_code() == grpc::StatusCode::OK) {
+      if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
+        return Status::Invalid(reply.status().message());
+      }
+      return Status::OK();
+    } else if (status.error_code() == grpc::StatusCode::UNAVAILABLE ||
+               status.error_code() == grpc::StatusCode::UNKNOWN) {
+      // This is the case in which we will retry
+      count -= 1;
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      continue;
+    } else {
+      return Status::Invalid(status.error_message());
+    }
+  }
+  return Status::TimedOut("Failed to publish after retries: " + status.error_message());
+}
+
+Status PythonGcsPublisher::PublishError(const std::string &key_id,
+                                        const rpc::ErrorTableData &error_info,
+                                        int64_t num_retries) {
+  rpc::GcsPublishRequest request;
+  auto *message = request.add_pub_messages();
+  message->set_channel_type(rpc::RAY_ERROR_INFO_CHANNEL);
+  message->set_key_id(key_id);
+  message->mutable_error_info_message()->MergeFrom(error_info);
+  return DoPublishWithRetries(request, num_retries, 1000);
+}
+
+Status PythonGcsPublisher::PublishLogs(const std::string &key_id,
+                                       const rpc::LogBatch &log_batch) {
+  rpc::GcsPublishRequest request;
+  auto *message = request.add_pub_messages();
+  message->set_channel_type(rpc::RAY_LOG_CHANNEL);
+  message->set_key_id(key_id);
+  message->mutable_log_batch_message()->MergeFrom(log_batch);
+  return DoPublishWithRetries(request, -1, -1);
+}
+
+Status PythonGcsPublisher::PublishFunctionKey(
+    const rpc::PythonFunction &python_function) {
+  rpc::GcsPublishRequest request;
+  auto *message = request.add_pub_messages();
+  message->set_channel_type(rpc::RAY_PYTHON_FUNCTION_CHANNEL);
+  message->mutable_python_function_message()->MergeFrom(python_function);
+  return DoPublishWithRetries(request, -1, -1);
 }
 
 }  // namespace gcs

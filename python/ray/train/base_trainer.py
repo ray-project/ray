@@ -16,6 +16,7 @@ from ray.air._internal.remote_storage import (
     is_non_local_path_uri,
     list_at_uri,
 )
+from ray.air._internal import usage as air_usage
 from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
@@ -45,7 +46,21 @@ logger = logging.getLogger(__name__)
 class TrainingFailedError(RuntimeError):
     """An error indicating that training has failed."""
 
-    pass
+    _RESTORE_MSG = (
+        "The Ray Train run failed. Please inspect the previous error messages for a "
+        "cause. After fixing the issue (assuming that the error is not caused by "
+        "your own application logic, but rather an error such as OOM), you can restart "
+        "the run from scratch or continue this run.\n"
+        "To continue this run, you can use: "
+        '`trainer = {trainer_cls_name}.restore("{path}")`.'
+    )
+
+    _FAILURE_CONFIG_MSG = (
+        "To start a new run that will retry on training failures, set "
+        "`air.RunConfig(failure_config=air.FailureConfig(max_failures))` "
+        "in the Trainer's `run_config` with `max_failures > 0`, or `max_failures = -1` "
+        "for unlimited retries."
+    )
 
 
 @DeveloperAPI
@@ -54,6 +69,9 @@ class BaseTrainer(abc.ABC):
 
     Note: The base ``BaseTrainer`` class cannot be instantiated directly. Only
     one of its subclasses can be used.
+
+    Note to AIR developers: If a new AIR trainer is added, please update
+    `air/_internal/usage.py`.
 
     **How does a trainer work?**
 
@@ -139,7 +157,7 @@ class BaseTrainer(abc.ABC):
     Args:
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use the key "train"
+        datasets: Any Datasets to use for training. Use the key "train"
             to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -168,7 +186,6 @@ class BaseTrainer(abc.ABC):
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
         )
@@ -181,6 +198,8 @@ class BaseTrainer(abc.ABC):
         self._restore_path = None
 
         self._validate_attributes()
+
+        air_usage.tag_air_trainer(self)
 
     @PublicAPI(stability="alpha")
     @classmethod
@@ -274,19 +293,16 @@ class BaseTrainer(abc.ABC):
         assert trainer_state_path.exists()
 
         with open(trainer_state_path, "rb") as fp:
-            original_trainer = pickle.load(fp)
-        if type(original_trainer) is not cls:
+            trainer_cls, param_dict = pickle.load(fp)
+        if trainer_cls is not cls:
             warnings.warn(
                 f"Invalid trainer type. You are attempting to restore a trainer of type"
-                f" {type(original_trainer)} with `{cls.__name__}.restore`, "
+                f" {trainer_cls} with `{cls.__name__}.restore`, "
                 "which will most likely fail. "
-                f"Use `{type(original_trainer).__name__}.restore` instead."
+                f"Use `{trainer_cls.__name__}.restore` instead."
             )
 
-        # Get the param dict used to initialize the original trainer
-        param_dict = original_trainer._param_dict
-
-        original_datasets = original_trainer.datasets or {}
+        original_datasets = param_dict.pop("datasets", {})
         if original_datasets and not datasets:
             raise ValueError(
                 "The following datasets need to be provided again on restore: "
@@ -409,7 +425,8 @@ class BaseTrainer(abc.ABC):
                     dataset
                 ):
                     raise ValueError(
-                        f"The Dataset under '{key}' key is not a `ray.data.Dataset`. "
+                        f"The Dataset under '{key}' key is not a "
+                        "`ray.data.Dataset`. "
                         f"Received {dataset} instead."
                     )
 
@@ -445,7 +462,7 @@ class BaseTrainer(abc.ABC):
         """Sync down trainer state from remote storage.
 
         Returns:
-            local_dir of the synced trainer state
+            str: Local directory containing the trainer state
         """
         if not is_non_local_path_uri(restore_path):
             return Path(os.path.expanduser(restore_path)) / _TRAINER_PKL
@@ -543,7 +560,7 @@ class BaseTrainer(abc.ABC):
 
         Raises:
             TrainingFailedError: If any failures during the execution of
-            ``self.as_trainable()``.
+            ``self.as_trainable()``, or during the Tune execution loop.
         """
         from ray.tune.tuner import Tuner, TunerInternal
         from ray.tune import TuneError
@@ -561,7 +578,10 @@ class BaseTrainer(abc.ABC):
             )
         else:
             tuner = Tuner(
-                trainable=trainable, param_space=param_space, run_config=self.run_config
+                trainable=trainable,
+                param_space=param_space,
+                run_config=self.run_config,
+                _trainer_api=True,
             )
 
         experiment_path = Path(
@@ -571,27 +591,64 @@ class BaseTrainer(abc.ABC):
         )
         self._save(experiment_path)
 
-        result_grid = tuner.fit()
-        assert len(result_grid) == 1
+        restore_msg = TrainingFailedError._RESTORE_MSG.format(
+            trainer_cls_name=self.__class__.__name__,
+            path=str(experiment_path),
+        )
+
         try:
-            result = result_grid[0]
-            if result.error:
-                raise result.error
+            result_grid = tuner.fit()
         except TuneError as e:
-            raise TrainingFailedError from e
+            # Catch any `TuneError`s raised by the `Tuner.fit` call.
+            # Unwrap the `TuneError` if needed.
+            parent_error = e.__cause__ or e
+
+            # Raise it to the user as a `TrainingFailedError` with a message to restore.
+            raise TrainingFailedError(restore_msg) from parent_error
+        # Other exceptions get passed through directly (ex: on `fail_fast='raise'`)
+
+        assert len(result_grid) == 1
+        result = result_grid[0]
+        if result.error:
+            # Raise trainable errors to the user with a message to restore
+            # or configure `FailureConfig` in a new run.
+            raise TrainingFailedError(
+                "\n".join([restore_msg, TrainingFailedError._FAILURE_CONFIG_MSG])
+            ) from result.error
         return result
 
     def _save(self, experiment_path: Union[str, Path]):
-        """Saves the trainer to a directory.
+        """Saves the current trainer's class along with the `param_dict` of
+        parameters passed to this trainer's constructor.
 
-        This is used to populate a newly constructed trainer on restore.
-        Unless a parameter is re-specified during restoration (only a limited
-        set of parameters can be passed in again), the argument will be loaded
-        from this saved one.
+        This is used to recreate the trainer on restore.
+        Unless a parameter is re-specified during restoration (only a subset
+        of parameters can be passed in again), that parameter will be loaded
+        from the saved copy.
+
+        Datasets should not be saved as part of the state. Instead, we save the
+        keys and replace the dataset values with dummy functions that will
+        raise an error if invoked. The error only serves as a guardrail for
+        misuse (e.g., manually unpickling and constructing the Trainer again)
+        and is not typically surfaced, since datasets must be re-specified
+        upon restoration.
         """
+        param_dict = self._param_dict.copy()
+        datasets = param_dict.pop("datasets", {})
+
+        def raise_fn():
+            raise RuntimeError
+
+        if datasets:
+            param_dict["datasets"] = {
+                dataset_name: raise_fn for dataset_name in datasets
+            }
+
+        cls_and_param_dict = (self.__class__, param_dict)
+
         experiment_path = Path(experiment_path)
         with open(experiment_path / _TRAINER_PKL, "wb") as fp:
-            pickle.dump(self, fp)
+            pickle.dump(cls_and_param_dict, fp)
 
     def _extract_fields_for_tuner_param_space(self) -> Dict:
         """Extracts fields to be included in `Tuner.param_space`.
@@ -654,9 +711,9 @@ class BaseTrainer(abc.ABC):
         trainable_cls = wrap_function(train_func, warn=False)
         has_base_dataset = bool(self.datasets)
         if has_base_dataset:
-            from ray.data.context import DatasetContext
+            from ray.data.context import DataContext
 
-            dataset_context = DatasetContext.get_current()
+            dataset_context = DataContext.get_current()
         else:
             dataset_context = None
 
@@ -693,9 +750,9 @@ class BaseTrainer(abc.ABC):
                     merged_scaling_config
                 )
                 if self.has_base_dataset():
-                    # Set the DatasetContext on the Trainer actor to the DatasetContext
+                    # Set the DataContext on the Trainer actor to the DataContext
                     # specified on the driver.
-                    DatasetContext._set_current(dataset_context)
+                    DataContext._set_current(dataset_context)
                 super(TrainTrainable, self).setup(config)
 
             def _reconcile_scaling_config_with_trial_resources(

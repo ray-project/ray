@@ -1,1 +1,0 @@
-../ci/pipeline/check-test-run.py

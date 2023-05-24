@@ -9,10 +9,14 @@ from ray.serve._private.common import (
     DeploymentStatus,
     StatusOverview,
     DeploymentInfo,
+    ReplicaState,
+    ServeDeployMode,
+    HTTPProxyStatus,
 )
-from ray.serve._private.constants import DEPLOYMENT_NAME_PREFIX_SEPARATOR
+from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def _route_prefix_format(cls, v):
@@ -48,6 +52,8 @@ def _route_prefix_format(cls, v):
 
 @PublicAPI(stability="beta")
 class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
+    """Options with which to start a replica actor."""
+
     runtime_env: dict = Field(
         default={},
         description=(
@@ -112,7 +118,14 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
 
         for uri in uris:
             if uri is not None:
-                parse_uri(uri)
+                try:
+                    parse_uri(uri)
+                except ValueError as e:
+                    raise ValueError(
+                        "runtime_envs in the Serve config support only "
+                        "remote URIs in working_dir and py_modules. Got "
+                        f"error when parsing URI: {e}"
+                    )
 
         return v
 
@@ -121,6 +134,12 @@ class RayActorOptionsSchema(BaseModel, extra=Extra.forbid):
 class DeploymentSchema(
     BaseModel, extra=Extra.forbid, allow_population_by_field_name=True
 ):
+    """
+    Specifies options for one deployment within a Serve application. For each deployment
+    this can optionally be included in `ServeApplicationSchema` to override deployment
+    options specified in code.
+    """
+
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
     )
@@ -254,12 +273,10 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
     codepath)
     """
 
-    return DeploymentSchema(
+    schema = DeploymentSchema(
         name=name,
-        num_replicas=info.deployment_config.num_replicas,
         max_concurrent_queries=info.deployment_config.max_concurrent_queries,
         user_config=info.deployment_config.user_config,
-        autoscaling_config=info.deployment_config.autoscaling_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
         ),
@@ -270,13 +287,26 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         is_driver_deployment=info.is_driver_deployment,
     )
 
+    if info.deployment_config.autoscaling_config is not None:
+        schema.autoscaling_config = info.deployment_config.autoscaling_config
+    else:
+        schema.num_replicas = info.deployment_config.num_replicas
+
+    return schema
+
 
 @PublicAPI(stability="beta")
 class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
+    """
+    Describes one Serve application, and currently can also be used as a standalone
+    config to deploy a single application to a Ray cluster.
+
+
+    This is the request JSON schema for the v1 REST API `PUT "/api/serve/deployments/"`.
+    """
+
     name: str = Field(
-        # TODO(cindy): eventually we should set the default app name to a non-empty
-        # string and forbid empty app names.
-        default="",
+        default=SERVE_DEFAULT_APP_NAME,
         description=(
             "Application name, the name should be unique within the serve instance"
         ),
@@ -290,6 +320,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         ),
     )
     import_path: str = Field(
+        ...,
         description=(
             "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
@@ -327,7 +358,11 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     )
     deployments: List[DeploymentSchema] = Field(
         default=[],
-        description=("Deployment options that override options specified in the code."),
+        description="Deployment options that override options specified in the code.",
+    )
+    args: Dict = Field(
+        default={},
+        description="Arguments that will be passed to the application builder.",
     )
 
     @validator("runtime_env")
@@ -343,7 +378,14 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         for uri in uris:
             if uri is not None:
-                parse_uri(uri)
+                try:
+                    parse_uri(uri)
+                except ValueError as e:
+                    raise ValueError(
+                        "runtime_envs in the Serve config support only "
+                        "remote URIs in working_dir and py_modules. Got "
+                        f"error when parsing URI: {e}"
+                    )
 
         return v
 
@@ -441,49 +483,11 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
 
         return config
 
-    def prepend_app_name_to_deployment_names(self):
-        """Prepend the app name to all deployment names listed in the config."""
-        app_config = self.dict(exclude_unset=True)
-
-        if "deployments" in app_config and not self.name == "":
-            for idx, deployment in enumerate(app_config["deployments"]):
-                deployment["name"] = (
-                    self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment["name"]
-                )
-                app_config["deployments"][idx] = deployment
-
-        return ServeApplicationSchema.parse_obj(app_config)
-
-    def remove_app_name_from_deployment_names(self):
-        """Remove the app name prefix from all deployment names listed in the config.
-
-        This method should only be called on configs that have been processed internally
-        through prepend_app_name_to_deployment_names, which appends the app name prefix
-        to every deployment name.
-        """
-        app_config = self.dict(exclude_unset=True)
-        if "deployments" in app_config and not self.name == "":
-            for idx, deployment in enumerate(app_config["deployments"]):
-                prefix = self.name + DEPLOYMENT_NAME_PREFIX_SEPARATOR
-                # This method should not be called on any config that's not processed
-                # internally & returned by prepend_app_name_to_deployment_names
-                assert deployment["name"].startswith(prefix)
-
-                deployment["name"] = deployment["name"][len(prefix) :]
-                app_config["deployments"][idx] = deployment
-
-        return ServeApplicationSchema.parse_obj(app_config)
-
-    def to_deploy_schema(self):
-        return ServeDeploySchema(
-            host=self.host,
-            port=self.port,
-            applications=[self],
-        )
-
 
 @PublicAPI(stability="alpha")
-class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
+    """Options to start the HTTP Proxy with."""
+
     host: str = Field(
         default="0.0.0.0",
         description=(
@@ -501,9 +505,39 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             "with the new port instead."
         ),
     )
+    root_path: str = Field(
+        default="",
+        description=(
+            'Root path to mount the serve application (for example, "/serve"). All '
+            'deployment routes will be prefixed with this path. Defaults to "".'
+        ),
+    )
+
+
+@PublicAPI(stability="alpha")
+class ServeDeploySchema(BaseModel, extra=Extra.forbid):
+    """
+    Multi-application config for deploying a list of Serve applications to the Ray
+    cluster.
+
+    This is the request JSON schema for the v2 REST API
+    `PUT "/api/serve/applications/"`.
+    """
+
+    proxy_location: DeploymentMode = Field(
+        default=DeploymentMode.EveryNode,
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode" (default): start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
+        ),
+    )
+    http_options: HTTPOptionsSchema = Field(
+        default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
+    )
     applications: List[ServeApplicationSchema] = Field(
-        default=[],
-        description=("The set of Serve applications to run on the Ray cluster."),
+        ..., description=("The set of Serve applications to run on the Ray cluster.")
     )
 
     @validator("applications")
@@ -535,6 +569,34 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
             )
         return v
 
+    @validator("applications")
+    def application_names_nonempty(cls, v):
+        for app in v:
+            if len(app.name) == 0:
+                raise ValueError("Application names must be nonempty.")
+        return v
+
+    @root_validator
+    def nested_host_and_port(cls, values):
+        # TODO (zcin): ServeApplicationSchema still needs to have host and port
+        # fields to support single-app mode, but in multi-app mode the host and port
+        # fields at the top-level deploy config is used instead. Eventually, after
+        # migration, we should remove these fields from ServeApplicationSchema.
+        for app_config in values.get("applications"):
+            if "host" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f'Host "{app_config.host}" is set in the config for application '
+                    f"`{app_config.name}`. Please remove it and set host in the top "
+                    "level deploy config only."
+                )
+            if "port" in app_config.dict(exclude_unset=True):
+                raise ValueError(
+                    f"Port {app_config.port} is set in the config for application "
+                    f"`{app_config.name}`. Please remove it and set port in the top "
+                    "level deploy config only."
+                )
+        return values
+
     @staticmethod
     def get_empty_schema_dict() -> Dict:
         """Returns an empty deploy schema dictionary.
@@ -546,7 +608,52 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentDetails(BaseModel, extra=Extra.forbid):
+class ServeActorDetails(BaseModel, frozen=True):
+    node_id: Optional[str] = Field(
+        description="ID of the node that the actor is running on."
+    )
+    node_ip: Optional[str] = Field(
+        description="IP address of the node that the actor is running on."
+    )
+    actor_id: Optional[str] = Field(description="Actor ID.")
+    actor_name: Optional[str] = Field(description="Actor name.")
+    worker_id: Optional[str] = Field(description="Worker ID.")
+    log_file_path: Optional[str] = Field(
+        description=(
+            "The relative path to the Serve actor's log file from the ray logs "
+            "directory."
+        )
+    )
+
+
+@PublicAPI(stability="alpha")
+class ReplicaDetails(ServeActorDetails, frozen=True):
+    """Detailed info about a single deployment replica."""
+
+    replica_id: str = Field(
+        description=(
+            "Unique ID for the replica. By default, this will be "
+            '"<deployment name>#<replica suffix>", where the replica suffix is a '
+            "randomly generated unique string."
+        )
+    )
+    state: ReplicaState = Field(description="Current state of the replica.")
+    pid: Optional[int] = Field(description="PID of the replica actor process.")
+    start_time_s: float = Field(
+        description=(
+            "The time at which the replica actor was started. If the controller dies, "
+            "this is the time at which the controller recovers and retrieves replica "
+            "state from the running replica actor."
+        )
+    )
+
+
+@PublicAPI(stability="alpha")
+class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    """
+    Detailed info about a deployment within a Serve application.
+    """
+
     name: str = Field(description="Deployment name.")
     status: DeploymentStatus = Field(
         description="The current status of the deployment."
@@ -564,6 +671,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
             "options, or Serve default values."
         )
     )
+    replicas: List[ReplicaDetails] = Field(
+        description="Details about the live replicas of this deployment."
+    )
 
     @validator("deployment_config")
     def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
@@ -580,7 +690,9 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class ApplicationDetails(BaseModel, extra=Extra.forbid):
+class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
+    """Detailed info about a Serve application."""
+
     name: str = Field(description="Application name.")
     route_prefix: Optional[str] = Field(
         ...,
@@ -613,7 +725,7 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
     last_deployed_time_s: float = Field(
         description="The time at which the application was deployed."
     )
-    deployed_app_config: ServeApplicationSchema = Field(
+    deployed_app_config: Optional[ServeApplicationSchema] = Field(
         description=(
             "The exact copy of the application config that was submitted to the "
             "cluster. This will include all of, and only, the options that were "
@@ -634,14 +746,66 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid):
         "route_prefix", allow_reuse=True
     )(_route_prefix_format)
 
+    def get_status_dict(self) -> Dict:
+        # NOTE(zcin): We use json.loads(model.json()) since model.dict() doesn't expand
+        # dataclasses (ApplicationStatusInfo and DeploymentStatusInfo are dataclasses)
+        # See https://github.com/pydantic/pydantic/issues/3764.
+        return json.loads(
+            ServeStatusSchema(
+                name=self.name,
+                app_status=ApplicationStatusInfo(
+                    status=self.status,
+                    message=self.message,
+                    deployment_timestamp=self.last_deployed_time_s,
+                ),
+                deployment_statuses=[
+                    DeploymentStatusInfo(
+                        name=name,
+                        status=d.status,
+                        message=d.message,
+                    )
+                    for name, d in self.deployments.items()
+                ],
+            ).json()
+        )
+
+
+@PublicAPI(stability="alpha")
+class HTTPProxyDetails(ServeActorDetails, frozen=True):
+    status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
+
 
 @PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
-    host: Optional[str] = Field(
-        description="The host on which the HTTP server is listening for requests."
+    """
+    Serve metadata with system-level info and details on all applications deployed to
+    the Ray cluster.
+
+    This is the response JSON schema for v2 REST API `GET /api/serve/applications`.
+    """
+
+    controller_info: ServeActorDetails = Field(
+        description="Details about the Serve controller actor."
     )
-    port: Optional[int] = Field(
-        description="The port on which the HTTP server is listening for requests."
+    proxy_location: Optional[DeploymentMode] = Field(
+        description=(
+            "The location of HTTP servers.\n"
+            '- "EveryNode": start one HTTP server per node.\n'
+            '- "HeadOnly": start one HTTP server on the head node.\n'
+            '- "NoServer": disable HTTP server.'
+        ),
+    )
+    http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    http_proxies: Optional[Dict[str, HTTPProxyDetails]] = Field(
+        description=(
+            "Mapping from node_id to details about the HTTP Proxy running on that node."
+        )
+    )
+    deploy_mode: ServeDeployMode = Field(
+        description=(
+            "Whether a single-app config of format ServeApplicationSchema or multi-app "
+            "config of format ServeDeploySchema was deployed to the cluster."
+        )
     )
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
@@ -654,11 +818,18 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         Represents no Serve instance running on the cluster.
         """
 
-        return {"applications": {}}
+        return {"deploy_mode": "UNSET", "controller_info": {}, "applications": {}}
 
 
 @PublicAPI(stability="beta")
 class ServeStatusSchema(BaseModel, extra=Extra.forbid):
+    """
+    Describes the status of an application and all its deployments.
+
+    This is the response JSON schema for the v1 REST API
+    `GET /api/serve/deployments/status`.
+    """
+
     name: str = Field(description="Application name", default="")
     app_status: ApplicationStatusInfo = Field(
         ...,

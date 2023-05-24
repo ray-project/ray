@@ -8,7 +8,7 @@ import grpc
 import pytest
 import ray
 import redis
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     enable_external_redis,
@@ -33,11 +33,11 @@ def stop_gcs_server():
 def test_kv_basic(ray_start_regular, monkeypatch):
     monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
     # Wait until all other calls finished
     time.sleep(2)
     # reset the counter
-    gcs_utils._called_freq = {}
+    ray._private.utils._CALLED_FREQ.clear()
     assert gcs_client.internal_kv_get(b"A", b"NS") is None
     assert gcs_client.internal_kv_put(b"A", b"B", False, b"NS") == 1
     assert gcs_client.internal_kv_get(b"A", b"NS") == b"B"
@@ -54,8 +54,8 @@ def test_kv_basic(ray_start_regular, monkeypatch):
     assert gcs_client.internal_kv_del(b"A", True, b"NS") == 2
     assert gcs_client.internal_kv_keys(b"A", b"NS") == []
     assert gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
-    assert gcs_utils._called_freq["internal_kv_get"] == 4
-    assert gcs_utils._called_freq["internal_kv_put"] == 5
+    assert ray._private.utils._CALLED_FREQ["internal_kv_get"] == 4
+    assert ray._private.utils._CALLED_FREQ["internal_kv_put"] == 5
 
     # Test internal_kv_multi_get
     assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {}
@@ -73,27 +73,27 @@ def test_kv_basic(ray_start_regular, monkeypatch):
         b"B": b"C",
     }
 
-    assert gcs_utils._called_freq["internal_kv_multi_get"] == 4
+    assert ray._private.utils._CALLED_FREQ["internal_kv_multi_get"] == 4
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows doesn't have signals.")
 def test_kv_timeout(ray_start_regular):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = gcs_utils.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
 
     assert gcs_client.internal_kv_put(b"A", b"", False, b"") == 1
 
     with stop_gcs_server():
-        with pytest.raises(grpc.RpcError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
 
-        with pytest.raises(grpc.RpcError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             gcs_client.internal_kv_get(b"A", b"NS", timeout=2)
 
-        with pytest.raises(grpc.RpcError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             gcs_client.internal_kv_keys(b"A", b"NS", timeout=2)
 
-        with pytest.raises(grpc.RpcError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
 
 

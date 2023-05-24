@@ -1,4 +1,6 @@
+from typing import Optional
 import ray
+from ray.data._internal.execution.interfaces import TaskContext
 
 from ray.data.block import BlockAccessor
 from ray.data._internal.block_list import BlockList
@@ -9,8 +11,8 @@ from ray.data._internal.shuffle_and_partition import _ShufflePartitionOp
 from ray.data._internal.stats import DatasetStats
 
 
-def fast_repartition(blocks, num_blocks):
-    from ray.data.dataset import Dataset
+def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
+    from ray.data.dataset import Dataset, Schema
 
     wrapped_ds = Dataset(
         ExecutionPlan(
@@ -23,7 +25,6 @@ def fast_repartition(blocks, num_blocks):
     )
     # Compute the (n-1) indices needed for an equal split of the data.
     count = wrapped_ds.count()
-    dataset_format = wrapped_ds.dataset_format()
     indices = []
     cur_idx = 0
     for _ in range(num_blocks - 1):
@@ -39,7 +40,16 @@ def fast_repartition(blocks, num_blocks):
 
     # Coalesce each split into a single block.
     reduce_task = cached_remote_fn(_ShufflePartitionOp.reduce).options(num_returns=2)
-    reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
+
+    should_close_bar = True
+    if ctx is not None and ctx.sub_progress_bar_dict is not None:
+        bar_name = "Repartition"
+        assert bar_name in ctx.sub_progress_bar_dict, ctx.sub_progress_bar_dict
+        reduce_bar = ctx.sub_progress_bar_dict[bar_name]
+        should_close_bar = False
+    else:
+        reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
+
     reduce_out = [
         reduce_task.remote(False, None, *s.get_internal_block_refs())
         for s in splits
@@ -48,13 +58,20 @@ def fast_repartition(blocks, num_blocks):
 
     owned_by_consumer = blocks._owned_by_consumer
 
+    # Schema is safe to fetch here since we have already called
+    # get_internal_block_refs and executed the dataset.
+    schema = wrapped_ds.schema(fetch_if_missing=True)
+    if isinstance(schema, Schema):
+        schema = schema.base_schema
     # Early-release memory.
     del splits, blocks, wrapped_ds
 
     new_blocks, new_metadata = zip(*reduce_out)
     new_blocks, new_metadata = list(new_blocks), list(new_metadata)
     new_metadata = reduce_bar.fetch_until_complete(new_metadata)
-    reduce_bar.close()
+
+    if should_close_bar:
+        reduce_bar.close()
 
     # Handle empty blocks.
     if len(new_blocks) < num_blocks:
@@ -62,13 +79,23 @@ def fast_repartition(blocks, num_blocks):
         from ray.data._internal.pandas_block import PandasBlockBuilder
         from ray.data._internal.simple_block import SimpleBlockBuilder
 
+        import pyarrow as pa
+        from ray.data._internal.pandas_block import PandasBlockSchema
+
         num_empties = num_blocks - len(new_blocks)
-        if dataset_format == "arrow":
-            builder = ArrowBlockBuilder()
-        elif dataset_format == "pandas":
-            builder = PandasBlockBuilder()
-        else:
+
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of "
+                "the dataset."
+            )
+        elif isinstance(schema, type):
             builder = SimpleBlockBuilder()
+        elif isinstance(schema, pa.Schema):
+            builder = ArrowBlockBuilder()
+        elif isinstance(schema, PandasBlockSchema):
+            builder = PandasBlockBuilder()
+
         empty_block = builder.build()
         empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
             input_files=None, exec_stats=None

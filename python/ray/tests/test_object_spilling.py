@@ -319,7 +319,7 @@ def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_on
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
-        sample = ray.get(ref, timeout=0)
+        sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
     assert_no_thrashing(address["address"])
 
@@ -359,7 +359,7 @@ def test_unstable_spill_objects_automatically(unstable_spilling_config, shutdown
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
-        sample = ray.get(ref, timeout=0)
+        sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
     assert_no_thrashing(address["address"])
 
@@ -397,7 +397,7 @@ def test_slow_spill_objects_automatically(slow_spilling_config, shutdown_only):
         index = random.choice(list(range(buffer_length)))
         ref = replay_buffer[index]
         solution = solution_buffer[index]
-        sample = ray.get(ref, timeout=0)
+        sample = ray.get(ref, timeout=None)
         assert np.array_equal(sample, solution)
     assert_no_thrashing(address["address"])
 

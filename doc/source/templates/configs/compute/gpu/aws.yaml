@@ -1,0 +1,11 @@
+# 4 g4dn.4xlarge nodes --> 64 CPUs, 4 GPUs
+head_node_type:
+  name: head_node_type
+  instance_type: g4dn.4xlarge
+
+worker_node_types:
+- name: gpu_worker
+  instance_type: g4dn.4xlarge
+  min_workers: 3
+  max_workers: 3
+  use_spot: false

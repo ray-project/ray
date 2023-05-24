@@ -21,6 +21,7 @@
 #include <chrono>
 #include <thread>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/logging.h"
 #include "ray/util/process.h"
@@ -203,6 +204,41 @@ TEST(UtilTest, IsProcessAlive) {
     }
   }
   RAY_CHECK(!IsProcessAlive(pid));
+}
+
+TEST(UtilTest, GetAllProcsWithPpid) {
+#if defined(__linux__)
+  // Verify correctness by spawning several child processes,
+  // then asserting that each PID is present in the output.
+
+  namespace bp = boost::process;
+
+  std::vector<bp::child> actual_child_procs;
+
+  for (int i = 0; i < 10; ++i) {
+    actual_child_procs.push_back(bp::child("bash"));
+  }
+
+  std::optional<std::vector<pid_t>> maybe_child_procs = GetAllProcsWithPpid(GetPID());
+
+  // Assert optional has value.
+  ASSERT_EQ(static_cast<bool>(maybe_child_procs), true);
+
+  // Assert each actual process ID is contained in the returned vector.
+  auto child_procs = *maybe_child_procs;
+  for (auto &child_proc : actual_child_procs) {
+    pid_t pid = child_proc.id();
+    EXPECT_THAT(child_procs, ::testing::Contains(pid));
+  }
+
+  // Clean up each child proc.
+  for (auto &child_proc : actual_child_procs) {
+    child_proc.join();
+  }
+#else
+  auto result = GetAllProcsWithPpid(1);
+  ASSERT_EQ(result, std::nullopt);
+#endif
 }
 
 }  // namespace ray

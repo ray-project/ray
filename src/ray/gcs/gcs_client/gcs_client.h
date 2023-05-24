@@ -69,7 +69,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
-  explicit GcsClient(const GcsClientOptions &options);
+  /// \param gcs_client_id The unique ID for the owner of this object.
+  ///    This potentially will be used to tell GCS who is client connecting
+  ///    to GCS.
+  explicit GcsClient(const GcsClientOptions &options,
+                     UniqueID gcs_client_id = UniqueID::FromRandom());
 
   virtual ~GcsClient() { Disconnect(); };
 
@@ -179,6 +183,56 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::function<void()> resubscribe_func_;
 };
+
+// This client is only supposed to be used from Cython / Python
+class RAY_EXPORT PythonGcsClient {
+ public:
+  explicit PythonGcsClient(const GcsClientOptions &options);
+  Status Connect();
+
+  Status InternalKVGet(const std::string &ns,
+                       const std::string &key,
+                       int64_t timeout_ms,
+                       std::string &value);
+  Status InternalKVMultiGet(const std::string &ns,
+                            const std::vector<std::string> &keys,
+                            int64_t timeout_ms,
+                            std::unordered_map<std::string, std::string> &result);
+  Status InternalKVPut(const std::string &ns,
+                       const std::string &key,
+                       const std::string &value,
+                       bool overwrite,
+                       int64_t timeout_ms,
+                       int &added_num);
+  Status InternalKVDel(const std::string &ns,
+                       const std::string &key,
+                       bool del_by_prefix,
+                       int64_t timeout_ms,
+                       int &deleted_num);
+  Status InternalKVKeys(const std::string &ns,
+                        const std::string &prefix,
+                        int64_t timeout_ms,
+                        std::vector<std::string> &results);
+  Status InternalKVExists(const std::string &ns,
+                          const std::string &key,
+                          int64_t timeout_ms,
+                          bool &exists);
+
+  Status PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms);
+  Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &result);
+  Status GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData> &result);
+
+ private:
+  GcsClientOptions options_;
+  std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
+  std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;
+  std::unique_ptr<rpc::NodeInfoGcsService::Stub> node_info_stub_;
+  std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
+  std::shared_ptr<grpc::Channel> channel_;
+};
+
+std::unordered_map<std::string, double> PythonGetResourcesTotal(
+    const rpc::GcsNodeInfo &node_info);
 
 }  // namespace gcs
 

@@ -9,8 +9,8 @@ import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import (
-    convert_pandas_to_batch_type,
-    convert_batch_type_to_pandas,
+    _convert_pandas_to_batch_type,
+    _convert_batch_type_to_pandas,
 )
 from ray.data.preprocessor import Preprocessor
 from ray.train.batch_predictor import BatchPredictor
@@ -154,9 +154,9 @@ def test_predict(batch_type):
     predictor = TensorflowPredictor(model=build_model_multi_input())
 
     raw_batch = pd.DataFrame({"A": [0.0, 0.0, 0.0], "B": [1.0, 2.0, 3.0]})
-    data_batch = convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
+    data_batch = _convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
     raw_predictions = predictor.predict(data_batch)
-    predictions = convert_batch_type_to_pandas(raw_predictions)
+    predictions = _convert_batch_type_to_pandas(raw_predictions)
 
     assert len(predictions) == 3
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]

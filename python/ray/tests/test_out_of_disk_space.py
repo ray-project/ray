@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster
+from ray.util.state import list_cluster_events
 
 
 def calculate_capacity_threshold(disk_capacity_in_bytes):
@@ -128,8 +128,8 @@ def test_task_put(shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
-def test_task_args(shutdown_only):
-    cluster = Cluster()
+def test_task_args(ray_start_cluster):
+    cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=1,
         object_store_memory=80 * 1024 * 1024,
@@ -162,8 +162,8 @@ def test_task_args(shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
-def test_actor(shutdown_only):
-    cluster = Cluster()
+def test_actor(ray_start_cluster):
+    cluster = ray_start_cluster
     cluster.add_node(
         num_cpus=1,
         object_store_memory=80 * 1024 * 1024,
@@ -215,6 +215,45 @@ def test_actor(shutdown_only):
         ray.get(a.return_ood.remote())
     except ray.exceptions.RayTaskError as e:
         assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not targeting Windows")
+def test_ood_events(shutdown_only):
+    local_fs_capacity_threshold = calculate_capacity_threshold(200 * 1024 * 1024)
+    ray.init(
+        num_cpus=1,
+        object_store_memory=80 * 1024 * 1024,
+        _system_config={
+            "local_fs_capacity_threshold": local_fs_capacity_threshold,
+            "local_fs_monitor_interval_ms": 10,
+        },
+    )
+
+    # create a temp file so that the disk size is over the threshold.
+    # ray.put doesn't work is that fallback allocation uses mmaped file
+    # that doesn't neccssary allocate disk spaces.
+    with create_tmp_file(250 * 1024 * 1024):
+        assert get_current_usage() > local_fs_capacity_threshold
+        time.sleep(1)
+
+        @ray.remote
+        def foo():
+            ref = ray.put(np.random.rand(20 * 1024 * 1024))  # 160 MB data
+            return ref
+
+        try:
+            ray.get(foo.remote())
+        except ray.exceptions.RayTaskError as e:
+            assert isinstance(e.cause, ray.exceptions.OutOfDiskError)
+
+    events = list_cluster_events()
+    print(events)
+    # There could be more than 1 event depending on the test timing.
+    assert len(events) >= 1
+    assert (
+        "Object creation will fail if spilling is required" in events[0]["message"]
+    )  # noqa
+    assert events[0]["severity"] == "ERROR"
 
 
 if __name__ == "__main__":

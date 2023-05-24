@@ -9,23 +9,25 @@ from typing import Iterator, Tuple, Any
 import ray
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, List
+from ray.data.block import Block, BlockMetadata, CallableClass, List
 from ray.data.datasource import ReadTask
 from ray.data._internal.stats import StatsDict, DatasetStats
-from ray.data._internal.stage_impl import RandomizeBlocksStage
+from ray.data._internal.stage_impl import (
+    RandomizeBlocksStage,
+    LimitStage,
+)
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import (
     get_compute,
-    CallableClass,
-    TaskPoolStrategy,
     ActorPoolStrategy,
 )
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.plan import ExecutionPlan, OneToOneStage, AllToAllStage, Stage
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.interfaces import (
@@ -34,6 +36,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.util import validate_compute
+from ray.data._internal.execution.util import make_callable_class_concurrent
+
+# Warn about tasks larger than this.
+TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
 
 def execute_to_legacy_block_iterator(
@@ -41,14 +48,14 @@ def execute_to_legacy_block_iterator(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
-) -> Iterator[ObjectRef[Block]]:
-    """Same as execute_to_legacy_bundle_iterator but returning blocks."""
+) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    """Same as execute_to_legacy_bundle_iterator but returning blocks and metadata."""
     bundle_iter = execute_to_legacy_bundle_iterator(
         executor, plan, allow_clear_input_blocks, dataset_uuid
     )
     for bundle in bundle_iter:
-        for block, _ in bundle.blocks:
-            yield block
+        for block, metadata in bundle.blocks:
+            yield block, metadata
 
 
 def execute_to_legacy_bundle_iterator(
@@ -72,7 +79,12 @@ def execute_to_legacy_bundle_iterator(
     Returns:
         The output as a bundle iterator.
     """
-    dag, stats = _get_execution_dag(executor, plan, allow_clear_input_blocks)
+    dag, stats = _get_execution_dag(
+        executor,
+        plan,
+        allow_clear_input_blocks,
+        preserve_order=False,
+    )
     if dag_rewrite:
         dag = dag_rewrite(dag)
 
@@ -85,6 +97,7 @@ def execute_to_legacy_block_list(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
+    preserve_order: bool,
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
 
@@ -93,11 +106,17 @@ def execute_to_legacy_block_list(
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
         dataset_uuid: UUID of the dataset for this execution.
+        preserve_order: Whether to preserve order in execution.
 
     Returns:
         The output as a legacy block list.
     """
-    dag, stats = _get_execution_dag(executor, plan, allow_clear_input_blocks)
+    dag, stats = _get_execution_dag(
+        executor,
+        plan,
+        allow_clear_input_blocks,
+        preserve_order,
+    )
     bundles = executor.execute(dag, initial_stats=stats)
     block_list = _bundles_to_block_list(bundles)
     # Set the stats UUID after execution finishes.
@@ -109,6 +128,7 @@ def _get_execution_dag(
     executor: Executor,
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
+    preserve_order: bool,
 ) -> Tuple[PhysicalOperator, DatasetStats]:
     """Get the physical operators DAG from a plan."""
     # Record usage of logical operators if available.
@@ -116,7 +136,7 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    if DatasetContext.get_current().optimizer_enabled:
+    if DataContext.get_current().optimizer_enabled:
         dag = get_execution_plan(plan._logical_plan).dag
         stats = _get_initial_stats_from_plan(plan)
     else:
@@ -125,14 +145,14 @@ def _get_execution_dag(
     # Enforce to preserve ordering if the plan has stages required to do so, such as
     # Zip and Sort.
     # TODO(chengsu): implement this for operator as well.
-    if plan.require_preserve_order():
+    if preserve_order or plan.require_preserve_order():
         executor._options.preserve_order = True
 
     return dag, stats
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    assert DatasetContext.get_current().optimizer_enabled
+    assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
     return plan._in_stats
@@ -174,6 +194,24 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         read_tasks = blocks._tasks
         remote_args = blocks._remote_args
         assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
+
+        # Defensively compute the size of the block as the max size reported by the
+        # datasource and the actual read task size. This is to guard against issues
+        # with bad metadata reporting.
+        def cleaned_metadata(read_task):
+            block_meta = read_task.get_metadata()
+            task_size = len(cloudpickle.dumps(read_task))
+            if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
+                if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
+                    print(
+                        f"WARNING: the read task size ({task_size} bytes) is larger "
+                        "than the reported output size of the task "
+                        f"({block_meta.size_bytes} bytes). This may be a size "
+                        "reporting bug in the datasource being read from."
+                    )
+                block_meta.size_bytes = task_size
+            return block_meta
+
         inputs = InputDataBuffer(
             [
                 RefBundle(
@@ -182,13 +220,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
                             # This isn't a proper block, but it's what we are doing
                             # in the legacy code.
                             ray.put(read_task),
-                            BlockMetadata(
-                                num_rows=1,
-                                size_bytes=len(cloudpickle.dumps(read_task)),
-                                schema=None,
-                                input_files=[],
-                                exec_stats=None,
-                            ),
+                            cleaned_metadata(read_task),
                         )
                     ],
                     owns_blocks=True,
@@ -205,8 +237,13 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
             for read_task in blocks:
                 yield from read_task()
 
+        # If the BlockList's read stage name is available, we assign it
+        # as the operator's name, which is used as the task name.
+        task_name = "DoRead"
+        if isinstance(blocks, LazyBlockList):
+            task_name = getattr(blocks, "_read_stage_name", task_name)
         return MapOperator.create(
-            do_read, inputs, name="DoRead", ray_remote_args=remote_args
+            do_read, inputs, name=task_name, ray_remote_args=remote_args
         )
     else:
         output = _block_list_to_bundles(blocks, owns_blocks=owns_blocks)
@@ -229,43 +266,37 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
     if isinstance(stage, OneToOneStage):
         compute = get_compute(stage.compute)
+        validate_compute(stage.fn, compute)
 
         block_fn = stage.block_fn
         if stage.fn:
             if isinstance(stage.fn, CallableClass):
-                if isinstance(compute, TaskPoolStrategy):
-                    raise ValueError(
-                        "``compute`` must be specified when using a callable class, "
-                        "and must specify the actor compute strategy. "
-                        'For example, use ``compute="actors"`` or '
-                        "``compute=ActorPoolStrategy(min, max)``."
-                    )
                 assert isinstance(compute, ActorPoolStrategy)
 
                 fn_constructor_args = stage.fn_constructor_args or ()
                 fn_constructor_kwargs = stage.fn_constructor_kwargs or {}
-                fn_ = stage.fn
+
+                fn_ = make_callable_class_concurrent(stage.fn)
 
                 def fn(item: Any) -> Any:
-                    # Wrapper providing cached instantiation of stateful callable class
-                    # UDFs.
+                    assert ray.data._cached_fn is not None
+                    assert ray.data._cached_cls == fn_
+                    return ray.data._cached_fn(item)
+
+                def init_fn():
                     if ray.data._cached_fn is None:
                         ray.data._cached_cls = fn_
                         ray.data._cached_fn = fn_(
                             *fn_constructor_args, **fn_constructor_kwargs
                         )
-                    else:
-                        # A worker is destroyed when its actor is killed, so we
-                        # shouldn't have any worker reuse across different UDF
-                        # applications (i.e. different map operators).
-                        assert ray.data._cached_cls == fn_
-                    return ray.data._cached_fn(item)
 
             else:
                 fn = stage.fn
+                init_fn = None
             fn_args = (fn,)
         else:
             fn_args = ()
+            init_fn = None
         if stage.fn_args:
             fn_args += stage.fn_args
         fn_kwargs = stage.fn_kwargs or {}
@@ -276,11 +307,14 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
         return MapOperator.create(
             do_map,
             input_op,
+            init_fn=init_fn,
             name=stage.name,
             compute_strategy=compute,
             min_rows_per_bundle=stage.target_block_size,
             ray_remote_args=stage.ray_remote_args,
         )
+    elif isinstance(stage, LimitStage):
+        return LimitOperator(stage.limit, input_op)
     elif isinstance(stage, AllToAllStage):
         fn = stage.fn
         block_udf = stage.block_udf
@@ -309,6 +343,7 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
             input_op,
             name=stage.name,
             num_outputs=stage.num_blocks,
+            sub_progress_bar_names=stage.sub_stage_names,
         )
     else:
         raise NotImplementedError

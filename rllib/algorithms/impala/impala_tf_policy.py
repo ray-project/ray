@@ -85,7 +85,7 @@ class VTraceLoss:
             config: Algorithm config dict.
         """
 
-        # Compute vtrace on the CPU for better perf.
+        # Compute vtrace on the CPU for better performance.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
                 behaviour_action_log_probs=behaviour_action_logp,
@@ -179,15 +179,19 @@ class VTraceClipGradients:
         self, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:
         # Supporting more than one loss/optimizer.
+        if self.config.get("_enable_rl_module_api", False):
+            # In order to access the variables for rl modules, we need to
+            # use the underlying keras api model.trainable_variables.
+            trainable_variables = self.model.trainable_variables
+        else:
+            trainable_variables = self.model.trainable_variables()
         if self.config["_tf_policy_handles_more_than_one_loss"]:
             optimizers = force_list(optimizer)
             losses = force_list(loss)
             assert len(optimizers) == len(losses)
             clipped_grads_and_vars = []
             for optim, loss_ in zip(optimizers, losses):
-                grads_and_vars = optim.compute_gradients(
-                    loss_, self.model.trainable_variables()
-                )
+                grads_and_vars = optim.compute_gradients(loss_, trainable_variables)
                 clipped_g_and_v = []
                 for g, v in grads_and_vars:
                     if g is not None:
@@ -205,9 +209,7 @@ class VTraceClipGradients:
             )
             grads = [g for (g, v) in grads_and_vars]
             self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-            clipped_grads_and_vars = list(
-                zip(self.grads, self.model.trainable_variables())
-            )
+            clipped_grads_and_vars = list(zip(self.grads, trainable_variables))
 
         return clipped_grads_and_vars
 
@@ -295,13 +297,18 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 existing_model=existing_model,
             )
 
-            GradStatsMixin.__init__(self)
-            VTraceClipGradients.__init__(self)
-            VTraceOptimizer.__init__(self)
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-            EntropyCoeffSchedule.__init__(
-                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-            )
+            # If Learner API is used, we don't need any loss-specific mixins.
+            # However, we also would like to avoid creating special Policy-subclasses
+            # for this as the entire Policy concept will soon not be used anymore with
+            # the new Learner- and RLModule APIs.
+            if not self.config.get("_enable_learner_api"):
+                GradStatsMixin.__init__(self)
+                VTraceClipGradients.__init__(self)
+                VTraceOptimizer.__init__(self)
+                LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+                EntropyCoeffSchedule.__init__(
+                    self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+                )
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.

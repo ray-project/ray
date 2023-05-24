@@ -27,7 +27,10 @@ from ray.dashboard.modules.job.job_manager import (
     JobSupervisor,
     generate_job_id,
 )
-from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
+from ray.dashboard.consts import (
+    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
+    RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+)
 from ray.job_submission import JobStatus
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.tests.conftest import call_ray_start  # noqa: F401
@@ -326,10 +329,43 @@ async def test_pass_job_id(job_manager):
     )
 
     # Check that the same job_id is rejected.
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ValueError):
         await job_manager.submit_job(
             entrypoint="echo hello", submission_id=submission_id
         )
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_submit_job(job_manager):
+    """Test that we can submit multiple jobs at once."""
+    job_ids = await asyncio.gather(
+        job_manager.submit_job(entrypoint="echo hello"),
+        job_manager.submit_job(entrypoint="echo hello"),
+        job_manager.submit_job(entrypoint="echo hello"),
+    )
+
+    for job_id in job_ids:
+        await async_wait_for_condition_async_predicate(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+
+
+@pytest.mark.asyncio
+async def test_simultaneous_with_same_id(job_manager):
+    """Test that we can submit multiple jobs at once with the same id.
+
+    The second job should raise a friendly error.
+    """
+    with pytest.raises(ValueError) as excinfo:
+        await asyncio.gather(
+            job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
+            job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
+        )
+    assert "Job with submission_id 1 already exists" in str(excinfo.value)
+    # Check that the (first) job can still succeed.
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id="1"
+    )
 
 
 @pytest.mark.asyncio
@@ -428,6 +464,19 @@ class TestRuntimeEnv:
             check_job_succeeded, job_manager=job_manager, job_id=job_id
         )
         assert job_manager.get_job_logs(job_id) == "233\n"
+
+    async def test_niceness(self, job_manager):
+        job_id = await job_manager.submit_job(
+            entrypoint=f"python {_driver_script_path('check_niceness.py')}",
+        )
+
+        await async_wait_for_condition_async_predicate(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+
+        logs = job_manager.get_job_logs(job_id)
+        assert "driver 0" in logs
+        assert "worker 15" in logs
 
     async def test_multiple_runtime_envs(self, job_manager):
         # Test that you can run two jobs in different envs without conflict.
@@ -1041,6 +1090,62 @@ async def test_simultaneous_drivers(job_manager):
         check_job_succeeded, job_manager=job_manager, job_id=job_id
     )
     assert "done" in job_manager.get_job_logs(job_id)
+
+
+@pytest.mark.asyncio
+async def test_monitor_job_pending(job_manager):
+    """Test that monitor_job does not error when the job is PENDING."""
+
+    # Create a signal actor to keep the job pending.
+    start_signal_actor = SignalActor.remote()
+
+    # Submit a job.
+    job_id = await job_manager.submit_job(
+        entrypoint="echo 'hello world'",
+        _start_signal_actor=start_signal_actor,
+    )
+
+    # Trigger _recover_running_jobs while the job is still pending. This
+    # will pick up the new pending job.
+    await job_manager._recover_running_jobs()
+
+    # Trigger the job to start.
+    ray.get(start_signal_actor.send.remote())
+
+    # Wait for the job to finish.
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+
+@pytest.mark.asyncio
+async def test_job_pending_timeout(job_manager, monkeypatch):
+    """Test the timeout for pending jobs."""
+
+    monkeypatch.setenv(RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR, "0.1")
+
+    # Create a signal actor to keep the job pending.
+    start_signal_actor = SignalActor.remote()
+
+    # Submit a job.
+    job_id = await job_manager.submit_job(
+        entrypoint="echo 'hello world'",
+        _start_signal_actor=start_signal_actor,
+    )
+
+    # Trigger _recover_running_jobs while the job is still pending. This
+    # will pick up the new pending job.
+    await job_manager._recover_running_jobs()
+
+    # Wait for the job to timeout.
+    await async_wait_for_condition_async_predicate(
+        check_job_failed, job_manager=job_manager, job_id=job_id
+    )
+
+    # Check that the job timed out.
+    job_info = await job_manager.get_job_info(job_id)
+    assert job_info.status == JobStatus.FAILED
+    assert "Job supervisor actor failed to start within" in job_info.message
 
 
 if __name__ == "__main__":

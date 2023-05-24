@@ -3,9 +3,9 @@ import logging
 import numpy as np
 from typing import TYPE_CHECKING, Dict, Optional, List, Union
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.logger.logger import LoggerCallback
 from ray.tune.result import (
-    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
 )
@@ -90,7 +90,7 @@ class AimLoggerCallback(LoggerCallback):
         Returns:
             Run: The created aim run for a specific trial.
         """
-        experiment_dir = trial.local_dir
+        experiment_dir = trial.local_experiment_path
         run = Run(
             repo=self._repo_path or experiment_dir,
             experiment=self._experiment_name or trial.experiment_dir_name,
@@ -98,9 +98,9 @@ class AimLoggerCallback(LoggerCallback):
         )
         # Attach a few useful trial properties
         run["trial_id"] = trial.trial_id
-        run["trial_log_dir"] = trial.logdir
-        if trial.remote_checkpoint_dir:
-            run["trial_remote_log_dir"] = trial.remote_checkpoint_dir
+        run["trial_log_dir"] = trial.local_path
+        if trial.remote_path:
+            run["trial_remote_log_dir"] = trial.remote_path
         trial_ip = trial.get_runner_ip()
         if trial_ip:
             run["trial_ip"] = trial_ip
@@ -111,7 +111,7 @@ class AimLoggerCallback(LoggerCallback):
             # Cleanup an existing run if the trial has been restarted
             self._trial_to_run[trial].close()
 
-        trial.init_logdir()
+        trial.init_local_path()
         self._trial_to_run[trial] = self._create_run(trial)
 
         if trial.evaluated_params:

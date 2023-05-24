@@ -6,6 +6,7 @@ POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
 
 
+# TODO (sven): Deprecate once APPO and IMPALA fully on RLModules/Learner APIs.
 def make_appo_models(policy) -> ModelV2:
     """Builds model and target model for APPO.
 

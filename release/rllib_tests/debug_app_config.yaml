@@ -1,0 +1,49 @@
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
+env_vars: {"LD_LIBRARY_PATH": "$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin", "RLLIB_TEST_NO_JAX_IMPORT": "1"}
+debian_packages:
+  - unzip
+  - zip
+
+  # Needed to run MuJoCo with gymnasium.
+  - libosmesa6-dev
+  - libgl1-mesa-glx
+  - libglfw3
+  - patchelf
+  # End: MuJoCo.
+
+python:
+  pip_packages:
+  ## These dependencies should be handled by requirements_rllib.txt and
+  ## requirements_ml_docker.txt and removed here
+  - gymnasium[atari,mujoco]==0.26.3
+  - ale-py==0.8.0
+  - gym==0.26.2
+  - mujoco-py<2.2,>=2.1
+  # AutoROM downloads ROMs via torrent when they are built. The torrent is unreliable,
+  # so we built it for py3 and use that instead. This wheel was tested for python 3.7, 3.8,
+  # and 3.9.
+  - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
+  - pytest
+  conda_packages: []
+
+post_build_cmds:
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  # TODO(https://github.com/ray-project/ray/issues/34591)
+  - pip3 install --force-reinstall -U https://s3-us-west-2.amazonaws.com/ray-wheels/env["RAY_TEST_BRANCH"]/env["RAY_COMMIT_OF_WHEEL"]/ray-3.0.0.dev0%2Bdebug-cp37-cp37m-manylinux2014_x86_64.whl
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  # Clone the rl-experiments repo for offline-RL files.
+  - git clone https://github.com/ray-project/rl-experiments.git
+  - unzip rl-experiments/halfcheetah-sac/2022-12-17/halfcheetah_1500_mean_reward_sac.zip -d ~/.
+  # Use torch+CUDA10.2 for our release tests. CUDA11.x has known performance issues in combination with torch+GPU+CNNs
+  # TODO(sven): remove once nightly image gets upgraded.
+  - pip3 install torch==1.12.1+cu102 torchvision==0.13.1+cu102 --extra-index-url https://download.pytorch.org/whl/cu102
+
+  # TODO(sven): remove once nightly image gets gymnasium and the other new dependencies.
+  - wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+  - mkdir ~/.mujoco
+  - mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
+  - cd ~/.mujoco
+  - tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz
+
+  # not strictly necessary, but makes debugging easier
+  - git clone https://github.com/ray-project/ray.git

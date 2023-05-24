@@ -1,9 +1,32 @@
 import gymnasium as gym
 
 from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.core.models.configs import ActorCriticEncoderConfig, MLPHeadConfig
+from ray.rllib.core.models.configs import (
+    ActorCriticEncoderConfig,
+    MLPHeadConfig,
+    FreeLogStdMLPHeadConfig,
+)
 from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
 from ray.rllib.utils import override
+
+
+def _check_if_diag_gaussian(action_distribution_cls, framework):
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import TorchDiagGaussian
+
+        assert issubclass(action_distribution_cls, TorchDiagGaussian), (
+            f"free_log_std is only supported for DiagGaussian action distributions. "
+            f"Found action distribution: {action_distribution_cls}."
+        )
+    elif framework == "tf2":
+        from ray.rllib.models.tf.tf_distributions import TfDiagGaussian
+
+        assert issubclass(action_distribution_cls, TfDiagGaussian), (
+            "free_log_std is only supported for DiagGaussian action distributions. "
+            "Found action distribution: {}.".format(action_distribution_cls)
+        )
+    else:
+        raise ValueError(f"Framework {framework} not supported for free_log_std.")
 
 
 class PPOCatalog(Catalog):
@@ -15,7 +38,7 @@ class PPOCatalog(Catalog):
         - Value Function Head: The head used to compute the value function.
 
     The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
-    for the policy and value function. See implementations of PPORLModuleBase for
+    for the policy and value function. See implementations of PPORLModule for
     more details.
 
     Any custom ActorCriticEncoder can be built by overriding the
@@ -46,21 +69,6 @@ class PPOCatalog(Catalog):
             action_space=action_space,
             model_config_dict=model_config_dict,
         )
-        free_log_std = model_config_dict.get("free_log_std")
-        assert not free_log_std, "free_log_std not supported yet."
-
-        assert isinstance(
-            observation_space, gym.spaces.Box
-        ), "This simple PPO Module only supports Box observation space."
-
-        assert len(observation_space.shape) in (
-            1,
-            3,
-        ), "This simple PPO Module only supports 1D and 3D observation spaces."
-
-        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
-            "This simple PPO Module only supports Discrete and Box action spaces.",
-        )
 
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
@@ -71,13 +79,19 @@ class PPOCatalog(Catalog):
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
-        self.pi_head_config = MLPHeadConfig(
+        pi_head_config_class = (
+            FreeLogStdMLPHeadConfig
+            if self.model_config_dict["free_log_std"]
+            else MLPHeadConfig
+        )
+        self.pi_head_config = pi_head_config_class(
             input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dims=None,  # We don't know the output dimension yet, because it
-            # depends on the action distribution input dimension
+            # We don't know the output dimension yet, because it depends on the
+            # action distribution input dimension.
+            output_dims=None,
         )
 
         self.vf_head_config = MLPHeadConfig(
@@ -93,10 +107,10 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the encoder from the encoder_config.
         This can be overridden to build a custom ActorCriticEncoder as a means of
-        configuring the behavior of a PPORLModuleBase implementation.
+        configuring the behavior of a PPORLModule implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The ActorCriticEncoder.
@@ -118,21 +132,24 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a PPORLModuleBase implementation.
+        the behavior of a PPORLModule implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The policy head.
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        self.pi_head_config.output_dims = (
-            action_distribution_cls.required_model_output_shape(
-                space=self.action_space, model_config=self.model_config_dict
-            )
+        required_output_dim = action_distribution_cls.required_input_dim(
+            space=self.action_space, model_config=self.model_config_dict
         )
+        self.pi_head_config.output_dims = (required_output_dim,)
+        if self.model_config_dict["free_log_std"]:
+            _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls, framework=framework
+            )
         return self.pi_head_config.build(framework=framework)
 
     def build_vf_head(self, framework: str) -> Model:
@@ -140,10 +157,10 @@ class PPOCatalog(Catalog):
 
         The default behavior is to build the head from the vf_head_config.
         This can be overridden to build a custom value function head as a means of
-        configuring the behavior of a PPORLModuleBase implementation.
+        configuring the behavior of a PPORLModule implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The value function head.

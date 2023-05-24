@@ -2,6 +2,7 @@ import os
 import threading
 from typing import Optional, TYPE_CHECKING
 
+from ray._private.ray_constants import env_integer
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
@@ -9,7 +10,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import ExecutionOptions
 
 # The context singleton on this process.
-_default_context: "Optional[DatasetContext]" = None
+_default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
 # An estimate of what fraction of the object store a Dataset can use without too high
@@ -20,7 +21,7 @@ ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 # We choose 512MiB as 8x less than the typical memory:core ratio of 4:1.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
-# Datasets will avoid creating blocks smaller than this size in bytes on read.
+# Dataset will avoid creating blocks smaller than this size in bytes on read.
 # This takes precedence over DEFAULT_MIN_PARALLELISM.
 DEFAULT_TARGET_MIN_BLOCK_SIZE = 1 * 1024 * 1024
 
@@ -43,8 +44,7 @@ DEFAULT_OPTIMIZE_FUSE_STAGES = True
 # Whether to enable stage-reorder optimizations for dataset pipelines.
 DEFAULT_OPTIMIZE_REORDER_STAGES = True
 
-# Whether to furthermore fuse read stages. When this is enabled, data will also be
-# re-read from the base dataset in each repetition of a DatasetPipeline.
+# Whether to furthermore fuse read stages.
 DEFAULT_OPTIMIZE_FUSE_READ_STAGES = True
 
 # Whether to furthermore fuse prior map tasks with shuffle stages.
@@ -55,11 +55,11 @@ DEFAULT_OPTIMIZE_FUSE_SHUFFLE_STAGES = True
 DEFAULT_MIN_PARALLELISM = 200
 
 # Wether to use actor based block prefetcher.
-DEFAULT_ACTOR_PREFETCHER_ENABLED = True
+DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 # Whether to use push-based shuffle by default.
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
-    os.environ.get("RAY_DATASET_PUSH_BASED_SHUFFLE", None)
+    os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
 # The default global scheduling strategy.
@@ -70,23 +70,21 @@ DEFAULT_USE_POLARS = False
 
 # Whether to use the new executor backend.
 DEFAULT_NEW_EXECUTION_BACKEND = bool(
-    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_BACKEND", "1"))
+    int(os.environ.get("RAY_DATA_NEW_EXECUTION_BACKEND", "1"))
 )
 
 # Whether to use the streaming executor. This only has an effect if the new execution
 # backend is enabled.
 DEFAULT_USE_STREAMING_EXECUTOR = bool(
-    int(os.environ.get("RAY_DATASET_USE_STREAMING_EXECUTOR", "0"))
+    int(os.environ.get("RAY_DATA_USE_STREAMING_EXECUTOR", "1"))
 )
 
 # Whether to eagerly free memory (new backend only).
-DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATASET_EAGER_FREE", "1")))
+DEFAULT_EAGER_FREE = bool(int(os.environ.get("RAY_DATA_EAGER_FREE", "1")))
 
 # Whether to trace allocations / eager free (new backend only). This adds significant
 # performance overheads and should only be used for debugging.
-DEFAULT_TRACE_ALLOCATIONS = bool(
-    int(os.environ.get("RAY_DATASET_TRACE_ALLOCATIONS", "0"))
-)
+DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
 # Whether to estimate in-memory decoding data size for data source.
 DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
@@ -101,11 +99,18 @@ DEFAULT_AUTO_LOG_STATS = False
 
 # Whether to enable optimizer.
 DEFAULT_OPTIMIZER_ENABLED = bool(
-    int(os.environ.get("RAY_DATASET_NEW_EXECUTION_OPTIMIZER", "0"))
+    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "0"))
 )
 
 # Set this env var to enable distributed tqdm (experimental).
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
+
+# Enable strict schema mode (experimental). In this mode, we only allow structured
+# schemas, and default to numpy as the batch format.
+DEFAULT_STRICT_MODE = bool(int(os.environ.get("RAY_DATA_STRICT_MODE", "1")))
+
+# Set this to True to use the legacy iter_batches codepath prior to 2.4.
+DEFAULT_USE_LEGACY_ITER_BATCHES = False
 
 # Use this to prefix important warning messages for the user.
 WARN_PREFIX = "⚠️ "
@@ -116,13 +121,21 @@ OK_PREFIX = "✔️ "
 # Default batch size for batch transformations.
 DEFAULT_BATCH_SIZE = 4096
 
+# Default batch size for batch transformations in strict mode.
+STRICT_MODE_DEFAULT_BATCH_SIZE = 1024
+
+# Whether to enable progress bars.
+DEFAULT_ENABLE_PROGRESS_BARS = not bool(
+    env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
+)
+
 
 @DeveloperAPI
-class DatasetContext:
+class DataContext:
     """Singleton for shared Dataset resources and configurations.
 
     This object is automatically propagated to workers and can be retrieved
-    from the driver and remote workers via DatasetContext.get_current().
+    from the driver and remote workers via DataContext.get_current().
     """
 
     def __init__(
@@ -152,6 +165,9 @@ class DatasetContext:
         optimizer_enabled: bool,
         execution_options: "ExecutionOptions",
         use_ray_tqdm: bool,
+        use_legacy_iter_batches: bool,
+        strict_mode: bool,
+        enable_progress_bars: bool,
     ):
         """Private constructor (use get_current() instead)."""
         self.block_splitting_enabled = block_splitting_enabled
@@ -182,9 +198,12 @@ class DatasetContext:
         # TODO: expose execution options in Dataset public APIs.
         self.execution_options = execution_options
         self.use_ray_tqdm = use_ray_tqdm
+        self.use_legacy_iter_batches = use_legacy_iter_batches
+        self.strict_mode = strict_mode
+        self.enable_progress_bars = enable_progress_bars
 
     @staticmethod
-    def get_current() -> "DatasetContext":
+    def get_current() -> "DataContext":
         """Get or create a singleton context.
 
         If the context has not yet been created in this process, it will be
@@ -197,7 +216,7 @@ class DatasetContext:
         with _context_lock:
 
             if _default_context is None:
-                _default_context = DatasetContext(
+                _default_context = DataContext(
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE,
                     target_min_block_size=DEFAULT_TARGET_MIN_BLOCK_SIZE,
@@ -228,12 +247,15 @@ class DatasetContext:
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
                     execution_options=ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
+                    use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
+                    strict_mode=DEFAULT_STRICT_MODE,
+                    enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
                 )
 
             return _default_context
 
     @staticmethod
-    def _set_current(context: "DatasetContext") -> None:
+    def _set_current(context: "DataContext") -> None:
         """Set the current context in a remote worker.
 
         This is used internally by Dataset to propagate the driver context to
@@ -241,3 +263,7 @@ class DatasetContext:
         """
         global _default_context
         _default_context = context
+
+
+# Backwards compatibility alias.
+DatasetContext = DataContext

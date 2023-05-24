@@ -63,7 +63,7 @@ class IndicatorCallback(tune.Callback):
 
 def run_tune(
     no_syncer: bool,
-    upload_dir: Optional[str] = None,
+    storage_path: Optional[str] = None,
     experiment_name: str = "cloud_test",
     indicator_file: str = "/tmp/tune_cloud_indicator",
     trainable: str = "function",
@@ -106,9 +106,9 @@ def run_tune(
         resume="AUTO",
         num_samples=1,  # 4 trials from the grid search
         config=config,
+        storage_path=storage_path,
         sync_config=tune.SyncConfig(
             syncer="auto" if not no_syncer else None,
-            upload_dir=upload_dir,
             sync_on_checkpoint=True,
             sync_period=0.5,
             sync_artifacts=True,
@@ -125,7 +125,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--no-syncer", action="store_true", default=False)
 
-    parser.add_argument("--upload-dir", required=False, default=None, type=str)
+    parser.add_argument("--storage-path", required=False, default=None, type=str)
 
     parser.add_argument("--experiment-name", required=False, default=None, type=str)
 
@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
     run_kwargs = dict(
         no_syncer=args.no_syncer or False,
-        upload_dir=args.upload_dir or None,
+        storage_path=args.storage_path or None,
         experiment_name=args.experiment_name or "cloud_test",
         indicator_file=args.indicator_file,
         trainable=trainable,

@@ -2,11 +2,6 @@ Tune CLI (Experimental)
 =======================
 
 ``tune`` has an easy-to-use command line interface (CLI) to manage and monitor your experiments on Ray.
-To do this, verify that you have the ``tabulate`` library installed:
-
-.. code-block:: bash
-
-    $ pip install tabulate
 
 Here is an example command line call:
 

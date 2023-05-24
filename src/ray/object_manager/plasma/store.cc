@@ -516,7 +516,7 @@ void PlasmaStore::ProcessCreateRequests() {
           create_timer_ = nullptr;
           ProcessCreateRequests();
         },
-        retry_after_ms);
+        std::chrono::milliseconds(retry_after_ms));
   }
 }
 
@@ -555,7 +555,7 @@ void PlasmaStore::PrintAndRecordDebugDump() const {
   stats_timer_ = execute_after(
       io_context_,
       [this]() { PrintAndRecordDebugDump(); },
-      RayConfig::instance().event_stats_print_interval_ms());
+      std::chrono::milliseconds(RayConfig::instance().event_stats_print_interval_ms()));
 }
 
 void PlasmaStore::ScheduleRecordMetrics() const {
@@ -567,7 +567,7 @@ void PlasmaStore::ScheduleRecordMetrics() const {
       [this]() { ScheduleRecordMetrics(); },
       // divide by 2 to make sure record happens before reporting
       // this also matches with  NodeManager::RecordMetrics interval
-      RayConfig::instance().metrics_report_interval_ms() / 2);
+      std::chrono::milliseconds(RayConfig::instance().metrics_report_interval_ms() / 2));
 }
 
 std::string PlasmaStore::GetDebugDump() const {

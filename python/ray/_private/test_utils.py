@@ -19,6 +19,7 @@ from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any, Callable, Dict, List, Optional
 import uuid
+from dataclasses import dataclass
 
 import requests
 from ray._raylet import Config
@@ -49,8 +50,8 @@ from ray.core.generated import (
     gcs_service_pb2,
     gcs_service_pb2_grpc,
 )
-from ray.scripts.scripts import main as ray_main
 from ray.util.queue import Empty, Queue, _QueueActor
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 logger = logging.getLogger(__name__)
@@ -62,8 +63,10 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 try:
-    from prometheus_client.parser import text_string_to_metric_families
+    from prometheus_client.parser import text_string_to_metric_families, Sample
 except (ImportError, ModuleNotFoundError):
+
+    Sample = None
 
     def text_string_to_metric_families(*args, **kwargs):
         raise ModuleNotFoundError("`prometheus_client` not found")
@@ -282,6 +285,8 @@ def check_call_module(main, argv, capture_stdout=False, capture_stderr=False):
 def check_call_subprocess(argv, capture_stdout=False, capture_stderr=False):
     # We use this function instead of calling the "ray" command to work around
     # some deadlocks that occur when piping ray's output on Windows
+    from ray.scripts.scripts import main as ray_main
+
     if sys.platform == "win32":
         result = check_call_module(
             ray_main, argv, capture_stdout=capture_stdout, capture_stderr=capture_stderr
@@ -588,20 +593,43 @@ async def async_wait_for_condition_async_predicate(
     raise RuntimeError(message)
 
 
+@dataclass
+class MetricSamplePattern:
+    name: Optional[str] = None
+    value: Optional[str] = None
+    partial_label_match: Optional[Dict[str, str]] = None
+
+    def matches(self, sample: Sample):
+        if self.name is not None:
+            if self.name != sample.name:
+                return False
+
+        if self.value is not None:
+            if self.value != sample.value:
+                return False
+
+        if self.partial_label_match is not None:
+            for label, value in self.partial_label_match.items():
+                if sample.labels.get(label) != value:
+                    return False
+
+        return True
+
+
 def get_metric_check_condition(
-    metrics_to_check: Dict[str, Optional[float]], export_addr: Optional[str] = None
+    metrics_to_check: List[MetricSamplePattern], export_addr: Optional[str] = None
 ) -> Callable[[], bool]:
     """A condition to check if a prometheus metrics reach a certain value.
     This is a blocking check that can be passed into a `wait_for_condition`
     style function.
 
     Args:
-      metrics_to_check: A map of metric lable to values to check, to ensure
-        that certain conditions have been reached. If a value is None, just check
-        that the metric was emitted with any value.
+      metrics_to_check: A list of MetricSamplePattern. The fields that
+      aren't `None` will be matched.
 
     Returns:
       A function that returns True if all the metrics are emitted.
+
     """
     node_info = ray.nodes()[0]
     metrics_export_port = node_info["MetricsExportPort"]
@@ -609,23 +637,15 @@ def get_metric_check_condition(
     prom_addr = export_addr or f"{addr}:{metrics_export_port}"
 
     def f():
-        for metric_name, metric_value in metrics_to_check.items():
+        for metric_pattern in metrics_to_check:
             _, metric_names, metric_samples = fetch_prometheus([prom_addr])
-            found_metric = False
-            if metric_name in metric_names:
-                for sample in metric_samples:
-                    if sample.name != metric_name:
-                        continue
-
-                    if metric_value is None:
-                        found_metric = True
-                    elif metric_value == sample.value:
-                        found_metric = True
-            if not found_metric:
+            for metric_sample in metric_samples:
+                if metric_pattern.matches(metric_sample):
+                    break
+            else:
                 print(
-                    "Didn't find metric, all metric names: ",
-                    metric_names,
-                    "all values",
+                    f"Didn't find {metric_pattern}",
+                    "all samples",
                     metric_samples,
                 )
                 return False
@@ -1438,11 +1458,12 @@ def get_and_run_node_killer(
                     alive_nodes += 1
             return alive_nodes
 
-    head_node_ip = ray._private.worker.global_worker.node_ip_address
-    head_node_id = ray._private.worker.global_worker.current_node_id.hex()
+    head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(
-        resources={f"node:{head_node_ip}": 0.001},
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            node_id=head_node_id, soft=False
+        ),
         namespace=namespace,
         name="node_killer",
         lifetime=lifetime,
@@ -1595,6 +1616,12 @@ def simulate_storage(
     elif storage_type == "s3":
         from moto.server import ThreadedMotoServer
 
+        old_env = os.environ
+        os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+        os.environ["AWS_SECURITY_TOKEN"] = "testing"
+        os.environ["AWS_SESSION_TOKEN"] = "testing"
+
         root = root or uuid.uuid4().hex
         s3_server = f"http://localhost:{port}"
         server = ThreadedMotoServer(port=port)
@@ -1602,6 +1629,9 @@ def simulate_storage(
         url = f"s3://{root}?region={region}&endpoint_override={s3_server}"
         yield url
         server.stop()
+
+        os.environ = old_env
+
     else:
         raise NotImplementedError(f"Unknown storage type: {storage_type}")
 
@@ -1812,3 +1842,54 @@ def safe_write_to_results_json(
     os.replace(test_output_json_tmp, test_output_json)
     logger.info(f"Wrote results to {test_output_json}")
     logger.info(json.dumps(result))
+
+
+def get_current_unused_port():
+    """
+    Returns a port number that is not currently in use.
+
+    This is useful for testing when we need to bind to a port but don't
+    care which one.
+
+    Returns:
+        A port number that is not currently in use. (Note that this port
+        might become used by the time you try to bind to it.)
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    # Bind the socket to a local address with a random port number
+    sock.bind(("localhost", 0))
+
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def search_words(string: str, words: str):
+    """Check whether each word is in the given string.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return [word in string for word in words.split(" ")]
+
+
+def has_all_words(string: str, words: str):
+    """Check that string has all of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return all(search_words(string, words))
+
+
+def has_no_words(string, words):
+    """Check that string has none of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return not any(search_words(string, words))

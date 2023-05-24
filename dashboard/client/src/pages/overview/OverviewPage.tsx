@@ -1,11 +1,19 @@
 import { createStyles, makeStyles } from "@material-ui/core";
+import classNames from "classnames";
 import React from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
+import {
+  NodeStatusCard,
+  ResourceStatusCard,
+} from "../../components/AutoscalerStatusCards";
 import EventTable from "../../components/EventTable";
+import { useRayStatus } from "../job/hook/useClusterStatus";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { ClusterUtilizationCard } from "./cards/ClusterUtilizationCard";
 import { NodeCountCard } from "./cards/NodeCountCard";
+import { OverviewCard } from "./cards/OverviewCard";
 import { RecentJobsCard } from "./cards/RecentJobsCard";
+import { RecentServeCard } from "./cards/RecentServeCard";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -31,6 +39,9 @@ const useStyles = makeStyles((theme) =>
         maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
       },
     },
+    autoscalerCard: {
+      padding: theme.spacing(2, 3),
+    },
     section: {
       marginTop: theme.spacing(4),
     },
@@ -40,16 +51,48 @@ const useStyles = makeStyles((theme) =>
 export const OverviewPage = () => {
   const classes = useStyles();
 
+  const { cluster_status } = useRayStatus();
+
   return (
     <div className={classes.root}>
       <MainNavPageInfo
-        pageInfo={{ title: "Overview", id: "overview", path: "/new/overview" }}
+        pageInfo={{ title: "Overview", id: "overview", path: "/overview" }}
       />
       <div className={classes.overviewCardsContainer}>
         <ClusterUtilizationCard className={classes.overviewCard} />
-        <NodeCountCard className={classes.overviewCard} />
         <RecentJobsCard className={classes.overviewCard} />
+        <RecentServeCard className={classes.overviewCard} />
       </div>
+
+      <CollapsibleSection
+        className={classes.section}
+        title="Cluster status and autoscaler"
+        startExpanded
+      >
+        {
+          <div className={classes.overviewCardsContainer}>
+            <NodeCountCard className={classes.overviewCard} />
+            <OverviewCard
+              className={classNames(
+                classes.root,
+                classes.overviewCard,
+                classes.autoscalerCard,
+              )}
+            >
+              <NodeStatusCard cluster_status={cluster_status} />
+            </OverviewCard>
+            <OverviewCard
+              className={classNames(
+                classes.root,
+                classes.overviewCard,
+                classes.autoscalerCard,
+              )}
+            >
+              <ResourceStatusCard cluster_status={cluster_status} />
+            </OverviewCard>
+          </div>
+        }
+      </CollapsibleSection>
 
       <CollapsibleSection
         className={classes.section}

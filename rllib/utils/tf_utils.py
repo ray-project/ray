@@ -19,12 +19,62 @@ from ray.rllib.utils.typing import (
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.core.learner.learner import ParamDict
     from ray.rllib.policy.eager_tf_policy import EagerTFPolicy
     from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
     from ray.rllib.policy.tf_policy import TFPolicy
 
 logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
+
+
+@PublicAPI
+def clip_gradients(
+    gradients_dict: "ParamDict",
+    *,
+    grad_clip: Optional[float] = None,
+    grad_clip_by: str = "value",
+) -> Optional[float]:
+    """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
+
+    Changes the provided gradient dict in place.
+
+    Args:
+        gradients_dict: The gradients dict, mapping str to gradient tensors.
+        grad_clip: The value to clip with. The way gradients are clipped is defined
+            by the `grad_clip_by` arg (see below).
+        grad_clip_by: One of 'value', 'norm', or 'global_norm'.
+
+    Returns:
+        If `grad_clip_by`="global_norm" and `grad_clip` is not None, returns the global
+        norm of all tensors, otherwise returns None.
+    """
+    # No clipping, return.
+    if grad_clip is None:
+        return
+
+    # Clip by value (each gradient individually).
+    if grad_clip_by == "value":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = tf.clip_by_value(v, -grad_clip, grad_clip)
+
+    # Clip by L2-norm (per gradient tensor).
+    elif grad_clip_by == "norm":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = tf.clip_by_norm(v, grad_clip)
+
+    # Clip by global L2-norm (across all gradient tensors).
+    else:
+        assert grad_clip_by == "global_norm"
+
+        clipped_grads, global_norm = tf.clip_by_global_norm(
+            list(gradients_dict.values()), grad_clip
+        )
+        for k, v in zip(gradients_dict.copy().keys(), clipped_grads):
+            gradients_dict[k] = v
+
+        # Return the computed global norm scalar.
+        return global_norm
 
 
 @PublicAPI
@@ -176,7 +226,7 @@ def get_placeholder(
     value: Optional[Any] = None,
     name: Optional[str] = None,
     time_axis: bool = False,
-    flatten: bool = True
+    flatten: bool = True,
 ) -> "tf1.placeholder":
     """Returns a tf1.placeholder object given optional hints, such as a space.
 
@@ -413,6 +463,8 @@ def make_tf_callable(
     return make_wrapper
 
 
+# TODO (sven): Deprecate this function once we have moved completely to the Learner API.
+#  Replaced with `clip_gradients()`.
 @PublicAPI
 def minimize_and_clip(
     optimizer: LocalOptimizer,

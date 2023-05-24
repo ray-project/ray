@@ -32,7 +32,6 @@ config = (
         num_sgd_iter=1,
         vf_loss_coeff=0.005,
         vtrace=True,
-        vtrace_drop_last_ts=False,
     )
     .multi_agent(
         # 2 agents per sub-env.

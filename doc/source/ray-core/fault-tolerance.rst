@@ -15,8 +15,8 @@ retry failed code, and handle misbehaving code. See the pages for :ref:`task
 <fault-tolerance-tasks>` and :ref:`actor <fault-tolerance-actors>` fault
 tolerance for more information on these mechanisms.
 
-Ray also provides several mechanisms to automatically recover from internal system-level failures. In particular, Ray can automatically recover from some failures in the :ref:`distributed object store <fault-tolerance-objects>`.
-
+Ray also provides several mechanisms to automatically recover from internal system-level failures like :ref:`node failures <fault-tolerance-nodes>`.
+In particular, Ray can automatically recover from some failures in the :ref:`distributed object store <fault-tolerance-objects>`.
 
 How to Write Fault Tolerant Ray Applications
 --------------------------------------------
@@ -81,3 +81,5 @@ More about Ray Fault Tolerance
     fault_tolerance/tasks.rst
     fault_tolerance/actors.rst
     fault_tolerance/objects.rst
+    fault_tolerance/nodes.rst
+    fault_tolerance/gcs.rst

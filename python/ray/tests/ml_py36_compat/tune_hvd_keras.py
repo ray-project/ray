@@ -10,7 +10,7 @@ import numpy as np
 # TF/Keras-specific
 import horovod.keras as hvd
 
-from ray.air.integrations.keras import Callback as KerasCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 import tensorflow as tf
 
 
@@ -60,7 +60,7 @@ def keras_train_loop(config):
             tf_dataset,
             callbacks=[
                 hvd.callbacks.BroadcastGlobalVariablesCallback(0),
-                KerasCallback(),
+                ReportCheckpointCallback(),
             ],
             verbose=0,
         )

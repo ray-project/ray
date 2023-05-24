@@ -113,6 +113,9 @@ enum class StatusCode : char {
   // out of disk.
   OutOfDisk = 28,
   ObjectUnknownOwner = 29,
+  RpcError = 30,
+  OutOfResource = 31,
+  ObjectRefStreamEoF = 32
 };
 
 #if defined(__clang__)
@@ -126,7 +129,7 @@ class RAY_EXPORT Status {
   Status() : state_(NULL) {}
   ~Status() { delete state_; }
 
-  Status(StatusCode code, const std::string &msg);
+  Status(StatusCode code, const std::string &msg, int rpc_code = -1);
 
   // Copy the specified status.
   Status(const Status &s);
@@ -142,6 +145,10 @@ class RAY_EXPORT Status {
 
   static Status KeyError(const std::string &msg) {
     return Status(StatusCode::KeyError, msg);
+  }
+
+  static Status ObjectRefStreamEoF(const std::string &msg) {
+    return Status(StatusCode::ObjectRefStreamEoF, msg);
   }
 
   static Status TypeError(const std::string &msg) {
@@ -236,6 +243,14 @@ class RAY_EXPORT Status {
     return Status(StatusCode::GrpcUnknown, msg);
   }
 
+  static Status RpcError(const std::string &msg, int rpc_code) {
+    return Status(StatusCode::RpcError, msg, rpc_code);
+  }
+
+  static Status OutOfResource(const std::string &msg) {
+    return Status(StatusCode::OutOfResource, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -244,6 +259,7 @@ class RAY_EXPORT Status {
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }
   bool IsOutOfDisk() const { return code() == StatusCode::OutOfDisk; }
   bool IsKeyError() const { return code() == StatusCode::KeyError; }
+  bool IsObjectRefStreamEoF() const { return code() == StatusCode::ObjectRefStreamEoF; }
   bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsIOError() const { return code() == StatusCode::IOError; }
   bool IsTypeError() const { return code() == StatusCode::TypeError; }
@@ -280,6 +296,10 @@ class RAY_EXPORT Status {
 
   bool IsGrpcError() const { return IsGrpcUnknown() || IsGrpcUnavailable(); }
 
+  bool IsRpcError() const { return code() == StatusCode::RpcError; }
+
+  bool IsOutOfResource() const { return code() == StatusCode::OutOfResource; }
+
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
   std::string ToString() const;
@@ -290,12 +310,16 @@ class RAY_EXPORT Status {
 
   StatusCode code() const { return ok() ? StatusCode::OK : state_->code; }
 
+  int rpc_code() const { return ok() ? -1 : state_->rpc_code; }
+
   std::string message() const { return ok() ? "" : state_->msg; }
 
  private:
   struct State {
     StatusCode code;
     std::string msg;
+    // If code is RpcError, this contains the RPC error code
+    int rpc_code;
   };
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)

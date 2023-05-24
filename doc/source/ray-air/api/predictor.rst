@@ -16,7 +16,6 @@ Constructor Options
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     predictor.Predictor
 
@@ -63,7 +62,6 @@ Constructor Options
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     batch_predictor.BatchPredictor
 
@@ -82,6 +80,7 @@ Batch Prediction API
     batch_predictor.BatchPredictor.predict
     batch_predictor.BatchPredictor.predict_pipelined
 
+.. _air_framework_predictors:
 
 Built-in Predictors for Library Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -93,6 +92,6 @@ Built-in Predictors for Library Integrations
     ~lightgbm.LightGBMPredictor
     ~tensorflow.TensorflowPredictor
     ~torch.TorchPredictor
-    ~huggingface.HuggingFacePredictor
+    ~huggingface.TransformersPredictor
     ~sklearn.SklearnPredictor
     ~rl.RLPredictor

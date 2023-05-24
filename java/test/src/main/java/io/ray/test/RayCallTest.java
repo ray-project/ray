@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.ray.api.Ray;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.task.ArgumentsBuilder;
+import io.ray.runtime.util.SystemConfig;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -20,7 +20,7 @@ public class RayCallTest extends BaseTest {
 
   private static byte[] getLargeRawData() {
     if (LARGE_RAW_DATA == null) {
-      LARGE_RAW_DATA = new byte[(int) ArgumentsBuilder.LARGEST_SIZE_PASS_BY_VALUE + 100];
+      LARGE_RAW_DATA = new byte[(int) SystemConfig.getLargestSizePassedByValue() + 100];
     }
     return LARGE_RAW_DATA;
   }

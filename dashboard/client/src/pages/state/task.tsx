@@ -16,9 +16,9 @@ const TaskList = ({
 }: {
   jobId?: string;
   actorId?: string;
-} & Pick<TaskTableProps, "filterToTaskId" | "onFilterChange" | "newIA">) => {
+} & Pick<TaskTableProps, "filterToTaskId" | "onFilterChange">) => {
   const [timeStamp] = useState(dayjs());
-  const data: Task[] | undefined = useStateApiList("useTasks", () =>
+  const data: Task[] | undefined = useStateApiList(["useTasks", jobId], () =>
     getTasks(jobId),
   );
   const tasks = data ? data : [];

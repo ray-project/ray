@@ -20,9 +20,10 @@ RLMODULE_SUPPORTED_ALGOS = {"PPO"}
 
 
 def save_test(alg_name, framework="tf", multi_agent=False):
-    cls = get_trainable_cls(alg_name)
     config = (
-        cls.get_default_config().framework(framework)
+        get_trainable_cls(alg_name)
+        .get_default_config()
+        .framework(framework)
         # Switch on saving native DL-framework (tf, torch) model files.
         .checkpointing(export_native_model_files=True)
     )

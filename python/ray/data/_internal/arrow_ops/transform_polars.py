@@ -19,7 +19,7 @@ def check_polars_installed():
     except ImportError:
         raise ImportError(
             "polars not installed. Install with `pip install polars` or set "
-            "`DatasetContext.use_polars = False` to fall back to pyarrow"
+            "`DataContext.use_polars = False` to fall back to pyarrow"
         )
 
 

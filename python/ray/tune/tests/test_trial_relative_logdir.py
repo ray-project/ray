@@ -46,12 +46,12 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         local_dir = str(local_dir_path)
         if local_dir_path.exists():
             local_dir = tempfile.mkdtemp(prefix=str(local_dir_path) + "_")
-        trial = Trial(trainable_name="rel_logdir", local_dir=local_dir)
+        trial = Trial(trainable_name="rel_logdir", experiment_path=local_dir)
 
         with self.assertRaises(ValueError):
-            trial.logdir = "/tmp/test_rel/../dots"
+            trial.local_path = "/tmp/test_rel/../dots"
         with self.assertRaises(ValueError):
-            trial.logdir = local_dir + "/../"
+            trial.local_path = local_dir + "/../"
 
         if shutil.rmtree.avoids_symlink_attacks:
             if local_dir_path.exists():
@@ -70,7 +70,9 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         else:
             local_dir = str(local_dir_path)
 
-        tune.run("rel_logdir", config={"a": tune.randint(0, 10)}, local_dir=local_dir)
+        tune.run(
+            "rel_logdir", config={"a": tune.randint(0, 10)}, storage_path=local_dir
+        )
 
         # Copy the folder
         local_dir_moved = local_dir + "_moved"
@@ -129,7 +131,7 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         tune.run(
             "rel_logdir",
             config={"a": tune.randint(0, 10)},
-            local_dir=local_dir,
+            storage_path=local_dir,
             # Create a nested experiment directory.
             name="exp_dir/deep_exp_dir",
         )
@@ -196,7 +198,7 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         tune.run(
             "rel_logdir",
             config={"a": tune.randint(0, 10)},
-            local_dir=local_dir,
+            storage_path=local_dir,
         )
 
         # Copy the folder.
@@ -260,13 +262,13 @@ def test_load_trial_from_json_state(tmpdir):
     and then creating a new trial using the `Trial.from_json_state` alternate
     constructor loads the trial with equivalent state."""
     trial = Trial(
-        "MockTrainable", stub=True, trial_id="abcd1234", local_dir=str(tmpdir)
+        "MockTrainable", stub=True, trial_id="abcd1234", experiment_path=str(tmpdir)
     )
     trial.create_placement_group_factory()
-    trial.init_logdir()
+    trial.init_local_path()
     trial.status = Trial.TERMINATED
 
-    checkpoint_logdir = os.path.join(trial.logdir, "checkpoint_00000")
+    checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
     trial.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
@@ -283,12 +285,12 @@ def test_load_trial_from_json_state(tmpdir):
 
 def test_change_trial_local_dir(tmpdir):
     trial = Trial(
-        "MockTrainable", stub=True, trial_id="abcd1234", local_dir=str(tmpdir)
+        "MockTrainable", stub=True, trial_id="abcd1234", experiment_path=str(tmpdir)
     )
-    trial.init_logdir()
+    trial.init_local_path()
     trial.status = Trial.TERMINATED
 
-    checkpoint_logdir = os.path.join(trial.logdir, "checkpoint_00000")
+    checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
     trial.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
@@ -297,15 +299,27 @@ def test_change_trial_local_dir(tmpdir):
         )
     )
 
-    assert trial.logdir.startswith(str(tmpdir))
+    assert trial.local_path.startswith(str(tmpdir))
     assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(str(tmpdir))
 
     # Specify a new local dir, and the logdir/checkpoint path should be updated
     with tempfile.TemporaryDirectory() as new_local_dir:
-        trial.local_dir = new_local_dir
+        trial.local_experiment_path = new_local_dir
 
-        assert trial.logdir.startswith(new_local_dir)
+        assert trial.local_path.startswith(new_local_dir)
         assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(new_local_dir)
+
+
+def test_trial_logdir_length(tmpdir):
+    """Test that trial local paths with a long logdir are truncated"""
+    trial = Trial(
+        trainable_name="none",
+        experiment_path=str(tmpdir),
+        stub=True,
+        config={"a" * 50: 5.0 / 7, "b" * 50: "long" * 40},
+    )
+    trial.init_local_path()
+    assert len(os.path.basename(trial.local_path)) < 200
 
 
 if __name__ == "__main__":

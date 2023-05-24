@@ -3,54 +3,39 @@
 This page provides suggestions on running the test `test_autoscaling_e2e` locally.
 You might want to do this if your PR is breaking this test in CI and you want to debug why.
 
-## Build a docker image with your code changes.
-First, push your code changes to your git fork.
-The Dockerfile below will work if you've only made Python changes.
-```dockerfile
-# Use the latest Ray master as base.
-FROM rayproject/ray:nightly-py37
-# Invalidate the cache so that fresh code is pulled in the next step.
-ARG BUILD_DATE
-# Retrieve your development code.
-RUN git clone -b <my-dev-branch> https://github.com/<my-git-handle>/ray
-# Install symlinks to your modified Python code.
-RUN python ray/python/ray/setup-dev.py -y
-```
+Running the test must happen in stages:
 
-Build the image and push it to your docker account or registry. Assuming your Dockerfile is named "Dockerfile":
-```shell
-docker build --build-arg BUILD_DATE=$(date +%Y-%m-%d:%H:%M:%S) -t <registry>/<repo>:<tag> - < Dockerfile
-docker push <registry>/<repo>:<tag>
-```
+1. Tear down any running `kind` cluster
+2. Remove the existing ray docker image that will be deployed to the cluster
+3. Build a new docker image containing the local ray repository
+4. Create a new `kind` cluster
+5. Load the docker image into the cluster
+6. Set up kuberay
+7. Run the test
 
-## Setup Access to a Kubernetes cluster.
-Gain access to a Kubernetes cluster.
-The easiest thing to do is to use KinD.
-```shell
-brew install kind
-kind create cluster
-```
+To help with this, there is a `Dockerfile` and a `rune2e.sh` bash script which
+together run these things for you.
 
-## Install master Ray
-The test uses Ray client, so you should either
-- install nightly Ray in your environment
-- install Ray from source in your environment (`pip install -e`)
+## Test requirements
 
-Match your environment's Python version with the Ray image you are using.
+1. Ensure `kind` and `kustomize` are both installed
+2. Run `ray/autoscaler/kuberay/init-config.sh` to clone `ray-project/kuberay`,
+   which contains config files needed to set up kuberay.
+3. Finally, make sure that the `Dockerfile` is using the same python version as
+   what you're using to run the test. By default, this dockerfile is built using
+   the `rayproject/ray:nightly-py310` build.
 
-## Run the test.
+Now you're ready to run the test.
 
-```shell
-# Set up the operator.
-python setup/setup_kuberay.py
-# Run the test.
-RAY_IMAGE=<your-image> python test_autoscaling_e2e.py
-# Tear RayClusters and operator down.
-python setup/teardown_kuberay.py
-```
+## Running the test
+
+Run `./rune2e.sh` to run the test.
 
 The test itself does not tear down resources on failure; you can
-- examine a Ray cluster from a failed test (`kubectl get pod`, `kubectl get raycluster`)
+- examine a Ray cluster from a failed test (`kubectl get pods`, `kubectl get pod`, `kubectl get raycluster`)
+- view all logs (`kubectl logs <head pod name>`) or just logs associated with the autoscaler (`kubectl logs <head pod name> -c autoscaler`)
 - delete the Ray cluster (`kubectl delete raycluster -A`)
-- rerun the test without tearing the operator down (`RAY_IMAGE=<your-image> python test_autoscaling_e2e.py`)
+- rerun the test without tearing the operator down (`RAY_IMAGE=<registry>/<repo>:<tag> python test_autoscaling_e2e.py`)
 - tear down the operator when you're done `python setup/teardown_kuberay.py`
+- copy files from a pod to your filesystem (`kubectl cp <pod>:/path/to/file /target/path/in/local/filesystem`)
+- access a bash prompt inside the pod (`kubectl exec -it <pod> bash`)

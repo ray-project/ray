@@ -225,9 +225,7 @@ def test_sync_timeout(tmpdir, monkeypatch, hanging):
     trainable = SavingTrainable(
         "object",
         remote_checkpoint_dir=f"memory:///test/location_hanging_{hanging}",
-        sync_config=tune.SyncConfig(
-            upload_dir="memory:///test/", syncer=HangingSyncer(sync_timeout=0.5)
-        ),
+        sync_config=tune.SyncConfig(syncer=HangingSyncer(sync_timeout=0.5)),
     )
 
     with patch("ray.air.checkpoint.upload_to_uri", _hanging_upload):

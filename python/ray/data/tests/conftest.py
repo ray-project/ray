@@ -36,6 +36,22 @@ def ray_start_10_cpus_shared(request):
         yield res
 
 
+@pytest.fixture(scope="module")
+def enable_strict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = True
+    yield
+    ctx.strict_mode = False
+
+
+@pytest.fixture(scope="module")
+def enable_nonstrict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = False
+    yield
+    ctx.strict_mode = True
+
+
 @pytest.fixture(scope="function")
 def aws_credentials():
     import os
@@ -293,16 +309,16 @@ def assert_base_partitioned_ds():
 
 
 @pytest.fixture
-def restore_dataset_context(request):
-    """Restore any DatasetContext changes after the test runs"""
-    original = copy.deepcopy(ray.data.context.DatasetContext.get_current())
+def restore_data_context(request):
+    """Restore any DataContext changes after the test runs"""
+    original = copy.deepcopy(ray.data.context.DataContext.get_current())
     yield
-    ray.data.context.DatasetContext._set_current(original)
+    ray.data.context.DataContext._set_current(original)
 
 
 @pytest.fixture(params=[True, False])
 def use_push_based_shuffle(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.use_push_based_shuffle
     ctx.use_push_based_shuffle = request.param
     yield request.param
@@ -311,7 +327,7 @@ def use_push_based_shuffle(request):
 
 @pytest.fixture(params=[True, False])
 def enable_automatic_tensor_extension_cast(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_tensor_extension_casting
     ctx.enable_tensor_extension_casting = request.param
     yield request.param
@@ -320,7 +336,7 @@ def enable_automatic_tensor_extension_cast(request):
 
 @pytest.fixture(params=[True, False])
 def enable_auto_log_stats(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_auto_log_stats
     ctx.enable_auto_log_stats = request.param
     yield request.param
@@ -329,7 +345,7 @@ def enable_auto_log_stats(request):
 
 @pytest.fixture(params=[True])
 def enable_dynamic_block_splitting(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.block_splitting_enabled
     ctx.block_splitting_enabled = request.param
     yield request.param
@@ -338,7 +354,7 @@ def enable_dynamic_block_splitting(request):
 
 @pytest.fixture(params=[1024])
 def target_max_block_size(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.target_max_block_size
     ctx.target_max_block_size = request.param
     yield request.param
@@ -347,7 +363,7 @@ def target_max_block_size(request):
 
 @pytest.fixture
 def enable_optimizer():
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original_backend = ctx.new_execution_backend
     original_optimizer = ctx.optimizer_enabled
     ctx.new_execution_backend = True
@@ -359,7 +375,7 @@ def enable_optimizer():
 
 @pytest.fixture
 def enable_streaming_executor():
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original_backend = ctx.new_execution_backend
     use_streaming_executor = ctx.use_streaming_executor
     ctx.new_execution_backend = True

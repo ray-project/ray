@@ -7,7 +7,7 @@ import random
 import sys
 from dataclasses import asdict
 
-from ray.experimental.state.api import (
+from ray.util.state import (
     summarize_tasks,
     summarize_actors,
     summarize_objects,
@@ -28,7 +28,7 @@ from ray.tests.test_state_api import (
     generate_actor_data,
     generate_object_info,
 )
-from ray.experimental.state.common import (
+from ray.util.state.common import (
     DEFAULT_RPC_TIMEOUT,
     SummaryApiOptions,
     Link,
@@ -39,9 +39,9 @@ from ray.experimental.state.common import (
 from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply
 from ray.core.generated.gcs_pb2 import ActorTableData
 from click.testing import CliRunner
-from ray.experimental.state.state_cli import summary_state_cli_group
+from ray.util.state.state_cli import summary_state_cli_group
 from ray.dashboard.state_aggregator import StateAPIManager
-from ray.experimental.state.state_manager import StateDataSourceClient
+from ray.util.state.state_manager import StateDataSourceClient
 
 
 @pytest.fixture
@@ -441,7 +441,7 @@ def test_object_summary(monkeypatch, ray_start_cluster):
             assert deserialized_task_arg_summary["total_objects"] == 2
             assert deserialized_task_arg_summary["total_num_workers"] == 2
             assert deserialized_task_arg_summary["total_num_nodes"] == 1
-            assert deserialized_task_arg_summary["task_state_counts"]["-"] == 2
+            assert deserialized_task_arg_summary["task_state_counts"]["NIL"] == 2
             assert (
                 deserialized_task_arg_summary["ref_type_counts"]["PINNED_IN_MEMORY"]
                 == 2
@@ -668,7 +668,7 @@ def test_summarize_by_lineage():
 
     random.shuffle(tasks)
 
-    summary = TaskSummaries.to_summary_by_lineage(tasks=tasks)
+    summary = TaskSummaries.to_summary_by_lineage(tasks=tasks, actors=[])
 
     assert summary.total_tasks == 20
     assert summary.total_actor_tasks == 110

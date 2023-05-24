@@ -1,10 +1,7 @@
 import logging
 from ray._private.utils import get_or_create_event_loop
 
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 

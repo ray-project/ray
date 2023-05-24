@@ -21,7 +21,7 @@ from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -241,20 +241,3 @@ class SlateQ(DQN):
             return SlateQTorchPolicy
         else:
             return SlateQTFPolicy
-
-
-# Deprecated: Use ray.rllib.algorithms.slateq.SlateQConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(SlateQConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.slateq.slateq::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.slateq.slateq::SlateQConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

@@ -107,7 +107,7 @@ def client_mode_wrap(func):
 
         # `is_client_mode_enabled_by_default` is used for testing with
         # `RAY_CLIENT_MODE=1`. This flag means all tests run with client mode.
-        if client_mode_should_convert(auto_init=False):
+        if client_mode_should_convert():
             f = ray.remote(num_cpus=0)(func)
             ref = f.remote(*args, **kwargs)
             return ray.get(ref)

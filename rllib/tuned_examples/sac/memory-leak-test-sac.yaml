@@ -4,7 +4,7 @@ memory-leak-test-sac:
     run: SAC
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # Switch off np.random, which is known to have memory leaks.
         env_config:
             config:

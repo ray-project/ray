@@ -19,8 +19,8 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 
-from ray.rllib.models.specs.typing import SpecType
-from ray.rllib.models.specs.checker import (
+from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.checker import (
     check_input_specs,
     check_output_specs,
     convert_to_canonical_format,
@@ -54,7 +54,10 @@ class SingleAgentRLModuleSpec:
 
     Args:
         module_class: The RLModule class to use.
-        observation_space: The observation space of the RLModule.
+        observation_space: The observation space of the RLModule. This may differ
+            from the observation space of the environment. For example, a discrete
+            observation space of an environment, would usually correspond to a
+            one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
@@ -76,6 +79,7 @@ class SingleAgentRLModuleSpec:
         )
 
     def build(self) -> "RLModule":
+        """Builds the RLModule from this spec."""
         if self.module_class is None:
             raise ValueError("RLModule class is not set.")
         if self.observation_space is None:
@@ -149,6 +153,17 @@ class SingleAgentRLModuleSpec:
 @ExperimentalAPI
 @dataclass
 class RLModuleConfig:
+    """A utility config class to make it constructing RLModules easier.
+
+    Args:
+        observation_space: The observation space of the RLModule. This may differ
+            from the observation space of the environment. For example, a discrete
+            observation space of an environment, would usually correspond to a
+            one-hot encoded observation space of the RLModule because of preprocessing.
+        action_space: The action space of the RLModule.
+        model_config_dict: The model config dict to use.
+        catalog_class: The Catalog class to use.
+    """
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
@@ -171,7 +186,7 @@ class RLModuleConfig:
 
         """
         catalog_class_path = (
-            serialize_type(type(self.catalog_class)) if self.catalog_class else ""
+            serialize_type(self.catalog_class) if self.catalog_class else ""
         )
         return {
             "observation_space": gym_space_to_dict(self.observation_space),
@@ -200,59 +215,59 @@ class RLModuleConfig:
 class RLModule(abc.ABC):
     """Base class for RLlib modules.
 
+    Subclasses should call super().__init__(config) in their __init__ method.
     Here is the pseudocode for how the forward methods are called:
 
-    # During Training (acting in env from each rollout worker)
-    ----------------------------------------------------------
+    During Training (acting in env from each rollout worker):
+
     .. code-block:: python
 
-        module: RLModule = ...
+        module = RLModule(...)
         obs, info = env.reset()
-        while not terminated and not truncated:
-            fwd_outputs = module.forward_exploration({"obs": obs})
-            # this can be deterministic or stochastic exploration
-            action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            buffer.add(obs, action, next_obs, reward, terminated, truncated, info)
-            next_obs = obs
 
-    # During Training (learning the policy)
-    ----------------------------------------------------------
+        while not env.terminated:
+            fwd_outputs = module.forward_exploration({"obs": obs})
+            # this can be either deterministic or stochastic distribution
+            action = fwd_outputs["action_dist"].sample()
+            obs, reward, terminated, truncated, info = env.step(action)
+
+
+
+    During Training (learning the policy)
+
     .. code-block:: python
-        module: RLModule = ...
-        fwd_ins = buffer.sample()
+
+        module = RLModule(...)
+        fwd_ins = {"obs": obs, "action": action, "reward": reward, "next_obs": next_obs}
         fwd_outputs = module.forward_train(fwd_ins)
         loss = compute_loss(fwd_outputs, fwd_ins)
         update_params(module, loss)
 
-    # During Inference (acting in env during evaluation)
-    ----------------------------------------------------------
+    During Inference (acting in env during evaluation)
+
     .. code-block:: python
-        module: RLModule = ...
+
+        module = RLModule(...)
         obs, info = env.reset()
-        while not terminated and not truncated:
+
+        while not env.terminated:
             fwd_outputs = module.forward_inference({"obs": obs})
-            # this can be deterministic or stochastic evaluation
             action = fwd_outputs["action_dist"].sample()
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            next_obs = obs
+            obs, reward, terminated, truncated, info = env.step(action)
 
     Args:
-        *args: Arguments for constructing the RLModule.
-        **kwargs: Keyword args for constructing the RLModule.
+        config: The config for the RLModule.
 
     Abstract Methods:
-        forward_train: Forward pass during training.
-        forward_exploration: Forward pass during training for exploration.
-        forward_inference: Forward pass during inference.
+        :py:meth:`~forward_train`: Forward pass during training.
 
-    Error:
-        The args and kwargs that are passed to the constructor are saved for
-        serialization and deserialization purposes. The RLModule checks if they
-        are serializable/deserializable using ray and if they are not, a
-        ValueError is thrown.
+        :py:meth:`~forward_exploration`: Forward pass during training for exploration.
 
-    Note: There is a reason that the specs are not written as abstract properties.
+        :py:meth:`~forward_inference`: Forward pass during inference.
+
+
+    Note:
+        There is a reason that the specs are not written as abstract properties.
         The reason is that torch overrides `__getattr__` and `__setattr__`. This means
         that if we define the specs as properties, then any error in the property will
         be interpreted as a failure to retrieve the attribute and will invoke
@@ -260,8 +275,11 @@ class RLModule(abc.ABC):
         More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
+    framework: str = None
+
     def __init__(self, config: RLModuleConfig):
         self.config = config
+        self.setup()
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -302,6 +320,56 @@ class RLModule(abc.ABC):
         self._output_specs_inference = convert_to_canonical_format(
             self.output_specs_inference()
         )
+
+    def setup(self):
+        """Sets up the components of the module.
+
+        This is called automatically during the __init__ method of this class,
+        therefore, the subclass should call super.__init__() in its constructor. This
+        abstraction can be used to create any component that your RLModule needs.
+        """
+
+    def get_train_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for training.
+
+        This class is used to create action distributions from outputs of the
+        forward_train method. If the case that no action distribution class is needed,
+        this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more detail.
+        """
+        raise NotImplementedError
+
+    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for exploration.
+
+        This class is used to create action distributions from outputs of the
+        forward_exploration method. If the case that no action distribution class is
+        needed, this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more detail.
+        """
+        raise NotImplementedError
+
+    def get_inference_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for inference.
+
+        This class is used to create action distributions from outputs of the forward
+        inference method. If the case that no action distribution class is needed,
+        this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more detail.
+        """
+        raise NotImplementedError
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -355,8 +423,10 @@ class RLModule(abc.ABC):
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during evaluation, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_inference method.
+        """Forward-pass during evaluation, called from the sampler.
+
+        This method should not be overriden to implement a custom forward inference
+        method. Instead, override the _forward_inference method.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -378,8 +448,10 @@ class RLModule(abc.ABC):
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
-        """Forward-pass during exploration, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_exploration method.
+        """Forward-pass during exploration, called from the sampler.
+
+        This method should not be overriden to implement a custom forward exploration
+        method. Instead, override the _forward_exploration method.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -425,19 +497,17 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def save_state_to_file(self, path: Union[str, pathlib.Path]) -> str:
-        """Saves the weights of this RLmodule to path.
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
+        """Saves the weights of this RLModule to path.
 
         Args:
             path: The file path to save the checkpoint to.
 
-        Returns:
-            The path to the saved checkpoint.
         """
         raise NotImplementedError
 
-    def load_state_from_file(self, path: Union[str, pathlib.Path]) -> None:
-        """Loads the weights of an RLmodule from path.
+    def load_state(self, path: Union[str, pathlib.Path]) -> None:
+        """Loads the weights of an RLModule from path.
 
         Args:
             path: The directory to load the checkpoint from.
@@ -550,7 +620,7 @@ class RLModule(abc.ABC):
         path.mkdir(parents=True, exist_ok=True)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         module_state_dir.mkdir(parents=True, exist_ok=True)
-        self.save_state_to_file(module_state_dir / self._module_state_file_name())
+        self.save_state(module_state_dir / self._module_state_file_name())
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
@@ -575,16 +645,8 @@ class RLModule(abc.ABC):
         module = cls._from_metadata_file(metadata_path)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         state_path = module_state_dir / module._module_state_file_name()
-        module.load_state_from_file(state_path)
+        module.load_state(state_path)
         return module
-
-    def make_distributed(self, dist_config: Mapping[str, Any] = None) -> None:
-        """Reserved API, Makes the module distributed."""
-        raise NotImplementedError
-
-    def is_distributed(self) -> bool:
-        """Reserved API, Returns True if the module is distributed."""
-        raise NotImplementedError
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module."""
@@ -593,3 +655,14 @@ class RLModule(abc.ABC):
         marl_module = MultiAgentRLModule()
         marl_module.add_module(DEFAULT_POLICY_ID, self)
         return marl_module
+
+    def unwrapped(self) -> "RLModule":
+        """Returns the underlying module if this module is a wrapper.
+
+        An example of a wrapped is the TorchDDPRLModule class, which wraps
+        a TorchRLModule.
+
+        Returns:
+            The underlying module.
+        """
+        return self

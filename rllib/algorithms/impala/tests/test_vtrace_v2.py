@@ -7,9 +7,11 @@ from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import (
     vtrace_tf2,
     make_time_major,
 )
+from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import vtrace_torch
 from ray.rllib.algorithms.impala.tests.test_vtrace import (
     _ground_truth_vtrace_calculation,
 )
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check
@@ -26,15 +28,20 @@ def flatten_batch_and_time_dim(t):
 
 
 class TestVtraceRLModule(unittest.TestCase):
-    def test_vtrace_tf2(self):
-        """Tests V-trace-v2 against ground truth data calculated.
+    """Tests V-trace-v2 against ground truth data calculated.
 
-        The v2 vtrace is optimized for the least amount of flops. The math
-        in the implementation looks nothing like the math in the paper.
+    There is a ground truth implementation that we used to test our original
+    implementation against. This test checks that the new implementation still
+    matches the ground truth test from our first implementation of V-Trace.
+    """
 
-        There is a ground truth implementation that we used to test our original impl
-        against. This test checks that the new implementation still matches the gt.
+    @classmethod
+    def setUpClass(cls):
+        """Sets up inputs for V-Trace and calculate ground truth.
 
+        We use tf operations here to compile the inputs but convert to numpy arrays to
+        calculate the ground truth (and the other v-trace outputs in the
+        framework-specific tests).
         """
 
         # we can test against any trajectory length or batch size and it won't matter
@@ -77,58 +84,77 @@ class TestVtraceRLModule(unittest.TestCase):
         values = value_fn_space_w_time.sample()
         # this is supposed to be the value function at the last timestep of each
         # trajectory in the batch. In IMPALA its bootstrapped at training time
-        bootstrap_value = tf.convert_to_tensor(
-            value_fn_space.sample() + 1.0, dtype=tf.float32
-        )
+        cls.bootstrap_value = np.array(value_fn_space.sample() + 1.0)
 
         # discount factor used at all of the timesteps
         discounts = [0.9 for _ in range(trajectory_len * batch_size)]
         rewards = value_fn_space_w_time.sample()
-        clip_rho_threshold = 3.7
-        clip_pg_rho_threshold = 2.2
+        cls.clip_rho_threshold = 3.7
+        cls.clip_pg_rho_threshold = 2.2
 
         # convert to time major dimension
-        behavior_log_probs_time_major = make_time_major(
+        cls.behavior_log_probs_time_major = make_time_major(
             flatten_batch_and_time_dim(behavior_log_probs),
             trajectory_len=trajectory_len,
-        )
-        target_log_probs_time_major = make_time_major(
+        ).numpy()
+        cls.target_log_probs_time_major = make_time_major(
             flatten_batch_and_time_dim(target_log_probs), trajectory_len=trajectory_len
-        )
-        discounts_time_major = make_time_major(
+        ).numpy()
+        cls.discounts_time_major = make_time_major(
             flatten_batch_and_time_dim(discounts), trajectory_len=trajectory_len
-        )
-        rewards_time_major = make_time_major(
+        ).numpy()
+        cls.rewards_time_major = make_time_major(
             flatten_batch_and_time_dim(rewards), trajectory_len=trajectory_len
-        )
-        values_time_major = make_time_major(
+        ).numpy()
+        cls.values_time_major = make_time_major(
             flatten_batch_and_time_dim(values), trajectory_len=trajectory_len
+        ).numpy()
+
+        log_rhos = cls.target_log_probs_time_major - cls.behavior_log_probs_time_major
+
+        cls.ground_truth_v = _ground_truth_vtrace_calculation(
+            discounts=cls.discounts_time_major,
+            log_rhos=log_rhos,
+            rewards=cls.rewards_time_major,
+            values=cls.values_time_major,
+            bootstrap_value=cls.bootstrap_value,
+            clip_rho_threshold=cls.clip_rho_threshold,
+            clip_pg_rho_threshold=cls.clip_pg_rho_threshold,
         )
 
+    def test_vtrace_tf2(self):
         output_tf2_vtrace = vtrace_tf2(
-            behaviour_action_log_probs=behavior_log_probs_time_major,
-            target_action_log_probs=target_log_probs_time_major,
-            discounts=discounts_time_major,
-            rewards=rewards_time_major,
-            values=values_time_major,
-            bootstrap_value=bootstrap_value,
-            clip_rho_threshold=clip_rho_threshold,
-            clip_pg_rho_threshold=clip_pg_rho_threshold,
+            behaviour_action_log_probs=tf.convert_to_tensor(
+                self.behavior_log_probs_time_major
+            ),
+            target_action_log_probs=tf.convert_to_tensor(
+                self.target_log_probs_time_major
+            ),
+            discounts=tf.convert_to_tensor(self.discounts_time_major),
+            rewards=tf.convert_to_tensor(self.rewards_time_major),
+            values=tf.convert_to_tensor(self.values_time_major),
+            bootstrap_value=tf.convert_to_tensor(self.bootstrap_value),
+            clip_rho_threshold=self.clip_rho_threshold,
+            clip_pg_rho_threshold=self.clip_pg_rho_threshold,
         )
+        check(output_tf2_vtrace, self.ground_truth_v)
 
-        log_rhos = target_log_probs_time_major - behavior_log_probs_time_major
-
-        ground_truth_v = _ground_truth_vtrace_calculation(
-            discounts=discounts_time_major.numpy(),
-            log_rhos=log_rhos.numpy(),
-            rewards=rewards_time_major.numpy(),
-            values=values_time_major.numpy(),
-            bootstrap_value=bootstrap_value.numpy(),
-            clip_rho_threshold=clip_rho_threshold,
-            clip_pg_rho_threshold=clip_pg_rho_threshold,
+    def test_vtrace_torch(self):
+        output_torch_vtrace = vtrace_torch(
+            behaviour_action_log_probs=convert_to_torch_tensor(
+                self.behavior_log_probs_time_major
+            ),
+            target_action_log_probs=convert_to_torch_tensor(
+                self.target_log_probs_time_major
+            ),
+            discounts=convert_to_torch_tensor(self.discounts_time_major),
+            rewards=convert_to_torch_tensor(self.rewards_time_major),
+            values=convert_to_torch_tensor(self.values_time_major),
+            bootstrap_value=convert_to_torch_tensor(self.bootstrap_value),
+            clip_rho_threshold=self.clip_rho_threshold,
+            clip_pg_rho_threshold=self.clip_pg_rho_threshold,
         )
-
-        check(output_tf2_vtrace, ground_truth_v)
+        check(output_torch_vtrace, self.ground_truth_v)
 
 
 if __name__ == "__main__":

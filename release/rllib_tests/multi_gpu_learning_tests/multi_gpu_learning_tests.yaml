@@ -4,7 +4,7 @@ a2c-cartpole-v1:
     run: A2C
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 500000
     stop:
         time_total_s: 600
@@ -18,7 +18,7 @@ appo-cartpole-v1-no-vtrace:
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 500000
     stop:
         time_total_s: 600
@@ -42,7 +42,7 @@ appo-cartpole-v1-vtrace:
     run: APPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 500000
     stop:
         time_total_s: 600
@@ -65,7 +65,7 @@ ddpg-repeat-after-me-env:
     run: DDPG
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: -50.0
+        sampler_results/episode_reward_mean: -50.0
         timesteps_total: 8000
     stop:
         time_total_s: 600
@@ -85,7 +85,7 @@ dqn-cartpole-v1:
     run: DQN
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 50000
     stop:
         time_total_s: 600
@@ -105,7 +105,7 @@ impala-cartpole-v1:
     run: IMPALA
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 500000
     stop:
         time_total_s: 600
@@ -120,7 +120,7 @@ pg-cartpole-v1:
     run: PG
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 130.0
+        sampler_results/episode_reward_mean: 130.0
         timesteps_total: 500000
     stop:
         time_total_s: 600
@@ -138,7 +138,7 @@ ppo-cartpole-v1:
     run: PPO
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 300000
     stop:
         time_total_s: 600
@@ -161,7 +161,7 @@ sac-repeat-after-me-env:
     run: SAC
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 40.0
+        sampler_results/episode_reward_mean: 40.0
         timesteps_total: 4500
     stop:
         time_total_s: 600
@@ -183,7 +183,7 @@ sac-repeat-after-me-env-continuous:
     run: SAC
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: -50.0
+        sampler_results/episode_reward_mean: -50.0
         timesteps_total: 4500
     stop:
         time_total_s: 600
@@ -208,7 +208,7 @@ simpleq-cartpole-v1:
     run: SimpleQ
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 150.0
+        sampler_results/episode_reward_mean: 150.0
         timesteps_total: 85000
     stop:
         time_total_s: 600
@@ -221,7 +221,7 @@ td3-repeat-after-me-env:
     run: TD3
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: -50.0
+        sampler_results/episode_reward_mean: -50.0
         timesteps_total: 25000
     stop:
         time_total_s: 600

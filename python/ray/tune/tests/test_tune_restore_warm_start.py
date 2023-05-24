@@ -1,5 +1,6 @@
 # coding: utf-8
 import os
+import pytest
 import shutil
 import tempfile
 import unittest
@@ -62,7 +63,7 @@ class AbstractWarmStartTest:
             scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
             reuse_actors=True,
         )
         checkpoint_path = os.path.join(self.tmpdir, "warmStartTest.pkl")
@@ -81,7 +82,7 @@ class AbstractWarmStartTest:
             scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
             reuse_actors=True,
         )
         return results
@@ -486,7 +487,6 @@ class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

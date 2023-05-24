@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
+from ray._private.auto_init_hook import wrap_auto_init
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -25,7 +26,8 @@ _storage_prefix = None
 _filesystem = None
 
 
-@client_mode_hook(auto_init=True)
+@wrap_auto_init
+@client_mode_hook
 def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     """Initialize and get the configured storage filesystem, if possible.
 
@@ -51,7 +53,8 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
 
 
 # TODO(suquark): There is no implementation of 'get_client' in client hook.
-@client_mode_hook(auto_init=True)
+@wrap_auto_init
+@client_mode_hook
 def get_client(prefix: str) -> "KVClient":
     """Returns a KV-client (convenience wrapper around underlying filesystem).
 
@@ -338,6 +341,12 @@ def _init_storage(storage_uri: str, is_head: bool):
             _init_filesystem(create_valid_file=True)
 
 
+def _get_storage_uri() -> Optional[str]:
+    """Get storage API, if configured."""
+    global _storage_uri
+    return _storage_uri
+
+
 def _get_filesystem_internal() -> ("pyarrow.fs.FileSystem", str):
     """Internal version of get_filesystem() that doesn't hit Ray client hooks.
 
@@ -357,7 +366,8 @@ def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = T
     if not _storage_uri:
         raise RuntimeError(
             "No storage URI has been configured for the cluster. "
-            "Specify a storage URI via `ray.init(storage=<uri>)`"
+            "Specify a storage URI via `ray.init(storage=<uri>)` or "
+            "`ray start --head --storage=<uri>`"
         )
 
     import pyarrow.fs

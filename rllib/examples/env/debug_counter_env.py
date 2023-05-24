@@ -50,6 +50,7 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
         self.timesteps = [0] * self.num_agents
         self.terminateds = set()
         self.truncateds = set()
+        self._skip_env_checking = True
 
     def reset(self, *, seed=None, options=None):
         self.timesteps = [0] * self.num_agents

@@ -115,7 +115,7 @@ def test_actor_method_options(shared_ray_instance):
 
 def test_basic_actor_dag_constructor_invalid_options(shared_ray_instance):
     with pytest.raises(
-        ValueError, match=r".*only accepts None, 0 or a positive number.*"
+        ValueError, match=r".*quantity of resource num_cpus cannot be negative.*"
     ):
         a1 = Actor.options(num_cpus=-1).bind(10)
         invalid_dag = a1.get.bind()

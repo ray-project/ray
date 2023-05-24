@@ -28,7 +28,7 @@ from ray.serve._private.constants import (
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
 )
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
@@ -40,7 +40,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.schema import ServeApplicationSchema
 
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
@@ -186,12 +186,12 @@ def test_single_app_shutdown_actors(ray_shutdown):
     def f():
         pass
 
-    serve.run(f.bind())
+    serve.run(f.bind(), name="app")
 
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:f",
+        "ServeReplica:app_f",
     }
 
     def check_alive():
@@ -710,7 +710,7 @@ def test_snapshot_always_written_to_internal_kv(
             return False
 
     serve.start(detached=True)
-    serve.run(hello.bind())
+    serve.run(hello.bind(), name="app")
     check()
 
     webui_url = ray_start_with_dashboard["webui_url"]
@@ -731,11 +731,11 @@ def test_snapshot_always_written_to_internal_kv(
     snapshot = get_deployment_snapshot()
     assert len(snapshot) == 1
     hello_deployment = list(snapshot.values())[0]
-    assert hello_deployment["name"] == "hello"
+    assert hello_deployment["name"] == "app_hello"
     assert hello_deployment["status"] == "RUNNING"
 
 
-def test_serve_start_different_http_checkpoint_options_warning(caplog):
+def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
 

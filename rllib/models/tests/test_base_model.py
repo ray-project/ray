@@ -26,12 +26,12 @@ class NpRecurrentModelImpl(RecurrentModel):
 
     @property
     @override(RecurrentModel)
-    def input_spec(self):
+    def input_specs(self):
         return SpecDict({"in": "h"}, h=3)
 
     @property
     @override(RecurrentModel)
-    def output_spec(self):
+    def output_specs(self):
         return SpecDict({"out": "o"}, o=2)
 
     @property
@@ -84,12 +84,12 @@ class NpModelImpl(Model):
 
     @property
     @override(Model)
-    def input_spec(self):
+    def input_specs(self):
         return SpecDict({"in": "h"}, h=3)
 
     @property
     @override(Model)
-    def output_spec(self):
+    def output_specs(self):
         return SpecDict({"out": "o"}, o=2)
 
     @override(Model)

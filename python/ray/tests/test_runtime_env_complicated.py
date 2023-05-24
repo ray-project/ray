@@ -784,6 +784,11 @@ CLIENT_SERVER_PORT = 24001
     sys.platform == "linux" and platform.processor() == "aarch64",
     reason="This test is currently not supported on Linux ARM64",
 )
+# TODO(https://github.com/ray-project/ray/issues/33415)
+@pytest.mark.skipif(
+    sys.version_info.major >= 3 and sys.version_info.minor >= 11,
+    reason="Some dependencies are not available with python 3.11.",
+)
 @pytest.mark.parametrize(
     "call_ray_start",
     [f"ray start --head --ray-client-server-port {CLIENT_SERVER_PORT} --port 0"],

@@ -1,0 +1,24 @@
+applications:
+  - name: "app1"
+    route_prefix: "/app1"
+    import_path: ray.serve.tests.test_config_files.pizza.serve_dag
+    deployments:
+      - name: Multiplier
+        user_config:
+          factor: 1
+
+      - name: Adder
+        user_config:
+          increment: 1
+
+  - name: "app2"
+    route_prefix: "/app1"
+    import_path: ray.serve.tests.test_config_files.pizza.serve_dag
+    deployments:
+      - name: Multiplier
+        user_config:
+          factor: 2
+
+      - name: Adder
+        user_config:
+          increment: 3

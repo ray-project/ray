@@ -14,13 +14,13 @@ from ray import serve
 def driver():
     return "OK!"
 
-serve.run(driver.bind())
+serve.run(driver.bind(), name="app")
 """.format(
         ray._private.worker._global_node.address
     )
     run_string_as_driver(script)
 
-    handle = serve.get_deployment("driver").get_handle()
+    handle = serve.get_deployment("app_driver").get_handle()
     assert ray.get(handle.remote()) == "OK!"
 
 

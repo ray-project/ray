@@ -2,8 +2,8 @@ humanoid-v2-es:
     env: Humanoid-v2
     run: ES
     stop:
-        episode_reward_mean: 6000
+        sampler_results/episode_reward_mean: 6000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         num_workers: 100

@@ -26,6 +26,7 @@ from ray.air._internal.remote_storage import (
     read_file_from_uri,
     upload_to_uri,
 )
+from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.constants import PREPROCESSOR_KEY, CHECKPOINT_ID_ATTR
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -41,6 +42,8 @@ _FS_CHECKPOINT_KEY = "fs_checkpoint"
 _BYTES_DATA_KEY = "bytes_data"
 _METADATA_KEY = "_metadata"
 _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
+# The namespace is a constant UUID to prevent conflicts, as defined in RFC-4122
+_CHECKPOINT_UUID_URI_NAMESPACE = uuid.UUID("627fe696-f135-436f-bc4b-bda0306e0181")
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +216,17 @@ class Checkpoint:
         self._override_preprocessor: Optional["Preprocessor"] = None
         self._override_preprocessor_set = False
 
-        self._uuid = uuid.uuid4()
+        # When using a cloud URI, we make sure that the uuid is constant.
+        # This ensures we do not download the data multiple times on one node.
+        # Note that this is not a caching mechanism - instead, this
+        # only ensures that if there are several processes downloading
+        # from the same URI, only one process does the actual work
+        # while the rest waits (FileLock). This also means data will not be duplicated.
+        self._uuid = (
+            uuid.uuid4()
+            if not self._uri
+            else uuid.uuid5(_CHECKPOINT_UUID_URI_NAMESPACE, self._uri)
+        )
 
     def __repr__(self):
         parameter, argument = self.get_internal_representation()
@@ -245,6 +258,37 @@ class Checkpoint:
             )
         for attr, value in metadata.checkpoint_state.items():
             setattr(self, attr, value)
+
+    @property
+    def path(self) -> Optional[str]:
+        """Return path to checkpoint, if available.
+
+        This will return a URI to cloud storage if this checkpoint is
+        persisted on cloud, or a local path if this checkpoint
+        is persisted on local disk and available on the current node.
+
+        In all other cases, this will return None.
+
+        Example:
+
+            >>> from ray.air import Checkpoint
+            >>> checkpoint = Checkpoint.from_uri("s3://some-bucket/some-location")
+            >>> assert checkpoint.path == "s3://some-bucket/some-location"
+            >>> checkpoint = Checkpoint.from_dict({"data": 1})
+            >>> assert checkpoint.path == None
+
+        Returns:
+            Checkpoint path if this checkpoint is reachable from the current node (e.g.
+            cloud storage or locally available directory).
+
+        """
+        if self._uri:
+            return self._uri
+
+        if self._local_path:
+            return self._local_path
+
+        return None
 
     @property
     def uri(self) -> Optional[str]:
@@ -304,8 +348,8 @@ class Checkpoint:
         """
         # Todo: Add support for stream in the future (to_bytes(file_like))
         data_dict = self.to_dict()
-        if "bytes_data" in data_dict:
-            return data_dict["bytes_data"]
+        if _BYTES_DATA_KEY in data_dict:
+            return data_dict[_BYTES_DATA_KEY]
         return pickle.dumps(data_dict)
 
     @classmethod
@@ -516,21 +560,22 @@ class Checkpoint:
             if local_path:
                 local_path_pathlib = Path(local_path).resolve()
                 if local_path_pathlib != path_pathlib:
-                    if path_pathlib.exists():
-                        shutil.rmtree(str(path_pathlib.absolute()))
                     # If this exists on the local path, just copy over
                     if move_instead_of_copy:
                         os.makedirs(str(path_pathlib.absolute()), exist_ok=True)
                         self._local_path = str(path_pathlib.absolute())
                         for inner in local_path_pathlib.iterdir():
+                            dest = path_pathlib / inner.name
+                            if dest.exists():
+                                # Ignore files that already exist.
+                                # For example, checkpoints from every rank may all have
+                                # a same .is_checkpoint file.
+                                continue
                             shutil.move(
                                 str(inner.absolute()), str(path_pathlib.absolute())
                             )
                     else:
-                        shutil.copytree(
-                            str(local_path_pathlib.absolute()),
-                            str(path_pathlib.absolute()),
-                        )
+                        _copy_dir_ignore_conflicts(local_path_pathlib, path_pathlib)
             elif external_path:
                 # If this exists on external storage (e.g. cloud), download
                 download_from_uri(uri=external_path, local_path=path, filelock=False)

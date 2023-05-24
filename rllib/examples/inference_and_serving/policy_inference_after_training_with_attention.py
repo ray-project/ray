@@ -23,7 +23,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -95,10 +95,13 @@ if __name__ == "__main__":
                 "attention_dim": 32,
                 "attention_memory_inference": 10,
                 "attention_memory_training": 10,
-            }
+            },
+            # TODO (Kourosh): Enable when Attentions are supported.
+            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {

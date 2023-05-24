@@ -6,7 +6,7 @@ import { getClusterMetadata } from "../../../service/global";
 export const useClusterDetail = () => {
   const [msg, setMsg] = useState("Loading the job detail");
   const [refreshing, setRefresh] = useState(true);
-  const { data: clusterDetail } = useSWR(
+  const { data: clusterDetail, isLoading } = useSWR(
     "useClusterDetail",
     async () => {
       try {
@@ -23,5 +23,6 @@ export const useClusterDetail = () => {
   return {
     clusterDetail,
     msg,
+    isLoading,
   };
 };

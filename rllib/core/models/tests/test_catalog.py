@@ -1,36 +1,47 @@
+from collections import namedtuple
+import functools
 import itertools
 import unittest
-import functools
-from collections import namedtuple
 
 import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 import numpy as np
 import tree
-from gymnasium.spaces import Box, Discrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.models.base import ModelConfig, Encoder
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.models.base import (
+    ModelConfig,
+    Encoder,
+    STATE_IN,
+    ENCODER_OUT,
+    STATE_OUT,
+)
+from ray.rllib.core.models.catalog import (
+    Catalog,
+    _multi_action_dist_partial_helper,
+    _multi_categorical_dist_partial_helper,
+)
 from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
-from ray.rllib.core.models.catalog import Catalog
+from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
-    TfDeterministic,
     TfDiagGaussian,
+    TfMultiCategorical,
+    TfMultiDistribution,
 )
 from ray.rllib.models.torch.torch_distributions import (
     TorchCategorical,
-    TorchDeterministic,
     TorchDiagGaussian,
+    TorchMultiCategorical,
+    TorchMultiDistribution,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -50,7 +61,7 @@ class TestCatalog(unittest.TestCase):
             input_space: The input space to use.
         """
         convert_method = (
-            tf.convert_to_tensor if framework == "tf" else convert_to_torch_tensor
+            tf.convert_to_tensor if framework == "tf2" else convert_to_torch_tensor
         )
         # In order to stay backward compatible, we default to fcnet_hiddens[-1].
         # See MODEL_DEFAULTS for more details
@@ -72,10 +83,13 @@ class TestCatalog(unittest.TestCase):
         outputs = model(inputs)
 
         self.assertEqual(outputs[ENCODER_OUT].shape, (32, latent_dim))
-        tree.map_structure_with_path(
-            lambda p, v: self.assertEqual(v.shape, states[p].shape),
-            outputs[STATE_OUT],
-        )
+        if STATE_OUT in outputs:
+            tree.map_structure_with_path(
+                lambda p, v: (
+                    True if v is None else self.assertEqual(v.shape, states[p].shape)
+                ),
+                outputs[STATE_OUT],
+            )
 
     def test_get_encoder_config(self):
         """Tests if we can create a bunch of encoders from the base catalog class."""
@@ -153,7 +167,7 @@ class TestCatalog(unittest.TestCase):
             # }
         ]
 
-        frameworks = ["tf", "torch"]
+        frameworks = ["tf2", "torch"]
 
         # First check if encoders can be created for non-composite spaces
         print("Testing encoders for non-composite input spaces...")
@@ -165,9 +179,6 @@ class TestCatalog(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
             input_space, model_config_type = input_space_and_config_type
-            if model_config_type is not MLPEncoderConfig and framework == "tf":
-                # TODO (Artur): Enable this once we have TF implementations
-                continue
             print(
                 f"Testing framework: \n{framework}\n, input space: \n{input_space}\n "
                 f"and config: \n{model_config_dict}\n"
@@ -190,8 +201,8 @@ class TestCatalog(unittest.TestCase):
             # Do a forward pass and check if the output has the correct shape
             self._check_model_outputs(model, framework, model_config_dict, input_space)
 
-        # TODO(Artur): Add support for composite spaces and test here
-        # Today, Catalog does not handle composite spaces, so we can't test them
+        # TODO(Artur): Add support for composite spaces and test here.
+        #  Today, Catalog does not handle composite spaces, so we can't test them.
 
     def test_get_dist_cls_from_action_space(self):
         """Tests if we can create a bunch of action distributions.
@@ -204,33 +215,101 @@ class TestCatalog(unittest.TestCase):
 
         """
         TestConfig = namedtuple(
-            "TestConfig", ("action_space", "deterministic", "expected_dist_cls_dict")
+            "TestConfig", ("action_space", "expected_dist_cls_dict")
         )
         test_configs = [
+            # Box
             TestConfig(
                 Box(-np.inf, np.inf, (7,), dtype=np.float32),
-                False,
-                {"torch": TorchDiagGaussian, "tf": TfDiagGaussian},
+                {"torch": TorchDiagGaussian, "tf2": TfDiagGaussian},
             ),
+            # Discrete
+            TestConfig(Discrete(5), {"torch": TorchCategorical, "tf2": TfCategorical}),
+            # Nested Dict
             TestConfig(
-                Box(-np.inf, np.inf, (7,), dtype=np.float32),
-                True,
-                {"torch": TorchDeterministic, "tf": TfDeterministic},
+                Dict(
+                    {
+                        "a": Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                        "b": Dict({"c": Discrete(5)}),
+                    }
+                ),
+                {
+                    "torch": TorchMultiDistribution,
+                    "tf2": TfMultiDistribution,
+                },
             ),
+            # Nested Tuple
             TestConfig(
-                Discrete(5), None, {"torch": TorchCategorical, "tf": TfCategorical}
+                Tuple(
+                    (
+                        Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                        Tuple((Discrete(5), Discrete(5))),
+                    )
+                ),
+                {
+                    "torch": TorchMultiDistribution,
+                    "tf2": TfMultiDistribution,
+                },
+            ),
+            # Tuple nested inside Dict
+            TestConfig(
+                Dict(
+                    {
+                        "a": Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                        "b": Dict(
+                            {
+                                "c": Tuple(
+                                    (
+                                        Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                                        Tuple((Discrete(5), Discrete(5))),
+                                    )
+                                )
+                            }
+                        ),
+                    }
+                ),
+                {
+                    "torch": TorchMultiDistribution,
+                    "tf2": TfMultiDistribution,
+                },
+            ),
+            # Dict nested inside Tuple
+            TestConfig(
+                Tuple(
+                    (
+                        Box(-np.inf, np.inf, (7,), dtype=np.float32),
+                        Tuple(
+                            (
+                                Discrete(5),
+                                Dict(
+                                    {
+                                        "a": Box(
+                                            -np.inf, np.inf, (7,), dtype=np.float32
+                                        ),
+                                        "b": Dict({"c": Discrete(5)}),
+                                    }
+                                ),
+                            )
+                        ),
+                    )
+                ),
+                {
+                    "torch": TorchMultiDistribution,
+                    "tf2": TfMultiDistribution,
+                },
+            ),
+            # MultiDiscrete
+            TestConfig(
+                MultiDiscrete([5, 5, 5]),
+                {"torch": TorchMultiCategorical, "tf2": TfMultiCategorical},
             ),
         ]
 
         for (
             action_space,
-            deterministic,
             expected_cls_dict,
         ) in test_configs:
-            print(
-                f"Testing action space: {action_space} and deterministic:"
-                f" {deterministic}"
-            )
+            print(f"Testing action space: {action_space}:")
             catalog = Catalog(
                 observation_space=Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
                 action_space=action_space,
@@ -240,28 +319,57 @@ class TestCatalog(unittest.TestCase):
             for framework in framework_iterator(frameworks=["tf2", "torch"]):
 
                 if framework == "tf2":
-                    framework = "tf"
+                    framework = "tf2"
 
                 dist_cls = catalog.get_dist_cls_from_action_space(
                     action_space=action_space,
-                    deterministic=deterministic,
                     framework=framework,
                 )
 
                 # Check if we can query the required input dimensions
-                input_shape = expected_cls_dict[framework].required_model_output_shape(
-                    action_space, model_config=MODEL_DEFAULTS.copy()
-                )
-                logits = np.ones((32, *input_shape), dtype=np.float32)
+                expected_cls = expected_cls_dict[framework]
+                if (
+                    expected_cls is TorchMultiDistribution
+                    or expected_cls is TfMultiDistribution
+                ):
+                    # For these special cases, we need to create partials of the
+                    # expected classes so that we can calculate the required inputs
+                    expected_cls = _multi_action_dist_partial_helper(
+                        catalog_cls=catalog,
+                        action_space=action_space,
+                        framework=framework,
+                    )
+                elif (
+                    expected_cls is TorchMultiCategorical
+                    or expected_cls is TfMultiCategorical
+                ):
+                    # For these special cases, we need to create partials of the
+                    # expected classes so that we can calculate the required inputs
+                    expected_cls = _multi_categorical_dist_partial_helper(
+                        action_space=action_space, framework=framework
+                    )
+
+                # Now that we have sorted out special cases, we can finally get the
+                # input_dim
+                input_dim = expected_cls.required_input_dim(action_space)
+                logits = np.ones((32, input_dim), dtype=np.float32)
                 if framework == "torch":
                     logits = torch.from_numpy(logits)
                 else:
                     logits = tf.convert_to_tensor(logits)
                 # We don't need a model if we input tensors
                 dist = dist_cls.from_logits(logits=logits)
-                self.assertTrue(isinstance(dist, expected_cls_dict[framework]))
+                self.assertTrue(
+                    isinstance(dist, expected_cls_dict[framework]),
+                    msg=f"Expected {expected_cls_dict[framework]}, "
+                    f"got {type(dist)}",
+                )
                 actions = dist.sample()
-                self.assertTrue(action_space.contains(actions.numpy()[0]))
+
+                # For any array of actions in a possibly nested space, convert to
+                # numpy and pick the first one to check if it is in the action space.
+                action = tree.map_structure(lambda a: convert_to_numpy(a)[0], actions)
+                self.assertTrue(action_space.contains(action))
 
     def test_customize_catalog_from_algorithm_config(self):
         """Test if we can pass catalog to algorithm config and it ends up inside
@@ -277,6 +385,7 @@ class TestCatalog(unittest.TestCase):
                 _enable_rl_module_api=True,
                 rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog),
             )
+            .training(_enable_learner_api=True)
             .framework("torch")
         )
 
@@ -317,11 +426,11 @@ class TestCatalog(unittest.TestCase):
 
         class MyCostumTorchEncoderConfig(ModelConfig):
             def build(self, framework):
-                return MyCostumTorchEncoder()
+                return MyCostumTorchEncoder(self)
 
         class MyCostumTorchEncoder(TorchModel, Encoder):
-            def __init__(self):
-                super().__init__({})
+            def __init__(self, config):
+                super().__init__(config)
                 self.net = torch.nn.Linear(env.observation_space.shape[0], 10)
 
             def _forward(self, input_dict, **kwargs):
@@ -332,7 +441,7 @@ class TestCatalog(unittest.TestCase):
 
         class MyCustomCatalog(PPOCatalog):
             def __post_init__(self):
-                self.action_dist_class_fn = functools.partial(
+                self._action_dist_class_fn = functools.partial(
                     self.get_dist_cls_from_action_space, action_space=self.action_space
                 )
                 self.latent_dims = (10,)

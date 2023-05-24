@@ -599,6 +599,19 @@ bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_i
          it->second.cur_pending_calls >= it->second.max_pending_calls;
 }
 
+size_t CoreWorkerDirectActorTaskSubmitter::NumPendingTasks(
+    const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = client_queues_.find(actor_id);
+  RAY_CHECK(it != client_queues_.end());
+  return it->second.cur_pending_calls;
+}
+
+bool CoreWorkerDirectActorTaskSubmitter::CheckActorExists(const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+  return client_queues_.find(actor_id) != client_queues_.end();
+}
+
 std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
     const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);

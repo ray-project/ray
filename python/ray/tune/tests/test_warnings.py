@@ -2,7 +2,7 @@ import pytest
 
 import ray
 from ray import tune
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.tune.error import TuneError
 
@@ -102,7 +102,7 @@ def test_dataset_ok():
     tune.run(f, verbose=0)
 
     def g(*a):
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         ctx.scheduling_strategy = PlacementGroupSchedulingStrategy(
             ray.util.get_current_placement_group()
         )

@@ -1,8 +1,7 @@
 import {
   Box,
-  createStyles,
   InputAdornment,
-  makeStyles,
+  Link,
   Table,
   TableBody,
   TableCell,
@@ -15,11 +14,11 @@ import {
 } from "@material-ui/core";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
-import React, { useContext, useState } from "react";
-import { Link } from "react-router-dom";
-import { GlobalContext } from "../App";
-import DialogWithTitle from "../common/DialogWithTitle";
+import React, { useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
+import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
+import { ActorLink, NodeLink } from "../common/links";
 import rowStyles from "../common/RowStyles";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
@@ -32,7 +31,6 @@ export type TaskTableProps = {
   jobId?: string;
   filterToTaskId?: string;
   onFilterChange?: () => void;
-  newIA?: boolean;
   actorId?: string;
 };
 
@@ -41,7 +39,6 @@ const TaskTable = ({
   jobId,
   filterToTaskId,
   onFilterChange,
-  newIA = false,
   actorId,
 }: TaskTableProps) => {
   const [pageNo, setPageNo] = useState(1);
@@ -61,7 +58,7 @@ const TaskTable = ({
   const columns = [
     { label: "ID" },
     { label: "Name" },
-    { label: "Job Id" },
+    { label: "Job ID" },
     { label: "State" },
     {
       label: "Actions",
@@ -78,13 +75,13 @@ const TaskTable = ({
       ),
     },
     { label: "Duration" },
-    { label: "Function or Class Name" },
-    { label: "Node Id" },
-    { label: "Actor_id" },
-    { label: "Worker_id" },
+    { label: "Function or class name" },
+    { label: "Node ID" },
+    { label: "Actor ID" },
+    { label: "Worker ID" },
     { label: "Type" },
-    { label: "Placement Group Id" },
-    { label: "Required Resources" },
+    { label: "Placement group ID" },
+    { label: "Required resources" },
   ];
 
   return (
@@ -232,7 +229,9 @@ const TaskTable = ({
                       arrow
                       interactive
                     >
-                      <div>{task_id}</div>
+                      <Link component={RouterLink} to={`tasks/${task_id}`}>
+                        {task_id}
+                      </Link>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
@@ -241,7 +240,7 @@ const TaskTable = ({
                     <StatusChip type="task" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    <TaskTableActions task={task} newIA={newIA} />
+                    <TaskTableActions task={task} />
                   </TableCell>
                   <TableCell align="center">
                     {start_time_ms && start_time_ms > 0 ? (
@@ -261,7 +260,7 @@ const TaskTable = ({
                       arrow
                       interactive
                     >
-                      <div>{node_id ? node_id : "-"}</div>
+                      {node_id ? <NodeLink nodeId={node_id} /> : <div>-</div>}
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
@@ -271,7 +270,11 @@ const TaskTable = ({
                       arrow
                       interactive
                     >
-                      <div>{actor_id ? actor_id : "-"}</div>
+                      {actor_id ? (
+                        <ActorLink actorId={actor_id} />
+                      ) : (
+                        <div>-</div>
+                      )}
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
@@ -296,24 +299,14 @@ const TaskTable = ({
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.OverflowCol}
-                      title={Object.entries(required_resources || {}).map(
-                        ([key, val]) => (
-                          <div style={{ margin: 4 }}>
-                            {key}: {val}
-                          </div>
-                        ),
-                      )}
-                      arrow
-                      interactive
-                    >
-                      <div>
-                        {Object.entries(required_resources || {})
-                          .map(([key, val]) => `${key}: ${val}`)
-                          .join(", ")}
-                      </div>
-                    </Tooltip>
+                    {Object.entries(required_resources || {}).length > 0 ? (
+                      <CodeDialogButton
+                        title="Required resources"
+                        code={JSON.stringify(required_resources, undefined, 2)}
+                      />
+                    ) : (
+                      "{}"
+                    )}
                   </TableCell>
                 </TableRow>
               );
@@ -327,81 +320,29 @@ const TaskTable = ({
 
 export default TaskTable;
 
-const useTaskTableActionsStyles = makeStyles(() =>
-  createStyles({
-    errorDetails: {
-      whiteSpace: "pre",
-    },
-    link: {
-      border: "none",
-      cursor: "pointer",
-      color: "#036DCF",
-      textDecoration: "underline",
-      background: "none",
-    },
-  }),
-);
-
 type TaskTableActionsProps = {
-  newIA?: boolean;
   task: Task;
 };
 
-const TaskTableActions = ({ task, newIA = false }: TaskTableActionsProps) => {
-  const classes = useTaskTableActionsStyles();
-  const { ipLogMap } = useContext(GlobalContext);
-  const [showErrorDetailsDialog, setShowErrorDetailsDialog] = useState(false);
-
-  const handleErrorClick = () => {
-    setShowErrorDetailsDialog(true);
-  };
-
-  const executeEvent = task.profiling_data?.events?.find(
-    ({ event_name }) => event_name === "task:execute",
-  );
+const TaskTableActions = ({ task }: TaskTableActionsProps) => {
   const errorDetails =
-    executeEvent?.extra_data?.traceback && executeEvent?.extra_data?.type
-      ? `${executeEvent?.extra_data?.type}\n${executeEvent?.extra_data?.traceback}`
+    task.error_type !== null && task.error_message !== null
+      ? `Error Type: ${task.error_type}\n\n${task.error_message}`
       : undefined;
 
   return (
     <React.Fragment>
-      {task?.profiling_data?.node_ip_address &&
-        ipLogMap[task?.profiling_data?.node_ip_address] &&
-        task.worker_id &&
-        task.job_id && (
-          <React.Fragment>
-            <Link
-              target="_blank"
-              to={
-                newIA
-                  ? `/new/logs/${encodeURIComponent(
-                      ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}`
-                  : `/log/${encodeURIComponent(
-                      ipLogMap[task.profiling_data.node_ip_address],
-                    )}?fileName=worker-${task.worker_id}`
-              }
-            >
-              Log
-            </Link>
-            <br />
-          </React.Fragment>
-        )}
+      <Link component={RouterLink} to={`tasks/${task.task_id}`}>
+        Log
+      </Link>
+      <br />
+
       {errorDetails && (
-        <button className={classes.link} onClick={handleErrorClick}>
-          Error
-        </button>
-      )}
-      {showErrorDetailsDialog && errorDetails && (
-        <DialogWithTitle
+        <CodeDialogButton
           title="Error details"
-          handleClose={() => {
-            setShowErrorDetailsDialog(false);
-          }}
-        >
-          <div className={classes.errorDetails}>{errorDetails}</div>
-        </DialogWithTitle>
+          code={errorDetails}
+          buttonText="Error"
+        />
       )}
     </React.Fragment>
   );

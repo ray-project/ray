@@ -43,7 +43,7 @@ def test_check_pyarrow_version_supported():
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_memory_tracing(enabled):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.trace_allocations = enabled
     ref1 = ray.put(np.zeros(1024 * 1024))
     ref2 = ray.put(np.zeros(1024 * 1024))

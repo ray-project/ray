@@ -2,6 +2,7 @@ import itertools
 import logging
 import pathlib
 import posixpath
+import sys
 import urllib.parse
 from typing import (
     TYPE_CHECKING,
@@ -19,7 +20,7 @@ from typing import (
 
 import numpy as np
 
-from ray.data._internal.arrow_block import ArrowRow
+from ray.air._internal.remote_storage import _is_local_windows_path
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
@@ -27,7 +28,7 @@ from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import _check_pyarrow_version, _resolve_custom_scheme
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
@@ -188,7 +189,7 @@ class FileExtensionFilter(PathPartitionFilter):
 
 
 @DeveloperAPI
-class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
+class FileBasedDatasource(Datasource):
     """File-based datasource, for reading and writing files.
 
     This class should not be used directly, and should instead be subclassed
@@ -221,7 +222,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """
         buffer_size = open_args.pop("buffer_size", None)
         if buffer_size is None:
-            ctx = DatasetContext.get_current()
+            ctx = DataContext.get_current()
             buffer_size = ctx.streaming_read_buffer_size
         return filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
 
@@ -372,6 +373,7 @@ class _FileBasedDatasourceReader(Reader):
         partitioning: Partitioning = None,
         # TODO(ekl) deprecate this once read fusion is available.
         _block_udf: Optional[Callable[[Block], Block]] = None,
+        ignore_missing_paths: bool = False,
         **reader_args,
     ):
         _check_pyarrow_version()
@@ -382,12 +384,27 @@ class _FileBasedDatasourceReader(Reader):
         self._partition_filter = partition_filter
         self._partitioning = partitioning
         self._block_udf = _block_udf
+        self._ignore_missing_paths = ignore_missing_paths
         self._reader_args = reader_args
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         self._paths, self._file_sizes = map(
             list,
-            zip(*meta_provider.expand_paths(paths, self._filesystem, partitioning)),
+            zip(
+                *meta_provider.expand_paths(
+                    paths,
+                    self._filesystem,
+                    partitioning,
+                    ignore_missing_paths=ignore_missing_paths,
+                )
+            ),
         )
+
+        if ignore_missing_paths and len(self._paths) == 0:
+            raise ValueError(
+                "None of the provided paths exist. "
+                "The 'ignore_missing_paths' field is set to True."
+            )
+
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
             path_to_size = dict(zip(self._paths, self._file_sizes))
@@ -409,6 +426,7 @@ class _FileBasedDatasourceReader(Reader):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
 
+        ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
         reader_args = self._reader_args
         partitioning = self._partitioning
@@ -429,9 +447,9 @@ class _FileBasedDatasourceReader(Reader):
             read_paths: List[str],
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
+            DataContext._set_current(ctx)
             logger.debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            ctx = DatasetContext.get_current()
             output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
             )
@@ -699,6 +717,11 @@ def _unwrap_protocol(path):
     """
     Slice off any protocol prefixes on path.
     """
+    if sys.platform == "win32" and _is_local_windows_path(path):
+        # Represent as posix path such that downstream functions properly handle it.
+        # This is executed when 'file://' is NOT included in the path.
+        return pathlib.Path(path).as_posix()
+
     parsed = urllib.parse.urlparse(path, allow_fragments=False)  # support '#' in path
     query = "?" + parsed.query if parsed.query else ""  # support '?' in path
     netloc = parsed.netloc
@@ -707,7 +730,20 @@ def _unwrap_protocol(path):
         # credentialed path, and we need to strip off the credentials.
         netloc = parsed.netloc.split("@")[-1]
 
-    return netloc + parsed.path + query
+    parsed_path = parsed.path
+    # urlparse prepends the path with a '/'. This does not work on Windows
+    # so if this is the case strip the leading slash.
+    if (
+        sys.platform == "win32"
+        and not netloc
+        and len(parsed_path) >= 3
+        and parsed_path[0] == "/"  # The problematic leading slash
+        and parsed_path[1].isalpha()  # Ensure it is a drive letter.
+        and parsed_path[2:4] in (":", ":/")
+    ):
+        parsed_path = parsed_path[1:]
+
+    return netloc + parsed_path + query
 
 
 def _wrap_s3_serialization_workaround(filesystem: "pyarrow.fs.FileSystem"):
