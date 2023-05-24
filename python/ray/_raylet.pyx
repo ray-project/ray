@@ -1287,13 +1287,9 @@ cdef void execute_task(
             # Record the task id via magic token in the log file.
             # This will be used to locate the beginning of logs from a task.
             attempt_number = core_worker.get_current_task_attempt_number()
-            task_attempt_magic_token= \
-                ray_constants.LOG_PREFIX_TASK_ATTEMPT_TEMPLATE \
-                .format(prefix=ray_constants.LOG_PREFIX_TASK_ATTEMPT_START,
-                        task_name=name.decode(),
-                        task_id=task_id.hex(),
-                        attempt_number=attempt_number)
-
+            task_attempt_magic_token = "{}{}-{}\n".format(
+                ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
+                attempt_number)
             # Print on both .out and .err
             print(task_attempt_magic_token, end="")
             print(task_attempt_magic_token, file=sys.stderr, end="")
@@ -1379,13 +1375,9 @@ cdef void execute_task(
                 finally:
                     # Record the end of task via magic token in the log file.
                     # This will be used to locate the end of logs from a task.
-                    task_attempt_magic_token= \
-                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_TEMPLATE \
-                        .format(prefix=ray_constants.LOG_PREFIX_TASK_ATTEMPT_END,
-                                task_name=name.decode(),
-                                task_id=task_id.hex(),
-                                attempt_number=attempt_number)
-
+                    task_attempt_magic_token = "{}{}-{}\n".format(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
+                        attempt_number)
                     # Print on both .out and .err
                     print(task_attempt_magic_token, end="")
                     print(task_attempt_magic_token, file=sys.stderr, end="")
