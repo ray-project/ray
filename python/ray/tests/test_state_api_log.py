@@ -1301,6 +1301,9 @@ def test_log_get(ray_start_cluster):
     wait_for_condition(verify)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows has logging race from tasks."
+)
 def test_log_task(shutdown_only):
     ray.init()
 
