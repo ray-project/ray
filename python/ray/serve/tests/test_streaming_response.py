@@ -69,13 +69,19 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
     reason="Streaming feature flag is disabled.",
 )
 @pytest.mark.parametrize("use_fastapi", [False, True])
-def test_response_actually_streamed(serve_instance, use_fastapi: bool):
+@pytest.mark.parametrize("use_async", [False, True])
+def test_response_actually_streamed(serve_instance, use_fastapi: bool, use_async: bool):
     """Checks that responses are streamed as they are yielded."""
     signal_actor = SignalActor.remote()
 
-    async def wait_on_signal_generator():
+    async def wait_on_signal_async():
         yield "before signal"
         await signal_actor.wait.remote()
+        yield "after signal"
+
+    async def wait_on_signal_sync():
+        yield "before signal"
+        ray.get(signal_actor.wait.remote())
         yield "after signal"
 
     if use_fastapi:
@@ -86,18 +92,16 @@ def test_response_actually_streamed(serve_instance, use_fastapi: bool):
         class SimpleGenerator:
             @app.get("/")
             def stream(self, request: Request) -> StreamingResponse:
-                return StreamingResponse(
-                    wait_on_signal_generator(), media_type="text/plain"
-                )
+                gen = wait_on_signal_async() if use_async else wait_on_signal_sync()
+                return StreamingResponse(gen, media_type="text/plain")
 
     else:
 
         @serve.deployment
         class SimpleGenerator:
             def __call__(self, request: Request) -> StreamingResponse:
-                return StreamingResponse(
-                    wait_on_signal_generator(), media_type="text/plain"
-                )
+                gen = wait_on_signal_async() if use_async else wait_on_signal_sync()
+                return StreamingResponse(gen, media_type="text/plain")
 
     serve.run(SimpleGenerator.bind())
 
