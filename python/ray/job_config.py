@@ -1,7 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import ray._private.gcs_utils as gcs_utils
+import ray.core.generated.common_pb2 as common_pb2
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -136,10 +136,10 @@ class JobConfig:
             default_actor_lifetime: The default actor lifetime to set.
         """
         if default_actor_lifetime == "detached":
-            self._default_actor_lifetime = gcs_utils.JobConfig.ActorLifetime.DETACHED
+            self._default_actor_lifetime = common_pb2.JobConfig.ActorLifetime.DETACHED
         elif default_actor_lifetime == "non_detached":
             self._default_actor_lifetime = (
-                gcs_utils.JobConfig.ActorLifetime.NON_DETACHED
+                common_pb2.JobConfig.ActorLifetime.NON_DETACHED
             )
         else:
             raise ValueError(
@@ -164,7 +164,7 @@ class JobConfig:
         from ray._private.utils import get_runtime_env_info
 
         if self._cached_pb is None:
-            pb = gcs_utils.JobConfig()
+            pb = common_pb2.JobConfig()
             if self.ray_namespace is None:
                 pb.ray_namespace = str(uuid.uuid4())
             else:
