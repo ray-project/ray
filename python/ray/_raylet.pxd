@@ -39,7 +39,8 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.unique_ids cimport (
     CObjectID,
-    CActorID
+    CActorID,
+    CTaskID,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -154,6 +155,13 @@ cdef class CoreWorker:
     cdef python_scheduling_strategy_to_c(
         self, python_scheduling_strategy,
         CSchedulingStrategy *c_scheduling_strategy)
+    cdef CObjectID allocate_dynamic_return_id_for_generator(
+            self,
+            const CAddress &owner_address,
+            const CTaskID &task_id,
+            return_size,
+            generator_index,
+            is_async_actor)
 
 cdef class FunctionDescriptor:
     cdef:

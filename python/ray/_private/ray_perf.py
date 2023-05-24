@@ -286,7 +286,6 @@ def main(results=None):
         ray.get([async_actor_work.remote(a) for _ in range(m)])
 
     results += timeit("n:n async-actor calls async", async_actor_multi, m * n)
-    ray.shutdown()
 
     NUM_PGS = 100
     NUM_BUNDLES = 1

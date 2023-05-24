@@ -9,6 +9,7 @@ import ray._private.worker
 import ray._raylet
 from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
+from ray._private.async_compat import is_async_func
 from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import (
     client_mode_convert_actor,
@@ -756,12 +757,7 @@ class ActorClass:
             kwargs = {}
         meta = self.__ray_metadata__
         actor_has_async_methods = (
-            len(
-                inspect.getmembers(
-                    meta.modified_class, predicate=inspect.iscoroutinefunction
-                )
-            )
-            > 0
+            len(inspect.getmembers(meta.modified_class, predicate=is_async_func)) > 0
         )
         is_asyncio = actor_has_async_methods
 

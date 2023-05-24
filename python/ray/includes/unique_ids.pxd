@@ -173,3 +173,5 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         @staticmethod
         CPlacementGroupID Of(CJobID job_id)
+
+    ctypedef uint32_t ObjectIDIndexType
