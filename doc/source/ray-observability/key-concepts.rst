@@ -93,9 +93,9 @@ See :ref:`Ray Debugger <ray-debugger>` for more details.
 
 Profiling
 ---------
-Ray is compatible with Python profiling tools such as ``CProfile``. It also supports its built-in profiling tool such as :ref:```ray timeline`` <ray-timeline-doc>`.
+Ray is compatible with Python profiling tools such as ``CProfile``. It also supports its built-in profiling tool such as :ref:`ray timeline <ray-timeline-doc>`.
 
-See :ref:`Profiling <ray-core-profiling>` for more details.
+See :ref:`Profiling <dashboard-cprofile>` for more details.
 
 Tracing
 -------
@@ -171,8 +171,9 @@ Logging directory structure
 
 By default, Ray logs are stored in a ``/tmp/ray/session_*/logs`` directory.
 
-..{note}:
-The default temp directory is ``/tmp/ray`` (for Linux and MacOS). To change the temp directory, specify it when you call ``ray start`` or ``ray.init()``. 
+.. note::
+
+    The default temp directory is ``/tmp/ray`` (for Linux and MacOS). To change the temp directory, specify it when you call ``ray start`` or ``ray.init()``. 
 
 A new Ray instance creates a new session ID to the temp directory. The latest session ID is symlinked to ``/tmp/ray/session_latest``.
 

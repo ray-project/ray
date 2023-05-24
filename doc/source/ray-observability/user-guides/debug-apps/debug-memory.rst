@@ -1,5 +1,3 @@
-.. _ray-core-profiling:
-
 .. _ray-core-mem-profiling:
 
 Debugging Memory Issues
@@ -22,7 +20,7 @@ This will allow you to download profiling files from other nodes.
 
     .. tab-item:: Actors
 
-      .. literalinclude:: ../doc_code/memray_profiling.py
+      .. literalinclude:: ../../doc_code/memray_profiling.py
           :language: python
           :start-after: __memray_profiling_start__
           :end-before: __memray_profiling_end__
@@ -31,19 +29,19 @@ This will allow you to download profiling files from other nodes.
 
       Note that tasks have a shorter lifetime, so there could be lots of memory profiling files.
 
-      .. literalinclude:: ../doc_code/memray_profiling.py
+      .. literalinclude:: ../../doc_code/memray_profiling.py
           :language: python
           :start-after: __memray_profiling_task_start__
           :end-before: __memray_profiling_task_end__
 
 Once the task or actor runs, go to the :ref:`Logs View <dash-logs-view>` of the dashboard. Find and click the log file name.
 
-.. image:: ../images/memory-profiling-files.png
+.. image:: ../../images/memory-profiling-files.png
     :align: center
 
 Click the download button. 
 
-.. image:: ../images/download-memory-profiling-files.png
+.. image:: ../../images/download-memory-profiling-files.png
     :align: center
 
 Now, you have the memory profiling file. Running

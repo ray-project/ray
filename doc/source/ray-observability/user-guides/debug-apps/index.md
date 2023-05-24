@@ -1,4 +1,4 @@
-(observability-user-guides)=
+(observability-debug-apps)=
 
 # Troubleshooting Applications
 

@@ -119,6 +119,8 @@ not have root permissions, the dashboard will prompt with instructions on how to
 
     Alternatively, you can start Ray with passwordless sudo / root permissions.
 
+.. _dashboard-cprofile:
+
 Profiling Using Python's CProfile
 ---------------------------------
 
