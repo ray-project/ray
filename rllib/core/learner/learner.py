@@ -53,7 +53,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
-from ray.rllib.utils.typing import LearningRateType, ResultDict, TensorType
+from ray.rllib.utils.typing import LearningRateOrSchedule, ResultDict, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
@@ -122,7 +122,7 @@ class LearnerHyperparameters:
 
     # Parameters used for gradient postprocessing (clipping) and gradient application.
     optimizer_type: str = None
-    learning_rate: LearningRateType = None
+    learning_rate: LearningRateOrSchedule = None
     grad_clip: float = None
     grad_clip_by: str = None
 
@@ -424,7 +424,7 @@ class Learner:
             name = f"{module_id}"
             name_to_optim[name] = optim
             pairs.append(pair)
-            self._pair_optim_with_lr_scheduler(hps, name, optim)
+            self._pair_optim_with_lr_scheduler(hps, optim)
         elif isinstance(pair_or_pairs, dict):
             # pair_or_pairs is a NamedParamOptimizerPairs
             for name, pair in pair_or_pairs.items():
@@ -439,7 +439,7 @@ class Learner:
                 name = f"{module_id}_{name}"
                 name_to_optim[name] = optim
                 pairs.append(pair)
-                self._pair_optim_with_lr_scheduler(hps, name, optim)
+                self._pair_optim_with_lr_scheduler(hps, optim)
         else:
             raise ValueError(
                 "The output of configure_optimizers_for_module must be a "
@@ -1403,7 +1403,7 @@ class Learner:
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
 
-    def _pair_optim_with_lr_scheduler(self, hps, name, optim):
+    def _pair_optim_with_lr_scheduler(self, hps, optim):
         # Only manage optimizer's learning rate if user has NOT overridden
         # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
         # to handle lr-updates entirely in user's hands.

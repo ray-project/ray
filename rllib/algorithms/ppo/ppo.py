@@ -23,7 +23,6 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     PPOLearnerHyperparameters,
     LEARNER_RESULTS_KL_KEY,
 )
-from ray.rllib.core.learner.learner_group_config import ModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
@@ -180,10 +179,8 @@ class PPOConfig(PGConfig):
             )
 
     @override(AlgorithmConfig)
-    def get_learner_hyperparameters(
-        self, module_spec: Optional[ModuleSpec] = None
-    ) -> PPOLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters(module_spec=module_spec)
+    def get_learner_hyperparameters(self) -> PPOLearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
         return PPOLearnerHyperparameters(
             use_critic=self.use_critic,
             use_kl_loss=self.use_kl_loss,
@@ -347,9 +344,9 @@ class PPOConfig(PGConfig):
                     "`entropy_coeff` setting to setup a schedule."
                 )
             Scheduler.validate(
-                self.entropy_coeff,
-                "entropy_coeff_schedule",
-                "entropy coefficient",
+                fixed_value_or_schedule=self.entropy_coeff,
+                setting_name="entropy_coeff",
+                description="entropy coefficient",
             )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
