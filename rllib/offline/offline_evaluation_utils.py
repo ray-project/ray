@@ -80,7 +80,7 @@ def compute_is_weights(
         The modified batch with the importance sampling weights, weighted rewards, new
         and old propensities added as columns.
     """
-    policy = policy = Policy.from_state(policy_state)
+    policy = Policy.from_state(policy_state)
     estimator = estimator_class(policy=policy, gamma=0, epsilon_greedy=0)
     sample_batch = SampleBatch(
         {
