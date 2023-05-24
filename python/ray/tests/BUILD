@@ -46,6 +46,7 @@ py_test_module_list(
     "test_gcs_fault_tolerance.py",
     "test_gcs_utils.py",
     "test_generators.py",
+    "test_streaming_generator.py",
     "test_metrics_agent.py",
     "test_metrics_head.py",
     "test_component_failures_2.py",
