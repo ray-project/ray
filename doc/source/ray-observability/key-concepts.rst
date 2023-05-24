@@ -66,7 +66,7 @@ internal stats (e.g., number of actors in the cluster, number of worker failures
 and custom metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used
 to monitor the cluster over time.
 
-See :ref:`Ray Metrics <ray-metrics>` for more details.
+See :ref:`Ray Metrics <dash-metrics-view>` for more details.
 
 Exceptions
 ----------
@@ -165,6 +165,8 @@ Actor log messages look like the following by default.
 .. code-block:: bash
 
     (MyActor pid=480956) actor log message
+
+.. _logging-directory-structure:
 
 Logging directory structure
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

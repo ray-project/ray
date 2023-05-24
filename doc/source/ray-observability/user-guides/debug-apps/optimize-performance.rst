@@ -83,7 +83,7 @@ Then open `chrome://tracing`_ in the Chrome web browser, and load
 Python CPU Profiling in the Dashboard
 -------------------------------------
 
-The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
+The :ref:`Ray dashboard <observability-getting-started>`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
 actions for active workers, actors, and jobs.
 
 .. image:: /images/profile.png
