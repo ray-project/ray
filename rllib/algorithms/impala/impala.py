@@ -850,13 +850,20 @@ class Impala(Algorithm):
                     }
                 ]
             else:
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
+                if cf.num_gpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "GPU": cf.num_gpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
+                elif cf.num_cpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "CPU": cf.num_cpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
 
             bundles += trainer_bundle
 
