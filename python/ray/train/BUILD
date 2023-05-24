@@ -7,7 +7,7 @@ doctest(
             "examples/**",
             "tests/**",
             # GPU tests
-            "huggingface/accelerate/accelerate_trainer.py"
+            "huggingface/accelerate/accelerate_trainer.py",
             "lightning/lightning_trainer.py",
             "tensorflow/tensorflow_trainer.py",
             "torch/torch_trainer.py"
