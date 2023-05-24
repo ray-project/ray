@@ -97,6 +97,33 @@ def test_keep_best_checkpoints():
     ] == [1, 0]
 
 
+@pytest.mark.parametrize(
+    "metrics",
+    [
+        {"nested": {"sub": {"attr": 5}}},
+        {"nested": {"sub/attr": 5}},
+        {"nested/sub": {"attr": 5}},
+        {"nested/sub/attr": 5},
+    ],
+)
+def test_nested_get_checkpoint_score(metrics):
+    cpm = _CheckpointManager(
+        checkpoint_strategy=CheckpointConfig(
+            num_to_keep=2,
+            checkpoint_score_attribute="nested/sub/attr",
+            checkpoint_score_order="max",
+        )
+    )
+
+    assert cpm._get_checkpoint_score(
+        _TrackedCheckpoint(
+            dir_or_data=None,
+            metrics=metrics,
+            storage_mode=CheckpointStorage.MEMORY,
+        )
+    ) == (True, 5.0, None), metrics
+
+
 if __name__ == "__main__":
     import sys
 
