@@ -322,7 +322,7 @@ def test_dataset__repr__(ray_start_regular_shared):
 
     ds2 = ds.map_batches(lambda x: x).materialize()
     assert len(ds2.take_all()) == n
-    expected_stats = (
+    expected_stats2 = (
         "DatasetStatsSummary(\n"
         "   dataset_uuid=U,\n"
         "   base_name=MapBatches(<lambda>),\n"
@@ -394,13 +394,13 @@ def test_dataset__repr__(ray_start_regular_shared):
         ")"
     )
 
-    def check_stats():
+    def check_stats2():
         stats = canonicalize(repr(ds2._plan.stats().to_summary()))
-        assert stats == expected_stats
+        assert stats == expected_stats2
         return True
 
     wait_for_condition(
-        check_stats,
+        check_stats2,
         timeout=10,
         retry_interval_ms=1000,
     )
