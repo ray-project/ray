@@ -123,6 +123,10 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
     init_epoch = 1 if resume_from_ckpt_path else 0
     error_epoch = 2
 
+    # init_epoch -> [error_epoch] -> max_epoch
+    training_iterations = max_epochs - init_epoch
+    iterations_since_restore = max_epochs - init_epoch - error_epoch
+
     lightning_config = (
         LightningConfigBuilder()
         .module(LinearModule, input_dim=32, output_dim=4)
@@ -160,8 +164,8 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
     result = trainer.fit()
 
     assert not result.error
-    assert result.metrics["training_iteration"] == max_epochs - init_epoch
-    assert result.metrics["iterations_since_restore"] == max_epochs - error_epoch
+    assert result.metrics["training_iteration"] == training_iterations
+    assert result.metrics["iterations_since_restore"] == iterations_since_restore
     assert tmpdir / exp_name in result.log_dir.parents
 
 
