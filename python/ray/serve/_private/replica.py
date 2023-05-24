@@ -35,7 +35,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve._private.http_util import ASGIHTTPSender, ASGIHTTPQueueSender
+from ray.serve._private.http_util import ASGIHTTPSender, ASGIHTTPQueueSender, Response
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
@@ -211,13 +211,26 @@ def create_replica_wrapper(name: str):
             *request_args,
             **request_kwargs,
         ) -> AsyncGenerator[Dict[str, Any], None]:
-            """TODO"""
+            """Handle a request and stream the results to the caller.
+
+            This is currently only used by the HTTP proxy for experimental
+            StreamingResponse support.
+
+            The messages yielded by this generator will be ASGI-compliant messages
+            sent via an ASGI sender interface. This allows us to effectively proxy the
+            messages back to the HTTP proxy as they're sent by user code
+            (e.g., FastAPI wrapper).
+            """
             query = Query(
                 request_args,
                 request_kwargs,
                 pickle.loads(pickled_request_metadata),
             )
 
+            # Handle the request in a background asyncio.Task. It's expected that this
+            # task will use the provided ASGI sender interface to send its HTTP
+            # response. We will poll for the sent messages and yield them back to the
+            # caller.
             asgi_queue_sender = ASGIHTTPQueueSender()
             handle_request_task = self._event_loop.create_task(
                 self.replica.handle_request(query, asgi_sender=asgi_queue_sender)
@@ -227,7 +240,11 @@ def create_replica_wrapper(name: str):
                     [handle_request_task, asgi_queue_sender.wait_for_message()],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
+                # Consume all available messages in the queue. If handle_request_task
+                # is done, this must contain all messages sent by the user code.
                 for msg in asgi_queue_sender.get_messages_nowait():
+                    # Pickle the raw ASGI dictionary because vanilla pickle is faster
+                    # then cloudpickle and we know it's safe for these messages.
                     yield pickle.dumps(msg)
 
             e = handle_request_task.exception()
@@ -455,8 +472,18 @@ class RayServeReplica:
         return getattr(self.callable, method_name)
 
     async def handle_http_response(
-        self, response: Any, asgi_sender: Optional[Send] = None
+        self, result: Any, asgi_sender: Optional[Send] = None
     ) -> Any:
+        """Handle a starlette Response returned by user code.
+
+        If the result is not a Response type, this is a no-op. If it is, the
+        behavior depends on if asgi_sender was passed or not:
+            - if asgi_sender is provided, we consume the response using the sender.
+              It's expected that the caller is consuming the messages from this sender.
+            - if asgi_sender is not provided, we check to see if the response is a
+              StreamingResponse and convert it to a vanilla unary response.
+        """
+
         async def mock_receive():
             # This is called in a tight loop in response() just to check
             # for an http disconnect.  So rather than return immediately
@@ -464,16 +491,22 @@ class RayServeReplica:
             never_set_event = asyncio.Event()
             await never_set_event.wait()
 
-        if asgi_sender is not None and isinstance(
-            response, starlette.responses.Response
-        ):
-            await response(scope=None, receive=mock_receive, send=asgi_sender)
+        if asgi_sender is not None:
+            if isinstance(result, starlette.responses.Response):
+                # Case where the user returns a Response directly.
+                await result(scope=None, receive=mock_receive, send=asgi_sender)
+            else:
+                # Case where the user returns a plain object (not a Response).
+                response = Response(result)
+                await response.send(scope=None, receive=mock_receive, send=asgi_sender)
+
+            result = None
         elif isinstance(response, starlette.responses.StreamingResponse):
             sender = ASGIHTTPSender()
-            await response(scope=None, receive=mock_receive, send=sender)
-            return sender.build_asgi_response()
+            await result(scope=None, receive=mock_receive, send=sender)
+            result = sender.build_asgi_response()
 
-        return response
+        return result
 
     async def invoke_single(
         self, request_item: Query, *, asgi_sender: Optional[Send] = None
@@ -482,6 +515,9 @@ class RayServeReplica:
 
         Returns the user-provided output and a boolean indicating if the
         request succeeded (user code didn't raise an exception).
+
+        If asgi_sender is provided, then the result will always be `None`
+        because the response will be sent over that interface instead.
         """
         logger.info(
             f"Started executing request {request_item.metadata.request_id}",
@@ -490,7 +526,7 @@ class RayServeReplica:
 
         args, kwargs = parse_request_item(request_item)
         if asgi_sender is not None and hasattr(self.callable, "_serve_app"):
-            # TODO: comment
+            # If the callable is our FastAPI wrapper, pass it the asgi_sender.
             kwargs["asgi_sender"] = asgi_sender
 
         method_to_call = None

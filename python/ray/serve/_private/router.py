@@ -86,6 +86,11 @@ class ReplicaScheduler(ABC):
 
 
 class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
+    """Round-robins requests across a set of actor replicas using streaming calls.
+
+    This policy does *not* currently respect `max_concurrent_queries`.
+    """
+
     def __init__(self):
         self._replica_iterator = itertools.cycle([])
         self._replicas_updated_event = asyncio.Event()
@@ -120,7 +125,14 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
 
 
 class RoundRobinReplicaScheduler(ReplicaScheduler):
-    """Data structure representing a set of replica actor handles"""
+    """Round-robins requests across a set of actor replicas.
+
+    The policy respects `max_concurrent_queries` for the replicas: a replica
+    will not be chosen if `max_concurrent_queries` requests are already outstanding.
+
+    This is maintained using a "tracker" object ref to determine when a given request
+    has finished (to decrement the number of concurrent queries).
+    """
 
     def __init__(self, event_loop: asyncio.AbstractEventLoop):
         self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
