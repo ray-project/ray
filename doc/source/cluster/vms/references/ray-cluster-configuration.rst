@@ -969,6 +969,14 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
 If enabled, Ray will use private IP addresses for communication between nodes.
 This should be omitted if your network interfaces use public IP addresses.
 
+If enabled, Ray CLI commands (e.g. ``ray up``) will have to be run from a machine
+that is part of the same VPC as the cluster. 
+
+This option does not affect the existence of public IP addresses for the nodes, it only
+affects which IP addresses are used by Ray. The existence of public IP addresses is
+controlled by your cloud provider's configuration.
+
+
 * **Required:** No
 * **Importance:** Low
 * **Type:** Boolean
