@@ -22,8 +22,9 @@ from typing import (
 import ray
 import ray.cloudpickle as pickle
 from ray.util import inspect_serializability
-from ray.air._internal.uri_utils import URI
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
+from ray.air._internal.uri_utils import URI
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
@@ -90,7 +91,7 @@ class TunerInternal:
         tune_config: Optional[TuneConfig] = None,
         run_config: Optional[RunConfig] = None,
         _tuner_kwargs: Optional[Dict] = None,
-        _trainer_api: bool = False,
+        _entrypoint: AirEntrypoint = AirEntrypoint.TUNER,
     ):
         from ray.train.trainer import BaseTrainer
 
@@ -103,7 +104,7 @@ class TunerInternal:
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = run_config or RunConfig()
-        self._trainer_api = _trainer_api
+        self._entrypoint = _entrypoint
 
         # Restore from Tuner checkpoint.
         if restore_path:
@@ -688,8 +689,7 @@ class TunerInternal:
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
-            _tuner_api=True,
-            _trainer_api=self._trainer_api,
+            _entrypoint=self._entrypoint,
         )
 
     def _fit_internal(

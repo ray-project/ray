@@ -6,6 +6,7 @@ import ray
 
 from ray.air.config import RunConfig
 from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
 from ray.tune.execution.experiment_state import _ResumeConfig
@@ -145,7 +146,7 @@ class Tuner:
         # TODO(xwjiang): Remove this later.
         _tuner_kwargs: Optional[Dict] = None,
         _tuner_internal: Optional[TunerInternal] = None,
-        _trainer_api: bool = False,
+        _entrypoint: AirEntrypoint = AirEntrypoint.TUNER,
     ):
         """Configure and construct a tune run."""
         kwargs = locals().copy()
