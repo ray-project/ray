@@ -428,6 +428,12 @@ message TaskSpec {
   // TODO(sang): Remove it once migrating to the streaming generator
   // by default.
   bool streaming_generator = 34;
+  // Some timestamps of the task's lifetime, useful for metrics.
+  // The time the task's dependencies have been resolved.
+  int64 dependency_resolution_timestamp_ms = 35;
+  // The time that the task is given a lease, and sent to the executing core
+  // worker.
+  int64 lease_grant_timestamp_ms = 36;
 }
 
 message TaskInfoEntry {

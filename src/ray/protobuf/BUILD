@@ -22,7 +22,9 @@ python_grpc_compile(
 proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
-    deps = [":runtime_env_common_proto"],
+    deps = [
+      ":runtime_env_common_proto",
+    ],
     visibility = ["//java:__subpackages__"],
 )
 

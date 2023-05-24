@@ -120,6 +120,11 @@ class ObjectRefStream {
   /// \param[in] The last item index that means the end of stream.
   void MarkEndOfStream(int64_t item_index);
 
+  /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
+  ///
+  /// \return A list of object IDs that are not read yet.
+  std::vector<ObjectID> GetItemsUnconsumed() const;
+
  private:
   const ObjectID generator_id_;
 

@@ -11,5 +11,5 @@ py_test_run_all_notebooks(
     include = ["batch_inference_object_detection.ipynb"],
     exclude = [],
     data = ["//doc/source/data/examples:data_examples"],
-    tags = ["exclusive", "team:data"],
+    tags = ["exclusive", "team:data", "gpu"],
 )
