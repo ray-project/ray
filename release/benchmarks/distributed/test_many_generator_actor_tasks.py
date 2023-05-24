@@ -26,7 +26,7 @@ class Actor:
 actors = []
 
 cpus = ray.cluster_resources()["CPU"]
-for _ in range(int(cpus * 4)):
+for _ in range(int(cpus)):
     actor = Actor.remote()
     actors.append(actor)
 
