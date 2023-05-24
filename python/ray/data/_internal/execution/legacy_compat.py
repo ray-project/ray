@@ -159,7 +159,7 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
     assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
-    return DatasetStats(stages={}, parent=None)
+    return plan._in_stats
 
 
 def _to_operator_dag(
