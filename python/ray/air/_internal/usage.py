@@ -1,4 +1,5 @@
 import collections
+from enum import Enum
 import json
 import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
@@ -63,6 +64,13 @@ TUNE_SCHEDULERS = {
     "PB2",
     "ResourceChangingScheduler",
 }
+
+
+class AirEntrypoint(Enum):
+    TUNER = "Tuner.fit"
+    TRAINER = "Trainer.fit"
+    TUNE_RUN = "tune.run"
+    TUNE_RUN_EXPERIMENTS = "tune.run_experiments"
 
 
 def _find_class_name(obj, allowed_module_path_prefix: str, whitelist: Set[str]):
@@ -282,25 +290,7 @@ def tag_ray_air_env_vars() -> bool:
     return False
 
 
-def tag_air_entrypoint(
-    trainer_api: bool, tuner_api: bool, run_experiments_api: bool
-) -> None:
-    """Records the entrypoint to an AIR training run.
-
-    Args:
-        trainer_api: Whether or not the user went through the Trainer.fit API
-        tuner_api: Whether or not the user went through the Tuner.fit API
-            NOTE: Because Trainer.fit goes through Tuner.fit, both of the flags above
-            could be True, in which case we know the user is running a single Train run.
-        run_experiments_api: Whether or not the user went through `tune.run_experiments`
-    """
-    if run_experiments_api:
-        tag = "tune.run_experiments"
-    elif not trainer_api and not tuner_api:
-        tag = "tune.run"
-    elif tuner_api and not trainer_api:
-        tag = "Tuner.fit"
-    elif trainer_api:
-        tag = "Trainer.fit"
-
-    record_extra_usage_tag(TagKey.AIR_ENTRYPOINT, tag)
+def tag_air_entrypoint(entrypoint: AirEntrypoint) -> None:
+    """Records the entrypoint to an AIR training run."""
+    assert entrypoint in AirEntrypoint
+    record_extra_usage_tag(TagKey.AIR_ENTRYPOINT, entrypoint.value)

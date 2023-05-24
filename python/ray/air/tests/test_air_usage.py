@@ -11,6 +11,7 @@ import ray
 from ray import air, tune
 from ray.air import session
 from ray.air._internal import usage as air_usage
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.integrations import wandb, mlflow, comet
 from ray.tune.callback import Callback
 from ray.tune.experiment.experiment import Experiment
@@ -213,21 +214,19 @@ def test_tag_env_vars(ray_start_4_cpus, mock_record, tuner):
     assert sorted(env_vars_to_record) == sorted(recorded_env_vars)
 
 
-@pytest.mark.parametrize(
-    "entrypoint", ["tune.run", "tune.run_experiments", "Tuner.fit", "Trainer.fit"]
-)
+@pytest.mark.parametrize("entrypoint", list(AirEntrypoint))
 def test_tag_air_entrypoint(ray_start_4_cpus, mock_record, entrypoint, tuner, trainer):
-    if entrypoint == "tune.run":
+    if entrypoint == AirEntrypoint.TUNE_RUN:
         tune.run(train_fn)
-    elif entrypoint == "tune.run_experiments":
+    elif entrypoint == AirEntrypoint.TUNE_RUN_EXPERIMENTS:
         experiment_spec = Experiment("experiment", train_fn)
         tune.run_experiments(experiments=experiment_spec)
-    elif entrypoint == "Tuner.fit":
+    elif entrypoint == AirEntrypoint.TUNER:
         tuner.fit()
-    elif entrypoint == "Trainer.fit":
+    elif entrypoint == AirEntrypoint.TRAINER:
         trainer.fit()
 
-    assert mock_record[TagKey.AIR_ENTRYPOINT] == entrypoint
+    assert mock_record[TagKey.AIR_ENTRYPOINT] == entrypoint.value
 
 
 if __name__ == "__main__":

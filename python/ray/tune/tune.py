@@ -26,6 +26,7 @@ import ray
 from ray._private.storage import _get_storage_uri
 from ray.air import CheckpointConfig
 from ray.air._internal import usage as air_usage
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
@@ -338,9 +339,7 @@ def run(
     _remote_string_queue: Optional[Queue] = None,
     # Todo (krfricke): Find a better way to pass entrypoint information, e.g.
     # a context object or similar.
-    _tuner_api: bool = False,
-    _trainer_api: bool = False,
-    _run_experiments_api: bool = False,
+    _entrypoint: AirEntrypoint = AirEntrypoint.TUNE_RUN,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -556,30 +555,31 @@ def run(
     remote_run_kwargs = locals().copy()
     remote_run_kwargs.pop("_remote")
 
-    if _tuner_api and _trainer_api:
+    if _entrypoint == AirEntrypoint.TRAINER:
         error_message_map = {
             "entrypoint": "Trainer(...)",
             "search_space_arg": "param_space",
             "restore_entrypoint": 'Trainer.restore(path="{path}", ...)',
         }
-    elif _tuner_api and not _trainer_api:
+    elif _entrypoint == AirEntrypoint.TUNER:
         error_message_map = {
             "entrypoint": "Tuner(...)",
             "search_space_arg": "param_space",
             "restore_entrypoint": 'Tuner.restore(path="{path}", trainable=...)',
         }
+    elif _entrypoint == AirEntrypoint.TUNE_RUN_EXPERIMENTS:
+        error_message_map = {
+            "entrypoint": "tune.run_experiments(...)",
+            "search_space_arg": "experiment=Experiment(config)",
+            "restore_entrypoint": "tune.run_experiments(..., resume=True)",
+        }
     else:
         error_message_map = {
-            "entrypoint": (
-                "tune.run_experiments(...)" if _run_experiments_api else "tune.run(...)"
-            ),
+            "entrypoint": "tune.run(...)",
             "search_space_arg": "config",
-            "restore_entrypoint": (
-                "tune.run_experiments(..., resume=True)"
-                if _run_experiments_api
-                else "tune.run(..., resume=True)"
-            ),
+            "restore_entrypoint": "tune.run(..., resume=True)",
         }
+
     _ray_auto_init(entrypoint=error_message_map["entrypoint"])
 
     if _remote is None:
@@ -652,11 +652,7 @@ def run(
 
     # Track the entrypoint to AIR:
     # Tuner.fit / Trainer.fit / tune.run / tune.run_experiments
-    air_usage.tag_air_entrypoint(
-        trainer_api=_trainer_api,
-        tuner_api=_tuner_api,
-        run_experiments_api=_run_experiments_api,
-    )
+    air_usage.tag_air_entrypoint(_entrypoint)
 
     all_start = time.time()
 
@@ -990,7 +986,7 @@ def run(
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
-        _trainer_api=_trainer_api,
+        _trainer_api=_entrypoint == AirEntrypoint.TRAINER,
     )
 
     if bool(int(os.environ.get("TUNE_NEW_EXECUTION", "1"))):
@@ -1121,7 +1117,7 @@ def run(
         restore_entrypoint = error_message_map["restore_entrypoint"].format(
             path=runner.experiment_path,
         )
-        if _trainer_api:
+        if _entrypoint == AirEntrypoint.TRAINER:
             logger.warning(
                 f"Training has been interrupted, but the most recent state was saved.\n"
                 f"Resume training with: {restore_entrypoint}"
@@ -1234,7 +1230,7 @@ def run_experiments(
             raise_on_failed_trial=raise_on_failed_trial,
             scheduler=scheduler,
             callbacks=callbacks,
-            _run_experiments_api=True,
+            _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
         ).trials
     else:
         trials = []
@@ -1250,6 +1246,6 @@ def run_experiments(
                 raise_on_failed_trial=raise_on_failed_trial,
                 scheduler=scheduler,
                 callbacks=callbacks,
-                _run_experiments_api=True,
+                _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
             ).trials
         return trials
