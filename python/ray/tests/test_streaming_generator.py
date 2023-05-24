@@ -348,10 +348,8 @@ def test_generator_streaming_no_leak_upon_failures(
             try:
                 gen = f.options(num_returns="streaming").remote()
                 for ref in gen:
-                    print(ref)
                     ray.get(ref)
             except Exception:
-                print("exception!")
                 del ref
 
             del gen
@@ -359,7 +357,6 @@ def test_generator_streaming_no_leak_upon_failures(
 
             # Only the ref g is alive.
             def verify():
-                print(list_objects())
                 return len(list_objects()) == 1
 
             wait_for_condition(verify)
@@ -632,8 +629,6 @@ def test_threaded_actor_generator(shutdown_only):
             i = 0
             async for ref in a.f.options(num_returns="streaming").remote():
                 val = ray.get(ref)
-                print(val)
-                print(ref)
                 assert np.array_equal(val, np.ones(1024 * 1024) * i)
                 i += 1
                 del ref
@@ -642,8 +637,6 @@ def test_threaded_actor_generator(shutdown_only):
             i = 0
             async for ref in asy.f.options(num_returns="streaming").remote():
                 val = await ref
-                print(ref)
-                print(val)
                 assert np.array_equal(val, np.ones(1024 * 1024) * i), ref
                 i += 1
                 del ref
@@ -803,7 +796,6 @@ def test_e2e_worker_failures(ray_start_cluster, monkeypatch):
                     actor_to_kill = random.choice(actors)
                     pid = actor_to_kill.pid
                     if pid:
-                        print("kill!, ", actor_to_kill.actor_id)
                         os.kill(pid, signal.SIGKILL)
                 except Exception:
                     pass
@@ -815,7 +807,6 @@ def test_e2e_worker_failures(ray_start_cluster, monkeypatch):
             finished = False
             while not finished:
                 try:
-                    print("retry")
                     async for ref in actor.get_data.options(
                         num_returns="streaming"
                     ).remote():
@@ -833,7 +824,6 @@ def test_e2e_worker_failures(ray_start_cluster, monkeypatch):
 
             def verify():
                 result = list_objects(raise_on_missing_output=False)
-                print(result)
                 ref_types = set()
                 for r in result:
                     ref_types.add(r.reference_type)
