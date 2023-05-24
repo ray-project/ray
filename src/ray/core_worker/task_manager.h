@@ -112,10 +112,27 @@ class ObjectRefStream {
   ///
   /// \param[in] object_id The object id that will be read at index item_index.
   /// \param[in] item_index The index where the object id will be written.
-  /// \return True if the idx hasn't been used. False otherwise.
+  /// If -1 is given, it means an index is not known yet. In this case,
+  /// the ref will be temporarily written until it is written with an index.
+  /// \return True if the ref is written to a stream. False otherwise.
   bool InsertToStream(const ObjectID &object_id, int64_t item_index);
 
-  /// Mark the stream canont be used anymore.
+  /// Sometimes, index of the object ID is not known.
+  ///
+  /// In this case, we should temporarily write the object ref to the
+  /// stream until it is written with an index.
+  ///
+  /// In the following scenario, the API will be no-op because
+  /// it means the object ID was already written with an index.
+  /// - If the object ID is already consumed.
+  /// - If the object ID is already written with an index.
+  ///
+  /// \param[in] object_id The temporarily written object id.
+  /// \return True if object ID is temporarily written. False otherwise.
+  bool TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id);
+
+  /// Mark that after a given item_index, the stream cannot be written
+  /// anymore.
   ///
   /// \param[in] The last item index that means the end of stream.
   void MarkEndOfStream(int64_t item_index);
@@ -130,6 +147,11 @@ class ObjectRefStream {
 
   /// The item_index -> object reference ids.
   absl::flat_hash_map<int64_t, ObjectID> item_index_to_refs_;
+  /// Refs that are temporarily owned. It means a ref is
+  /// written to a stream, but index is not known yet.
+  absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
+  // A set of refs that's already written to a stream.
+  absl::flat_hash_set<ObjectID> refs_written_to_stream_;
   /// The last index of the stream.
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
@@ -219,11 +241,42 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::Address &worker_addr,
                            bool is_application_error) override;
 
-  /// Handle the task return reported before the task terminates.
+  /// Handle the generator task return so that it will be accessible
+  /// via TryReadObjectRefStream.
+  ///
+  /// Generator tasks can report task returns before task is finished.
+  /// It is the opposite of regular tasks which can only batch
+  /// report the task returns after the task finishes.
   ///
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request);
+
+  /// Temporarily register a given generator return reference.
+  ///
+  /// For a generator return, the references are not known until
+  /// it is reported from an executor (via HandleReportGeneratorItemReturns).
+  /// However, there are times when generator return references need to be
+  /// owned before the return values are reported.
+  ///
+  /// For example, when an object is created or spilled from the object store,
+  /// pinning or OBOD update requests could be sent from raylets,
+  /// and it is possible those requests come before generator returns
+  /// are reported. In this case, we should own a reference temporarily,
+  /// otherwise, these requests will be ignored.
+  ///
+  /// In the following scenario, references don't need to be owned. In this case,
+  /// the API will be no-op.
+  /// - The stream has been already deleted.
+  /// - The reference is already read/consumed from a stream.
+  ///   In this case, we already owned or GC'ed the refernece.
+  /// - The reference is already owned via HandleReportGeneratorItemReturns.
+  ///
+  /// \param object_id The object ID to temporarily owns.
+  /// \param generator_id The return ref ID of a generator task.
+  /// \return True if we temporarily owned the reference. False otherwise.
+  bool TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
+                                                const ObjectID &generator_id);
 
   /// Delete the object ref stream.
   ///
