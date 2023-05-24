@@ -348,8 +348,8 @@ class Checkpoint:
         """
         # Todo: Add support for stream in the future (to_bytes(file_like))
         data_dict = self.to_dict()
-        if "bytes_data" in data_dict:
-            return data_dict["bytes_data"]
+        if _BYTES_DATA_KEY in data_dict:
+            return data_dict[_BYTES_DATA_KEY]
         return pickle.dumps(data_dict)
 
     @classmethod
