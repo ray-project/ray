@@ -159,7 +159,12 @@ class ASGIHTTPSender(Send):
 
 
 class ASGIHTTPQueueSender(Send):
-    """TODO: doc and better name"""
+    """ASGI sender that enables polling for the sent messages off a queue.
+
+    This class assumes there's only a single consumer of the queue (concurrent
+    calls to `get_messages_nowait` and `wait_for_message` may result in undefined
+    behavior).
+    """
 
     def __init__(self):
         self._message_queue = asyncio.Queue()
@@ -171,12 +176,23 @@ class ASGIHTTPQueueSender(Send):
         self._new_message_event.set()
 
     def get_messages_nowait(self) -> Generator[Dict[str, Any], None, None]:
+        """Returns all messages that are currently available (non-blocking).
+
+        At least one message will be present if `wait_for_message` had previously
+        returned and a subsequent call to `wait_for_message` will block until at
+        least one new message is available.
+        """
         while not self._message_queue.empty():
             yield self._message_queue.get_nowait()
 
         self._new_message_event.clear()
 
     async def wait_for_message(self):
+        """Wait until at least one new message is available.
+
+        This will continuously return immediately once a message is available until
+        `get_messages_nowait` is called.
+        """
         await self._new_message_event.wait()
 
 
