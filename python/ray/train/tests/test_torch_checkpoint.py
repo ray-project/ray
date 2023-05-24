@@ -1,3 +1,4 @@
+import ray
 import torch
 import pickle
 
@@ -35,13 +36,23 @@ def test_from_state_dict():
 
 
 def test_pickle_large_model():
-    import sys
+    ray.init(
+        runtime_env={
+            "pip": {
+                "packages": [],
+                "pip_version": "==22.0.2;python_version=='3.8.11'",
+            }
+        }
+    )
 
-    if sys.version_info >= (3, 8):
-        # TorchCheckpoint should be able to serialize large checkpoints(> 4 GiB)
+    @ray.remote
+    def func():
+        assert sys.version_info.major == 3 and sys.version_info.minor == 8
         data_dict = {"key": "1" * (4 * 1024 * 1024 * 1024 + 100)}
         checkpoint = TorchCheckpoint(data_dict=data_dict)
         pickle.dumps(checkpoint)
+
+    ray.get(func.remote())
 
 
 if __name__ == "__main__":
