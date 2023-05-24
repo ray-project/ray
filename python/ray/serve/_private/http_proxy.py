@@ -12,6 +12,7 @@ from ray._private.utils import get_or_create_event_loop
 import uvicorn
 import starlette.responses
 import starlette.routing
+from starlette.types import Send
 
 import ray
 from ray.exceptions import RayActorError, RayTaskError
@@ -72,6 +73,25 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     )
 
 
+async def _handle_streaming_response(
+    asgi_response_generator: ray._raylet.StreamingObjectRefGenerator, send: Send
+) -> str:
+    """TODO"""
+
+    status_code = ""
+    # TODO: do we need to handle errors here?
+    # If we've already send the status_code frame, we should just terminate.
+    # Else we can send an internal server error.
+    async for obj_ref in asgi_response_generator:
+        asgi_message = await obj_ref
+        if asgi_message["type"] == "http.response.start":
+            status_code = str(asgi_message["status"])
+
+        await send(asgi_message)
+
+    return status_code
+
+
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
 
@@ -110,27 +130,10 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # This will make the .result() to raise cancelled error.
             assignment_task.cancel()
         try:
-            assignment_result = await assignment_task
+            object_ref = await assignment_task
 
-            if isinstance(assignment_result, ray._raylet.StreamingObjectRefGenerator):
-                try:
-                    obj_ref_generator = assignment_result
-                    status_code = None
-                    # TODO: handle errors.
-                    async for obj_ref in obj_ref_generator:
-                        print("GOT obj_ref!!!")
-                        result = await obj_ref
-                        if status_code is None:
-                            status_code = str(result["status"])
-                        print("GOT RESULT!", result)
-                        await send(result)
-
-                    return status_code
-                except Exception as e:
-                    logger.exception(e)
-                    raise e
-            else:
-                object_ref = assignment_result
+            if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
+                return await _handle_streaming_response(object_ref, send)
 
             # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
             # some replicas crash simultaneously (e.g. if the head node crashes),

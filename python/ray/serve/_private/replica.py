@@ -6,7 +6,7 @@ import logging
 import os
 import pickle
 import time
-from typing import Any, Callable, Optional, Tuple, Dict
+from typing import Any, AsyncGenerator, Callable, Optional, Tuple, Dict
 import traceback
 
 import starlette.responses
@@ -16,9 +16,10 @@ import ray
 from ray import cloudpickle
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
-from ray.serve import metrics
 from ray._private.async_compat import sync_to_async
+from ray._private.utils import get_or_create_event_loop
 
+from ray.serve import metrics
 from ray.serve._private.autoscaling_metrics import start_metrics_pusher
 from ray.serve._private.common import (
     HEALTH_CHECK_CONCURRENCY_GROUP,
@@ -85,6 +86,8 @@ def create_replica_wrapper(name: str):
                 component_name=deployment_name,
                 component_id=replica_tag,
             )
+
+            self._event_loop = get_or_create_event_loop()
 
             deployment_def = cloudpickle.loads(serialized_deployment_def)
 
@@ -195,11 +198,11 @@ def create_replica_wrapper(name: str):
             *request_args,
             **request_kwargs,
         ):
-            # The request metadata should be pickled for performance.
-            request_metadata: RequestMetadata = pickle.loads(pickled_request_metadata)
-
-            # Directly receive input because it might contain an ObjectRef.
-            query = Query(request_args, request_kwargs, request_metadata)
+            query = Query(
+                request_args,
+                request_kwargs,
+                pickle.loads(pickled_request_metadata),
+            )
             return await self.replica.handle_request(query)
 
         async def handle_request_streaming(
@@ -207,34 +210,29 @@ def create_replica_wrapper(name: str):
             pickled_request_metadata: bytes,
             *request_args,
             **request_kwargs,
-        ):
-            # The request metadata should be pickled for performance.
-            request_metadata: RequestMetadata = pickle.loads(pickled_request_metadata)
+        ) -> AsyncGenerator[Dict[str, Any], None]:
+            """TODO"""
+            query = Query(
+                request_args,
+                request_kwargs,
+                pickle.loads(pickled_request_metadata),
+            )
 
-            # Directly receive input because it might contain an ObjectRef.
-            query = Query(request_args, request_kwargs, request_metadata)
-            queue = ASGIHTTPQueueSender()
-            from ray._private.utils import get_or_create_event_loop
-            print("GETTING LOOP")
-            loop = get_or_create_event_loop()
-            print("CREATING TASK!")
-            task = loop.create_task(self.replica.handle_request(
-                query, asgi_sender=queue,
-            ))
-            print("TASK CREATED")
+            asgi_queue_sender = ASGIHTTPQueueSender()
+            handle_request_task = self._event_loop.create_task(
+                self.replica.handle_request(query, asgi_sender=asgi_queue_sender)
+            )
+            while not handle_request_task.done():
+                done, pending = await asyncio.wait(
+                    [handle_request_task, asgi_queue_sender.wait_for_message()],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for msg in asgi_queue_sender.get_messages_nowait():
+                    yield msg
 
-            while True:
-                done, pending = await asyncio.wait([task, queue.wait()], return_when=asyncio.FIRST_COMPLETED)
-                while not queue.empty():
-                    val = queue.get_nowait()
-                    print("YIELDING VAL:", val)
-                    yield val
-
-                if task in done:
-                    break
-            
-            if task.exception() is not None:
-                raise task.exception() from None
+            e = handle_request_task.exception()
+            if e is not None:
+                raise e from None
 
         async def handle_request_from_java(
             self,
@@ -411,18 +409,18 @@ class RayServeReplica:
         await self.user_health_check()
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
+        replica_actor_name = _format_replica_actor_name(self.deployment_name)
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
-        method_stat = actor_stats.get(
-            f"{_format_replica_actor_name(self.deployment_name)}.handle_request"
-        )
+        method_stat = actor_stats.get(f"{replica_actor_name}.handle_request")
         streaming_method_stat = actor_stats.get(
-            f"{_format_replica_actor_name(self.deployment_name)}.handle_request_streaming"
+            f"{replica_actor_name}.handle_request_streaming"
         )
         method_stat_java = actor_stats.get(
-            f"{_format_replica_actor_name(self.deployment_name)}"
-            f".handle_request_from_java"
+            f"{replica_actor_name}.handle_request_from_java"
         )
-        return merge_dict(merge_dict(method_stat, streaming_method_stat), method_stat_java)
+        return merge_dict(
+            merge_dict(method_stat, streaming_method_stat), method_stat_java
+        )
 
     def _collect_autoscaling_metrics(self):
         method_stat = self._get_handle_request_stats()
@@ -455,8 +453,9 @@ class RayServeReplica:
             return self.callable
         return getattr(self.callable, method_name)
 
-    async def handle_http_response(self, response: Any, asgi_sender: Optional[Send] = None) -> Any:
-        print("IN handle_http_response")
+    async def handle_http_response(
+        self, response: Any, asgi_sender: Optional[Send] = None
+    ) -> Any:
         async def mock_receive():
             # This is called in a tight loop in response() just to check
             # for an http disconnect.  So rather than return immediately
@@ -464,11 +463,11 @@ class RayServeReplica:
             never_set_event = asyncio.Event()
             await never_set_event.wait()
 
-        if asgi_sender is not None and isinstance(response, starlette.responses.Response):
-            print("STREAMING BACK RESPONSE")
+        if asgi_sender is not None and isinstance(
+            response, starlette.responses.Response
+        ):
             await response(scope=None, receive=mock_receive, send=asgi_sender)
         elif isinstance(response, starlette.responses.StreamingResponse):
-            print("CONSUMING RESPONSE INTO SYNC")
             sender = ASGIHTTPSender()
             await response(scope=None, receive=mock_receive, send=sender)
             return sender.build_asgi_response()
@@ -490,10 +489,8 @@ class RayServeReplica:
 
         args, kwargs = parse_request_item(request_item)
         if asgi_sender is not None and hasattr(self.callable, "_serve_app"):
-            print("GOT FASTAPI, ADDING KWARG!")
-            kwargs["sender"] = asgi_sender
-        else:
-            print("NO FASTAPI")
+            # TODO: comment
+            kwargs["asgi_sender"] = asgi_sender
 
         method_to_call = None
         success = True
@@ -569,7 +566,6 @@ class RayServeReplica:
     async def handle_request(
         self, request: Query, *, asgi_sender: Optional[Send] = None
     ) -> asyncio.Future:
-        print("HANDLE REQUEST")
         async with self.rwlock.reader_lock:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)

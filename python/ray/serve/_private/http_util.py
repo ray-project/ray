@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, Type
+from typing import Any, Dict, Generator, Type
 
 from starlette.requests import Request
 from starlette.types import Send, ASGIApp
@@ -162,17 +162,22 @@ class ASGIHTTPQueueSender(Send, asyncio.Queue):
     """TODO: doc and better name"""
 
     def __init__(self):
-        asyncio.Queue.__init__(self)
-        self._new_message = asyncio.Event()
+        self._message_queue = asyncio.Queue()
+        self._new_message_event = asyncio.Event()
 
     async def __call__(self, message: Dict[str, Any]):
         assert message["type"] in ("http.response.start", "http.response.body")
-        print("PUTTING MESSAGE!", message)
-        await self.put(message)
-        self._new_message.set()
-    
-    async def wait(self):
-        await self._new_message.wait()
+        await self._message_queue.put(message)
+        self._new_message_event.set()
+
+    def get_messages_nowait(self) -> Generator[Dict[str, Any], None, None]:
+        while not self._message_queue.empty():
+            yield self._message_queue.get_nowait()
+
+        self._new_message_event.clear()
+
+    async def wait_for_message(self):
+        await self._new_message_event.wait()
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
