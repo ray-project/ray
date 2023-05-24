@@ -30,6 +30,22 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
+std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
+  std::vector<ObjectID> result;
+  if (next_index_ == end_of_stream_index_) {
+    return {};
+  }
+
+  for (const auto &it : item_index_to_refs_) {
+    const auto &index = it.first;
+    const auto &object_id = it.second;
+    if (index >= next_index_) {
+      result.push_back(object_id);
+    }
+  }
+  return result;
+}
+
 Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   bool is_eof_set = end_of_stream_index_ != -1;
   if (is_eof_set && next_index_ >= end_of_stream_index_) {
@@ -388,25 +404,8 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
       return;
     }
 
-    while (true) {
-      ObjectID object_id;
-      const auto &status = TryReadObjectRefStreamInternal(generator_id, &object_id);
-
-      // keyError means the stream reaches to EoF.
-      if (status.IsObjectRefStreamEoF()) {
-        break;
-      }
-
-      if (object_id == ObjectID::Nil()) {
-        // No more objects to obtain. Stop iteration.
-        break;
-      } else {
-        // It means the object hasn't been consumed.
-        // We should remove references since we have 1 reference to this object.
-        object_ids_unconsumed.push_back(object_id);
-      }
-    }
-
+    const auto &stream = it->second;
+    object_ids_unconsumed = stream.GetItemsUnconsumed();
     object_ref_streams_.erase(generator_id);
   }
 
@@ -454,7 +453,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto stream_it = object_ref_streams_.find(generator_id);
     if (stream_it == object_ref_streams_.end()) {
-      // SANG-TODO add an unit test.
       // Stream has been already deleted. Do not handle it.
       return false;
     }
