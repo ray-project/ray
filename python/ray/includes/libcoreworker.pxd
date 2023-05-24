@@ -19,6 +19,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CPlacementGroupID,
     CWorkerID,
+    ObjectIDIndexType,
 )
 
 from ray.includes.common cimport (
@@ -49,7 +50,7 @@ from ray.includes.function_descriptor cimport (
 )
 
 from ray.includes.optional cimport (
-    optional
+    optional,
 )
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
@@ -148,11 +149,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             shared_ptr[CRayObject] *return_object,
             const CObjectID& generator_id)
         void DelObjectRefStream(const CObjectID &generator_id)
-        void CreateObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        CObjectID AllocateDynamicReturnId(const CAddress &owner_address)
+        CObjectID AllocateDynamicReturnId(
+            const CAddress &owner_address,
+            const CTaskID &task_id,
+            optional[ObjectIDIndexType] put_index)
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
