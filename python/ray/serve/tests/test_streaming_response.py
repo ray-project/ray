@@ -7,9 +7,9 @@ import requests
 from starlette.responses import StreamingResponse
 from starlette.requests import Request
 
-import ray
 from ray import serve
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+
 
 def make_streaming_request() -> Generator[str, None, None]:
     r = requests.get("http://localhost:8000", stream=True)
@@ -17,7 +17,11 @@ def make_streaming_request() -> Generator[str, None, None]:
     for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
         yield chunk
 
-@pytest.mark.skipif(not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Streaming feature flag is disabled.")
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Streaming feature flag is disabled.",
+)
 @pytest.mark.parametrize("use_fastapi", [False, True])
 def test_basic(serve_instance, use_fastapi: bool):
     if use_fastapi:
@@ -34,7 +38,9 @@ def test_basic(serve_instance, use_fastapi: bool):
             @app.get("/")
             def stream_hi(self, request: Request) -> StreamingResponse:
                 return StreamingResponse(self.hi_gen(), media_type="text/plain")
+
     else:
+
         @serve.deployment
         class SimpleGenerator:
             async def hi_gen(self):
@@ -49,6 +55,7 @@ def test_basic(serve_instance, use_fastapi: bool):
 
     for i, chunk in enumerate(make_streaming_request()):
         assert chunk == f"hi_{i}"
+
 
 if __name__ == "__main__":
     import sys
