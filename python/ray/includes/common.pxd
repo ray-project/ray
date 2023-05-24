@@ -100,7 +100,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus NotFound()
 
         @staticmethod
-        CRayStatus ObjectRefStreamEoF()
+        CRayStatus ObjectRefEndOfStream()
 
         c_bool ok()
         c_bool IsOutOfMemory()
@@ -121,7 +121,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectUnknownOwner()
         c_bool IsRpcError()
         c_bool IsOutOfResource()
-        c_bool IsObjectRefStreamEoF()
+        c_bool IsObjectRefEndOfStream()
 
         c_string ToString()
         c_string CodeAsString()
@@ -316,6 +316,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
+    cdef enum CGrpcStatusCode "grpc::StatusCode":
+        UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
+        UNKNOWN "grpc::StatusCode::UNKNOWN",
+
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
 

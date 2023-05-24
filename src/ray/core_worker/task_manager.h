@@ -120,6 +120,11 @@ class ObjectRefStream {
   /// \param[in] The last item index that means the end of stream.
   void MarkEndOfStream(int64_t item_index);
 
+  /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
+  ///
+  /// \return A list of object IDs that are not read yet.
+  std::vector<ObjectID> GetItemsUnconsumed() const;
+
  private:
   const ObjectID generator_id_;
 
@@ -238,8 +243,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Create the object ref stream.
   /// If the object ref stream is not created by this API,
   /// all object ref stream operation will be no-op.
+  ///
   /// Once the stream is created, it has to be deleted
   /// by DelObjectRefStream when it is not used anymore.
+  /// Once you generate a stream, it is the caller's responsibility
+  /// to call DelObjectRefStream.
+  ///
   /// The API is not idempotent.
   ///
   /// \param[in] generator_id The object ref id of the streaming
@@ -252,8 +261,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// generator task.
   bool ObjectRefStreamExists(const ObjectID &generator_id);
 
-  /// Asynchronously read object reference of the next index from the
+  /// Read object reference of the next index from the
   /// object stream of a generator_id.
+  /// This API always return immediately.
   ///
   /// The caller should ensure the ObjectRefStream is already created
   /// via CreateObjectRefStream.
@@ -262,7 +272,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
-  /// \return KeyError if it reaches to EoF. Ok otherwise.
+  /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
 
   /// Returns true if task can be retried.
