@@ -2092,7 +2092,7 @@ cdef class GcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_added
+            int num_added = 0
         with nogil:
             check_status(self.inner.get().InternalKVPut(
                 ns, key, value, overwrite, timeout_ms, num_added))
@@ -2105,7 +2105,7 @@ cdef class GcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_deleted
+            int num_deleted = 0
         with nogil:
             check_status(self.inner.get().InternalKVDel(
                 ns, key, del_by_prefix, timeout_ms, num_deleted))
@@ -2136,7 +2136,7 @@ cdef class GcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool exists
+            c_bool exists = False
         with nogil:
             check_status(self.inner.get().InternalKVExists(
                 ns, key, timeout_ms, exists))

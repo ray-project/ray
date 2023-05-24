@@ -115,7 +115,7 @@ def test_update_app_running(mocked_application_state_manager):
 
 
 def test_update_app_deploy_failed(mocked_application_state_manager):
-    """Test DEPLOYING -> DEPLOY_FAILED"""
+    """Test DEPLOYING -> DEPLOY_FAILED -> DEPLOYING -> RUNNING"""
     app_state_manager, deployment_state_manager = mocked_application_state_manager
     app_state_manager.deploy_application("test_app", [{"name": "d1"}])
     # Simulate controller
@@ -128,8 +128,31 @@ def test_update_app_deploy_failed(mocked_application_state_manager):
     app_status = app_state_manager.get_app_status("test_app")
     assert app_status.status == ApplicationStatus.DEPLOY_FAILED
     # rerun update, application status should not make difference
+    deploy_failed_msg = app_status.message
+    assert len(deploy_failed_msg) != 0
     app_state_manager.update()
     assert app_status.status == ApplicationStatus.DEPLOY_FAILED
+    assert app_status.message == deploy_failed_msg
+
+    app_state_manager.deploy_application("test_app", [{"name": "d1"}, {"name": "d2"}])
+    # Simulate controller
+    deployment_state_manager.deploy("d1", None)
+    deployment_state_manager.deploy("d2", None)
+
+    app_status = app_state_manager.get_app_status("test_app")
+    assert app_status.status == ApplicationStatus.DEPLOYING
+    assert app_status.message != deploy_failed_msg
+    deployment_state_manager.set_deployment_statuses_healthy("d1")
+    deployment_state_manager.set_deployment_statuses_healthy("d2")
+    app_state_manager.update()
+    app_status = app_state_manager.get_app_status("test_app")
+    assert app_status.status == ApplicationStatus.RUNNING
+    running_msg = app_status.message
+    assert running_msg != deploy_failed_msg
+    # rerun update, application status should not make difference
+    app_state_manager.update()
+    assert app_status.status == ApplicationStatus.RUNNING
+    assert app_status.message == running_msg
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
