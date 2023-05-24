@@ -20,7 +20,7 @@ Enter a prompt (or 'q' to quit):   twin peaks sf in basquiat painting style
 
 Generating image(s)...
 
-Generated 4 image(s) in 11.75 seconds to the directory: 58b298d9
+Generated 4 image(s) in 8.75 seconds to the directory: 58b298d9
 ```
 
 ![Example output](https://github-production-user-asset-6210df.s3.amazonaws.com/3887863/239090189-dc1f1b7b-2fa0-4886-ae12-ca5d35b8ebc9.png)
