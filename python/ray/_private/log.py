@@ -72,7 +72,7 @@ class PlainRayHandler(logging.StreamHandler):
         import ray
 
         if (
-            hasattr(ray, "_private") and hasattr(ray._private, "worker")
+            hasattr(ray, "_private")
             and ray._private.worker.global_worker.mode
             == ray._private.worker.WORKER_MODE
         ):
