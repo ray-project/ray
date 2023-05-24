@@ -1,4 +1,24 @@
 # Update anyscale/backend/workspace-template.yaml
+# <unique-template-id>:
+#   emoji: 📊
+#   title: Batch Inference
+#   description: Description
+#   path: Relative path to the template directory, from the Ray root directory
+#   labels:
+#     - ...
+#   cluster_env:
+#   ## Some sample `build_id`'s to choose from:
+#   ## - anyscaleray-ml240-py39-gpu -> anyscale/ray-ml:2.4.0-py39-gpu
+#   ## - anyscale240-py39 -> anyscale/ray:2.4.0-py39
+#     build_id: anyscaleray-ml240-py39-gpu
+#   ## OR, use a publicly hosted image
+#   # byod:
+#   #   docker_image: url of docker image
+#   #   ray_version: 2.4.0
+#   ## Make sure these compute configs don't contain region/cloud ID
+#   compute_config:
+#     GCP: doc/source/templates/configs/compute/gpu/gce.yaml
+#     AWS: doc/source/templates/configs/compute/gpu/aws.yaml
 batch-inference-ray-data:
   emoji: 📊
   title: Batch Inference
