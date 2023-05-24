@@ -310,7 +310,7 @@ def batch(
                 else:
                     future = async_response.next_future
                 yield async_response.result
-        
+
         def enqueue_request(args, kwargs):
             self = extract_self_if_method_call(args, _func)
             flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
@@ -339,11 +339,11 @@ def batch(
             future = get_or_create_event_loop().create_future()
             batch_queue.put(_SingleRequest(self, flattened_args, future))
             return future
-        
+
         @wraps(_func)
         def generator_batch_wrapper(*args, **kwargs):
             first_future = enqueue_request(args, kwargs)
-            return batch_handler_generator(first_future) 
+            return batch_handler_generator(first_future)
 
         @wraps(_func)
         async def batch_wrapper(*args, **kwargs):
