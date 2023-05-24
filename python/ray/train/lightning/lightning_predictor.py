@@ -19,10 +19,6 @@ class LightningPredictor(TorchPredictor):
 
             import ray
 
-            assert not ray.is_initialized()
-            ray.init()
-            print(ray.cluster_resources())
-
             import torch
             import numpy as np
             import pytorch_lightning as pl

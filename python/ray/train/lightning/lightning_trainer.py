@@ -316,9 +316,7 @@ class LightningTrainer(TorchTrainer):
                 .build()
             )
 
-            scaling_config = ScalingConfig(
-                num_workers=4, use_gpu=False, resources_per_worker={"CPU": 1}
-            )
+            scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
             trainer = LightningTrainer(
                 lightning_config=lightning_config,
                 scaling_config=scaling_config,
