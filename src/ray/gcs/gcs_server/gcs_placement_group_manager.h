@@ -84,6 +84,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_max_cpu_fraction_per_node(
         placement_group_spec.max_cpu_fraction_per_node());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
+    placement_group_table_data_.set_placement_group_creation_timestamp_ms(
+        current_sys_time_ms());
     SetupStates();
   }
 

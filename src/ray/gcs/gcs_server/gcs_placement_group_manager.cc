@@ -26,6 +26,20 @@ namespace gcs {
 
 void GcsPlacementGroup::UpdateState(
     rpc::PlacementGroupTableData::PlacementGroupState state) {
+  if (placement_group_table_data_.state() ==
+          rpc::PlacementGroupTableData_PlacementGroupState_PENDING &&
+      state == rpc::PlacementGroupTableData_PlacementGroupState_CREATED) {
+    placement_group_table_data_.set_placement_group_final_bundle_placement_timestamp_ms(
+        current_sys_time_ms());
+
+    double duration_s =
+        (placement_group_table_data_
+             .placement_group_final_bundle_placement_timestamp_ms() -
+         placement_group_table_data_.placement_group_creation_timestamp_ms()) /
+        1000;
+    stats::STATS_scheduler_placement_time_s.Record(duration_s,
+                                                   {{"WorkloadType", "PlacementGroup"}});
+  }
   placement_group_table_data_.set_state(state);
   RefreshMetrics();
 }
