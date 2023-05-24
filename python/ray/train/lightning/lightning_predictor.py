@@ -15,7 +15,7 @@ class LightningPredictor(TorchPredictor):
     """A predictor for PyTorch Lightning modules.
 
     Example:
-        .. testcode:: python
+        .. testcode::
 
             import torch
             import numpy as np

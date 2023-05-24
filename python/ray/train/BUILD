@@ -11,7 +11,6 @@ doctest(
         ]
     ),
     tags = ["team:ml"],
-    size = "large"
 )
 
 doctest(
