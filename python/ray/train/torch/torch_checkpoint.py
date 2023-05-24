@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 import io
 import torch
+import pickle
 import warnings
 
 from torch.nn import Module
@@ -61,7 +62,10 @@ class TorchCheckpoint(Checkpoint):
             data_dict,
             _buffer,
             pickle_module=ray.cloudpickle,
-            pickle_protocol=ray.cloudpickle.DEFAULT_PROTOCOL,
+            pickle_protocol=pickle.HIGHEST_PROTOCOL
+            # Using pickle.HIGHEST_PROTOCOL here because it's 5 for Python 3.8+,
+            # but 4 for 3.7. We are not using ray.cloudpickle for backward
+            # compatibility because its default protocol is always 5.
         )
         return {ENCODED_DATA_KEY: _buffer.getvalue()}
 
@@ -74,10 +78,9 @@ class TorchCheckpoint(Checkpoint):
         _buffer = io.BytesIO(encoded_data)
         data_dict = torch.load(
             _buffer,
-            map_location="cpu",
-            # Python 3.7 has no pickle5 installed. Use cloudpickle here.
-            # TODO(ml-team): Remove this after we drop py37 support
-            pickle_module=ray.cloudpickle.compat.pickle,
+            map_location="cpu"
+            # Not using ray.cloudpickle here as it doesn't
+            # define an Unpickler (as it is not necessary).
         )
         return data_dict
 
