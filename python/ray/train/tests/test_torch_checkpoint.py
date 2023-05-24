@@ -1,4 +1,7 @@
 import ray
+from pathlib import Path
+from unittest.mock import patch
+
 import torch
 import pickle
 
@@ -53,6 +56,18 @@ def test_pickle_large_model():
         pickle.dumps(checkpoint)
 
     ray.get(func.remote())
+
+
+def test_no_encoding_for_dir_checkpoints(tmpdir):
+    tmpdir = Path(tmpdir)
+    with (tmpdir / "test_file").open("w"):
+        pass
+
+    # Make sure we do not double encode.
+    with patch("torch.save") as save_mock:
+        checkpoint = TorchCheckpoint.from_directory(tmpdir)
+        checkpoint.__getstate__()
+    save_mock.assert_not_called()
 
 
 if __name__ == "__main__":

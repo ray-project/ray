@@ -6,7 +6,7 @@ import warnings
 from torch.nn import Module
 
 import ray.cloudpickle
-from ray.air.checkpoint import Checkpoint
+from ray.air.checkpoint import Checkpoint, _BYTES_DATA_KEY, _FS_CHECKPOINT_KEY
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.train.data_parallel_trainer import _load_checkpoint_dict
 from ray.air._internal.torch_utils import (
@@ -32,6 +32,13 @@ class TorchCheckpoint(Checkpoint):
     # Special encoding logic to avoid serialization errors with torch.
     def _encode_data_dict(self, data_dict: dict) -> dict:
         """Encode data_dict using torch.save."""
+
+        # If we have _BYTES_DATA_KEY or _FS_CHECKPOINT_KEY in the data dict,
+        # that means this is a directory checkpoint which has already been
+        # converted into bytes. We don't want to double-encode it.
+        # See the definition of super().__getstate__().
+        if _BYTES_DATA_KEY in data_dict or _FS_CHECKPOINT_KEY in data_dict:
+            return data_dict
 
         for k, v in data_dict.items():
             # Only check for attribute as we want to support
@@ -62,6 +69,7 @@ class TorchCheckpoint(Checkpoint):
         """Decode data_dict using torch_load if needed."""
         if ENCODED_DATA_KEY not in data_dict:
             return data_dict
+
         encoded_data = data_dict[ENCODED_DATA_KEY]
         _buffer = io.BytesIO(encoded_data)
         data_dict = torch.load(
