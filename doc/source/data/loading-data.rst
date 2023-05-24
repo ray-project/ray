@@ -35,7 +35,7 @@ Generating Synthetic Data
       .. doctest::
 
         >>> import ray
-        >>> ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
+        >>> ds = ray.data.range_tensor(1, shape=(64, 64))
         >>> ds.schema()
         Column  Type
         ------  ----
