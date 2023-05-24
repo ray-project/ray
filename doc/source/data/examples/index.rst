@@ -13,8 +13,8 @@ Ray Data is a data processing engine that supports multiple data
 modalities and types. Here you will find a few end-to-end examples of some basic data
 processing with Ray Data on tabular data, text (coming soon!), and images.
 
-Computer Vision Examples
-------------------------
+Computer Vision
+---------------
 .. grid:: 1 2 3 3
     :gutter: 2
     :class-container: container pb-4
@@ -28,11 +28,13 @@ Computer Vision Examples
     
     .. grid-item-card::
 
-        .. button-ref:: pytorch_object_detection_batch_prediction
+        .. button-ref:: batch_inference_object_detection
+
+            Object Detection Batch Inference with PyTorch
 
 
-Simple Data Processing Examples
--------------------------------
+Simple Data Processing
+----------------------
 
 .. grid:: 1 2 3 3
     :gutter: 2
