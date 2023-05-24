@@ -162,7 +162,9 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             object_ref = await assignment_task
 
             if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
-                return await _handle_streaming_response(object_ref, scope, receive, send)
+                return await _handle_streaming_response(
+                    object_ref, scope, receive, send
+                )
 
             # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
             # some replicas crash simultaneously (e.g. if the head node crashes),
