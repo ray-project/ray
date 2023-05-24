@@ -7,6 +7,7 @@ from functools import wraps
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from starlette.requests import Request
+from starlette.types import ASGIApp, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
@@ -236,14 +237,20 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                 ):
                     await self._serve_asgi_lifespan.startup()
 
-            async def __call__(self, request: Request):
-                sender = ASGIHTTPSender()
+            async def __call__(
+                self, request: Request, asgi_sender: Optional[Send] = None
+            ) -> Optional[ASGIApp]:
+                if asgi_sender is None:
+                    asgi_sender = ASGIHTTPSender()
+
                 await self._serve_app(
                     request.scope,
                     request.receive,
-                    sender,
+                    asgi_sender,
                 )
-                return sender.build_asgi_response()
+
+                if asgi_sender is None:
+                    return asgi_sender.build_asgi_response()
 
             # NOTE: __del__ must be async so that we can run asgi shutdown
             # in the same event loop.

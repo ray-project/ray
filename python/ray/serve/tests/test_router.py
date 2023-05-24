@@ -10,7 +10,7 @@ import pytest
 import ray
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import RunningReplicaInfo
-from ray.serve._private.router import Query, ReplicaSet, RequestMetadata
+from ray.serve._private.router import Query, RoundRobinReplicaScheduler, RequestMetadata
 from ray._private.test_utils import SignalActor
 
 pytestmark = pytest.mark.asyncio
@@ -79,7 +79,7 @@ async def test_replica_set(ray_instance):
             return self._num_queries
 
     # We will test a scenario with two replicas in the replica set.
-    rs = ReplicaSet(get_or_create_event_loop())
+    rs = RoundRobinReplicaScheduler(get_or_create_event_loop())
     replicas = [
         RunningReplicaInfo(
             deployment_name="my_deployment",

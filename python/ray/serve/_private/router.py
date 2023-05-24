@@ -369,7 +369,7 @@ class Router:
             controller_handle: The controller handle.
         """
         if _use_ray_streaming:
-            self._replica_scheduler = RoundRobinStreamingReplicaScheduler(event_loop)
+            self._replica_scheduler = RoundRobinStreamingReplicaScheduler()
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
 
