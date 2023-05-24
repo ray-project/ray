@@ -174,15 +174,18 @@ class TorchTrainer(DataParallelTrainer):
                 # This moves the data and prepares model for distributed
                 # execution
                 loss_fn = nn.MSELoss()
-                optimizer = torch.optim.Adam(model.parameters(),
-                            lr=0.01,
-                            weight_decay=0.01)
+                optimizer = torch.optim.Adam(
+                    model.parameters(),
+                    lr=0.01,
+                    weight_decay=0.01,
+                )
                 model = train.torch.prepare_model(model)
 
                 # Iterate over epochs and batches
                 for epoch in range(num_epochs):
-                    for batches in dataset_shard.iter_torch_batches(batch_size=32,
-                                dtypes=torch.float):
+                    for batches in dataset_shard.iter_torch_batches(
+                        batch_size=32, dtypes=torch.float
+                    ):
 
                         # Add batch or unsqueeze as an additional dimension [32, x]
                         inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
@@ -200,8 +203,7 @@ class TorchTrainer(DataParallelTrainer):
                         if epoch % 20 == 0:
                             print(f"epoch: {epoch}/{num_epochs}, loss: {loss:.3f}")
 
-                    # Report and record metrics, checkpoint model at end of each
-                    # epoch
+                    # Report and record metrics, checkpoint model at end of each epoch
                     session.report(
                         {"loss": loss.item(), "epoch": epoch},
                         checkpoint=Checkpoint.from_dict(
