@@ -78,7 +78,7 @@ class Query:
 class ReplicaScheduler(ABC):
     async def assign_replica(
         self, query: Query
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, ray._raylet.StreamingObjectRefGenerator]:
         pass
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
@@ -92,7 +92,7 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
 
     async def assign_replica(
         self, query: Query
-    ) -> "ray._raylet.StreamingObjectRefGenerator":
+    ) -> ray._raylet.StreamingObjectRefGenerator:
         replica = None
         while replica is None:
             try:
@@ -425,7 +425,7 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+    ) -> Union[ray.ObjectRef, ray._raylet.StreamingObjectRefGenerator]:
         """Assign a query and returns an object ref represent the result."""
 
         self.num_router_requests.inc(
