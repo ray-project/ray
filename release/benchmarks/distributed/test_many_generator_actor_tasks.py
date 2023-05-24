@@ -46,14 +46,12 @@ async def get_stream(proxy_actor, actor):
         i += 1
     print(
         f"Took {time.time() - s} seconds to run and get "
-        "the result from a single generator task.")
-    
+        "the result from a single generator task."
+    )
 
 
 async def main():
     for i in range(1):
-        import time
-
         s = time.time()
         await asyncio.gather(*[get_stream(proxy_actor, actor) for actor in actors])
         print(f"Took {time.time() - s} seconds to run a iteration {i}")
