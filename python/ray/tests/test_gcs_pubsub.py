@@ -180,7 +180,7 @@ def test_two_subscribers(ray_start_regular):
     t1.start()
 
     logs = []
-    log_subscriber = ray._private.gcs_pubsub.GcsLogSubscriber(address=gcs_server_addr)
+    log_subscriber = ray._raylet.GcsLogSubscriber(address=gcs_server_addr)
     # Make sure subscription is registered before publishing starts.
     log_subscriber.subscribe()
 
