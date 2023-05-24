@@ -7,9 +7,9 @@ import pandas as pd
 import numpy as np
 
 import ray
-from ray.data import datastream
+from ray.data import dataset
 from ray.data.context import DataContext, WARN_PREFIX, OK_PREFIX
-from ray.data.datastream import Dataset
+from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
 
 from ray.tests.conftest import *  # noqa
@@ -22,19 +22,19 @@ class MockLogger:
         self.infos = []
 
     def warning(self, msg):
-        if "strict mode" in msg:
+        if "STRICT_MODE" in msg:
             return
         self.warnings.append(msg)
         print("warning:", msg)
 
     def info(self, msg):
-        if "strict mode" in msg:
+        if "STRICT_MODE" in msg:
             return
         self.infos.append(msg)
         print("info:", msg)
 
     def debug(self, msg):
-        if "strict mode" in msg:
+        if "STRICT_MODE" in msg:
             return
         print("debug:", msg)
 
@@ -43,19 +43,19 @@ def test_warnings(shutdown_only):
     ray.init(num_cpus=2)
 
     # Test parallelism warning.
-    datastream.logger = MockLogger()
+    dataset.logger = MockLogger()
     ray.data.range(10, parallelism=10).window(blocks_per_window=1)
-    print(datastream.logger.warnings)
-    print(datastream.logger.infos)
-    assert datastream.logger.warnings == [
+    print(dataset.logger.warnings)
+    print(dataset.logger.infos)
+    assert dataset.logger.warnings == [
         f"{WARN_PREFIX} This pipeline's parallelism is limited by its blocks per "
         "window to "
         "~1 concurrent tasks per window. To maximize "
         "performance, increase the blocks per window to at least 2. This "
-        "may require increasing the base datastream's parallelism and/or "
+        "may require increasing the base dataset's parallelism and/or "
         "adjusting the windowing parameters."
     ]
-    assert datastream.logger.infos == [
+    assert dataset.logger.infos == [
         "Created DatasetPipeline with 10 windows: 8b min, 8b max, 8b mean",
         "Blocks per window: 1 min, 1 max, 1 mean",
         f"{OK_PREFIX} This pipeline's windows likely fit in object store memory "
@@ -69,17 +69,17 @@ def test_warnings(shutdown_only):
         ray.cluster_resources = lambda: res_dict
 
         # Test window memory warning.
-        datastream.logger = MockLogger()
+        dataset.logger = MockLogger()
         ray.data.range(100000, parallelism=100).window(blocks_per_window=10)
-        print(datastream.logger.warnings)
-        print(datastream.logger.infos)
-        assert datastream.logger.warnings == [
+        print(dataset.logger.warnings)
+        print(dataset.logger.infos)
+        assert dataset.logger.warnings == [
             f"{WARN_PREFIX} This pipeline's windows are ~0.08MiB in size each and "
             "may not fit in "
             "object store memory without spilling. To improve performance, "
             "consider reducing the size of each window to 250b or less."
         ]
-        assert datastream.logger.infos == [
+        assert dataset.logger.infos == [
             "Created DatasetPipeline with 10 windows: 0.08MiB min, 0.08MiB max, "
             "0.08MiB mean",
             "Blocks per window: 10 min, 10 max, 10 mean",
@@ -89,22 +89,22 @@ def test_warnings(shutdown_only):
         ]
 
         # Test warning on both.
-        datastream.logger = MockLogger()
+        dataset.logger = MockLogger()
         ray.data.range(100000, parallelism=1).window(bytes_per_window=100000)
-        print(datastream.logger.warnings)
-        print(datastream.logger.infos)
-        assert datastream.logger.warnings == [
+        print(dataset.logger.warnings)
+        print(dataset.logger.infos)
+        assert dataset.logger.warnings == [
             f"{WARN_PREFIX} This pipeline's parallelism is limited by its blocks "
             "per window "
             "to ~1 concurrent tasks per window. To maximize performance, increase "
             "the blocks per window to at least 2. This may require increasing the "
-            "base datastream's parallelism and/or adjusting the windowing parameters.",
+            "base dataset's parallelism and/or adjusting the windowing parameters.",
             f"{WARN_PREFIX} This pipeline's windows are ~0.76MiB in size each and may "
             "not fit "
             "in object store memory without spilling. To improve performance, "
             "consider reducing the size of each window to 250b or less.",
         ]
-        assert datastream.logger.infos == [
+        assert dataset.logger.infos == [
             "Created DatasetPipeline with 1 windows: 0.76MiB min, 0.76MiB max, "
             "0.76MiB mean",
             "Blocks per window: 1 min, 1 max, 1 mean",
@@ -113,12 +113,12 @@ def test_warnings(shutdown_only):
         ray.cluster_resources = old
 
     # Test no warning.
-    datastream.logger = MockLogger()
+    dataset.logger = MockLogger()
     ray.data.range(10, parallelism=10).window(blocks_per_window=10)
-    print(datastream.logger.warnings)
-    print(datastream.logger.infos)
-    assert datastream.logger.warnings == []
-    assert datastream.logger.infos == [
+    print(dataset.logger.warnings)
+    print(dataset.logger.infos)
+    assert dataset.logger.warnings == []
+    assert dataset.logger.infos == [
         "Created DatasetPipeline with 1 windows: 80b min, 80b max, 80b mean",
         "Blocks per window: 10 min, 10 max, 10 mean",
         f"{OK_PREFIX} This pipeline's per-window parallelism is high enough to fully "
@@ -474,19 +474,19 @@ def test_schema_peek(ray_start_regular_shared):
     # Multiple datasets
     pipe = ray.data.range(6, parallelism=6).window(blocks_per_window=2)
     assert pipe.schema().names == ["id"]
-    assert pipe._first_datastream is not None
+    assert pipe._first_dataset is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 3, dss
-    assert pipe._first_datastream is None
+    assert pipe._first_dataset is None
     assert pipe.schema().names == ["id"]
 
     # Only 1 dataset
     pipe = ray.data.range(1).window(blocks_per_window=2)
     assert pipe.schema().names == ["id"]
-    assert pipe._first_datastream is not None
+    assert pipe._first_dataset is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 1, dss
-    assert pipe._first_datastream is None
+    assert pipe._first_dataset is None
     assert pipe.schema().names == ["id"]
 
     # Empty datasets
@@ -496,10 +496,10 @@ def test_schema_peek(ray_start_regular_shared):
         .window(blocks_per_window=2)
     )
     assert pipe.schema() is None
-    assert pipe._first_datastream is not None
+    assert pipe._first_dataset is not None
     dss = list(pipe.iter_datasets())
     assert len(dss) == 3, dss
-    assert pipe._first_datastream is None
+    assert pipe._first_dataset is None
     assert pipe.schema() is None
 
 

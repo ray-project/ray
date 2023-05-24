@@ -5,8 +5,9 @@ from typing import Callable, Iterator, Optional
 from ray.data._internal.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
+from ray.data._internal.numpy_support import is_valid_udf_return
 from ray.data._internal.util import _truncated_repr
-from ray.data.block import UserDefinedFunction, Block, DataBatch
+from ray.data.block import UserDefinedFunction, Block, DataBatch, StrictModeError
 from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 
 
@@ -24,7 +25,7 @@ def generate_map_batches_fn(
 
     def fn(
         blocks: Iterator[Block],
-        ctx: TaskContext,
+        task_context: TaskContext,
         batch_fn: UserDefinedFunction,
         *fn_args,
         **fn_kwargs,
@@ -50,9 +51,18 @@ def generate_map_batches_fn(
                     "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
                 )
 
+            if context.strict_mode and isinstance(batch, list):
+                raise StrictModeError(
+                    f"Error validating {_truncated_repr(batch)}: "
+                    "Returning a list of objects from `map_batches` is not "
+                    "allowed in Ray 2.5. To return Python objects, "
+                    "wrap them in a named dict field, e.g., "
+                    "return `{'results': objects}` instead of just `objects`."
+                )
+
             if isinstance(batch, collections.abc.Mapping):
                 for key, value in list(batch.items()):
-                    if not isinstance(value, (np.ndarray, list)):
+                    if not is_valid_udf_return(value):
                         raise ValueError(
                             f"Error validating {_truncated_repr(batch)}: "
                             "The `fn` you passed to `map_batches` returned a "

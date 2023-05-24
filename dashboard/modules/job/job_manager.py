@@ -33,6 +33,7 @@ from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
     JOB_ACTOR_NAME_TEMPLATE,
+    JOB_LOGS_PATH_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
     JobInfoStorageClient,
@@ -86,7 +87,6 @@ class JobLogStorageClient:
     Disk storage for stdout / stderr of driver script logs.
     """
 
-    JOB_LOGS_PATH = "job-driver-{job_id}.log"
     # Number of last N lines to put in job message upon failure.
     NUM_LOG_LINES_ON_ERROR = 10
     # Maximum number of characters to print out of the logs to avoid
@@ -133,7 +133,7 @@ class JobLogStorageClient:
         """
         return os.path.join(
             ray._private.worker._global_node.get_logs_dir_path(),
-            self.JOB_LOGS_PATH.format(job_id=job_id),
+            JOB_LOGS_PATH_TEMPLATE.format(submission_id=job_id),
         )
 
 
@@ -197,6 +197,7 @@ class JobSupervisor:
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
 
@@ -755,6 +756,8 @@ class JobManager:
         env_vars = runtime_env.get("env_vars")
         if env_vars is None:
             env_vars = {}
+
+        env_vars[ray_constants.RAY_WORKER_NICENESS] = "0"
 
         if not resources_specified:
             # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the

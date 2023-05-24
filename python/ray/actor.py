@@ -22,7 +22,11 @@ from ray._private.inspect_util import (
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
-from ray._raylet import PythonFunctionDescriptor
+from ray._raylet import (
+    STREAMING_GENERATOR_RETURN,
+    PythonFunctionDescriptor,
+    StreamingObjectRefGenerator,
+)
 from ray.exceptions import AsyncioActorExit
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
@@ -1167,6 +1171,10 @@ class ActorHandle:
 
         if num_returns == "dynamic":
             num_returns = -1
+        elif num_returns == "streaming":
+            # TODO(sang): This is a temporary private API.
+            # Remove it when we migrate to the streaming generator.
+            num_returns = ray._raylet.STREAMING_GENERATOR_RETURN
 
         object_refs = worker.core_worker.submit_actor_task(
             self._ray_actor_language,
@@ -1179,6 +1187,12 @@ class ActorHandle:
             concurrency_group_name if concurrency_group_name is not None else b"",
         )
 
+        if num_returns == STREAMING_GENERATOR_RETURN:
+            # Streaming generator will return a single ref
+            # that is for the generator task.
+            assert len(object_refs) == 1
+            generator_ref = object_refs[0]
+            return StreamingObjectRefGenerator(generator_ref, worker)
         if len(object_refs) == 1:
             object_refs = object_refs[0]
         elif len(object_refs) == 0:
@@ -1370,21 +1384,19 @@ def _make_actor(cls, actor_options):
 def exit_actor():
     """Intentionally exit the current actor.
 
-    This function is used to disconnect an actor and exit the worker.
-    Any ``atexit`` handlers installed in the actor will be run.
+    This API can be used only inside an actor. Use ray.kill
+    API if you'd like to kill an actor using actor handle.
+
+    When the API is called, the actor raises an exception and exits.
+    Any queued methods will fail. Any ``atexit``
+    handlers installed in the actor will be run.
 
     Raises:
-        Exception: An exception is raised if this is a driver or this
+        TypeError: An exception is raised if this is a driver or this
             worker is not an actor.
     """
     worker = ray._private.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
-        # Intentionally disconnect the core worker from the raylet so the
-        # raylet won't push an error message to the driver.
-        ray._private.worker.disconnect()
-        # Disconnect global state from GCS.
-        ray._private.state.state.disconnect()
-
         # In asyncio actor mode, we can't raise SystemExit because it will just
         # quit the asycnio event loop thread, not the main thread. Instead, we
         # raise a custom error to the main thread to tell it to exit.
@@ -1399,4 +1411,8 @@ def exit_actor():
         raise exit
         assert False, "This process should have terminated."
     else:
-        raise TypeError("exit_actor called on a non-actor worker.")
+        raise TypeError(
+            "exit_actor API is called on a non-actor worker, "
+            f"{worker.mode}. Call this API inside an actor methods"
+            "if you'd like to exit the actor gracefully."
+        )

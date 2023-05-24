@@ -1,7 +1,7 @@
 import itertools
 import unittest
 
-from ray.rllib.core.models.base import ENCODER_OUT, STATE_OUT
+from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import CNNEncoderConfig
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -15,7 +15,7 @@ class TestCNNEncoders(unittest.TestCase):
     def test_cnn_encoders(self):
         """Tests building CNN encoders properly and checks for correct architecture."""
 
-        # Loop through different combinations of hyperparameters.
+        # Loop through permutations of hyperparameters.
         inputs_dimss = [
             [480, 640, 3],
             [480, 640, 1],
@@ -85,7 +85,6 @@ class TestCNNEncoders(unittest.TestCase):
                 # Add this framework version of the model to our checker.
                 outputs = model_checker.add(framework=fw)
                 self.assertEqual(outputs[ENCODER_OUT].shape, (1, output_dims[0]))
-                self.assertEqual(outputs[STATE_OUT], None)
 
             # Check all added models against each other.
             model_checker.check()

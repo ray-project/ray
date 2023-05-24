@@ -114,7 +114,8 @@ enum class StatusCode : char {
   OutOfDisk = 28,
   ObjectUnknownOwner = 29,
   RpcError = 30,
-  OutOfResource = 31
+  OutOfResource = 31,
+  ObjectRefStreamEoF = 32
 };
 
 #if defined(__clang__)
@@ -144,6 +145,10 @@ class RAY_EXPORT Status {
 
   static Status KeyError(const std::string &msg) {
     return Status(StatusCode::KeyError, msg);
+  }
+
+  static Status ObjectRefStreamEoF(const std::string &msg) {
+    return Status(StatusCode::ObjectRefStreamEoF, msg);
   }
 
   static Status TypeError(const std::string &msg) {
@@ -254,6 +259,7 @@ class RAY_EXPORT Status {
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }
   bool IsOutOfDisk() const { return code() == StatusCode::OutOfDisk; }
   bool IsKeyError() const { return code() == StatusCode::KeyError; }
+  bool IsObjectRefStreamEoF() const { return code() == StatusCode::ObjectRefStreamEoF; }
   bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsIOError() const { return code() == StatusCode::IOError; }
   bool IsTypeError() const { return code() == StatusCode::TypeError; }

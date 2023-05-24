@@ -62,9 +62,7 @@ class ProgressBar:
         else:
             global needs_warning
             if needs_warning:
-                print(
-                    "[datastream]: Run `pip install tqdm` to enable progress reporting."
-                )
+                print("[dataset]: Run `pip install tqdm` to enable progress reporting.")
                 needs_warning = False
             self._bar = None
 

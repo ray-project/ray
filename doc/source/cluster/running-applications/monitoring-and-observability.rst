@@ -1,9 +1,9 @@
-Cluster Monitoring
-------------------
+Scraping and Persisting Metrics
+===============================
 
 Ray ships with the following observability features:
 
-1. :ref:`The dashboard <ray-dashboard>`, for viewing cluster state.
+1. :ref:`The dashboard <observability-getting-started>`, for viewing cluster state.
 2. CLI tools such as the :ref:`Ray state APIs <state-api-overview-ref>` and :ref:`ray status <monitor-cluster>`, for checking application and cluster status.
 3. :ref:`Prometheus metrics <multi-node-metrics>` for internal and custom user-defined metrics.
 
@@ -16,7 +16,7 @@ The rest of this page will focus on how to access these services when running a 
 Monitoring the cluster via the dashboard
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-:ref:`The dashboard <ray-dashboard>` provides detailed information about the state of the cluster,
+:ref:`The dashboard <observability-getting-started>` provides detailed information about the state of the cluster,
 including the running jobs, actors, workers, nodes, etc.
 By default, the :ref:`cluster launcher <vm-cluster-quick-start>` and :ref:`KubeRay operator <kuberay-quickstart>` will launch the dashboard, but will
 not publicly expose the port.
@@ -96,14 +96,14 @@ below.
 Prometheus
 ^^^^^^^^^^
 Ray supports Prometheus for emitting and recording time-series metrics.
-See :ref:`metrics <ray-metrics>` for more details of the metrics emitted.
+See :ref:`metrics <dash-metrics-view>` for more details of the metrics emitted.
 To use Prometheus in a Ray cluster, decide where to host it, then configure
 it so that it can scrape the metrics from Ray.
 
 Scraping metrics
 ################
 
-Ray runs a metrics agent per node to export :ref:`metrics <ray-metrics>` about Ray core as well as
+Ray runs a metrics agent per node to export :ref:`metrics <dash-metrics-view>` about Ray core as well as
 custom user-defined metrics. Each metrics agent collects metrics from the local
 node and exposes these in a Prometheus format. You can then scrape each
 endpoint to access Ray's metrics.
@@ -124,7 +124,7 @@ The service discovery file is generated on the :ref:`head node <cluster-head-nod
 Ray will periodically update this file with the addresses of all metrics agents in the cluster.
 
 Ray automatically produces a Prometheus config which scrapes the file for service discovery found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
-You can choose to use this config or modify your own to enable this behavior. The details of the config can be seen below and full documentation can be found at `here <https://prometheus.io/docs/prometheus/latest/configuration/configuration/>`.
+You can choose to use this config or modify your own to enable this behavior. The details of the config can be seen below and full documentation can be found `here <https://prometheus.io/docs/prometheus/latest/configuration/configuration/>`_.
 
 With this config, Prometheus will automatically update the addresses that it scrapes based on the contents of Ray's service discovery file.
 

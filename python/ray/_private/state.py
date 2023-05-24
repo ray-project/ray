@@ -301,6 +301,8 @@ class GlobalState:
                 return "PENDING"
             elif state == gcs_utils.PlacementGroupTableData.CREATED:
                 return "CREATED"
+            elif state == gcs_utils.PlacementGroupTableData.RESCHEDULING:
+                return "RESCHEDULING"
             else:
                 return "REMOVED"
 
@@ -327,6 +329,10 @@ class GlobalState:
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
                 bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
+                for bundle in placement_group_info.bundles
+            },
+            "bundles_to_node_id": {
+                bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
                 for bundle in placement_group_info.bundles
             },
             "strategy": get_strategy(placement_group_info.strategy),

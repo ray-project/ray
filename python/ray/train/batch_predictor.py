@@ -8,7 +8,7 @@ import ray
 from ray.air import Checkpoint
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.data import Datastream, DatasetPipeline, Preprocessor
+from ray.data import Dataset, DatasetPipeline, Preprocessor
 from ray.data.context import DataContext
 from ray.train.predictor import Predictor
 from ray.util.annotations import PublicAPI
@@ -21,7 +21,7 @@ class BatchPredictor:
     """Batch predictor class.
 
     Takes a predictor class and a checkpoint and provides an interface to run
-    batch scoring on Datastreams.
+    batch scoring on Datasets.
 
     This batch predictor wraps around a predictor class and executes it
     in a distributed way when calling ``predict()``.
@@ -111,7 +111,7 @@ class BatchPredictor:
 
     def predict(
         self,
-        data: Union[ray.data.Datastream, ray.data.DatasetPipeline],
+        data: Union[ray.data.Dataset, ray.data.DatasetPipeline],
         *,
         feature_columns: Optional[List[str]] = None,
         keep_columns: Optional[List[str]] = None,
@@ -123,14 +123,14 @@ class BatchPredictor:
         separate_gpu_stage: bool = True,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         **predict_kwargs,
-    ) -> Union[ray.data.Datastream, ray.data.DatasetPipeline]:
-        """Run batch scoring on a Datastream.
+    ) -> Union[ray.data.Dataset, ray.data.DatasetPipeline]:
+        """Run batch scoring on a Dataset.
 
         .. note::
-            In Ray 2.4, `BatchPredictor` is lazy by default. Use one of the Datastream consumption APIs, such as iterating through the output, to trigger the execution of prediction.
+            In Ray 2.4, `BatchPredictor` is lazy by default. Use one of the Dataset consumption APIs, such as iterating through the output, to trigger the execution of prediction.
 
         Args:
-            data: Datastream or pipeline to run batch prediction on.
+            data: Dataset or pipeline to run batch prediction on.
             feature_columns: List of columns in the preprocessed dataset to use for
                 prediction. Columns not specified will be dropped
                 from `data` before being passed to the predictor.
@@ -157,7 +157,7 @@ class BatchPredictor:
                 ``predict()`` method.
 
         Returns:
-            Datastream containing scoring results.
+            Dataset containing scoring results.
 
         Examples:
 
@@ -190,7 +190,7 @@ class BatchPredictor:
             .. testoutput::
 
                 MapBatches(ScoringWrapper)
-                +- Datastream(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
+                +- Dataset(num_blocks=1, num_rows=3, schema={feature_1: int64, label: int64})
                 Final accuracy: 1.0
         """  # noqa: E501
         if num_gpus_per_worker is None:
@@ -297,7 +297,7 @@ class BatchPredictor:
                     return prediction_output_batch
 
             def __call__(self, input_batch: DataBatchType) -> DataBatchType:
-                # TODO: Delegate separate_gpu_stage flag to Datastream.
+                # TODO: Delegate separate_gpu_stage flag to Dataset.
                 if self.override_prep:
                     # Apply preprocessing before selecting feature columns.
                     input_batch = self.override_prep.transform_batch(input_batch)
@@ -330,18 +330,18 @@ class BatchPredictor:
         preprocessor = self.get_preprocessor()
         override_prep = None
         if preprocessor:
-            # TODO: Delegate separate_gpu_stage flag to Datastream.
+            # TODO: Delegate separate_gpu_stage flag to Dataset.
             if not separate_gpu_stage and num_gpus_per_worker > 0:
                 override_prep = preprocessor
             else:
                 # In batch prediction, preprocessing is always done in a separate stage.
                 # We should not in-line it with prediction, unless separate_gpu_stage is
                 # False.
-                # Datastream optimizer will fuse preprocessing+prediction stage as
+                # Dataset optimizer will fuse preprocessing+prediction stage as
                 # necessary.
 
-                if isinstance(data, Datastream):
-                    # Datastream is lazy by default so this transform
+                if isinstance(data, Dataset):
+                    # Dataset is lazy by default so this transform
                     # will not trigger execution.
                     data = preprocessor.transform(data)
                 elif isinstance(data, DatasetPipeline):
@@ -362,7 +362,7 @@ class BatchPredictor:
 
     def predict_pipelined(
         self,
-        data: ray.data.Datastream,
+        data: ray.data.Dataset,
         *,
         blocks_per_window: Optional[int] = None,
         bytes_per_window: Optional[int] = None,
@@ -383,11 +383,11 @@ class BatchPredictor:
         Unlike `predict()`, this generates a DatasetPipeline object and does not
         perform execution. Execution can be triggered by pulling from the pipeline.
 
-        This is a convenience wrapper around calling `.window()` on the Datastream prior
+        This is a convenience wrapper around calling `.window()` on the Dataset prior
         to passing it `BatchPredictor.predict()`.
 
         Args:
-            data: Datastream to run batch prediction on.
+            data: Dataset to run batch prediction on.
             blocks_per_window: The window size (parallelism) in blocks.
                 Increasing window size increases pipeline throughput, but also
                 increases the latency to initial output, since it decreases the
@@ -468,7 +468,7 @@ class BatchPredictor:
         )
 
     def _determine_preprocessor_batch_format(
-        self, ds: Union[ray.data.Datastream, ray.data.DatasetPipeline]
+        self, ds: Union[ray.data.Dataset, ray.data.DatasetPipeline]
     ) -> BatchFormat:
         """Determine batch format we use for the first preprocessor.
 
@@ -477,7 +477,7 @@ class BatchPredictor:
         transform type to avoid unnecessary data conversion.
 
         Args:
-            ds (Union[ray.data.Datastream, ray.data.DatasetPipeline]): Input
+            ds (Union[ray.data.Dataset, ray.data.DatasetPipeline]): Input
                 dataset or dataset pipeline.
 
         Returns:

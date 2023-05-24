@@ -109,7 +109,7 @@ In many cases each model may use a different architecture or framework and requi
 Many other solutions support defining a static graph in YAML or some other configuration language.
 This can be limiting and hard to work with.
 Ray Serve, on the other hand, supports multi-model composition using a programmable API where calls to different models look just like function calls.
-The models can use different resources and run across different machines in the cluster, but to the developer it's just like writing a regular program (see {ref}`serve-model-composition` for more details).
+The models can use different resources and run across different machines in the cluster, but you can write it like a regular program (see {ref}`serve-model-composition` for more details).
 
 :::
 
@@ -157,6 +157,13 @@ Serve helps you scale out your deployment and runs them reliably and efficiently
 
 Serve specializes in scalable and reliable ML model serving. As such, it can be an important plug-and-play component of your ML platform stack.
 Serve supports arbitrary Python code and therefore integrates well with the MLOps ecosystem. You can use it with model optimizers (ONNX, TVM), model monitoring systems (Seldon Alibi, Arize), model registries (MLFlow, Weights and Biases), machine learning frameworks (XGBoost, Scikit-learn), data app UIs (Gradio, Streamlit), and Web API frameworks (FastAPI, gRPC).
+
+:::
+
+:::{dropdown} LLM developer
+:animate: fade-in-slide-down
+
+Serve enables you to rapidly prototype, develop, and deploy scalable LLM applications to production. Many large language model (LLM) applications combine prompt preprocessing, vector database lookups, LLM API calls, and response validation. Because Serve supports any arbitrary Python code, you can write all these steps as a single Python module, enabling rapid development and easy testing. You can then quickly deploy your Ray Serve LLM application to production, and each application step can independently autoscale to efficiently accommodate user traffic without wasting resources.
 
 :::
 

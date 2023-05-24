@@ -13,6 +13,7 @@ from ray.serve._private.common import (
     StatusOverview,
     ApplicationStatus,
     DeploymentStatusInfo,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
@@ -102,7 +103,6 @@ class ServeControllerClient:
 
         # Shut down handles
         for k in list(self.handle_cache):
-            self.handle_cache[k].stop_metrics_pusher()
             del self.handle_cache[k]
 
         if ray.is_initialized() and not self._shutdown:
@@ -527,3 +527,13 @@ class ServeControllerClient:
             f"Deployment '{name}{':'+version if version else ''}' is ready"
             f"{url_part}. {tag}"
         )
+
+    @_ensure_connected
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """Record multiplexed replica information for replica.
+
+        Args:
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
+        """
+        self._controller.record_multiplexed_replica_info.remote(info)

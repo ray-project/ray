@@ -13,7 +13,7 @@ Overview
 .. _ingest_basics:
 
 The following figure illustrates a simple Ray AIR training job that (1) loads parquet data from S3, (2) applies a simple
-:ref:`user-defined function <transform_datastreams_writing_udfs>` to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
+:ref:`user-defined function <transform_datasets_writing_udfs>` to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
 
 .. figure:: images/ingest.svg
 
@@ -29,7 +29,7 @@ on the train dataset passed to the Trainer, followed by :py:meth:`prep.transform
 on remaining datasets.
 
 **Training**: Then, AIR passes the preprocessed dataset to Train workers (Ray actors) launched by the Trainer. Each worker calls :func:`~ray.air.session.get_dataset_shard` to get a handle to its assigned data shard.
-This returns a :class:`~ray.data.DataIterator`, which can be used to loop over the data with :meth:`~ray.data.DataIterator.iter_batches`, :meth:`~ray.data.Datastream.iter_torch_batches`, or :meth:`~ray.data.Datastream.to_tf`.
+This returns a :class:`~ray.data.DataIterator`, which can be used to loop over the data with :meth:`~ray.data.DataIterator.iter_batches`, :meth:`~ray.data.Dataset.iter_torch_batches`, or :meth:`~ray.data.Dataset.to_tf`.
 Each of these returns a batch iterator for one epoch (a full pass over the original dataset).
 
 Getting Started
@@ -217,7 +217,7 @@ By default, only the `"train"` dataset is split. All the other Datasets are not 
 
 However, you may want to split a large validation dataset example to also do data parallel validation.
 This example shows overriding the split config for the "valid" and "test" datasets. This means that
-both the valid and test datasets here will be :py:meth:`.split() <ray.data.Datastream.split>` across the training workers.
+both the valid and test datasets here will be :py:meth:`.split() <ray.data.Dataset.split>` across the training workers.
 
 .. literalinclude:: doc_code/air_ingest.py
     :language: python
@@ -432,9 +432,9 @@ FAQ
 How do I pass in a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline` to my ``Trainer``?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The Trainer interface only accepts a standard :py:class:`~ray.data.Datastream` and not a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline`.
+The Trainer interface only accepts a standard :py:class:`~ray.data.Dataset` and not a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline`.
 Instead, you can configure the ingest via the ``dataset_config`` that is passed to your ``Trainer``. Internally, Ray AIR will
-convert the provided :py:class:`~ray.data.Datastream` into a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline` with the specified configurations.
+convert the provided :py:class:`~ray.data.Dataset` into a :py:class:`~ray.data.dataset_pipeline.DatasetPipeline` with the specified configurations.
 
 See the :ref:`Enabling Streaming Ingest <air-streaming-ingest>` and :ref:`Shuffling Data <air-shuffle>` sections for full examples.
 

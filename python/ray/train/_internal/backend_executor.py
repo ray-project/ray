@@ -5,6 +5,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
 from ray._private.ray_constants import env_integer
+from ray.air.config import CheckpointConfig
 from ray.exceptions import RayActorError
 from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.air.checkpoint import Checkpoint
@@ -71,6 +72,7 @@ class BackendExecutor:
         num_gpus_per_worker: float = 0,
         additional_resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
+        checkpoint_config: Optional[CheckpointConfig] = None,
     ):
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
@@ -90,6 +92,13 @@ class BackendExecutor:
 
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
+
+        self._checkpoint_keep_all_ranks = (
+            checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
+        )
+        self._checkpoint_upload_from_workers = (
+            checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
+        )
 
     def start(
         self,
@@ -341,7 +350,7 @@ class BackendExecutor:
 
         Args:
             train_func: The training function to run on each worker.
-            dataset_spec: A specification for the Datastream to be
+            dataset_spec: A specification for the Dataset to be
                 passed to the training workers, and the logic on how to shard the Ray
                 Dataset.
             checkpoint: The checkpoint data that
@@ -366,6 +375,8 @@ class BackendExecutor:
             checkpoint,
             dataset_shard,
             encode_data_fn,
+            checkpoint_keep_all_ranks,
+            checkpoint_upload_from_workers,
         ):
             try:
                 init_session(
@@ -381,6 +392,8 @@ class BackendExecutor:
                     encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                     enable_lazy_checkpointing=use_lazy_checkpointing,
+                    checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
+                    checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -416,6 +429,10 @@ class BackendExecutor:
                     dataset_shard=self.dataset_shards[index],
                     checkpoint=checkpoint,
                     encode_data_fn=self._backend._encode_data,
+                    checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
+                    checkpoint_upload_from_workers=(
+                        self._checkpoint_upload_from_workers
+                    ),
                 )
             )
 
@@ -482,7 +499,18 @@ class BackendExecutor:
                 "`session.report()` are called the "
                 "same number of times on all workers."
             )
+
         return results
+
+    def _set_checkpoint_uri(self, uri: str):
+        """Tell remote sessions where to upload the chekcpoint."""
+
+        def set_uri():
+            session = _get_session("_set_checkpoint_uri")
+            session._set_checkpoint_uri(uri)
+
+        futures = self.worker_group.execute_async(set_uri)
+        self.get_with_failure_handling(futures)
 
     def pause_reporting(self):
         """Disable workers from enqueuing results from ``session.report()``.

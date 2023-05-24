@@ -53,6 +53,7 @@ parts:
               - file: ray-air/computer-vision
               - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
+              - file: ray-air/experimental-features
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/opt_deepspeed_batch_inference
@@ -82,6 +83,7 @@ parts:
               - file: ray-air/examples/gptj_batch_prediction
               - file: ray-air/examples/gptj_serving
               - file: ray-air/examples/dreambooth_finetuning
+              - file: ray-air/examples/dolly_lightning_fsdp_finetuning
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
@@ -100,6 +102,8 @@ parts:
               - file: data/examples/ocr_example
                 title: Scaling OCR with Ray Data
               - file: data/examples/random-access
+              - file: data/examples/batch_inference_object_detection
+                title: Object Detection Batch Inference with PyTorch
           - file: data/faq
           - file: data/api/api
           - file: data/glossary
@@ -132,6 +136,8 @@ parts:
                 title: "PyTorch Lightning Basic Example"
               - file: train/examples/lightning/lightning_cola_advanced
                 title: "PyTorch Lightning Advanced Example"
+              - file: train/examples/lightning/lightning_exp_tracking
+                title: "PyTorch Lightning with Experiment Tracking Tools"
               - file: train/examples/transformers/transformers_example
                 title: "HF Transformers Example"
               - file: train/examples/tf/tensorflow_mnist_example
@@ -265,6 +271,7 @@ parts:
               - file: serve/scaling-and-resource-allocation
               - file: serve/model_composition
               - file: serve/dev-workflow
+              - file: serve/app-builder-guide
               - file: serve/multi-app
               - file: serve/production-guide/index
                 sections:
@@ -365,6 +372,7 @@ parts:
               - file: cluster/vms/user-guides/launching-clusters/index
               - file: cluster/vms/user-guides/large-cluster-best-practices
               - file: cluster/vms/user-guides/configuring-autoscaling
+              - file: cluster/vms/user-guides/logging
               - file: cluster/vms/user-guides/community/index
                 title: Community-supported Cluster Managers
                 sections:
@@ -376,13 +384,40 @@ parts:
               sections:
               - file: cluster/vms/examples/ml-example
             - file: cluster/vms/references/index
+          - file: cluster/configure-manage-dashboard
           - file: cluster/running-applications/index
             title: Applications Guide
           - file: cluster/faq
           - file: cluster/package-overview
 
-      - file: ray-observability/monitoring-debugging/monitoring-debugging
+      - file: ray-observability/index
         title: "Monitoring and Debugging"
+        sections:
+          - file: ray-observability/getting-started
+          - file: ray-observability/key-concepts
+          - file: ray-observability/user-guides/index
+            title: User Guides
+            sections:
+              - file: ray-observability/user-guides/debug-apps/index
+                title: Debugging Applications
+                sections:
+                  - file: ray-observability/user-guides/debug-apps/general-troubleshoot
+                  - file: ray-observability/user-guides/debug-apps/debug-memory
+                  - file: ray-observability/user-guides/debug-apps/debug-hangs
+                  - file: ray-observability/user-guides/debug-apps/debug-failures
+                  - file: ray-observability/user-guides/debug-apps/optimize-performance
+                  - file: ray-observability/user-guides/debug-apps/ray-debugging
+                  - file: ray-observability/user-guides/debug-apps/ray-core-profiling
+              - file: ray-observability/user-guides/cli-sdk
+              - file: ray-observability/user-guides/configure-logging
+              - file: ray-observability/user-guides/add-app-metrics
+              - file: ray-observability/user-guides/ray-tracing
+          - file: ray-observability/reference/index
+            title: Reference
+            sections:
+              - file: ray-observability/reference/api
+              - file: ray-observability/reference/cli
+              - file: ray-observability/reference/system-metrics
 
       - file: ray-references/api
         title: References
@@ -400,5 +435,7 @@ parts:
               - file: ray-contribute/writing-code-snippets
               - file: ray-contribute/fake-autoscaler
               - file: ray-core/examples/testing-tips
+              - file: ray-contribute/debugging.rst
+              - file: ray-contribute/profiling.rst
           - file: ray-core/configure
           - file: ray-contribute/whitepaper

@@ -1,12 +1,11 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -21,8 +20,8 @@ LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
 @dataclass
-class ImpalaHyperparameters(LearnerHyperparameters):
-    """Hyperparameters for the ImpalaLearner sub-classes (framework specific).
+class ImpalaLearnerHyperparameters(LearnerHyperparameters):
+    """LearnerHyperparameters for the ImpalaLearner sub-classes (framework specific).
 
     These should never be set directly by the user. Instead, use the IMPALAConfig
     class to configure your algorithm.
@@ -60,10 +59,12 @@ class ImpalaLearner(Learner):
         )
 
     @override(Learner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, timestep: int
+    def additional_update_for_module(
+        self, *, module_id: ModuleID, timestep: int
     ) -> Dict[str, Any]:
-        results = super().additional_update_per_module(module_id, timestep=timestep)
+        results = super().additional_update_for_module(
+            module_id=module_id, timestep=timestep
+        )
 
         # Update entropy coefficient via our Scheduler.
         new_entropy_coeff = self.entropy_coeff_scheduler.update(
@@ -73,27 +74,12 @@ class ImpalaLearner(Learner):
 
         return results
 
-    @override(Learner)
-    def compile_results(
-        self,
-        batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
-        postprocessed_loss: Mapping[str, Any],
-        postprocessed_gradients: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        results = super().compile_results(
-            batch, fwd_out, postprocessed_loss, postprocessed_gradients
-        )
-        results[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
-        results[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
-        return results
-
 
 def _reduce_impala_results(results: List[ResultDict]) -> ResultDict:
     """Reduce/Aggregate a list of results from Impala Learners.
 
     Average the values of the result dicts. Add keys for the number of agent and env
-    steps trained.
+    steps trained (on all modules).
 
     Args:
         results: result dicts to reduce.

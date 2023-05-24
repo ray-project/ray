@@ -34,7 +34,7 @@ Row API
 
    row.TableRow
 
-.. _datastream-tensor-extension-api:
+.. _dataset-tensor-extension-api:
 
 Tensor Column Extension API
 ---------------------------

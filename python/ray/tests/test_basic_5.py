@@ -227,6 +227,9 @@ assert r'{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
     subprocess.check_call(["python", "-m", "package.module2"])
 
 
+# This will be fixed on Windows once the import thread is removed, see
+# https://github.com/ray-project/ray/pull/30895
+@pytest.mark.skipif(sys.platform == "win32", reason="Currently fails on Windows.")
 def test_worker_kv_calls(monkeypatch, shutdown_only):
     monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
     ray.init()

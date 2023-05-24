@@ -69,7 +69,7 @@ def _unzip_if_needed(paths: List[str], format: str):
 @PublicAPI
 def get_dataset_and_shards(
     config: "AlgorithmConfig", num_workers: int = 0
-) -> Tuple[ray.data.Datastream, List[ray.data.Datastream]]:
+) -> Tuple[ray.data.Dataset, List[ray.data.Dataset]]:
     """Returns a dataset and a list of shards.
 
     This function uses algorithm configs to create a dataset and a list of shards.
@@ -77,12 +77,12 @@ def get_dataset_and_shards(
         input: The input type should be "dataset".
         input_config: A dict containing the following key and values:
             `format`: str, speciifies the format of the input data. This will be the
-            format that ray dataset supports. See ray.data.Datastream for
+            format that ray dataset supports. See ray.data.Dataset for
             supported formats. Only "parquet" or "json" are supported for now.
             `paths`: str, a single string or a list of strings. Each string is a path
             to a file or a directory holding the dataset. It can be either a local path
             or a remote path (e.g. to an s3 bucket).
-            `loader_fn`: Callable[None, ray.data.Datastream], Instead of
+            `loader_fn`: Callable[None, ray.data.Dataset], Instead of
             specifying paths and format, you can specify a function to load the dataset.
             `parallelism`: int, The number of tasks to use for loading the dataset.
             If not specified, it will be set to the number of workers.
@@ -185,7 +185,7 @@ class DatasetReader(InputReader):
             "input_config": {
                 "format": "json",
                 # A single data file, a directory, or anything
-                # that ray.data.datastream recognizes.
+                # that ray.data.dataset recognizes.
                 "paths": "/tmp/sample_batches/",
                 # By default, parallelism=num_workers.
                 "parallelism": 3,
@@ -197,7 +197,7 @@ class DatasetReader(InputReader):
     """
 
     @PublicAPI
-    def __init__(self, ds: ray.data.Datastream, ioctx: Optional[IOContext] = None):
+    def __init__(self, ds: ray.data.Dataset, ioctx: Optional[IOContext] = None):
         """Initializes a DatasetReader instance.
 
         Args:

@@ -45,12 +45,6 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
 
-from ray.experimental.state.state_cli import (
-    ray_get,
-    ray_list,
-    logs_state_cli_group,
-    summary_state_cli_group,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -2431,10 +2425,22 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-cli.add_command(ray_list, name="list")
-cli.add_command(ray_get, name="get")
-add_command_alias(summary_state_cli_group, name="summary", hidden=False)
-add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+
+try:
+    from ray.util.state.state_cli import (
+        ray_get,
+        ray_list,
+        logs_state_cli_group,
+        summary_state_cli_group,
+    )
+
+    cli.add_command(ray_list, name="list")
+    cli.add_command(ray_get, name="get")
+    add_command_alias(summary_state_cli_group, name="summary", hidden=False)
+    add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+except ImportError as e:
+    logger.debug(f"Integrating ray state command line tool failed: {e}")
+
 
 try:
     from ray.dashboard.modules.job.cli import job_cli_group

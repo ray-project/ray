@@ -1,5 +1,15 @@
 import sys
-from typing import Any, Collection, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
+from typing import (
+    Any,
+    Collection,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+)
 
 import contextlib
 import collections
@@ -14,6 +24,9 @@ import os
 import pandas as pd
 import textwrap
 import time
+
+from ray.tune.search.sample import Domain
+from ray.tune.utils.log import Verbosity
 
 try:
     import rich
@@ -31,6 +44,7 @@ from ray._private.thirdparty.tabulate.tabulate import (
     DataRow,
 )
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.callback import Callback
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
@@ -39,7 +53,6 @@ from ray.tune.result import (
     MEAN_LOSS,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
 )
 from ray.tune.experiment.trial import Trial
 
@@ -86,14 +99,42 @@ class AirVerbosity(IntEnum):
     DEFAULT = 1
     VERBOSE = 2
 
+    def __repr__(self):
+        return str(self.value)
+
 
 IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 
-def get_air_verbosity() -> Optional[AirVerbosity]:
-    verbosity = os.environ.get("AIR_VERBOSITY", None)
-    if verbosity:
-        return AirVerbosity(int(verbosity)) if verbosity else None
+def get_air_verbosity(
+    verbose: Union[int, AirVerbosity, Verbosity]
+) -> Optional[AirVerbosity]:
+    if os.environ.get("RAY_AIR_NEW_OUTPUT", "1") == "0":
+        return None
+
+    if isinstance(verbose, AirVerbosity):
+        return verbose
+
+    verbose_int = verbose if isinstance(verbose, int) else verbose.value
+
+    # Verbosity 2 and 3 both map to AirVerbosity 2
+    verbose_int = min(2, verbose_int)
+
+    return AirVerbosity(verbose_int)
+
+
+def _infer_params(config: Dict[str, Any]) -> List[str]:
+    params = []
+    flat_config = flatten_dict(config)
+    for key, val in flat_config.items():
+        if isinstance(val, Domain):
+            params.append(key)
+        # Grid search is a special named field. Because we flattened
+        # the whole config, we look it up per string
+        if key.endswith("/grid_search"):
+            # Truncate `/grid_search`
+            params.append(key[:-12])
+    return params
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
@@ -240,17 +281,31 @@ def _max_len(value: Any, max_len: int = 20, wrap: bool = False) -> Any:
     return result
 
 
-def _get_trial_info(trial: Trial, metric_keys: List[str]) -> List[str]:
+def _get_trial_info(
+    trial: Trial, param_keys: List[str], metric_keys: List[str]
+) -> List[str]:
     """Returns the following information about a trial:
 
     name | status | metrics...
 
     Args:
         trial: Trial to get information for.
+        param_keys: Names of parameters to include.
         metric_keys: Names of metrics to include.
     """
     result = trial.last_result
     trial_info = [str(trial), trial.status]
+
+    # params
+    trial_info.extend(
+        [
+            _max_len(
+                unflattened_lookup(param, trial.config, default=None),
+            )
+            for param in param_keys
+        ]
+    )
+    # metrics
     trial_info.extend(
         [
             _max_len(
@@ -265,6 +320,7 @@ def _get_trial_info(trial: Trial, metric_keys: List[str]) -> List[str]:
 def _get_trial_table_data_per_status(
     status: str,
     trials: List[Trial],
+    param_keys: List[str],
     metric_keys: List[str],
     force_max_rows: bool = False,
 ) -> Optional[_PerStatusTrialTableData]:
@@ -273,6 +329,7 @@ def _get_trial_table_data_per_status(
     Args:
         status: The trial status of interest.
         trials: all the trials of that status.
+        param_keys: *Ordered* list of parameters to be displayed in the table.
         metric_keys: *Ordered* list of metrics to be displayed in the table.
             Including both default and user defined.
         force_max_rows: Whether or not to enforce a max row number for this status.
@@ -290,23 +347,28 @@ def _get_trial_table_data_per_status(
     more_info = None
     for t in trials:
         if len(trial_infos) >= max_row:
-            more_info = f"... and {str(len(trials) - max_row)} more {status} ..."
+            remaining = len(trials) - max_row
+            more_info = f"{remaining} more {status}"
             break
-        trial_infos.append(_get_trial_info(t, metric_keys))
+        trial_infos.append(_get_trial_info(t, param_keys, metric_keys))
     return _PerStatusTrialTableData(trial_infos, more_info)
 
 
 def _get_trial_table_data(
     trials: List[Trial],
+    param_keys: List[str],
     metric_keys: List[str],
+    all_rows: bool = False,
 ) -> _TrialTableData:
     """Generate a table showing the current progress of tuning trials.
 
     Args:
         trials: List of trials for which progress is to be shown.
+        param_keys: Ordered list of parameters to be displayed in the table.
         metric_keys: Ordered list of metrics to be displayed in the table.
             Including both default and user defined.
             Will only be shown if at least one trial is having the key.
+        all_rows: Force to show all rows.
 
     Returns:
         Trial table data, including header and trial table per each status.
@@ -330,19 +392,29 @@ def _get_trial_table_data(
     formatted_metric_columns = [
         _max_len(k, max_len=max_column_length, wrap=True) for k in metric_keys
     ]
-    # Map to the abbreviated version if necessary.
-    header = ["Trial name", "status"] + [
-        DEFAULT_COLUMNS[key] if key in DEFAULT_COLUMNS else key
-        for key in formatted_metric_columns
+
+    formatted_param_columns = [
+        _max_len(k, max_len=max_column_length, wrap=True) for k in param_keys
     ]
+
+    metric_header = [
+        DEFAULT_COLUMNS[metric] if metric in DEFAULT_COLUMNS else formatted
+        for metric, formatted in zip(metric_keys, formatted_metric_columns)
+    ]
+
+    param_header = formatted_param_columns
+
+    # Map to the abbreviated version if necessary.
+    header = ["Trial name", "status"] + param_header + metric_header
 
     trial_data = list()
     for t_status in ORDER:
         trial_data_per_status = _get_trial_table_data_per_status(
             t_status,
             trials_by_state[t_status],
-            metric_keys=formatted_metric_columns,
-            force_max_rows=len(trials) > max_trial_num_to_show,
+            param_keys=param_keys,
+            metric_keys=metric_keys,
+            force_max_rows=not all_rows and len(trials) > max_trial_num_to_show,
         )
         if trial_data_per_status:
             trial_data.append(trial_data_per_status)
@@ -503,10 +575,10 @@ class ProgressReporter:
         if self._verbosity < self._heartbeat_threshold:
             return
         if force or time.time() - self._last_heartbeat_time > self._heartbeat_freq:
-            self._print_heartbeat(trials, *args)
+            self._print_heartbeat(trials, *args, force=force)
             self._last_heartbeat_time = time.time()
 
-    def _print_heartbeat(self, trials, *args):
+    def _print_heartbeat(self, trials, *args, force: bool = False):
         raise NotImplementedError
 
 
@@ -515,19 +587,32 @@ def _detect_reporter(
     num_samples: int,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
+    config: Optional[Dict] = None,
 ):
     # TODO: Add JupyterNotebook and Ray Client case later.
-    rich_enabled = "ENABLE_RICH" in os.environ
+    rich_enabled = bool(int(os.environ.get("RAY_AIR_RICH_LAYOUT", "0")))
     if num_samples and num_samples > 1:
         if rich_enabled:
             if not rich:
                 raise ImportError("Please run `pip install rich`. ")
-            reporter = TuneRichReporter(verbosity, num_samples, metric, mode)
+            reporter = TuneRichReporter(
+                verbosity,
+                num_samples=num_samples,
+                metric=metric,
+                mode=mode,
+                config=config,
+            )
         else:
-            reporter = TuneTerminalReporter(verbosity, num_samples, metric, mode)
+            reporter = TuneTerminalReporter(
+                verbosity,
+                num_samples=num_samples,
+                metric=metric,
+                mode=mode,
+                config=config,
+            )
     else:
         if rich_enabled:
-            logger.warning("`ENABLE_RICH` is only effective with Tune usecase.")
+            logger.warning("`RAY_AIR_RICH_LAYOUT` is only effective with Tune usecase.")
         reporter = TrainReporter(verbosity)
     return reporter
 
@@ -541,12 +626,14 @@ class TuneReporterBase(ProgressReporter):
         num_samples: int,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
+        config: Optional[Dict] = None,
     ):
         self._num_samples = num_samples
         self._metric = metric
         self._mode = mode
         # will be populated when first result comes in.
         self._inferred_metric = None
+        self._inferred_params = _infer_params(config)
         super(TuneReporterBase, self).__init__(verbosity=verbosity)
 
     def _get_overall_trial_progress_str(self, trials):
@@ -559,7 +646,9 @@ class TuneReporterBase(ProgressReporter):
         return f"Trial status: {result}"
 
     # TODO: Return a more structured type to share code with Jupyter flow.
-    def _get_heartbeat(self, trials, *sys_args) -> Tuple[List[str], _TrialTableData]:
+    def _get_heartbeat(
+        self, trials, *sys_args, force_full_output: bool = False
+    ) -> Tuple[List[str], _TrialTableData]:
         result = list()
         # Trial status: 1 RUNNING | 7 PENDING
         result.append(self._get_overall_trial_progress_str(trials))
@@ -580,10 +669,15 @@ class TuneReporterBase(ProgressReporter):
 
         all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
 
-        trial_table_data = _get_trial_table_data(trials, all_metrics)
+        trial_table_data = _get_trial_table_data(
+            trials,
+            param_keys=self._inferred_params,
+            metric_keys=all_metrics,
+            all_rows=force_full_output,
+        )
         return result, trial_table_data
 
-    def _print_heartbeat(self, trials, *sys_args):
+    def _print_heartbeat(self, trials, *sys_args, force: bool = False):
         raise NotImplementedError
 
 
@@ -624,28 +718,34 @@ class TuneTerminalReporter(TuneReporterBase):
             **kwargs,
         )
 
-    def _print_heartbeat(self, trials, *sys_args):
-        if self._verbosity < self._heartbeat_threshold:
+    def _print_heartbeat(self, trials, *sys_args, force: bool = False):
+        if self._verbosity < self._heartbeat_threshold and not force:
             return
-        heartbeat_strs, table_data = self._get_heartbeat(trials, *sys_args)
+        heartbeat_strs, table_data = self._get_heartbeat(
+            trials, *sys_args, force_full_output=force
+        )
+
         for s in heartbeat_strs:
             print(s)
         # now print the table using Tabulate
-        all_infos = []
+        more_infos = []
+        all_data = []
         header = table_data.header
-        table_data_list = table_data.data
-        for table in table_data_list:
-            all_infos.extend(table.trial_infos)
-            if table.more_info:
-                all_infos.append(table.more_info)
+        for sub_table in table_data.data:
+            all_data.extend(sub_table.trial_infos)
+            if sub_table.more_info:
+                more_infos.append(sub_table.more_info)
+
         print(
             tabulate(
-                all_infos,
+                all_data,
                 headers=header,
                 tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
             )
         )
+        if more_infos:
+            print(", ".join(more_infos))
         print()
 
 
@@ -710,7 +810,7 @@ class TuneRichReporter(TuneReporterBase):
 
         self._live.update(table)
 
-    def _print_heartbeat(self, trials, *args):
+    def _print_heartbeat(self, trials, *args, force: bool = False):
         if not rich:
             return
         if not self._live:
@@ -719,7 +819,9 @@ class TuneRichReporter(TuneReporterBase):
                 "be called without `with_live` context manager."
             )
             return
-        heartbeat_strs, table_data = self._get_heartbeat(trials, *args)
+        heartbeat_strs, table_data = self._get_heartbeat(
+            trials, *args, force_full_output=force
+        )
         self._render_layout(heartbeat_strs, table_data)
 
 
@@ -727,7 +829,7 @@ class TrainReporter(ProgressReporter):
     # the minimal verbosity threshold at which heartbeat starts getting printed.
     _heartbeat_threshold = AirVerbosity.VERBOSE
 
-    def _get_heartbeat(self, trials: List[Trial]):
+    def _get_heartbeat(self, trials: List[Trial], force_full_output: bool = False):
         # Training on iteration 1. Current time: 2023-03-22 15:29:25 (running for 00:00:03.24)  # noqa
         if len(trials) == 0:
             return
@@ -744,8 +846,8 @@ class TrainReporter(ProgressReporter):
             [f"Training on iteration {iter_num}.", self._time_heartbeat_str]
         )
 
-    def _print_heartbeat(self, trials, *args):
-        print(self._get_heartbeat(trials))
+    def _print_heartbeat(self, trials, *args, force: bool = False):
+        print(self._get_heartbeat(trials, force_full_output=force))
 
 
 # These keys are blacklisted for printing out training/tuning intermediate/final result!

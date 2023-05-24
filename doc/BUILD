@@ -183,10 +183,20 @@ py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
     exclude = [
+        # Too large. Use a custom test below.
+        "source/ray-air/doc_code/computer_vision.py",
         "source/ray-air/doc_code/hf_trainer.py",  # Too large
         "source/ray-air/doc_code/predictors.py",
     ],
     extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
+
+py_test(
+    size = "enormous",
+    name = "computer_vision_test",
+    main = "source/ray-air/doc_code/computer_vision.py",
+    srcs = ["source/ray-air/doc_code/computer_vision.py"],
     tags = ["exclusive", "team:ml"],
 )
 
@@ -302,4 +312,16 @@ py_test(
     tags = ["exclusive", "team:ml", "gpu", "ray_air"],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
+)
+
+# --------------------------------------------------------------------
+# Test all doc/external code
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
+    size = "large",
+    include = ["external/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "external"],
 )
