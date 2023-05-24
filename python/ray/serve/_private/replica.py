@@ -240,12 +240,11 @@ def create_replica_wrapper(name: str):
                     [handle_request_task, asgi_queue_sender.wait_for_message()],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
-                # Consume all available messages in the queue. If handle_request_task
-                # is done, this must contain all messages sent by the user code.
-                for msg in asgi_queue_sender.get_messages_nowait():
-                    # Pickle the raw ASGI dictionary because vanilla pickle is faster
-                    # then cloudpickle and we know it's safe for these messages.
-                    yield pickle.dumps(msg)
+                # Consume and yield all available messages in the queue.
+                # The messages are batched into a list to avoid unnecessary RPCs and
+                # we use vanilla pickle because it's faster than cloudpickle and we
+                # know it's safe for these messages containing primitive types.
+                yield pickle.dumps(list(asgi_queue_sender.get_messages_nowait()))
 
             e = handle_request_task.exception()
             if e is not None:

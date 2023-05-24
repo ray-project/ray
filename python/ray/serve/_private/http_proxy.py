@@ -6,7 +6,7 @@ import logging
 import pickle
 import socket
 import time
-from typing import Callable, List, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from ray._private.utils import get_or_create_event_loop
 
 import uvicorn
@@ -101,11 +101,12 @@ async def _handle_streaming_response(
     status_code = ""
     try:
         async for obj_ref in asgi_response_generator:
-            asgi_message = pickle.loads(await obj_ref)
-            if asgi_message["type"] == "http.response.start":
-                status_code = str(asgi_message["status"])
+            asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
+            for asgi_message in asgi_messages:
+                if asgi_message["type"] == "http.response.start":
+                    status_code = str(asgi_message["status"])
 
-            await send(asgi_message)
+                await send(asgi_message)
     except Exception as e:
         error_message = "Unexpected error, traceback: {}.".format(e)
         logger.warning(error_message)
