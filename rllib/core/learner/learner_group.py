@@ -19,9 +19,7 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.learner.learner import (
-    LearnerSpec,
-)
+from ray.rllib.core.learner.learner import LearnerSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.minibatch_utils import ShardBatchIterator
@@ -40,7 +38,7 @@ def _get_backend_config(learner_class: Type["Learner"]) -> str:
         from ray.train.torch import TorchConfig
 
         backend_config = TorchConfig()
-    elif learner_class.framework == "tf":
+    elif learner_class.framework == "tf2":
         from ray.train.tensorflow import TensorflowConfig
 
         backend_config = TensorflowConfig()

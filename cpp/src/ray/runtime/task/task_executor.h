@@ -91,7 +91,8 @@ class TaskExecutor {
       std::string *application_error,
       const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
       const std::string name_of_concurrency_group_to_execute,
-      bool is_reattempt);
+      bool is_reattempt,
+      bool is_streaming_generator);
 
   virtual ~TaskExecutor(){};
 

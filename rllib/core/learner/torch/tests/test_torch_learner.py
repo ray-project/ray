@@ -47,7 +47,7 @@ class TestLearner(unittest.TestCase):
             batch = reader.next()
             results = learner.update(batch.as_multi_agent())
 
-            loss = results[ALL_MODULES]["total_loss"]
+            loss = results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
             min_loss = min(loss, min_loss)
             print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
             # The loss is initially around 0.69 (ln2). When it gets to around
@@ -65,7 +65,7 @@ class TestLearner(unittest.TestCase):
         learner = _get_learner()
 
         params = learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
-        loss = {"total_loss": sum([param.sum() for param in params])}
+        loss = {ALL_MODULES: sum(param.sum() for param in params)}
         gradients = learner.compute_gradients(loss)
 
         # type should be a mapping from ParamRefs to gradients
@@ -131,7 +131,7 @@ class TestLearner(unittest.TestCase):
             for param in params
         ]
         for _ in range(n_steps):
-            loss = {"total_loss": sum([param.sum() for param in params])}
+            loss = {ALL_MODULES: sum(param.sum() for param in params)}
             gradients = learner.compute_gradients(loss)
             learner.apply_gradients(gradients)
 

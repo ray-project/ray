@@ -30,7 +30,7 @@ DEFAULT_POLICY_ID = "default_policy"
 
 @DeveloperAPI
 def get_learner_class(framework: str) -> Type["Learner"]:
-    if framework == "tf":
+    if framework == "tf2":
         from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
 
         return BCTfLearner
@@ -44,7 +44,7 @@ def get_learner_class(framework: str) -> Type["Learner"]:
 
 @DeveloperAPI
 def get_module_class(framework: str) -> Type["RLModule"]:
-    if framework == "tf":
+    if framework == "tf2":
         from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 
         return DiscreteBCTFModule
@@ -78,7 +78,7 @@ def get_module_spec(framework: str, env: "gym.Env", is_multi_agent: bool = False
 
 @DeveloperAPI
 def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
-    if framework == "tf":
+    if framework == "tf2":
         import tensorflow as tf
 
         return tf.keras.optimizers.Adam
@@ -143,7 +143,7 @@ def get_learner_group(
         A learner_group.
 
     """
-    if framework == "tf":
+    if framework == "tf2":
         framework_hps = FrameworkHyperparameters(eager_tracing=eager_tracing)
     else:
         framework_hps = None
