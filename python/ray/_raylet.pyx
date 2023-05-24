@@ -80,6 +80,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CJobConfig,
     CConcurrencyGroup,
+    CGrpcStatusCode,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -171,6 +172,9 @@ include "includes/metric.pxi"
 # Expose GCC & Clang macro to report
 # whether C++ optimizations were enabled during compilation.
 OPTIMIZED = __OPTIMIZE__
+
+GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
+GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
 
 logger = logging.getLogger(__name__)
 
