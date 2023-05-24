@@ -31,9 +31,12 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
 
     env = os.environ.copy()
     env["DOCKER_BUILDKIT"] = "1"
-    timeout = BASE_IMAGE_WAIT_TIMEOUT
+    start = int(time.time())
     # ray images are built on post-merge, so we can wait for them to be available
-    while len(built) < len(to_be_built) and timeout > 0:
+    while (
+        len(built) < len(to_be_built)
+        and int(time.time()) - start < BASE_IMAGE_WAIT_TIMEOUT
+    ):
         for ray_image, test in to_be_built.items():
             byod_image = test.get_anyscale_byod_image()
             if _byod_image_exist(test):
@@ -43,12 +46,12 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
             if not _ray_image_exist(ray_image):
                 # TODO(can): instead of waiting for the base image to be built, we can
                 #  build it ourselves
+                timeout = BASE_IMAGE_WAIT_TIMEOUT - (int(time.time()) - start)
                 logger.info(
                     f"Image {ray_image} does not exist yet. "
                     f"Wait for another {timeout}s..."
                 )
                 time.sleep(BASE_IMAGE_WAIT_DURATION)
-                timeout -= BASE_IMAGE_WAIT_DURATION
                 continue
             logger.info(f"Building {byod_image} from {ray_image}")
             with open(DATAPLANE_FILENAME, "rb") as build_file:
@@ -92,7 +95,11 @@ def _ray_image_exist(ray_image: str) -> bool:
     """
     Checks if the given image exists in Docker
     """
-    p = subprocess.run(["docker", "manifest", "inspect", ray_image], stdout=sys.stderr)
+    p = subprocess.run(
+        ["docker", "manifest", "inspect", ray_image],
+        stdout=sys.stderr,
+        stderr=sys.stderr,
+    )
     return p.returncode == 0
 
 

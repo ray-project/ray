@@ -51,10 +51,11 @@ class Test(dict):
         """
         Returns the byod image tag to use for this test.
         """
-        ray_version = (
-            os.environ.get("COMMIT_TO_TEST", "")[:6]
-            or os.environ.get("BUILDKITE_COMMIT", "")[:6]
+        commit = os.environ.get(
+            "COMMIT_TO_TEST",
+            os.environ["BUILDKITE_COMMIT"],
         )
+        ray_version = commit[:6]
         image_suffix = "-gpu" if self.get_byod_type() == "gpu" else ""
         python_version = f"py{self.get_python_version().replace('.',   '')}"
         return f"{ray_version}-{python_version}{image_suffix}"
