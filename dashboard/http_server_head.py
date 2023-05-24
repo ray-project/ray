@@ -29,6 +29,11 @@ from ray._raylet import GcsClient
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
+# This flag updates the route where index.html is served from. This is useful
+# for running the dashboard behind a reverse proxy that does not support
+# path rewriting. This does not update ALL routes, just the index.html route.
+ENV_VAR_DASHBOARD_UI_ROUTE_PREFIX = "RAY_DASHBOARD_UI_ROUTE_PREFIX"
+DASHBOARD_UI_ROUTE_PREFIX = os.environ.get(ENV_VAR_DASHBOARD_UI_ROUTE_PREFIX, None)
 
 def setup_static_dir():
     build_dir = os.path.join(
@@ -97,7 +102,7 @@ class HttpServerDashboardHead:
         else:
             self.http_session = aiohttp.ClientSession()
 
-    @routes.get("/")
+    @routes.get(f"/{DASHBOARD_UI_ROUTE_PREFIX}" if DASHBOARD_UI_ROUTE_PREFIX else "/")
     async def get_index(self, req) -> aiohttp.web.FileResponse:
         try:
             # This API will be no-op after the first report.
