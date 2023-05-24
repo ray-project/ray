@@ -134,7 +134,7 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
         ckpt_dir = f"{tmpdir}/ckpts"
         callback = ModelCheckpoint(dirpath=ckpt_dir, save_last=True)
         pl_trainer = pl.Trainer(
-            max_epoch=init_epoch, accelerator="cpu", callbacks=[callback]
+            max_epochs=init_epoch, accelerator="cpu", callbacks=[callback]
         )
         pl_model = LinearModule(input_dim=32, output_dim=4)
         pl_trainer.fit(pl_model, train_dataloaders=train_loader)
