@@ -17,9 +17,6 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     run_string_as_driver,
 )
-from ray._private.gcs_pubsub import (
-    GcsErrorSubscriber,
-)
 
 import psutil
 
@@ -670,7 +667,7 @@ def test_publish_and_subscribe_error_info(ray_start_regular_with_external_redis)
     address_info = ray_start_regular_with_external_redis
     gcs_server_addr = address_info["gcs_address"]
 
-    subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    subscriber = ray._raylet.GcsErrorSubscriber(address=gcs_server_addr)
     subscriber.subscribe()
 
     publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)

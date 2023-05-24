@@ -2257,19 +2257,19 @@ cdef class GcsPublisher:
             check_status(self.inner.get().PublishFunctionKey(python_function))
 
 
-cdef class GcsErrorSubscriber:
+cdef class _GcsSubscriber:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
     cdef:
         shared_ptr[CPythonGcsSubscriber] inner
 
-    def __cinit__(self, address, worker_id=None):
+    def connect(self, address, channel, worker_id):
         cdef:
             c_worker_id = worker_id or b""
         # subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
         self.inner.reset(new CPythonGcsSubscriber(
-            address, RAY_ERROR_INFO_CHANNEL, subscriber_id, c_worker_id))
+            address, channel, subscriber_id, c_worker_id))
         check_status(self.inner.get().Connect())
 
     def subscribe(self):
@@ -2279,6 +2279,17 @@ cdef class GcsErrorSubscriber:
     @property
     def last_batch_size(self):
         return self.inner.get().last_batch_size()
+
+    def close(self):
+        with nogil:
+            check_status(self.inner.get().Close())
+
+
+cdef class GcsErrorSubscriber(_GcsSubscriber):
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+
+    def __init__(self, address, worker_id=None):
+        self.connect(address, RAY_ERROR_INFO_CHANNEL, worker_id)
 
     def poll(self):
         cdef:
@@ -2295,33 +2306,12 @@ cdef class GcsErrorSubscriber:
             "timestamp": error_data.timestamp(),
         })
 
-    def close(self):
-        with nogil:
-            check_status(self.inner.get().Close())
 
-
-cdef class GcsLogSubscriber:
+cdef class GcsLogSubscriber(_GcsSubscriber):
     """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
-    cdef:
-        shared_ptr[CPythonGcsSubscriber] inner
 
-    def __cinit__(self, address, worker_id=None):
-        cdef:
-            c_worker_id = worker_id or b""
-        # subscriber_id needs to match the binary format of a random
-        # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
-        subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
-        self.inner.reset(new CPythonGcsSubscriber(
-            address, RAY_LOG_CHANNEL, subscriber_id, c_worker_id))
-        check_status(self.inner.get().Connect())
-
-    def subscribe(self):
-        with nogil:
-            check_status(self.inner.get().Subscribe())
-
-    @property
-    def last_batch_size(self):
-        return self.inner.get().last_batch_size()
+    def __init__(self, address, worker_id=None):
+        self.connect(address, RAY_LOG_CHANNEL, worker_id)
 
     def poll(self):
         cdef:
@@ -2349,29 +2339,12 @@ cdef class GcsLogSubscriber:
             "task_name": log_batch.task_name().decode(),
         }
 
-    def close(self):
-        with nogil:
-            check_status(self.inner.get().Close())
 
-
-cdef class GcsFunctionKeySubscriber:
+cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
     """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
-    cdef:
-        shared_ptr[CPythonGcsSubscriber] inner
 
-    def __cinit__(self, address, worker_id=None):
-        cdef:
-            c_worker_id = worker_id or b""
-        # subscriber_id needs to match the binary format of a random
-        # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
-        subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
-        self.inner.reset(new CPythonGcsSubscriber(
-            address, RAY_PYTHON_FUNCTION_CHANNEL, subscriber_id, c_worker_id))
-        check_status(self.inner.get().Connect())
-
-    def subscribe(self):
-        with nogil:
-            check_status(self.inner.get().Subscribe())
+    def __init__(self, address, worker_id=None):
+        self.connect(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
 
     def poll(self):
         cdef:
@@ -2386,9 +2359,6 @@ cdef class GcsFunctionKeySubscriber:
         else:
             return python_function.key()
 
-    def close(self):
-        with nogil:
-            check_status(self.inner.get().Close())
 
 cdef class CoreWorker:
 
