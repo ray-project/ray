@@ -310,17 +310,11 @@ class LogsManager:
             if log_info is None and actor_id is not None:
                 # This is a concurrent actor task. The logs will be interleaved.
                 # So we return the log file of the actor instead.
-                if worker_id is None:
-                    raise FileNotFoundError(
-                        "Could not find log file for task attempt."
-                        f"{task_id}({attempt_number}) due to missing worker id."
-                    )
-                log_filename = await self._resolve_worker_file(
-                    node_id=node_id,
-                    worker_id=worker_id,
-                    suffix=suffix,
-                    timeout=timeout,
-                    pid=None,
+                raise FileNotFoundError(
+                    f"For concurrent actor task, please query actor log for "
+                    f"actor({actor_id}): e.g. ray logs actor --id {actor_id} ."
+                    "Because tasks from concurrent actor will have logs interleaved, "
+                    "and Ray is not able to locate the exact log file for the task."
                 )
             elif log_info is not None:
                 filename_key = "stdout_file" if suffix == "out" else "stderr_file"

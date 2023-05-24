@@ -49,7 +49,7 @@ from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.state import get_log, list_logs, list_nodes, list_workers
 from ray.util.state.common import GetLogOptions
-from ray.util.state.exception import DataSourceUnavailable
+from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_manager import StateDataSourceClient
 
 if sys.version_info >= (3, 8, 0):
@@ -1300,6 +1300,10 @@ def test_log_get(ray_start_cluster):
 
     wait_for_condition(verify)
 
+
+def test_log_task(shutdown_only):
+    ray.init()
+
     # Test get log by multiple task id
     @ray.remote
     def task_log():
@@ -1329,28 +1333,53 @@ def test_log_get(ray_start_cluster):
 
     wait_for_condition(verify)
 
-    # Test actor task logs with interleaving logs.
+    # Test actor task logs
     @ray.remote
     class Actor:
-        async def print_log(self, x, out_msg):
+        def print_log(self, out_msg):
+            for _ in range(3):
+                print(out_msg, end="", file=sys.stdout)
+                print(out_msg, end="", file=sys.stderr)
+
+    a = Actor.remote()
+    out_msg = "This is a test log\n"
+    t = a.print_log.remote(out_msg)
+    ray.get(t)
+
+    def verify():
+        lines = get_log(task_id=t.task_id().hex())
+        assert out_msg * 3 == "".join(lines)
+
+        return True
+
+    wait_for_condition(verify)
+
+    # Test actor task logs with interleaving logs should raise
+    # errors to ask users to user actor log instead.
+    @ray.remote
+    class AsyncActor:
+        async def print_log(self, out_msg):
             for _ in range(3):
                 print(out_msg, end="", file=sys.stdout)
                 await asyncio.sleep(1)
 
-    actor = Actor.options(max_concurrency=2).remote()
+    actor = AsyncActor.options(max_concurrency=2).remote()
     out_msg = "[{name}]: This is a test log from stdout\n"
-    task_a = actor.print_log.remote("a", out_msg.format(name="a"))
-    task_b = actor.print_log.remote("b", out_msg.format(name="b"))
+    task_a = actor.print_log.remote(out_msg.format(name="a"))
+    task_b = actor.print_log.remote(out_msg.format(name="b"))
     ray.get([task_a, task_b])
 
     def verify():
-        lines = get_log(task_id=task_a.task_id().hex())
-        actual_output = "".join(lines)
-        assert actual_output.count(out_msg.format(name="a")) == 3
+        with pytest.raises(RayStateApiException) as e:
+            for log in get_log(task_id=task_a.task_id().hex()):
+                pass
 
-        lines = get_log(task_id=task_b.task_id().hex())
-        actual_output = "".join(lines)
-        assert actual_output.count(out_msg.format(name="b")) == 3
+        assert "For concurrent actor task, please query actor log" in str(e.value), str(
+            e.value
+        )
+        assert f"ray logs actor --id {actor._actor_id.hex()}" in str(e.value), str(
+            e.value
+        )
 
         return True
 
