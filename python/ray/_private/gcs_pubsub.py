@@ -3,7 +3,7 @@ from collections import deque
 import logging
 import random
 import threading
-from typing import Optional, Tuple, List
+from typing import Tuple, List
 
 import grpc
 from ray._private.utils import get_or_create_event_loop
