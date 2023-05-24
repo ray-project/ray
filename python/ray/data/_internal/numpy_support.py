@@ -75,6 +75,14 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
             for e in udf_return_col:
                 if isinstance(e, np.ndarray):
                     shapes.add((e.dtype, e.shape))
+                elif isinstance(e, bytes):
+                    # Don't convert variable length binary data to Numpy arrays as it
+                    # treats zero encoding as termination by default.
+                    # Per recommendation from
+                    # https://github.com/apache/arrow/issues/26470,
+                    # we use object dtype.
+                    # https://github.com/ray-project/ray/issues/35586#issuecomment-1558148261
+                    has_object = True
                 elif not np.isscalar(e):
                     has_object = True
             if has_object or len(shapes) > 1:
