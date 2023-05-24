@@ -3,9 +3,9 @@
 | Template Specification | Description |
 | ---------------------- | ----------- |
 | Summary | This template loads a pretrained stable diffusion model from HuggingFace and serves it to a local endpoint as a [Ray Serve](https://docs.ray.io/en/latest/serve/index.html) deployment. |
-| Time to Run | 2-4 minutes to setup the models and generate your first image(s). Less than 30 seconds for every subsequent round of image generation (depending on the image size). |
+| Time to Run | Around 2 minutes to setup the models and generate your first image(s). Less than 10 seconds for every subsequent round of image generation (depending on the image size). |
 | Minimum Compute Requirements | At least 1 GPU node. The default is 4 nodes, each with 1 NVIDIA T4 GPU. |
-| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-gpu`](https://docs.anyscale.com/reference/base-images/ray-240/py39). See the appendix below for more details. |
+| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:2.4.0-py39-cu118`](https://docs.anyscale.com/reference/base-images/ray-240/py39). See the appendix below for more details. |
 
 ## Get Started
 
