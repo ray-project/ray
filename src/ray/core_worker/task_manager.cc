@@ -444,7 +444,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   for (const auto &object_id : object_ids_unconsumed) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    RAY_CHECK_EQ(deleted.size(), 1UL);
+    RAY_CHECK_GE(deleted.size(), 1UL);
   }
 }
 
