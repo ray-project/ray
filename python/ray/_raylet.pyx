@@ -1287,9 +1287,13 @@ cdef void execute_task(
             # Record the task id via magic token in the log file.
             # This will be used to locate the beginning of logs from a task.
             attempt_number = core_worker.get_current_task_attempt_number()
-            task_attempt_magic_token = "{}{}-{}\n".format(
-                ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
-                attempt_number)
+            task_attempt_magic_token= \
+                ray_constants.LOG_PREFIX_TASK_ATTEMPT_TEMPLATE \
+                .format(prefix=ray_constants.LOG_PREFIX_TASK_ATTEMPT_START,
+                        task_name=name.decode(),
+                        task_id=task_id.hex(),
+                        attempt_number=attempt_number)
+
             # Print on both .out and .err
             print(task_attempt_magic_token, end="")
             print(task_attempt_magic_token, file=sys.stderr, end="")
@@ -1375,9 +1379,13 @@ cdef void execute_task(
                 finally:
                     # Record the end of task via magic token in the log file.
                     # This will be used to locate the end of logs from a task.
-                    task_attempt_magic_token = "{}{}-{}\n".format(
-                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
-                        attempt_number)
+                    task_attempt_magic_token= \
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_TEMPLATE \
+                        .format(prefix=ray_constants.LOG_PREFIX_TASK_ATTEMPT_END,
+                                task_name=name.decode(),
+                                task_id=task_id.hex(),
+                                attempt_number=attempt_number)
+
                     # Print on both .out and .err
                     print(task_attempt_magic_token, end="")
                     print(task_attempt_magic_token, file=sys.stderr, end="")
@@ -2092,7 +2100,7 @@ cdef class GcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_added
+            int num_added = 0
         with nogil:
             check_status(self.inner.get().InternalKVPut(
                 ns, key, value, overwrite, timeout_ms, num_added))
@@ -2105,7 +2113,7 @@ cdef class GcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_deleted
+            int num_deleted = 0
         with nogil:
             check_status(self.inner.get().InternalKVDel(
                 ns, key, del_by_prefix, timeout_ms, num_deleted))
@@ -2136,7 +2144,7 @@ cdef class GcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool exists
+            c_bool exists = False
         with nogil:
             check_status(self.inner.get().InternalKVExists(
                 ns, key, timeout_ms, exists))
