@@ -73,6 +73,7 @@ class PlainRayHandler(logging.StreamHandler):
 
         if (
             hasattr(ray, "_private")
+            and hasattr(ray._private, "worker")
             and ray._private.worker.global_worker.mode
             == ray._private.worker.WORKER_MODE
         ):
