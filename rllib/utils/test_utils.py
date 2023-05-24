@@ -1401,7 +1401,7 @@ def check_supported_spaces(
     config: "AlgorithmConfig",
     train: bool = True,
     check_bounds: bool = False,
-    frameworks: List = None,
+    frameworks: set = None,
     use_gpu: bool = False,
 ):
     """Checks whether the given algorithm supports different action and obs spaces.
@@ -1574,12 +1574,13 @@ def check_supported_spaces(
             algo.stop()
         print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
+    if not frameworks:
+        frameworks = {"tf2", "torch", "tf"}
+
     if config._enable_rl_module_api:
         # Only test the frameworks that are supported by RLModules.
         frameworks = frameworks.intersection(rlmodule_supported_frameworks)
 
-    if not frameworks:
-        frameworks = ["tf2", "torch", "tf"]
     _do_check_remote = ray.remote(_do_check)
     _do_check_remote = _do_check_remote.options(num_gpus=1 if use_gpu else 0)
     for _ in framework_iterator(config, frameworks=frameworks):
