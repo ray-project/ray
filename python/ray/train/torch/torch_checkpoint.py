@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 import io
-import pickle
 import torch
 import warnings
 
@@ -55,7 +54,7 @@ class TorchCheckpoint(Checkpoint):
             data_dict,
             _buffer,
             pickle_module=ray.cloudpickle,
-            pickle_protocol=pickle.HIGHEST_PROTOCOL,
+            pickle_protocol=ray.cloudpickle.DEFAULT_PROTOCOL,
         )
         return {ENCODED_DATA_KEY: _buffer.getvalue()}
 
