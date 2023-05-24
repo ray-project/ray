@@ -12,8 +12,8 @@ from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
+from ray_release.test import Test
 from ray_release.config import (
-    Test,
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
@@ -127,7 +127,7 @@ def _load_test_configuration(
     # Instantiate managers and command runner
     try:
         cluster_manager = cluster_manager_cls(
-            test["name"],
+            test,
             anyscale_project,
             smoke_test=smoke_test,
         )
@@ -289,6 +289,14 @@ def _prepare_remote_environment(
     if prepare_cmd:
         try:
             command_runner.run_prepare_command(prepare_cmd, timeout=prepare_timeout)
+        except CommandError as e:
+            raise PrepareCommandError(e)
+        except CommandTimeout as e:
+            raise PrepareCommandTimeout(e)
+
+    for pre_run_cmd in test.get_byod_pre_run_cmds():
+        try:
+            command_runner.run_prepare_command(pre_run_cmd, timeout=300)
         except CommandError as e:
             raise PrepareCommandError(e)
         except CommandTimeout as e:

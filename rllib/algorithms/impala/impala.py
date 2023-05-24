@@ -16,7 +16,7 @@ from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaHyperparameters,
+    ImpalaLearnerHyperparameters,
     _reduce_impala_results,
 )
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -427,9 +427,9 @@ class ImpalaConfig(AlgorithmConfig):
                 )
 
     @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> ImpalaHyperparameters:
+    def get_learner_hyperparameters(self) -> ImpalaLearnerHyperparameters:
         base_hps = super().get_learner_hyperparameters()
-        learner_hps = ImpalaHyperparameters(
+        learner_hps = ImpalaLearnerHyperparameters(
             rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
             discount_factor=self.gamma,
             entropy_coeff=self.entropy_coeff,
@@ -446,7 +446,7 @@ class ImpalaConfig(AlgorithmConfig):
             learner_hps.recurrent_seq_len is None
         ), (
             "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
-            "None in ImpalaHyperparameters!"
+            "None in ImpalaLearnerHyperparameters!"
         )
         return learner_hps
 
@@ -481,7 +481,10 @@ class ImpalaConfig(AlgorithmConfig):
 
             return ImpalaTfLearner
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -500,7 +503,10 @@ class ImpalaConfig(AlgorithmConfig):
                 module_class=PPOTorchRLModule, catalog_class=PPOCatalog
             )
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
 
 def make_learner_thread(local_worker, config):
@@ -844,13 +850,20 @@ class Impala(Algorithm):
                     }
                 ]
             else:
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
+                if cf.num_gpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "GPU": cf.num_gpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
+                elif cf.num_cpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "CPU": cf.num_cpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
 
             bundles += trainer_bundle
 
@@ -1221,7 +1234,7 @@ class Impala(Algorithm):
         """Returns the kwargs to `LearnerGroup.additional_update()`.
 
         Should be overridden by subclasses to specify wanted/needed kwargs for
-        their own implementation of `Learner.additional_update_per_module()`.
+        their own implementation of `Learner.additional_update_for_module()`.
         """
         return {}
 
