@@ -15,6 +15,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
 #include "absl/strings/str_cat.h"
+#include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/rpc/grpc_client.h"
 
 namespace ray {
@@ -213,14 +214,6 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
   return Status::OK();
 }
 
-grpc::ChannelArguments PythonGrpcChannelArguments() {
-  grpc::ChannelArguments arguments;
-  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
-  return arguments;
-}
-
 std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch &log_batch) {
   return std::vector<std::string>(log_batch.lines().begin(), log_batch.lines().end());
 }
@@ -234,8 +227,7 @@ PythonGcsPublisher::PythonGcsPublisher(const std::string &gcs_address) {
 }
 
 Status PythonGcsPublisher::Connect() {
-  auto arguments = PythonGrpcChannelArguments();
-  channel_ = rpc::BuildChannel(gcs_address_, gcs_port_, arguments);
+  channel_ = rpc::GcsRpcClient::CreateGcsChannel(gcs_address_, gcs_port_);
   pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
   return Status::OK();
 }
@@ -327,8 +319,7 @@ Status PythonGcsSubscriber::Connect() {
     return Status::OK();
   }
 
-  auto arguments = PythonGrpcChannelArguments();
-  channel_ = rpc::BuildChannel(gcs_address_, gcs_port_, arguments);
+  channel_ = rpc::GcsRpcClient::CreateGcsChannel(gcs_address_, gcs_port_);
   pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
   return Status::OK();
 }
