@@ -24,7 +24,7 @@ const useStyles = makeStyles((theme) => ({
     whiteSpace: "nowrap",
   },
   statusMessage: {
-    maxWidth: 400,
+    maxWidth: 250,
     display: "inline-flex",
   },
 }));
