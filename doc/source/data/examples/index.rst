@@ -23,14 +23,14 @@ Computer Vision
     
        .. button-ref:: pytorch_resnet_batch_prediction
 
-            Image Classification Batch Inference with PyTorch
+            Image Classification Batch Inference with PyTorch ResNet18
 
     
     .. grid-item-card::
 
         .. button-ref:: batch_inference_object_detection
 
-            Object Detection Batch Inference with PyTorch
+            Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
 
 
 Simple Data Processing
