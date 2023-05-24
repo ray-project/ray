@@ -1,5 +1,7 @@
+import asyncio
+import os
 import pytest
-from typing import Generator
+from typing import AsyncGenerator
 
 from fastapi import FastAPI
 import requests
@@ -15,11 +17,12 @@ from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
 @ray.remote
 class StreamingRequester:
-    def make_request(self) -> Generator[str, None, None]:
+    async def make_request(self) -> AsyncGenerator[str, None]:
         r = requests.get("http://localhost:8000", stream=True)
         r.raise_for_status()
         for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
             yield chunk
+            await asyncio.sleep(0.001)
 
 
 @pytest.mark.skipif(
@@ -70,19 +73,26 @@ def test_basic(serve_instance, use_async: bool, use_fastapi: bool):
 )
 @pytest.mark.parametrize("use_fastapi", [False, True])
 @pytest.mark.parametrize("use_async", [False, True])
-def test_response_actually_streamed(serve_instance, use_fastapi: bool, use_async: bool):
-    """Checks that responses are streamed as they are yielded."""
+@pytest.mark.parametrize("use_multiple_replicas", [False, True])
+def test_responses_actually_streamed(
+    serve_instance, use_fastapi: bool, use_async: bool, use_multiple_replicas: bool
+):
+    """Checks that responses are streamed as they are yielded.
+
+    Also checks that responses can be streamed concurrently from a single replica
+    or from multiple replicas.
+    """
     signal_actor = SignalActor.remote()
 
     async def wait_on_signal_async():
-        yield "before signal"
+        yield f"{os.getpid()}: before signal"
         await signal_actor.wait.remote()
-        yield "after signal"
+        yield f"{os.getpid()}: after signal"
 
-    async def wait_on_signal_sync():
-        yield "before signal"
+    def wait_on_signal_sync():
+        yield f"{os.getpid()}: before signal"
         ray.get(signal_actor.wait.remote())
-        yield "after signal"
+        yield f"{os.getpid()}: after signal"
 
     if use_fastapi:
         app = FastAPI()
@@ -103,28 +113,49 @@ def test_response_actually_streamed(serve_instance, use_fastapi: bool, use_async
                 gen = wait_on_signal_async() if use_async else wait_on_signal_sync()
                 return StreamingResponse(gen, media_type="text/plain")
 
-    serve.run(SimpleGenerator.bind())
+    serve.run(
+        SimpleGenerator.options(
+            ray_actor_options={"num_cpus": 0},
+            num_replicas=2 if use_multiple_replicas else 1,
+        ).bind()
+    )
 
     requester = StreamingRequester.remote()
-    gen = requester.make_request.options(num_returns="streaming").remote()
+    gen1 = requester.make_request.options(num_returns="streaming").remote()
+    gen2 = requester.make_request.options(num_returns="streaming").remote()
 
-    # Check that we get the first response before the signal is sent
+    # Check that we get the first responses before the signal is sent
     # (so the generator is still hanging after the first yield).
-    obj_ref = next(gen)
-    assert ray.get(obj_ref) == "before signal"
+    gen1_result = ray.get(next(gen1))
+    gen2_result = ray.get(next(gen2))
+    assert gen1_result.endswith("before signal")
+    assert gen2_result.endswith("before signal")
+    gen1_pid = gen1_result.split(":")[0]
+    gen2_pid = gen2_result.split(":")[0]
+    if use_multiple_replicas:
+        assert gen1_pid != gen2_pid
+    else:
+        assert gen1_pid == gen2_pid
 
-    # Check that the next obj_ref is not ready yet.
-    obj_ref = gen._next_sync(timeout_s=0.01)
-    assert obj_ref.is_nil()
+    # Check that the next obj_ref is not ready yet for both generators.
+    assert gen1._next_sync(timeout_s=0.01).is_nil()
+    assert gen2._next_sync(timeout_s=0.01).is_nil()
 
-    # Now send signal to actor, second yield happens.
+    # Now send signal to actor, second yield happens and we should get responses.
     ray.get(signal_actor.send.remote())
-    obj_ref = next(gen)
-    assert ray.get(obj_ref) == "after signal"
+    gen1_result = ray.get(next(gen1))
+    gen2_result = ray.get(next(gen2))
+    assert gen1_result.startswith(gen1_pid)
+    assert gen2_result.startswith(gen2_pid)
+    assert gen1_result.endswith("after signal")
+    assert gen2_result.endswith("after signal")
 
     # Client should be done getting messages.
     with pytest.raises(StopIteration):
-        next(gen)
+        next(gen1)
+
+    with pytest.raises(StopIteration):
+        next(gen2)
 
 
 @pytest.mark.skipif(
