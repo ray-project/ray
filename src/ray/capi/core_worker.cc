@@ -159,7 +159,8 @@ Status ExecuteTask(
     std::string *is_application_error,
     const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
     const std::string name_of_concurrency_group_to_execute,
-    bool is_reattempt) {
+    bool is_reattempt,
+    bool is_streaming_generator) {
   TaskExecutionInfo task_execution_info;
   uint8_t return_buf[2048];
   task_execution_info.return_obj = (const uint8_t *)return_buf;
