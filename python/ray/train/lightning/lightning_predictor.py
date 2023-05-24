@@ -57,13 +57,6 @@ class LightningPredictor(TorchPredictor):
 
             assert output["predictions"].shape == (batch_size, output_dim)
 
-
-        .. testoutput::
-            :hide:
-            :options: +ELLIPSIS
-
-            ...
-
     Args:
         model: The PyTorch Lightning module to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior

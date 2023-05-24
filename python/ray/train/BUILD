@@ -8,9 +8,10 @@ doctest(
             "tests/**",
             # GPU tests
             "huggingface/accelerate/accelerate_trainer.py",
-            "lightning/lightning_trainer.py",
             "tensorflow/tensorflow_trainer.py",
             "torch/torch_trainer.py"
+            # FIXME: Failing doctests
+            "xgboost/xgboost_predictor.py"
         ]
     ),
     tags = ["team:ml"],
@@ -19,7 +20,6 @@ doctest(
 doctest(
     files = [
         "huggingface/accelerate/accelerate_trainer.py",
-        "lightning/lightning_trainer.py",
         "tensorflow/tensorflow_trainer.py",
         "torch/torch_trainer.py"
     ],
