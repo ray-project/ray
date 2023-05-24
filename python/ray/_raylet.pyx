@@ -23,6 +23,7 @@ import time
 import traceback
 import _thread
 import typing
+from typing import Union, Awaitable, Callable, Any
 
 from libc.stdint cimport (
     int32_t,
@@ -80,6 +81,7 @@ from ray.includes.common cimport (
     CWorkerType,
     CJobConfig,
     CConcurrencyGroup,
+    CGrpcStatusCode,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -177,6 +179,9 @@ include "includes/metric.pxi"
 # whether C++ optimizations were enabled during compilation.
 OPTIMIZED = __OPTIMIZE__
 
+GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
+GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
+
 logger = logging.getLogger(__name__)
 
 # The currently executing task, if any. These are used to synchronize task
@@ -187,6 +192,8 @@ current_task_id_lock = threading.Lock()
 job_config_initialized = False
 job_config_initialization_lock = threading.Lock()
 
+# It is used to indicate optional::nullopt for
+# AllocateDynamicReturnId.
 cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 
 
@@ -205,7 +212,7 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
-class ObjectRefStreamEoFError(RayError):
+class ObjectRefStreamEneOfStreamError(RayError):
     pass
 
 
@@ -283,6 +290,7 @@ class StreamingObjectRefGenerator:
         # a system error.
         while obj.is_nil():
             error_ref = self._handle_error(
+                False,
                 last_time,
                 timeout_s,
                 unexpected_network_failure_timeout_s)
@@ -308,6 +316,7 @@ class StreamingObjectRefGenerator:
         # a system error.
         while obj.is_nil():
             error_ref = self._handle_error(
+                True,
                 last_time,
                 timeout_s,
                 unexpected_network_failure_timeout_s)
@@ -322,16 +331,23 @@ class StreamingObjectRefGenerator:
     async def _handle_next_async(self):
         try:
             return self._handle_next()
-        except ObjectRefStreamEoFError:
+        except ObjectRefStreamEneOfStreamError:
             raise StopAsyncIteration
 
     def _handle_next_sync(self):
         try:
             return self._handle_next()
-        except ObjectRefStreamEoFError:
+        except ObjectRefStreamEneOfStreamError:
             raise StopIteration
 
     def _handle_next(self):
+        """Get the next item from the ObjectRefStream.
+
+        This API return immediately all the time. It returns a nil object
+        if it doesn't have the next item ready. It raises
+        ObjectRefStreamEneOfStreamError if there's nothing more to read.
+        If there's a next item, it will return a object ref.
+        """
         if hasattr(self.worker, "core_worker"):
             obj = self.worker.core_worker.try_read_next_object_ref_stream(
                 self._generator_ref)
@@ -343,6 +359,7 @@ class StreamingObjectRefGenerator:
 
     def _handle_error(
             self,
+            is_async: bool,
             last_time: int,
             timeout_s: float,
             unexpected_network_failure_timeout_s: float):
@@ -355,7 +372,10 @@ class StreamingObjectRefGenerator:
             # The generator task has failed already.
             # We raise StopIteration
             # to conform the next interface in Python.
-            raise StopIteration
+            if is_async:
+                raise StopAsyncIteration
+            else:
+                raise StopIteration
         else:
             # Otherwise, we should ray.get on the generator
             # ref to find if the task has a system failure.
@@ -422,8 +442,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
-    elif status.IsObjectRefStreamEoF():
-        raise ObjectRefStreamEoFError(message)
+    elif status.IsObjectRefEndOfStream():
+        raise ObjectRefStreamEneOfStreamError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
@@ -1133,8 +1153,6 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
         CoreWorker core_worker = worker.core_worker
 
-    # Generator only has 1 static return.
-    assert return_size == 1
     is_retryable_error[0] = determine_if_retryable(
         e,
         serialized_retry_exception_allowlist,
@@ -3578,9 +3596,21 @@ cdef class CoreWorker:
         return self.eventloop_for_default_cg, self.thread_for_default_cg
 
     def run_async_func_or_coro_in_event_loop(
-          self, func_or_coro, function_descriptor, specified_cgname, *args, **kwargs):
+          self,
+          func_or_coro: Union[Callable[[Any, Any], Awaitable[Any]], Awaitable],
+          function_descriptor: FunctionDescriptor,
+          specified_cgname: str,
+          *args,
+          **kwargs):
         """Run the async function or coroutine to the event loop.
         The event loop is running in a separate thread.
+
+        Args:
+            func_or_coro: Async function (not a generator) or awaitable objects.
+            function_descriptor: The function descriptor.
+            specified_cgname: The name of a concurrent group.
+            args: The arguments for the async function.
+            kwargs: The keyword arguments for the async function.
         """
         cdef:
             CFiberEvent event
@@ -3756,14 +3786,15 @@ cdef class CoreWorker:
             owner_address: The address of the owner (caller) of the
                 generator task.
             task_id: The task ID of the generator task.
-            returns: A list of return objects. This is used to
-                calculate the number of return values.
+            return_size: The size of the static return from the task.
             generator_index: The index of dynamically generated object
                 ref.
             is_async_actor: True if the allocation is for async actor.
                 If async actor is used, we should calculate the
                 put_index ourselves.
         """
+        # Generator only has 1 static return.
+        assert return_size == 1
         if is_async_actor:
             # This part of code has a couple of assumptions.
             # - This API is not called within an asyncio event loop

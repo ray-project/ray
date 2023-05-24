@@ -2876,22 +2876,7 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
 ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
                                              const TaskID &task_id,
                                              std::optional<ObjectIDIndexType> put_index) {
-  TaskID current_task_id;
-  if (task_id.IsNil()) {
-    const auto &task_spec = worker_context_.GetCurrentTask();
-    current_task_id = task_spec->TaskId();
-  } else {
-    current_task_id = task_id;
-  }
-
-  ObjectIDIndexType current_put_index;
-  if (!put_index.has_value()) {
-    current_put_index = worker_context_.GetNextPutIndex();
-  } else {
-    current_put_index = put_index.value();
-  }
-
-  const auto return_id = ObjectID::FromIndex(current_task_id, current_put_index);
+  const auto return_id = worker_context_.GetGeneratorReturnId(task_id, put_index);
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
   return return_id;
