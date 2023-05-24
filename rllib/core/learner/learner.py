@@ -126,11 +126,10 @@ class LearnerHyperparameters:
     grad_clip: float = None
     grad_clip_by: str = None
 
-    # Holds hyperparameters per module. This is not None only in the top-level
-    # Learner's self.hps (whose self.module is a `MARLModule`) and then contains the
-    # correct mappings from ModuleID to the derived LearnerHyperparameter objects.
-    # You can access a per-module HP sub-object by using the
-    # `get_hps_for_module(module_id=..)` API.
+    # Maps ModuleIDs to LearnerHyperparameters that are to be used for that particular
+    # module.
+    # You can access the module-specific `LearnerHyperparameters` object for a given
+    # module_id by using the `get_hps_for_module(module_id=..)` API.
     _per_module_overrides: Optional[Dict[ModuleID, "LearnerHyperparameters"]] = None
 
     def get_hps_for_module(self, module_id: ModuleID) -> "LearnerHyperparameters":
@@ -161,7 +160,8 @@ class LearnerHyperparameters:
                 )
             # Return the module specific version of self.
             return self._per_module_overrides[module_id]
-        # ModuleID not found in overrides -> return self.
+        # ModuleID not found in overrides or the overrides dict is None
+        # -> return self.
         else:
             return self
 
