@@ -92,7 +92,7 @@ def _ray_image_exist(ray_image: str) -> bool:
     """
     Checks if the given image exists in Docker
     """
-    p = subprocess.run(["docker", "manifest", "inspect", ray_image])
+    p = subprocess.run(["docker", "manifest", "inspect", ray_image], stout=sys.stderr)
     return p.returncode == 0
 
 
