@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import ray
 from ray.util.state import list_objects
@@ -35,6 +36,7 @@ proxy_actor = ProxyActor.remote()
 
 async def get_stream(proxy_actor, actor):
     i = 0
+    s = time.time()
     async for ref in proxy_actor.get_data.options(num_returns="streaming").remote(
         actor
     ):
@@ -42,6 +44,10 @@ async def get_stream(proxy_actor, actor):
         value = await ref
         assert "word" * (i + 1), value
         i += 1
+    print(
+        f"Took {time.time() - s} seconds to run and get "
+        "the result from a single generator task.")
+    
 
 
 async def main():
