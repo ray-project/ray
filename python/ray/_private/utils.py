@@ -1433,7 +1433,7 @@ def parse_resources_json(
 
 
 def parse_metadata_json(
-    metadata: str, cli_logger, cf, command_arg="--metadata"
+    metadata: str, cli_logger, cf, command_arg="--metadata-json"
 ) -> Dict[str, str]:
     try:
         metadata = json.loads(metadata)

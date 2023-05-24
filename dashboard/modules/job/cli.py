@@ -127,7 +127,7 @@ def job_cli_group():
     ),
 )
 @click.option(
-    "--metadata",
+    "--metadata-json",
     type=str,
     default=None,
     required=False,
