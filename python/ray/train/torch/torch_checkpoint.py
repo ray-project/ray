@@ -66,9 +66,8 @@ class TorchCheckpoint(Checkpoint):
         _buffer = io.BytesIO(encoded_data)
         data_dict = torch.load(
             _buffer,
-            map_location="cpu"
-            # Not using ray.cloudpickle here as it doesn't
-            # define an Unpickler (as it is not necessary).
+            map_location="cpu",
+            pickle_module=ray.cloudpickle,
         )
         return data_dict
 
