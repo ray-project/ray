@@ -53,8 +53,8 @@ class GcsServerTest : public ::testing::Test {
 
     // Create gcs rpc client
     client_call_manager_.reset(new rpc::ClientCallManager(io_service_));
-    client_.reset(new rpc::GcsRpcClient(
-        "127.0.0.1", gcs_server_->GetPort(), *client_call_manager_));
+    client_.reset(
+        new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
   }
 
   void TearDown() override {

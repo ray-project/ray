@@ -416,14 +416,10 @@ def test_ray_start_head_block_and_signals(
     # Run
     head_proc.start()
 
-    # Wait until the system is ready
-    while True:
-        try:
-            ray.init()
-            ray.shutdown()
-            break
-        except Exception:
-            continue
+    # Give it some time to start various subprocesses and `ray stop`
+    # A smaller interval seems to cause occasional failure as the head process
+    # was stopped too early before spawning all the subprocesses.
+    time.sleep(5)
 
     # Terminate some of the children process
     children = psutil.Process(head_proc.pid).children()

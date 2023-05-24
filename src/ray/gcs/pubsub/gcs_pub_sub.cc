@@ -223,7 +223,7 @@ PythonGcsPublisher::PythonGcsPublisher(const std::string &gcs_address) {
 }
 
 Status PythonGcsPublisher::Connect() {
-  channel_ = rpc::GcsRpcClient::GetDefaultChannel(gcs_address_, gcs_port_);
+  channel_ = rpc::GcsRpcClient::CreateGcsChannel(gcs_address_, gcs_port_);
   pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
   return Status::OK();
 }

@@ -100,9 +100,6 @@ cc_grpc_library(
 # gcs rpc server and client.
 cc_library(
     name = "gcs_service_rpc",
-    srcs = [
-        "src/ray/rpc/gcs_server/gcs_rpc_client.cc",
-    ],
     hdrs = [
         "src/ray/rpc/gcs_server/gcs_rpc_client.h",
         "src/ray/rpc/gcs_server/gcs_rpc_server.h",

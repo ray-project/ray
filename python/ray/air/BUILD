@@ -237,7 +237,7 @@ py_test(
 
 py_test(
     name = "test_resource_manager_placement_group",
-    size = "medium",
+    size = "small",
     srcs = ["tests/execution/test_resource_manager_placement_group.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]

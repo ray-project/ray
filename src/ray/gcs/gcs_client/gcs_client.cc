@@ -147,7 +147,7 @@ PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(opt
 
 Status PythonGcsClient::Connect() {
   channel_ =
-      rpc::GcsRpcClient::GetDefaultChannel(options_.gcs_address_, options_.gcs_port_);
+      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
