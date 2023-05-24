@@ -1853,7 +1853,7 @@ void CoreWorker::BuildCommonTaskSpec(
   // TODO(sang): Remove this and integrate it to
   // nun_returns == -1 once migrating to streaming
   // generator.
-  bool is_streaming_generator = num_returns == -2;
+  bool is_streaming_generator = num_returns == kStreamingGeneratorReturn;
   if (is_streaming_generator) {
     num_returns = 1;
     // We are using the dynamic return if
@@ -2856,25 +2856,10 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   }
 }
 
-ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
-                                             const TaskID &task_id,
-                                             std::optional<ObjectIDIndexType> put_index) {
-  TaskID current_task_id;
-  if (task_id.IsNil()) {
-    const auto &task_spec = worker_context_.GetCurrentTask();
-    current_task_id = task_spec->TaskId();
-  } else {
-    current_task_id = task_id;
-  }
-
-  ObjectIDIndexType current_put_index;
-  if (!put_index.has_value()) {
-    current_put_index = worker_context_.GetNextPutIndex();
-  } else {
-    current_put_index = put_index.value();
-  }
-
-  const auto return_id = ObjectID::FromIndex(current_task_id, current_put_index);
+ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address) {
+  const auto &task_spec = worker_context_.GetCurrentTask();
+  const auto return_id =
+      ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
   return return_id;
@@ -2909,6 +2894,9 @@ Status CoreWorker::ReportGeneratorItemReturns(
     reference_counter_->PopAndClearLocalBorrowers(
         {dynamic_return_object.first}, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
+  } else {
+    // fininshed must be set when dynamic_return_object is nil.
+    RAY_CHECK_EQ(finished, true);
   }
 
   client->ReportGeneratorItemReturns(
@@ -3298,6 +3286,9 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     const auto generator_id = ObjectID::FromBinary(message.generator_id());
     RAY_CHECK(!generator_id.IsNil());
     if (task_manager_->ObjectRefStreamExists(generator_id)) {
+      // It is possible this reference will leak if the ObjectRefStream is
+      // deleted or the corresponding object ID is not reported via
+      // HandleReportGeneratorItemReturns. TODO(sang): Handle the edge case.
       reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, generator_id);
@@ -3436,6 +3427,9 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // know that it exists.
     RAY_CHECK(!generator_id->IsNil());
     if (task_manager_->ObjectRefStreamExists(*generator_id)) {
+      // It is possible this reference will leak if the ObjectRefStream is
+      // deleted or the corresponding object ID is not reported via
+      // HandleReportGeneratorItemReturns. TODO(sang): Handle the edge case.
       reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, *generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, *generator_id);
@@ -3468,7 +3462,9 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
   if (!maybe_generator_id.IsNil()) {
     if (task_manager_->ObjectRefStreamExists(maybe_generator_id)) {
-      // If the stream exists, it means it is a streaming generator.
+      // It is possible this reference will leak if the ObjectRefStream is
+      // deleted or the corresponding object ID is not reported via
+      // HandleReportGeneratorItemReturns. TODO(sang): Handle the edge case.
       reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, maybe_generator_id);
     } else {
       // The task is a generator and may not have finished yet. Add the internal

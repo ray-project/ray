@@ -120,6 +120,11 @@ class ObjectRefStream {
   /// \param[in] The last item index that means the end of stream.
   void MarkEndOfStream(int64_t item_index);
 
+  /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
+  ///
+  /// \return A list of object IDs that are not read yet.
+  std::vector<ObjectID> GetItemsUnconsumed() const;
+
  private:
   const ObjectID generator_id_;
 
@@ -128,10 +133,10 @@ class ObjectRefStream {
   /// The last index of the stream.
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
-  int64_t last_ = -1;
-  /// The current index of the stream.
-  /// If curr_ == last_, that means it is EoF.
-  int64_t curr_ = 0;
+  int64_t end_of_stream_index_ = -1;
+  /// The next index of the stream.
+  /// If next_index_ == end_of_stream_index_, that means it is the end of the stream.
+  int64_t next_index_ = 0;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -215,7 +220,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            bool is_application_error) override;
 
   /// Handle the task return reported before the task terminates.
-  void HandleReportGeneratorItemReturns(
+  ///
+  /// \return True if a task return is registered. False otherwise.
+  bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request);
 
   /// Delete the object ref stream.

@@ -753,6 +753,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] dynamic_return_object A intermediate ray object to report
   /// to the caller before the task terminates. This object must have been
   /// created dynamically from this worker via AllocateReturnObject.
+  /// If the Object ID is nil, it means it is the end of the task return.
+  /// In this case, the caller is responsible for setting finished = true,
+  /// otherwise it will panic.
   /// \param[in] generator_id The return object ref ID from a current generator
   /// task.
   /// \param[in] caller_address The address of the caller of the current task
@@ -760,8 +763,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] item_index The index of the task return. It is used to reorder the
   /// report from the caller side.
   /// \param[in] finished True indicates there's going to be no more intermediate
-  /// task return. When finished is provided dynamic_return_object input will be
-  /// ignored.
+  /// task return. When finished is provided dynamic_return_object's key must be
+  /// pair<nil, empty_pointer>
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
@@ -1022,27 +1025,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// object to the task caller and have the resulting ObjectRef be owned by
   /// the caller. This is in contrast to static allocation, where the caller
   /// decides at task invocation time how many returns the task should have.
-  ///
-  /// NOTE: Normally task_id and put_index it not necessary to be specified
-  /// because we can obtain them from the global worker context. However,
-  /// when the async actor uses this API, it cannot find the correct
-  /// worker context due to the implementation limitation.
-  /// In this case, the caller is responsible for providing the correct
-  /// task ID and index.
-  /// See https://github.com/ray-project/ray/issues/10324 for the further details.
-  ///
   /// \param[in] owner_address The address of the owner who will own this
   /// dynamically generated object.
-  /// \param[in] task_id The task id of the dynamically generated return ID.
-  /// If Nil() is specified, it will deduce the Task ID from the current
-  /// worker context.
-  /// \param[in] put_index The equivalent of the return value of
-  /// WorkerContext::GetNextPutIndex.
-  /// If std::nullopt is specified, it will deduce the put index from the
-  /// current worker context.
-  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
-                                   const TaskID &task_id = TaskID::Nil(),
-                                   std::optional<ObjectIDIndexType> put_index = -1);
+  ///
+  /// \param[out] The ObjectID that the caller should use to store the object.
+  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address);
 
   /// Get a handle to an actor.
   ///
