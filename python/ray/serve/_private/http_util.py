@@ -4,10 +4,9 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, Type
+from typing import Any, Dict, Generator, Type
 
-import starlette.responses
-import starlette.requests
+from starlette.requests import Request
 from starlette.types import Send, ASGIApp
 from fastapi.encoders import jsonable_encoder
 
@@ -48,7 +47,7 @@ def build_starlette_request(scope, serialized_body: bytes):
         received = True
         return {"body": serialized_body, "type": "http.request", "more_body": False}
 
-    return starlette.requests.Request(scope, mock_receive)
+    return Request(scope, mock_receive)
 
 
 class Response:
@@ -157,6 +156,28 @@ class ASGIHTTPSender(Send):
 
     def build_asgi_response(self) -> RawASGIResponse:
         return RawASGIResponse(self.messages)
+
+
+class ASGIHTTPQueueSender(Send, asyncio.Queue):
+    """TODO: doc and better name"""
+
+    def __init__(self):
+        self._message_queue = asyncio.Queue()
+        self._new_message_event = asyncio.Event()
+
+    async def __call__(self, message: Dict[str, Any]):
+        assert message["type"] in ("http.response.start", "http.response.body")
+        await self._message_queue.put(message)
+        self._new_message_event.set()
+
+    def get_messages_nowait(self) -> Generator[Dict[str, Any], None, None]:
+        while not self._message_queue.empty():
+            yield self._message_queue.get_nowait()
+
+        self._new_message_event.clear()
+
+    async def wait_for_message(self):
+        await self._new_message_event.wait()
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
