@@ -75,18 +75,25 @@ class ReplicaScheduler(ABC):
         pass
 
 
-class RandomStreamingReplicaScheduler(ReplicaScheduler):
+class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
     def __init__(self):
+        self._replica_iterator = itertools.cycle([])
         self._replicas_updated_event = asyncio.Event()
-        self._replicas: List[RunningReplicaInfo] = []
 
     async def assign_replica(
         self, query: Query
     ) -> "ray._raylet.StreamingObjectRefGenerator":
-        while len(self._replicas) == 0:
-            await self._replicas_updated_event.wait()
+        replica = None
+        while replica is None:
+            try:
+                replica = next(self._replica_iterator)
+            except StopIteration:
+                logger.info(
+                    "Tried to assign replica but none available",
+                    extra={"log_to_stderr": False},
+                )
+                await self._replicas_updated_event.wait()
 
-        replica = random.choice(self._replicas)
         if replica.is_cross_language:
             raise RuntimeError(
                 "Streaming is not yet supported for cross-language actors."
@@ -97,8 +104,9 @@ class RandomStreamingReplicaScheduler(ReplicaScheduler):
         ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        random.shuffle(running_replicas)
+        self._replica_iterator = itertools.cycle(running_replicas)
         self._replicas_updated_event.set()
-        self._replicas = running_replicas
 
 
 class RoundRobinReplicaScheduler(ReplicaScheduler):
@@ -286,7 +294,7 @@ class Router:
         self._event_loop = event_loop
 
         if _use_ray_streaming:
-            self._replica_scheduler = RandomStreamingReplicaScheduler()
+            self._replica_scheduler = RoundRobinStreamingReplicaScheduler()
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler()
 
