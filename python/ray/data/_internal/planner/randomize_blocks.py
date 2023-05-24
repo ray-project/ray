@@ -24,7 +24,7 @@ def generate_randomize_blocks_fn(
                 blocks_with_metadata.append((block, meta))
 
         if len(blocks_with_metadata) == 0:
-            return refs, {}
+            return refs, {"randomize_blocks": []}
         else:
             if seed is not None:
                 random.seed(seed)
@@ -43,6 +43,6 @@ def generate_randomize_blocks_fn(
                         owns_blocks=input_owned,
                     )
                 )
-            return output, {}
+            return output, {"randomize_blocks": []}
 
     return fn

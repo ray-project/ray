@@ -338,7 +338,7 @@ def test_optimize_reorder(ray_start_regular_shared):
     expect_stages(
         ds2,
         3,
-        ["ReadRange->RandomizeBlockOrder", "Repartition", "MapBatches(dummy_map)"],
+        ["ReadRange", "RandomizeBlockOrder", "Repartition", "MapBatches(dummy_map)"],
     )
 
 
