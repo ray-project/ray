@@ -75,7 +75,9 @@ class TorchCheckpoint(Checkpoint):
         data_dict = torch.load(
             _buffer,
             map_location="cpu",
-            pickle_module=ray.cloudpickle,
+            # Python 3.7 has no pickle5 installed. Use cloudpickle here.
+            # TODO(ml-team): Remove this after we drop py37 support
+            pickle_module=ray.cloudpickle.compat.pickle,
         )
         return data_dict
 
