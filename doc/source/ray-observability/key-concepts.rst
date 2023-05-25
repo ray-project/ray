@@ -66,7 +66,7 @@ internal stats (e.g., number of actors in the cluster, number of worker failures
 and custom metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used
 to monitor the cluster over time.
 
-See :ref:`Ray Metrics <ray-metrics>` for more details.
+See :ref:`Ray Metrics <dash-metrics-view>` for more details.
 
 Exceptions
 ----------
@@ -93,9 +93,9 @@ See :ref:`Ray Debugger <ray-debugger>` for more details.
 
 Profiling
 ---------
-Ray is compatible with Python profiling tools such as ``CProfile``. It also supports its built-in profiling tool such as :ref:```ray timeline`` <ray-timeline-doc>`.
+Ray is compatible with Python profiling tools such as ``CProfile``. It also supports its built-in profiling tool such as :ref:`ray timeline <ray-timeline-doc>`.
 
-See :ref:`Profiling <ray-core-profiling>` for more details.
+See :ref:`Profiling <dashboard-cprofile>` for more details.
 
 Tracing
 -------
@@ -166,13 +166,16 @@ Actor log messages look like the following by default.
 
     (MyActor pid=480956) actor log message
 
+.. _logging-directory-structure:
+
 Logging directory structure
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, Ray logs are stored in a ``/tmp/ray/session_*/logs`` directory.
 
-..{note}:
-The default temp directory is ``/tmp/ray`` (for Linux and MacOS). To change the temp directory, specify it when you call ``ray start`` or ``ray.init()``. 
+.. note::
+
+    The default temp directory is ``/tmp/ray`` (for Linux and MacOS). To change the temp directory, specify it when you call ``ray start`` or ``ray.init()``. 
 
 A new Ray instance creates a new session ID to the temp directory. The latest session ID is symlinked to ``/tmp/ray/session_latest``.
 

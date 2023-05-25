@@ -96,7 +96,7 @@ it will raise an exception with one of the following error messages (which indic
 
 Also, you can use the `dmesg <https://phoenixnap.com/kb/dmesg-linux#:~:text=The%20dmesg%20command%20is%20a,take%20place%20during%20system%20startup.>`_ CLI command to verify the processes are killed by the Linux out-of-memory killer.
 
-.. image:: ../images/dmsg.png
+.. image:: ../../images/dmsg.png
     :align: center
 
 If the worker is killed by Ray's memory monitor, they are automatically retried (see the :ref:`link <ray-oom-retry-policy>` for the detail).
@@ -130,10 +130,10 @@ Ray memory monitor also periodically prints the aggregated out-of-memory killer 
 
 Ray Dashboard's :ref:`metrics page <dash-metrics-view>` and :ref:`event page <dash-event>` also provides the out-of-memory killer-specific events and metrics.
 
-.. image:: ../images/oom-metrics.png
+.. image:: ../../images/oom-metrics.png
     :align: center
 
-.. image:: ../images/oom-events.png
+.. image:: ../../images/oom-events.png
     :align: center
 
 .. _troubleshooting-out-of-memory-task-actor-mem-usage:
@@ -150,7 +150,7 @@ The memory usage from the per component graph uses RSS - SHR. See the below for 
 
 Alternatively, you can also use the CLI command `htop <https://htop.dev/>`_.
 
-.. image:: ../images/htop.png
+.. image:: ../../images/htop.png
     :align: center
 
 See the ``allocate_memory`` row. See two columns, RSS and SHR. 
@@ -173,12 +173,12 @@ Head Node Out-of-Memory Error
 
 First, check the head node memory usage from the metrics page. Find the head node address from the cluster page.
 
-.. image:: ../images/head-node-addr.png
+.. image:: ../../images/head-node-addr.png
     :align: center
 
 And then check the memory usage from the head node from the node memory usage view inside the Dashboard :ref:`metrics view <dash-metrics-view>`.
 
-.. image:: ../images/metrics-node-view.png
+.. image:: ../../images/metrics-node-view.png
     :align: center
 
 Ray head node has more memory-demanding system components such as GCS or the dashboard. 
@@ -201,10 +201,10 @@ You can verify it by looking at the :ref:`per task and actor memory usage graph 
 First, see the memory usage of a ``allocate_memory`` task. It is total 18GB.
 At the same time, you can verify 15 concurrent tasks running.
 
-.. image:: ../images/component-memory.png
+.. image:: ../../images/component-memory.png
     :align: center
 
-.. image:: ../images/tasks-graph.png
+.. image:: ../../images/tasks-graph.png
     :align: center
 
 It means each task uses about 18GB / 15 == 1.2 GB. To reduce the parallelism,
