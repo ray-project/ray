@@ -1,12 +1,50 @@
 import os
+import json
+import time
 from typing import Optional, List
+from dataclasses import dataclass
 
+import boto3
+
+from ray_release.result import (
+    ResultStatus,
+    Result,
+)
+
+AWS_BUCKET = "ray-ci-results"
+AWS_TEST_KEY = "ray_tests"
+AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
 )
 DATAPLANE_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
+
+
+@dataclass
+class TestResult:
+    status: ResultStatus
+    commit: str
+    url: str
+    timestamp: int
+
+    @classmethod
+    def from_result(cls, result: Result):
+        return cls(
+            status=result.status,
+            commit=os.environ.get("BUILDKITE_COMMIT", ""),
+            url=result.buildkite_url,
+            timestamp=int(time.time() * 1000),
+        )
+
+    def from_dict(cls, result: dict):
+        return cls(
+            status=ResultStatus(result["status"]),
+            commit=result["commit"],
+            url=result["url"],
+            timestamp=result["timestamp"],
+        )
 
 
 class Test(dict):
@@ -82,6 +120,65 @@ class Test(dict):
         Returns the anyscale byod image to use for this test.
         """
         return f"{DATAPLANE_ECR}/{self.get_byod_repo()}:{self.get_byod_image_tag()}"
+
+    def add_test_result(self, result: Result) -> None:
+        """
+        Add test result to test object
+        """
+        self.get_test_results().insert(0, TestResult.from_result(result))
+
+    def get_test_results(self, limit: int = 10) -> List[TestResult]:
+        """
+        Get test result from test object, or s3
+        """
+        if self.test_results is not None:
+            return self.test_results
+
+        s3_client = boto3.client("s3")
+        files = sorted(
+            s3_client.list_objects_v2(
+                Bucket=AWS_BUCKET,
+                Prefix=f"{AWS_TEST_RESULT_KEY}/{self.get_name()}-",
+            )["Contents"],
+            key=lambda file: int(file["LastModified"].strftime("%s")),
+            reverse=True,
+        )[:limit]
+        self.test_results = [
+            TestResult.from_dict(
+                json.loads(
+                    s3_client.get_object(
+                        Bucket=AWS_BUCKET,
+                        Key=file["Key"],
+                    )
+                    .get("Body")
+                    .read()
+                    .decode("utf-8"),
+                ),
+            )
+            for file in files
+        ]
+        return self.test_results
+
+    def persist_result_to_s3(self, result: Result) -> bool:
+        """
+        Persist test object to s3
+        """
+        boto3.client("s3").put_object(
+            Bucket=AWS_BUCKET,
+            Key=f"{AWS_TEST_RESULT_KEY}/"
+            f"{self.get_name()}-{int(time.time() * 1000)}.json",
+            Body=json.dumps(TestResult.from_result(result)),
+        )
+
+    def persist_to_s3(self) -> bool:
+        """
+        Persist test object to s3
+        """
+        boto3.client("s3").put_object(
+            Bucket=AWS_BUCKET,
+            Key=f"{AWS_TEST_KEY}/{self.get_name()}.json",
+            Body=json.dumps(self),
+        )
 
 
 class TestDefinition(dict):
