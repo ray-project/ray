@@ -75,7 +75,7 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
 
 
 async def _handle_streaming_response(
-    asgi_response_generator: ray._raylet.StreamingObjectRefGenerator,
+    asgi_response_generator: "ray._raylet.StreamingObjectRefGenerator",
     scope: Scope,
     receive: Receive,
     send: Send,
