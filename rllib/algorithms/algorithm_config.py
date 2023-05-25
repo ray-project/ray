@@ -1670,14 +1670,6 @@ class AlgorithmConfig(_Config):
 
         Args:
             gamma: Float specifying the discount factor of the Markov Decision process.
-            #optimizer_type: The type of the optimizer to use. RLlib will try to
-            #    translate this string into a matching tf or torch optimizer class, e.g.
-            #    "adam" -> `torch.optim.Adam` or `tf.keras.optimizers.Adam`.
-            #    Alternatively, provide a dict here, mapping optimizer names (str) to
-            #    individual optimizer_type settings (str). In this
-            #    case, it is expected that your Learner subclass returns these exact
-            #    names and optimizers from the
-            #    `Learner.configure_optimizers_for_module()` method.
             lr: The learning rate (float) or learning rate schedule in the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
                 In case of a schedule, intermediary timesteps will be assigned to

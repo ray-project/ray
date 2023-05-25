@@ -78,26 +78,12 @@ class TorchLearner(Learner):
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
 
-        # Use this str-to-torch-optim mapping to get the proper optimizer class, no
-        # matter upper/lower case.
-        optimizers = {
-            "sgd": torch.optim.SGD,
-            "adam": torch.optim.Adam,
-            "adamw": torch.optim.AdamW,
-            "sparseadam": torch.optim.SparseAdam,
-            "adamax": torch.optim.Adamax,
-            "asgd": torch.optim.ASGD,
-            "lbfgs": torch.optim.LBFGS,
-            "rmsprop": torch.optim.RMSprop,
-            "rprop": torch.optim.Rprop,
-            "adagrad": torch.optim.Adagrad,
-            "adadelta": torch.optim.Adadelta,
-        }
-        # Use Adam as a last resort.
-        optim_class = optimizers.get(hps.optimizer_type or "adam")
-        parameters = self.get_parameters(module)
-        optim = optim_class(parameters)
-        pair: ParamOptimizerPair = (parameters, optim)
+        pair: ParamOptimizerPair = (
+            self.get_parameters(module),
+            # For this default implementation, the learning rate is handled by the
+            # attached lr Scheduler (controlled by self.hps.learning_rate).
+            torch.optim.Adam(self.get_parameters(module)),
+        )
         return pair
 
     @override(Learner)
