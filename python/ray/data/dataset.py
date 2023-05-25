@@ -3660,6 +3660,7 @@ class Dataset:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
+    @Deprecated
     @ConsumptionAPI
     def repeat(self, times: Optional[int] = None) -> "DatasetPipeline":
         """Convert this into a DatasetPipeline by looping over this dataset.
@@ -3748,6 +3749,7 @@ class Dataset:
             )
         return pipe
 
+    @Deprecated
     def window(
         self,
         *,
