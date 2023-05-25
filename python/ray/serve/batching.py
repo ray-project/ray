@@ -25,7 +25,7 @@ class _SingleRequest:
 
 @dataclass
 class _GeneratorIterResponse:
-    result: Optional[Any]
+    result: Any
     next_future: Union[asyncio.Future, END_ASYNC_ITER_TOKEN]
 
 
