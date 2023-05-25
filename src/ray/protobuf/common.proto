@@ -344,7 +344,7 @@ message StreamingGeneratorReturnIdInfo {
   // The object ID of a streaming generator return.
   bytes object_id = 1;
   // Whether or not if the object is in plasma store.
-  bool is_in_plasma = 2;
+  bool is_plasma_object = 2;
 }
 
 /// The task specification encapsulates all immutable information about the

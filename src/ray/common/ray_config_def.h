@@ -294,6 +294,9 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
+/// The maximum number of generator return values. It is used to
+RAY_CONFIG(uint32_t, max_num_generator_returns, 100 * 1000 * 1000)
+
 /// A value to add to workers' OOM score adjustment, so that the OS prioritizes
 /// killing these over the raylet. 0 or positive values only (negative values
 /// require sudo permissions).

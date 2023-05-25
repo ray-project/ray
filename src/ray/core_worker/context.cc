@@ -27,7 +27,10 @@ const rpc::JobConfig kDefaultJobConfig{};
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   explicit WorkerThreadContext(const JobID &job_id)
-      : current_task_id_(), task_index_(0), put_counter_(0) {
+      : current_task_id_(),
+        task_index_(0),
+        put_counter_(0),
+        max_num_generator_returns_(RayConfig::instance().max_num_generator_returns()) {
     SetCurrentTaskId(TaskID::FromRandom(job_id), /*attempt_number=*/0);
   }
 
@@ -49,8 +52,7 @@ struct WorkerThreadContext {
     // thread), so there's no risk of conflicting put object IDs, either.
     // See https://github.com/ray-project/ray/issues/10324 for further details.
     auto num_returns = current_task_ != nullptr ? current_task_->NumReturns() : 0;
-    // Reserve 100 millions values for dynamically allocated objects.
-    return num_returns + 100 * 1000 * 1000 + ++put_counter_;
+    return num_returns + max_num_generator_returns_ + ++put_counter_;
   }
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
@@ -137,6 +139,9 @@ struct WorkerThreadContext {
 
   /// Whether or not child tasks are captured in the parent's placement group implicitly.
   bool placement_group_capture_child_tasks_ = false;
+
+  /// The maximum number of generator return values.
+  uint32_t max_num_generator_returns_;
 };
 
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =

@@ -459,6 +459,15 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     else:
         raise RaySystemError(message)
 
+
+cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
+    assert obj.get() != NULL
+    if (obj.get().GetData().get() != NULL
+            and obj.get().GetData().get().IsPlasmaBuffer()):
+        return True
+    return False
+
+
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
     data_metadata_pairs = []
@@ -993,11 +1002,10 @@ cdef execute_streaming_generator(
                 application_error
             )
 
-            assert return_obj.second != NULL
             streaming_generator_returns[0].push_back(
                 c_pair[CObjectID, c_bool](
                     return_obj.first,
-                    return_obj.second.get().IsInPlasmaError()))
+                    is_plasma_object(return_obj.second)))
 
             CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 return_obj,
@@ -1022,12 +1030,11 @@ cdef execute_streaming_generator(
             # Del output here so that we can GC the memory
             # usage asap.
             del output
-        
-            assert return_obj.second != NULL
+
             streaming_generator_returns[0].push_back(
                 c_pair[CObjectID, c_bool](
                     return_obj.first,
-                    return_obj.second.get().IsInPlasmaError()))
+                    is_plasma_object(return_obj.second)))
 
             logger.debug(
                 "Writes to a ObjectRefStream of an "

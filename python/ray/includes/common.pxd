@@ -238,6 +238,13 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
         LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
         LocalMemoryBuffer(size_t size)
 
+    cdef cppclass SharedMemoryBuffer(CBuffer):
+        SharedMemoryBuffer(
+            const shared_ptr[CBuffer] &buffer,
+            int64_t offset,
+            int64_t size)
+        c_bool IsPlasmaBuffer() const
+
 cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
         CRayObject(const shared_ptr[CBuffer] &data,

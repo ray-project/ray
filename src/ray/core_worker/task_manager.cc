@@ -620,7 +620,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       RAY_CHECK(spec.IsStreamingGenerator());
       spec.SetNumStreamingGeneratorReturns(reply.streaming_generator_return_ids_size());
       for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
-        if (return_id_info.is_in_plasma()) {
+        if (return_id_info.is_plasma_object()) {
           it->second.reconstructable_return_ids.insert(
               ObjectID::FromBinary(return_id_info.object_id()));
         }

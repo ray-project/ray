@@ -120,10 +120,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     for (const auto &it : streaming_generator_returns) {
       const auto &object_id = it.first;
-      bool is_in_plasma = it.second;
+      bool is_plasma_object = it.second;
       auto return_id_proto = reply->add_streaming_generator_return_ids();
       return_id_proto->set_object_id(object_id.Binary());
-      return_id_proto->set_is_in_plasma(is_in_plasma);
+      return_id_proto->set_is_plasma_object(is_plasma_object);
     }
 
     bool objects_valid = return_objects.size() == num_returns;
