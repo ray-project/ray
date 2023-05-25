@@ -4133,7 +4133,7 @@ py_test(
 py_test(
     name = "examples/learner/ppo_tuner_local_gpu_tf2",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu"],
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
     args = ["--framework=tf2", "--config=local-gpu"]
