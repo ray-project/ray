@@ -542,13 +542,9 @@ def _lightning_train_loop_per_worker(config):
     # Restore from a previously failed run
     checkpoint = session.get_checkpoint()
     if checkpoint:
-        logger.info("Restoring LightningTrainer from a failed run. ")
-
-        ckpt_path = trainer_fit_params.get("ckpt_path", None)
-        if ckpt_path:
-            logger.info(
-                f"Replacing ckpt_path={ckpt_path} with the latest AIR checkpoint!"
-            )
+        logger.info(
+            "Resuming training from an AIR checkpoint. `ckpt_path` will be ignored."
+        )
 
         with checkpoint.as_directory() as ckpt_dir:
             trainer_fit_params["ckpt_path"] = f"{ckpt_dir}/{MODEL_KEY}"
