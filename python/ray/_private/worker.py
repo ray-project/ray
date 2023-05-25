@@ -2589,7 +2589,7 @@ def put(
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray._private.state.state.global_state_accessor` is not None
         ray._private.state.state._check_connected()
-        serialized_owner_address = (
+        serialize_owner_address = (
             ray._raylet._get_actor_serialized_owner_address_or_none(
                 ray._private.state.state.global_state_accessor.get_actor_info(
                     _owner._actor_id
