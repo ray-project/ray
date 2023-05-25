@@ -195,5 +195,5 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # Feature flag to enable StreamingResponse support.
 # When turned on, *all* HTTP responses will use Ray streaming object refs.
 RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
-    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") != "0"
+    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
 )
