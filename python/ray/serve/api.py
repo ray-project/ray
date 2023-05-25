@@ -222,7 +222,8 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                 install_serve_encoders_to_fastapi()
 
                 self._serve_app = frozen_app
-
+                # Used in `replica.py` to detect the usage of this class.
+                self._is_serve_asgi_wrapper = True
                 # Use uvicorn's lifespan handling code to properly deal with
                 # startup and shutdown event.
                 self._serve_asgi_lifespan = LifespanOn(

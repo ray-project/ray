@@ -60,6 +60,14 @@ from ray.serve._private.version import DeploymentVersion
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+async def mock_asgi_receive():
+    # This is called in a tight loop in responses just to check
+    # for an HTTP disconnect. So rather than returning immediately
+    # we should suspend execution to avoid wasting CPU cycles.
+    never_set_event = asyncio.Event()
+    await never_set_event.wait()
+
+
 def _format_replica_actor_name(deployment_name: str):
     return f"ServeReplica:{deployment_name}"
 
@@ -475,42 +483,31 @@ class RayServeReplica:
             return self.callable
         return getattr(self.callable, method_name)
 
-    async def handle_http_response(
-        self, result: Any, asgi_sender: Optional[Send] = None
-    ) -> Any:
-        """Handle a starlette Response returned by user code.
+    async def send_user_result_over_asgi(self, result: Any, asgi_sender: Send):
+        """Handle the result from user code and send it over the ASGI interface.
 
-        If the result is not a Response type, this is a no-op. If it is, the
-        behavior depends on if asgi_sender was passed or not:
-            - if asgi_sender is provided, we consume the response using the sender.
-              It's expected that the caller is consuming the messages from this sender.
-            - if asgi_sender is not provided, we check to see if the response is a
-              StreamingResponse and convert it to a vanilla unary response.
+        If the result is already a Response type, it will be sent directly. Else it
+        will be converted to our custom Response type that handles serialization for
+        common Python objects.
         """
+        if not isinstance(result, (starlette.responses.Response, RawASGIResponse)):
+            await Response(result).send(
+                scope=None, receive=mock_asgi_receive, send=asgi_sender
+            )
+        else:
+            await result(scope=None, receive=mock_asgi_receive, send=asgi_sender)
 
-        async def mock_receive():
-            # This is called in a tight loop in response() just to check
-            # for an http disconnect.  So rather than return immediately
-            # we should suspend execution to avoid wasting CPU cycles.
-            never_set_event = asyncio.Event()
-            await never_set_event.wait()
+    async def convert_streaming_response(
+        self, response: starlette.responses.StreamingResponse
+    ) -> RawASGIResponse:
+        """Convert a StreamingResponse to a custom buffered unary response.
 
-        if asgi_sender is not None:
-            if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-                # Case where the user returns a Response directly.
-                await result(scope=None, receive=mock_receive, send=asgi_sender)
-            elif result is not None:
-                # Case where the user returns a plain object (not a Response).
-                response = Response(result)
-                await response.send(scope=None, receive=mock_receive, send=asgi_sender)
-
-            result = None
-        elif isinstance(result, starlette.responses.StreamingResponse):
-            sender = ASGIHTTPSender()
-            await result(scope=None, receive=mock_receive, send=sender)
-            result = sender.build_asgi_response()
-
-        return result
+        This is used on the legacy non-streaming codepath because we cannot serialize
+        and return a StreamingResponse.
+        """
+        sender = ASGIHTTPSender()
+        await response(scope=None, receive=mock_asgi_receive, send=sender)
+        return sender.build_asgi_response()
 
     async def invoke_single(
         self, request_item: Query, *, asgi_sender: Optional[Send] = None
@@ -529,8 +526,9 @@ class RayServeReplica:
         )
 
         args, kwargs = parse_request_item(request_item)
-        if asgi_sender is not None and hasattr(self.callable, "_serve_app"):
-            # If the callable is our FastAPI wrapper, pass it the asgi_sender.
+
+        callable_is_asgi_wrapper = hasattr(self.callable, "_is_serve_asgi_wrapper")
+        if asgi_sender is not None and callable_is_asgi_wrapper:
             kwargs["asgi_sender"] = asgi_sender
 
         method_to_call = None
@@ -555,7 +553,20 @@ class RayServeReplica:
                     # call with non-empty args
                     result = await method_to_call(*args, **kwargs)
 
-            result = await self.handle_http_response(result, asgi_sender=asgi_sender)
+            # Streaming HTTP codepath: always send response over ASGI interface.
+            if asgi_sender is not None:
+                # For the FastAPI codepath, the response has already been sent over the
+                # ASGI interace and result should always be `None`.
+                if callable_is_asgi_wrapper:
+                    assert result is None
+                # For the vanilla deployment codepath, always send the result over ASGI.
+                else:
+                    result = await self.send_user_result_over_asgi(result, asgi_sender)
+
+            # Legacy codepath: always return the result, so ensure it can be serialized.
+            elif isinstance(result, starlette.responses.StreamingResponse):
+                result = await self.convert_streaming_response(result)
+
             self.request_counter.inc(tags={"route": request_item.metadata.route})
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
