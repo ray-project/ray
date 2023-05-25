@@ -179,7 +179,7 @@ if __name__ == "__main__":
     config_yaml = yaml.safe_load(cluster_config.read_text())
     # Make the cluster name unique
     config_yaml["cluster_name"] = (
-        config_yaml["cluster_name"] + "_" + str(int(time.time()))
+        config_yaml["cluster_name"] + "-" + str(int(time.time()))
     )
     provider_type = config_yaml.get("provider", {}).get("type")
     if provider_type == "aws":
