@@ -7,6 +7,7 @@ from typing import (
     Optional,
     Sequence,
     Union,
+    Tuple,
 )
 
 from ray.rllib.core.learner.learner import (
@@ -72,6 +73,8 @@ class TorchLearner(Learner):
         # Will be set during build.
         self._device = None
 
+        self._enable_torch_compile = self._framework_hyperparameters.torch_compile
+
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
@@ -85,8 +88,7 @@ class TorchLearner(Learner):
         )
         return pair
 
-    @override(Learner)
-    def _update(
+    def _uncompiled_update(
         self,
         batch: NestedDict,
         **kwargs,
@@ -232,12 +234,44 @@ class TorchLearner(Learner):
 
         # we need to ddpify the module that was just added to the pool
         module = self._module[module_id]
+
+        if self._enable_torch_compile:
+            torch._dynamo.reset()
+            torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
+            self._possibly_compiled_update = torch.compile(
+                self._uncompiled_update,
+                torch_dynamo_backend=torch_compile_cfg.torch_dynamo_backend,
+                torch_dynamo_mode=torch_compile_cfg.torch_dynamo_mode,
+                **torch_compile_cfg.kwargs,
+            )
+
         if isinstance(module, TorchRLModule):
             self._module[module_id].to(self._device)
             if self.distributed:
+                if self._enable_torch_compile:
+                    raise ValueError(
+                        "Using torch distributed and torch compile "
+                        "together tested for now. Please disable "
+                        "torch compile."
+                    )
                 self._module.add_module(
                     module_id, TorchDDPRLModule(module), override=True
                 )
+
+    @override(Learner)
+    def remove_module(self, module_id: ModuleID) -> None:
+        with self._strategy.scope():
+            super().remove_module(module_id)
+
+        if self._enable_torch_compile:
+            torch._dynamo.reset()
+            torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
+            self._possibly_compiled_update = torch.compile(
+                self._uncompiled_update,
+                torch_dynamo_backend=torch_compile_cfg.torch_dynamo_backend,
+                torch_dynamo_mode=torch_compile_cfg.torch_dynamo_mode,
+                **torch_compile_cfg.kwargs,
+            )
 
     @override(Learner)
     def build(self) -> None:
@@ -274,14 +308,23 @@ class TorchLearner(Learner):
 
         super().build()
 
-        # Maybe torch compile forward methods.
-        if self._framework_hyperparameters.torch_compile:
-            compile_config = self._framework_hyperparameters.torch_compile_cfg
-            for module in self._module._rl_modules.values():
-                if isinstance(module, TorchRLModule):
-                    module.compile(compile_config)
+        if self._enable_torch_compile:
+            torch._dynamo.reset()
+            torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
+            self._possibly_compiled_update = torch.compile(
+                self._uncompiled_update,
+                backend=torch_compile_cfg.torch_dynamo_backend,
+                mode=torch_compile_cfg.torch_dynamo_mode,
+                **torch_compile_cfg.kwargs,
+            )
+        else:
+            self._possibly_compiled_update = self._uncompiled_update
 
         self._make_modules_ddp_if_necessary()
+
+    @override(Learner)
+    def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+        return self._possibly_compiled_update(batch)
 
     @OverrideToImplementCustomLogic
     def _make_modules_ddp_if_necessary(self) -> None:

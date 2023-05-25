@@ -272,7 +272,9 @@ class TestModelBase(unittest.TestCase):
 
         import torch._dynamo as dynamo
 
+        # This is a helper method of dynamo to analyze where breaks occur.
         dynamo_explanation = dynamo.explain(compile_me, {"in": torch.Tensor([[1]])})
+        print(dynamo_explanation[5])
 
         # There should be only one break reason - `return_value` - since inputs and
         # outputs are not checked
@@ -292,24 +294,12 @@ class TestModelBase(unittest.TestCase):
         )
         torch_module = spec.build()
 
-        compile_config = TorchCompileConfig(compile_forward_train=True)
-
-        torch_module.compile(compile_config)
-
-        # We should still be able to call the forward method
-        torch_module._forward_train({"obs": torch.randn(1, 32)})
-
-        # Compile again with different config and see if everything still works
-
-        compile_config = TorchCompileConfig(
-            compile_forward_train=True,
-            compile_forward_inference=True,
-            compile_forward_exploration=True,
-        )
+        compile_config = TorchCompileConfig()
 
         torch_module.compile(compile_config)
 
         # We should still be able to call the forward methods
+        torch_module._forward_train({"obs": torch.randn(1, 32)})
         torch_module._forward_inference({"obs": torch.randn(1, 32)})
         torch_module._forward_exploration({"obs": torch.randn(1, 32)})
 
