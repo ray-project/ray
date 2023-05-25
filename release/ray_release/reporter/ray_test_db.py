@@ -3,6 +3,7 @@ import json
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
 from ray_release.test import Test
+from ray_release.test_automation.state_machine import TestStateMachine
 from ray_release.logger import logger
 
 
@@ -16,13 +17,19 @@ class RayTestDBReporter(Reporter):
     """
 
     def report_result(self, test: Test, result: Result) -> None:
-        logger.info(
-            f"Updating test object {test.get_name()} with result {result.status}"
-        )
-        test.persist_result_to_s3(result)
+        # Update the test object with the latest test state
+        test.update_from_s3()
+        logger.info(f"Test object: {json.dumps(test)}")
+        test.add_test_result(result)
         logger.info(
             f"Test results: "
             f"{json.dumps([result.__dict__ for result in test.get_test_results()])}"
         )
+
+        # Compute and update the next test state
+        TestStateMachine(test).move()
+
+        # Persist the updated test object to S3
+        test.persist_result_to_s3(result)
         test.persist_to_s3()
         logger.info(f"Test object {test.get_name()} updated successfully")
