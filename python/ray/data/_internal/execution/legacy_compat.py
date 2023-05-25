@@ -3,7 +3,6 @@
 It should be deleted once we fully move to the new executor backend.
 """
 
-import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple, Any
 
 import ray
@@ -138,7 +137,7 @@ def _get_execution_dag(
     # Get DAG of physical operators and input statistics.
     if (
         DataContext.get_current().optimizer_enabled
-        # TODO(hchen): Remove this when all operators support local plan.
+        # TODO(hchen): Remove this when all operators support logical plan.
         and getattr(plan, "_logical_plan", None) is not None
     ):
         dag = get_execution_plan(plan._logical_plan).dag
