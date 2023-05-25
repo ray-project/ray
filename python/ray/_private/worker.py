@@ -2233,12 +2233,6 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
     )
-    # The following will be fixed with https://github.com/ray-project/ray/pull/35094
-    from ray._private.gcs_pubsub import (
-        GcsErrorSubscriber,
-        GcsFunctionKeySubscriber,
-        GcsLogSubscriber,
-    )
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
