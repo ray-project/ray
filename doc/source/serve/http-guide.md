@@ -82,7 +82,7 @@ Support for HTTP streaming responses is currently experimental. To enable this f
 ```
 
 Some applications require streaming incremental results back to the caller.
-This is common for large language models (LLMs) used for text generation.
+This is common for large language models (LLMs) used for text generation or video processing applications.
 The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
 
 To use HTTP response streaming, return a [StreamingResponse](https://www.starlette.io/responses/#streamingresponse) that wraps a generator from your HTTP handler.
