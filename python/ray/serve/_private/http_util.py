@@ -191,8 +191,8 @@ class ASGIHTTPQueueSender(Send):
     async def wait_for_message(self):
         """Wait until at least one new message is available.
 
-        This will continuously return immediately once a message is available until
-        `get_messages_nowait` is called.
+        If a message is available, this method will return immediately on each call
+        until `get_messages_nowait` is called.
         """
         await self._new_message_event.wait()
 
