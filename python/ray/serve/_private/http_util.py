@@ -14,7 +14,7 @@ from uvicorn.lifespan.on import LifespanOn
 
 import ray
 from ray.serve.exceptions import RayServeException
-from ray.serve._private.constants import SERVE_LOGGER_NAME, SERVE_REQUEST_ID
+from ray.serve._private.constants import SERVE_LOGGER_NAME, RAY_SERVE_REQUEST_ID
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -73,7 +73,7 @@ class Response:
         # Set request id.
         self.raw_headers.append(
             [
-                SERVE_REQUEST_ID,
+                RAY_SERVE_REQUEST_ID,
                 ray.serve.context._serve_request_context.get().request_id,
             ]
         )
@@ -142,7 +142,7 @@ class RawASGIResponse(ASGIApp):
         # Set request id.
         self.messages[0]["headers"].append(
             [
-                SERVE_REQUEST_ID,
+                RAY_SERVE_REQUEST_ID,
                 ray.serve.context._serve_request_context.get().request_id,
             ]
         )
