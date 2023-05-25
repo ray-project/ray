@@ -61,7 +61,7 @@ def _is_primitive(x):
 
     Primitive types are int, float, str, bool, and None.
     """
-    return isinstance(x, (int, float, str, bool)) or not x
+    return isinstance(x, (int, float, str, bool)) or x is None
 
 
 @DeveloperAPI
