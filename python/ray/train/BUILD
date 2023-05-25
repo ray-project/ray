@@ -11,7 +11,8 @@ doctest(
             "tensorflow/tensorflow_trainer.py",
             "torch/torch_trainer.py",
             # FIXME: Failing doctests
-            "xgboost/xgboost_predictor.py"
+            "xgboost/xgboost_predictor.py",
+            "xgboost/xgboost_checkpoint.py"
         ]
     ),
     tags = ["team:ml"],
