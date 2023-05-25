@@ -466,7 +466,30 @@ def test_generator_dist_chain(ray_start_cluster):
 
     for ref in chain_actor_4.get_data.options(num_returns="streaming").remote():
         assert np.array_equal(np.ones(5 * 1024 * 1024), ray.get(ref))
+        print("getting the next data")
         del ref
+
+
+def test_generator_slow_pinning_requests(monkeypatch, shutdown_only):
+    """
+    Verify when the Object pinning request from the raylet
+    is reported slowly, there's no refernece leak.
+    """
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "CoreWorkerService.grpc_server.PubsubLongPolling=1000000:1000000",
+        )
+
+        @ray.remote
+        def f():
+            yield np.ones(5 * 1024 * 1024)
+
+        for ref in f.options(num_returns="streaming").remote():
+            del ref
+
+        print(list_objects())
 
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])

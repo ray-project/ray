@@ -421,6 +421,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
 
+  void EmitTaskMetrics() const;
+
  private:
   void ComputeResources();
 
