@@ -9,7 +9,8 @@ from contextlib import redirect_stdout
 
 import ray
 from ray import tune
-from ray.air import session, RunConfig
+from ray.air import session, Checkpoint, RunConfig
+from ray.tune import Tuner
 from ray.tune.progress_reporter import JupyterNotebookReporter
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -46,6 +47,25 @@ def start_client_server_4_cpus():
     with ray_start_client_server() as client:
         yield client
     ray.shutdown()
+
+
+def test_tuner_client_get_results(
+    tmp_path, legacy_progress_reporter, start_client_server_2_cpus
+):
+    def train_fn(config):
+        checkpoint = session.get_checkpoint()
+        id = int(bool(checkpoint))
+        session.report({"id": id}, checkpoint=Checkpoint.from_dict({"id": id}))
+        raise RuntimeError
+
+    results = Tuner(train_fn, run_config=RunConfig(storage_path=str(tmp_path))).fit()
+    restored_results = Tuner.restore(
+        results.experiment_path, trainable=train_fn, resume_errored=True
+    ).get_results()
+
+    # Assert that the intermediate results are returned,
+    # without launching the tuning job.
+    assert restored_results[0].metrics["id"] == 0
 
 
 def test_pbt_function(legacy_progress_reporter, start_client_server_2_cpus):
