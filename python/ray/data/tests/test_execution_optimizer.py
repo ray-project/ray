@@ -108,6 +108,50 @@ def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromItems"])
 
 
+def test_map_operator_udf_name(ray_start_regular_shared, enable_optimizer):
+    # Test the name of the Map operator with different types of UDF.
+    def normal_function(x):
+        return x
+
+    lambda_function = lambda x: x
+
+    class CallableClass:
+        def __call__(self, x):
+            return x
+
+    class NormalClass:
+        def method(self, x):
+            return x
+
+    udf_list = [
+        # A nomral function.
+        normal_function,
+        # A lambda function
+        lambda_function,
+        # A callable class.
+        CallableClass,
+        # An instance of a callable class.
+        CallableClass(),
+        # A normal class method.
+        NormalClass().method,
+    ]
+
+    expected_names = [
+        "normal_function",
+        "<lambda>",
+        "CallableClass",
+        "CallableClass",
+        "NormalClass.method",
+    ]
+
+    for udf, expected_name in zip(udf_list, expected_names):
+        op = MapRows(
+            Read(ParquetDatasource(), []),
+            udf,
+        )
+        assert op.name == f"Map({expected_name})"
+
+
 def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     read_op = Read(ParquetDatasource(), [])
@@ -558,7 +602,10 @@ def test_read_map_batches_operator_fusion_target_block_size(
 
     assert op.name == "MapBatches(<lambda>)"
     # Ops are still fused.
-    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)->MapBatches(<lambda>)"
+    assert (
+        physical_op.name
+        == "ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)->MapBatches(<lambda>)"
+    )
     assert isinstance(physical_op, MapOperator)
     # Target block size is set to max.
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5

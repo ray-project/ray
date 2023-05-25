@@ -5,6 +5,9 @@ from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
 
+import inspect
+import logging
+
 
 class AbstractMap(LogicalOperator):
     """Abstract class for logical operators that should be converted to physical
@@ -27,6 +30,25 @@ class AbstractMap(LogicalOperator):
         """
         super().__init__(name, [input_op] if input_op else [])
         self._ray_remote_args = ray_remote_args or {}
+
+
+def _get_udf_name(fn: UserDefinedFunction) -> str:
+    try:
+        if inspect.isclass(fn):
+            # callable class
+            return fn.__name__
+        elif inspect.ismethod(fn):
+            # class method
+            return f"{fn.__self__.__class__.__name__}.{fn.__name__}"
+        elif inspect.isfunction(fn):
+            # normal function or lambda function.
+            return fn.__name__
+        else:
+            # callable object.
+            return fn.__class__.__name__
+    except AttributeError as e:
+        logging.error("Failed to get name of UDF %s: %s", fn, e)
+        return "<unknown>"
 
 
 class AbstractUDFMap(AbstractMap):
@@ -65,12 +87,7 @@ class AbstractUDFMap(AbstractMap):
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args: Args to provide to ray.remote.
         """
-        fn_name = (
-            fn.__name__
-            if not hasattr(fn, "__self__")
-            else f"{fn.__self__.__class__.__name__}.{fn.__name__}"
-        )
-        name = f"{name}({fn_name})"
+        name = f"{name}({_get_udf_name(fn)})"
         super().__init__(name, input_op, ray_remote_args)
         self._fn = fn
         self._fn_args = fn_args
