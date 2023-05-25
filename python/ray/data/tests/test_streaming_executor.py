@@ -267,14 +267,16 @@ def test_execution_allowed():
 
     # CPU.
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources(cpu=1))
+    op_state = MagicMock()
+
     assert _execution_allowed(
-        op, stub(ExecutionResources(cpu=1)), ExecutionResources(cpu=2)
+        op, op_state, stub(ExecutionResources(cpu=1)), ExecutionResources(cpu=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(cpu=2)), ExecutionResources(cpu=2)
+        op, op_state, stub(ExecutionResources(cpu=2)), ExecutionResources(cpu=2)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(cpu=2)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(cpu=2)), ExecutionResources(gpu=2)
     )
 
     # GPU.
@@ -282,10 +284,10 @@ def test_execution_allowed():
         return_value=ExecutionResources(cpu=0, gpu=1)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
 
     # Test conversion to indicator (0/1).
@@ -293,13 +295,13 @@ def test_execution_allowed():
         return_value=ExecutionResources(cpu=0, gpu=100)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
 
     # Test conversion to indicator (0/1).
@@ -307,13 +309,13 @@ def test_execution_allowed():
         return_value=ExecutionResources(cpu=0, gpu=0.1)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
+        op, op_state, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
     )
 
 
@@ -567,9 +569,11 @@ def test_calculate_topology_usage():
 def test_execution_allowed_downstream_aware_memory_throttling():
     op = InputDataBuffer([])
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
+    op_state = MagicMock()
     # Below global.
     assert _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(1, 1000)},
@@ -579,6 +583,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
     # Above global.
     assert not _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(1, 1000)},
@@ -588,6 +593,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
     # Above global, but below downstream quota of 50%.
     assert _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(0.5, 400)},
@@ -597,6 +603,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
     # Above global, and above downstream quota of 50%.
     assert not _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(0.5, 600)},
@@ -608,9 +615,11 @@ def test_execution_allowed_downstream_aware_memory_throttling():
 def test_execution_allowed_nothrottle():
     op = InputDataBuffer([])
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
+    op_state = MagicMock()
     # Above global.
     assert not _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(1, 1000)},
@@ -622,6 +631,7 @@ def test_execution_allowed_nothrottle():
     op.throttling_disabled = MagicMock(return_value=True)
     assert _execution_allowed(
         op,
+        op_state,
         TopologyResourceUsage(
             ExecutionResources(object_store_memory=1000),
             {op: DownstreamMemoryInfo(1, 1000)},

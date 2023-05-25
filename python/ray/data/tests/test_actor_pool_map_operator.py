@@ -522,13 +522,11 @@ class TestAutoscalingConfig:
             min_workers=2,
             max_workers=100,
             max_tasks_in_flight=3,
-            ready_to_total_workers_ratio=0.8,
             idle_to_total_workers_ratio=0.25,
         )
         assert config.min_workers == 2
         assert config.max_workers == 100
         assert config.max_tasks_in_flight == 3
-        assert config.ready_to_total_workers_ratio == 0.8
         assert config.idle_to_total_workers_ratio == 0.25
 
     def test_from_compute(self):
@@ -540,7 +538,6 @@ class TestAutoscalingConfig:
         assert config.min_workers == 2
         assert config.max_workers == 5
         assert config.max_tasks_in_flight == 3
-        assert config.ready_to_total_workers_ratio == 0.8
         assert config.idle_to_total_workers_ratio == 0.5
 
 
@@ -561,9 +558,10 @@ class TestAutoscalingPolicy:
         config = AutoscalingConfig(min_workers=1, max_workers=4)
         policy = AutoscalingPolicy(config)
         num_total_workers = 0
-        num_running_workers = 0
+        num_free_slots = 0
+        num_inputs = 1
         # Should scale up since under pool min workers.
-        assert policy.should_scale_up(num_total_workers, num_running_workers)
+        assert policy.should_scale_up(num_total_workers, num_free_slots, num_inputs)
 
     def test_should_scale_up_over_max_workers(self):
         # Test that scale-up is blocked if the pool would go over the configured max
@@ -571,32 +569,33 @@ class TestAutoscalingPolicy:
         config = AutoscalingConfig(min_workers=1, max_workers=4)
         policy = AutoscalingPolicy(config)
         num_total_workers = 4
-        num_running_workers = 4
+        num_free_slots = 4
+        num_inputs = 2
+
         # Shouldn't scale up due to pool max workers.
-        assert not policy.should_scale_up(num_total_workers, num_running_workers)
+        assert not policy.should_scale_up(num_total_workers, num_free_slots, num_inputs)
 
         num_total_workers = 3
-        num_running_workers = 3
+        num_free_slots = 3
+        num_inputs = 4
         # Should scale up since under pool max workers.
-        assert policy.should_scale_up(num_total_workers, num_running_workers)
+        assert policy.should_scale_up(num_total_workers, num_free_slots, num_inputs)
 
-    def test_should_scale_up_ready_to_total_ratio(self):
-        # Test that scale-up is blocked if under the ready workers to total workers
-        # ratio.
-        config = AutoscalingConfig(
-            min_workers=1, max_workers=4, ready_to_total_workers_ratio=0.5
-        )
+    def test_should_scale_up_with_less_slots_than_input_queue_size(self):
+        # Tests scale up logic based on number of free slots and number of inputs.
+        config = AutoscalingConfig(min_workers=1, max_workers=4)
+
         policy = AutoscalingPolicy(config)
 
-        num_total_workers = 2
-        num_running_workers = 1
-        # Shouldn't scale up due to being under ready workers to total workers ratio.
-        assert not policy.should_scale_up(num_total_workers, num_running_workers)
+        # Shouldn't scale up if there are enough free slots to handle the input queue.
+        assert not policy.should_scale_up(
+            num_total_workers=2, num_free_slots=2, num_inputs=1
+        )
 
-        num_total_workers = 3
-        num_running_workers = 2
-        # Shouldn scale up due to being over ready workers to total workers ratio.
-        assert policy.should_scale_up(num_total_workers, num_running_workers)
+        # Should scale up if there are not enough free slots to handle the input queue.
+        assert policy.should_scale_up(
+            num_total_workers=2, num_free_slots=0, num_inputs=1
+        )
 
     def test_should_scale_down_min_workers(self):
         # Test that scale-down is blocked if the pool would go under the configured min

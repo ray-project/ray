@@ -4,6 +4,7 @@ import random
 import pytest
 import threading
 import time
+from unittest import mock
 
 from typing import List, Any
 
@@ -14,6 +15,9 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     RefBundle,
+)
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
 )
 from ray.data._internal.execution.streaming_executor import (
     StreamingExecutor,
@@ -494,6 +498,55 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
     )
     with pytest.raises(ray.exceptions.RayActorError):
         ds2.take_all()
+
+
+def test_e2e_with_unbounded_max_actors(restore_data_context):
+    """Tests that execution does not stall if autoscaling is not possible."""
+    ray.shutdown()
+    ray.init(num_cpus=10, num_gpus=3)
+    DataContext.get_current().new_execution_backend = True
+    DataContext.get_current().use_streaming_executor = True
+
+    class CustomActorPoolMapOperator(ActorPoolMapOperator):
+        def get_metrics(self):
+            parent = super().get_metrics()
+            parent[
+                "max_tasks_run_for_each_actor"
+            ] = self._actor_pool._max_tasks_in_flight_per_actor
+            return parent
+
+    with mock.patch.object(
+        ray.data._internal.execution.operators.actor_pool_map_operator,
+        "ActorPoolMapOperator",
+        CustomActorPoolMapOperator,
+    ):
+
+        class Actor:
+            def __call__(self, batch):
+                time.sleep(0.1)
+                return batch
+
+        ds = ray.data.range(20, parallelism=20).map_batches(
+            Actor,
+            compute=ray.data.ActorPoolStrategy(
+                min_size=3, max_tasks_in_flight_per_actor=2
+            ),
+            num_gpus=1,
+            batch_size=1,
+        )
+
+        ds.fully_executed()
+
+        max_tasks_run_for_each_actor = ds._plan.stats().extra_metrics[
+            "max_tasks_run_for_each_actor"
+        ]
+
+        assert len(max_tasks_run_for_each_actor) == 3
+        for max_tasks in max_tasks_run_for_each_actor.values():
+            # Make sure all actors in the pool are being used.
+            assert max_tasks == 2
+
+        ray.shutdown()
 
 
 if __name__ == "__main__":

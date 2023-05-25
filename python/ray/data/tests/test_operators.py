@@ -120,7 +120,11 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     input_op = InputDataBuffer(
         make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
     )
-    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
+    compute_strategy = (
+        ActorPoolStrategy(size=1, max_tasks_in_flight_per_actor=2)
+        if use_actors
+        else TaskPoolStrategy()
+    )
     op = MapOperator.create(
         _mul2_transform,
         input_op=input_op,
@@ -131,15 +135,19 @@ def test_map_operator_bulk(ray_start_regular_shared, use_actors):
     # Feed data and block on exec.
     op.start(ExecutionOptions(actor_locality_enabled=False))
     if use_actors:
-        # Actor will be pending after starting the operator.
-        assert op.progress_str() == "0 actors (1 pending) [locality off]"
+        # Minimum actors are immediately started on operator start.
+        assert op.progress_str() == "1 actors [locality off]"
     assert op.internal_queue_size() == 0
     i = 0
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         i += 1
-        if use_actors:
-            assert op.internal_queue_size() == i
+        if use_actors and i > compute_strategy.max_tasks_in_flight_per_actor:
+            # max_tasks_in_flight inputs should be dispatched immediately.
+            # Remaining inputs will be queued.
+            assert op.internal_queue_size() == (
+                i - compute_strategy.max_tasks_in_flight_per_actor
+            )
         else:
             assert op.internal_queue_size() == 0
     op.inputs_done()
@@ -557,10 +565,8 @@ def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
 
     op.start(ExecutionOptions())
 
-    # Cannot add input until actor has started.
-    assert not op.should_add_input()
-    for ref in op.get_work_refs():
-        op.notify_work_completed(ref)
+    # Minimum actors should be immediately started.
+    # Operator should be ready to add inputs.
     assert op.should_add_input()
 
     # Can accept up to four inputs per actor by default.

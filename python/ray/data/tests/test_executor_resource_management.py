@@ -56,7 +56,9 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
         compute_strategy=TaskPoolStrategy(),
     )
     assert op.base_resource_usage() == ExecutionResources()
-    assert op.incremental_resource_usage() == ExecutionResources(cpu=1, gpu=0)
+    assert op.incremental_resource_usage(input_queue_size=1) == ExecutionResources(
+        cpu=1, gpu=0
+    )
     assert op._ray_remote_args == {"num_cpus": 1}
 
     op = MapOperator.create(
@@ -67,7 +69,9 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
         ray_remote_args={"num_gpus": 2},
     )
     assert op.base_resource_usage() == ExecutionResources()
-    assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=2)
+    assert op.incremental_resource_usage(input_queue_size=1) == ExecutionResources(
+        cpu=0, gpu=2
+    )
     assert op._ray_remote_args == {"num_gpus": 2}
 
     with pytest.raises(ValueError):
@@ -141,55 +145,53 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
-        compute_strategy=ActorPoolStrategy(min_size=2, max_size=10),
+        compute_strategy=ActorPoolStrategy(
+            min_size=2, max_size=10, max_tasks_in_flight_per_actor=2
+        ),
     )
     op.start(ExecutionOptions())
+
+    # Minimum actors should be started.
+    assert op._actor_pool.num_running_actors() == 2
+
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
-    # All actors are idle (pending creation), therefore shouldn't need to scale up when
+    # All actors are inactive, therefore shouldn't need to scale up when
     # submitting a new task, so incremental resource usage should be 0.
-    assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
-    # Actors are pending creation, but they still count against CPU utilization.
+    assert op.incremental_resource_usage(input_queue_size=1) == ExecutionResources(
+        cpu=0, gpu=0
+    )
+    # Actors should count against CPU utilization.
     assert op.current_resource_usage() == ExecutionResources(
         cpu=2, gpu=0, object_store_memory=0
     )
 
     # Add inputs.
     for i in range(4):
-        # Pool is still idle while waiting for actors to start, so additional tasks
-        # shouldn't trigger scale-up, so incremental resource usage should still be 0.
-        assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
+        # Actor pool size of 2 with 2 tasks in flight per actor should be able to
+        # handle 4 new inputs without scaling up.
+        # So incremental resource usage should still be 0.
+        assert op.incremental_resource_usage(
+            input_queue_size=4 - i
+        ) == ExecutionResources(cpu=0, gpu=0)
         op.add_input(input_op.get_next(), 0)
         usage = op.current_resource_usage()
         assert usage.cpu == 2, usage
         assert usage.gpu == 0, usage
         # Queued bundles still count against object store usage.
         assert usage.object_store_memory == pytest.approx((i + 1) * 800, rel=0.5), usage
-    # Pool is still idle while waiting for actors to start.
-    usage = op.current_resource_usage()
-    assert usage.cpu == 2, usage
-    assert usage.gpu == 0, usage
-    # Queued bundles still count against object store usage.
-    assert usage.object_store_memory == pytest.approx(3200, rel=0.5), usage
 
-    # Wait for actors to start.
-    work_refs = op.get_work_refs()
-    assert len(work_refs) == 2
-    for work_ref in work_refs:
-        ray.get(work_ref)
-        op.notify_work_completed(work_ref)
-
-    # Now that both actors have started, a new task would trigger scale-up, so
-    # incremental resource usage should be 1 CPU.
-    inc_usage = op.incremental_resource_usage()
-    assert inc_usage.cpu == 1, inc_usage
-    assert inc_usage.gpu == 0, inc_usage
-
-    # Actors have now started and the pool is actively running tasks.
+    # Actors have started and the pool is actively running tasks.
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
     # Now that tasks have been submitted, object store memory is accounted for.
     assert usage.object_store_memory == pytest.approx(2560, rel=0.5), usage
+
+    # Now that both actors have maxed out, a new task would trigger scale-up, so
+    # incremental resource usage should be 1 CPU.
+    inc_usage = op.incremental_resource_usage(input_queue_size=1)
+    assert inc_usage.cpu == 1, inc_usage
+    assert inc_usage.gpu == 0, inc_usage
 
     # Indicate that no more inputs will arrive.
     op.inputs_done()
@@ -206,6 +208,8 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
     usage = op.current_resource_usage()
     assert usage.cpu == 0, usage
     assert usage.gpu == 0, usage
+    # The output dataframe of _mult2_transform is ~1375 bytes.
+    # So 4 outputs results in ~5500 bytes in the object store.
     assert usage.object_store_memory == pytest.approx(5500, rel=0.5), usage
 
     # Consume task outputs.
@@ -225,55 +229,55 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         _mul2_transform,
         input_op=input_op,
         name="TestMapper",
-        compute_strategy=ActorPoolStrategy(min_size=2, max_size=10),
+        compute_strategy=ActorPoolStrategy(
+            min_size=2, max_size=10, max_tasks_in_flight_per_actor=2
+        ),
         min_rows_per_bundle=2,
     )
     op.start(ExecutionOptions())
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
-    # All actors are idle (pending creation), therefore shouldn't need to scale up when
+
+    # Minimum actors should be started.
+    assert op._actor_pool.num_running_actors() == 2
+
+    assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
+    # All actors are inactive, therefore shouldn't need to scale up when
     # submitting a new task, so incremental resource usage should be 0.
-    assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
-    # Actors are pending creation, but they still count against CPU utilization.
+    assert op.incremental_resource_usage(input_queue_size=1) == ExecutionResources(
+        cpu=0, gpu=0
+    )
+    # Actors should count against CPU utilization.
     assert op.current_resource_usage() == ExecutionResources(
         cpu=2, gpu=0, object_store_memory=0
     )
 
     # Add inputs.
-    for i in range(4):
-        # Pool is still idle while waiting for actors to start, so additional tasks
-        # shouldn't trigger scale-up, so incremental resource usage should still be 0.
-        assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=0)
+    for i in range(8):
+        # Actor pool size of 2 with 2 tasks in flight per actor and 2 rows per bundle
+        # should be able to handle 8 new inputs without scaling up.
+        # So incremental resource usage should still be 0.
+        assert op.incremental_resource_usage(
+            input_queue_size=4 - i
+        ) == ExecutionResources(cpu=0, gpu=0)
         op.add_input(input_op.get_next(), 0)
         usage = op.current_resource_usage()
         assert usage.cpu == 2, usage
         assert usage.gpu == 0, usage
         # Queued bundles still count against object store usage.
         assert usage.object_store_memory == pytest.approx((i + 1) * 800, rel=0.5), usage
-    # Pool is still idle while waiting for actors to start.
+
+    # Actors have started and the pool is actively running tasks.
     usage = op.current_resource_usage()
     assert usage.cpu == 2, usage
     assert usage.gpu == 0, usage
-    # Queued bundles still count against object store usage.
-    assert usage.object_store_memory == pytest.approx(3200, rel=0.5), usage
+    # Now that tasks have been submitted, object store memory is accounted for.
+    assert usage.object_store_memory == pytest.approx(6400, rel=0.5), usage
 
-    # Wait for actors to start.
-    work_refs = op.get_work_refs()
-    assert len(work_refs) == 2
-    for work_ref in work_refs:
-        ray.get(work_ref)
-        op.notify_work_completed(work_ref)
-
-    # Now that both actors have started, a new task would trigger scale-up, so
+    # Now that both actors have maxed out, a new task would trigger scale-up, so
     # incremental resource usage should be 1 CPU.
-    inc_usage = op.incremental_resource_usage()
+    inc_usage = op.incremental_resource_usage(input_queue_size=1)
     assert inc_usage.cpu == 1, inc_usage
     assert inc_usage.gpu == 0, inc_usage
-
-    # Actors have now started and the pool is actively running tasks.
-    usage = op.current_resource_usage()
-    assert usage.cpu == 2, usage
-    assert usage.gpu == 0, usage
-    assert usage.object_store_memory == pytest.approx(3200, rel=0.5), usage
 
     # Indicate that no more inputs will arrive.
     op.inputs_done()
@@ -290,7 +294,9 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     usage = op.current_resource_usage()
     assert usage.cpu == 0, usage
     assert usage.gpu == 0, usage
-    assert usage.object_store_memory == pytest.approx(5500, rel=0.5), usage
+    # The output dataframe of _mult2_transform is ~1375 bytes.
+    # So 8 outputs results in ~11000 bytes in the object store.
+    assert usage.object_store_memory == pytest.approx(11000, rel=0.5), usage
 
     # Consume task outputs.
     while op.has_next():

@@ -129,7 +129,9 @@ def test_callable_classes(shutdown_only):
         ds.filter(StatefulFn)
 
     # map
-    actor_reuse = ds.map(StatefulFn, compute=ray.data.ActorPoolStrategy()).take()
+    actor_reuse = ds.map(
+        StatefulFn, compute=ray.data.ActorPoolStrategy(max_size=1)
+    ).take()
     assert sorted(extract_values("id", actor_reuse)) == list(range(10)), actor_reuse
 
     class StatefulFn:
@@ -143,7 +145,8 @@ def test_callable_classes(shutdown_only):
 
     # flat map
     actor_reuse = extract_values(
-        "id", ds.flat_map(StatefulFn, compute=ray.data.ActorPoolStrategy()).take()
+        "id",
+        ds.flat_map(StatefulFn, compute=ray.data.ActorPoolStrategy(max_size=1)).take(),
     )
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
 
@@ -160,7 +163,7 @@ def test_callable_classes(shutdown_only):
     actor_reuse = extract_values(
         "id",
         ds.map_batches(
-            StatefulFn, batch_size=1, compute=ray.data.ActorPoolStrategy()
+            StatefulFn, batch_size=1, compute=ray.data.ActorPoolStrategy(max_size=1)
         ).take(),
     )
     assert sorted(actor_reuse) == list(range(10)), actor_reuse
@@ -175,7 +178,9 @@ def test_callable_classes(shutdown_only):
             return r > 0
 
     # filter
-    actor_reuse = ds.filter(StatefulFn, compute=ray.data.ActorPoolStrategy()).take()
+    actor_reuse = ds.filter(
+        StatefulFn, compute=ray.data.ActorPoolStrategy(max_size=1)
+    ).take()
     assert len(actor_reuse) == 9, actor_reuse
 
 

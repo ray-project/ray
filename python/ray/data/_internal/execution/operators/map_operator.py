@@ -318,7 +318,7 @@ class MapOperator(PhysicalOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def incremental_resource_usage(self) -> ExecutionResources:
+    def incremental_resource_usage(self, input_queue_size: int) -> ExecutionResources:
         raise NotImplementedError
 
     @staticmethod
