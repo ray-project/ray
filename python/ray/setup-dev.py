@@ -122,6 +122,7 @@ if __name__ == "__main__":
         skip_list=args.skip,
         local_path="../../../dashboard",
     )
+    do_link("serve", force=args.yes, skip_list=args.skip)
     print(
         "Created links.\n\nIf you run into issues initializing Ray, please "
         "ensure that your local repo and the installed Ray are in sync "
