@@ -1,11 +1,22 @@
-import asyncio
-
 import pytest
+import asyncio
+import requests
+from typing import List
+from functools import partial
+from starlette.responses import StreamingResponse
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import ray
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray._private.utils import get_or_create_event_loop
+
+
+@pytest.fixture()
+def ray_instance():
+    yield ray.init()
+    serve.shutdown()
+    ray.shutdown()
 
 
 def test_batching(serve_instance):
@@ -368,6 +379,37 @@ async def test_batch_generator_exceptions(error_type):
 
         with pytest.raises(StopAsyncIteration):
             await generator.__anext__()
+
+
+@pytest.mark.asyncio
+async def test_batch_generator_streaming_response_integration_test(ray_instance):
+
+    RESPONSE = "test response"
+    NUM_YIELDS = 10
+
+    @serve.deployment
+    class Textgen:
+        @serve.batch(max_batch_size=4, batch_wait_timeout_s=1000)
+        async def batch_handler(self, prompts: List[str]):
+            for _ in range(NUM_YIELDS):
+                prompt_responses = [RESPONSE] * 4
+                yield prompt_responses
+
+        async def __call__(self, request):
+            prompt = request.query_params["prompt"]
+            return StreamingResponse(self.batch_handler(prompt))
+
+    serve.run(Textgen.bind())
+
+    url = "http://localhost:8000/?prompt=hola"
+    with ThreadPoolExecutor() as pool:
+        futs = [pool.submit(partial(requests.get, url)) for _ in range(4)]
+
+        responses = [fut.result() for fut in futs]
+
+    for response in responses:
+        assert response.status_code == 200
+        assert response.text == "".join([RESPONSE] * NUM_YIELDS)
 
 
 if __name__ == "__main__":
