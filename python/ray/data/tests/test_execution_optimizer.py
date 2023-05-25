@@ -512,11 +512,10 @@ def test_read_map_batches_operator_fusion_target_block_size(
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
 
-@pytest.mark.skip()
-def test_read_map_batches_operator_fusion_callable_classes(
+def test_read_map_batches_operator_not_fusing_callable_classes(
     ray_start_regular_shared, enable_optimizer
 ):
-    # Test that callable classes can still be fused if they're the same function.
+    # Test that callable classes are not fused.
     planner = Planner()
     read_op = Read(ParquetDatasource(), [])
 
@@ -531,91 +530,14 @@ def test_read_map_batches_operator_fusion_callable_classes(
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches(<lambda>)"
-    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-
-
-@pytest.mark.skip()
-def test_read_map_batches_operator_fusion_incompatible_callable_classes(
-    ray_start_regular_shared, enable_optimizer
-):
-    # Test that map operators are not fused when different callable classes are used.
-    planner = Planner()
-    read_op = Read(ParquetDatasource(), [])
-
-    class UDF:
-        def __call__(self, x):
-            return x
-
-    class UDF2:
-        def __call__(self, x):
-            return x + 1
-
-    op = MapBatches(read_op, UDF, compute=ray.data.ActorPoolStrategy())
-    op = MapBatches(op, UDF2, compute=ray.data.ActorPoolStrategy())
-    logical_plan = LogicalPlan(op)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches(<lambda>)"
-    assert physical_op.name == "MapBatches(<lambda>)"
+    assert op.name == "MapBatches(UDF)"
+    assert physical_op.name == "MapBatches(UDF)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     upstream_physical_op = physical_op.input_dependencies[0]
     assert isinstance(upstream_physical_op, MapOperator)
     # Reads should still fuse with first map.
-    assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
-
-
-@pytest.mark.skip()
-def test_read_map_batches_operator_fusion_incompatible_constructor_args(
-    ray_start_regular_shared, enable_optimizer
-):
-    # Test that map operators are not fused when callable classes have different
-    # constructor args.
-    planner = Planner()
-    read_op = Read(ParquetDatasource(), [])
-
-    class UDF:
-        def __init__(self, a):
-            self._a
-
-        def __call__(self, x):
-            return x + self._a
-
-    op = MapBatches(
-        read_op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_args=(1,)
-    )
-    op = MapBatches(
-        op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_args=(2,)
-    )
-    op = MapBatches(
-        op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_kwargs={"a": 1}
-    )
-    op = MapBatches(
-        op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_kwargs={"a": 2}
-    )
-    logical_plan = LogicalPlan(op)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches(<lambda>)"
-    # Last 3 physical map operators are unfused.
-    for _ in range(3):
-        assert isinstance(physical_op, MapOperator)
-        assert physical_op.name == "MapBatches(<lambda>)"
-        assert len(physical_op.input_dependencies) == 1
-        physical_op = physical_op.input_dependencies[0]
-    # First physical map operator is fused with read.
-    assert isinstance(physical_op, MapOperator)
-    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)"
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+    assert upstream_physical_op.name == "ReadParquet->MapBatches(UDF)"
 
 
 def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
