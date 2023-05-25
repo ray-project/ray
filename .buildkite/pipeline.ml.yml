@@ -317,7 +317,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/horovod/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) python/ray/tests/ray_lightning/...
 
-### OLD EXECUTION PATH COMPAT
+### OLD EXECUTION PATH COMPATIBILITY
 
 
 - label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples (small)"
