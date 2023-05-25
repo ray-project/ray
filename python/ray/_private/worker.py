@@ -44,7 +44,6 @@ else:
     from typing_extensions import Literal, Protocol
 
 import ray
-import ray.core.generated.common_pb2 as common_pb2
 import ray._private.import_thread as import_thread
 import ray._private.node
 import ray._private.parameter
@@ -1738,6 +1737,8 @@ normal_excepthook = sys.excepthook
 
 
 def custom_excepthook(type, value, tb):
+    import ray.core.generated.common_pb2 as common_pb2
+
     # If this is a driver, push the exception to GCS worker table.
     if global_worker.mode == SCRIPT_MODE and hasattr(global_worker, "worker_id"):
         error_message = "".join(traceback.format_tb(tb))
@@ -2588,14 +2589,15 @@ def put(
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray._private.state.state.global_state_accessor` is not None
         ray._private.state.state._check_connected()
-        owner_address = common_pb2.ActorTableData.FromString(
-            ray._private.state.state.global_state_accessor.get_actor_info(
-                _owner._actor_id
+        serialized_owner_address = (
+            ray._raylet._get_actor_serialized_owner_address_or_none(
+                ray._private.state.state.global_state_accessor.get_actor_info(
+                    _owner._actor_id
+                )
             )
-        ).address
-        if len(owner_address.worker_id) == 0:
+        )
+        if not serialized_owner_address:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
-        serialize_owner_address = owner_address.SerializeToString()
     else:
         raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
 

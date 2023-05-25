@@ -92,13 +92,13 @@ class GlobalState:
             if actor_info is None:
                 return {}
             else:
-                actor_table_data = common_pb2.ActorTableData.FromString(actor_info)
+                actor_table_data = gcs_pb2.ActorTableData.FromString(actor_info)
                 return self._gen_actor_info(actor_table_data)
         else:
             actor_table = self.global_state_accessor.get_actor_table()
             results = {}
             for i in range(len(actor_table)):
-                actor_table_data = common_pb2.ActorTableData.FromString(actor_table[i])
+                actor_table_data = gcs_pb2.ActorTableData.FromString(actor_table[i])
                 results[
                     binary_to_hex(actor_table_data.actor_id)
                 ] = self._gen_actor_info(actor_table_data)

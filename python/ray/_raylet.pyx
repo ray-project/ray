@@ -62,6 +62,7 @@ from ray.includes.common cimport (
     CWorkerExitType,
     CRayObject,
     CRayStatus,
+    CActorTableData,
     CErrorTableData,
     CGcsClientOptions,
     CGcsNodeInfo,
@@ -419,6 +420,18 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     for object_ref in object_refs:
         result.push_back((<ObjectRef>object_ref).native())
     return result
+
+
+def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
+    cdef:
+        CActorTableData data
+
+    data.ParseFromString(actor_table_data)
+
+    if data.address().worker_id() == b"":
+        return None
+    else:
+        return data.address().SerializeAsString()
 
 
 def compute_task_id(ObjectRef object_ref):
