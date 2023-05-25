@@ -680,7 +680,7 @@ class GlobalState:
             self.global_state_accessor.get_all_available_resources()
         )
         for available_resource in all_available_resources:
-            message = common_pb2.AvailableResources.FromString(available_resource)
+            message = gcs_pb2.AvailableResources.FromString(available_resource)
             # Calculate available resources for this node.
             dynamic_resources = {}
             for resource_id, capacity in message.resources_available.items():
