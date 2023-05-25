@@ -687,7 +687,7 @@ class Learner:
             else:
                 # TODO (sven): How can we avoid registering optimziers under this
                 #  constructed `[module_id]_[optim_name]` format?
-                optim_name = name[len(module_id) + 1 : ]
+                optim_name = name[len(module_id) + 1 :]
             named_optimizers.append((optim_name, optimizer))
         return named_optimizers
 
@@ -736,7 +736,7 @@ class Learner:
         """
         # Return a sub-dict only containing those param_ref keys (and their values)
         # that belong to the `optimizer`.
-        return  {
+        return {
             ref: param_dict[ref]
             for ref in self._optimizer_parameters[optimizer]
             if ref in param_dict and param_dict[ref] is not None
