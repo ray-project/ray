@@ -87,8 +87,8 @@ class TfLearner(Learner):
         module = self._module[module_id]
 
         # Use keras' convenience method to get the proper optimizer class, no
-        # matter upper/lower case.
-        optim = tf.keras.optimizers.get(hps.optimizer_type)
+        # matter upper/lower case. Use Adam as a last resort.
+        optim = tf.keras.optimizers.get(hps.optimizer_type or "adam")
         pair: ParamOptimizerPair = (self.get_parameters(module), optim)
 
         # This isn't strictly necessary, but makes it so that if a checkpoint is
@@ -113,7 +113,7 @@ class TfLearner(Learner):
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
         #  parameters in the optim_to_param_dictionary.
-        for optim, param_ref_seq in self._optimizer_parameters.items():
+        for optimizer, param_ref_seq in self._optimizer_parameters.items():
             variable_list = [
                 self._params[param_ref]
                 for param_ref in param_ref_seq
@@ -124,7 +124,7 @@ class TfLearner(Learner):
                 for param_ref in param_ref_seq
                 if gradients[param_ref] is not None
             ]
-            optim.apply_gradients(zip(gradient_list, variable_list))
+            optimizer.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
     def load_state(

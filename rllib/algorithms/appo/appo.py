@@ -20,7 +20,6 @@ from ray.rllib.algorithms.appo.appo_learner import (
 )
 from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
 from ray.rllib.algorithms.ppo.ppo import UpdateKL
-from ray.rllib.core.learner.learner_group_config import ModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -249,10 +248,8 @@ class APPOConfig(ImpalaConfig):
         return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
     @override(ImpalaConfig)
-    def get_learner_hyperparameters(
-        self, module_spec: Optional[ModuleSpec] = None
-    ) -> AppoLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters(module_spec=module_spec)
+    def get_learner_hyperparameters(self) -> AppoLearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
         return AppoLearnerHyperparameters(
             use_kl_loss=self.use_kl_loss,
             kl_target=self.kl_target,

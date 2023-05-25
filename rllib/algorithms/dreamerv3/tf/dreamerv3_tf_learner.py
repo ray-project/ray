@@ -81,41 +81,6 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         return named_param_optimizer_pairs
 
-    # @override(TfLearner)
-    # def compute_gradients(
-    #    self, loss: Union[TensorType, Mapping[str, Any]], tape: "tf.GradientTape"
-    # ) -> Tuple[ParamDict, ResultDict]:
-    #    """Computes gradients for all three components: world_model, actor, and critic.
-
-    #    `loss` must be a dictionary containing total loss keys for all the components.
-    #    The naming convention for these keys is: `[component name]_L_total`, where
-    #    [component name] is one of "world_model", "actor", or "critic".
-
-    #    See the `self.compute_loss_per_module()` method.
-    #    """
-    #    ret: ParamDict = {}
-    #    stats: ResultDict = {}
-    #    for name, optim in self._named_optimizers.items():
-    #        # TODO (sven): DreamerV3 is single-agent only thus far.
-    #        #  Remove `default_policy_` from name.
-    #        name = name[len(DEFAULT_POLICY_ID) + 1 :]  # +1 -> trailing underscore
-    #        gradients = tape.gradient(
-    #            loss[DEFAULT_POLICY_ID][name.upper() + "_L_total"],
-    #            {
-    #                param_ref: self._params[param_ref]
-    #                for param_ref in self._optimizer_parameters[optim]
-    #            },
-    #        )
-    #        ret.update(gradients)
-    #        # Gradient stats: Keep the max of the absolute values to be able to track
-    #        # extreme situations (batches) in which the network might break (can be
-    #        # countered by proper gradient clipping).
-    #        stats[name.upper() + "_gradients_maxabs"] = tf.reduce_max(
-    #            [tf.reduce_max(tf.math.abs(g)) for g in gradients.values()]
-    #        )
-
-    #    return ret, stats
-
     @override(TfLearner)
     def postprocess_gradients(
         self,

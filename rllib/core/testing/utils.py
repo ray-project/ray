@@ -1,10 +1,14 @@
-from typing import Type, Union, TYPE_CHECKING
+from typing import Optional, Type, Union, TYPE_CHECKING
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.learner.learner_group import LearnerGroup
-from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHyperparameters
+from ray.rllib.core.learner.learner import (
+    FrameworkHyperparameters,
+    LearnerHyperparameters,
+    LearnerSpec,
+)
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
@@ -96,15 +100,17 @@ def get_learner(
     framework: str,
     eager_tracing: bool = True,
     env: "gym.Env",
-    learning_rate: float = 1e-3,
+    learner_hps: Optional[LearnerHyperparameters] = None,
     is_multi_agent: bool = False,
 ) -> "Learner":
     """Construct a learner for testing.
 
     Args:
         framework: The framework used for training.
+        eager_tracing: Whether to switch on eager tracing for framework=tf2.
         env: The environment to train on.
-        learning_rate: The learning rate to use for each learner.
+        learner_hps: The LearnerHyperparameter instance to pass to the Learner's
+            constructor.
         is_multi_agent: Whether to construct a multi agent rl module.
 
     Returns:
@@ -120,7 +126,7 @@ def get_learner(
     # that is used in the learner.
     learner = _cls(
         module_spec=spec,
-        learner_group_scaling_config=LearnerGroupScalingConfig(),
+        learner_hyperparameters=learner_hps,
         framework_hyperparameters=FrameworkHyperparameters(eager_tracing=eager_tracing),
     )
     learner.build()
@@ -132,7 +138,6 @@ def get_learner_group(
     framework: str,
     env: "gym.Env",
     scaling_config: LearnerGroupScalingConfig,
-    learning_rate: float = 1e-3,
     is_multi_agent: bool = False,
     eager_tracing: bool = False,
 ) -> LearnerGroup:
@@ -143,7 +148,6 @@ def get_learner_group(
         env: The environment to train on.
         scaling_config: A config for the amount and types of resources to use for
             training.
-        learning_rate: The learning rate to use for each learner.
         is_multi_agent: Whether to construct a multi agent rl module.
         eager_tracing: TF Specific. Whether to use tf.function for tracing
             optimizations.

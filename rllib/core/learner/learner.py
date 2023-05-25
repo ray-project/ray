@@ -53,7 +53,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
-from ray.rllib.utils.typing import LearningRateType, ResultDict, TensorType
+from ray.rllib.utils.typing import LearningRateOrSchedule, ResultDict, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
@@ -122,15 +122,14 @@ class LearnerHyperparameters:
 
     # Parameters used for gradient postprocessing (clipping) and gradient application.
     optimizer_type: str = None
-    learning_rate: LearningRateType = None
+    learning_rate: LearningRateOrSchedule = None
     grad_clip: float = None
     grad_clip_by: str = None
 
-    # Holds hyperparameters per module. This is not None only in the top-level
-    # Learner's self.hps (whose self.module is a `MARLModule`) and then contains the
-    # correct mappings from ModuleID to the derived LearnerHyperparameter objects.
-    # You can access a per-module HP sub-object by using the
-    # `get_hps_for_module(module_id=..)` API.
+    # Maps ModuleIDs to LearnerHyperparameters that are to be used for that particular
+    # module.
+    # You can access the module-specific `LearnerHyperparameters` object for a given
+    # module_id by using the `get_hps_for_module(module_id=..)` API.
     _per_module_overrides: Optional[Dict[ModuleID, "LearnerHyperparameters"]] = None
 
     def get_hps_for_module(self, module_id: ModuleID) -> "LearnerHyperparameters":
@@ -161,7 +160,8 @@ class LearnerHyperparameters:
                 )
             # Return the module specific version of self.
             return self._per_module_overrides[module_id]
-        # ModuleID not found in overrides -> return self.
+        # ModuleID not found in overrides or the overrides dict is None
+        # -> return self.
         else:
             return self
 
@@ -316,21 +316,27 @@ class Learner:
         # The actual MARLModule used by this Learner.
         self._module: Optional[MultiAgentRLModule] = None
         # These are set for properly applying optimizers and adding or removing modules.
-        self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
-        self._named_optimizers: Dict[str, Optimizer] = {}
+        self._optimizer_registry: Dict[
+            Tuple[ModuleID, str],
+            Tuple[Optimizer, List[ParamRef], Optional[Scheduler]],
+        ] = {}
+
+        #self._optimizer_parameters: Dict[Optimizer, List[ParamRef]] = {}
+        #self._named_optimizers: Dict[str, Optimizer] = {}
         self._params: ParamDict = {}
         # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
         # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
-        self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
+        #self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
 
         self._user_configured_optimizers = is_overridden(
             self.configure_optimizers_for_module
         ) or is_overridden(self.configure_optimizers)
+
         # Only manage optimizer's learning rate if user has NOT overridden
         # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
         # to handle lr-updates entirely in user's hands.
-        if not self._user_configured_optimizers:
-            self._optimizer_lr_schedules: Dict[Optimizer, Scheduler] = {}
+        #if not self._user_configured_optimizers:
+        #    self._optimizer_lr_schedules: Dict[Optimizer, Scheduler] = {}
 
         # Registered metrics (one sub-dict per module ID) to be returned from
         # `Learner.update()`. These metrics will be "compiled" automatically into
@@ -352,6 +358,7 @@ class Learner:
         """The hyper-parameters for the learner."""
         return self._hps
 
+    @OverrideToImplementCustomLogic
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures the optimizers for the Learner.
 
@@ -407,7 +414,6 @@ class Learner:
         Returns:
             A tuple consisting of: A list of ParamOptimizerPairs and a dict of names
             mapping from optimizer names to optimizers.
-
         """
         hps = self.hps.get_hps_for_module(module_id)
 
@@ -424,7 +430,7 @@ class Learner:
             name = f"{module_id}"
             name_to_optim[name] = optim
             pairs.append(pair)
-            self._pair_optim_with_lr_scheduler(hps, name, optim)
+            self._pair_optim_with_lr_scheduler(hps, optim)
         elif isinstance(pair_or_pairs, dict):
             # pair_or_pairs is a NamedParamOptimizerPairs
             for name, pair in pair_or_pairs.items():
@@ -439,7 +445,7 @@ class Learner:
                 name = f"{module_id}_{name}"
                 name_to_optim[name] = optim
                 pairs.append(pair)
-                self._pair_optim_with_lr_scheduler(hps, name, optim)
+                self._pair_optim_with_lr_scheduler(hps, optim)
         else:
             raise ValueError(
                 "The output of configure_optimizers_for_module must be a "
@@ -584,7 +590,7 @@ class Learner:
         hps: LearnerHyperparameters,
         module_gradients_dict: ParamDict,
     ) -> ParamDict:
-        """
+        """Applies postprocessing operations on the gradients of the given module.
 
         Args:
             module_id: The module ID for which we will postprocess computed gradients.
@@ -603,37 +609,28 @@ class Learner:
         """
         postprocessed_grads = {}
 
-        # Loop through all optimizers of this `module_id`.
-        for name in self._module_optimizers[module_id]:
-            optim_name = name[
-                len(module_id) + 1 :
-            ]  # +1: underscore in `[module_id]_..`
-            optimizer = self._named_optimizers[name]
-            if hps.grad_clip is None:
-                postprocessed_grads.update(module_gradients_dict)
-            else:
-                grad_dict_to_clip = {
-                    ref: module_gradients_dict[ref]
-                    for ref in self._optimizer_parameters[optimizer]
-                    if (
-                        ref in module_gradients_dict
-                        and module_gradients_dict[ref] is not None
-                    )
-                }
+        if hps.grad_clip is None:
+            postprocessed_grads.update(module_gradients_dict)
+            return postprocessed_grads
 
-                # Perform gradient clipping, if necessary.
-                global_norm = self._get_clip_function()(
-                    grad_dict_to_clip,
-                    grad_clip=hps.grad_clip,
-                    grad_clip_by=hps.grad_clip_by,
+        for (optimizer_name, optimizer) in self.get_optimizers_for_module(module_id):
+            grad_dict_to_clip = self.compile_param_dict_for_optimizer(
+                param_dict=module_gradients_dict,
+                optimizer=optimizer,
+            )
+            # Perform gradient clipping, if necessary.
+            global_norm = self._get_clip_function()(
+                grad_dict_to_clip,
+                grad_clip=hps.grad_clip,
+                grad_clip_by=hps.grad_clip_by,
+            )
+            if hps.grad_clip_by == "global_norm":
+                self.register_metric(
+                    module_id,
+                    f"gradients_{optimizer_name}_global_norm",
+                    global_norm,
                 )
-                if hps.grad_clip_by == "global_norm":
-                    self.register_metric(
-                        module_id,
-                        f"gradients_{optim_name}_global_norm",
-                        global_norm,
-                    )
-                postprocessed_grads.update(grad_dict_to_clip)
+            postprocessed_grads.update(grad_dict_to_clip)
 
         return postprocessed_grads
 
@@ -673,6 +670,81 @@ class Learner:
         """
         for key, value in metrics_dict.items():
             self.register_metric(module_id, key, value)
+
+    def get_optimizers_for_module(
+        self, module_id: ModuleID
+    ) -> List[Tuple[Optional[str], Optimizer]]:
+        """Returns a list of all named optimizer tuples for the given ModuleID.
+
+        Args:
+            module_id: The ModuleID for which to return the configured optimizers.
+
+        Returns:
+            A list of tuples of the format: ([optimizer_name], [optimizer object]),
+            where optimizer_name is the name under which the optimizer was configured
+            in `self.configure_optimizers_for_module`. If only a single optimizer was
+            configured for `module_id`, [optimizer_name] will be None.
+        """
+        named_optimizers = []
+        for name in self._module_optimizers[module_id]:
+            optimizer = self._named_optimizers[name]
+            if name == module_id:
+                optim_name = None
+            else:
+                optim_name = name[len(module_id) + 1 : ]
+            named_optimizers.append((optim_name, optimizer))
+        return named_optimizers
+
+    def get_optimizer_by_module_id_and_optimizer_name(
+        self, module_id: ModuleID, optimizer_name: Optional[str] = None
+    ) -> Optimizer:
+        """Returns the optimizer object, configured under the given module_id and name.
+
+        If only one optimizer was configure under the module_id via the
+        `self.configure_optimizer_for_module` method, `optimizer_name` should be left
+        None.
+
+        Args:
+            module_id: The ModuleID for which to return the configured optimizer.
+            optimizer_name: The name of the optimizer (configured under `module_id` via
+                `self.configure_optimizers_for_module()`) to return. If only one
+                optimizer exists under module_id, leave this arg None.
+
+        Returns:
+            The optimizer object, configured under the given `module_id` and
+            `optimizer_name` (if applicable).
+        """
+        if module_id in self._named_optimizers:
+            assert optimizer_name is None
+            return self._named_optimizers[module_id]
+        else:
+            lookup_name = module_id + "_" + optimizer_name
+            assert lookup_name in self._named_optimizers
+            return self._named_optimizers[lookup_name]
+
+    def compile_param_dict_for_optimizer(
+        self, param_dict: ParamDict, optimizer: Optimizer
+    ) -> ParamDict:
+        """Reduces the given ParamDict to contain only parameters for given optimizier.
+
+        Args:
+            param_dict: The ParamDict to reduce/filter down to the given `optimizer`.
+                The returned dict will be a subset of `param_dict` only containing keys
+                (param refs) that were confgured together with `optimizer` (and thus
+                that `optimizer` is responsible for applying gradients to).
+            optimizer: The optimizer object to whose parameter refs the given
+                `param_dict` should be reduced.
+
+        Returns:
+            A new ParamDict only containing param ref keys that belong to `optimizer`.
+        """
+        # Return a sub-dict only containing those param_ref keys (and their values)
+        # that belong to the `optimizer`.
+        return  {
+            ref: param_dict[ref]
+            for ref in self._optimizer_parameters[optimizer]
+            if ref in param_dict and param_dict[ref] is not None
+        }
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         """Returns the weights of the underlying MultiAgentRLModule.
@@ -1038,10 +1110,11 @@ class Learner:
 
         # Handle lr-scheduling updates and apply new learning rates to the optimizers.
         if not self._user_configured_optimizers:
+            # Only cover the optimizer mapped to this particular module.
+            # There should only be one b/c otherwise, `self._user_configured_optimizers`
+            # must be True.
             assert len(self._module_optimizers[module_id]) == 1
-
-            # Only cover optimizers mapped to this particular module.
-            for name, optimizer in self._module_optimizers[module_id].items():
+            for name in self._module_optimizers[module_id]:
                 optimizer = self._named_optimizers[name]
                 new_lr = self._optimizer_lr_schedules[optimizer].update(
                     timestep=timestep
@@ -1400,7 +1473,7 @@ class Learner:
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
 
-    def _pair_optim_with_lr_scheduler(self, hps, name, optim):
+    def _pair_optim_with_lr_scheduler(self, hps, optim):
         # Only manage optimizer's learning rate if user has NOT overridden
         # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
         # to handle lr-updates entirely in user's hands.
