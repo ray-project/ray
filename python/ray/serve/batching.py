@@ -2,7 +2,7 @@ import asyncio
 from functools import wraps
 from inspect import iscoroutinefunction, isasyncgenfunction
 import time
-from typing import Any, Callable, Dict, List, Optional, overload, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, overload, Tuple, TypeVar
 from dataclasses import dataclass
 
 
@@ -13,9 +13,6 @@ from ray.serve._private.utils import extract_self_if_method_call
 from ray.util.annotations import PublicAPI
 
 
-END_ASYNC_ITER_TOKEN = None
-
-
 @dataclass
 class _SingleRequest:
     self_arg: Any
@@ -24,9 +21,9 @@ class _SingleRequest:
 
 
 @dataclass
-class _GeneratorIterResponse:
+class _GeneratorResult:
     result: Any
-    next_future: Union[asyncio.Future, END_ASYNC_ITER_TOKEN]
+    next_future: asyncio.Future
 
 
 def _batch_args_kwargs(
@@ -85,7 +82,7 @@ class _BatchQueue:
         self._handle_batch_task = None
         if handle_batch_func is not None:
             self._handle_batch_task = get_or_create_event_loop().create_task(
-                self._handle_batches(handle_batch_func)
+                self._process_batches(handle_batch_func)
             )
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
@@ -139,7 +136,37 @@ class _BatchQueue:
 
         return batch
 
-    async def _handle_batches(self, func):
+    def _validate_results(self, results, input_batch_length):
+        if len(results) != input_batch_length:
+            raise RayServeException(
+                "Batched function doesn't preserve batch size. "
+                f"The input list has length {input_batch_length} but the "
+                f"returned list has length {len(results)}."
+            )
+
+    async def _consume_func_generator(
+        self, func_generator, initial_futures, input_batch_length
+    ):
+        try:
+            futures = initial_futures
+            async for results in func_generator:
+                self._validate_results(results, input_batch_length)
+                next_futures = [
+                    get_or_create_event_loop().create_future() for _ in futures
+                ]
+                for result, (future, next_future) in zip(
+                    results, zip(futures, next_futures)
+                ):
+                    future.set_result(_GeneratorResult(result, next_future))
+                futures = next_futures
+
+            for future in futures:
+                future.set_exception(StopAsyncIteration)
+        except Exception as e:
+            for future in futures:
+                future.set_exception(e)
+
+    async def _process_batches(self, func):
         while True:
             batch: List[_SingleRequest] = await self.wait_for_batch()
             assert len(batch) > 0
@@ -147,52 +174,26 @@ class _BatchQueue:
             args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
             futures = [item.future for item in batch]
 
-            try:
-                # Method call.
-                if self_arg is not None:
-                    func_future_or_generator = func(self_arg, *args, **kwargs)
-                # Normal function call.
-                else:
-                    func_future_or_generator = func(*args, **kwargs)
-                if isasyncgenfunction(func):
-                    func_generator = func_future_or_generator
-                    async for results in func_generator:
-                        if len(results) != len(batch):
-                            raise RayServeException(
-                                "Batched function doesn't preserve batch size. "
-                                f"The input list has length {len(batch)} but the "
-                                f"returned list has length {len(results)}."
-                            )
+            # Method call.
+            if self_arg is not None:
+                func_future_or_generator = func(self_arg, *args, **kwargs)
+            # Normal function call.
+            else:
+                func_future_or_generator = func(*args, **kwargs)
 
-                        new_futures = [
-                            get_or_create_event_loop().create_future() for _ in futures
-                        ]
-                        for i, result in enumerate(results):
-                            futures[i].set_result(
-                                _GeneratorIterResponse(result, new_futures[i])
-                            )
-                        futures = new_futures
-
-                    for future in futures:
-                        future.set_result(
-                            _GeneratorIterResponse(None, END_ASYNC_ITER_TOKEN)
-                        )
-                else:
+            if isasyncgenfunction(func):
+                func_generator = func_future_or_generator
+                await self._consume_func_generator(func_generator, futures, len(batch))
+            else:
+                try:
                     func_future = func_future_or_generator
                     results = await func_future
-
-                    if len(results) != len(batch):
-                        raise RayServeException(
-                            "Batched function doesn't preserve batch size. "
-                            f"The input list has length {len(batch)} but the "
-                            f"returned list has length {len(results)}."
-                        )
-
-                    for i, result in enumerate(results):
-                        futures[i].set_result(result)
-            except Exception as e:
-                for future in futures:
-                    future.set_exception(e)
+                    self._validate_results(results, len(batch))
+                    for result, future in zip(results, futures):
+                        future.set_result(result)
+                except Exception as e:
+                    for future in futures:
+                        future.set_exception(e)
 
     def __del__(self):
         if (
@@ -304,12 +305,12 @@ def batch(
 
             future = first_future
             while True:
-                async_response: _GeneratorIterResponse = await future
-                if async_response.next_future == END_ASYNC_ITER_TOKEN:
-                    break
-                else:
+                try:
+                    async_response: _GeneratorResult = await future
                     future = async_response.next_future
-                yield async_response.result
+                    yield async_response.result
+                except StopAsyncIteration:
+                    break
 
         def enqueue_request(args, kwargs):
             self = extract_self_if_method_call(args, _func)
