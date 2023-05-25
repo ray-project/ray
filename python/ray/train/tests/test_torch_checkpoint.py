@@ -38,7 +38,7 @@ def test_from_state_dict():
     assert actual_state_dict == expected_state_dict
 
 
-def test_pickle_large_model_py38():
+def test_pickle_large_checkpoint_py38():
     # TODO (ml-team): remove this unittest after we upgrade
     # our ci image to Python 3.8
     ray.init(
@@ -52,6 +52,8 @@ def test_pickle_large_model_py38():
 
     @ray.remote
     def func():
+        import sys
+
         assert sys.version_info.major == 3 and sys.version_info.minor == 8
         data_dict = {"key": "1" * (4 * 1024 * 1024 * 1024 + 100)}
         checkpoint = TorchCheckpoint(data_dict=data_dict)
@@ -60,7 +62,7 @@ def test_pickle_large_model_py38():
     ray.get(func.remote())
 
 
-def test_pickle_large_model():
+def test_pickle_large_checkpoint():
     data_dict = {"key": "1" * (4 * 1024 * 1024 * 1024 + 100)}
     checkpoint = TorchCheckpoint(data_dict=data_dict)
     pickle.dumps(checkpoint)
