@@ -44,6 +44,13 @@ class TestGymCheckEnv(unittest.TestCase):
         action_space = env.action_space
         self.assertEqual(sp.n, action_space.n)
 
+    def test_multi_binary_space(self):
+        mb = gym.spaces.MultiBinary((2, 3))
+        d = space_to_dict(mb)
+        sp = space_from_dict(d)
+
+        self.assertEqual(sp.n, mb.n)
+
     def test_multi_discrete_space(self):
         md_space = gym.spaces.MultiDiscrete(nvec=np.array([3, 4, 5]))
         d = gym_space_to_dict(md_space)
