@@ -425,7 +425,9 @@ class ServeController:
         """Deploys a deployment."""
         if route_prefix is not None:
             if not route_prefix.startswith("/"):
-                raise ValueError("route_prefix must starts with a /")
+                raise ValueError(
+                    "The route_prefix must start with a forward slash ('/')"
+                )
         if docs_path is not None:
             assert docs_path.startswith("/")
 

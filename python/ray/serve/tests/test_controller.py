@@ -54,7 +54,9 @@ def test_no_slash_route_prefix(serve_instance):
     def f():
         pass
 
-    with pytest.raises(ValueError, match="route_prefix must starts with a /"):
+    with pytest.raises(
+        ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
+    ):
         serve.run(f.bind(), route_prefix="no_slash")
 
 
