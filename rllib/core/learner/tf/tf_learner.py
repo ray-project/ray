@@ -113,7 +113,7 @@ class TfLearner(Learner):
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
         #  parameters in the optim_to_param_dictionary.
-        for optim, param_ref_seq in self._optimizer_parameters.items():
+        for optimizer, param_ref_seq in self._optimizer_parameters.items():
             variable_list = [
                 self._params[param_ref]
                 for param_ref in param_ref_seq
@@ -124,7 +124,7 @@ class TfLearner(Learner):
                 for param_ref in param_ref_seq
                 if gradients[param_ref] is not None
             ]
-            optim.apply_gradients(zip(gradient_list, variable_list))
+            optimizer.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
     def load_state(
