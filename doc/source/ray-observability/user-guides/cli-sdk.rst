@@ -607,7 +607,7 @@ Example: Stream a log file from a node
             for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
                 print(line)
 
-Example: Stream log from an actor with actor id
+Example: Stream log from an actor with Actor ID
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
@@ -630,7 +630,7 @@ Example: Stream log from an actor with actor id
             for line in get_log(actor_id=<ACTOR_ID>, follow=True):
                 print(line)
 
-#xample: Stream log from a PID
+Example: Stream log from a PID
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
