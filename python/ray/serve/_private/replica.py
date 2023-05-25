@@ -527,6 +527,8 @@ class RayServeReplica:
 
         args, kwargs = parse_request_item(request_item)
 
+        # Check if the callable is our ASGI wrapper (i.e., the user used
+        # `@serve.ingress`).
         callable_is_asgi_wrapper = hasattr(self.callable, "_is_serve_asgi_wrapper")
         if asgi_sender is not None and callable_is_asgi_wrapper:
             kwargs["asgi_sender"] = asgi_sender
