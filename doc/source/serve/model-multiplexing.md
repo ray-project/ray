@@ -1,20 +1,18 @@
 # Model Multiplexing
 
-This section helps you understand how to write multiplexed deployment by using new introduced API `serve.multiplexed` and `serve.get_multiplexed_model_id`.
+This section helps you understand how to write multiplexed deployment by using the `serve.multiplexed` and `serve.get_multiplexed_model_id` APIs.
 
-This is experimental feature and the API may change in the future, welcome to try it out and give us feedback!
+This is an experimental feature and the API may change in the future. You are welcome to try it out and give us feedback!
 
-## Why do we need model multiplexing?
+## Why model multiplexing?
 
-Model multiplexing is a technique to serve multiple models in a single replica, traffic will be routed to the corresponding model based on the request header.
+Model multiplexing is a technique for serving multiple models in a single replica. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas to optimize cost. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
 
-In the previous version of Ray Serve, if you want to serve many models, you have to deploy multiple applications or write routing logics inside your own deployment codes. This is not efficient when you have many models with similar input types and you don't need to load them all unless there are requests asking for them.
+## Wrting a multiplexed deployment
 
-## How to write a multiplexed deployment?
+To write a multiplexed deployment, use the `serve.multiplexed` and `serve.get_multiplexed_model_id` APIs.
 
-To write a multiplexed deployment, you need to use the new introduced API `serve.multiplexed` and `serve.get_multiplexed_model_id`.
-
-Assume you have multiple torch models inside aws s3:
+Assuming you have multiple Torch models inside aws s3 bucket with the following structure:
 ```
 s3://my_bucket/1/model.pt
 s3://my_bucket/2/model.pt
@@ -23,7 +21,7 @@ s3://my_bucket/4/model.pt
 ...
 ```
 
-Define a Multiplexed deployment:
+Define a multiplexed deployment:
 ```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_deployment_example_begin__
@@ -31,17 +29,21 @@ Define a Multiplexed deployment:
 ```
 
 :::{note}
-serve.multiplexed API is also parameterized by `max_num_models_per_replica`. You can use them to configure how many models you want to load in a single replica. If the number of models is larger than `max_num_models_per_replica`, Serve will use LRU policy to evict the least recently used model.
+The `serve.multiplexed` API also has a `max_num_models_per_replica` parameter. Use it to configure how many models to load in a single replica. If the number of models is larger than `max_num_models_per_replica`, Serve uses the LRU policy to evict the least recently used model.
 :::
 
-:::{tips}
-In the code example, we are using the Pytorch Model object, you can also define your own model class and use it here. You must make sure the model class has `__call__` method, and if you want to release resources when the model is evicted, you can implement `__del__` method. Ray Serve internally will call `__call__` method to execute the model, and call `__del__` method to release resources when the model is evicted.
+:::{tip}
+This code example uses the Pytorch Model object. You can also define your own model class and use it here. Make sure the model class has a `__call__` method. To release resources when the model is evicted, implement the `__del__` method. Ray Serve internally calls the `__call__` method to execute the model, and calls the `__del__` method to release resources when the model is evicted.
 :::
 
 
-In the code, you can use `serve.get_multiplexed_model_id` to get the model id from each request, ray serve will use this model id to route the request to the corresponding replica.
+`serve.get_multiplexed_model_id` is to retrieve the model id from the request header, and the model_id is supposed to be passed into the `get_model` function. If the model id is not found in the replica, Serve will load the model from the s3 bucket and cache it in the replica. If the model id is found in the replica, Serve will return the cached model.
 
-To send a request to a specific model, you can use the following code:
+:::{note}
+Internally, serve router will route the traffic to the corresponding replica based on the model id in the request header.
+:::
+
+To send a request to a specific model, include the field `serve_multiplexed_model_id` in the request header, and set the value to the model ID to which you want to send the request.
 ```{literalinclude} doc_code/multiplexed.py
 :language: python
 :start-after: __serve_request_send_example_begin__
@@ -52,14 +54,14 @@ To send a request to a specific model, you can use the following code:
 `serve_multiplexed_model_id` is required in the request header, and the value should be the model id you want to send the request to.
 :::
 
-After you run the above code, you will see the following output inside the deployment log:
+After you run the above code, you should see the following lines in the deployment logs:
 ```
 INFO 2023-05-24 01:19:03,853 default_Model default_Model#EjYmnQ CUpzhwUUNw / default replica.py:442 - Started executing request CUpzhwUUNw
 INFO 2023-05-24 01:19:03,854 default_Model default_Model#EjYmnQ CUpzhwUUNw / default multiplex.py:131 - Loading model '1'.
 INFO 2023-05-24 01:19:04,859 default_Model default_Model#EjYmnQ CUpzhwUUNw / default replica.py:542 - __CALL__ OK 1005.8ms
 ```
 
-If you load multiple different models in a single replica, and exceed the `max_num_models_per_replica`, you will see the following output inside the deployment log, the least recently used model will be evicted:
+If you continue to load more models and exceed the `max_num_models_per_replica`, the least recently used model will be evicted and you will see the following lines in the deployment logs::
 ```
 INFO 2023-05-24 01:19:15,988 default_Model default_Model#rimNjA WzjTbJvbPN / default replica.py:442 - Started executing request WzjTbJvbPN
 INFO 2023-05-24 01:19:15,988 default_Model default_Model#rimNjA WzjTbJvbPN / default multiplex.py:145 - Unloading model '3'.

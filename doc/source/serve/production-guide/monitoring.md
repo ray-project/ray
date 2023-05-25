@@ -317,7 +317,7 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * replica
        * application
-     - The time it takes to unload a model..
+     - The time it takes to unload a model.
    * - ``serve_num_multiplexed_models``
      - * deployment
        * replica
