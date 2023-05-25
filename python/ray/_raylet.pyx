@@ -82,7 +82,6 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CGrpcStatusCode,
-    CActorLifetime,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -177,9 +176,6 @@ OPTIMIZED = __OPTIMIZE__
 
 GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
-
-RAY_ACTOR_LIFETIME_DETACHED = CActorLifetime.DETACHED
-RAY_ACTOR_LIFETIME_NON_DETACHED = CActorLifetime.NON_DETACHED
 
 logger = logging.getLogger(__name__)
 
