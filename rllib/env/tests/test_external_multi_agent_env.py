@@ -4,13 +4,28 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.env.tests.test_external_env import make_simple_serving
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples.env.multi_agent import BasicMultiAgent
 from ray.rllib.policy.sample_batch import SampleBatch
 
-SimpleMultiServing = make_simple_serving(True, ExternalMultiAgentEnv)
+
+class SimpleMultiServing(ExternalMultiAgentEnv):
+    def __init__(self, env):
+        ExternalMultiAgentEnv.__init__(self, env.action_space, env.observation_space)
+        self.env = env
+
+    def run(self):
+        eid = self.start_episode()
+        obs, info = self.env.reset()
+        while True:
+            action = self.get_action(eid, obs)
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            self.log_returns(eid, reward)
+            if terminated or truncated:
+                self.end_episode(eid, obs)
+                obs, info = self.env.reset()
+                eid = self.start_episode()
 
 
 class TestExternalMultiAgentEnv(unittest.TestCase):
