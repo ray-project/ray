@@ -993,11 +993,11 @@ cdef execute_streaming_generator(
                 application_error
             )
 
-            assert error_obj.second != NULL
+            assert return_obj.second != NULL
             streaming_generator_returns[0].push_back(
                 c_pair[CObjectID, c_bool](
-                    error_obj.first,
-                    error_obj.get().IsInPlasmaError()))
+                    return_obj.first,
+                    return_obj.second.get().IsInPlasmaError()))
 
             CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 return_obj,
@@ -1023,11 +1023,11 @@ cdef execute_streaming_generator(
             # usage asap.
             del output
         
-            assert generator_return_obj.second != NULL
+            assert return_obj.second != NULL
             streaming_generator_returns[0].push_back(
                 c_pair[CObjectID, c_bool](
-                    generator_return_obj.first,
-                    generator_return_obj.get().IsInPlasmaError()))
+                    return_obj.first,
+                    return_obj.second.get().IsInPlasmaError()))
 
             logger.debug(
                 "Writes to a ObjectRefStream of an "

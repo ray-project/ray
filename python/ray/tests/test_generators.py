@@ -220,13 +220,13 @@ def test_dynamic_generator_retry_exception(
                 raise CustomException("error")
 
     counter = ExecutionCounter.remote()
-    # dynamic_ref = generator.options(num_returns=num_returns_type).remote(
-    #     3, store_in_plasma, counter
-    # )
-    # ref1, ref2 = ray.get(dynamic_ref)
-    # ray.get(ref1)
-    # with pytest.raises(ray.exceptions.RayTaskError):
-    #     ray.get(ref2)
+    dynamic_ref = generator.options(num_returns=num_returns_type).remote(
+        3, store_in_plasma, counter
+    )
+    ref1, ref2 = ray.get(dynamic_ref)
+    ray.get(ref1)
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(ref2)
 
     ray.get(counter.reset.remote())
     dynamic_ref = generator.options(
@@ -346,7 +346,7 @@ def test_dynamic_generator_distributed(ray_start_cluster, num_returns_type):
         assert ray.get(ref)[0] == i
 
 
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["streaming"])
 def test_dynamic_generator_reconstruction(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,

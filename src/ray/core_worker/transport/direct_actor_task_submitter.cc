@@ -568,7 +568,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       } else {
         // If we don't need death info, just fail the request.
         GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_DIED)
+                                                   rpc::ErrorType::ACTOR_DIED);
       }
     }
   }
