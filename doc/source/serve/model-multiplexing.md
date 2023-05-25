@@ -41,6 +41,7 @@ This code example uses the Pytorch Model object. You can also define your own mo
 
 :::{note}
 Internally, serve router will route the traffic to the corresponding replica based on the model id in the request header.
+If all replicas holding the model are over-subscribed, ray serve sends the request to a new replica that doesn't have the model loaded. The replica will load the model from the s3 bucket and cache it.
 :::
 
 To send a request to a specific model, include the field `serve_multiplexed_model_id` in the request header, and set the value to the model ID to which you want to send the request.
