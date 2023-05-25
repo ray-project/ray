@@ -31,6 +31,8 @@ RUN BUILD=1 bash --login -i ./ci/ci.sh init
 
 RUN bash --login -i ./ci/ci.sh build
 
+RUN bash --login -i -c -- "python3 -c 'import ray'"
+
 # Run determine test to run
 RUN bash --login -i -c "python ./ci/pipeline/determine_tests_to_run.py --output=json > affected_set.json"
 RUN cat affected_set.json
