@@ -119,7 +119,9 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
     name = "working_dir"
 
-    def __init__(self, resources_dir: str, gcs_aio_client):
+    def __init__(
+        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
+    ):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)
