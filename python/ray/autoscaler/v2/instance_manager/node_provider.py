@@ -24,7 +24,7 @@ class NodeProvider(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def async_terminate_node(self, cloud_instance_id: str) -> None:
+    def terminate_node(self, cloud_instance_id: str) -> None:
         """
         Terminate nodes asynchronously, returns immediately."""
         pass
@@ -95,7 +95,7 @@ class NodeProviderAdapter(NodeProvider):
             ]
         return []
 
-    def async_terminate_node(self, clould_instance_id: str) -> None:
+    def terminate_node(self, clould_instance_id: str) -> None:
         self._provider.terminate_node(clould_instance_id)
 
     def is_readonly(self) -> bool:
