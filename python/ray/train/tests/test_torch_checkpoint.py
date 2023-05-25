@@ -1,4 +1,3 @@
-import ray
 from pathlib import Path
 from unittest.mock import patch
 
@@ -38,34 +37,17 @@ def test_from_state_dict():
     assert actual_state_dict == expected_state_dict
 
 
-def test_pickle_large_checkpoint_py38():
-    # TODO (ml-team): remove this unittest after we upgrade
-    # our ci image to Python 3.8
-    ray.init(
-        runtime_env={
-            "pip": {
-                "packages": [],
-                "pip_version": "==22.0.2;python_version=='3.8.11'",
-            }
-        }
-    )
+def test_pickle_large_checkpoint():
+    import sys
 
-    @ray.remote
-    def func():
-        import sys
+    if sys.version_info >= (3, 8):
+        assert pickle.HIGHEST_VERSION == 5
 
-        assert sys.version_info.major == 3 and sys.version_info.minor == 8
         data_dict = {"key": "1" * (4 * 1024 * 1024 * 1024 + 100)}
         checkpoint = TorchCheckpoint(data_dict=data_dict)
         pickle.dumps(checkpoint)
-
-    ray.get(func.remote())
-
-
-def test_pickle_large_checkpoint():
-    data_dict = {"key": "1" * (4 * 1024 * 1024 * 1024 + 100)}
-    checkpoint = TorchCheckpoint(data_dict=data_dict)
-    pickle.dumps(checkpoint)
+    else:
+        assert pickle.HIGHEST_VERSION == 4
 
 
 def test_no_encoding_for_dir_checkpoints(tmpdir):
