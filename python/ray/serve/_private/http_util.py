@@ -12,8 +12,9 @@ from starlette.types import Receive, Send, ASGIApp
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
+import ray
 from ray.serve.exceptions import RayServeException
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME, SERVE_REQUEST_ID
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -68,6 +69,14 @@ class Response:
         """
         self.status_code = status_code
         self.raw_headers = []
+
+        # Set request id.
+        self.raw_headers.append(
+            [
+                SERVE_REQUEST_ID,
+                ray.serve.context._serve_request_context.get().request_id,
+            ]
+        )
 
         if content is None:
             self.body = b""
@@ -130,6 +139,13 @@ class RawASGIResponse(ASGIApp):
 
     def __init__(self, messages):
         self.messages = messages
+        # Set request id.
+        self.messages[0]["headers"].append(
+            [
+                SERVE_REQUEST_ID,
+                ray.serve.context._serve_request_context.get().request_id,
+            ]
+        )
 
     async def __call__(self, scope, receive, send):
         for message in self.messages:

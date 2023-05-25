@@ -34,6 +34,8 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    SERVE_MULTIPLEXED_MODEL_ID,
+    SERVE_REQUEST_ID,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
@@ -228,6 +230,12 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         return "500"
 
     if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
+        if isinstance(result, starlette.responses.Response):
+            # Hack to SERVE_REQUEST_ID for native starlette response.
+            if SERVE_REQUEST_ID not in result.headers:
+                result.headers[
+                    SERVE_REQUEST_ID
+                ] = ray.serve.context._serve_request_context.get().request_id
         await result(scope, receive, send)
         return str(result.status_code)
     else:
@@ -499,7 +507,8 @@ class HTTPProxy:
         for key, value in scope["headers"]:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
                 request_context_info["multiplexed_model_id"] = value.decode()
-                break
+            if key.decode() == SERVE_REQUEST_ID:
+                request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(**request_context_info)
         )
