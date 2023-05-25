@@ -52,6 +52,9 @@ struct WorkerThreadContext {
     // thread), so there's no risk of conflicting put object IDs, either.
     // See https://github.com/ray-project/ray/issues/10324 for further details.
     auto num_returns = current_task_ != nullptr ? current_task_->NumReturns() : 0;
+
+    // We reserve max_num_generator_returns_ number of indexes for the generator
+    // return so that all generator return can have consistent ids given an index.
     return num_returns + max_num_generator_returns_ + ++put_counter_;
   }
 

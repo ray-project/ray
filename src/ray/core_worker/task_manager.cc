@@ -1032,7 +1032,12 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     }
   }
   // If it was a streaming generator, try failing all the return object refs.
-  // If the object ref was already written before, it won't be overwritten.
+  // In a normal time, it is no-op because the object ref values are already
+  // written, and Ray doesn't allow to overwrite values for the object ref.
+  // It is only useful when lineage reconstruction retry is failed. In this
+  // case, all these objects are lost from the plasma store, so we
+  // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
+  // for more details.
   if (spec.IsStreamingGenerator()) {
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
     for (int i = 0; i < num_streaming_generator_returns; i++) {
