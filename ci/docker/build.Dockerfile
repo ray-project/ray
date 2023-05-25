@@ -31,6 +31,7 @@ RUN BUILD=1 bash --login -i ./ci/ci.sh init
 
 RUN bash --login -i ./ci/ci.sh build
 
+# Check that importing ray works
 RUN bash --login -i -c -- "python3 -c 'import ray'"
 
 # Run determine test to run
