@@ -405,7 +405,8 @@ def cell_set(cell, value):
 
     In Python3.7, cell_contents is writeable, so setting the contents of a cell
     can be done simply using
-    >>> cell.cell_contents = value
+
+    >>> cell.cell_contents = value  # doctest: +SKIP
 
     In earlier Python3 versions, the cell_contents attribute of a cell is read
     only, but this limitation can be worked around by leveraging the Python 3
@@ -418,16 +419,21 @@ def cell_set(cell, value):
     The chosen approach is to create a function with a STORE_DEREF opcode,
     which sets the content of a closure variable. Typically:
 
-    >>> def inner(value):
-    ...     lambda: cell  # the lambda makes cell a closure
-    ...     cell = value  # cell is a closure, so this triggers a STORE_DEREF
+    .. testcode::
+
+        def inner(value):
+            lambda: cell  # the lambda makes cell a closure
+            cell = value  # cell is a closure, so this triggers a STORE_DEREF
 
     (Note that in Python2, A STORE_DEREF can never be triggered from an inner
     function. The function g for example here
-    >>> def f(var):
-    ...     def g():
-    ...         var += 1
-    ...     return g
+
+    .. testcode::
+
+        def f(var):
+            def g():
+                var += 1
+            return g
 
     will not modify the closure variable ``var```inplace, but instead try to
     load a local variable var and increment it. As g does not assign the local
