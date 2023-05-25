@@ -436,7 +436,6 @@ class StateDataSourceClient:
         timeout: int,
         task_id: Optional[str] = None,
         attempt_number: Optional[int] = None,
-        task_name: Optional[str] = None,
     ) -> UnaryStreamCall:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
@@ -449,7 +448,6 @@ class StateDataSourceClient:
                 interval=interval,
                 task_id=task_id,
                 attempt_number=attempt_number,
-                task_name=task_name,
             ),
             timeout=timeout,
         )
