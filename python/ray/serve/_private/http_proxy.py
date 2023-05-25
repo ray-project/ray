@@ -103,7 +103,15 @@ async def _handle_streaming_response(
         async for obj_ref in asgi_response_generator:
             asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
             for asgi_message in asgi_messages:
-                if asgi_message["type"] == "http.response.start":
+                # There must be exactly one "http.response.start" message that
+                # always contains the "status" field.
+                if not status_code:
+                    assert asgi_message["type"] == "http.response.start", (
+                        "First response message must be 'http.response.start'",
+                    )
+                    assert "status" in asgi_message, (
+                        "'http.response.start' message must contain 'status'",
+                    )
                     status_code = str(asgi_message["status"])
 
                 await send(asgi_message)
