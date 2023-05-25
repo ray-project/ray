@@ -207,6 +207,52 @@ def test_metadata_preserved(serve_instance, use_fastapi: bool):
         assert chunk == f"hi_{i}".encode("utf-8")
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Streaming feature flag is disabled.",
+)
+@pytest.mark.parametrize("use_fastapi", [False, True])
+@pytest.mark.parametrize("use_async", [False, True])
+def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bool):
+    async def hi_gen_async():
+        yield "first result"
+        raise Exception("raised in generator")
+        yield "never reached"
+
+    def hi_gen_sync():
+        yield "first result"
+        raise Exception("raised in generator")
+        yield "never reached"
+
+    if use_fastapi:
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class SimpleGenerator:
+            @app.get("/")
+            def stream_hi(self, request: Request) -> StreamingResponse:
+                gen = hi_gen_async() if use_async else hi_gen_sync()
+                return StreamingResponse(gen, media_type="text/plain")
+
+    else:
+
+        @serve.deployment
+        class SimpleGenerator:
+            def __call__(self, request: Request) -> StreamingResponse:
+                gen = hi_gen_async() if use_async else hi_gen_sync()
+                return StreamingResponse(gen, media_type="text/plain")
+
+    serve.run(SimpleGenerator.bind())
+
+    r = requests.get("http://localhost:8000", stream=True)
+    r.raise_for_status()
+    stream_iter = r.iter_content(chunk_size=None, decode_unicode=True)
+    assert next(stream_iter) == "first result"
+    with pytest.raises(requests.exceptions.ChunkedEncodingError):
+        next(stream_iter)
+
+
 if __name__ == "__main__":
     import sys
 
