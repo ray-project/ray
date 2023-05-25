@@ -6,7 +6,7 @@ This is an experimental feature and the API may change in the future. You are we
 
 ## Why model multiplexing?
 
-Model multiplexing is a technique for serving multiple models in a single replica. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas to optimize cost. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
+Model multiplexing is a technique used to efficiently serve multiple models with similar input types from a pool of replicas.. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas to optimize cost. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
 
 ## Wrting a multiplexed deployment
 
@@ -33,7 +33,7 @@ The `serve.multiplexed` API also has a `max_num_models_per_replica` parameter. U
 :::
 
 :::{tip}
-This code example uses the Pytorch Model object. You can also define your own model class and use it here. Make sure the model class has a `__call__` method. To release resources when the model is evicted, implement the `__del__` method. Ray Serve internally calls the `__call__` method to execute the model, and calls the `__del__` method to release resources when the model is evicted.
+This code example uses the Pytorch Model object. You can also define your own model class and use it here. To release resources when the model is evicted, implement the `__del__` method. Ray Serve internally calls the `__del__` method to release resources when the model is evicted.
 :::
 
 

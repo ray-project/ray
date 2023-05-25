@@ -327,12 +327,12 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * replica
        * application
-     - The counter for unloaded models on the current replica.
+     - The number of times models unloaded on the current replica.
    * - ``serve_multiplexed_models_load_counter``
      - * deployment
        * replica
        * application
-     - The counter for loaded models on the current replica.
+     - The number of times models loaded on the current replica.
 ```
 [*] - only available when using HTTP calls
 [**] - only available when using Python `ServeHandle` calls
