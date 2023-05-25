@@ -1899,7 +1899,7 @@ class DeploymentState:
             if replica.replica_tag == replica_name:
                 replica.record_multiplexed_model_ids(multiplexed_model_ids)
                 self._multiplexed_model_ids_updated = True
-                break
+                return
         logger.warn(f"Replia {replica_name} not found in deployment {self._name}")
 
     def _stop_one_running_replica_for_testing(self):
