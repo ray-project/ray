@@ -67,7 +67,7 @@ class BaseNodeLauncher:
         self.pending.dec(node_type, count)
         return created_nodes
 
-    def _launch_node(self, config: Dict[str, Any], count: int, node_type: str):
+    def _launch_node(self, config: Dict[str, Any], count: int, node_type: str) -> Optional[Dict]:
         if self.node_types:
             assert node_type, node_type
 
