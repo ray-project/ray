@@ -202,5 +202,6 @@ RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
     os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
 )
 
-# Serve request id
+# Request ID used for logging. Can be provided as a request
+# header and will always be returned as a response header.
 RAY_SERVE_REQUEST_ID = "RAY_SERVE_REQUEST_ID"
