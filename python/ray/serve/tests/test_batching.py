@@ -383,8 +383,6 @@ async def test_batch_generator_exceptions(error_type):
 
 @pytest.mark.asyncio
 async def test_batch_generator_streaming_response_integration_test(ray_instance):
-
-    RESPONSE = "test response"
     NUM_YIELDS = 10
 
     @serve.deployment
@@ -392,7 +390,7 @@ async def test_batch_generator_streaming_response_integration_test(ray_instance)
         @serve.batch(max_batch_size=4, batch_wait_timeout_s=1000)
         async def batch_handler(self, prompts: List[str]):
             for _ in range(NUM_YIELDS):
-                prompt_responses = [RESPONSE] * 4
+                prompt_responses = prompts
                 yield prompt_responses
 
         async def __call__(self, request):
@@ -401,15 +399,15 @@ async def test_batch_generator_streaming_response_integration_test(ray_instance)
 
     serve.run(Textgen.bind())
 
-    url = "http://localhost:8000/?prompt=hola"
+    prompt_prefix = "hola"
+    url = f"http://localhost:8000/?prompt={prompt_prefix}"
     with ThreadPoolExecutor() as pool:
-        futs = [pool.submit(partial(requests.get, url)) for _ in range(4)]
-
+        futs = [pool.submit(partial(requests.get, url + str(idx))) for idx in range(4)]
         responses = [fut.result() for fut in futs]
 
-    for response in responses:
+    for idx, response in enumerate(responses):
         assert response.status_code == 200
-        assert response.text == "".join([RESPONSE] * NUM_YIELDS)
+        assert response.text == "".join([prompt_prefix + str(idx)] * NUM_YIELDS)
 
 
 if __name__ == "__main__":
