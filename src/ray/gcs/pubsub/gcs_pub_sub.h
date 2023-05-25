@@ -187,13 +187,15 @@ class RAY_EXPORT PythonGcsSubscriber {
 
   /// Polls for new error message.
   /// Both key_id and data are out parameters.
-  Status PollError(std::string *key_id, rpc::ErrorTableData *data);
+  Status PollError(std::string *key_id, int64_t timeout_ms, rpc::ErrorTableData *data);
 
   /// Polls for new log messages.
-  Status PollLogs(std::string *key_id, rpc::LogBatch *data);
+  Status PollLogs(std::string *key_id, int64_t timeout_ms, rpc::LogBatch *data);
 
   /// Polls for new function key messages.
-  Status PollFunctionKey(std::string *key_id, rpc::PythonFunction *data);
+  Status PollFunctionKey(std::string *key_id,
+                         int64_t timeout_ms,
+                         rpc::PythonFunction *data);
 
   /// Closes the subscriber and its active subscription.
   Status Close();
@@ -201,7 +203,7 @@ class RAY_EXPORT PythonGcsSubscriber {
   int64_t last_batch_size();
 
  private:
-  Status DoPoll(rpc::PubMessage *message);
+  Status DoPoll(int64_t timeout_ms, rpc::PubMessage *message);
 
   mutable absl::Mutex mu_;
 

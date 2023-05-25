@@ -351,7 +351,7 @@ Status PythonGcsSubscriber::Subscribe() {
   }
 }
 
-Status PythonGcsSubscriber::DoPoll(rpc::PubMessage *message) {
+Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message) {
   absl::MutexLock lock(&mu_);
 
   while (queue_.size() == 0) {
@@ -359,6 +359,10 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage *message) {
       return Status::OK();
     }
     current_polling_context_.reset(new grpc::ClientContext());
+    if (timeout_ms != -1) {
+      current_polling_context_->set_deadline(std::chrono::system_clock::now() +
+                                             std::chrono::milliseconds(timeout_ms));
+    }
     rpc::GcsSubscriberPollRequest request;
     request.set_subscriber_id(subscriber_id_);
     request.set_max_processed_sequence_id(max_processed_sequence_id_);
@@ -413,26 +417,31 @@ Status PythonGcsSubscriber::DoPoll(rpc::PubMessage *message) {
   return Status::OK();
 }
 
-Status PythonGcsSubscriber::PollError(std::string *key_id, rpc::ErrorTableData *data) {
+Status PythonGcsSubscriber::PollError(std::string *key_id,
+                                      int64_t timeout_ms,
+                                      rpc::ErrorTableData *data) {
   rpc::PubMessage message;
-  RAY_RETURN_NOT_OK(DoPoll(&message));
+  RAY_RETURN_NOT_OK(DoPoll(timeout_ms, &message));
   *key_id = message.key_id();
   *data = message.error_info_message();
   return Status::OK();
 }
 
-Status PythonGcsSubscriber::PollLogs(std::string *key_id, rpc::LogBatch *data) {
+Status PythonGcsSubscriber::PollLogs(std::string *key_id,
+                                     int64_t timeout_ms,
+                                     rpc::LogBatch *data) {
   rpc::PubMessage message;
-  RAY_RETURN_NOT_OK(DoPoll(&message));
+  RAY_RETURN_NOT_OK(DoPoll(timeout_ms, &message));
   *key_id = message.key_id();
   *data = message.log_batch_message();
   return Status::OK();
 }
 
 Status PythonGcsSubscriber::PollFunctionKey(std::string *key_id,
+                                            int64_t timeout_ms,
                                             rpc::PythonFunction *data) {
   rpc::PubMessage message;
-  RAY_RETURN_NOT_OK(DoPoll(&message));
+  RAY_RETURN_NOT_OK(DoPoll(timeout_ms, &message));
   *key_id = message.key_id();
   *data = message.python_function_message();
   return Status::OK();

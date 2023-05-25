@@ -2291,13 +2291,14 @@ cdef class GcsErrorSubscriber(_GcsSubscriber):
     def __init__(self, address, worker_id=None):
         self.connect(address, RAY_ERROR_INFO_CHANNEL, worker_id)
 
-    def poll(self):
+    def poll(self, timeout=None):
         cdef:
             CErrorTableData error_data
             c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
 
         with nogil:
-            check_status(self.inner.get().PollError(&key_id, &error_data))
+            check_status(self.inner.get().PollError(&key_id, timeout_ms, &error_data))
 
         return (bytes(key_id), {
             "job_id": error_data.job_id(),
@@ -2313,15 +2314,16 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
     def __init__(self, address, worker_id=None):
         self.connect(address, RAY_LOG_CHANNEL, worker_id)
 
-    def poll(self):
+    def poll(self, timeout=None):
         cdef:
             CLogBatch log_batch
             c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_log_lines
             c_string c_log_line
 
         with nogil:
-            check_status(self.inner.get().PollLogs(&key_id, &log_batch))
+            check_status(self.inner.get().PollLogs(&key_id, timeout_ms, &log_batch))
 
         c_log_lines = PythonGetLogBatchLines(log_batch)
 
@@ -2346,13 +2348,15 @@ cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
     def __init__(self, address, worker_id=None):
         self.connect(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
 
-    def poll(self):
+    def poll(self, timeout=None):
         cdef:
             CPythonFunction python_function
             c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
 
         with nogil:
-            check_status(self.inner.get().PollFunctionKey(&key_id, &python_function))
+            check_status(self.inner.get().PollFunctionKey(
+                &key_id, timeout_ms, &python_function))
 
         if python_function.key() == b"":
             return None

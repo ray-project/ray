@@ -385,11 +385,14 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         int64_t last_batch_size()
 
-        CRayStatus PollError(c_string* key_id, CErrorTableData* data)
+        CRayStatus PollError(
+            c_string* key_id, int64_t timeout_ms, CErrorTableData* data)
 
-        CRayStatus PollLogs(c_string* key_id, CLogBatch* data)
+        CRayStatus PollLogs(
+            c_string* key_id, int64_t timeout_ms, CLogBatch* data)
 
-        CRayStatus PollFunctionKey(c_string* key_id, CPythonFunction* data)
+        CRayStatus PollFunctionKey(
+            c_string* key_id, int64_t timeout_ms, CPythonFunction* data)
 
         CRayStatus Close()
 
