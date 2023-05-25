@@ -44,7 +44,7 @@ else:
     from typing_extensions import Literal, Protocol
 
 import ray
-import ray._private.gcs_utils as gcs_utils
+import ray.core.generated.common_pb2 as common_pb2
 import ray._private.import_thread as import_thread
 import ray._private.node
 import ray._private.parameter
@@ -1746,7 +1746,7 @@ def custom_excepthook(type, value, tb):
     if global_worker.mode == SCRIPT_MODE and hasattr(global_worker, "worker_id"):
         error_message = "".join(traceback.format_tb(tb))
         worker_id = global_worker.worker_id
-        worker_type = gcs_utils.DRIVER
+        worker_type = common_pb2.DRIVER
         worker_info = {"exception": error_message}
 
         ray._private.state.state._check_connected()
@@ -2586,7 +2586,7 @@ def put(
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray._private.state.state.global_state_accessor` is not None
         ray._private.state.state._check_connected()
-        owner_address = gcs_utils.ActorTableData.FromString(
+        owner_address = common_pb2.ActorTableData.FromString(
             ray._private.state.state.global_state_accessor.get_actor_info(
                 _owner._actor_id
             )
