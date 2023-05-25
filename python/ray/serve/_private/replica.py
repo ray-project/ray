@@ -35,7 +35,12 @@ from ray.serve._private.constants import (
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
-from ray.serve._private.http_util import ASGIHTTPSender, ASGIHTTPQueueSender, Response
+from ray.serve._private.http_util import (
+    ASGIHTTPSender,
+    ASGIHTTPQueueSender,
+    RawASGIResponse,
+    Response,
+)
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
@@ -491,7 +496,7 @@ class RayServeReplica:
             await never_set_event.wait()
 
         if asgi_sender is not None:
-            if isinstance(result, starlette.responses.Response):
+            if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
                 # Case where the user returns a Response directly.
                 await result(scope=None, receive=mock_receive, send=asgi_sender)
             elif result is not None:

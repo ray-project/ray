@@ -133,7 +133,7 @@ class RawASGIResponse(ASGIApp):
     def __init__(self, messages):
         self.messages = messages
 
-    async def __call__(self, _scope, _receive, send):
+    async def __call__(self, scope, receive, send):
         for message in self.messages:
             await send(message)
 

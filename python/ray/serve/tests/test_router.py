@@ -62,7 +62,7 @@ def task_runner_mock_actor():
     yield mock_task_runner()
 
 
-async def test_replica_set(ray_instance):
+async def test_replica_scheduler(ray_instance):
     signal = SignalActor.remote()
 
     @ray.remote(num_cpus=0)
