@@ -3257,7 +3257,7 @@ class AlgorithmConfig(_Config):
             .module(module_spec)
             .learner(
                 learner_class=self.learner_class,
-                learner_hyperparameters=self.get_learner_hyperparameters(module_spec),
+                learner_hyperparameters=self.get_learner_hyperparameters(),
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
