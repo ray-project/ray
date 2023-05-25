@@ -520,6 +520,12 @@ def _inject_tracing_into_class(_cls):
         if is_static_method(_cls, name) or is_class_method(method):
             continue
 
+        if inspect.isgeneratorfunction(method) or inspect.isasyncgenfunction(method):
+            # Right now, this method somehow changes the signature of the method
+            # when they are generator.
+            # TODO(sang): Fix it.
+            continue
+
         # Don't decorate the __del__ magic method.
         # It's because the __del__ can be called after Python
         # modules are garbage colleted, which means the modules

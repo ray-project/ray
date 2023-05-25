@@ -104,8 +104,6 @@ message StreamLogRequest {
   optional string task_id = 5;
   // Attempt number of the task.
   optional int64 attempt_number = 6;
-  // Task name for the task.
-  optional string task_name = 7;
 }
 
 message StreamLogReply {
