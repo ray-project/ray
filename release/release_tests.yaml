@@ -3300,6 +3300,34 @@
 # Train tests
 ########################
 
+- name: train_horovod_multi_node_test_byod
+  group: Train tests
+  working_dir: train_tests/horovod
+
+  frequency: manual
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        - sudo apt-get install curl
+        - pip3 install pytest awscli
+        - pip3 install 'ray[tune]'
+        - pip3 install torch torchvision
+        - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_TENSORFLOW=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_PYTORCH=1 pip3 install -U horovod
+    cluster_env: app_config.yaml
+    cluster_compute: compute_tpl_aws.yaml
+
+  run:
+    timeout: 3000
+    script: python train_horovod_multi_node_test.py
+
+    wait_for_nodes:
+      num_nodes: 2
+
+  alert: default 
+
 - name: train_horovod_multi_node_test
   group: Train tests
   working_dir: train_tests/horovod
@@ -3435,6 +3463,37 @@
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
+
+
+- name: rllib_multi_node_e2e_training_smoke_test
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: multi_node_checkpointing_compute_config.yaml
+
+  run:
+    timeout: 3600
+    script: pytest smoke_tests/smoke_test_basic_multi_node_training_learner.py
+
+    wait_for_nodes:
+      num_nodes: 3
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
+
 
 
 - name: rllib_learning_tests_a2c_tf
@@ -4439,6 +4498,23 @@
         cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
+- name: microbenchmark_byod
+  group: core-daily-test
+  team: core
+  frequency: manual
+  working_dir: microbenchmark
+
+  python: "3.7"
+
+  cluster:
+    byod: 
+      type: cpu
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 - name: microbenchmark
   group: core-daily-test
@@ -5913,6 +5989,8 @@
 - name: chaos_pipelined_ingestion_1500_gb_15_windows
   group: data-tests
   working_dir: nightly_tests
+
+  stable: false
 
   frequency: nightly
   team: data
