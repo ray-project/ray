@@ -909,7 +909,7 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
         if not error_data:
             # Timed out before any data is received.
             break
-        if error_type is None or error_type == error_data.type:
+        if error_type is None or error_type == error_data["type"]:
             msgs.append(error_data)
         else:
             time.sleep(0.01)
