@@ -18,7 +18,7 @@ END_ASYNC_ITER_TOKEN = None
 
 @dataclass
 class _SingleRequest:
-    self_arg: Optional[Any]
+    self_arg: Any
     flattened_args: List[Any]
     future: asyncio.Future
 
