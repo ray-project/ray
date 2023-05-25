@@ -311,8 +311,8 @@ def test_dataset__repr__(ray_start_regular_shared):
         return True
 
     # TODO(hchen): The reason why `wait_for_condition` is needed here is because
-    # `to_summary` depedens on an external actor to record the stats, which makes
-    # it non-deterministic. See the todo in `to_summary`.
+    # `to_summary` depends on an external actor (_StatsActor) that records stats asynchronously.
+    # This makes the behavior non-deterministic. See the TODO in `to_summary`.
     # We should make it deterministic and refine this test.
     wait_for_condition(
         check_stats,
