@@ -139,7 +139,7 @@ class Test(dict):
             s3_client.list_objects_v2(
                 Bucket=AWS_BUCKET,
                 Prefix=f"{AWS_TEST_RESULT_KEY}/{self.get_name()}-",
-            )["Contents"],
+            ).get("Contents", []),
             key=lambda file: int(file["LastModified"].strftime("%s")),
             reverse=True,
         )[:limit]
