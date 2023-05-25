@@ -64,11 +64,7 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager, make_function_table_key
-from ray._private.gcs_pubsub import (
-    GcsErrorSubscriber,
-    GcsFunctionKeySubscriber,
-    GcsLogSubscriber,
-)
+
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
@@ -2235,6 +2231,12 @@ def connect(
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
+    )
+    # The following will be fixed with https://github.com/ray-project/ray/pull/35094
+    from ray._private.gcs_pubsub import (
+        GcsErrorSubscriber,
+        GcsFunctionKeySubscriber,
+        GcsLogSubscriber,
     )
 
     # Notify raylet that the core worker is ready.

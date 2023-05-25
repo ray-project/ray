@@ -252,7 +252,7 @@ class GlobalState:
         if placement_group_info is None:
             return None
         else:
-            placement_group_table_data = common_pb2.PlacementGroupTableData.FromString(
+            placement_group_table_data = gcs_pb2.PlacementGroupTableData.FromString(
                 placement_group_info
             )
             return self._gen_placement_group_info(placement_group_table_data)
@@ -270,7 +270,7 @@ class GlobalState:
             if placement_group_info is None:
                 return {}
             else:
-                placement_group_info = common_pb2.PlacementGroupTableData.FromString(
+                placement_group_info = gcs_pb2.PlacementGroupTableData.FromString(
                     placement_group_info
                 )
                 return self._gen_placement_group_info(placement_group_info)
@@ -280,8 +280,8 @@ class GlobalState:
             )
             results = {}
             for placement_group_info in placement_group_table:
-                placement_group_table_data = (
-                    common_pb2.PlacementGroupTableData.FromString(placement_group_info)
+                placement_group_table_data = gcs_pb2.PlacementGroupTableData.FromString(
+                    placement_group_info
                 )
                 placement_group_id = binary_to_hex(
                     placement_group_table_data.placement_group_id
@@ -297,11 +297,11 @@ class GlobalState:
         from ray.core.generated.common_pb2 import PlacementStrategy
 
         def get_state(state):
-            if state == common_pb2.PlacementGroupTableData.PENDING:
+            if state == gcs_pb2.PlacementGroupTableData.PENDING:
                 return "PENDING"
-            elif state == common_pb2.PlacementGroupTableData.CREATED:
+            elif state == gcs_pb2.PlacementGroupTableData.CREATED:
                 return "CREATED"
-            elif state == common_pb2.PlacementGroupTableData.RESCHEDULING:
+            elif state == gcs_pb2.PlacementGroupTableData.RESCHEDULING:
                 return "RESCHEDULING"
             else:
                 return "REMOVED"
@@ -602,7 +602,7 @@ class GlobalState:
         worker_table = self.global_state_accessor.get_worker_table()
         workers_data = {}
         for i in range(len(worker_table)):
-            worker_table_data = common_pb2.WorkerTableData.FromString(worker_table[i])
+            worker_table_data = gcs_pb2.WorkerTableData.FromString(worker_table[i])
             if (
                 worker_table_data.is_alive
                 and worker_table_data.worker_type == common_pb2.WORKER
@@ -636,7 +636,7 @@ class GlobalState:
         Returns:
              Is operation success
         """
-        worker_data = common_pb2.WorkerTableData()
+        worker_data = gcs_pb2.WorkerTableData()
         worker_data.is_alive = True
         worker_data.worker_address.worker_id = worker_id
         worker_data.worker_type = worker_type

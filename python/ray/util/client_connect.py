@@ -28,7 +28,7 @@ def connect(
     namespace: str = None,
     *,
     ignore_version: bool = False,
-    _credentials: Optional["grpc.ChannelCredentials"] = None,
+    _credentials=None,  # Optional[grpc.ChannelCredentials]
     ray_init_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     if ray.is_connected():

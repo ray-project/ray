@@ -162,8 +162,8 @@ class JobConfig:
         # TODO(edoakes): this is really unfortunate, but JobConfig is imported
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
-        from ray._private.utils import get_runtime_env_info
         import ray.core.generated.common_pb2 as common_pb2
+        from ray._private.utils import get_runtime_env_info
 
         if self._cached_pb is None:
             pb = common_pb2.JobConfig()

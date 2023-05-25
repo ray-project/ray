@@ -40,7 +40,7 @@ class _ClientContext:
         namespace: str = None,
         *,
         ignore_version: bool = False,
-        _credentials: Optional["grpc.ChannelCredentials"] = None,
+        _credentials=None,  # Optional[grpc.ChannelCredentials]
         ray_init_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
