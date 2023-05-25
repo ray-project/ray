@@ -17,6 +17,7 @@ from ray.air._internal.remote_storage import (
     list_at_uri,
 )
 from ray.air._internal import usage as air_usage
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
@@ -581,7 +582,7 @@ class BaseTrainer(abc.ABC):
                 trainable=trainable,
                 param_space=param_space,
                 run_config=self.run_config,
-                _trainer_api=True,
+                _entrypoint=AirEntrypoint.TRAINER,
             )
 
         experiment_path = Path(
