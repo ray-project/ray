@@ -94,10 +94,11 @@ class TestPPO(unittest.TestCase):
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing lr-scheduling correctness.
-                lr=[[0, 0.00001], [512, 0.0]],  # 512=4x128
+                lr_schedule=[[0, 0.00001], [512, 0.0]],  # 512=4x128
                 # Set entropy_coeff to a faulty value to proof that it'll get
                 # overridden by the schedule below (which is expected).
-                entropy_coeff=[[0, 0.1], [256, 0.0]],  # 256=2x128,
+                entropy_coeff=100.0,
+                entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],  # 256=2x128
                 train_batch_size=128,
                 _enable_learner_api=True,
             )
@@ -134,12 +135,12 @@ class TestPPO(unittest.TestCase):
                     # Check initial LR directly set in optimizer vs the first (ts=0)
                     # value from the schedule.
                     lr = optim.param_groups[0]["lr"] if fw == "torch" else optim.lr
-                    check(lr, config.lr[0][1])
+                    check(lr, config.lr_schedule[0][1])
 
                     # Check current entropy coeff value using the respective Scheduler.
-                    entropy_coeff = learner.entropy_coeff_schedulers_per_module[
+                    entropy_coeff = learner.entropy_coeff_scheduler.get_current_value(
                         DEFAULT_POLICY_ID
-                    ].get_current_value()
+                    )
                     check(entropy_coeff, 0.1)
 
                     for i in range(num_iterations):

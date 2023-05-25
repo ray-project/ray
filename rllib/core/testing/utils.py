@@ -1,14 +1,10 @@
-from typing import Optional, Type, Union, TYPE_CHECKING
+from typing import Type, Union, TYPE_CHECKING
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.learner.learner_group import LearnerGroup
-from ray.rllib.core.learner.learner import (
-    FrameworkHyperparameters,
-    LearnerHyperparameters,
-    LearnerSpec,
-)
+from ray.rllib.core.learner.learner import LearnerSpec, FrameworkHyperparameters
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 
 from ray.rllib.core.rl_module.marl_module import (
@@ -96,41 +92,30 @@ def get_optimizer_default_class(framework: str) -> Type[Optimizer]:
 
 @DeveloperAPI
 def get_learner(
-    *,
     framework: str,
-    eager_tracing: bool = True,
     env: "gym.Env",
-    learner_hps: Optional[LearnerHyperparameters] = None,
+    learning_rate: float = 1e-3,
     is_multi_agent: bool = False,
 ) -> "Learner":
     """Construct a learner for testing.
 
     Args:
         framework: The framework used for training.
-        eager_tracing: Whether to switch on eager tracing for framework=tf2.
         env: The environment to train on.
-        learner_hps: The LearnerHyperparameter instance to pass to the Learner's
-            constructor.
+        learning_rate: The learning rate to use for each learner.
         is_multi_agent: Whether to construct a multi agent rl module.
 
     Returns:
         A learner.
 
     """
-    # Get our testing (BC) Learner class (given the framework).
+
     _cls = get_learner_class(framework)
-    # Get our RLModule spec to use.
     spec = get_module_spec(framework=framework, env=env, is_multi_agent=is_multi_agent)
-    # Adding learning rate as a configurable parameter to avoid hardcoding it
+    # adding learning rate as a configurable parameter to avoid hardcoding it
     # and information leakage across tests that rely on knowing the LR value
     # that is used in the learner.
-    learner = _cls(
-        module_spec=spec,
-        learner_hyperparameters=learner_hps,
-        framework_hyperparameters=FrameworkHyperparameters(eager_tracing=eager_tracing),
-    )
-    learner.build()
-    return learner
+    return _cls(module_spec=spec, optimizer_config={"lr": learning_rate})
 
 
 @DeveloperAPI
@@ -138,6 +123,7 @@ def get_learner_group(
     framework: str,
     env: "gym.Env",
     scaling_config: LearnerGroupScalingConfig,
+    learning_rate: float = 1e-3,
     is_multi_agent: bool = False,
     eager_tracing: bool = False,
 ) -> LearnerGroup:
@@ -148,6 +134,7 @@ def get_learner_group(
         env: The environment to train on.
         scaling_config: A config for the amount and types of resources to use for
             training.
+        learning_rate: The learning rate to use for each learner.
         is_multi_agent: Whether to construct a multi agent rl module.
         eager_tracing: TF Specific. Whether to use tf.function for tracing
             optimizations.
@@ -165,6 +152,7 @@ def get_learner_group(
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
+        optimizer_config={"lr": learning_rate},
         learner_group_scaling_config=scaling_config,
         framework_hyperparameters=framework_hps,
     )

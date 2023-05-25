@@ -1,14 +1,10 @@
 from typing import Mapping
 
-from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaLearner,
-    ImpalaLearnerHyperparameters,
-)
+from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -26,12 +22,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
 
     @override(TorchLearner)
     def compute_loss_for_module(
-        self,
-        *,
-        module_id: ModuleID,
-        hps: ImpalaLearnerHyperparameters,
-        batch: NestedDict,
-        fwd_out: Mapping[str, TensorType],
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         action_dist_class_train = (
             self.module[module_id].unwrapped().get_train_action_dist_cls()
@@ -50,24 +41,24 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
 
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
         )
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
         )
         bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
+            trajectory_len=self.hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=self.hps.recurrent_seq_len,
         )
 
         # the discount factor that is used should be gamma except for timesteps where
@@ -76,10 +67,10 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             1.0
             - make_time_major(
                 batch[SampleBatch.TERMINATEDS],
-                trajectory_len=hps.rollout_frag_or_episode_len,
-                recurrent_seq_len=hps.recurrent_seq_len,
+                trajectory_len=self.hps.rollout_frag_or_episode_len,
+                recurrent_seq_len=self.hps.recurrent_seq_len,
             ).type(dtype=torch.float32)
-        ) * hps.discount_factor
+        ) * self.hps.discount_factor
 
         # TODO(Artur) Why was there `TorchCategorical if is_multidiscrete else
         #  dist_class` in the old code torch impala policy?
@@ -93,8 +84,8 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
-            clip_rho_threshold=hps.vtrace_clip_rho_threshold,
-            clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=self.hps.vtrace_clip_rho_threshold,
+            clip_pg_rho_threshold=self.hps.vtrace_clip_pg_rho_threshold,
         )
 
         # Sample size is T x B, where T is the trajectory length and B is the batch size
@@ -122,13 +113,9 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         # The summed weighted loss.
         total_loss = (
             pi_loss
-            + vf_loss * hps.vf_loss_coeff
-            + (
-                mean_entropy_loss
-                * self.entropy_coeff_schedulers_per_module[
-                    module_id
-                ].get_current_value()
-            )
+            + vf_loss * self.hps.vf_loss_coeff
+            + mean_entropy_loss
+            * (self.entropy_coeff_scheduler.get_current_value(module_id))
         )
 
         # Register important loss stats.

@@ -1,7 +1,6 @@
 import torch
 from typing import Any, Mapping
 
-from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.core.testing.testing_learner import BaseTestingLearner
@@ -15,7 +14,6 @@ class BCTorchLearner(TorchLearner, BaseTestingLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: LearnerHyperparameters,
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
     ) -> Mapping[str, Any]:
