@@ -42,7 +42,7 @@ class NodeProviderTest(unittest.TestCase):
         nodes = self.node_provider.create_nodes("worker_nodes1", 1)
         assert len(nodes) == 1
         assert nodes[0] == Instance(
-            node_type="worker_nodes1",
+            instance_type="worker_nodes1",
             cloud_instance_id="0",
             internal_ip="172.0.0.0",
             external_ip="1.2.3.4",
@@ -53,14 +53,14 @@ class NodeProviderTest(unittest.TestCase):
         nodes1 = self.node_provider.create_nodes("worker_nodes", 2)
         assert len(nodes1) == 2
         assert nodes1[0] == Instance(
-            node_type="worker_nodes",
+            instance_type="worker_nodes",
             cloud_instance_id="1",
             internal_ip="172.0.0.1",
             external_ip="1.2.3.4",
             status=Instance.INSTANCE_STATUS_UNSPECIFIED,
         )
         assert nodes1[1] == Instance(
-            node_type="worker_nodes",
+            instance_type="worker_nodes",
             cloud_instance_id="2",
             internal_ip="172.0.0.2",
             external_ip="1.2.3.4",
