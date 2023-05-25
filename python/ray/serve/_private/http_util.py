@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, Generator, Type
+from typing import Any, Dict, List, Type
 
 from starlette.requests import Request
 from starlette.types import Send, ASGIApp
@@ -175,17 +175,19 @@ class ASGIHTTPQueueSender(Send):
         await self._message_queue.put(message)
         self._new_message_event.set()
 
-    def get_messages_nowait(self) -> Generator[Dict[str, Any], None, None]:
+    def get_messages_nowait(self) -> List[Dict[str, Any]]:
         """Returns all messages that are currently available (non-blocking).
 
         At least one message will be present if `wait_for_message` had previously
         returned and a subsequent call to `wait_for_message` will block until at
         least one new message is available.
         """
+        messages = []
         while not self._message_queue.empty():
-            yield self._message_queue.get_nowait()
+            messages.append(self._message_queue.get_nowait())
 
         self._new_message_event.clear()
+        return messages
 
     async def wait_for_message(self):
         """Wait until at least one new message is available.

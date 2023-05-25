@@ -235,8 +235,10 @@ def create_replica_wrapper(name: str):
             handle_request_task = self._event_loop.create_task(
                 self.replica.handle_request(query, asgi_sender=asgi_queue_sender)
             )
-            while not handle_request_task.done():
-                done, pending = await asyncio.wait(
+
+            done = []
+            while handle_request_task not in done:
+                done, _ = await asyncio.wait(
                     [handle_request_task, asgi_queue_sender.wait_for_message()],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
@@ -244,7 +246,7 @@ def create_replica_wrapper(name: str):
                 # The messages are batched into a list to avoid unnecessary RPCs and
                 # we use vanilla pickle because it's faster than cloudpickle and we
                 # know it's safe for these messages containing primitive types.
-                yield pickle.dumps(list(asgi_queue_sender.get_messages_nowait()))
+                yield pickle.dumps(asgi_queue_sender.get_messages_nowait())
 
             e = handle_request_task.exception()
             if e is not None:
