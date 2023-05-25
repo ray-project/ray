@@ -451,6 +451,10 @@ class ServeControllerClient:
             sync: If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.
+            _internal_pickled_http_request: Indicates that this handle will be used
+                to send HTTP requests from the proxy to ingress deployment replicas.
+            _use_ray_streaming: Indicates that this handle should use
+                `num_returns="streaming"`.
 
         Returns:
             RayServeHandle
