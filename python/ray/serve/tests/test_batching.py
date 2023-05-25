@@ -12,13 +12,6 @@ from ray.serve.exceptions import RayServeException
 from ray._private.utils import get_or_create_event_loop
 
 
-@pytest.fixture()
-def ray_instance():
-    yield ray.init()
-    serve.shutdown()
-    ray.shutdown()
-
-
 def test_batching(serve_instance):
     @serve.deployment
     class BatchingExample:
@@ -382,7 +375,7 @@ async def test_batch_generator_exceptions(error_type):
 
 
 @pytest.mark.asyncio
-async def test_batch_generator_streaming_response_integration_test(ray_instance):
+async def test_batch_generator_streaming_response_integration_test(serve_instance):
     NUM_YIELDS = 10
 
     @serve.deployment
