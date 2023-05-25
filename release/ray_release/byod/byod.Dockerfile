@@ -1,4 +1,5 @@
 # syntax=docker/dockerfile:1.3-labs
+# shellcheck disable=SC2148
 
 ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
