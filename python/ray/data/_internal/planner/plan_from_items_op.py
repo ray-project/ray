@@ -48,7 +48,7 @@ def _plan_from_items_op(op: FromItems) -> PhysicalOperator:
             )
             block_ref_bundle = RefBundle(
                 [(ray.put(block), block_metadata)],
-                owns_blocks=True,
+                owns_blocks=False,
             )
             ref_bundles.append(block_ref_bundle)
         return ref_bundles

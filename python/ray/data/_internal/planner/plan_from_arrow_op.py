@@ -22,7 +22,7 @@ def _plan_from_arrow_refs_op(op: FromArrowRefs) -> PhysicalOperator:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(t) for t in op._tables])
         ref_bundles: List[RefBundle] = [
-            RefBundle([(table_ref, block_metadata)], owns_blocks=True)
+            RefBundle([(table_ref, block_metadata)], owns_blocks=False)
             for table_ref, block_metadata in zip(op._tables, metadata)
         ]
         return ref_bundles

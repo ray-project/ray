@@ -64,7 +64,7 @@ def _plan_from_pandas_refs_op(op: FromPandasRefsOperators) -> PhysicalOperator:
             get_table_block_metadata,
         )
 
-        owns_blocks = True
+        owns_blocks = False
         if isinstance(op, FromDask):
             _init_data_from_dask(op)
         elif isinstance(op, FromModin):
