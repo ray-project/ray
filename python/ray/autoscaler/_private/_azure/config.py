@@ -64,7 +64,7 @@ def _configure_resource_group(config):
     if "tags" in config["provider"]:
         params["tags"] = config["provider"]["tags"]
 
-    logger.info("Creating/Updating Resource Group: %s", resource_group)
+    logger.info("Creating/Updating resource group: %s", resource_group)
     rg_create_or_update = get_azure_sdk_function(
         client=resource_client.resource_groups, function_name="create_or_update"
     )
@@ -76,17 +76,19 @@ def _configure_resource_group(config):
     with open(template_path, "r") as template_fp:
         template = json.load(template_fp)
 
+    logger.info("Using cluster name: %s", config["cluster_name"])
+
     # set unique id for resources in this cluster
     unique_id = config["provider"].get("unique_id")
     if unique_id is None:
         hasher = sha256()
         hasher.update(config["provider"]["resource_group"].encode("utf-8"))
-        hasher.update(config["cluster_name"].encode("utf-8"))
         unique_id = hasher.hexdigest()[:UNIQUE_ID_LEN]
     else:
         unique_id = str(unique_id)
     config["provider"]["unique_id"] = unique_id
     logger.info("Using unique id: %s", unique_id)
+    cluster_id = "{}-{}".format(config["cluster_name"], unique_id)
 
     subnet_mask = config["provider"].get("subnet_mask")
     if subnet_mask is None:
@@ -101,7 +103,7 @@ def _configure_resource_group(config):
             "template": template,
             "parameters": {
                 "subnet": {"value": subnet_mask},
-                "uniqueId": {"value": unique_id},
+                "clusterId": {"value": cluster_id},
             },
         }
     }

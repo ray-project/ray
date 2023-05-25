@@ -16,7 +16,7 @@ config = (
         lr=0.0003,
         sgd_minibatch_size=64,
         num_sgd_iter=10,
-        model={"fcnet_hiddens": [128, 128]},
+        model={"fcnet_hiddens": [128, 128], "fcnet_activation": "relu"},
         vf_clip_param=10.0,
     )
 )

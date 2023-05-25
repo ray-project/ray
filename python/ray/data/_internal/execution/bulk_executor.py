@@ -1,10 +1,11 @@
 from typing import Dict, List, Iterator, Optional
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
+    OutputIterator,
     RefBundle,
     PhysicalOperator,
 )
@@ -19,7 +20,7 @@ logger = DatasetLogger(__name__)
 class BulkExecutor(Executor):
     """A bulk (BSP) operator executor.
 
-    This implementation emulates the behavior of the legacy Datasets backend. It
+    This implementation emulates the behavior of the legacy Data backend. It
     is intended to be replaced by default by StreamingExecutor in the future.
     """
 
@@ -75,13 +76,13 @@ class BulkExecutor(Executor):
                 self._stats.extra_metrics = op_metrics
             stats_summary = self._stats.to_summary()
             stats_summary_string = stats_summary.to_string(include_parent=False)
-            context = DatasetContext.get_current()
+            context = DataContext.get_current()
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
             )
             return output
 
-        return execute_recursive(dag)
+        return OutputIterator(execute_recursive(dag))
 
     def get_stats(self) -> DatasetStats:
         return self._stats

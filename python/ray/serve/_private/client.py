@@ -13,14 +13,16 @@ from ray.serve._private.common import (
     StatusOverview,
     ApplicationStatus,
     DeploymentStatusInfo,
+    MultiplexedReplicaInfo,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
 )
+from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentRoute, DeploymentRouteList
@@ -101,7 +103,6 @@ class ServeControllerClient:
 
         # Shut down handles
         for k in list(self.handle_cache):
-            self.handle_cache[k].stop_metrics_pusher()
             del self.handle_cache[k]
 
         if ray.is_initialized() and not self._shutdown:
@@ -233,7 +234,7 @@ class ServeControllerClient:
         _blocking: Optional[bool] = True,
     ):
 
-        controller_deploy_args = self.get_deploy_args(
+        controller_deploy_args = get_deploy_args(
             name=name,
             deployment_def=deployment_def,
             init_args=init_args,
@@ -253,7 +254,7 @@ class ServeControllerClient:
             self.log_deployment_ready(name, version, url, tag)
 
     @_ensure_connected
-    def deploy_group(
+    def deploy_application(
         self,
         name,
         deployments: List[Dict],
@@ -263,7 +264,7 @@ class ServeControllerClient:
         deployment_args_list = []
         for deployment in deployments:
             deployment_args_list.append(
-                self.get_deploy_args(
+                get_deploy_args(
                     deployment["name"],
                     deployment["func_or_class"],
                     deployment["init_args"],
@@ -273,27 +274,31 @@ class ServeControllerClient:
                     version=deployment["version"],
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
+                    docs_path=deployment["docs_path"],
+                    app_name=name,
                 )
             )
 
         updating_list = ray.get(
-            self._controller.deploy_group.remote(name, deployment_args_list)
+            self._controller.deploy_application.remote(name, deployment_args_list)
         )
 
         tags = []
         for i, updating in enumerate(updating_list):
             deployment = deployments[i]
-            name, version = deployment["name"], deployment["version"]
+            deployment_name, version = deployment["name"], deployment["version"]
 
-            tags.append(self.log_deployment_update_status(name, version, updating))
+            tags.append(
+                self.log_deployment_update_status(deployment_name, version, updating)
+            )
 
         for i, deployment in enumerate(deployments):
-            name = deployment["name"]
+            deployment_name = deployment["name"]
             url = deployment["url"]
 
             if _blocking:
-                self._wait_for_deployment_healthy(name)
-                self.log_deployment_ready(name, version, url, tags[i])
+                self._wait_for_deployment_healthy(deployment_name)
+                self.log_deployment_ready(deployment_name, version, url, tags[i])
 
         if remove_past_deployments:
             # clean up the old deployments
@@ -313,6 +318,18 @@ class ServeControllerClient:
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         _blocking: bool = False,
     ) -> None:
+        """Starts a task on the controller that deploys application(s) from a config.
+
+        Args:
+            config: A single-application config (ServeApplicationSchema) or a
+                multi-application config (ServeDeploySchema)
+            _blocking: Whether to block until the application is running.
+
+        Raises:
+            RayTaskError: If the deploy task on the controller fails. This can be
+                because a single-app config was deployed after deploying a multi-app
+                config, or vice versa.
+        """
         ray.get(self._controller.deploy_apps.remote(config))
 
         if _blocking:
@@ -440,7 +457,7 @@ class ServeControllerClient:
         cache_key = (deployment_name, missing_ok, sync)
         if cache_key in self.handle_cache:
             cached_handle = self.handle_cache[cache_key]
-            if cached_handle.is_polling and cached_handle.is_same_loop:
+            if cached_handle._is_polling and cached_handle._is_same_loop:
                 return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
@@ -482,77 +499,6 @@ class ServeControllerClient:
         return handle
 
     @_ensure_connected
-    def get_deploy_args(
-        self,
-        name: str,
-        deployment_def: Union[Callable, Type[Callable], str],
-        init_args: Tuple[Any],
-        init_kwargs: Dict[Any, Any],
-        ray_actor_options: Optional[Dict] = None,
-        config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
-        version: Optional[str] = None,
-        route_prefix: Optional[str] = None,
-        is_driver_deployment: Optional[str] = None,
-    ) -> Dict:
-        """
-        Takes a deployment's configuration, and returns the arguments needed
-        for the controller to deploy it.
-        """
-
-        if config is None:
-            config = {}
-        if ray_actor_options is None:
-            ray_actor_options = {}
-
-        curr_job_env = ray.get_runtime_context().runtime_env
-        if "runtime_env" in ray_actor_options:
-            # It is illegal to set field working_dir to None.
-            if curr_job_env.get("working_dir") is not None:
-                ray_actor_options["runtime_env"].setdefault(
-                    "working_dir", curr_job_env.get("working_dir")
-                )
-        else:
-            ray_actor_options["runtime_env"] = curr_job_env
-
-        replica_config = ReplicaConfig.create(
-            deployment_def,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            ray_actor_options=ray_actor_options,
-        )
-
-        if isinstance(config, dict):
-            deployment_config = DeploymentConfig.parse_obj(config)
-        elif isinstance(config, DeploymentConfig):
-            deployment_config = config
-        else:
-            raise TypeError("config must be a DeploymentConfig or a dictionary.")
-
-        deployment_config.version = version
-
-        if (
-            deployment_config.autoscaling_config is not None
-            and deployment_config.max_concurrent_queries
-            < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
-        ):
-            logger.warning(
-                "Autoscaling will never happen, "
-                "because 'max_concurrent_queries' is less than "
-                "'target_num_ongoing_requests_per_replica' now."
-            )
-
-        controller_deploy_args = {
-            "name": name,
-            "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
-            "replica_config_proto_bytes": replica_config.to_proto_bytes(),
-            "route_prefix": route_prefix,
-            "deployer_job_id": ray.get_runtime_context().get_job_id(),
-            "is_driver_deployment": is_driver_deployment,
-        }
-
-        return controller_deploy_args
-
-    @_ensure_connected
     def log_deployment_update_status(
         self, name: str, version: str, updating: bool
     ) -> str:
@@ -581,3 +527,13 @@ class ServeControllerClient:
             f"Deployment '{name}{':'+version if version else ''}' is ready"
             f"{url_part}. {tag}"
         )
+
+    @_ensure_connected
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """Record multiplexed replica information for replica.
+
+        Args:
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
+        """
+        self._controller.record_multiplexed_replica_info.remote(info)

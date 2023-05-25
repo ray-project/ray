@@ -64,10 +64,11 @@ class MockWorker {
             std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
             std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
             bool *is_retryable_error,
-            bool *is_application_error,
+            std::string *application_error,
             const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
             const std::string name_of_concurrency_group_to_execute,
-            bool is_reattempt) {
+            bool is_reattempt,
+            bool is_streaming_generator) {
           return ExecuteTask(caller_address,
                              task_type,
                              task_name,

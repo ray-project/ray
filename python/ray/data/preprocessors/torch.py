@@ -1,7 +1,8 @@
-from typing import TYPE_CHECKING, Callable, Dict, List, Union
+from typing import TYPE_CHECKING, Callable, Dict, List, Union, Optional, Mapping
 
 import numpy as np
 
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
@@ -19,7 +20,7 @@ class TorchVisionPreprocessor(Preprocessor):
         >>> import ray
         >>> dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
         >>> dataset  # doctest: +ellipsis
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(..., 3), dtype=float)})
+        Dataset(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(..., 3), dtype=float)})
 
         Torch models expect inputs of shape :math:`(B, C, H, W)` in the range
         :math:`[0.0, 1.0]`. To convert images to this format, add ``ToTensor`` to your
@@ -32,8 +33,9 @@ class TorchVisionPreprocessor(Preprocessor):
         ...     transforms.Resize((224, 224)),
         ... ])
         >>> preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
-        >>> preprocessor.transform(dataset)  # doctest: +ellipsis
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
+        >>> dataset = preprocessor.transform(dataset)  # doctest: +ellipsis
+        >>> dataset  # doctest: +ellipsis
+        Dataset(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(3, 224, 224), dtype=float)})
 
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
         with a batch-supporting ``Lambda``.
@@ -52,14 +54,17 @@ class TorchVisionPreprocessor(Preprocessor):
         >>> preprocessor = TorchVisionPreprocessor(
         ...     ["image"], transform=transform, batched=True
         ... )
-        >>> preprocessor.transform(dataset)  # doctest: +ellipsis
-        Dataset(num_blocks=..., num_rows=..., schema={image: ArrowTensorType(shape=(3, 224, 224), dtype=float)})
+        >>> dataset = preprocessor.transform(dataset)  # doctest: +ellipsis
+        >>> dataset  # doctest: +ellipsis
+        Dataset(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(3, 224, 224), dtype=float)})
 
     Args:
         columns: The columns to apply the TorchVision transform to.
         transform: The TorchVision transform you want to apply. This transform should
             accept a ``np.ndarray`` or ``torch.Tensor`` as input and return a
             ``torch.Tensor`` as output.
+        output_columns: The output name for each input column. If not specified, this
+            defaults to the same set of columns as the columns.
         batched: If ``True``, apply ``transform`` to batches of shape
             :math:`(B, H, W, C)`. Otherwise, apply ``transform`` to individual images.
     """  # noqa: E501
@@ -70,21 +75,32 @@ class TorchVisionPreprocessor(Preprocessor):
         self,
         columns: List[str],
         transform: Callable[[Union["np.ndarray", "torch.Tensor"]], "torch.Tensor"],
+        output_columns: Optional[List[str]] = None,
         batched: bool = False,
     ):
+        if not output_columns:
+            output_columns = columns
+        if len(columns) != len(output_columns):
+            raise ValueError(
+                "The length of columns should match the "
+                f"length of output_columns: {columns} vs {output_columns}."
+            )
         self._columns = columns
+        self._output_columns = output_columns
         self._torchvision_transform = transform
         self._batched = batched
 
     def __repr__(self) -> str:
         return (
-            f"{self.__class__.__name__}(columns={self._columns}, "
+            f"{self.__class__.__name__}("
+            f"columns={self._columns}, "
+            f"output_columns={self._output_columns}, "
             f"transform={self._torchvision_transform!r})"
         )
 
     def _transform_numpy(
-        self, np_data: Union["np.ndarray", Dict[str, "np.ndarray"]]
-    ) -> Union["np.ndarray", Dict[str, "np.ndarray"]]:
+        self, data_batch: Dict[str, "np.ndarray"]
+    ) -> Dict[str, "np.ndarray"]:
         import torch
         from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
 
@@ -95,15 +111,15 @@ class TorchVisionPreprocessor(Preprocessor):
             except TypeError:
                 # Transforms like `ToTensor` expect a `np.ndarray` as input.
                 output = self._torchvision_transform(array)
-
-            if not isinstance(output, torch.Tensor):
+            if isinstance(output, torch.Tensor):
+                output = output.numpy()
+            if not isinstance(output, np.ndarray):
                 raise ValueError(
                     "`TorchVisionPreprocessor` expected your transform to return a "
-                    "`torch.Tensor`, but your transform returned a "
+                    "`torch.Tensor` or `np.ndarray`, but your transform returned a "
                     f"`{type(output).__name__}` instead."
                 )
-
-            return output.numpy()
+            return output
 
         def transform_batch(batch: np.ndarray) -> np.ndarray:
             if self._batched:
@@ -112,11 +128,15 @@ class TorchVisionPreprocessor(Preprocessor):
                 [apply_torchvision_transform(array) for array in batch]
             )
 
-        if isinstance(np_data, dict):
-            outputs = np_data
-            for column in self._columns:
-                outputs[column] = transform_batch(np_data[column])
+        if isinstance(data_batch, Mapping):
+            for input_col, output_col in zip(self._columns, self._output_columns):
+                data_batch[output_col] = transform_batch(data_batch[input_col])
         else:
-            outputs = transform_batch(np_data)
+            # TODO(ekl) deprecate this code path. Unfortunately, predictors are still
+            # sending schemaless arrays to preprocessors.
+            data_batch = transform_batch(data_batch)
 
-        return outputs
+        return data_batch
+
+    def preferred_batch_format(cls) -> BatchFormat:
+        return BatchFormat.NUMPY

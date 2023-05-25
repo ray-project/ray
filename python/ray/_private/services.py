@@ -23,8 +23,7 @@ import psutil
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.gcs_utils import GcsClient
-from ray._raylet import GcsClientOptions
+from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 
 resource = None
@@ -608,9 +607,6 @@ def resolve_ip_for_localhost(address: str):
         raise ValueError(f"Malformed address: {address}")
     address_parts = address.split(":")
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
-        # Clusters are disabled by default for OSX and Windows.
-        if not ray_constants.ENABLE_RAY_CLUSTER:
-            return address
         # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
         return ":".join([ip_address] + address_parts[1:])
@@ -1042,10 +1038,12 @@ def start_api_server(
     raise_on_failure: bool,
     host: str,
     gcs_address: str,
+    node_ip_address: str,
     temp_dir: str,
     logdir: str,
     session_dir: str,
     port: Optional[int] = None,
+    dashboard_grpc_port: Optional[int] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1064,6 +1062,7 @@ def start_api_server(
             a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
+        node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
         session_dir: The session directory under temp_dir.
@@ -1071,6 +1070,8 @@ def start_api_server(
         logdir: The log directory used to generate dashboard log.
         port: The port to bind the dashboard web server to.
             Defaults to 8265.
+        dashboard_grpc_port: The port which the dashboard listens for
+            gRPC on. Defaults to a random, available port.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1083,7 +1084,9 @@ def start_api_server(
             no redirection should happen, then this should be None.
 
     Returns:
-        ProcessInfo for the process that was started.
+        A tuple of :
+            - Dashboard URL if dashboard enabled and started.
+            - ProcessInfo for the process that was started.
     """
     try:
         # Make sure port is available.
@@ -1136,6 +1139,7 @@ def start_api_server(
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
+            f"--node-ip-address={node_ip_address}",
         ]
 
         if not redirect_logging:
@@ -1161,6 +1165,9 @@ def start_api_server(
             # loaded although dashboard is disabled. Fix it.
             command.append("--modules-to-load=UsageStatsHead")
             command.append("--disable-frontend")
+
+        if dashboard_grpc_port is not None:
+            command.append(f"--grpc-port={dashboard_grpc_port}")
 
         process_info = start_ray_process(
             command,
@@ -1361,6 +1368,7 @@ def start_raylet(
     plasma_directory: str,
     object_store_memory: int,
     session_name: str,
+    is_head_node: bool,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1377,7 +1385,6 @@ def start_raylet(
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
-    start_initial_python_workers_for_first_job: bool = False,
     max_bytes: int = 0,
     backup_count: int = 0,
     ray_debugger_external: bool = False,
@@ -1416,6 +1423,8 @@ def start_raylet(
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
+        dashboard_agent_listen_port: The port at which the dashboard agent
+            listens to for http.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
@@ -1526,7 +1535,8 @@ def start_raylet(
         ]
     )
 
-    start_worker_command.append(f"--storage={storage}")
+    if storage is not None:
+        start_worker_command.append(f"--storage={storage}")
 
     start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
@@ -1609,14 +1619,14 @@ def start_raylet(
         f"--session-name={session_name}",
     ]
 
+    if is_head_node:
+        command.append("--head")
+
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
-    if start_initial_python_workers_for_first_job:
-        command.append(
-            "--num_initial_python_workers_for_first_job={}".format(
-                resource_spec.num_cpus
-            )
-        )
+    command.append(
+        "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
+    )
     command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
     if huge_pages:
         command.append("--huge_pages")

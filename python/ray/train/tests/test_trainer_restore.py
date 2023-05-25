@@ -5,15 +5,15 @@ import warnings
 import ray
 from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
 from ray.air._internal.remote_storage import upload_to_uri
-from ray.exceptions import RayTaskError
 from ray.train.base_trainer import BaseTrainer
+from ray.train.trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
-from ray.train.huggingface import HuggingFaceTrainer
+from ray.train.huggingface import TransformersTrainer
 from ray.train.rl import RLTrainer
-from ray.tune import Callback, TuneError
+from ray.tune import Callback
 from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessor import Preprocessor
 
@@ -36,6 +36,10 @@ def ray_start_6_cpus():
         ray.shutdown()
 
 
+class _TestSpecificError(RuntimeError):
+    pass
+
+
 def _failing_train_fn(config):
     checkpoint = session.get_checkpoint()
     it = 1
@@ -44,7 +48,7 @@ def _failing_train_fn(config):
         print(f"\nLoading from checkpoint, which is at iteration {it}...\n")
     session.report({"it": it}, checkpoint=Checkpoint.from_dict({"it": it}))
     if it == 1:
-        raise RuntimeError
+        raise _TestSpecificError
 
 
 class FailureInjectionCallback(Callback):
@@ -56,14 +60,14 @@ class FailureInjectionCallback(Callback):
     def on_trial_save(self, iteration, trials, trial, **info):
         if trial.last_result["training_iteration"] == self.num_iters:
             print(f"Failing after {self.num_iters} iters...")
-            raise RuntimeError
+            raise _TestSpecificError
 
 
 def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
     """Restoring a DataParallelTrainer with object refs captured in the train fn
     or config works by re-specifying them.
     Success criteria:
-    - Restored to the correct iteration. (1 iteration before crash, 1 after restore)
+    - Restored to the correct iteration. (1 iteration before crash, 1 after restore).
     - Results are being logged to the same directory as before.
     """
     dataset_size = 10
@@ -94,12 +98,13 @@ def test_data_parallel_trainer_restore(ray_start_4_cpus, tmpdir):
         scaling_config=ScalingConfig(num_workers=num_workers),
         run_config=RunConfig(
             name="data_parallel_restore_test",
-            local_dir=tmpdir,
+            local_dir=str(tmpdir),
             checkpoint_config=CheckpointConfig(num_to_keep=1),
         ),
     )
-    with pytest.raises(RayTaskError):
+    with pytest.raises(TrainingFailedError) as exc_info:
         result = trainer.fit()
+    assert isinstance(exc_info.value.__cause__, _TestSpecificError)
 
     # Include an explicit cluster shutdown.
     # Otherwise, the previously registered object references will still exist,
@@ -148,15 +153,14 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
         run_config=RunConfig(
             local_dir=str(tmpdir),
             name=exp_name,
-            checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=1, checkpoint_frequency=1, checkpoint_at_end=False
+            ),
             callbacks=[FailureInjectionCallback(num_iters=2)],
-            # We also use a stopper, since the restored run will go for
-            # another 5 boosting rounds otherwise.
-            stop={"training_iteration": 5},
         ),
         num_boost_round=5,
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
@@ -167,14 +171,14 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
     assert tmpdir / exp_name in result.log_dir.parents
 
 
-@pytest.mark.parametrize("trainer_cls", [HuggingFaceTrainer])
+@pytest.mark.parametrize("trainer_cls", [TransformersTrainer])
 def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
     """Tests restore for data parallel trainers that take in a `train_init` function
     and config. Success criteria: same as for data parallel trainers."""
     exp_name = f"{trainer_cls.__name__}_restore_test"
 
-    if trainer_cls == HuggingFaceTrainer:
-        from ray.train.tests.test_huggingface_trainer import (
+    if trainer_cls == TransformersTrainer:
+        from ray.train.tests.test_transformers_trainer import (
             train_function as hf_init,
             train_df,
         )
@@ -204,7 +208,7 @@ def test_trainer_with_init_fn_restore(ray_start_4_cpus, tmpdir, trainer_cls):
             callbacks=[FailureInjectionCallback(num_iters=2)],
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
     trainer = trainer_cls.restore(str(tmpdir / exp_name), datasets=datasets)
@@ -231,7 +235,7 @@ def test_rl_trainer_restore(ray_start_4_cpus, tmpdir):
             stop={"training_iteration": 5},
         ),
     )
-    with pytest.raises(TuneError):
+    with pytest.raises(TrainingFailedError):
         result = trainer.fit()
 
     trainer = RLTrainer.restore(str(tmpdir / "rl_trainer_restore"))
@@ -301,10 +305,11 @@ def test_preprocessor_restore(ray_start_4_cpus, tmpdir, new_preprocessor):
         datasets=datasets,
         preprocessor=MyPreprocessor(id=1),
         scaling_config=ScalingConfig(num_workers=2),
-        run_config=RunConfig(name="preprocessor_restore_test", local_dir=tmpdir),
+        run_config=RunConfig(name="preprocessor_restore_test", local_dir=str(tmpdir)),
     )
-    with pytest.raises(RayTaskError):
-        trainer.fit()
+    with pytest.raises(TrainingFailedError) as exc_info:
+        result = trainer.fit()
+    assert isinstance(exc_info.value.__cause__, _TestSpecificError)
 
     new_preprocessor = MyPreprocessor(id=2) if new_preprocessor else None
     trainer = DataParallelTrainer.restore(
@@ -392,7 +397,7 @@ def test_restore_with_different_trainer(tmpdir):
                 trainer_cls.restore(str(tmpdir))
 
         if should_warn:
-            with pytest.warns() as warn_record:
+            with pytest.warns(Warning) as warn_record:
                 check_for_raise()
                 assert any(
                     "Invalid trainer type" in str(record.message)

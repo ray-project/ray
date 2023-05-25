@@ -1,12 +1,13 @@
-import os
 import logging
+import os
 import warnings
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 from gymnasium.spaces import Discrete, MultiDiscrete
+from packaging import version
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -20,6 +21,7 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
+    from ray.rllib.core.learner.learner import ParamDict
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
@@ -31,12 +33,26 @@ torch, nn = try_import_torch()
 FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
 
+if torch:
+    TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
+else:
+    TORCH_COMPILE_REQUIRED_VERSION = ValueError(
+        "torch is not installed. " "TORCH_COMPILE_REQUIRED_VERSION is " "not defined."
+    )
 
+
+# TODO (sven): Deprecate this function once we have moved completely to the Learner API.
+#  Replaced with `clip_gradients()`.
 @PublicAPI
 def apply_grad_clipping(
     policy: "TorchPolicy", optimizer: LocalOptimizer, loss: TensorType
 ) -> Dict[str, TensorType]:
     """Applies gradient clipping to already computed grads inside `optimizer`.
+
+    Note: This function does NOT perform an analogous operation as
+    tf.clip_by_global_norm. It merely clips by norm (per gradient tensor) and
+    then computes the global norm across all given tensors (but without clipping
+    by that global norm).
 
     Args:
         policy: The TorchPolicy, which calculated `loss`.
@@ -81,6 +97,73 @@ def apply_grad_clipping(
 @Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
 def atanh(x: TensorType) -> TensorType:
     pass
+
+
+@PublicAPI
+def clip_gradients(
+    gradients_dict: "ParamDict",
+    *,
+    grad_clip: Optional[float] = None,
+    grad_clip_by: str = "value",
+) -> Optional[float]:
+    """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
+
+    Changes the provided gradient dict in place.
+
+    Args:
+        gradients_dict: The gradients dict, mapping str to gradient tensors.
+        grad_clip: The value to clip with. The way gradients are clipped is defined
+            by the `grad_clip_by` arg (see below).
+        grad_clip_by: One of 'value', 'norm', or 'global_norm'.
+
+    Returns:
+        If `grad_clip_by`="global_norm" and `grad_clip` is not None, returns the global
+        norm of all tensors, otherwise returns None.
+    """
+    # No clipping, return.
+    if grad_clip is None:
+        return
+
+    # Clip by value (each gradient individually).
+    if grad_clip_by == "value":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = (
+                None if v is None else torch.clip(v, -grad_clip, grad_clip)
+            )
+
+    # Clip by L2-norm (per gradient tensor).
+    elif grad_clip_by == "norm":
+        for k, v in gradients_dict.copy().items():
+            gradients_dict[k] = (
+                None if v is None else nn.utils.clip_grad_norm_(v, grad_clip)
+            )
+
+    # Clip by global L2-norm (across all gradient tensors).
+    else:
+        assert (
+            grad_clip_by == "global_norm"
+        ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
+
+        # Compute the global L2-norm of all the gradient tensors.
+        global_norm = sum(
+            # `.norm()` is the square root of the sum of all squares.
+            # We need to "undo" the square root b/c we want to compute the global
+            # norm afterwards -> `** 2`.
+            t.norm(2) ** 2
+            for t in gradients_dict.values()
+            if t is not None
+        )
+        # Now we do the square root.
+        global_norm = torch.sqrt(global_norm)
+
+        # Clip all the gradients.
+        if global_norm > grad_clip:
+            for tensor in gradients_dict.values():
+                if tensor is not None:
+                    tensor.mul_(grad_clip / global_norm)
+
+        # Return the computed global norm scalar.
+        return global_norm
 
 
 @PublicAPI
@@ -168,6 +251,37 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
             tensor = tensor.float()
 
         return tensor if device is None else tensor.to(device)
+
+    return tree.map_structure(mapping, x)
+
+
+@PublicAPI
+def copy_torch_tensors(x: TensorStructType, device: Optional[str] = None):
+    """Creates a copy of `x` and makes deep copies torch.Tensors in x.
+
+    Also moves the copied tensors to the specified device (if not None).
+
+    Note if an object in x is not a torch.Tensor, it will be shallow-copied.
+
+    Args:
+        x : Any (possibly nested) struct possibly containing torch.Tensors.
+        device : The device to move the tensors to.
+
+    Returns:
+        Any: A new struct with the same structure as `x`, but with all
+            torch.Tensors deep-copied and moved to the specified device.
+
+    """
+
+    def mapping(item):
+        if isinstance(item, torch.Tensor):
+            return (
+                torch.clone(item.detach())
+                if device is None
+                else item.detach().to(device)
+            )
+        else:
+            return item
 
     return tree.map_structure(mapping, x)
 
@@ -578,13 +692,3 @@ def softmax_cross_entropy_with_logits(
         The resulting softmax cross-entropy given predictions and labels.
     """
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
-
-
-@PublicAPI
-class Swish(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self._beta = nn.Parameter(torch.tensor(1.0))
-
-    def forward(self, input_tensor):
-        return input_tensor * torch.sigmoid(self._beta * input_tensor)

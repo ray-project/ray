@@ -42,7 +42,7 @@ if __name__ == "__main__":
 
     temp_dir = os.path.normpath(temp_dir)
 
-    ray_exec_path = os.path.join(os.path.dirname(sys.executable), "ray")
+    ray_cli_cmd = "ray"
 
     lock_file = temp_dir + ".lock"
     lock_fd = os.open(lock_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     # same temp directory, adding a shared lock representing current ray node is
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
-    process = subprocess.Popen([ray_exec_path, "start", *arg_list], text=True)
+    process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
 
     def try_clean_temp_dir_at_exit():
         try:

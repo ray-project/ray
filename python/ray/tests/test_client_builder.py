@@ -9,13 +9,12 @@ import pytest
 import ray
 import ray.client_builder as client_builder
 import ray.util.client.server.server as ray_client_server
-from ray.experimental.state.api import list_workers
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-import time
+from ray.util.state import list_workers
 
 
 @pytest.mark.parametrize(
@@ -432,32 +431,18 @@ def test_client_deprecation_warn():
     ],
     indirect=True,
 )
-def test_worker_processes(call_ray_start):
-    """
-    Test that no workers are spawned until a remote function is called.
-    """
+def test_task_use_prestarted_worker(call_ray_start):
     ray.init("ray://localhost:50056")
 
-    # Check for 10 seconds that no workers spawned after connecting
-    for _ in range(10):
-        workers = list_workers()
-        non_driver_workers = [w for w in workers if w.get("worker_type") != "DRIVER"]
-        assert len(non_driver_workers) == 0, workers
-        time.sleep(1)
+    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
 
     @ray.remote(num_cpus=2)
     def f():
         return 42
 
     assert ray.get(f.remote()) == 42
-    time.sleep(3)
 
-    # 2 worker processes should have spawned to accommodate the remote func
-    for _ in range(10):
-        workers = list_workers()
-        non_driver_workers = [w for w in workers if w.get("worker_type") != "DRIVER"]
-        assert len(non_driver_workers) == 2, workers
-        time.sleep(1)
+    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
 
 
 if __name__ == "__main__":

@@ -24,13 +24,13 @@ For distributed systems engineers, Ray automatically handles key processes:
 ## What you can do with Ray
 
 These are some common ML workloads that individuals, organizations, and companies leverage Ray to build their AI applications:
-* [Batch inference on CPUs and GPUs](workloads.html#batch-inference-on-cpus-and-gpus)
-* [Model serving](workloads.html#model-serving)
-* [Parallel training](workloads.html#parallel-training-of-many-models)
-* [Distributed training of large models](workloads.html#distributed-training-of-large-models)
-* [Parallel hyperparameter tuning experiments](workloads.html#parallel-hyperparameter-tuning-experiment)
-* [Reinforcement learning](workloads.html#reinforcement-learning)
-* [ML platform](workloads.html#ml-platform)
+* [Batch inference on CPUs and GPUs](use-cases.html#batch-inference)
+* [Parallel training](use-cases.html#many-model-training)
+* [Model serving](use-cases.html#model-serving)
+* [Distributed training of large models](use-cases.html#distributed-training)
+* [Parallel hyperparameter tuning experiments](use-cases.html#hyperparameter-tuning)
+* [Reinforcement learning](use-cases.html#reinforcement-learning)
+* [ML platform](use-cases.html#ml-platform)
 
 ## Ray framework
 
@@ -38,66 +38,74 @@ These are some common ML workloads that individuals, organizations, and companie
 |:--:|
 |Stack of Ray libraries - unified toolkit for ML workloads.|
 
-Ray's unified compute framework comprises of three layers:
+Ray's unified compute framework consists of three layers:
 
 1. **Ray AI Runtime**--An open-source, Python, domain-specific set of libraries that equip ML engineers, data scientists, and researchers with a scalable and unified toolkit for ML applications.
-1. **Ray Core**--An open-source, Python, general purpose, distributed computing library that enables ML engineers and Python developers to scale Python applications and accelerate machine learning workloads.
-1. **Ray cluster**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
+2. **Ray Core**--An open-source, Python, general purpose, distributed computing library that enables ML engineers and Python developers to scale Python applications and accelerate machine learning workloads.
+3. **Ray cluster**--A set of worker nodes connected to a common Ray head node. Ray clusters can be fixed-size, or they can autoscale up and down according to the resources requested by applications running on the cluster.
 
-````{panels}
-:container: text-left
-:column: col-lg-4 px-2 py-2
-:card:
+```{eval-rst}
+.. grid:: 1 2 3 3
+    :gutter: 1
+    :class-container: container pb-3
 
-**Scale machine learning workloads**
-^^^
-Build ML applications with a toolkit of libraries for distributed 
-[data processing](../data/dataset.rst), 
-[model training](../train/train.rst), 
-[tuning](tune/../index.rst), 
-[reinforcement learning](../rllib/index.rst), 
-[model serving](../serve/index.rst), 
-and [more](../ray-more-libs/index.rst).
-+++
-```{link-button} ../ray-air/getting-started
-:type: ref
-:text: Ray AIR
-:classes: btn-outline-info btn-block
+    .. grid-item-card::
+
+        **Scale machine learning workloads**
+        ^^^
+        Build ML applications with a toolkit of libraries for distributed 
+        :doc:`data processing <../data/data>`, 
+        :doc:`model training <../train/train>`, 
+        :doc:`tuning <../tune/index>`, 
+        :doc:`reinforcement learning <../rllib/index>`, 
+        :doc:`model serving <../serve/index>`, 
+        and :doc:`more <../ray-more-libs/index>`.
+        +++
+        .. button-ref:: ../ray-air/getting-started
+            :color: primary
+            :outline:
+            :expand:
+        
+            Ray AIR  
+
+    .. grid-item-card::
+        
+        **Build distributed applications**
+        ^^^
+        Build and run distributed applications with a 
+        :doc:`simple and flexible API <../ray-core/walkthrough>`.
+        :doc:`Parallelize <../ray-core/walkthrough>` single machine code with 
+        little to zero code changes.
+        
+        +++
+        .. button-ref:: ../ray-core/walkthrough
+            :color: primary
+            :outline:
+            :expand:
+        
+            Ray Core
+
+    .. grid-item-card::
+        
+        **Deploy large-scale workloads**
+        ^^^
+        Deploy workloads on :doc:`AWS, GCP, Azure <../cluster/getting-started>` or 
+        :doc:`on premise <../cluster/vms/user-guides/launching-clusters/on-premises>`.
+        Use Ray cluster managers to run Ray on existing
+        :doc:`Kubernetes <../cluster/kubernetes/index>`,
+        :doc:`YARN <../cluster/vms/user-guides/community/yarn>`,
+        or :doc:`Slurm <../cluster/vms/user-guides/community/slurm>` clusters.
+        +++
+        .. button-ref:: ../cluster/getting-started
+            :color: primary
+            :outline:
+            :expand:
+        
+            Ray Clusters 
 ```
----
-
-**Build distributed applications**
-^^^
-Build and run distributed applications with a [simple and flexible API](../ray-core/walkthrough.rst).
-[Parallelize](../ray-core/walkthrough.rst) single machine code with little to zero code changes.
-
-+++
-```{link-button} ../ray-core/walkthrough
-:type: ref
-:text: Ray Core
-:classes: btn-outline-info btn-block
-```
----
-
-**Deploy large-scale workloads**
-^^^
-Deploy workloads on [AWS, GCP, Azure](../cluster/getting-started) or 
-[on premise](../cluster/vms/user-guides/launching-clusters/on-premises).
-Use Ray cluster managers to run Ray on existing
-[Kubernetes](../cluster/kubernetes/index),
-[YARN](../cluster/vms/user-guides/community/yarn),
-or [Slurm](../cluster/vms/user-guides/community/slurm) clusters.
-+++
-
-```{link-button} ../cluster/getting-started
-:type: ref
-:text: Ray Clusters
-:classes: btn-outline-info btn-block
-```
-````
 
 Each of [Ray AIR's](../ray-air/getting-started) five native libraries distributes a specific ML task:
-- [Data](../data/dataset): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
+- [Data](../data/data): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
 - [Train](../train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
 - [Tune](../tune/index): Scalable hyperparameter tuning to optimize model performance.
 - [Serve](../serve/index): Scalable and programmable serving to deploy models for online inference, with optional microbatching to improve performance.

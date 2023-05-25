@@ -107,7 +107,9 @@ def train_loop_for_worker(config):
         if online_processing:
             # Apply online preprocessing on the decoded images, cropping and
             # flipping.
-            dataset = dataset.map_batches(crop_and_flip_image_batch)
+            dataset = dataset.map_batches(
+                crop_and_flip_image_batch, batch_format="pandas"
+            )
 
         def to_tensor_iterator():
             num_steps = 0
@@ -524,7 +526,7 @@ if __name__ == "__main__":
             logger.info("Using Ray Datasets loader")
 
             # Enable block splitting to support larger file sizes w/o OOM.
-            ctx = ray.data.context.DatasetContext.get_current()
+            ctx = ray.data.context.DataContext.get_current()
             ctx.block_splitting_enabled = True
 
             datasets["train"] = build_dataset(

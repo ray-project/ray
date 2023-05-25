@@ -1,4 +1,3 @@
-import gymnasium as gym
 from typing import (
     Any,
     Callable,
@@ -10,6 +9,8 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
+
+import gymnasium as gym
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.jax.jax_modelv2 import JAXModelV2
@@ -250,10 +251,6 @@ def build_policy_class(
 
     class policy_cls(base):
         def __init__(self, obs_space, action_space, config):
-            # Set up the config from possible default-config fn and given
-            # config arg.
-            if get_default_config:
-                config = dict(get_default_config(), **config)
             self.config = config
 
             # Set the DL framework for this Policy.

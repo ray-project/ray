@@ -45,6 +45,8 @@ Predictors expose a ``predict`` method that accepts an input batch of type ``Dat
 - The predictions will be outputted by ``predict`` in the same type as the original input.
 
 
+.. _batch-prediction:
+
 Batch Prediction
 ----------------
 
@@ -144,34 +146,37 @@ Below, we provide examples of using common frameworks to do batch inference for 
 Tabular
 ~~~~~~~
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: examples/xgboost_batch_prediction.py
-        :language: python
+    .. tab-item:: XGBoost
 
-.. tabbed:: Pytorch
+        .. literalinclude:: examples/xgboost_batch_prediction.py
+            :language: python
 
-    .. literalinclude:: examples/pytorch_tabular_batch_prediction.py
-        :language: python
+    .. tab-item:: Pytorch
 
-.. tabbed:: Tensorflow
+        .. literalinclude:: examples/pytorch_tabular_batch_prediction.py
+            :language: python
 
-    .. literalinclude:: examples/tf_tabular_batch_prediction.py
-        :language: python
+    .. tab-item:: Tensorflow
 
+        .. literalinclude:: examples/tf_tabular_batch_prediction.py
+            :language: python
 
 Image
 ~~~~~
 
-.. tabbed:: Pytorch
+.. tab-set::
 
-    .. literalinclude:: examples/torch_image_batch_pretrained.py
-        :language: python
+    .. tab-item:: Pytorch
+
+        .. literalinclude:: examples/torch_image_batch_pretrained.py
+            :language: python
 
 
-.. tabbed:: Tensorflow
+    .. tab-item:: Tensorflow
 
-    Coming soon!
+        Coming soon!
 
 Text
 ~~~~
@@ -438,8 +443,8 @@ Perform inference
 
         To perform inference with the completed ``MXNetPredictor``:
 
-        1. Create a :class:`~ray.data.preprocessor.Preprocessor` and set it in the 
-           :class:`~ray.air.checkpoint.Checkpoint`. 
+        1. Create a :class:`~ray.data.preprocessor.Preprocessor` and set it in the
+           :class:`~ray.air.checkpoint.Checkpoint`.
            You can also use any of the out-of-the-box preprocessors instead of implementing your own: :ref:`air-preprocessor-ref`.
         2. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
            checkpoint.

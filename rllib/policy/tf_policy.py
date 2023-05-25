@@ -389,6 +389,7 @@ class TFPolicy(Policy):
         prev_action_batch: Optional[Union[List[TensorType], TensorType]] = None,
         prev_reward_batch: Optional[Union[List[TensorType], TensorType]] = None,
         actions_normalized: bool = True,
+        **kwargs,
     ) -> TensorType:
 
         if self._log_likelihood is None:

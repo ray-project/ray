@@ -1,8 +1,32 @@
 import gymnasium as gym
 
 from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.core.models.configs import ActorCriticEncoderConfig, MLPHeadConfig
+from ray.rllib.core.models.configs import (
+    ActorCriticEncoderConfig,
+    MLPHeadConfig,
+    FreeLogStdMLPHeadConfig,
+)
+from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
 from ray.rllib.utils import override
+
+
+def _check_if_diag_gaussian(action_distribution_cls, framework):
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import TorchDiagGaussian
+
+        assert issubclass(action_distribution_cls, TorchDiagGaussian), (
+            f"free_log_std is only supported for DiagGaussian action distributions. "
+            f"Found action distribution: {action_distribution_cls}."
+        )
+    elif framework == "tf2":
+        from ray.rllib.models.tf.tf_distributions import TfDiagGaussian
+
+        assert issubclass(action_distribution_cls, TfDiagGaussian), (
+            "free_log_std is only supported for DiagGaussian action distributions. "
+            "Found action distribution: {}.".format(action_distribution_cls)
+        )
+    else:
+        raise ValueError(f"Framework {framework} not supported for free_log_std.")
 
 
 class PPOCatalog(Catalog):
@@ -14,7 +38,7 @@ class PPOCatalog(Catalog):
         - Value Function Head: The head used to compute the value function.
 
     The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
-    for the policy and value function. See implementations of PPORLModuleBase for
+    for the policy and value function. See implementations of PPORLModule for
     more details.
 
     Any custom ActorCriticEncoder can be built by overriding the
@@ -45,20 +69,6 @@ class PPOCatalog(Catalog):
             action_space=action_space,
             model_config_dict=model_config_dict,
         )
-        free_log_std = model_config_dict.get("free_log_std")
-        assert not free_log_std, "free_log_std not supported yet."
-
-        assert isinstance(
-            observation_space, gym.spaces.Box
-        ), "This simple PPO Module only supports Box observation space."
-
-        assert len(observation_space.shape) in (
-            1,
-        ), "This simple PPO Module only supports 1D observation spaces."
-
-        assert isinstance(action_space, (gym.spaces.Discrete, gym.spaces.Box)), (
-            "This simple PPO Module only supports Discrete and Box action spaces.",
-        )
 
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
@@ -66,48 +76,41 @@ class PPOCatalog(Catalog):
             shared=self.model_config_dict["vf_share_layers"],
         )
 
-        if isinstance(action_space, gym.spaces.Discrete):
-            pi_output_dim = action_space.n
-        else:
-            pi_output_dim = action_space.shape[0] * 2
-
         post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
         post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
 
-        self.pi_head_config = MLPHeadConfig(
-            input_dim=self.encoder_config.output_dim,
+        pi_head_config_class = (
+            FreeLogStdMLPHeadConfig
+            if self.model_config_dict["free_log_std"]
+            else MLPHeadConfig
+        )
+        self.pi_head_config = pi_head_config_class(
+            input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dim=pi_output_dim,
+            # We don't know the output dimension yet, because it depends on the
+            # action distribution input dimension.
+            output_dims=None,
         )
 
         self.vf_head_config = MLPHeadConfig(
-            input_dim=self.encoder_config.output_dim,
+            input_dims=self.latent_dims,
             hidden_layer_dims=post_fcnet_hiddens,
             hidden_layer_activation=post_fcnet_activation,
             output_activation="linear",
-            output_dim=1,
+            output_dims=[1],
         )
 
-        # Set input- and output dimensions to fit PPO's needs.
-        self.encoder_config.input_dim = observation_space.shape[0]
-        self.pi_head_config.input_dim = self.encoder_config.output_dim
-        if isinstance(action_space, gym.spaces.Discrete):
-            self.pi_head_config.output_dim = int(action_space.n)
-        else:
-            self.pi_head_config.output_dim = int(action_space.shape[0] * 2)
-        self.vf_head_config.output_dim = 1
-
-    def build_actor_critic_encoder(self, framework: str):
+    def build_actor_critic_encoder(self, framework: str) -> ActorCriticEncoder:
         """Builds the ActorCriticEncoder.
 
         The default behavior is to build the encoder from the encoder_config.
         This can be overridden to build a custom ActorCriticEncoder as a means of
-        configuring the behavior of a PPORLModuleBase implementation.
+        configuring the behavior of a PPORLModule implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The ActorCriticEncoder.
@@ -115,7 +118,7 @@ class PPOCatalog(Catalog):
         return self.actor_critic_encoder_config.build(framework=framework)
 
     @override(Catalog)
-    def build_encoder(self, framework: str):
+    def build_encoder(self, framework: str) -> Encoder:
         """Builds the encoder.
 
         Since PPO uses an ActorCriticEncoder, this method should not be implemented.
@@ -124,30 +127,40 @@ class PPOCatalog(Catalog):
             "Use PPOCatalog.build_actor_critic_encoder() instead."
         )
 
-    def build_pi_head(self, framework: str):
+    def build_pi_head(self, framework: str) -> Model:
         """Builds the policy head.
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a PPORLModuleBase implementation.
+        the behavior of a PPORLModule implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The policy head.
         """
+        # Get action_distribution_cls to find out about the output dimension for pi_head
+        action_distribution_cls = self.get_action_dist_cls(framework=framework)
+        required_output_dim = action_distribution_cls.required_input_dim(
+            space=self.action_space, model_config=self.model_config_dict
+        )
+        self.pi_head_config.output_dims = (required_output_dim,)
+        if self.model_config_dict["free_log_std"]:
+            _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls, framework=framework
+            )
         return self.pi_head_config.build(framework=framework)
 
-    def build_vf_head(self, framework: str):
+    def build_vf_head(self, framework: str) -> Model:
         """Builds the value function head.
 
         The default behavior is to build the head from the vf_head_config.
         This can be overridden to build a custom value function head as a means of
-        configuring the behavior of a PPORLModuleBase implementation.
+        configuring the behavior of a PPORLModule implementation.
 
         Args:
-            framework: The framework to use. Either "torch" or "tf".
+            framework: The framework to use. Either "torch" or "tf2".
 
         Returns:
             The value function head.

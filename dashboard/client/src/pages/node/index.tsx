@@ -66,7 +66,7 @@ export const brpcLinkChanger = (href: string) => {
   return `http://${href}`;
 };
 
-export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
+export const NodeCard = (props: { node: NodeDetail }) => {
   const { node } = props;
 
   if (!node) {
@@ -83,9 +83,7 @@ export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
       <p style={{ fontWeight: "bold", fontSize: 12, textDecoration: "none" }}>
-        <Link to={props.newIA ? `nodes/${nodeId}` : `/node/${nodeId}`}>
-          {nodeId}
-        </Link>{" "}
+        <Link to={`nodes/${nodeId}`}>{nodeId}</Link>{" "}
       </p>
       <p>
         <Grid container spacing={1}>
@@ -148,15 +146,7 @@ export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
       <Grid container justify="flex-end" spacing={1} style={{ margin: 8 }}>
         <Grid>
           <Button>
-            <Link
-              to={
-                props.newIA
-                  ? `/new/logs/${encodeURIComponent(logUrl)}`
-                  : `/log/${encodeURIComponent(logUrl)}`
-              }
-            >
-              log
-            </Link>
+            <Link to={`/logs/${encodeURIComponent(logUrl)}`}>log</Link>
           </Button>
         </Grid>
       </Grid>
@@ -164,10 +154,11 @@ export const NodeCard = (props: { node: NodeDetail; newIA?: boolean }) => {
   );
 };
 
-const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
+const Nodes = () => {
   const classes = useStyles();
   const {
     msg,
+    isLoading,
     isRefreshing,
     onSwitchChange,
     nodeList,
@@ -182,7 +173,7 @@ const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
 
   return (
     <div className={classes.root}>
-      <Loading loading={msg.startsWith("Loading")} />
+      <Loading loading={isLoading} />
       <TitleCard title="NODES">
         Auto Refresh:
         <Switch
@@ -295,7 +286,6 @@ const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
                       node={node}
                       isRefreshing={isRefreshing}
                       startExpanded={nodeList.length === 1}
-                      newIA={newIA}
                     />
                   ))}
               </TableBody>
@@ -311,7 +301,7 @@ const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
               )
               .map((e) => (
                 <Grid item xs={6}>
-                  <NodeCard node={e} newIA={newIA} />
+                  <NodeCard node={e} />
                 </Grid>
               ))}
           </Grid>
@@ -324,14 +314,14 @@ const Nodes = ({ newIA = false }: { newIA?: boolean }) => {
 /**
  * Cluster page for the new IA
  */
-export const NewIAClusterPage = () => {
+export const ClusterMainPageLayout = () => {
   return (
     <React.Fragment>
       <MainNavPageInfo
         pageInfo={{
           title: "Cluster",
           id: "cluster",
-          path: "/new/cluster",
+          path: "/cluster",
         }}
       />
       <Outlet />

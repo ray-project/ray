@@ -2,10 +2,10 @@ humanoid-ppo:
     env: Humanoid-v1
     run: PPO
     stop:
-        episode_reward_mean: 6000
+        sampler_results/episode_reward_mean: 6000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         gamma: 0.995
         kl_coeff: 1.0
         num_sgd_iter: 20

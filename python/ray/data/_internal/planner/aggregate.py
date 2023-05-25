@@ -17,18 +17,17 @@ from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler impor
 from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data.aggregate import AggregateFn
-from ray.data.block import KeyFn
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
+from ray.data._internal.util import unify_block_metadata_schema
 
 
 def generate_aggregate_fn(
-    key: Optional[KeyFn],
+    key: Optional[str],
     aggs: List[AggregateFn],
 ) -> AllToAllTransformFn:
     """Generate function to aggregate blocks by the specified key column or key
     function.
     """
-    # TODO: validate blocks with AggregateFn._validate.
     if len(aggs) == 0:
         raise ValueError("Aggregate requires at least one aggregation")
 
@@ -37,11 +36,16 @@ def generate_aggregate_fn(
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         blocks = []
+        metadata = []
         for ref_bundle in refs:
-            for block, _ in ref_bundle.blocks:
+            for block, block_metadata in ref_bundle.blocks:
                 blocks.append(block)
+                metadata.append(block_metadata)
         if len(blocks) == 0:
             return (blocks, {})
+        unified_schema = unify_block_metadata_schema(metadata)
+        for agg_fn in aggs:
+            agg_fn._validate(unified_schema)
 
         num_mappers = len(blocks)
 
@@ -63,7 +67,7 @@ def generate_aggregate_fn(
             key=key,
             aggs=aggs,
         )
-        if DatasetContext.get_current().use_push_based_shuffle:
+        if DataContext.get_current().use_push_based_shuffle:
             scheduler = PushBasedShuffleTaskScheduler(agg_spec)
         else:
             scheduler = PullBasedShuffleTaskScheduler(agg_spec)

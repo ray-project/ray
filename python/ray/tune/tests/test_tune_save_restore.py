@@ -74,7 +74,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             name=exp_name,
             stop={"training_iteration": 1},
             checkpoint_freq=1,
-            local_dir=local_dir,
+            storage_path=local_dir,
             config={"env": "CartPole-v0", "log_level": "DEBUG"},
         ).trials
 
@@ -83,7 +83,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
         self.assertIsNone(trial.error_file)
         self.assertEqual(trial.local_dir, exp_dir)
-        self.assertEqual(trial.logdir, abs_trial_dir)
+        self.assertEqual(trial.local_path, abs_trial_dir)
 
         self.assertTrue(os.path.isdir(absolute_local_dir), absolute_local_dir)
         self.assertTrue(os.path.isdir(exp_dir))

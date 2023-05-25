@@ -12,7 +12,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument("--eager-tracing", action="store_true")
@@ -72,6 +72,9 @@ if __name__ == "__main__":
             "framework": args.framework,
             # Run with tracing enabled for tf2?
             "eager_tracing": args.eager_tracing,
+            # TODO (Kourosh): Enable when LSTMs are supported.
+            "_enable_learner_api": False,
+            "_enable_rl_module_api": False,
         }
     )
 
@@ -102,7 +105,8 @@ if __name__ == "__main__":
     # >>
     # >> while True:
     # >>     a, state_out, _ = algo.compute_single_action(
-    # ..         obs, state, prev_a, prev_r)
+    # ..         obs, state, prev_action=prev_a, prev_reward=prev_r
+    # ..     )
     # >>     obs, reward, done, truncated, _ = env.step(a)
     # >>     if done:
     # >>         obs, info = env.reset()

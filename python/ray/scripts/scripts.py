@@ -45,12 +45,6 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
 
-from ray.experimental.state.state_cli import (
-    ray_get,
-    ray_list,
-    logs_state_cli_group,
-    summary_state_cli_group,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -404,10 +398,10 @@ def debug(address):
 @click.option(
     "--dashboard-host",
     required=False,
-    default="localhost",
+    default=ray_constants.DEFAULT_DASHBOARD_IP,
     help="the host to bind the dashboard server to, either localhost "
     "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is localhost.",
+    "is 127.0.0.1",
 )
 @click.option(
     "--dashboard-port",
@@ -429,6 +423,12 @@ def debug(address):
     type=int,
     default=None,
     help="the port for dashboard agents to listen for grpc on.",
+)
+@click.option(
+    "--dashboard-grpc-port",
+    type=int,
+    default=None,
+    help="The port for the dashboard head to listen for grpc on.",
 )
 @click.option(
     "--block",
@@ -552,6 +552,7 @@ def start(
     dashboard_port,
     dashboard_agent_listen_port,
     dashboard_agent_grpc_port,
+    dashboard_grpc_port,
     block,
     plasma_directory,
     autoscaling_config,
@@ -578,7 +579,10 @@ def start(
             cf.bold("--port"),
         )
 
+    # Whether the original arguments include node_ip_address.
+    include_node_ip_address = False
     if node_ip_address is not None:
+        include_node_ip_address = True
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
@@ -635,6 +639,7 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
+        dashboard_grpc_port=dashboard_grpc_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
@@ -747,104 +752,77 @@ def start(
         cli_logger.newline()
         with cli_logger.group("Next steps"):
             dashboard_url = node.address_info["webui_url"]
-            if bootstrap_address.startswith("127.0.0.1:"):
-                if ray_constants.ENABLE_RAY_CLUSTER:
-                    cli_logger.print(
-                        "This Ray runtime only accepts connections from local host."
-                    )
-                    cli_logger.print(
-                        "To accept connections from remote hosts, "
-                        "specify a public ip when starting"
-                    )
-                    cli_logger.print(
-                        "the head node: ray start --head --node-ip-address=<public-ip>."
-                    )
-                else:
-                    cli_logger.print(
-                        "Multi-node Ray clusters are not supported on OSX and Windows."
-                    )
-                    cli_logger.print(
-                        "If you would like to proceed anyway, restart Ray with:"
-                    )
-                    cli_logger.print(
-                        cf.bold("  ray stop"),
-                    )
-                    cli_logger.print(
-                        cf.bold("  {}=true ray start"),
-                        ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR,
-                    )
-                cli_logger.newline()
-            else:
+            if ray_constants.ENABLE_RAY_CLUSTER:
                 cli_logger.print("To add another node to this Ray cluster, run")
                 # NOTE(kfstorm): Java driver rely on this line to get the address
                 # of the cluster. Please be careful when updating this line.
                 cli_logger.print(
-                    cf.bold("  ray start --address='{}'"),
+                    cf.bold(" {} ray start --address='{}'"),
+                    f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
+                    if ray_constants.IS_WINDOWS_OR_OSX
+                    else "",
                     bootstrap_address,
                 )
-                cli_logger.newline()
-            if ray_constants.ENABLE_RAY_CLUSTER:
+
+            cli_logger.newline()
+            cli_logger.print("To connect to this Ray cluster:")
+            with cli_logger.indented():
+                cli_logger.print("{} ray", cf.magenta("import"))
                 cli_logger.print(
-                    "To connect to this Ray cluster, run `ray.init()` as usual:"
-                )
-                with cli_logger.indented():
-                    cli_logger.print("{} ray", cf.magenta("import"))
-                    cli_logger.print(
-                        "ray{}init()",
-                        cf.magenta("."),
+                    "ray{}init({})",
+                    cf.magenta("."),
+                    "_node_ip_address{}{}".format(
+                        cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
                     )
+                    if include_node_ip_address
+                    else "",
+                )
+
+            if dashboard_url:
                 cli_logger.newline()
+                cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
                 cli_logger.print(
-                    "To connect to this Ray instance from outside of "
-                    "the cluster, for example "
+                    cf.bold(
+                        "  RAY_ADDRESS='http://{}' ray job submit "
+                        "--working-dir . "
+                        "-- python my_script.py"
+                    ),
+                    dashboard_url,
                 )
-                cli_logger.print(
-                    "when connecting to a remote cluster from your laptop, "
-                    "make sure the"
-                )
-                cli_logger.print(
-                    "dashboard {}is accessible and use the Ray Jobs API. For example:",
-                    f"({dashboard_url}) " if dashboard_url else "",
-                )
-                if dashboard_url:
-                    cli_logger.print(
-                        cf.bold(
-                            "  RAY_ADDRESS='http://<dashboard URL>:{}' ray job submit "
-                            "--working-dir . "
-                            "-- python my_script.py"
-                        ),
-                        ray_params.dashboard_port,
-                    )
                 cli_logger.newline()
                 cli_logger.print(
                     "See https://docs.ray.io/en/latest/cluster/running-applications"
-                    "/job-submission/index.html"
+                    "/job-submission/index.html "
                 )
                 cli_logger.print(
-                    "for more information on connecting to the Ray cluster from "
-                    "a remote client."
+                    "for more information on submitting Ray jobs to the Ray cluster."
                 )
+
+            cli_logger.newline()
+            cli_logger.print("To terminate the Ray runtime, run")
+            cli_logger.print(cf.bold("  ray stop"))
+
+            cli_logger.newline()
+            cli_logger.print("To view the status of the cluster, use")
+            cli_logger.print("  {}".format(cf.bold("ray status")))
+
+            if dashboard_url:
                 cli_logger.newline()
-                cli_logger.print("To see the status of the cluster, use")
-                cli_logger.print("  {}".format(cf.bold("ray status")))
-                if dashboard_url:
-                    cli_logger.print("To monitor and debug Ray, view the dashboard at ")
-                    cli_logger.print(
-                        "  {}".format(
-                            cf.bold(dashboard_url),
-                        )
+                cli_logger.print("To monitor and debug Ray, view the dashboard at ")
+                cli_logger.print(
+                    "  {}".format(
+                        cf.bold(dashboard_url),
                     )
+                )
+
                 cli_logger.newline()
                 cli_logger.print(
                     cf.underlined(
-                        "If connection fails, check your "
+                        "If connection to the dashboard fails, check your "
                         "firewall settings and "
                         "network configuration."
                     )
                 )
-                cli_logger.newline()
-            cli_logger.print("To terminate the Ray runtime, run")
-            cli_logger.print(cf.bold("  ray stop"))
         ray_params.gcs_address = bootstrap_address
     else:
         # Start worker node.
@@ -933,6 +911,9 @@ def start(
         cli_logger.print(cf.bold("  ray stop"))
         cli_logger.flush()
 
+    assert ray_params.gcs_address is not None
+    ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
+
     if block:
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
@@ -986,9 +967,6 @@ def start(
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
                 os._exit(1)
         # not-reachable
-
-    assert ray_params.gcs_address is not None
-    ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
 
 
 @cli.command()
@@ -1958,7 +1936,7 @@ def status(address: str, redis_password: str, verbose: bool):
     if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
-    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    gcs_client = ray._raylet.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DEBUG_AUTOSCALING_STATUS
@@ -2262,7 +2240,7 @@ def healthcheck(address, redis_password, component, skip_version_check):
             pass
         sys.exit(1)
 
-    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    gcs_client = ray._raylet.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     report_str = ray.experimental.internal_kv._internal_kv_get(
         component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK
@@ -2447,10 +2425,22 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-cli.add_command(ray_list, name="list")
-cli.add_command(ray_get, name="get")
-add_command_alias(summary_state_cli_group, name="summary", hidden=False)
-add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+
+try:
+    from ray.util.state.state_cli import (
+        ray_get,
+        ray_list,
+        logs_state_cli_group,
+        summary_state_cli_group,
+    )
+
+    cli.add_command(ray_list, name="list")
+    cli.add_command(ray_get, name="get")
+    add_command_alias(summary_state_cli_group, name="summary", hidden=False)
+    add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+except ImportError as e:
+    logger.debug(f"Integrating ray state command line tool failed: {e}")
+
 
 try:
     from ray.dashboard.modules.job.cli import job_cli_group

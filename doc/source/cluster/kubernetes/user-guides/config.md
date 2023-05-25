@@ -26,15 +26,13 @@ kind: RayCluster
 metadata:
   name: raycluster-complete
 spec:
-  rayVersion: "2.0.0"
+  rayVersion: "2.3.0"
   enableInTreeAutoscaling: true
   autoscalerOptions:
      ...
   headGroupSpec:
     serviceType: ClusterIP # Options are ClusterIP, NodePort, and LoadBalancer
-    enableIngress: false # Optional
     rayStartParams:
-      block: true
       dashboard-host: "0.0.0.0"
       ...
     template: # Pod template
@@ -42,7 +40,7 @@ spec:
         spec: # Pod spec
             containers:
             - name: ray-head
-              image: rayproject/ray-ml:2.0.0
+              image: rayproject/ray-ml:2.3.0
               resources:
                 limits:
                   cpu: 14
@@ -74,11 +72,6 @@ spec:
         ...
     template: # Pod template
       spec:
-        # Keep this initContainer in each workerGroup template.
-        initContainers:
-        - name: init-myservice
-          image: busybox:1.28
-          command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
         ...
   # Another workerGroup
   - groupName: medium-group
@@ -200,13 +193,6 @@ The ``rayStartParams`` field of each group spec is a string-string map of argume
 container’s `ray start` entrypoint. For the full list of arguments, refer to
 the documentation for {ref}`ray start <ray-start-doc>`. We make special note of the following arguments:
 
-### block
-For most use-cases, this field should be set to "true" for all Ray pod. The container's Ray
-entrypoint will then block forever until a Ray process exits, at which point the container
-will exit. If this field is omitted, `ray start` will start Ray processes in the background and the container
-will subsequently sleep forever until terminated. (Future versions of KubeRay may set
-block to true by default. See [KubeRay issue #368](https://github.com/ray-project/kuberay/issues/368).)
-
 ### dashboard-host
 For most use-cases, this field should be set to "0.0.0.0" for the Ray head pod.
 This is required to expose the Ray dashboard outside the Ray cluster. (Future versions might set
@@ -266,6 +252,7 @@ for several services of the Ray head pod, including
 - Ray Dashboard (default port 8265)
 - Ray GCS server (default port 6379)
 - Ray Serve (default port 8000)
+- Ray Prometheus metrics (default port 8080)
 
 The name of the configured Kubernetes Service is the name, `metadata.name`, of the RayCluster
 followed by the suffix <nobr>`head-svc`</nobr>. For the example CR given on this page, the name of
@@ -295,12 +282,7 @@ a service of type LoadBalancer or NodePort. Set `headGroupSpec.serviceType`
 to the appropriate type for your application.
 
 You may wish to set up an ingress to expose the Ray head's services outside the cluster.
-If you set the optional boolean field `headGroupSpec.enableIngress` to `true`,
-the KubeRay operator will create an ingress for your Ray cluster. See the [KubeRay documentation][IngressDoc]
-for details. However, it is up to you to set up an ingress controller.
-Moreover, the ingress created by the KubeRay operator [might not be compatible][IngressIssue] with your network setup.
-It is valid to omit the `headGroupSpec.enableIngress` field and configure an ingress object yourself.
-
+See the [KubeRay documentation][IngressDoc] for details.
 
 ### Specifying non-default ports.
 If you wish to override the ports exposed by the Ray head service, you may do so by specifying
@@ -329,25 +311,8 @@ rayStartParams:
   ...
 ```
 (kuberay-config-miscellaneous)=
-## Pod and container lifecyle: preStop hooks and initContainers
-There are two pieces of pod configuration that should always be included
-in the RayCluster CR. Future versions of KubeRay may configure these elements automatically.
+## Pod and container lifecyle: preStopHook
 
-## initContainer
-It is required for the configuration of each `workerGroupSpec`'s pod template to include
-the following block:
-```yaml
-initContainers:
-- name: init-myservice
-  image: busybox:1.28
-  command: ['sh', '-c', "until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 2; done"]
-```
-This instructs the worker pod to wait for creation of the Ray head service. The worker's `ray start`
-command will use this service to connect to the Ray head.
-
-(It is not required to include this init container in the Ray head pod's configuration.)
-
-## preStopHook
 It is recommended for every Ray container's configuration
 to include the following blocking block:
 ```yaml
@@ -359,4 +324,3 @@ lifecycle:
 To ensure graceful termination, `ray stop` is executed prior to the Ray pod's termination.
 
 [IngressDoc]: https://ray-project.github.io/kuberay/guidance/ingress/
-[IngressIssue]: https://github.com/ray-project/kuberay/issues/441

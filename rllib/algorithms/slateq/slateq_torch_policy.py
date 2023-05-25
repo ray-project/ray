@@ -421,7 +421,7 @@ def setup_late_mixins(
 SlateQTorchPolicy = build_policy_class(
     name="SlateQTorchPolicy",
     framework="torch",
-    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.SlateQConfig(),
     before_init=setup_early,
     after_init=setup_late_mixins,
     loss_fn=build_slateq_losses,

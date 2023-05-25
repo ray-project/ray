@@ -44,13 +44,16 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     orgId = commandContextTags.apply("orgId")
     clusterId = commandContextTags.apply("clusterId")
 
-    template = "/driver-proxy/o/{orgId}/{clusterId}/{port}/"
-    proxy_url = template.format(orgId=orgId, clusterId=clusterId, port=port)
+    proxy_link = f"/driver-proxy/o/{orgId}/{clusterId}/{port}/"
+    proxy_url = f"https://dbc-dp-{orgId}.cloud.databricks.com{proxy_link}"
+
+    print("To monitor and debug Ray from Databricks, view the dashboard at ")
+    print(f" {proxy_url}")
 
     displayHTML(
         f"""
       <div style="margin-bottom: 16px">
-          <a href="{proxy_url}">
+          <a href="{proxy_link}">
               Open {title} in a new tab
           </a>
       </div>

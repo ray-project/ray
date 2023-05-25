@@ -7,6 +7,7 @@ import unittest
 import ray
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.pg import PGConfig
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -447,7 +448,8 @@ class TestMultiAgentEnv(unittest.TestCase):
         ev = RolloutWorker(
             env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
             default_policy_class=ModelBasedPolicy,
-            config=AlgorithmConfig()
+            config=DQNConfig()
+            .framework("tf")
             .rollouts(
                 rollout_fragment_length=5,
                 num_rollout_workers=0,

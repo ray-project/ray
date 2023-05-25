@@ -6,6 +6,7 @@ from joblib._parallel_backends import MultiprocessingBackend
 from joblib.pool import PicklingPool
 
 import ray
+from ray._private.usage import usage_lib
 from ray.util.multiprocessing.pool import Pool
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class RayBackend(MultiprocessingBackend):
     ):
         """``ray_remote_args`` will be used to configure Ray Actors
         making up the pool."""
-        ray._private.usage.usage_lib.record_library_usage("util.joblib")
+        usage_lib.record_library_usage("util.joblib")
 
         self.ray_remote_args = ray_remote_args
         super().__init__(

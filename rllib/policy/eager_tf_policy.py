@@ -6,8 +6,9 @@ import functools
 import logging
 import os
 import threading
-import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Union
+
+import tree  # pip install dm_tree
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -174,22 +175,39 @@ def _traced_eager_policy(eager_policy_cls):
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
 
-            # NOTE: In the new RLModule stack the sampling side is not traced with this
-            # justification that in order to speed up sampling we need to use more
-            # actors.
             # Create a traced version of `self._compute_actions_helper`.
-            if (
-                not self.config.get("_enable_rl_module_api", False)
-                and self._traced_compute_actions_helper is False
-                and not self._no_tracing
-            ):
-                self._compute_actions_helper = _convert_eager_inputs(
-                    tf.function(
-                        super(TracedEagerPolicy, self)._compute_actions_helper,
-                        autograph=False,
-                        reduce_retracing=True,
+            if self._traced_compute_actions_helper is False and not self._no_tracing:
+                if self.config.get("_enable_rl_module_api"):
+                    self._compute_actions_helper_rl_module_explore = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_explore,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
                     )
-                )
+                    self._compute_actions_helper_rl_module_inference = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_inference,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
+                    )
+                else:
+                    self._compute_actions_helper = _convert_eager_inputs(
+                        tf.function(
+                            super(TracedEagerPolicy, self)._compute_actions_helper,
+                            autograph=False,
+                            reduce_retracing=True,
+                        )
+                    )
                 self._traced_compute_actions_helper = True
 
             # Now that the helper method is traced, call super's
@@ -386,9 +404,6 @@ def _build_eager_tf_policy(
             )
             self._max_seq_len = config["model"]["max_seq_len"]
 
-            if get_default_config:
-                config = dict(get_default_config(), **config)
-
             if validate_spaces:
                 validate_spaces(self, observation_space, action_space, config)
 
@@ -443,7 +458,7 @@ def _build_eager_tf_policy(
             else:
                 optimizers = tf.keras.optimizers.Adam(config["lr"])
             optimizers = force_list(optimizers)
-            if getattr(self, "exploration", None):
+            if self.exploration:
                 optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
             # The list of local (tf) optimizers (one per loss term).
@@ -561,6 +576,7 @@ def _build_eager_tf_policy(
             prev_action_batch=None,
             prev_reward_batch=None,
             actions_normalized=True,
+            **kwargs,
         ):
             if action_sampler_fn and action_distribution_fn is None:
                 raise ValueError(
@@ -583,8 +599,9 @@ def _build_eager_tf_policy(
                     prev_reward_batch
                 )
 
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(explore=False)
+            if self.exploration:
+                # Exploration hook before each forward pass.
+                self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
             if action_distribution_fn:
@@ -732,7 +749,10 @@ def _build_eager_tf_policy(
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
-            state["_exploration_state"] = self.exploration.get_state()
+            if not self.config.get("_enable_rl_module_api", False) and self.exploration:
+                # This is not compatible with RLModules, which have a method
+                # `forward_exploration` to specify custom exploration behavior.
+                state["_exploration_state"] = self.exploration.get_state()
             return state
 
         @override(Policy)

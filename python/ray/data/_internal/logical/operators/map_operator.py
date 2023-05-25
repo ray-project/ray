@@ -1,20 +1,9 @@
-import sys
 from typing import Any, Dict, Iterable, Optional, Union
 
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.compute import (
-    UDF,
-    ComputeStrategy,
-)
-from ray.data.block import BatchUDF, RowUDF
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
-from ray.data.datasource import Datasource
-
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 
 class AbstractMap(LogicalOperator):
@@ -49,7 +38,7 @@ class AbstractUDFMap(AbstractMap):
         self,
         name: str,
         input_op: LogicalOperator,
-        fn: UDF,
+        fn: UserDefinedFunction,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -83,7 +72,7 @@ class AbstractUDFMap(AbstractMap):
         self._fn_constructor_args = fn_constructor_args
         self._fn_constructor_kwargs = fn_constructor_kwargs
         self._target_block_size = target_block_size
-        self._compute = compute or "tasks"
+        self._compute = compute or TaskPoolStrategy()
 
 
 class MapBatches(AbstractUDFMap):
@@ -92,10 +81,9 @@ class MapBatches(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: BatchUDF,
+        fn: UserDefinedFunction,
         batch_size: Optional[int] = DEFAULT_BATCH_SIZE,
-        batch_format: Literal["default", "pandas", "pyarrow", "numpy"] = "default",
-        prefetch_batches: int = 0,
+        batch_format: Optional[str] = "default",
         zero_copy_batch: bool = False,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
@@ -119,7 +107,6 @@ class MapBatches(AbstractUDFMap):
         )
         self._batch_size = batch_size
         self._batch_format = batch_format
-        self._prefetch_batches = prefetch_batches
         self._zero_copy_batch = zero_copy_batch
 
 
@@ -129,7 +116,7 @@ class MapRows(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: RowUDF,
+        fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -142,33 +129,13 @@ class MapRows(AbstractUDFMap):
         )
 
 
-class Write(AbstractUDFMap):
-    """Logical operator for write."""
-
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        datasource: Datasource,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-        **write_args,
-    ):
-        super().__init__(
-            "Write",
-            input_op,
-            fn=lambda x: x,
-            ray_remote_args=ray_remote_args,
-        )
-        self._datasource = datasource
-        self._write_args = write_args
-
-
 class Filter(AbstractUDFMap):
     """Logical operator for filter."""
 
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: RowUDF,
+        fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -187,7 +154,7 @@ class FlatMap(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: RowUDF,
+        fn: UserDefinedFunction,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):

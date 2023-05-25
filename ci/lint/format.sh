@@ -149,16 +149,20 @@ MYPY_FILES=(
 
 
 BLACK_EXCLUDES=(
-    '--force-exclude' 'python/ray/cloudpickle/*'
-    '--force-exclude' 'python/build/*'
-    '--force-exclude' 'python/ray/core/src/ray/gcs/*'
-    '--force-exclude' 'python/ray/thirdparty_files/*'
-    '--force-exclude' 'python/ray/_private/thirdparty/*'
+    '--force-exclude'
+    'python/ray/cloudpickle/*|'`
+    `'python/build/*|'`
+    `'python/ray/core/src/ray/gcs/*|'`
+    `'python/ray/thirdparty_files/*|'`
+    `'python/ray/_private/thirdparty/*|'`
+    `'python/ray/serve/tests/test_config_files/syntax_error\.py|'`
+    `'doc/external/*'
 )
 
 GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
   ':(exclude)python/ray/_private/runtime_env/_clonevirtualenv.py'
+  ':(exclude)doc/external/'
 )
 
 JAVA_EXCLUDES=(

@@ -54,7 +54,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (const, override));
   MOCK_METHOD(bool,
               RetryTaskIfPossible,
-              (const TaskID &task_id, bool task_failed_due_to_oom),
+              (const TaskID &task_id, const rpc::RayErrorInfo &error_info),
               (override));
   MOCK_METHOD(void, MarkDependenciesResolved, (const TaskID &task_id), (override));
   MOCK_METHOD(void,

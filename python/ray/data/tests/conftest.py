@@ -36,6 +36,22 @@ def ray_start_10_cpus_shared(request):
         yield res
 
 
+@pytest.fixture(scope="module")
+def enable_strict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = True
+    yield
+    ctx.strict_mode = False
+
+
+@pytest.fixture(scope="module")
+def enable_nonstrict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = False
+    yield
+    ctx.strict_mode = True
+
+
 @pytest.fixture(scope="function")
 def aws_credentials():
     import os
@@ -185,10 +201,12 @@ def write_partitioned_df():
         partition_keys,
         partition_path_encoder,
         file_writer_fn,
+        file_name_suffix="_1",
     ):
         import urllib.parse
 
         df_partitions = [df for _, df in df.groupby(partition_keys, as_index=False)]
+        paths = []
         for df_partition in df_partitions:
             partition_values = []
             for key in partition_keys:
@@ -197,12 +215,15 @@ def write_partitioned_df():
             partition_path_encoder.scheme.resolved_filesystem.create_dir(path)
             base_dir = partition_path_encoder.scheme.base_dir
             parsed_base_dir = urllib.parse.urlparse(base_dir)
+            file_name = f"test_{file_name_suffix}.tmp"
             if parsed_base_dir.scheme:
                 # replace the protocol removed by the partition path generator
-                path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", "test.tmp")
+                path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", file_name)
             else:
-                path = os.path.join(path, "test.tmp")
+                path = os.path.join(path, file_name)
             file_writer_fn(df_partition, path)
+            paths.append(path)
+        return paths
 
     yield _write_partitioned_df
 
@@ -246,21 +267,35 @@ def assert_base_partitioned_ds():
         assert ds.schema() is not None
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
-        assert (
-            str(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
-        assert (
-            repr(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
+
+        # For Datasets with long string representations, the format will include
+        # whitespace and newline characters, which is difficult to generalize
+        # without implementing the formatting logic again (from
+        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
+        # characters to test the string contents regardless of the string repr length.
+        def _remove_whitespace(ds_str):
+            for c in ["\n", "   ", " "]:
+                ds_str = ds_str.replace(c, "")
+            return ds_str
+
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(str(ds)), ds
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(repr(ds)), ds
+
         if num_computed is not None:
             assert (
                 ds._plan.execute()._num_computed() == num_computed
             ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
 
         # Force a data read.
-        values = ds_take_transform_fn(ds.take())
+        values = ds_take_transform_fn(ds.take_all())
         if num_computed is not None:
             assert (
                 ds._plan.execute()._num_computed() == num_computed
@@ -274,16 +309,16 @@ def assert_base_partitioned_ds():
 
 
 @pytest.fixture
-def restore_dataset_context(request):
-    """Restore any DatasetContext changes after the test runs"""
-    original = copy.deepcopy(ray.data.context.DatasetContext.get_current())
+def restore_data_context(request):
+    """Restore any DataContext changes after the test runs"""
+    original = copy.deepcopy(ray.data.context.DataContext.get_current())
     yield
-    ray.data.context.DatasetContext._set_current(original)
+    ray.data.context.DataContext._set_current(original)
 
 
 @pytest.fixture(params=[True, False])
 def use_push_based_shuffle(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.use_push_based_shuffle
     ctx.use_push_based_shuffle = request.param
     yield request.param
@@ -292,7 +327,7 @@ def use_push_based_shuffle(request):
 
 @pytest.fixture(params=[True, False])
 def enable_automatic_tensor_extension_cast(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_tensor_extension_casting
     ctx.enable_tensor_extension_casting = request.param
     yield request.param
@@ -301,7 +336,7 @@ def enable_automatic_tensor_extension_cast(request):
 
 @pytest.fixture(params=[True, False])
 def enable_auto_log_stats(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_auto_log_stats
     ctx.enable_auto_log_stats = request.param
     yield request.param
@@ -310,7 +345,7 @@ def enable_auto_log_stats(request):
 
 @pytest.fixture(params=[True])
 def enable_dynamic_block_splitting(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.block_splitting_enabled
     ctx.block_splitting_enabled = request.param
     yield request.param
@@ -319,7 +354,7 @@ def enable_dynamic_block_splitting(request):
 
 @pytest.fixture(params=[1024])
 def target_max_block_size(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.target_max_block_size
     ctx.target_max_block_size = request.param
     yield request.param
@@ -328,7 +363,7 @@ def target_max_block_size(request):
 
 @pytest.fixture
 def enable_optimizer():
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original_backend = ctx.new_execution_backend
     original_optimizer = ctx.optimizer_enabled
     ctx.new_execution_backend = True
@@ -340,7 +375,7 @@ def enable_optimizer():
 
 @pytest.fixture
 def enable_streaming_executor():
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original_backend = ctx.new_execution_backend
     use_streaming_executor = ctx.use_streaming_executor
     ctx.new_execution_backend = True

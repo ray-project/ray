@@ -7,9 +7,9 @@ Custom Datasources
 .. note::
 
   This MongoDatasource guide below is for education only. For production use of MongoDB
-  in Ray Datasets, see :ref:`Creating Dataset from MongoDB <dataset_mongo_db>`.
+  in Ray Data, see :ref:`Creating Dataset from MongoDB <dataset_mongo_db>`.
 
-Ray Datasets supports multiple ways to :ref:`create a dataset <creating_datasets>`, 
+Ray Data supports multiple ways to :ref:`create a dataset <loading_data>`,
 allowing you to easily ingest data of common formats from popular sources. However, if the 
 datasource you want to read from is not in the built-in list, don't worry, you can implement 
 a custom one for your use case. In this guide, we will walk you through how to build 
@@ -94,7 +94,7 @@ MongoDB. This ``Reader`` creates a list of :class:`~ray.data.ReadTask` for the g
 list of MongoDB pipelines. Each :class:`~ray.data.ReadTask` returns a list of blocks when called, and
 each :class:`~ray.data.ReadTask` is executed in remote workers to parallelize the execution.
 
-You can find documentation about Ray Datasets :ref:`block concept here <dataset_concept>` and :ref:`block APIs here <block-api>`.
+You can find documentation about Ray Data :ref:`block concept here <dataset_concept>` and :ref:`block APIs here <block-api>`.
 
 First, let's handle a single MongoDB pipeline, which is the unit of execution in
 :class:`~ray.data.ReadTask`. We need to connect to MongoDB, execute the pipeline against it,
@@ -169,7 +169,7 @@ a ``MongoDatasource``.
     :start-after: __mongo_datasource_start__
     :end-before: __mongo_datasource_end__
 
-Now you can create a Ray Dataset from and write back to MongoDB, just like 
+Now you can create a Dataset from and write back to MongoDB, just like 
 any other datasource!
 
 .. code-block:: python

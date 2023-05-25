@@ -305,6 +305,14 @@ class NodeInfoAccessor {
   virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                const StatusCallback &callback);
 
+  /// Send a check alive request to GCS for the liveness of some node.
+  ///
+  /// \param callback The callback function once the request is finished.
+  /// \param timeout_ms The timeout for this request.
+  /// \return Status
+  virtual Status AsyncCheckSelfAlive(const std::function<void(Status, bool)> &callback,
+                                     int64_t timeout_ms);
+
   /// Drain (remove the information of the node from the cluster) the local node from GCS
   /// asynchronously.
   ///

@@ -160,6 +160,10 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
   Tick();
 }
 
+GcsPlacementGroupManager::GcsPlacementGroupManager(
+    instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
+    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
+
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {
   // NOTE: After the abnormal recovery of the network between GCS client and GCS server or
@@ -752,11 +756,13 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
         iter->second->GetMutableStats()->set_scheduling_state(
             rpc::PlacementGroupStats::QUEUED);
         AddToPendingQueue(iter->second, 0);
+        RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
+            iter->second->GetPlacementGroupID(),
+            iter->second->GetPlacementGroupTableData(),
+            [this](Status status) { SchedulePendingPlacementGroups(); }));
       }
     }
   }
-
-  SchedulePendingPlacementGroups();
 }
 
 void GcsPlacementGroupManager::OnNodeAdd(const NodeID &node_id) {
@@ -822,7 +828,9 @@ void GcsPlacementGroupManager::Tick() {
   // added as a safety check. https://github.com/ray-project/ray/pull/18419
   SchedulePendingPlacementGroups();
   execute_after(
-      io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+      io_context_,
+      [this] { Tick(); },
+      std::chrono::milliseconds(1000) /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
@@ -850,7 +858,7 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
       break;
     }
   }
-  gcs_resource_manager_.UpdatePlacementGroupLoad(move(placement_group_load));
+  gcs_resource_manager_.UpdatePlacementGroupLoad(std::move(placement_group_load));
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
@@ -962,12 +970,27 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
                       << placement_group->GetPlacementGroupID();
         placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
         AddToPendingQueue(placement_group, 0);
-        SchedulePendingPlacementGroups();
+        RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
+            placement_group->GetPlacementGroupID(),
+            placement_group->GetPlacementGroupTableData(),
+            [this](Status status) { SchedulePendingPlacementGroups(); }));
         return true;
       }
     }
   }
   return false;
+}
+
+const absl::btree_multimap<
+    int64_t,
+    std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
+    &GcsPlacementGroupManager::GetPendingPlacementGroups() const {
+  return pending_placement_groups_;
+}
+
+const std::deque<std::shared_ptr<GcsPlacementGroup>>
+    &GcsPlacementGroupManager::GetInfeasiblePlacementGroups() const {
+  return infeasible_placement_groups_;
 }
 
 }  // namespace gcs

@@ -1,26 +1,33 @@
 import threading
 import time
 import os
+import uuid
 from typing import Iterator, Optional
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     Executor,
     ExecutionOptions,
     ExecutionResources,
+    OutputIterator,
     RefBundle,
     PhysicalOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.streaming_executor_state import (
+    AutoscalingState,
     Topology,
     TopologyResourceUsage,
     OpState,
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
+)
+from ray.data._internal.execution.autoscaling_requester import (
+    get_or_create_autoscaling_requester_actor,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
@@ -28,7 +35,14 @@ from ray.data._internal.stats import DatasetStats
 logger = DatasetLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
-DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
+DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
+
+# Force a progress bar update after this many events processed . This avoids the
+# progress bar seeming to stall for very large scale workloads.
+PROGRESS_BAR_UPDATE_INTERVAL = 50
+
+# Visible for testing.
+_num_shutdown = 0
 
 
 class StreamingExecutor(Executor, threading.Thread):
@@ -44,7 +58,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
-        self._output_info: Optional[ProgressBar] = None
+
+        self._execution_id = uuid.uuid4().hex
+        self._autoscaling_state = AutoscalingState()
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -57,7 +73,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[OpState] = None
 
         Executor.__init__(self, options)
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
@@ -67,39 +83,71 @@ class StreamingExecutor(Executor, threading.Thread):
         We take an event-loop approach to scheduling. We block on the next scheduling
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
+
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
+
         if not isinstance(dag, InputDataBuffer):
             logger.get_logger().info("Executing DAG %s", dag)
-            self._global_info = ProgressBar("Resource usage vs limits", 1, 0)
+            logger.get_logger().info("Execution config: %s", self._options)
+            if not self._options.verbose_progress:
+                logger.get_logger().info(
+                    "Tip: For detailed progress reporting, run "
+                    "`ray.data.DataContext.get_current()."
+                    "execution_options.verbose_progress = True`"
+                )
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._topology = build_streaming_topology(dag, self._options)
-        self._output_info = ProgressBar(
-            "Output", dag.num_outputs_total() or 1, len(self._topology)
-        )
-        _validate_topology(self._topology, self._get_or_refresh_resource_limits())
+        _validate_dag(dag, self._get_or_refresh_resource_limits())
+        self._topology, _ = build_streaming_topology(dag, self._options)
+
+        if not isinstance(dag, InputDataBuffer):
+            # Note: DAG must be initialized in order to query num_outputs_total.
+            self._global_info = ProgressBar("Running", dag.num_outputs_total() or 1)
 
         self._output_node: OpState = self._topology[dag]
         self.start()
 
-        # Drain items from the runner thread until completion.
-        try:
-            item = self._output_node.get_output_blocking()
-            while item is not None:
-                if isinstance(item, Exception):
-                    raise item
-                else:
-                    self._output_info.update(1)
-                    yield item
-                item = self._output_node.get_output_blocking()
-        finally:
-            self.shutdown()
+        class StreamIterator(OutputIterator):
+            def __init__(self, outer: Executor):
+                self._outer = outer
+
+            def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+                try:
+                    item = self._outer._output_node.get_output_blocking(
+                        output_split_idx
+                    )
+                    # Translate the special sentinel values for MaybeRefBundle into
+                    # exceptions.
+                    if item is None:
+                        if self._outer._shutdown:
+                            raise StopIteration(f"{self._outer} is shutdown.")
+                        else:
+                            raise StopIteration
+                    elif isinstance(item, Exception):
+                        raise item
+                    else:
+                        # Otherwise return a concrete RefBundle.
+                        if self._outer._global_info:
+                            self._outer._global_info.update(1)
+                        return item
+                # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
+                # can leave dangling progress bars by skipping shutdown.
+                except BaseException:
+                    self._outer.shutdown()
+                    raise
+
+        return StreamIterator(self)
 
     def shutdown(self):
+        context = DataContext.get_current()
+        global _num_shutdown
+
         with self._shutdown_lock:
             if self._shutdown:
                 return
+            logger.get_logger().info(f"Shutting down {self}.")
+            _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
@@ -108,7 +156,6 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            context = DatasetContext.get_current()
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
             )
@@ -118,10 +165,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._global_info.close()
             for op, state in self._topology.items():
                 op.shutdown()
-                if state.progress_bar:
-                    state.progress_bar.close()
-            if self._output_info:
-                self._output_info.close()
+                state.close_progress_bars()
+            # Make request for zero resources to autoscaler for this execution.
+            actor = get_or_create_autoscaling_requester_actor()
+            actor.request_resources.remote({}, self._execution_id)
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -189,8 +236,14 @@ class StreamingExecutor(Executor, threading.Thread):
             cur_usage,
             limits,
             ensure_at_least_one_running=self._consumer_idling(),
+            execution_id=self._execution_id,
+            autoscaling_state=self._autoscaling_state,
         )
+        i = 0
         while op is not None:
+            i += 1
+            if i > PROGRESS_BAR_UPDATE_INTERVAL:
+                break
             if DEBUG_TRACE_SCHEDULING:
                 _debug_dump_topology(topology)
             topology[op].dispatch_next_task()
@@ -200,6 +253,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 cur_usage,
                 limits,
                 ensure_at_least_one_running=self._consumer_idling(),
+                execution_id=self._execution_id,
+                autoscaling_state=self._autoscaling_state,
             )
 
         # Update the progress bar to reflect scheduling decisions.
@@ -227,50 +282,51 @@ class StreamingExecutor(Executor, threading.Thread):
             gpu=base.gpu if base.gpu is not None else cluster.get("GPU", 0.0),
             object_store_memory=base.object_store_memory
             if base.object_store_memory is not None
-            else cluster.get("object_store_memory", 0.0) // 4,
+            else round(
+                DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
+                * cluster.get("object_store_memory", 0.0)
+            ),
         )
 
     def _report_current_usage(
         self, cur_usage: TopologyResourceUsage, limits: ExecutionResources
     ) -> None:
+        resources_status = (
+            "Running: "
+            f"{cur_usage.overall.cpu}/{limits.cpu} CPU, "
+            f"{cur_usage.overall.gpu}/{limits.gpu} GPU, "
+            f"{cur_usage.overall.object_store_memory_str()}/"
+            f"{limits.object_store_memory_str()} object_store_memory"
+        )
         if self._global_info:
-            self._global_info.set_description(
-                "Resource usage vs limits: "
-                f"{cur_usage.overall.cpu}/{limits.cpu} CPU, "
-                f"{cur_usage.overall.gpu}/{limits.gpu} GPU, "
-                f"{cur_usage.overall.object_store_memory_str()}/"
-                f"{limits.object_store_memory_str()} object_store_memory"
-            )
-        if self._output_info:
-            self._output_info.set_description(
-                f"output: {len(self._output_node.outqueue)} queued"
-            )
+            self._global_info.set_description(resources_status)
 
 
-def _validate_topology(topology: Topology, limits: ExecutionResources) -> None:
-    """Raises an exception on invalid topologies.
+def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
+    """Raises an exception on invalid DAGs.
 
     It checks if the the sum of min actor pool sizes are larger than the resource
     limit, as well as other unsupported resource configurations.
 
+    This should be called prior to creating the topology from the DAG.
+
     Args:
-        topology: The topology to validate.
+        dag: The DAG to validate.
         limits: The limits to validate against.
     """
 
+    seen = set()
+
+    def walk(op):
+        seen.add(op)
+        for parent in op.input_dependencies:
+            if parent not in seen:
+                yield from walk(parent)
+        yield op
+
     base_usage = ExecutionResources(cpu=1)
-    for op in topology:
+    for op in walk(dag):
         base_usage = base_usage.add(op.base_resource_usage())
-        inc_usage = op.incremental_resource_usage()
-        if inc_usage.cpu and inc_usage.gpu:
-            raise NotImplementedError(
-                "Operator incremental resource usage cannot specify both CPU "
-                "and GPU at the same time, since it may cause deadlock."
-            )
-        elif inc_usage.object_store_memory:
-            raise NotImplementedError(
-                "Operator incremental resource usage must not include memory."
-            )
 
     if not base_usage.satisfies_limit(limits):
         raise ValueError(

@@ -452,17 +452,6 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
             assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
 
 
-@pytest.fixture
-def propagate_logs():
-    # Ensure that logs are propagated to ancestor handles. This is required if using the
-    # caplog fixture with Ray's logging.
-    # NOTE: This only enables log propagation in the driver process, not the workers!
-    logger = logging.getLogger("ray")
-    logger.propagate = True
-    yield
-    logger.propagate = False
-
-
 def test_custom_arrow_data_serializer_fallback(
     ray_start_regular_shared, propagate_logs, caplog
 ):
@@ -524,6 +513,17 @@ def test_custom_arrow_data_serializer_fallback(
         slice_buf_size = post_slice.get_total_buffer_size()
         if buf_size > 0:
             assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
+
+
+def test_arrow_scalar_conversion(ray_start_regular_shared):
+    ds = ray.data.from_items([1])
+
+    def fn(batch: list):
+        return np.array([1])
+
+    ds = ds.map_batches(fn)
+    res = ds.take()
+    assert res == [1], res
 
 
 def test_custom_arrow_data_serializer_parquet_roundtrip(

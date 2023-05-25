@@ -35,6 +35,14 @@ py_test(
 )
 
 py_test(
+    name = "test_air_usage",
+    size = "small",
+    srcs = ["tests/test_air_usage.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_checkpoints",
     size = "small",
     srcs = ["tests/test_checkpoints.py"],
@@ -74,6 +82,24 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_experiment_restore",
+    size = "large",
+    srcs = [
+        "tests/test_experiment_restore.py",
+        "tests/_test_experiment_restore_run.py"
+    ],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_errors",
+    size = "small",
+    srcs = ["tests/test_errors.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
 
 py_test(
     name = "test_integration_comet",
@@ -144,6 +170,22 @@ py_test(
     size = "small",
     srcs = ["tests/test_tracebacks.py"],
     tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_util_torch_dist",
+    size = "small",
+    srcs = ["tests/test_util_torch_dist.py"],
+    tags = ["team:ml", "gpu", "exclusive"],
     deps = [":ml_lib"]
 )
 

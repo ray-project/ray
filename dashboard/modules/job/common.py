@@ -25,6 +25,7 @@ JOB_ACTOR_NAME_TEMPLATE = (
 # In order to get information about SupervisorActors launched by different jobs,
 # they must be set to the same namespace.
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
+JOB_LOGS_PATH_TEMPLATE = "job-driver-{submission_id}.log"
 
 
 @PublicAPI(stability="stable")
@@ -189,13 +190,26 @@ class JobInfoStorageClient:
         self._gcs_aio_client = gcs_aio_client
         assert _internal_kv_initialized()
 
-    async def put_info(self, job_id: str, job_info: JobInfo):
-        await self._gcs_aio_client.internal_kv_put(
+    async def put_info(
+        self, job_id: str, job_info: JobInfo, overwrite: bool = True
+    ) -> bool:
+        """Put job info to the internal kv store.
+
+        Args:
+            job_id: The job id.
+            job_info: The job info.
+            overwrite: Whether to overwrite the existing job info.
+
+        Returns:
+            True if a new key is added.
+        """
+        added_num = await self._gcs_aio_client.internal_kv_put(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             json.dumps(job_info.to_json()).encode(),
-            True,
+            overwrite,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
+        return added_num == 1
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
         serialized_info = await self._gcs_aio_client.internal_kv_get(

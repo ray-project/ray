@@ -44,7 +44,7 @@ class TaskEventBufferTest : public ::testing::Test {
   )");
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>());
+        std::make_unique<ray::gcs::MockGcsClient>(), JobID::FromInt(1));
   }
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
@@ -66,13 +66,47 @@ class TaskEventBufferTest : public ::testing::Test {
         task_id, JobID::FromInt(0), attempt_num, rpc::TaskStatus::RUNNING, running_ts);
   }
 
-  std::unique_ptr<TaskEvent> GenProfileTaskEvent(TaskID task_id, int32_t attempt_num) {
+  std::unique_ptr<TaskEvent> GenProfileTaskEvent(TaskID task_id,
+                                                 int32_t attempt_num,
+                                                 JobID job_id = JobID::FromInt(0)) {
     return std::make_unique<TaskProfileEvent>(
-        task_id, JobID::FromInt(0), attempt_num, "", "", "", "test_event", 1);
+        task_id, job_id, attempt_num, "", "", "", "test_event", 1);
   }
 
-  static bool SortTaskEvents(const rpc::TaskEvents &a, const rpc::TaskEvents &b) {
-    return a.task_id() < b.task_id() || a.attempt_number() < b.attempt_number();
+  static void CompareTaskEventData(rpc::TaskEventData &actual_data,
+                                   rpc::TaskEventData &expect_data) {
+    // Sort and compare
+    std::vector<std::string> actual_events;
+    std::vector<std::string> expect_events;
+    for (const auto &e : actual_data.events_by_task()) {
+      actual_events.push_back(e.DebugString());
+    }
+    for (const auto &e : expect_data.events_by_task()) {
+      expect_events.push_back(e.DebugString());
+    }
+    std::sort(actual_events.begin(), actual_events.end());
+    std::sort(expect_events.begin(), expect_events.end());
+    EXPECT_EQ(actual_events.size(), expect_events.size());
+    for (size_t i = 0; i < actual_events.size(); ++i) {
+      EXPECT_EQ(actual_events[i], expect_events[i]);
+    }
+
+    // sort and compare data loss
+    std::vector<std::string> actual_attempts;
+    std::vector<std::string> expect_attempts;
+    for (const auto &t : actual_data.dropped_task_attempts()) {
+      actual_attempts.push_back(t.DebugString());
+    }
+    for (const auto &t : expect_data.dropped_task_attempts()) {
+      expect_attempts.push_back(t.DebugString());
+    }
+    std::sort(actual_attempts.begin(), actual_attempts.end());
+    std::sort(expect_attempts.begin(), expect_attempts.end());
+
+    EXPECT_EQ(actual_attempts.size(), expect_attempts.size());
+    for (size_t i = 0; i < actual_attempts.size(); ++i) {
+      EXPECT_EQ(actual_attempts[i], expect_attempts[i]);
+    }
   }
 
   std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
@@ -91,6 +125,19 @@ class TaskEventBufferTestBatchSend : public TaskEventBufferTest {
   "task_events_report_interval_ms": 1000,
   "task_events_max_buffer_size": 100,
   "task_events_send_batch_size": 10
+}
+  )");
+  }
+};
+
+class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
+ public:
+  TaskEventBufferTestLimitProfileEvents() : TaskEventBufferTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_profile_events_for_task": 10
 }
   )");
   }
@@ -117,17 +164,17 @@ TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
 }
 
 TEST_F(TaskEventBufferTest, TestAddEvent) {
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 
   // Test add status event
   auto task_id_1 = RandomTaskId();
   task_event_buffer_->AddTaskEvent(GenStatusTaskEvent(task_id_1, 0));
 
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 1);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 1);
 
   // Test add profile events
   task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_1, 1));
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 2);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 2);
 }
 
 TEST_F(TaskEventBufferTest, TestFlushEvents) {
@@ -141,18 +188,16 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
 
   // Expect data flushed match
   rpc::TaskEventData expected_data;
-  expected_data.set_num_profile_task_events_dropped(0);
-  expected_data.set_num_status_task_events_dropped(0);
   for (const auto &task_event : task_events) {
     auto event = expected_data.add_events_by_task();
-    task_event->ToRpcTaskEvents(event);
+    task_event->ToRpcTaskEventsOrDrop(event);
   }
 
   for (auto &task_event : task_events) {
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), num_events);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), num_events);
 
   // Manually call flush should call GCS client's flushing grpc.
   auto task_gcs_accessor =
@@ -162,22 +207,14 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
                     ray::gcs::StatusCallback callback) {
-        // Sort and compare
-        std::sort(actual_data->mutable_events_by_task()->begin(),
-                  actual_data->mutable_events_by_task()->end(),
-                  SortTaskEvents);
-        std::sort(expected_data.mutable_events_by_task()->begin(),
-                  expected_data.mutable_events_by_task()->end(),
-                  SortTaskEvents);
-        EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(*actual_data,
-                                                                       expected_data));
+        CompareTaskEventData(*actual_data, expected_data);
         return Status::OK();
       });
 
   task_event_buffer_->FlushEvents(false);
 
   // Expect no more events.
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
 TEST_F(TaskEventBufferTest, TestFailedFlush) {
@@ -207,8 +244,9 @@ TEST_F(TaskEventBufferTest, TestFailedFlush) {
   task_event_buffer_->FlushEvents(false);
 
   // Expect the number of dropped events incremented.
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDropped(), num_status_events);
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDropped(), num_profile_events);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsDropped(),
+            num_status_events + num_profile_events);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsReported(), 0);
 
   // Adding some more events
   for (size_t i = 0; i < num_status_events + num_profile_events; ++i) {
@@ -220,10 +258,12 @@ TEST_F(TaskEventBufferTest, TestFailedFlush) {
     }
   }
 
-  // Flush successfully will reset the num events dropped.
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(),
+            num_status_events + num_profile_events);
   task_event_buffer_->FlushEvents(false);
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDropped(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDropped(), 0);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsDropped(),
+            num_status_events + num_profile_events);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
 TEST_F(TaskEventBufferTest, TestBackPressure) {
@@ -290,78 +330,70 @@ TEST_F(TaskEventBufferTestBatchSend, TestBatchedSend) {
       static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
           ->mock_task_accessor;
 
-  size_t i = 0;
   // With batch size = 10, there should be 10 flush calls
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
       .Times(num_events / batch_size)
-      .WillRepeatedly(
-          [&i, &batch_size, &task_ids](std::unique_ptr<rpc::TaskEventData> actual_data,
-                                       ray::gcs::StatusCallback callback) {
-            EXPECT_EQ(actual_data->events_by_task_size(), batch_size);
-            for (const auto &task : actual_data->events_by_task()) {
-              // Assert sent data in order.
-              EXPECT_EQ(task_ids[i++].Binary(), task.task_id());
-            }
-            callback(Status::OK());
-            return Status::OK();
-          });
+      .WillRepeatedly([&batch_size](std::unique_ptr<rpc::TaskEventData> actual_data,
+                                    ray::gcs::StatusCallback callback) {
+        EXPECT_EQ(actual_data->events_by_task_size(), batch_size);
+        callback(Status::OK());
+        return Status::OK();
+      });
 
   for (int i = 0; i * batch_size < num_events; i++) {
-    task_event_buffer_->FlushEvents(false);
-    EXPECT_EQ(task_event_buffer_->GetAllTaskEvents().size(),
+    task_event_buffer_->FlushEvents(true);
+    EXPECT_EQ(task_event_buffer_->GetNumTaskEventsStored(),
               num_events - (i + 1) * batch_size);
   }
 
   // With last flush, there should be no more events in the buffer and as data.
-  EXPECT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
+  EXPECT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
 TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
   size_t num_limit = 100;  // Synced with test setup
-  size_t num_profile = 50;
-  size_t num_status = 50;
 
   // Generate 2 batches of events each, where batch 1 will be evicted by batch 2.
-  std::vector<std::unique_ptr<TaskEvent>> profile_events_1;
   std::vector<std::unique_ptr<TaskEvent>> status_events_1;
-  std::vector<std::unique_ptr<TaskEvent>> profile_events_2;
   std::vector<std::unique_ptr<TaskEvent>> status_events_2;
 
   // Generate data
-  for (size_t i = 0; i < 50; ++i) {
+  for (size_t i = 0; i < num_limit; ++i) {
     status_events_1.push_back(GenStatusTaskEvent(RandomTaskId(), 0));
     status_events_2.push_back(GenStatusTaskEvent(RandomTaskId(), 0));
-    profile_events_1.push_back(GenProfileTaskEvent(RandomTaskId(), 0));
-    profile_events_2.push_back(GenProfileTaskEvent(RandomTaskId(), 0));
   }
 
   rpc::TaskEventData expected_data;
-  expected_data.set_num_profile_task_events_dropped(num_profile);
-  expected_data.set_num_status_task_events_dropped(num_status);
-  for (const auto &event : profile_events_2) {
+  for (const auto &event_ptr : status_events_2) {
     auto expect_event = expected_data.add_events_by_task();
-    event->ToRpcTaskEvents(expect_event);
-  }
-  for (const auto &event : status_events_2) {
-    auto expect_event = expected_data.add_events_by_task();
-    event->ToRpcTaskEvents(expect_event);
+    // Copy the data
+    auto event = std::make_unique<TaskStatusEvent>(
+        *static_cast<TaskStatusEvent *>(event_ptr.get()));
+    event->ToRpcTaskEventsOrDrop(expect_event);
   }
 
-  for (auto &event : profile_events_1) {
-    task_event_buffer_->AddTaskEvent(std::move(event));
-  }
+  // Add the data profile_events_1 and status_events_1 will be evicted.
   for (auto &event : status_events_1) {
-    task_event_buffer_->AddTaskEvent(std::move(event));
-  }
-  for (auto &event : profile_events_2) {
-    task_event_buffer_->AddTaskEvent(std::move(event));
+    rpc::TaskAttempt rpc_attempt;
+    rpc_attempt.set_task_id(event->GetTaskAttempt().first.Binary());
+    rpc_attempt.set_attempt_number(event->GetTaskAttempt().second);
+    *(expected_data.add_dropped_task_attempts()) = rpc_attempt;
+
+    // Copy the data
+    auto event_copy =
+        std::make_unique<TaskStatusEvent>(*static_cast<TaskStatusEvent *>(event.get()));
+    task_event_buffer_->AddTaskEvent(std::move(event_copy));
   }
   for (auto &event : status_events_2) {
     task_event_buffer_->AddTaskEvent(std::move(event));
   }
+  // Status events from the same task attempt that were dropped should be dropped
+  for (auto &event : status_events_1) {
+    task_event_buffer_->AddTaskEvent(std::move(event));
+  }
 
   // Expect only limit in buffer.
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), num_limit);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), num_limit);
 
   // Expect the reported data to match.
   auto task_gcs_accessor =
@@ -371,27 +403,51 @@ TEST_F(TaskEventBufferTest, TestBufferSizeLimit) {
   EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData(_, _))
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
                     ray::gcs::StatusCallback callback) {
-        // Sort and compare
-        std::sort(actual_data->mutable_events_by_task()->begin(),
-                  actual_data->mutable_events_by_task()->end(),
-                  SortTaskEvents);
-        std::sort(expected_data.mutable_events_by_task()->begin(),
-                  expected_data.mutable_events_by_task()->end(),
-                  SortTaskEvents);
-
-        EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(*actual_data,
-                                                                       expected_data));
+        CompareTaskEventData(*actual_data, expected_data);
         return Status::OK();
       });
 
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDropped(), num_profile);
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDropped(), num_status);
   task_event_buffer_->FlushEvents(false);
 
-  // Expect data flushed.
-  ASSERT_EQ(task_event_buffer_->GetAllTaskEvents().size(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumProfileTaskEventsDropped(), 0);
-  ASSERT_EQ(task_event_buffer_->GetNumStatusTaskEventsDropped(), 0);
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
+}
+
+TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
+  size_t num_profile_events_per_task = 10;  // sync with class config.
+  size_t num_total_profile_events = 1000;
+  std::vector<std::unique_ptr<TaskEvent>> profile_events;
+  auto task_id1 = RandomTaskId();
+  const auto &job_id = task_event_buffer_->GetJobId();
+
+  // Generate data for the same task attempts from job 1
+  for (size_t i = 0; i < num_total_profile_events; ++i) {
+    profile_events.push_back(GenProfileTaskEvent(task_id1, 0, job_id));
+  }
+
+  // Add all
+  for (auto &event : profile_events) {
+    task_event_buffer_->AddTaskEvent(std::move(event));
+  }
+
+  auto task_gcs_accessor =
+      static_cast<ray::gcs::MockGcsClient *>(task_event_buffer_->GetGcsClient())
+          ->mock_task_accessor;
+
+  // With batch size = 10, there should be 10 flush calls
+  EXPECT_CALL(*task_gcs_accessor, AsyncAddTaskEventData)
+      .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
+                    ray::gcs::StatusCallback callback) {
+        EXPECT_EQ(actual_data->num_profile_events_dropped(),
+                  num_total_profile_events - num_profile_events_per_task);
+        EXPECT_EQ(actual_data->job_id(), job_id.Binary());
+        callback(Status::OK());
+        return Status::OK();
+      });
+
+  task_event_buffer_->FlushEvents(false);
+
+  // Counter is reset correctly.
+  EXPECT_EQ(task_event_buffer_->GetNumProfileTaskEventsDroppedSinceLastFlush(), 0);
 }
 
 }  // namespace worker

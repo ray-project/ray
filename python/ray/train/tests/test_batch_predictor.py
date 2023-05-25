@@ -110,26 +110,26 @@ def test_separate_gpu_stage(shutdown_only):
         DummyPredictor,
     )
     ds = batch_predictor.predict(
-        ray.data.range_table(10),
+        ray.data.range(10),
         num_gpus_per_worker=1,
         separate_gpu_stage=True,
         allow_gpu=True,
-    )
+    ).materialize()
     stats = ds.stats()
-    assert "Stage 1 read->DummyPreprocessor:" in stats, stats
+    assert "Stage 1 ReadRange->DummyPreprocessor:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
-    assert ds.max("value") == 36.0, ds
+    assert ds.max("id") == 36.0, ds
 
     ds = batch_predictor.predict(
-        ray.data.range_table(10),
+        ray.data.range(10),
         num_gpus_per_worker=1,
         separate_gpu_stage=False,
         allow_gpu=True,
-    )
+    ).materialize()
     stats = ds.stats()
-    assert "Stage 1 read:" in stats, stats
+    assert "Stage 1 ReadRange:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
-    assert ds.max("value") == 36.0, ds
+    assert ds.max("id") == 36.0, ds
 
 
 def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
@@ -143,12 +143,12 @@ def test_automatic_enable_gpu_from_num_gpus_per_worker(shutdown_only):
         Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
         DummyPredictor,
     )
-    test_dataset = ray.data.range_table(4)
+    test_dataset = ray.data.range(4)
 
     with pytest.raises(
         ValueError, match="DummyPredictor does not support GPU prediction"
     ):
-        _ = batch_predictor.predict(test_dataset, num_gpus_per_worker=1)
+        batch_predictor.predict(test_dataset, num_gpus_per_worker=1).materialize()
 
 
 def test_batch_prediction():
@@ -157,10 +157,10 @@ def test_batch_prediction():
         DummyPredictor,
     )
 
-    test_dataset = ray.data.range_table(4)
-    ds = batch_predictor.predict(test_dataset)
+    test_dataset = ray.data.range(4)
+    ds = batch_predictor.predict(test_dataset).materialize()
     # Check fusion occurred.
-    assert "read->DummyPreprocessor" in ds.stats(), ds.stats()
+    assert "ReadRange->DummyPreprocessor" in ds.stats(), ds.stats()
     assert ds.to_pandas().to_numpy().squeeze().tolist() == [
         0.0,
         4.0,
@@ -168,7 +168,7 @@ def test_batch_prediction():
         12.0,
     ]
 
-    test_dataset = ray.data.range_table(4)
+    test_dataset = ray.data.range(4)
     assert next(
         batch_predictor.predict_pipelined(
             test_dataset, blocks_per_window=2
@@ -177,27 +177,6 @@ def test_batch_prediction():
         0.0,
         4.0,
     ]
-
-
-def test_batch_prediction_simple():
-    """Tests that simple dataset is not supported with"""
-    batch_predictor = BatchPredictor.from_checkpoint(
-        Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: DummyPreprocessor()}),
-        DummyPredictor,
-    )
-
-    test_dataset = ray.data.range(4)
-
-    with pytest.raises(ValueError):
-        batch_predictor.predict(test_dataset)
-
-    test_dataset = ray.data.from_items([1.0, 2.0, 3.0, 4.0])
-    with pytest.raises(ValueError):
-        assert next(
-            batch_predictor.predict_pipelined(
-                test_dataset, blocks_per_window=2
-            ).iter_datasets()
-        )
 
 
 def test_batch_prediction_various_combination():
@@ -265,6 +244,34 @@ def test_batch_prediction_various_combination():
             # Pandas predictor outputs Pandas dataset.
             "pandas",
         ),
+        (
+            DummyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyWithNumpyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Numpy predictor outputs Arrow dataset.
+            "arrow",
+        ),
+        (
+            DummyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
+        (
+            DummyWithNumpyPreprocessor(),
+            DummyPredictor,
+            ray.data.from_items([1, 2, 3]),
+            # Pandas predictor outputs Pandas dataset.
+            "pandas",
+        ),
     ]
 
     for test_case in test_cases:
@@ -275,8 +282,7 @@ def test_batch_prediction_various_combination():
             predictor_cls,
         )
 
-        ds = batch_predictor.predict(input_dataset)
-        print(ds.stats())
+        ds = batch_predictor.predict(input_dataset).materialize()
         # Check no fusion needed since we're not doing a dataset read.
         assert f"Stage 1 {preprocessor.__class__.__name__}" in ds.stats(), ds.stats()
         assert ds.to_pandas().to_numpy().squeeze().tolist() == [
@@ -284,8 +290,15 @@ def test_batch_prediction_various_combination():
             8.0,
             12.0,
         ]
-
-        assert ds.dataset_format() == dataset_format, test_case
+        block = ray.get(ds.get_internal_block_refs()[0])
+        if dataset_format == "pandas":
+            assert isinstance(block, pd.DataFrame)
+        elif dataset_format == "arrow":
+            assert isinstance(block, pa.Table)
+        else:
+            raise ValueError(
+                f"Unsupported test case with dataset format: {dataset_format}"
+            )
 
 
 def test_batch_prediction_fs():
@@ -393,12 +406,12 @@ def test_batch_predictor_transform_config():
 
     def check_batch(batch):
         assert isinstance(batch, dict)
-        assert isinstance(batch["value"], np.ndarray)
-        assert len(batch["value"]) == batch_size
+        assert isinstance(batch["id"], np.ndarray)
+        assert len(batch["id"]) == batch_size
         return batch
 
     prep = BatchMapper(check_batch, batch_format="numpy", batch_size=2)
-    ds = ray.data.range_table(6, parallelism=1)
+    ds = ray.data.range(6, parallelism=1)
 
     batch_predictor = BatchPredictor.from_checkpoint(
         Checkpoint.from_dict({"factor": 2.0, PREPROCESSOR_KEY: prep}),
@@ -408,7 +421,7 @@ def test_batch_predictor_transform_config():
     batch_predictor.predict(ds)
 
     # Pipelined case.
-    ds = ray.data.range_table(6, parallelism=1)
+    ds = ray.data.range(6, parallelism=1)
 
     batch_predictor.predict_pipelined(ds, blocks_per_window=1)
 
@@ -484,7 +497,7 @@ def test_get_and_set_preprocessor():
     )
     assert batch_predictor.get_preprocessor() == preprocessor
 
-    test_dataset = ray.data.range_table(4)
+    test_dataset = ray.data.range(4)
     output_ds = batch_predictor.predict(test_dataset)
     assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
         0.0,
@@ -503,6 +516,18 @@ def test_get_and_set_preprocessor():
         4.0,
         8.0,
         12.0,
+    ]
+
+    # Remove preprocessor
+    batch_predictor.set_preprocessor(None)
+    assert batch_predictor.get_preprocessor() is None
+
+    output_ds = batch_predictor.predict(test_dataset)
+    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+        0.0,
+        2.0,
+        4.0,
+        6.0,
     ]
 
 
@@ -536,28 +561,28 @@ def test_separate_gpu_stage_pipelined(shutdown_only):
         DummyPredictor,
     )
     ds = batch_predictor.predict_pipelined(
-        ray.data.range_table(5),
+        ray.data.range(5),
         blocks_per_window=1,
         num_gpus_per_worker=1,
         separate_gpu_stage=True,
         allow_gpu=True,
     )
-    out = [x["value"] for x in ds.iter_rows()]
+    out = [x["id"] for x in ds.iter_rows()]
     stats = ds.stats()
-    assert "Stage 1 read->DummyPreprocessor:" in stats, stats
+    assert "Stage 1 ReadRange->DummyPreprocessor:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert max(out) == 16.0, out
 
     ds = batch_predictor.predict_pipelined(
-        ray.data.range_table(5),
+        ray.data.range(5),
         blocks_per_window=1,
         num_gpus_per_worker=1,
         separate_gpu_stage=False,
         allow_gpu=True,
     )
-    out = [x["value"] for x in ds.iter_rows()]
+    out = [x["id"] for x in ds.iter_rows()]
     stats = ds.stats()
-    assert "Stage 1 read:" in stats, stats
+    assert "Stage 1 ReadRange:" in stats, stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert max(out) == 16.0, out
 

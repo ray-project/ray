@@ -26,7 +26,7 @@ def try_import_jax(error: bool = False):
     """
     if "RLLIB_TEST_NO_JAX_IMPORT" in os.environ:
         logger.warning("Not importing JAX for test purposes.")
-        return None
+        return None, None
 
     try:
         import jax
@@ -64,7 +64,7 @@ def try_import_tf(error: bool = False):
     # that uses them: del os.environ["RLLIB_TEST_NO_TF_IMPORT"]
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
         logger.warning("Not importing TensorFlow for test purposes")
-        return None, None, None
+        return None, tf_stub, None
 
     if "TF_CPP_MIN_LOG_LEVEL" not in os.environ:
         os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -290,6 +290,8 @@ def get_variable(
         )
     elif framework == "torch" and torch_tensor is True:
         torch, _ = try_import_torch()
+        if not isinstance(value, np.ndarray):
+            value = np.array(value)
         var_ = torch.from_numpy(value)
         if dtype in [torch.float32, np.float32]:
             var_ = var_.float()

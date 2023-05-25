@@ -163,7 +163,7 @@ class DMCEnv(core.Env):
                 obs = obs / 255.0 - 0.5
         else:
             obs = _flatten_obs(time_step.observation)
-        return obs
+        return obs.astype(np.float32)
 
     def _convert_action(self, action):
         action = action.astype(np.float64)
@@ -190,13 +190,13 @@ class DMCEnv(core.Env):
         assert self._norm_action_space.contains(action)
         action = self._convert_action(action)
         assert self._true_action_space.contains(action)
-        reward = 0
+        reward = 0.0
         extra = {"internal_state": self._env.physics.get_state().copy()}
 
         terminated = truncated = False
         for _ in range(self._frame_skip):
             time_step = self._env.step(action)
-            reward += time_step.reward or 0
+            reward += time_step.reward or 0.0
             terminated = False
             truncated = time_step.last()
             if terminated or truncated:

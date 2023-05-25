@@ -2,6 +2,7 @@ import time
 from collections import Counter
 import logging
 import os
+import pandas as pd
 import pickle
 import shutil
 import sys
@@ -14,13 +15,13 @@ from freezegun import freeze_time
 import ray
 from ray.air import CheckpointConfig
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.tune import TuneError, PlacementGroupFactory
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
-from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.search import BasicVariantGenerator
@@ -750,7 +751,7 @@ class TrialRunnerTest3(unittest.TestCase):
         # for more details.
         trial = Trial(
             "__fake",
-            local_dir=tmpdir,
+            experiment_path=tmpdir,
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         )
         runner = TrialRunner(
@@ -784,7 +785,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
             )
 
         ray.init(num_cpus=2)
@@ -821,7 +822,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
             )
 
         ray.init(num_cpus=2)
@@ -888,7 +889,11 @@ class TrialRunnerTest3(unittest.TestCase):
         # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
         # for more details.
         runner.add_trial(
-            Trial("__fake", local_dir=self.tmpdir, config={"user_checkpoint_freq": 2})
+            Trial(
+                "__fake",
+                experiment_path=self.tmpdir,
+                config={"user_checkpoint_freq": 2},
+            )
         )
         trials = runner.get_trials()
 
@@ -918,7 +923,7 @@ class TrialRunnerTest3(unittest.TestCase):
 
         def num_checkpoints(trial):
             return sum(
-                item.startswith("checkpoint_") for item in os.listdir(trial.logdir)
+                item.startswith("checkpoint_") for item in os.listdir(trial.local_path)
             )
 
         ray.init(num_cpus=3)
@@ -989,11 +994,9 @@ class TrialRunnerTest3(unittest.TestCase):
                 pass
 
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
             checkpoint_period="auto",
-            sync_config=SyncConfig(
-                upload_dir="fake", syncer=CustomSyncer(), sync_period=0
-            ),
+            experiment_path="fake://somewhere/exp",
+            sync_config=SyncConfig(syncer=CustomSyncer(), sync_period=0),
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
@@ -1037,8 +1040,8 @@ class TrialRunnerTest3(unittest.TestCase):
         syncer = CustomSyncer()
 
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            experiment_path="fake://somewhere",
+            sync_config=SyncConfig(syncer=syncer),
             trial_checkpoint_config=checkpoint_config,
             checkpoint_period=100,  # Only rely on forced syncing
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
@@ -1104,8 +1107,8 @@ class TrialRunnerTest3(unittest.TestCase):
 
         syncer = self.getHangingSyncer(sync_period=60, sync_timeout=0.5)
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            experiment_path="fake://somewhere/exp",
+            sync_config=SyncConfig(syncer=syncer),
         )
         # Checkpoint for the first time starts the first sync in the background
         runner.checkpoint(force=True)
@@ -1131,8 +1134,8 @@ class TrialRunnerTest3(unittest.TestCase):
         sync_period = 60
         syncer = self.getHangingSyncer(sync_period=sync_period, sync_timeout=0.5)
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake", syncer=syncer),
+            experiment_path="fake://somewhere/exp",
+            sync_config=SyncConfig(syncer=syncer),
         )
 
         with freeze_time() as frozen:
@@ -1154,6 +1157,71 @@ class TrialRunnerTest3(unittest.TestCase):
                 runner.checkpoint()
             assert any("did not finish running within the timeout" in x for x in buffer)
             assert syncer.sync_up_counter == 2
+
+    def testExperimentCheckpointWithDatasets(self):
+        """Test trial runner checkpointing where trials contain Datasets.
+        When possible, a dataset plan should be saved (for read_* APIs).
+        See `Dataset.serialize_lineage` for more information.
+
+        If a dataset cannot be serialized, an experiment checkpoint
+        should still be created. Users can pass in the dataset again by
+        re-specifying the `param_space`.
+        """
+        ray.init(num_cpus=2)
+        # Save some test data to load
+        data_filepath = os.path.join(self.tmpdir, "test.csv")
+        pd.DataFrame({"x": list(range(10))}).to_csv(data_filepath)
+
+        def create_trial_config():
+            return {
+                "datasets": {
+                    "with_lineage": ray.data.read_csv(data_filepath),
+                    "no_lineage": ray.data.from_items([{"x": i} for i in range(10)]),
+                }
+            }
+
+        resolvers = create_resolvers_map()
+        config_with_placeholders = inject_placeholders(create_trial_config(), resolvers)
+        trial = Trial(
+            "__fake",
+            experiment_path=self.tmpdir,
+            config=config_with_placeholders,
+        )
+        trial.init_local_path()
+        runner = TrialRunner(
+            experiment_path=self.tmpdir, placeholder_resolvers=resolvers
+        )
+        runner.add_trial(trial)
+        # Req: TrialRunner checkpointing shouldn't error
+        runner.checkpoint(force=True)
+
+        # Manually clear all block refs that may have been created
+        ray.shutdown()
+        ray.init(num_cpus=2)
+
+        new_runner = TrialRunner(experiment_path=self.tmpdir)
+        new_runner.resume()
+        [loaded_trial] = new_runner.get_trials()
+        loaded_datasets = loaded_trial.config["datasets"]
+
+        # Req: The deserialized dataset (w/ lineage) should be usable.
+        assert [el["x"] for el in loaded_datasets["with_lineage"].take()] == list(
+            range(10)
+        )
+
+        replaced_resolvers = create_resolvers_map()
+        inject_placeholders(create_trial_config(), replaced_resolvers)
+
+        respecified_config_runner = TrialRunner(
+            placeholder_resolvers=replaced_resolvers,
+            local_checkpoint_dir=self.tmpdir,
+        )
+        respecified_config_runner.resume()
+        [loaded_trial] = respecified_config_runner.get_trials()
+        ray_ds_no_lineage = loaded_trial.config["datasets"]["no_lineage"]
+
+        # Req: The dataset (w/o lineage) can be re-specified and is usable after.
+        assert [el["x"] for el in ray_ds_no_lineage.take()] == list(range(10))
 
 
 class FixedResourceTrialRunnerTest3(TrialRunnerTest3):

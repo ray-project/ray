@@ -5,6 +5,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.util.annotations import PublicAPI
 
 
@@ -41,10 +42,21 @@ class BinaryDatasource(FileBasedDatasource):
             data = rawbytes.getvalue()
         else:
             data = f.readall()
-        if include_paths:
-            return [(path, data)]
+
+        output_arrow_format = reader_args.pop("output_arrow_format", False)
+        if output_arrow_format:
+            builder = ArrowBlockBuilder()
+            if include_paths:
+                item = {self._COLUMN_NAME: data, "path": path}
+            else:
+                item = {self._COLUMN_NAME: data}
+            builder.add(item)
+            return builder.build()
         else:
-            return [data]
+            if include_paths:
+                return [(path, data)]
+            else:
+                return [data]
 
     def _convert_block_to_tabular_block(
         self,
@@ -53,17 +65,20 @@ class BinaryDatasource(FileBasedDatasource):
     ) -> "pyarrow.Table":
         import pyarrow as pa
 
-        if column_name is None:
-            column_name = self._COLUMN_NAME
+        if isinstance(block, pa.Table):
+            return block
+        else:
+            if column_name is None:
+                column_name = self._COLUMN_NAME
 
-        assert len(block) == 1
-        record = block[0]
+            assert len(block) == 1
+            record = block[0]
 
-        if isinstance(record, tuple):
-            path, data = record
-            return pa.table({column_name: [data], "path": [path]})
-
-        return pa.table({column_name: [record]})
+            if isinstance(record, tuple):
+                path, data = record
+                return pa.table({column_name: [data], "path": [path]})
+            else:
+                return pa.table({column_name: [record]})
 
     def _rows_per_file(self):
         return 1

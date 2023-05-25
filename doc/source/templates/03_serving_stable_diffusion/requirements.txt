@@ -1,0 +1,10 @@
+accelerate==0.14.0
+diffusers==0.15.1
+matplotlib>=3.5.3,<=3.7.1
+numpy>=1.21.6,<=1.23.5
+Pillow==9.3.0
+scipy>=1.7.3,<=1.9.3
+tensorboard>=2.11.2,<=2.12.0
+torch==1.13.0
+torchvision==0.14.0
+transformers==4.28.1

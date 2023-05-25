@@ -121,5 +121,5 @@ class SortTaskSpec(ExchangeTaskSpec):
         return ret[1:]
 
 
-def _sample_block(block: Block[T], n_samples: int, key: SortKeyT) -> Block[T]:
+def _sample_block(block: Block, n_samples: int, key: SortKeyT) -> Block:
     return BlockAccessor.for_block(block).sample(n_samples, key)

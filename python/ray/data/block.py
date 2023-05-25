@@ -1,13 +1,13 @@
 import os
 import sys
 import time
+import collections
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Dict,
-    Generic,
     Iterator,
     List,
     Optional,
@@ -17,12 +17,13 @@ from typing import (
 )
 
 import numpy as np
+import colorama
 
 import ray
 from ray import ObjectRefGenerator
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import psutil
 
@@ -32,63 +33,76 @@ except ImportError:
     resource = None
 
 if sys.version_info >= (3, 8):
-    from typing import Protocol
+    from typing import Literal, Protocol
 else:
-    from typing_extensions import Protocol
+    from typing_extensions import Literal, Protocol
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data import Dataset
     from ray.data._internal.block_builder import BlockBuilder
     from ray.data.aggregate import AggregateFn
 
 
 T = TypeVar("T", contravariant=True)
 U = TypeVar("U", covariant=True)
+
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
-# A function that extracts a concrete value from a record in a Dataset, used
-# in ``sort(value_fns...)``, ``groupby(value_fn).agg(Agg(value_fn), ...)``.
-# It can either be None (intepreted as the identity function), the name
-# of a Dataset column, or a lambda function that extracts the desired value
-# from the object.
-KeyFn = Union[None, str, Callable[[T], Any]]
+STRICT_MODE_EXPLANATION = (
+    colorama.Fore.YELLOW
+    + "Important: Ray Data requires schemas for all datasets in Ray 2.5. This means "
+    "that standalone Python objects are no longer supported. In addition, the default "
+    "batch format is fixed to NumPy. To revert to legacy behavior temporarily, "
+    "set the "
+    "environment variable RAY_DATA_STRICT_MODE=0 on all cluster processes.\n\n"
+    "Learn more here: https://docs.ray.io/en/master/data/faq.html#"
+    "migrating-to-strict-mode" + colorama.Style.RESET_ALL
+)
 
 
-def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
-    """Check the key function is valid on the given dataset."""
-    try:
-        fmt = ds.dataset_format()
-    except ValueError:
+@PublicAPI
+class StrictModeError(ValueError):
+    def __init__(self, message: str):
+        super().__init__(message + "\n\n" + STRICT_MODE_EXPLANATION)
+
+
+def _validate_key_fn(
+    schema: Optional[Union[type, "pyarrow.lib.Schema"]],
+    key: Optional[str],
+) -> None:
+    """Check the key function is valid on the given schema."""
+    if schema is None:
         # Dataset is empty/cleared, validation not possible.
         return
+    ctx = ray.data.DataContext.get_current()
+    is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
-        if fmt == "simple":
+        if is_simple_format:
             raise ValueError(
                 "String key '{}' requires dataset format to be "
-                "'arrow' or 'pandas', was '{}'.".format(key, fmt)
+                "'arrow' or 'pandas', was 'simple'.".format(key)
             )
-        # Raises KeyError if key is not present in the schema.
-        schema = ds.schema(fetch_if_missing=True)
         if len(schema.names) > 0 and key not in schema.names:
             raise ValueError(
                 "The column '{}' does not exist in the "
                 "schema '{}'.".format(key, schema)
             )
+    elif ctx.strict_mode:
+        raise StrictModeError(f"In Ray 2.5, the key must be a string, was: {key}")
     elif key is None:
-        if fmt != "simple":
+        if not is_simple_format:
             raise ValueError(
                 "The `None` key '{}' requires dataset format to be "
-                "'simple', was '{}'.".format(key, fmt)
+                "'simple'.".format(key)
             )
     elif callable(key):
-        if fmt != "simple":
+        if not is_simple_format:
             raise ValueError(
                 "Callable key '{}' requires dataset format to be "
-                "'simple', was '{}'.".format(key, fmt)
+                "'simple'".format(key)
             )
     else:
         raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
@@ -98,37 +112,27 @@ def _validate_key_fn(ds: "Dataset", key: KeyFn) -> None:
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
+Block = Union[list, "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union[Block, np.ndarray, Dict[str, np.ndarray]]
+DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+
 
 # A class type that implements __call__.
 CallableClass = type
 
 
 class _CallableClassProtocol(Protocol[T, U]):
-    def __call__(self, __arg: T) -> U:
+    def __call__(self, __arg: T) -> Union[U, Iterator[U]]:
         ...
 
 
-# A UDF on data batches.
-BatchUDF = Union[
-    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
-    # UDF type.
-    # Callable[[DataBatch, ...], DataBatch]
-    Callable[[DataBatch], DataBatch],
-    "_CallableClassProtocol",
-]
-
-# A UDF on data rows.
-RowUDF = Union[
-    # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constraint batch
-    # UDF type.
-    # Callable[[T, ...], U]
+# A user defined function passed to map, map_batches, ec.
+UserDefinedFunction = Union[
     Callable[[T], U],
-    "_CallableClassProtocol[T, U]",
+    Callable[[T], Iterator[U]],
+    "_CallableClassProtocol",
 ]
 
 # A list of block references pending computation by a single task. For example,
@@ -143,7 +147,47 @@ BlockPartitionMetadata = List["BlockMetadata"]
 # is on by default. When block splitting is off, the type is a plain block.
 MaybeBlockPartition = Union[Block, ObjectRefGenerator]
 
-VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy"]
+VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
+
+VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
+
+
+def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
+    ctx = ray.data.DataContext.get_current()
+    if ctx.strict_mode:
+        if given_batch_format == "default":
+            given_batch_format = "numpy"
+        if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
+            raise StrictModeError(
+                f"The given batch format {given_batch_format} is not allowed "
+                f"in Ray 2.5 (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
+            )
+    return given_batch_format
+
+
+def _apply_strict_mode_batch_size(
+    given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
+) -> Optional[int]:
+    ctx = ray.data.DatasetContext.get_current()
+    if ctx.strict_mode:
+        if use_gpu and (not given_batch_size or given_batch_size == "default"):
+            raise StrictModeError(
+                "`batch_size` must be provided to `map_batches` when requesting GPUs. "
+                "The optimal batch size depends on the model, data, and GPU used. "
+                "It is recommended to use the largest batch size that doesn't result "
+                "in your GPU device running out of memory. You can view the GPU memory "
+                "usage via the Ray dashboard."
+            )
+        elif given_batch_size == "default":
+            return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
+
+    else:
+        if given_batch_size == "default":
+            return ray.data.context.DEFAULT_BATCH_SIZE
+        else:
+            return given_batch_size
 
 
 @DeveloperAPI
@@ -229,7 +273,7 @@ class BlockMetadata:
 
 
 @DeveloperAPI
-class BlockAccessor(Generic[T]):
+class BlockAccessor:
     """Provides accessor methods for a specific block.
 
     Ideally, we wouldn't need a separate accessor classes for blocks. However,
@@ -246,8 +290,13 @@ class BlockAccessor(Generic[T]):
         """Return the number of rows contained in this block."""
         raise NotImplementedError
 
-    def iter_rows(self) -> Iterator[T]:
-        """Iterate over the rows of this block."""
+    def iter_rows(self, public_row_format: bool) -> Iterator[T]:
+        """Iterate over the rows of this block.
+
+        Args:
+            public_row_format: Whether to cast rows into the public Dict row
+                format (this incurs extra copy conversions).
+        """
         raise NotImplementedError
 
     def slice(self, start: int, end: int, copy: bool) -> Block:
@@ -274,7 +323,7 @@ class BlockAccessor(Generic[T]):
         """
         raise NotImplementedError
 
-    def select(self, columns: List[KeyFn]) -> Block:
+    def select(self, columns: List[Optional[str]]) -> Block:
         """Return a new block containing the provided columns."""
         raise NotImplementedError
 
@@ -308,7 +357,7 @@ class BlockAccessor(Generic[T]):
         """Return the default data format for this accessor."""
         return self.to_block()
 
-    def to_batch_format(self, batch_format: str) -> DataBatch:
+    def to_batch_format(self, batch_format: Optional[str]) -> DataBatch:
         """Convert this block into the provided batch format.
 
         Args:
@@ -317,7 +366,9 @@ class BlockAccessor(Generic[T]):
         Returns:
             This block formatted as the provided batch format.
         """
-        if batch_format == "default" or batch_format == "native":
+        if batch_format is None:
+            return self.to_block()
+        elif batch_format == "default" or batch_format == "native":
             return self.to_default()
         elif batch_format == "pandas":
             return self.to_pandas()
@@ -351,22 +402,44 @@ class BlockAccessor(Generic[T]):
             exec_stats=exec_stats,
         )
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
+    def zip(self, other: "Block") -> "Block":
         """Zip this block with another block of the same type and size."""
         raise NotImplementedError
 
     @staticmethod
-    def builder() -> "BlockBuilder[T]":
+    def builder() -> "BlockBuilder":
         """Create a builder for this block type."""
         raise NotImplementedError
 
     @staticmethod
     def batch_to_block(batch: DataBatch) -> Block:
         """Create a block from user-facing data formats."""
-        if isinstance(batch, (np.ndarray, dict)):
+
+        if isinstance(batch, np.ndarray):
             from ray.data._internal.arrow_block import ArrowBlockAccessor
 
+            ctx = ray.data.DataContext.get_current()
+            if ctx.strict_mode:
+                raise StrictModeError(
+                    f"Error validating {_truncated_repr(batch)}: "
+                    "Standalone numpy arrays are not "
+                    "allowed in Ray 2.5. Return a dict of field -> array, "
+                    "e.g., `{'data': array}` instead of `array`."
+                )
+
             return ArrowBlockAccessor.numpy_to_block(batch)
+        elif isinstance(batch, collections.abc.Mapping):
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
+            import pyarrow as pa
+
+            try:
+                return ArrowBlockAccessor.numpy_to_block(batch)
+            except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
+                import pandas as pd
+
+                # TODO(ekl) once we support Python objects within Arrow blocks, we
+                # don't need this fallback path.
+                return pd.DataFrame(dict(batch))
         return batch
 
     @staticmethod
@@ -391,34 +464,43 @@ class BlockAccessor(Generic[T]):
         elif isinstance(block, list):
             from ray.data._internal.simple_block import SimpleBlockAccessor
 
+            ctx = ray.data.DataContext.get_current()
+            if ctx.strict_mode:
+                raise StrictModeError(
+                    f"Error validating {_truncated_repr(block)}: "
+                    "Standalone Python objects are not "
+                    "allowed in Ray 2.5. To use Python objects in a dataset, "
+                    "wrap them in a dict of numpy arrays, e.g., "
+                    "return `{'item': batch}` instead of just `batch`."
+                )
             return SimpleBlockAccessor(block)
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 
-    def sample(self, n_samples: int, key: Any) -> "Block[T]":
+    def sample(self, n_samples: int, key: Any) -> "Block":
         """Return a random sample of items from this block."""
         raise NotImplementedError
 
     def sort_and_partition(
         self, boundaries: List[T], key: Any, descending: bool
-    ) -> List["Block[T]"]:
+    ) -> List["Block"]:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: KeyFn, agg: "AggregateFn") -> Block[U]:
+    def combine(self, key: Optional[str], agg: "AggregateFn") -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List["Block[T]"], key: Any, descending: bool
-    ) -> Tuple[Block[T], BlockMetadata]:
+        blocks: List["Block"], key: Any, descending: bool
+    ) -> Tuple[Block, BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
         raise NotImplementedError
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block], key: KeyFn, agg: "AggregateFn"
-    ) -> Tuple[Block[U], BlockMetadata]:
+        blocks: List[Block], key: Optional[str], agg: "AggregateFn"
+    ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

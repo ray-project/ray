@@ -8,9 +8,10 @@ import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.search.sample import Domain, Function
@@ -391,7 +392,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        FIFOScheduler.__init__(self)
+        super().__init__()
         self._metric = metric
         self._mode = mode
         self._metric_op = None
@@ -666,7 +667,9 @@ class PopulationBasedTraining(FIFOScheduler):
         trial_name, trial_to_clone_name = (trial_state.orig_tag, new_state.orig_tag)
         trial_id = trial.trial_id
         trial_to_clone_id = trial_to_clone.trial_id
-        trial_path = os.path.join(trial.local_dir, "pbt_policy_" + trial_id + ".txt")
+        trial_path = os.path.join(
+            trial.local_experiment_path, "pbt_policy_" + trial_id + ".txt"
+        )
         trial_to_clone_path = os.path.join(
             trial_to_clone.local_dir, "pbt_policy_" + trial_to_clone_id + ".txt"
         )
@@ -679,7 +682,9 @@ class PopulationBasedTraining(FIFOScheduler):
             new_config,
         ]
         # Log to global file.
-        with open(os.path.join(trial.local_dir, "pbt_global.txt"), "a+") as f:
+        with open(
+            os.path.join(trial.local_experiment_path, "pbt_global.txt"), "a+"
+        ) as f:
             print(json.dumps(policy, cls=SafeFallbackEncoder), file=f)
         # Overwrite state in target trial from trial_to_clone.
         if os.path.exists(trial_to_clone_path):
@@ -1020,7 +1025,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         policy = []
         last_new_tag = None
         last_old_conf = None
-        for (old_tag, new_tag, old_step, new_step, old_conf, new_conf) in reversed(
+        for old_tag, new_tag, old_step, new_step, old_conf, new_conf in reversed(
             raw_policy
         ):
             if last_new_tag and old_tag != last_new_tag:

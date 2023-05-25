@@ -28,8 +28,8 @@ def test_object_broadcast():
         def foo(self):
             pass
 
-        def sum(self, arr):
-            return np.sum(arr)
+        def data_len(self, arr):
+            return len(arr)
 
     actors = [Actor.remote() for _ in range(NUM_NODES)]
 
@@ -39,25 +39,28 @@ def test_object_broadcast():
     for actor in tqdm(actors, desc="Ensure all actors have started."):
         ray.get(actor.foo.remote())
 
+    start = perf_counter()
     result_refs = []
     for actor in tqdm(actors, desc="Broadcasting objects"):
-        result_refs.append(actor.sum.remote(ref))
+        result_refs.append(actor.data_len.remote(ref))
 
     results = ray.get(result_refs)
+    end = perf_counter()
+
     for result in results:
         assert result == OBJECT_SIZE
 
+    return end - start
+
 
 ray.init(address="auto")
-start = perf_counter()
-test_object_broadcast()
-end = perf_counter()
-print(f"Broadcast time: {end - start} ({OBJECT_SIZE} B x {NUM_NODES} nodes)")
+duration = test_object_broadcast()
+print(f"Broadcast time: {duration} ({OBJECT_SIZE} B x {NUM_NODES} nodes)")
 
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
     results = {
-        "broadcast_time": end - start,
+        "broadcast_time": duration,
         "object_size": OBJECT_SIZE,
         "num_nodes": NUM_NODES,
         "success": "1",
@@ -66,7 +69,7 @@ if "TEST_OUTPUT_JSON" in os.environ:
     results["perf_metrics"] = [
         {
             "perf_metric_name": perf_metric_name,
-            "perf_metric_value": end - start,
+            "perf_metric_value": duration,
             "perf_metric_type": "LATENCY",
         }
     ]
