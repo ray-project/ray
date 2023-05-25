@@ -108,7 +108,7 @@ async def _handle_streaming_response(
 
                 await send(asgi_message)
     except Exception as e:
-        error_message = "Unexpected error, traceback: {}.".format(e)
+        error_message = f"Unexpected error, traceback: {e}."
         logger.warning(error_message)
 
         if status_code == "":
@@ -194,8 +194,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # Here because the client disconnected, we will return a custom
             # error code for metric tracking.
             return DISCONNECT_ERROR_CODE
-        except RayTaskError as error:
-            error_message = "Task Error. Traceback: {}.".format(error)
+        except RayTaskError as e:
+            error_message = f"Unexpected error, traceback: {e}."
             await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
         except RayActorError:
