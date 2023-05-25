@@ -41,13 +41,13 @@ def test_pickle_large_checkpoint():
     import sys
 
     if sys.version_info >= (3, 8):
-        assert pickle.HIGHEST_VERSION == 5
+        assert pickle.HIGHEST_PROTOCOL == 5
 
         data_dict = {"key": "1" * (4 * 1024 * 1024 * 1024 + 100)}
         checkpoint = TorchCheckpoint(data_dict=data_dict)
         pickle.dumps(checkpoint)
     else:
-        assert pickle.HIGHEST_VERSION == 4
+        assert pickle.HIGHEST_PROTOCOL == 4
 
 
 def test_no_encoding_for_dir_checkpoints(tmpdir):
