@@ -84,8 +84,10 @@ def build(ray_dag_root_node: DAGNode, name: str = None) -> List[Deployment]:
                 m2_output = m2.forward.bind(dag_input[1])
                 ray_dag = ensemble.bind(m1_output, m2_output)
 
-            Assuming we have non-JSON serializable or inline defined class or
-            function in local pipeline development.
+        Assuming we have non-JSON serializable or inline defined class or
+        function in local pipeline development.
+
+        .. code-block:: python
 
             from ray.serve.api import build as build_app
             deployments = build_app(ray_dag) # it can be method node
