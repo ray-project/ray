@@ -49,7 +49,6 @@ RAY_DASHBOARD_ADDRESS_HELP_STR = (
     "http://localhost:52365). Can also be specified using the "
     "RAY_AGENT_ADDRESS environment variable."
 )
-CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 
 
 # See https://stackoverflow.com/a/33300001/11162437
@@ -125,7 +124,7 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
 
 @click.group(
     help="CLI for managing Serve applications on a Ray cluster.",
-    context_settings=CONTEXT_SETTINGS,
+    context_settings=dict(help_option_names=["-h", "--help"]),
 )
 def cli():
     pass
