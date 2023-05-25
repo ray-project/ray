@@ -683,7 +683,7 @@ def test_publish_and_subscribe_error_info(ray_start_regular_with_external_redis)
 
     (key_id, err) = subscriber.poll()
     assert key_id == b"bbb_id"
-    assert err.error_message == "test error message 2"
+    assert err["error_message"] == "test error message 2"
 
     subscriber.close()
 

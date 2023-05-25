@@ -539,7 +539,7 @@ def test_warning_many_actor_tasks_queued(shutdown_only, sync: bool):
     a = Foo.remote()
     [a.f.remote() for _ in range(50000)]
     errors = get_error_message(p, 4, ray_constants.EXCESS_QUEUEING_WARNING)
-    msgs = [e.error_message for e in errors]
+    msgs = [e["error_message"] for e in errors]
     assert "Warning: More than 5000 tasks are pending submission to actor" in msgs[0]
     assert "Warning: More than 10000 tasks are pending submission to actor" in msgs[1]
     assert "Warning: More than 20000 tasks are pending submission to actor" in msgs[2]
