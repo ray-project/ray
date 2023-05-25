@@ -141,6 +141,7 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/serve/doc_code/streaming_example.py"],
+    exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
     env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
