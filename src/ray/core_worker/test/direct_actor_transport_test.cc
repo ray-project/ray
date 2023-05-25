@@ -760,7 +760,7 @@ class DirectActorReceiverTest : public ::testing::Test {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
-      uint64_t *num_streaming_generator_returns,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrowed_refs) {
     return Status::OK();
   }

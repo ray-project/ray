@@ -329,13 +329,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
                      << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
       for (auto &net_err_task : wait_for_death_info_tasks) {
-        RAY_UNUSED(GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
-            net_err_task.second.TaskId(),
-            error_type,
-            nullptr,
-            &error_info,
-            /*mark_task_object_failed*/ true,
-            /*fail_immediately*/ true));
+        RAY_UNUSED(GetTaskFinisherWithoutMu().FailPendingTask(
+            net_err_task.second.TaskId(), error_type, nullptr, &error_info));
       }
     }
   }
@@ -359,11 +354,11 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     }
   }
 
-  // Do not hold mu_, because FailOrRetryPendingTask may call python from cpp,
+  // Do not hold mu_, because FailPendingTask may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
   for (auto &task_spec : task_specs) {
-    GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_spec.TaskId(),
-                                                      rpc::ErrorType::ACTOR_DIED);
+    GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
+                                               rpc::ErrorType::ACTOR_DIED);
   }
 }
 
@@ -572,8 +567,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
             << ", wait_queue_size=" << queue.wait_for_death_info_tasks.size();
       } else {
         // If we don't need death info, just fail the request.
-        GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
-            task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, nullptr, nullptr, true, true);
+        GetTaskFinisherWithoutMu().FailPendingTask(task_spec.TaskId(),
+                                                   rpc::ErrorType::ACTOR_DIED)
       }
     }
   }

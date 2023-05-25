@@ -94,14 +94,14 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
 
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> return_objects;
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
-    uint64_t num_streaming_generator_returns = 0;
+    std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
     bool is_retryable_error = false;
     std::string application_error = "";
     auto status = task_handler_(task_spec,
                                 resource_ids,
                                 &return_objects,
                                 &dynamic_return_objects,
-                                &num_streaming_generator_returns,
+                                &streaming_generator_returns,
                                 reply->mutable_borrowed_refs(),
                                 &is_retryable_error,
                                 &application_error);
@@ -117,8 +117,13 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
       // executing the task.
       reply->set_task_execution_error(application_error);
     }
-    if (num_streaming_generator_returns > 0) {
-      reply->set_num_streaming_generator_returns(num_streaming_generator_returns);
+
+    for (const auto &it : streaming_generator_returns) {
+      const auto &object_id = it.first;
+      bool is_in_plasma = it.second;
+      auto return_id_proto = reply->add_streaming_generator_return_ids();
+      return_id_proto->set_object_id(object_id.Binary());
+      return_id_proto->set_is_in_plasma(is_in_plasma);
     }
 
     bool objects_valid = return_objects.size() == num_returns;

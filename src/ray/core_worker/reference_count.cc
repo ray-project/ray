@@ -780,7 +780,6 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
         objects_to_recover_.push_back(object_id);
       }
     }
-    RAY_LOG(INFO) << "SANG-TODO Deleting a object location " << object_id;
     RemoveObjectLocationInternal(it, raylet_id);
   }
 }

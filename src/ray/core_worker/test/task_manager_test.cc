@@ -300,8 +300,7 @@ TEST_F(TaskManagerTest, TestFailPendingTask) {
   WorkerContext ctx(WorkerType::WORKER, WorkerID::FromRandom(), JobID::FromInt(0));
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
-  manager_.FailOrRetryPendingTask(
-      spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED, nullptr, nullptr, true, true);
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);

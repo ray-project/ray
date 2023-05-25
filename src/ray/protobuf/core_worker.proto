@@ -129,9 +129,9 @@ message PushTaskReply {
   // from the core worker. This is only set when the task execution failed.
   // Default to empty string (not set) when no error happens.
   string task_execution_error = 9;
-  // Number of return values dynamically created for a
-  // streaming generator.
-  optional uint64 num_streaming_generator_returns = 10;
+  // A list of streaming generator return IDs and whether
+  // they are stored in a plasma store.
+  repeated StreamingGeneratorReturnIdInfo streaming_generator_return_ids = 10;
 }
 
 message DirectActorCallArgWaitCompleteRequest {

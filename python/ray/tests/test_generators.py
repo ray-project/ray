@@ -555,10 +555,7 @@ def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_t
     # Make sure other tasks can also get the error.
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(done)
-    print(ref)
-    print(gen)
-    print(refs)
-    print(done)
+
     del ref, gen, refs, done, failure_signal
     gc.collect()
     assert_no_leak()

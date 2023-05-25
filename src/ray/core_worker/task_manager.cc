@@ -496,8 +496,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     }
   }
 
-  // Handle the intermediate values.
-  // If it is the first execution (e.g., CompletePendingTask has never been called),
+  // NOTE: If it is the first execution (e.g., CompletePendingTask has never been called),
   // it is always empty.
   const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
 
@@ -513,11 +512,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
       auto stream_it = object_ref_streams_.find(generator_id);
       if (stream_it != object_ref_streams_.end()) {
         index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
-      }
-
-      auto task_it = submissible_tasks_.find(task_id);
-      if (task_it != submissible_tasks_.end()) {
-        task_it->second.reconstructable_return_ids.insert(object_id);
       }
     }
     // If the ref was written to a stream, we should also
@@ -622,9 +616,15 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
 
-    if (reply.has_num_streaming_generator_returns()) {
+    if (reply.streaming_generator_return_ids_size() > 0) {
       RAY_CHECK(spec.IsStreamingGenerator());
-      spec.SetNumStreamingGeneratorReturns(reply.num_streaming_generator_returns());
+      spec.SetNumStreamingGeneratorReturns(reply.streaming_generator_return_ids_size());
+      for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
+        if (return_id_info.is_in_plasma()) {
+          it->second.reconstructable_return_ids.insert(
+              ObjectID::FromBinary(return_id_info.object_id));
+        }
+      }
     }
 
     // Record any dynamically returned objects. We need to store these with the
@@ -1031,6 +1031,8 @@ void TaskManager::MarkTaskReturnObjectsFailed(
       }
     }
   }
+  // If it was a streaming generator, try failing all the return object refs.
+  // If the object ref was already written before, it won't be overwritten.
   if (spec.IsStreamingGenerator()) {
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
     for (int i = 0; i < num_streaming_generator_returns; i++) {

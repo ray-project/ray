@@ -132,6 +132,13 @@ class MockTaskFinisher : public TaskFinisherInterface {
     return false;
   }
 
+  void FailPendingTask(const TaskID &task_id,
+                       rpc::ErrorType error_type,
+                       const Status *status,
+                       const rpc::RayErrorInfo *ray_error_info = nullptr) override {
+    num_fail_pending_task_calls++;
+  }
+
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
                               const Status *status,
@@ -139,9 +146,6 @@ class MockTaskFinisher : public TaskFinisherInterface {
                               bool mark_task_object_failed = true,
                               bool fail_immediately = false) override {
     num_tasks_failed++;
-    if (mark_task_object_failed && fail_immediately) {
-      num_fail_pending_task_calls++;
-    }
     return true;
   }
 

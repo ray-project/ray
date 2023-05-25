@@ -40,9 +40,14 @@ class TaskFinisherInterface {
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
                                    const rpc::RayErrorInfo &error_info) = 0;
 
+  virtual void FailPendingTask(const TaskID &task_id,
+                               rpc::ErrorType error_type,
+                               const Status *status = nullptr,
+                               const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
+
   virtual bool FailOrRetryPendingTask(const TaskID &task_id,
                                       rpc::ErrorType error_type,
-                                      const Status *status = nullptr,
+                                      const Status *status,
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
                                       bool mark_task_object_failed = true,
                                       bool fail_immediately = false) = 0;
@@ -352,6 +357,21 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                               bool mark_task_object_failed = true,
                               bool fail_immediately = false) override;
 
+  /// A pending task failed. This will mark the task as failed.
+  /// This doesn't always mark the return object as failed
+  /// depending on mark_task_object_failed.
+  ///
+  /// \param[in] task_id ID of the pending task.
+  /// \param[in] error_type The type of the specific error.
+  /// \param[in] status Optional status message.
+  /// \param[in] ray_error_info The error information of a given error type.
+  /// \param[in] mark_task_object_failed whether or not it marks the task
+  /// return object as failed.
+  void FailPendingTask(const TaskID &task_id,
+                       rpc::ErrorType error_type,
+                       const Status *status = nullptr,
+                       const rpc::RayErrorInfo *ray_error_info = nullptr) override;
+
   /// Treat a pending task's returned Ray object as failed. The lock should not be held
   /// when calling this method because it may trigger callbacks in this or other classes.
   ///
@@ -618,21 +638,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
-
-  /// A pending task failed. This will mark the task as failed.
-  /// This doesn't always mark the return object as failed
-  /// depending on mark_task_object_failed.
-  ///
-  /// \param[in] task_id ID of the pending task.
-  /// \param[in] error_type The type of the specific error.
-  /// \param[in] status Optional status message.
-  /// \param[in] ray_error_info The error information of a given error type.
-  /// \param[in] mark_task_object_failed whether or not it marks the task
-  /// return object as failed.
-  void FailPendingTask(const TaskID &task_id,
-                       rpc::ErrorType error_type,
-                       const Status *status = nullptr,
-                       const rpc::RayErrorInfo *ray_error_info = nullptr);
 
   /// Set the TaskStatus
   ///
