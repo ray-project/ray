@@ -122,7 +122,10 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     return args_dict
 
 
-@click.group(help="CLI for managing Serve applications on a Ray cluster.")
+@click.group(
+    help="CLI for managing Serve applications on a Ray cluster.",
+    context_settings=dict(help_option_names=["-h", "--help"]),
+)
 def cli():
     pass
 
