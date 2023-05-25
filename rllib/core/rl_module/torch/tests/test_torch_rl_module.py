@@ -136,11 +136,7 @@ class TestRLModuleGPU(unittest.TestCase):
             torch.cuda.empty_cache()
             return torch.cuda.memory_allocated()
 
-        compile_cfg = TorchCompileConfig(
-            compile_forward_train=True,
-            compile_forward_inference=True,
-            compile_forward_exploration=True,
-        )
+        compile_cfg = TorchCompileConfig()
 
         env = gym.make("CartPole-v1")
 

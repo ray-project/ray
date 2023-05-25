@@ -3008,7 +3008,6 @@ class AlgorithmConfig(_Config):
         )
 
         return TorchCompileConfig(
-            compile_forward_train=self.torch_compile_learner,
             torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
             torch_dynamo_mode=self.torch_compile_learner_dynamo_mode,
         )
