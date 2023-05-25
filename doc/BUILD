@@ -131,7 +131,7 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
-         "source/serve/doc_code/object_detection.py",
+        "source/serve/doc_code/object_detection.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -147,6 +147,33 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],
+)
+
+# Run all Serve doc code with streaming enabled as well.
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["source/serve/doc_code/**/*.py"],
+    exclude = [
+        "source/serve/doc_code/distilbert.py",
+        "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/object_detection.py",
+    ],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve"],
+    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
+)
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = [
+        "source/serve/doc_code/distilbert.py",
+        "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/object_detection.py",
+    ],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve", "gpu"],
+    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
 )
 
 
