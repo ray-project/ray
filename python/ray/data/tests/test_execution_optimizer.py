@@ -424,7 +424,7 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
             up_remote_args,
             down_remote_args,
         )
-        assert physical_op.input_dependencies[0].name == "DoRead", (
+        assert physical_op.input_dependencies[0].name == "ReadParquet", (
             up_remote_args,
             down_remote_args,
         )
