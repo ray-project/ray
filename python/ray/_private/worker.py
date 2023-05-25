@@ -2596,7 +2596,7 @@ def put(
                 )
             )
         )
-        if not serialized_owner_address:
+        if not serialize_owner_address:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
     else:
         raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
