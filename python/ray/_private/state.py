@@ -167,7 +167,7 @@ class GlobalState:
 
         results = []
         for i in range(len(job_table)):
-            entry = common_pb2.JobTableData.FromString(job_table[i])
+            entry = gcs_pb2.JobTableData.FromString(job_table[i])
             job_info = {}
             job_info["JobID"] = entry.job_id.hex()
             job_info["DriverIPAddress"] = entry.driver_ip_address
