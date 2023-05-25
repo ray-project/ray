@@ -10,7 +10,7 @@ from unittest.mock import patch, Mock
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.experimental.state.api import list_objects
-from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEoFError
+from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEneOfStreamError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
 
@@ -46,28 +46,26 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
         generator_ref = ray.ObjectRef.from_random()
         generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
         c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-        c.create_object_ref_stream.assert_called()
 
         # Test when there's no new ref, it returns a nil.
         mocked_ray_wait.return_value = [], [generator_ref]
-        ref = generator._next(timeout_s=0)
+        ref = generator._next_sync(timeout_s=0)
         assert ref.is_nil()
 
         # When the new ref is available, next should return it.
         for _ in range(3):
             new_ref = ray.ObjectRef.from_random()
             c.try_read_next_object_ref_stream.return_value = new_ref
-            ref = generator._next(timeout_s=0)
+            ref = generator._next_sync(timeout_s=0)
             assert new_ref == ref
 
         # When try_read_next_object_ref_stream raises a
-        # ObjectRefStreamEoFError, it should raise a stop iteration.
-        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEoFError(
+        # ObjectRefStreamEneOfStreamError, it should raise a stop iteration.
+        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEneOfStreamError(
             ""
         )  # noqa
         with pytest.raises(StopIteration):
-            ref = generator._next(timeout_s=0)
-
+            ref = generator._next_sync(timeout_s=0)
         # Make sure we cannot serialize the generator.
         with pytest.raises(TypeError):
             dumps(generator)
@@ -92,19 +90,17 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
             mocked_ray_get.side_effect = WorkerCrashedError()
 
             c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-            ref = generator._next(timeout_s=0)
+            ref = generator._next_sync(timeout_s=0)
             # If the generator task fails by a systsem error,
             # meaning the ref will raise an exception
             # it should be returned.
-            print(ref)
-            print(generator_ref)
             assert ref == generator_ref
 
             # Once exception is raised, it should always
             # raise stopIteration regardless of what
             # the ref contains now.
             with pytest.raises(StopIteration):
-                ref = generator._next(timeout_s=0)
+                ref = generator._next_sync(timeout_s=0)
 
 
 def test_streaming_object_ref_generator_network_failed_unit(mocked_worker):
@@ -129,14 +125,83 @@ def test_streaming_object_ref_generator_network_failed_unit(mocked_worker):
             # unexpected_network_failure_timeout_s second,
             # it should fail.
             c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-            ref = generator._next(timeout_s=0, unexpected_network_failure_timeout_s=1)
+            ref = generator._next_sync(
+                timeout_s=0, unexpected_network_failure_timeout_s=1
+            )
             assert ref == ray.ObjectRef.nil()
             time.sleep(1)
             with pytest.raises(AssertionError):
-                generator._next(timeout_s=0, unexpected_network_failure_timeout_s=1)
+                generator._next_sync(
+                    timeout_s=0, unexpected_network_failure_timeout_s=1
+                )
             # After that StopIteration should be raised.
             with pytest.raises(StopIteration):
-                generator._next(timeout_s=0, unexpected_network_failure_timeout_s=1)
+                generator._next_sync(
+                    timeout_s=0, unexpected_network_failure_timeout_s=1
+                )
+
+
+@pytest.mark.asyncio
+async def test_streaming_object_ref_generator_unit_async(mocked_worker):
+    """
+    Verify the basic case:
+    create a generator -> read values -> nothing more to read -> delete.
+    """
+    with patch("ray.wait") as mocked_ray_wait:
+        c = mocked_worker.core_worker
+        generator_ref = ray.ObjectRef.from_random()
+        generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
+        c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
+
+        # Test when there's no new ref, it returns a nil.
+        mocked_ray_wait.return_value = [], [generator_ref]
+        ref = await generator._next_async(timeout_s=0)
+        assert ref.is_nil()
+
+        # When the new ref is available, next should return it.
+        for _ in range(3):
+            new_ref = ray.ObjectRef.from_random()
+            c.try_read_next_object_ref_stream.return_value = new_ref
+            ref = await generator._next_async(timeout_s=0)
+            assert new_ref == ref
+
+        # When try_read_next_object_ref_stream raises a
+        # ObjectRefStreamEneOfStreamError, it should raise a stop iteration.
+        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEneOfStreamError(
+            ""
+        )  # noqa
+        with pytest.raises(StopAsyncIteration):
+            ref = await generator._next_async(timeout_s=0)
+
+
+@pytest.mark.asyncio
+async def test_async_ref_generator_task_failed_unit(mocked_worker):
+    """
+    Verify when a task is failed by a system error,
+    the generator ref is returned.
+    """
+    with patch("ray.get") as mocked_ray_get:
+        with patch("ray.wait") as mocked_ray_wait:
+            c = mocked_worker.core_worker
+            generator_ref = ray.ObjectRef.from_random()
+            generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
+
+            # Simulate the worker failure happens.
+            mocked_ray_wait.return_value = [generator_ref], []
+            mocked_ray_get.side_effect = WorkerCrashedError()
+
+            c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
+            ref = await generator._next_async(timeout_s=0)
+            # If the generator task fails by a systsem error,
+            # meaning the ref will raise an exception
+            # it should be returned.
+            assert ref == generator_ref
+
+            # Once exception is raised, it should always
+            # raise stopIteration regardless of what
+            # the ref contains now.
+            with pytest.raises(StopAsyncIteration):
+                ref = await generator._next_async(timeout_s=0)
 
 
 def test_generator_basic(shutdown_only):
@@ -369,6 +434,7 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
 
 
 def test_generator_dist_chain(ray_start_cluster):
+    """E2E test to verify chain of generator works properly."""
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0, object_store_memory=1 * 1024 * 1024 * 1024)
     ray.init()
