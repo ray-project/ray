@@ -2507,8 +2507,9 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
 
-        if _enable_rl_module_api is not NotProvided:
-            self._enable_rl_module_api = _enable_rl_module_api
+        if _enable_rl_module_api is not NotProvided or self._enable_rl_module_api:
+            if not self._enable_rl_module_api:
+                self._enable_rl_module_api = _enable_rl_module_api
             if _enable_rl_module_api is True and self.exploration_config:
                 logger.warning(
                     "Setting `exploration_config={}` because you set "
@@ -3122,6 +3123,7 @@ class AlgorithmConfig(_Config):
                 marl_module_spec = cur_marl_module_spec.__class__(
                     marl_module_class=cur_marl_module_spec.marl_module_class,
                     module_specs=module_specs,
+                    load_state_path=cur_marl_module_spec.load_state_path,
                 )
             else:
                 # Default is multi-agent and user wants to override it. In this case,
@@ -3149,6 +3151,7 @@ class AlgorithmConfig(_Config):
                     module_specs={
                         k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                     },
+                    load_state_path=cur_marl_module_spec.load_state_path,
                 )
 
         # Make sure that policy_dict and marl_module_spec have similar keys
