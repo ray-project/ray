@@ -145,7 +145,10 @@ export const ServeSystemActorDetail = ({
             label: "Status",
             content:
               actor.type === "httpProxy" ? (
-                <StatusChip type="serveReplica" status={actor.detail.status} />
+                <StatusChip
+                  type="serveHttpProxy"
+                  status={actor.detail.status}
+                />
               ) : fetchedActor ? (
                 <StatusChip
                   type="serveController"
