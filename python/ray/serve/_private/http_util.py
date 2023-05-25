@@ -161,9 +161,8 @@ class ASGIHTTPSender(Send):
 class ASGIHTTPQueueSender(Send):
     """ASGI sender that enables polling for the sent messages off a queue.
 
-    This class assumes there's only a single consumer of the queue (concurrent
-    calls to `get_messages_nowait` and `wait_for_message` may result in undefined
-    behavior).
+    This class assumes a single consumer of the queue (concurrent calls to
+    `get_messages_nowait` and `wait_for_message` may result in undefined behavior).
     """
 
     def __init__(self):
@@ -179,7 +178,7 @@ class ASGIHTTPQueueSender(Send):
         """Returns all messages that are currently available (non-blocking).
 
         At least one message will be present if `wait_for_message` had previously
-        returned and a subsequent call to `wait_for_message` will block until at
+        returned and a subsequent call to `wait_for_message` blocks until at
         least one new message is available.
         """
         messages = []

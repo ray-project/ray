@@ -82,7 +82,7 @@ Support for HTTP streaming responses is experimental. To enable this feature, se
 ```
 
 Some applications must stream incremental results back to the caller.
-This is common for large language models (LLMs) used for text generation or video processing applications.
+This is common for text generation using large language models (LLMs) or video processing applications.
 The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
 
 To use HTTP response streaming, return a [StreamingResponse](https://www.starlette.io/responses/#streamingresponse) that wraps a generator from your HTTP handler.
@@ -90,7 +90,7 @@ This is supported for basic HTTP ingress deployments using a `__call__` method a
 
 The code below defines a Serve application that incrementally streams numbers up to a provided `max`.
 The client-side code is also updated to handle the streaming outputs.
-In this case, we are using the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced/#streaming-requests) library.
+This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced/#streaming-requests) library.
 
 ```{literalinclude} ../serve/doc_code/streaming_example.py
 :start-after: __begin_example__

@@ -82,17 +82,18 @@ async def _handle_streaming_response(
 ) -> str:
     """Consumes the `asgi_response_generator` and sends its data over `send`.
 
-    This function is essentially a proxy for a downstream ASGI response. The
-    passed generator is expected to return a stream of pickled ASGI messages
-    (dictionaries) that will be passed to the provided ASGI send interface.
+    This function is a proxy for a downstream ASGI response. The passed
+    generator is expected to return a stream of pickled ASGI messages
+    (dictionaries) that are sent using the provided ASGI interface.
 
-    Exception handling depends on if the first message has already been sent:
-        - if an exception happens *before* the first message, a 500 status will be sent.
-        - if an exception happens *after* the first message, the response stream will be
+    Exception handling depends on whether the first message has already been sent:
+        - if an exception happens *before* the first message, a 500 status is sent.
+        - if an exception happens *after* the first message, the response stream is
           terminated.
 
-     This is because once the first message has been sent, the client has already
-     received the status code.
+    The difference in behavior is because once the first message has been sent, the
+    client has already received the status code so we cannot send a `500` (internal
+    server error).
 
     Returns:
         status_code
