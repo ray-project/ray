@@ -3,6 +3,7 @@ import pytest
 import numpy as np
 import sys
 import time
+import threading
 import gc
 
 from unittest.mock import patch, Mock
@@ -72,6 +73,36 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
 
         del generator
         c.delete_object_ref_stream.assert_called()
+
+
+def test_streaming_generator_bad_exception_not_failing(shutdown_only, capsys):
+    """This test verifies when a return value cannot be stored
+        e.g., because it holds a lock) if it handles failures gracefully.
+
+    Previously, when it happens, there was a check failure. This verifies
+    the check failure doesn't happen anymore.
+    """
+    ray.init()
+
+    class UnserializableException(Exception):
+        def __init__(self):
+            self.lock = threading.Lock()
+
+    @ray.remote
+    def f():
+        raise UnserializableException
+        yield 1  # noqa
+
+    for ref in f.options(num_returns="streaming").remote():
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(ref)
+    captured = capsys.readouterr()
+    lines = captured.err.strip().split("\n")
+
+    # Verify check failure doesn't happen because we handle the error
+    # properly.
+    for line in lines:
+        assert "Check failed:" not in line
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
