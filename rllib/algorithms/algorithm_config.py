@@ -3021,8 +3021,6 @@ class AlgorithmConfig(_Config):
         )
 
         return TorchCompileConfig(
-            compile_forward_exploration=self.torch_compile_worker,
-            compile_forward_inference=self.torch_compile_worker,
             torch_dynamo_backend=self.torch_compile_worker_dynamo_backend,
             torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
         )
@@ -3253,7 +3251,10 @@ class AlgorithmConfig(_Config):
         )
 
         if self.framework_str == "torch":
-            config.framework(torch_compile_cfg=self.get_torch_compile_learner_config())
+            config.framework(
+                torch_compile=self.torch_compile_learner,
+                torch_compile_cfg=self.get_torch_compile_learner_config(),
+            )
         elif self.framework_str == "tf2":
             config.framework(eager_tracing=self.eager_tracing)
 

@@ -18,55 +18,42 @@ torch, nn = try_import_torch()
 
 
 def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
-    """A wrapper that compiles the forward methods of a TorchRLModule.
-
-    Possibly replaces the forward methods with compiled versions, depending on
-    compile_config. Note that this also makes it so that exploration and inference
-    do not trace grads because this can lead to memory leaks and slowness.
-    """
+    """A wrapper that compiles the forward methods of a TorchRLModule."""
 
     # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
     # Check if torch framework supports torch.compile.
     if (
         torch is not None
         and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
-        and (
-            compile_config.compile_forward_train
-            or compile_config.compile_forward_inference
-            or compile_config.compile_forward_exploration
-        )
     ):
         raise ValueError("torch.compile is only supported from torch 2.0.0")
 
-    if compile_config.compile_forward_train:
-        compiled_forward_train = torch.compile(
-            rl_module._forward_train,
-            backend=compile_config.torch_dynamo_backend,
-            mode=compile_config.torch_dynamo_mode,
-            **compile_config.kwargs
-        )
+    compiled_forward_train = torch.compile(
+        rl_module._forward_train,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs
+    )
 
-        rl_module._forward_train = compiled_forward_train
+    rl_module._forward_train = compiled_forward_train
 
-    if compile_config.compile_forward_inference:
-        compiled_forward_inference = torch.compile(
-            rl_module._forward_inference,
-            backend=compile_config.torch_dynamo_backend,
-            mode=compile_config.torch_dynamo_mode,
-            **compile_config.kwargs
-        )
+    compiled_forward_inference = torch.compile(
+        rl_module._forward_inference,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs
+    )
 
-        rl_module._forward_inference = compiled_forward_inference
+    rl_module._forward_inference = compiled_forward_inference
 
-    if compile_config.compile_forward_exploration:
-        compiled_forward_exploration = torch.compile(
-            rl_module._forward_exploration,
-            backend=compile_config.torch_dynamo_backend,
-            mode=compile_config.torch_dynamo_mode,
-            **compile_config.kwargs
-        )
+    compiled_forward_exploration = torch.compile(
+        rl_module._forward_exploration,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs
+    )
 
-        rl_module._forward_exploration = compiled_forward_exploration
+    rl_module._forward_exploration = compiled_forward_exploration
 
     return rl_module
 
