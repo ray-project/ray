@@ -17,7 +17,7 @@ use wasm_on_ray::runtime::common_proto::WorkerType;
 use wasm_on_ray::runtime::{
     register_ray_hostcalls, ClusterHelper, RayConfig, RayRuntime, RayRuntimeFactory,
 };
-use wasm_on_ray::util::{self, RayLog};
+use wasm_on_ray::util::RayLog;
 use wasm_on_ray::util::{WasmEngineTypeParam, WorkerParameters};
 
 use std::sync::{Arc, RwLock};
@@ -93,7 +93,7 @@ fn init_wasm_module(
     let rt = runtime.write().unwrap();
     let mut _engine = engine.write().unwrap();
     if rt.exec_type() == WorkerType::Worker {
-        let modules = ClusterHelper::wasm_modules();
+        let _modules = ClusterHelper::wasm_modules();
         // TODO: process wasm modules found in the search paths.
     }
     Ok(())

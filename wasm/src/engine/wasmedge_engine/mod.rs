@@ -11,11 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#![feature(never_type)]
-use super::{Hostcall, WasmContext, WasmFunc, WasmType};
+use super::{WasmContext, WasmFunc};
 use crate::engine::{
     Hostcalls, WasmEngine, WasmInstance, WasmModule, WasmSandbox, WasmValue, TASK_RECEIVER,
-    TASK_RESULT_RECEIVER, TASK_RESULT_SENDER,
+    TASK_RESULT_SENDER,
 };
 use crate::runtime::{common_proto::TaskType, CallOptions, InvocationSpec, RayRuntime};
 use crate::util::RayLog;
@@ -28,14 +27,12 @@ use lazy_static::lazy_static;
 use sha256::digest;
 
 use std::collections::HashMap;
-use std::fmt::format;
 use std::result::Result::Ok;
 use std::sync::{Arc, Mutex, RwLock};
 
 use tracing::{error, info};
 
 use wasmedge_macro::sys_host_function;
-use wasmedge_sdk as sdk;
 use wasmedge_sys::{
     AsImport, CallingFrame, Config, Executor, FuncType, Function, ImportModule, ImportObject,
     Instance, Loader, Module, Store, Validator, WasiModule, WasmValue as WasmEdgeWasmValue,
@@ -69,7 +66,7 @@ macro_rules! hostcall_wrapper {
                     }
                     return Ok(results);
                 }
-                Err(e) => {
+                Err(_) => {
                     return Err(HostFuncError::Runtime(1));
                 }
             }
@@ -88,6 +85,7 @@ hostcall_wrapper!(hc_ray_get);
 hostcall_wrapper!(hc_ray_put);
 hostcall_wrapper!(hc_ray_call);
 
+#[allow(dead_code)]
 struct CurrentTaskInfo {
     sandbox_name: String,
     module_hash: String,
@@ -143,7 +141,7 @@ impl WasmEdgeEngine {
         match WasiModule::create(None, None, None) {
             Ok(mut wasi) => {
                 wasi.init_wasi(None, None, None);
-                let mut engine = WasmEdgeEngine {
+                let engine = WasmEdgeEngine {
                     cfg,
                     sandboxes: HashMap::new(),
                     modules: HashMap::new(),
@@ -204,7 +202,7 @@ impl WasmEngine for WasmEdgeEngine {
             let mut import_module = ImportModule::create(hc_module_name.as_str())?;
 
             // This is a hack to set the current runtime
-            let mut tmp = Arc::clone(&hostcalls.runtime);
+            let tmp = Arc::clone(&hostcalls.runtime);
             let mut current_task = CURRENT_TASK.write().unwrap();
             current_task.runtime = Some(tmp);
 
@@ -321,7 +319,7 @@ impl WasmEngine for WasmEdgeEngine {
                     Ok(val) => match val.func_ref() {
                         Some(func) => match sandbox.executor.call_func_ref(&func, args) {
                             Ok(rtn) => {
-                                let mut results = rtn
+                                let results = rtn
                                     .iter()
                                     .map(|x| from_wasmedge_value(x))
                                     .collect::<Vec<WasmValue>>();
@@ -539,6 +537,7 @@ impl WasmEngine for WasmEdgeEngine {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 struct WasmEdgeModule {
     name: String,
@@ -551,7 +550,7 @@ impl WasmEdgeModule {
         let loader = Loader::create(Some(&cfg)).unwrap();
         let module = loader.from_bytes(wasm_bytes).unwrap();
         match Validator::create(Some(&cfg)) {
-            Ok(mut validator) => {
+            Ok(validator) => {
                 validator.validate(&module).unwrap();
             }
             Err(e) => {
@@ -569,6 +568,7 @@ impl WasmEdgeModule {
 
 impl WasmModule for WasmEdgeModule {}
 
+#[allow(dead_code)]
 #[derive(Clone)]
 struct WasmEdgeSandbox {
     name: String,
@@ -580,7 +580,7 @@ struct WasmEdgeSandbox {
 impl WasmEdgeSandbox {
     pub fn new(cfg: Config, name: &str) -> Self {
         match Store::create() {
-            Ok(mut store) => WasmEdgeSandbox {
+            Ok(store) => WasmEdgeSandbox {
                 name: name.to_string(),
                 store,
                 executor: Executor::create(Some(&cfg), None).unwrap(),
@@ -613,8 +613,6 @@ impl WasmInstance for WasmEdgeInstance {
     // TODO: implement WasmInstance
 }
 
-struct WasmEdgeCallData {}
-
 struct WasmEdgeContext {
     frame: CallingFrame,
 }
@@ -630,7 +628,7 @@ impl WasmContext for WasmEdgeContext {
             .data_pointer(off as u32, len as u32)
         {
             Ok(data) => Ok(unsafe { std::slice::from_raw_parts(data, len) }),
-            Err(e) => Err(anyhow!("Failed to get memory region")),
+            Err(_) => Err(anyhow!("Failed to get memory region")),
         }
     }
 
@@ -642,7 +640,7 @@ impl WasmContext for WasmEdgeContext {
             .data_pointer_mut(off as u32, len as u32)
         {
             Ok(data) => Ok(unsafe { std::slice::from_raw_parts_mut(data, len) }),
-            Err(e) => Err(anyhow!("Failed to get memory region")),
+            Err(_) => Err(anyhow!("Failed to get memory region")),
         }
     }
 
@@ -683,10 +681,10 @@ impl WasmContext for WasmEdgeContext {
         let call_opt = CallOptions::new();
         let invoke_spec =
             InvocationSpec::new(TaskType::NormalTask, remote_func_holder.clone(), args, None);
-        let mut rt = &CURRENT_TASK.write().unwrap().runtime;
+        let rt = &CURRENT_TASK.write().unwrap().runtime;
         match rt {
             Some(rt) => {
-                let mut rt = rt.write().unwrap();
+                let rt = rt.write().unwrap();
                 match rt.call(&invoke_spec, &call_opt) {
                     Ok(results) => {
                         if results.len() != 1 {
@@ -694,7 +692,7 @@ impl WasmContext for WasmEdgeContext {
                         }
                         Ok(results)
                     }
-                    Err(e) => Err(anyhow!("Failed to call")),
+                    Err(_) => Err(anyhow!("Failed to call")),
                 }
             }
             None => Err(anyhow!("No runtime")),
@@ -702,16 +700,16 @@ impl WasmContext for WasmEdgeContext {
     }
 
     fn get_object(&mut self, object_id: &crate::runtime::ObjectID) -> Result<Vec<u8>> {
-        let mut rt = &CURRENT_TASK.write().unwrap().runtime;
+        let rt = &CURRENT_TASK.write().unwrap().runtime;
         match rt.as_ref() {
             Some(rt) => {
-                let mut rt = rt.write().unwrap();
+                let rt = rt.write().unwrap();
                 match rt.get(object_id) {
                     Ok(object) => {
                         info!("get_object: {:x?} {:x?}", object_id, object);
                         Ok(object)
                     }
-                    Err(e) => Err(anyhow!("Failed to get object")),
+                    Err(_) => Err(anyhow!("Failed to get object")),
                 }
             }
             None => Err(anyhow!("No runtime")),
@@ -719,13 +717,13 @@ impl WasmContext for WasmEdgeContext {
     }
 
     fn put_object(&mut self, data: &[u8]) -> Result<crate::runtime::ObjectID> {
-        let mut rt = &CURRENT_TASK.write().unwrap().runtime;
+        let rt = &CURRENT_TASK.write().unwrap().runtime;
         match rt.as_ref() {
             Some(rt) => {
                 let mut rt = rt.write().unwrap();
                 match rt.put(data.to_vec()) {
                     Ok(object_id) => Ok(object_id),
-                    Err(e) => Err(anyhow!("Failed to put object")),
+                    Err(_) => Err(anyhow!("Failed to put object")),
                 }
             }
             None => Err(anyhow!("No runtime")),
@@ -735,7 +733,7 @@ impl WasmContext for WasmEdgeContext {
     fn submit_sandbox_binary(&mut self) -> Result<()> {
         let bytes = match &CURRENT_TASK.read() {
             Ok(current_task) => current_task.bytes.clone(),
-            Err(e) => return Err(anyhow!("Failed to read current task")),
+            Err(_) => return Err(anyhow!("Failed to read current task")),
         };
         if bytes.len() == 0 {
             return Err(anyhow!("No module bytes"));
@@ -743,13 +741,13 @@ impl WasmContext for WasmEdgeContext {
 
         let sandbox_name = match &CURRENT_TASK.read() {
             Ok(current_task) => current_task.sandbox_name.clone(),
-            Err(e) => return Err(anyhow!("Failed to read current task")),
+            Err(_) => return Err(anyhow!("Failed to read current task")),
         };
         let hash = digest(bytes.as_slice());
-        let mut rt = &CURRENT_TASK.write().unwrap().runtime;
+        let rt = &CURRENT_TASK.write().unwrap().runtime;
         match rt.as_ref() {
             Some(rt) => {
-                let mut rt = rt.write().unwrap();
+                let rt = rt.write().unwrap();
                 match rt.kv_put("", hash.as_str(), bytes.as_slice()) {
                     Ok(_) => {
                         SUBMITTED_MODULES
@@ -758,7 +756,7 @@ impl WasmContext for WasmEdgeContext {
                             .insert(sandbox_name.clone(), hash);
                         Ok(())
                     }
-                    Err(e) => Err(anyhow!("Failed to put module bytes")),
+                    Err(_) => Err(anyhow!("Failed to put module bytes")),
                 }
             }
             None => Err(anyhow!("No runtime")),

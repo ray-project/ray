@@ -43,6 +43,7 @@ load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
     name = "python3_9",
+    ignore_root_user_error = True,
     python_version = "3.9",
     register_toolchains = False,
 )
@@ -75,10 +76,10 @@ register_execution_platforms(
 load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies", "rust_register_toolchains")
 
 rules_rust_dependencies()
+
 rust_register_toolchains(edition = "2021")
 
 load("@rules_rust//crate_universe:defs.bzl", "crate", "crates_repository", "render_config")
-
 load("@rules_rust//proto:repositories.bzl", "rust_proto_repositories")
 
 # protobuf support in rust
@@ -90,13 +91,6 @@ rust_proto_transitive_repositories()
 
 crates_repository(
     name = "wasm_crate_index",
-    cargo_lockfile = "//wasm:Cargo.lock",
-    lockfile = "//wasm:Cargo.Bazel.lock",
-    manifests = ["//wasm:Cargo.toml"],
-    quiet = False,
-    render_config = render_config(
-        default_package_name = ""
-    ),
     annotations = {
         "wasmedge-sys": [crate.annotation(
             build_script_data = [
@@ -108,6 +102,13 @@ crates_repository(
             },
         )],
     },
+    cargo_lockfile = "//wasm:Cargo.lock",
+    lockfile = "//wasm:Cargo.Bazel.lock",
+    manifests = ["//wasm:Cargo.toml"],
+    quiet = False,
+    render_config = render_config(
+        default_package_name = "",
+    ),
 )
 
 load("@wasm_crate_index//:defs.bzl", "crate_repositories")

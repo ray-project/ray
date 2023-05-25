@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use anyhow::{anyhow, Result};
+use libc::c_char;
 use core::panic;
 use prost::Message;
 use std::ffi::CStr;
@@ -98,7 +99,7 @@ impl ClusterHelper {
 
             // convert c string buffer to rust string
             let session_dir = unsafe {
-                CStr::from_ptr(buffer.as_ptr() as *const i8)
+                CStr::from_ptr(buffer.as_ptr() as *const c_char)
                     .to_str()
                     .unwrap()
                     .to_string()

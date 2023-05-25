@@ -26,6 +26,7 @@ use clap::Parser;
 use std::sync::{Arc, RwLock};
 use tracing_subscriber;
 
+#[allow(dead_code)]
 struct RayWaContext {
     // ray runtime
     runtime: Arc<RwLock<Box<dyn runtime::RayRuntime + Send + Sync>>>,

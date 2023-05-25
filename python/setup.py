@@ -628,7 +628,7 @@ def build(build_python, build_java, build_cpp, build_wasm, verbose=False):
 
 def walk_directory(directory):
     file_list = []
-    for (root, dirs, filenames) in os.walk(directory):
+    for root, dirs, filenames in os.walk(directory):
         for name in filenames:
             file_list.append(os.path.join(root, name))
     return file_list
@@ -730,8 +730,9 @@ def api_main(program, *args):
     result = None
 
     if parsed_args.command == "build":
-        kwargs = dict(build_python=False, build_java=False, build_cpp=False,
-                      build_wasm=False)
+        kwargs = dict(
+            build_python=False, build_java=False, build_cpp=False, build_wasm=False
+        )
         for lang in parsed_args.language.split(","):
             if "python" in lang:
                 kwargs.update(build_python=True)

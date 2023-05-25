@@ -22,6 +22,38 @@ PYTHON_NUMPYS=(
   "3.11 cp311-cp311 1.22.0"
 )
 
+function compile_libstdcpp() {
+  GCC_VERSION="10.1.0"
+
+  yum install -y gmp-devel mpfr-devel libmpc-devel zip clang-devel wget
+  wget -q -O /tmp/gcc.tar.gz http://www.netgull.com/gcc/releases/gcc-"${GCC_VERSION}"/gcc-"${GCC_VERSION}".tar.xz
+  tar xf /tmp/gcc.tar.gz -C /
+
+  pushd "/gcc-${GCC_VERSION}"
+  ./configure --disable-multilib
+  make -j "$(nproc --all)" > /dev/null 2>&1
+  cp ./x86_64-pc-linux-gnu/libstdc++-v3/src/.libs/libstdc++.so.6.0.28 /usr/lib64/
+  rm -f /usr/lib64/libstdc++.so.6
+  ln -s /usr/lib64/libstdc++.so.6.0.28 /usr/lib64/libstdc++.so.6
+  popd
+}
+
+function setup_libclang() {
+  CLANG_VERSION="6.0.0"
+  FEDORA_VERSION="Fedora27"
+
+  wget "https://releases.llvm.org/${CLANG_VERSION}/clang+llvm-${CLANG_VERSION}-${HOSTTYPE}-linux-gnu-${FEDORA_VERSION}.tar.xz" \
+    -q -O /tmp/clang.tar.xz
+  tar xf /tmp/clang.tar.xz -C /
+  rm -f /usr/lib64/llvm/libclang.so
+  cp -ufr /clang+llvm-"${CLANG_VERSION}"-"${HOSTTYPE}"-linux-gnu-"${FEDORA_VERSION}"/lib/libclang.so.6.0  \
+    /lib64/libclang.so
+
+  ln -s /usr/lib64/libtinfo.so.5.9 /lib64/libtinfo.so.6
+  cp -f /clang+llvm-"${CLANG_VERSION}"-"${HOSTTYPE}"-linux-gnu-"${FEDORA_VERSION}"/lib/clang/6.0.0/include/stdbool.h \
+    /usr/include/stdbool.h
+}
+
 yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven xz
 yum -y install openssl
@@ -30,6 +62,9 @@ if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
   yum install "libasan-4.8.5-44.el7.${HOSTTYPE}" -y
   yum install "libubsan-7.3.1-5.10.el7.${HOSTTYPE}" -y
   yum install "devtoolset-8-libasan-devel.${HOSTTYPE}" -y
+
+  compile_libstdcpp
+  setup_libclang
 fi
 
 java -version
@@ -104,11 +139,13 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
     fi
 
     # build ray wheel
-    PATH="/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
+    PATH="/usr/local/bin:/usr/local/sbin:/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
+    LIBCLANG_PATH="/lib64:${LIBCLANG_PATH-}" \
     "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
 
     # build ray-cpp wheel
-    PATH="/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
+    PATH="/usr/local/bin:/usr/local/sbin:/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
+    LIBCLANG_PATH="/lib64:${LIBCLANG_PATH-}" \
     RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
 
     # In the future, run auditwheel here.

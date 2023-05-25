@@ -28,13 +28,14 @@ use core::result::Result::Ok;
 use tracing::{debug, error, info};
 
 const RAY_BUF_MAGIC: u32 = 0xc0de_550a;
-const RAY_BUF_SIZE: usize = 32 * 6 / 8;
+const RAY_BUF_SIZE: usize = 32 * 7 / 8;
 
 // any modifications to the struct should update above related constants
 #[derive(Debug, Clone, Copy)]
 struct RayBufferHolder {
     pub magic: u32,
     pub data_type: u32,
+    pub flags: u32,
     pub ptr: u32,
     pub len: u32,
     pub cap: u32,
@@ -46,6 +47,7 @@ impl RayBufferHolder {
         let mut res = Self {
             magic: RAY_BUF_MAGIC,
             data_type: RayBufferDataType::Invalid as u32,
+            flags: 0,
             ptr: 0,
             len: 0,
             cap: 0,
@@ -63,6 +65,7 @@ impl RayBufferHolder {
         let mut checksum = 0u32;
         checksum ^= self.magic;
         checksum ^= self.data_type;
+        checksum ^= self.flags;
         checksum ^= self.ptr;
         checksum ^= self.len;
         checksum ^= self.cap;
@@ -70,6 +73,7 @@ impl RayBufferHolder {
     }
 }
 
+#[allow(dead_code)]
 enum RayBufferDataType {
     Invalid = 0x0,
     ObjectID = 0x1,
@@ -90,9 +94,10 @@ fn ray_buffer_write_data(
             if ray_buf.magic != RAY_BUF_MAGIC {
                 return Err(anyhow!("invalid magic code"));
             }
-            ray_buf.ptr = u32::from_le_bytes([v[8], v[9], v[10], v[11]]);
+            ray_buf.flags = u32::from_le_bytes([v[8], v[9], v[10], v[11]]);
+            ray_buf.ptr = u32::from_le_bytes([v[12], v[13], v[14], v[15]]);
             ray_buf.len = data.len() as u32;
-            ray_buf.cap = u32::from_le_bytes([v[16], v[17], v[18], v[19]]);
+            ray_buf.cap = u32::from_le_bytes([v[20], v[21], v[22], v[23]]);
             if ray_buf.cap < data.len() as u32 {
                 return Err(anyhow!(format!(
                     "ray buffer is not big enough cap: {}, data len: {}",
@@ -104,8 +109,8 @@ fn ray_buffer_write_data(
 
             // write back len and data_type
             v[4..8].copy_from_slice(&ray_buf.data_type.to_le_bytes());
-            v[12..16].copy_from_slice(&ray_buf.len.to_le_bytes());
-            v[20..24].copy_from_slice(&ray_buf.checksum.to_le_bytes());
+            v[16..20].copy_from_slice(&ray_buf.len.to_le_bytes());
+            v[24..28].copy_from_slice(&ray_buf.checksum.to_le_bytes());
         }
         Err(_) => {
             return Err(anyhow!(
@@ -170,10 +175,11 @@ fn read_ray_buffer(ctx: &mut dyn WasmContext, ray_buf_ptr: u32) -> Result<RayBuf
                 return Err(anyhow!("invalid magic code"));
             }
             ray_buf.data_type = u32::from_le_bytes([v[4], v[5], v[6], v[7]]);
-            ray_buf.ptr = u32::from_le_bytes([v[8], v[9], v[10], v[11]]);
-            ray_buf.len = u32::from_le_bytes([v[12], v[13], v[14], v[15]]);
-            ray_buf.cap = u32::from_le_bytes([v[16], v[17], v[18], v[19]]);
-            ray_buf.checksum = u32::from_le_bytes([v[20], v[21], v[22], v[23]]);
+            ray_buf.flags = u32::from_le_bytes([v[8], v[9], v[10], v[11]]);
+            ray_buf.ptr = u32::from_le_bytes([v[12], v[13], v[14], v[15]]);
+            ray_buf.len = u32::from_le_bytes([v[16], v[17], v[18], v[19]]);
+            ray_buf.cap = u32::from_le_bytes([v[20], v[21], v[22], v[23]]);
+            ray_buf.checksum = u32::from_le_bytes([v[24], v[25], v[26], v[27]]);
         }
         Err(_) => {
             let msg = format!(
@@ -442,10 +448,9 @@ pub fn hc_ray_put(ctx: &mut dyn WasmContext, params: &[WasmValue]) -> Result<Vec
         WasmValue::I32(v) => v.clone(),
         _ => return Err(anyhow!("invalid param")),
     };
-    let ray_buf = match read_ray_buffer(ctx, ray_buf_ptr as u32) {
+    match read_ray_buffer(ctx, ray_buf_ptr as u32) {
         Ok(v) => {
             debug!("call: ray_buf_ptr: {:#08x} content: {:x?}", ray_buf_ptr, v);
-            v
         }
         Err(_) => {
             return Err(anyhow!("invalid object id"));

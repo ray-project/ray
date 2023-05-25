@@ -14,7 +14,6 @@
 
 use crate::engine::{WasmType, WasmValue};
 
-use wasmedge_types as wt;
 use wasmedge_types::ValType;
 
 use wasmedge_sys as sys;

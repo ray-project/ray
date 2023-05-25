@@ -2,11 +2,11 @@
 
 set -e
 
-export WASI_VERSION=14
-export WASI_VERSION_FULL=${WASI_VERSION}.0
+WASI_VERSION=14
+WASI_VERSION_FULL=${WASI_VERSION}.0
 
 # find out the operating system: darwin, linux, etc.
-export OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 if [ "${OS}" = "darwin" ]; then
     export OS="macos"
 fi
@@ -32,12 +32,12 @@ function install_sdk() {
 #     -Wl,--export-all \
 #     ./simple.c -o simple.wasm
 
-export WASI_SDK_PATH=$(pwd -P)/wasi-sdk-${WASI_VERSION_FULL}
+WASI_SDK_PATH=$(pwd -P)/wasi-sdk-${WASI_VERSION_FULL}
 
-if [ ! -d ${WASI_SDK_PATH} ]; then
+if [ ! -d "${WASI_SDK_PATH}" ]; then
     echo "Installing WASI SDK..."
     install_sdk
-    if [ ! -d ${WASI_SDK_PATH} ]; then
+    if [ ! -d "${WASI_SDK_PATH}" ]; then
         echo "Error: WASI SDK not installed." >&2
         exit 1
     fi
@@ -47,6 +47,7 @@ export CC="${WASI_SDK_PATH}/bin/clang --sysroot=${WASI_SDK_PATH}/share/wasi-sysr
 
 $CC --target=wasm32-unknown-wasi \
     -Wl,--export-all \
+    -I. \
     ./simple.c -o simple.wasm # -nostdlib
 
 

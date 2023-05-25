@@ -375,3 +375,10 @@ def ray_deps_setup():
         strip_prefix = "WasmEdge-0.12.1-Darwin",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.wasmedge",
     )
+
+    http_archive(
+        name = "com_github_wasmedge_windows_x86_64",
+        url = "https://github.com/WasmEdge/WasmEdge/releases/download/0.12.1/WasmEdge-0.12.1-windows.zip",
+        strip_prefix = "WasmEdge-0.12.1-Windows",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.wasmedge",
+    )

@@ -42,16 +42,17 @@ rust_library(
     ),
     crate_name = "wasm_on_ray",
     crate_root = "src/lib.rs",
-    visibility = ["//visibility:public"],
-    proc_macro_deps = [
-        "@wasm_crate_index//:wasmedge-macro",
-    ],
     data = [
         "wasmedge_pkg",
     ],
-    rustc_flags = [
-        "-C", "link-args=-Wl,-rpath=$${pwd}/../../../../../execroot/com_github_ray_project_ray/python/ray/wasm/wasmedge/lib64",
+    proc_macro_deps = [
+        "@wasm_crate_index//:wasmedge-macro",
     ],
+    rustc_flags = [
+        "-C",
+        "link-args=-Wl,-rpath=$${pwd}/../../../../../execroot/com_github_ray_project_ray/python/ray/wasm/wasmedge/lib64",
+    ],
+    visibility = ["//visibility:public"],
     deps = [
         "ray_wasm_buildrs",
         "//:core_worker_lib",
@@ -59,20 +60,20 @@ rust_library(
         "@wasm_crate_index//:anyhow",
         "@wasm_crate_index//:clap",
         "@wasm_crate_index//:lazy_static",
+        "@wasm_crate_index//:libc",
         "@wasm_crate_index//:prost",
+        "@wasm_crate_index//:rmp",
         "@wasm_crate_index//:serde",
         "@wasm_crate_index//:serde_json",
+        "@wasm_crate_index//:sha256",
         "@wasm_crate_index//:tokio",
         "@wasm_crate_index//:tracing",
         "@wasm_crate_index//:tracing-subscriber",
         "@wasm_crate_index//:uuid",
-        "@wasm_crate_index//:wasmtime",
-        "@wasm_crate_index//:libc",
-        "@wasm_crate_index//:rmp",
-        "@wasm_crate_index//:sha256",
         "@wasm_crate_index//:wasmedge-sdk",
         "@wasm_crate_index//:wasmedge-sys",
         "@wasm_crate_index//:wasmedge-types",
+        "@wasm_crate_index//:wasmtime",
     ],
 )
 
@@ -91,13 +92,14 @@ rust_dylib_library(
     ),
     crate_name = "wasm_on_ray",
     crate_root = "src/lib.rs",
-    rustc_flags = [
-        "-C", "prefer-dynamic",
-    ],
-    visibility = ["//visibility:public"],
     proc_macro_deps = [
         "@wasm_crate_index//:wasmedge-macro",
     ],
+    rustc_flags = [
+        "-C",
+        "prefer-dynamic",
+    ],
+    visibility = ["//visibility:public"],
     deps = [
         "ray_wasm_buildrs",
         "//:core_worker_lib",
@@ -105,20 +107,20 @@ rust_dylib_library(
         "@wasm_crate_index//:anyhow",
         "@wasm_crate_index//:clap",
         "@wasm_crate_index//:lazy_static",
+        "@wasm_crate_index//:libc",
         "@wasm_crate_index//:prost",
+        "@wasm_crate_index//:rmp",
         "@wasm_crate_index//:serde",
         "@wasm_crate_index//:serde_json",
+        "@wasm_crate_index//:sha256",
         "@wasm_crate_index//:tokio",
         "@wasm_crate_index//:tracing",
         "@wasm_crate_index//:tracing-subscriber",
         "@wasm_crate_index//:uuid",
-        "@wasm_crate_index//:wasmtime",
-        "@wasm_crate_index//:libc",
-        "@wasm_crate_index//:rmp",
-        "@wasm_crate_index//:sha256",
         "@wasm_crate_index//:wasmedge-sdk",
         "@wasm_crate_index//:wasmedge-sys",
         "@wasm_crate_index//:wasmedge-types",
+        "@wasm_crate_index//:wasmtime",
     ],
 )
 
@@ -154,13 +156,13 @@ rust_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":ray_wasm_lib",
-        "@wasm_crate_index//:sha256",
         "@wasm_crate_index//:anyhow",
         "@wasm_crate_index//:clap",
         "@wasm_crate_index//:lazy_static",
         "@wasm_crate_index//:prost",
         "@wasm_crate_index//:serde",
         "@wasm_crate_index//:serde_json",
+        "@wasm_crate_index//:sha256",
         "@wasm_crate_index//:tokio",
         "@wasm_crate_index//:tracing",
         "@wasm_crate_index//:tracing-subscriber",
@@ -197,13 +199,13 @@ genrule(
         "wasm_worker",
         "raywa",
         "libray_wasm.so",
-        "ray_wasm_lib.dylib",
-    ] +  select({
+        # "ray_wasm_lib.dylib",
+    ] + select({
         "@bazel_tools//src/conditions:darwin": [
             "@com_github_wasmedge_darwin_x86_64//:lib",
         ],
         "@bazel_tools//src/conditions:windows": [
-            # TODO: Add Windows support.
+            "@com_github_wasmedge_windows_x86_64//:lib",
         ],
         "//conditions:default": [
             "@com_github_wasmedge_manylinux2014_x86_64//:lib",
@@ -211,23 +213,25 @@ genrule(
     }),
     outs = ["ray_wasm_pkg.out"],
     cmd = """
+        touch $@ &&
         WORK_DIR="$$(pwd)" &&
         PY_WASM_DIR="$$WORK_DIR/python/ray/wasm" &&
         rm -rf $$PY_WASM_DIR && 
         mkdir -p "$$PY_WASM_DIR/lib/" &&
         cp -f $(location wasm_worker) "$$PY_WASM_DIR/" &&
         cp -f $(location libray_wasm.so) "$$PY_WASM_DIR/lib/" &&
-        cp -f $(location ray_wasm_lib.dylib) "$$PY_WASM_DIR/lib/" &&
         cp -f $(location raywa) "$$PY_WASM_DIR/" &&
-        """ + select({
-            "@bazel_tools//src/conditions:darwin": """cp -f $(locations @com_github_wasmedge_darwin_x86_64//:lib) "$$PY_WASM_DIR/lib/" &&""",
-            "@bazel_tools//src/conditions:windows": """# TODO: Add Windows support. &&""",
-            "//conditions:default": """cp -f $(locations @com_github_wasmedge_manylinux2014_x86_64//:lib) "$$PY_WASM_DIR/lib/" &&""",
-        }) +
-        """
+        """ +
+          # cp -f $(location ray_wasm_lib.dylib) "$$PY_WASM_DIR/lib/" &&
+          select({
+              "@bazel_tools//src/conditions:darwin": """cp -f $(locations @com_github_wasmedge_darwin_x86_64//:lib) "$$PY_WASM_DIR/lib/" &&""",
+              "@bazel_tools//src/conditions:windows": """cp -f $(locations @com_github_wasmedge_windows_x86_64//:lib) "$$PY_WASM_DIR/lib/" &&""",
+              "//conditions:default": """cp -f $(locations @com_github_wasmedge_manylinux2014_x86_64//:lib) "$$PY_WASM_DIR/lib/" &&""",
+          }) +
+          """
         echo "$$WORK_DIR" > $@
     """,
-    local = True,
+    local = 1,
     visibility = ["//visibility:public"],
 )
 
@@ -239,7 +243,8 @@ genrule(
             "@com_github_wasmedge_darwin_x86_64//:wasmedge_bin",
         ],
         "@bazel_tools//src/conditions:windows": [
-            # TODO: Add Windows support.
+            "@com_github_wasmedge_windows_x86_64//:all_files",
+            "@com_github_wasmedge_windows_x86_64//:wasmedge_bin",
         ],
         "//conditions:default": [
             "@com_github_wasmedge_manylinux2014_x86_64//:all_files",
@@ -249,23 +254,29 @@ genrule(
     outs = ["wasmedge_pkg.out"],
     # we should avoid using sudo here.
     cmd = """
+        touch $@ &&
         WORK_DIR="$$(pwd)" &&
         PY_WASM_DIR="$$WORK_DIR/python/ray/wasm" &&
+        ([ -d "$$PY_WASM_DIR" ] && exit 0 || true) &&
         mkdir -p "$$PY_WASM_DIR" &&
         WASMEDGE_DIR="$$PY_WASM_DIR/wasmedge" &&
-        rm -rf \"$$WASMEDGE_DIR\" &&
+        ([ -d "$$WASMEDGE_DIR" ] && exit 0 || true) &&
+        (rm -rf \"$$WASMEDGE_DIR\" || true) &&
         mkdir -p \"$$WASMEDGE_DIR\" &&
         """ + select({
         "@bazel_tools//src/conditions:darwin": """WASMEDGE_SRC_BIN="$(location @com_github_wasmedge_darwin_x86_64//:wasmedge_bin)" &&""",
-        "@bazel_tools//src/conditions:windows": """# TODO: Add Windows support. &&""",
+        "@bazel_tools//src/conditions:windows": """WASMEDGE_SRC_BIN="$(location @com_github_wasmedge_windows_x86_64//:wasmedge_bin)" &&""",
         "//conditions:default": """WASMEDGE_SRC_BIN="$(location @com_github_wasmedge_manylinux2014_x86_64//:wasmedge_bin)" &&""",
     }) + """ 
         WASMEDGE_SRC_BIN_DIR="$$(dirname $$WASMEDGE_SRC_BIN)" &&
         WASMEDGE_SRC_DIR="$$(dirname \"$$WASMEDGE_SRC_BIN_DIR\")" &&
-        cp -r -f \"$$WASMEDGE_SRC_DIR/.\" \"$$WASMEDGE_DIR\" &&
+        (cp -RLuvf \"$$WASMEDGE_SRC_DIR/.\" \"$$WASMEDGE_DIR\" || true) &&
         if [ -d \"$$WASMEDGE_DIR/lib\" ]; then ln -s \"$$WASMEDGE_DIR/lib\" \"$$WASMEDGE_DIR/lib64\"; fi &&
         echo "$$WASMEDGE_DIR" > $@
     """,
     local = 1,
+    tags = [
+        "no-cache",
+    ],
     visibility = ["//visibility:public"],
 )

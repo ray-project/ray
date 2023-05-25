@@ -110,12 +110,12 @@ void GcsClient_Destroy(void *gcs_client) {
 }
 
 int GcsClient_InternalKV_Get(void *gcs_client,
-                              const uint8_t *ns,
-                              size_t ns_len,
-                              const uint8_t *key,
-                              size_t key_len,
-                              uint8_t *data,
-                              size_t *data_len) {
+                             const uint8_t *ns,
+                             size_t ns_len,
+                             const uint8_t *key,
+                             size_t key_len,
+                             uint8_t *data,
+                             size_t *data_len) {
   auto p = (GcsClientComplex *)gcs_client;
   auto ns_str = std::string((const char *)ns, ns_len);
   auto key_str = std::string((const char *)key, key_len);

@@ -76,6 +76,7 @@ impl RayRuntimeFactory {
     }
 }
 
+#[allow(dead_code)]
 pub struct RayRuntimeClusterMode {
     internal_cfg: ConfigInternal,
     object_store: Box<dyn ObjectStore + Send + Sync>,

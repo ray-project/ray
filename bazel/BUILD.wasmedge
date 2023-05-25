@@ -2,17 +2,21 @@ package(default_visibility = ["//visibility:public"])
 
 filegroup(
     name = "include",
-    srcs = glob(["include/**/*.h", "include/**/*.inc"]),
+    srcs = glob([
+        "include/**/*.h",
+        "include/**/*.inc",
+    ]),
 )
 
 filegroup(
     name = "lib",
     srcs = select({
         "@bazel_tools//src/conditions:darwin": glob(["lib/**/*.dylib"]),
-        "@bazel_tools//src/conditions:windows": glob([
-            # TODO: Add windows libraries
+        "@bazel_tools//src/conditions:windows": glob(["lib/**/*.lib"]),
+        "//conditions:default": glob([
+            "lib64/**/*.so.*",
+            "lib64/**/*.so",
         ]),
-        "//conditions:default": glob(["lib64/**/*.so.*", "lib64/**/*.so"]),
     }),
 )
 
@@ -23,5 +27,8 @@ filegroup(
 
 filegroup(
     name = "wasmedge_bin",
-    srcs = glob(["bin/wasmedge"]),
+    srcs = glob([
+        "bin/wasmedge",
+        "bin/wasmedge.exe",
+    ]),
 )
