@@ -88,7 +88,7 @@ class ReplicaScheduler(ABC):
 class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
     """Round-robins requests across a set of actor replicas using streaming calls.
 
-    This policy does *not* currently respect `max_concurrent_queries`.
+    This policy does *not* respect `max_concurrent_queries`.
     """
 
     def __init__(self):
@@ -128,7 +128,7 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
     """Round-robins requests across a set of actor replicas.
 
     The policy respects `max_concurrent_queries` for the replicas: a replica
-    will not be chosen if `max_concurrent_queries` requests are already outstanding.
+    is not chosen if `max_concurrent_queries` requests are already outstanding.
 
     This is maintained using a "tracker" object ref to determine when a given request
     has finished (to decrement the number of concurrent queries).

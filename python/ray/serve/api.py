@@ -246,8 +246,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                 If asgi_sender is provided, it's passed into the app and nothing is
                 returned.
 
-                If no asgi_sender is provided, an ASGI response will be built and
-                returned.
+                If no asgi_sender is provided, an ASGI response is built and returned.
                 """
                 build_and_return_response = False
                 if asgi_sender is None:
