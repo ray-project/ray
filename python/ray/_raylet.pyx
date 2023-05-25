@@ -63,6 +63,7 @@ from ray.includes.common cimport (
     CWorkerExitType,
     CRayObject,
     CRayStatus,
+    CActorTableData,
     CErrorTableData,
     CGcsClientOptions,
     CGcsNodeInfo,
@@ -157,7 +158,7 @@ from ray._private.async_compat import (
     is_async_func
 )
 from ray._private.client_mode_hook import disable_client_hook
-import ray._private.gcs_utils as gcs_utils
+import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
@@ -505,6 +506,18 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     for object_ref in object_refs:
         result.push_back((<ObjectRef>object_ref).native())
     return result
+
+
+def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
+    cdef:
+        CActorTableData data
+
+    data.ParseFromString(actor_table_data)
+
+    if data.address().worker_id() == b"":
+        return None
+    else:
+        return data.address().SerializeAsString()
 
 
 def compute_task_id(ObjectRef object_ref):
@@ -3724,7 +3737,7 @@ cdef class CoreWorker:
         # the job config will not change after a job is submitted.
         if self.job_config is None:
             c_job_config = CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
-            self.job_config = gcs_utils.JobConfig()
+            self.job_config = common_pb2.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
 

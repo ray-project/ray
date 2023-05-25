@@ -41,7 +41,6 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -1301,6 +1300,8 @@ def init_grpc_channel(
         from grpc import aio as aiogrpc
     except ImportError:
         from grpc.experimental import aio as aiogrpc
+
+    from ray._private.tls_utils import load_certs_from_env
 
     grpc_module = aiogrpc if asynchronous else grpc
 
