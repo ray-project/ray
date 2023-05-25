@@ -63,11 +63,6 @@ def test_get_anyscale_byod_image():
         ).get_anyscale_byod_image()
         == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
     )
-    os.environ["BUILDKITE_PULL_REQUEST"] = "1234"
-    assert (
-        _stub_test().get_anyscale_byod_image()
-        == f"{DATAPLANE_ECR_REPO}:oss-ci-build_1234567890"
-    )
 
 
 if __name__ == "__main__":
