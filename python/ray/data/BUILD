@@ -2,7 +2,8 @@ load("//bazel:python.bzl", "doctest")
 
 doctest(
     files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*"])),
-    tags = ["team:data"]
+    tags = ["team:data"],
+    size = "large"
 )
 # --------------------------------------------------------------------
 # Tests from the python/ray/data/tests directory.
