@@ -1098,19 +1098,21 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         # ray.get should throw an exception.
         assert False
 
+
 def test_import_ray_does_not_import_grpc():
     # First unload grpc and ray
     del sys.modules["grpc"]
     del sys.modules["ray"]
 
     # Then import ray from scratch
-    import ray
+    import ray  # noqa: F401
 
     # Make sure grpc did not get imported by "import ray"
     assert "grpc" not in sys.modules
 
     # Load grpc back so other tests will not be affected
-    import grpc
+    import grpc  # noqa: F401
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

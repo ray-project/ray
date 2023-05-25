@@ -378,6 +378,10 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string ray_namespace() const
         const c_string &SerializeAsString()
 
+    cdef enum CActorLifetime "ray::rpc::JobConfig_ActorLifetime":
+        DETACHED "ray::rpc::JobConfig_ActorLifetime_DETACHED"
+        NON_DETACHED "ray::rpc::JobConfig_ActorLifetime_DETACHED"
+
     cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
         c_string node_id() const
         c_string node_name() const

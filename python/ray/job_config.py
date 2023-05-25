@@ -1,6 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import ray
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -134,14 +135,10 @@ class JobConfig:
         Args:
             default_actor_lifetime: The default actor lifetime to set.
         """
-        import ray.core.generated.common_pb2 as common_pb2
-
         if default_actor_lifetime == "detached":
-            self._default_actor_lifetime = common_pb2.JobConfig.ActorLifetime.DETACHED
+            self._default_actor_lifetime = ray._raylet.RAY_ACTOR_LIFETIME_DETACHED
         elif default_actor_lifetime == "non_detached":
-            self._default_actor_lifetime = (
-                common_pb2.JobConfig.ActorLifetime.NON_DETACHED
-            )
+            self._default_actor_lifetime = ray._raylet.RAY_ACTOR_LIFETIME_NON_DETACHED
         else:
             raise ValueError(
                 "Default actor lifetime must be one of `detached`, `non_detached`"
