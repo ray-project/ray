@@ -1,16 +1,26 @@
+import time
 import asyncio
 from functools import wraps
-from inspect import iscoroutinefunction, isasyncgenfunction
-import time
-from typing import Any, Callable, Dict, List, Optional, overload, Tuple, TypeVar
 from dataclasses import dataclass
+from inspect import iscoroutinefunction, isasyncgenfunction
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    overload,
+    Tuple,
+    TypeVar,
+    AsyncGenerator,
+    Iterable,
+)
 
-
-from ray._private.signature import extract_signature, flatten_args, recover_args
-from ray._private.utils import get_or_create_event_loop
-from ray.serve.exceptions import RayServeException
-from ray.serve._private.utils import extract_self_if_method_call
 from ray.util.annotations import PublicAPI
+from ray.serve.exceptions import RayServeException
+from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.utils import extract_self_if_method_call
+from ray._private.signature import extract_signature, flatten_args, recover_args
 
 
 @dataclass
@@ -136,7 +146,9 @@ class _BatchQueue:
 
         return batch
 
-    def _validate_results(self, results, input_batch_length):
+    def _validate_results(
+        self, results: Iterable[Any], input_batch_length: int
+    ) -> None:
         if len(results) != input_batch_length:
             raise RayServeException(
                 "Batched function doesn't preserve batch size. "
@@ -145,8 +157,17 @@ class _BatchQueue:
             )
 
     async def _consume_func_generator(
-        self, func_generator, initial_futures, input_batch_length
-    ):
+        self,
+        func_generator: AsyncGenerator,
+        initial_futures: List[asyncio.Future],
+        input_batch_length: int,
+    ) -> None:
+        """Consumes batch function generator.
+
+        This function only runs if the function decorated with @serve.batch
+        is a generator.
+        """
+
         try:
             futures = initial_futures
             async for results in func_generator:
@@ -166,7 +187,9 @@ class _BatchQueue:
             for future in futures:
                 future.set_exception(e)
 
-    async def _process_batches(self, func):
+    async def _process_batches(self, func: Callable) -> None:
+        """Loops infinitely and processes queued request batches."""
+
         while True:
             batch: List[_SingleRequest] = await self.wait_for_batch()
             assert len(batch) > 0
@@ -300,7 +323,9 @@ def batch(
         raise ValueError("batch_wait_timeout_s must be a float >= 0")
 
     def _batch_decorator(_func):
-        async def batch_handler_generator(first_future: asyncio.Future):
+        async def batch_handler_generator(
+            first_future: asyncio.Future,
+        ) -> AsyncGenerator[Any, None, None]:
             """Generator that handles generator batch functions."""
 
             future = first_future
@@ -312,7 +337,7 @@ def batch(
                 except StopAsyncIteration:
                     break
 
-        def enqueue_request(args, kwargs):
+        def enqueue_request(args, kwargs) -> asyncio.Future:
             self = extract_self_if_method_call(args, _func)
             flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
 
