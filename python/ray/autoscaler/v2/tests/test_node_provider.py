@@ -76,7 +76,7 @@ class NodeProviderTest(unittest.TestCase):
                 "0": nodes[0],
             },
         )
-        self.node_provider.async_terminate_node("0")
+        self.node_provider.terminate_node("0")
         self.assertEqual(
             self.node_provider.get_non_terminated_nodes(),
             {"1": nodes1[0], "2": nodes1[1]},
