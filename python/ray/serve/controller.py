@@ -424,7 +424,8 @@ class ServeController:
     ) -> bool:
         """Deploys a deployment."""
         if route_prefix is not None:
-            assert route_prefix.startswith("/")
+            if not route_prefix.startswith("/"):
+                raise ValueError("route_prefix must starts with a /")
         if docs_path is not None:
             assert docs_path.startswith("/")
 
