@@ -407,7 +407,6 @@ parts:
                   - file: ray-observability/user-guides/debug-apps/debug-failures
                   - file: ray-observability/user-guides/debug-apps/optimize-performance
                   - file: ray-observability/user-guides/debug-apps/ray-debugging
-                  - file: ray-observability/user-guides/debug-apps/ray-core-profiling
               - file: ray-observability/user-guides/cli-sdk
               - file: ray-observability/user-guides/configure-logging
               - file: ray-observability/user-guides/add-app-metrics
