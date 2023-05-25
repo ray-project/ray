@@ -1732,6 +1732,100 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
 }
 
+TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNeeded) {
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded
+   */
+  // Submit a generator task.
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded is no-op when the stream is
+   * not created yet.
+   */
+  auto dynamic_return_id_index_0 = ObjectID::FromIndex(spec.TaskId(), 2);
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
+                                                    generator_id);
+  // It is no-op if the object ref stream is not created.
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_0));
+
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded called before any
+   * HandleReportGeneratorItemReturns adds a refernece.
+   */
+  // CREATE
+  manager_.CreateObjectRefStream(generator_id);
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
+                                                    generator_id);
+  // We has a reference to this object before the ref is
+  // reported via HandleReportGeneratorItemReturns.
+  ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_0));
+
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded called after the
+   * ref consumed / removed will be no-op.
+   */
+  // WRITE 0 -> WRITE 1
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id_index_0,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  auto dynamic_return_id_index_1 = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id_index_1,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+
+  // READ 0 -> READ 1
+  for (auto i = 0; i < 2; i++) {
+    ObjectID object_id;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &object_id);
+    ASSERT_TRUE(status.ok());
+  }
+
+  std::vector<ObjectID> removed;
+  reference_counter_->RemoveLocalReference(dynamic_return_id_index_1, &removed);
+  ASSERT_EQ(removed.size(), 1UL);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
+  // If the ref has been already consumed and deleted,
+  // this shouldn't add a reference.
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_1,
+                                                    generator_id);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
+
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded called but
+   * HandleReportGeneratorItemReturns is never called. In this case, when
+   * the stream is deleted these refs should be cleaned up.
+   */
+  manager_.DelObjectRefStream(generator_id);
+  manager_.CreateObjectRefStream(generator_id);
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
+                                                    generator_id);
+  ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_0));
+  manager_.DelObjectRefStream(generator_id);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_0));
+
+  rpc::PushTaskReply reply;
+  manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
+}
+
 }  // namespace core
 }  // namespace ray
 
