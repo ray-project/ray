@@ -148,6 +148,7 @@ def main(
 
     if report:
         reporters.append(DBReporter())
+        reporters.append(RayTestDBReporter())
 
     # TODO(can): this env var is used as a feature flag, in case we need to turn this
     # off quickly. We should remove this when the new db reporter is stable.
