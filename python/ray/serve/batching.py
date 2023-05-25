@@ -325,7 +325,7 @@ def batch(
     def _batch_decorator(_func):
         async def batch_handler_generator(
             first_future: asyncio.Future,
-        ) -> AsyncGenerator[Any, None, None]:
+        ) -> AsyncGenerator:
             """Generator that handles generator batch functions."""
 
             future = first_future
