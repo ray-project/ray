@@ -373,7 +373,7 @@ class Router:
         controller_handle: ActorHandle,
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
-        _use_ray_streaming: bool = False,
+        _stream: bool = False,
     ):
         """Router process incoming queries: assign a replica.
 
@@ -381,7 +381,7 @@ class Router:
             controller_handle: The controller handle.
         """
         self._event_loop = event_loop
-        if _use_ray_streaming:
+        if _stream:
             self._replica_scheduler = RoundRobinStreamingReplicaScheduler()
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)

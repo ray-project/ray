@@ -480,6 +480,7 @@ py_test(
                "**/conftest.py"]),
    tags = ["exclusive", "team:serve"],
    deps = [":serve_lib"],
+   env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
 )
 
 py_test(

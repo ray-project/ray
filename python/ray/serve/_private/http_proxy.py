@@ -332,7 +332,7 @@ class HTTPProxy:
                 sync=False,
                 missing_ok=True,
                 _internal_pickled_http_request=True,
-                _use_ray_streaming=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+                _stream=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
