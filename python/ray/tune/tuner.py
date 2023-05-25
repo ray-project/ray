@@ -400,10 +400,10 @@ class Tuner:
                 progress_reporter,
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
-            fit_future = self._remote_tuner.fit.remote()
+            get_results_future = self._remote_tuner.get_results.remote()
             _stream_client_output(
-                fit_future,
+                get_results_future,
                 progress_reporter,
                 string_queue,
             )
-            return ray.get(fit_future)
+            return ray.get(get_results_future)
