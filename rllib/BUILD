@@ -1159,7 +1159,7 @@ py_test(
 py_test(
     name = "test_ppo_learner",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_learner.py"]
 )
 
