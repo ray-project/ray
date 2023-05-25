@@ -79,7 +79,31 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
           for(int i = 0; i < 4; i++) {
             // This doesn't block.
             ray::Task(SlowFunction).Remote();
-          }
+          a
+
+From Ray 2.0 onwards, you could also use :ref:`Ray's State API <state-api-overview-ref>``  to query the tasks, or go to the :ref:`Dashboard <observability-getting-started>`` to see more task details. (These features all require installing ray with `pip install "ray[default]"`). 
+
+.. code-block:: bash
+  # This API is only available when you download Ray via `pip install "ray[default]"`
+  ray list tasks
+
+
+.. code-block:: bash
+
+# We could see there are 4 slow_function running, while my_function is finished.
+======== List: 2023-05-25 09:41:21.710772 ========
+Stats:
+------------------------------
+Total: 5
+
+Table:
+------------------------------
+    TASK_ID                                             ATTEMPT_NUMBER  NAME           STATE       JOB_ID  ACTOR_ID    TYPE         FUNC_OR_CLASS_NAME    PARENT_TASK_ID                                    NODE_ID                                                   WORKER_ID                                                 ERROR_TYPE
+ 0  16310a0f0a45af5cffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  572107a249be09b305bb7e47de7c6bb3c58746114489d3a21bc6d636
+ 1  32d950ec0ccf9d2affffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  d3ab8d40aaebd1b6a2bb4436f38a382a62ceaddeccb82c7594d25312
+ 2  c2668a65bda616c1ffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  5543b328c97c8454d645c1337b551b8466b322247b72661b1933654f
+ 3  c8ef45ccd0112571ffffffffffffffffffffffff01000000                 0  my_function    FINISHED  01000000              NORMAL_TASK  my_function           ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  572107a249be09b305bb7e47de7c6bb3c58746114489d3a21bc6d636
+ 4  e0dc174c83599034ffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  5d411fb61e3eeb6faa9c3e77efc1b7be5831c65c587c0370825dc76e
 
 
 Specifying required resources
@@ -258,6 +282,10 @@ You can change this behavior by setting
 ``max_retries`` and ``retry_exceptions`` options
 in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
+
+.. tip::
+
+    From Ray 2.3 onwards, you could also see the tasks exit details (e.g. OOM killed) and task retries attempts with increasing attempt number using :ref:`Ray's State API <state-api-overview-ref>``  to query the actors information, or go to the :ref:`Dashboard <observability-getting-started>`` Actor page to see more details. (These features all require installing ray with `pip install "ray[default]"`). 
 
 
 More about Ray Tasks

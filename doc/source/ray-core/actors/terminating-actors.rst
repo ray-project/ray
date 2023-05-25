@@ -66,6 +66,45 @@ flag ``no_restart=False`` to ``ray.kill``.
 For :ref:`named and detached actors <actor-lifetimes>`, calling ``ray.kill`` on
 an actor handle will destroy the actor and allow the name to be reused.
 
+.. tip::
+    
+    From Ray 2.0 onwards, you could view the actor exit details with :ref:`Ray's State API <state-api-overview-ref>``  to query the actors information, or go to the :ref:`Dashboard <observability-getting-started>`` Actor page to see more details. (These features all require installing ray with `pip install "ray[default]"`). 
+
+.. code-block:: bash
+  # This API is only available when you download Ray via `pip install "ray[default]"`
+  ray list actors --detail
+
+.. code-block:: bash
+
+  # You should be able to view the death cause of an actor in `death_cause` as part of the actor state.
+
+---
+-   actor_id: e8702085880657b355bf7ef001000000
+    class_name: Actor
+    state: DEAD
+    job_id: '01000000'
+    name: ''
+    node_id: null
+    pid: 0
+    ray_namespace: dbab546b-7ce5-4cbb-96f1-d0f64588ae60
+    serialized_runtime_env: '{}'
+    required_resources: {}
+    death_cause:
+        actor_died_error_context: # <---- You could see the error message w.r.t why the actor exits. 
+            error_message: The actor is dead because it was killed by `ray.kill`.
+            owner_id: 01000000ffffffffffffffffffffffffffffffffffffffffffffffff
+            owner_ip_address: 127.0.0.1
+            ray_namespace: dbab546b-7ce5-4cbb-96f1-d0f64588ae60
+            class_name: Actor
+            actor_id: e8702085880657b355bf7ef001000000
+            never_started: true
+            node_ip_address: ''
+            pid: 0
+            name: ''
+    is_detached: false
+    placement_group_id: null
+    repr_name: ''
+
 
 Manual termination within the actor
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -116,3 +155,41 @@ This will kill the actor process and release resources associated/assigned to th
 Note that this method of termination will wait until any previously submitted
 tasks finish executing and then exit the process gracefully with sys.exit.
 
+
+.. tip::
+    
+    In this case you could see the actor death accordingly indicating users called exit_actor():
+
+.. code-block:: bash
+  # This API is only available when you download Ray via `pip install "ray[default]"`
+  ray list actors --detail
+
+.. code-block:: bash
+---
+-   actor_id: 070eb5f0c9194b851bb1cf1602000000
+    class_name: Actor
+    state: DEAD
+    job_id: '02000000'
+    name: ''
+    node_id: 47ccba54e3ea71bac244c015d680e202f187fbbd2f60066174a11ced
+    pid: 47978
+    ray_namespace: 18898403-dda0-485a-9c11-e9f94dffcbed
+    serialized_runtime_env: '{}'
+    required_resources: {}
+    death_cause:
+        actor_died_error_context:
+            error_message: 'The actor is dead because its worker process has died.
+                Worker exit type: INTENDED_USER_EXIT Worker exit detail: Worker exits
+                by an user request. exit_actor() is called.'
+            owner_id: 02000000ffffffffffffffffffffffffffffffffffffffffffffffff
+            owner_ip_address: 127.0.0.1
+            node_ip_address: 127.0.0.1
+            pid: 47978
+            ray_namespace: 18898403-dda0-485a-9c11-e9f94dffcbed
+            class_name: Actor
+            actor_id: 070eb5f0c9194b851bb1cf1602000000
+            name: ''
+            never_started: false
+    is_detached: false
+    placement_group_id: null
+    repr_name: ''
