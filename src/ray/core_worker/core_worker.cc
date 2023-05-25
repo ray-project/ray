@@ -3300,10 +3300,9 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     const auto generator_id = ObjectID::FromBinary(message.generator_id());
     RAY_CHECK(!generator_id.IsNil());
     if (task_manager_->ObjectRefStreamExists(generator_id)) {
-      // It is possible this reference will leak if the ObjectRefStream is
-      // deleted or the corresponding object ID is not reported via
-      // HandleReportGeneratorItemReturns. TODO(sang): Handle the edge case.
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, generator_id);
     }
@@ -3439,12 +3438,10 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // object is spilled before the reply from the task that created the
     // object. Add the dynamically created object to our ref counter so that we
     // know that it exists.
-    RAY_CHECK(!generator_id->IsNil());
     if (task_manager_->ObjectRefStreamExists(*generator_id)) {
-      // It is possible this reference will leak if the ObjectRefStream is
-      // deleted or the corresponding object ID is not reported via
-      // HandleReportGeneratorItemReturns. TODO(sang): Handle the edge case.
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, *generator_id);
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, *generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, *generator_id);
     }
@@ -3476,10 +3473,10 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
   if (!maybe_generator_id.IsNil()) {
     if (task_manager_->ObjectRefStreamExists(maybe_generator_id)) {
-      // It is possible this reference will leak if the ObjectRefStream is
-      // deleted or the corresponding object ID is not reported via
-      // HandleReportGeneratorItemReturns. TODO(sang): Handle the edge case.
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, maybe_generator_id);
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id,
+                                                              maybe_generator_id);
     } else {
       // The task is a generator and may not have finished yet. Add the internal
       // ObjectID so that we can update its location.
