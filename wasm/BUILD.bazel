@@ -46,6 +46,12 @@ rust_library(
     proc_macro_deps = [
         "@wasm_crate_index//:wasmedge-macro",
     ],
+    data = [
+        "wasmedge_pkg",
+    ],
+    rustc_flags = [
+        "-C", "link-args=-Wl,-rpath=$${pwd}/../../../../../execroot/com_github_ray_project_ray/python/ray/wasm/wasmedge/lib64",
+    ],
     deps = [
         "ray_wasm_buildrs",
         "//:core_worker_lib",
