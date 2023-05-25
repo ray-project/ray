@@ -905,7 +905,8 @@ class Learner:
                     del self._params[param_ref]
             for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
                 del self._optimizer_parameters[optimizer]
-                del self._named_optimizers[optimizer_name]
+                name = module_id + (("_" + optimizer_name) if optimizer_name else "")
+                del self._named_optimizers[name]
                 if not self._user_configured_optimizers:
                     del self._optimizer_lr_schedules[optimizer]
             del self._module_optimizers[module_id]
