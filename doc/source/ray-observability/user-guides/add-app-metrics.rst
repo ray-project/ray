@@ -8,7 +8,7 @@ Three metrics are supported: Counter, Gauge, and Histogram.
 These metrics correspond to the same `Prometheus metric types <https://prometheus.io/docs/concepts/metric_types/>`_.
 Below is a simple example of an Actor that exports metrics using these APIs:
 
-.. literalinclude:: doc_code/metrics_example.py
+.. literalinclude:: ../doc_code/metrics_example.py
    :language: python
 
 While the script is running, the metrics are exported to ``localhost:8080`` (this is the endpoint that Prometheus would be configured to scrape).

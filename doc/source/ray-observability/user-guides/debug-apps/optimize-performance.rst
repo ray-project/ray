@@ -84,7 +84,7 @@ Then open `chrome://tracing`_ in the Chrome web browser, and load
 Python CPU profiling in the Dashboard
 -------------------------------------
 
-The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
+The :ref:`Ray dashboard <observability-getting-started>`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
 actions for active workers, actors, and jobs.
 
 .. image:: /images/profile.png
@@ -120,7 +120,13 @@ not have root permissions, the Dashboard prompts with instructions on how to set
 
     Alternatively, you can start Ray with passwordless sudo / root permissions.
 
+<<<<<<< HEAD
 Profiling using Python's cProfile
+=======
+.. _dashboard-cprofile:
+
+Profiling Using Python's CProfile
+>>>>>>> master
 ---------------------------------
 
 You can use Python's native cProfile `profiling module`_ to profile the performance of your Ray application. Rather than tracking

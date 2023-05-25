@@ -2,6 +2,7 @@ import { Link, TableCell, TableRow, Tooltip } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
 import { JobStatusWithIcon } from "../../common/JobStatus";
@@ -22,6 +23,10 @@ const useStyles = makeStyles((theme) => ({
     overflow: "hidden",
     whiteSpace: "nowrap",
   },
+  statusMessage: {
+    maxWidth: 250,
+    display: "inline-flex",
+  },
 }));
 
 type JobRowProps = {
@@ -34,6 +39,7 @@ export const JobRow = ({ job }: JobRowProps) => {
     submission_id,
     driver_info,
     status,
+    message,
     start_time,
     end_time,
     entrypoint,
@@ -86,6 +92,17 @@ export const JobRow = ({ job }: JobRowProps) => {
       </TableCell>
       <TableCell align="center">
         <JobStatusWithIcon job={job} />
+      </TableCell>
+      <TableCell align="center">
+        {message ? (
+          <CodeDialogButtonWithPreview
+            className={classes.statusMessage}
+            title="Status message"
+            code={message}
+          />
+        ) : (
+          "-"
+        )}
       </TableCell>
       <TableCell align="center">
         {start_time && start_time > 0 ? (
