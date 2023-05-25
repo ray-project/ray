@@ -226,13 +226,11 @@ def create_replica_wrapper(name: str):
         ) -> AsyncGenerator[Dict[str, Any], None]:
             """Handle a request and stream the results to the caller.
 
-            This is currently only used by the HTTP proxy for experimental
-            StreamingResponse support.
+            This is used by the HTTP proxy for experimental StreamingResponse support.
 
-            The messages yielded by this generator will be ASGI-compliant messages
-            sent via an ASGI sender interface. This allows us to effectively proxy the
-            messages back to the HTTP proxy as they're sent by user code
-            (e.g., FastAPI wrapper).
+            This generator yields ASGI-compliant messages sent via an ASGI sender
+            interface. This allows us to return the messages back to the HTTP proxy as
+            they're sent by user code (e.g., the FastAPI wrapper).
             """
             query = Query(
                 request_args,
@@ -486,8 +484,8 @@ class RayServeReplica:
     async def send_user_result_over_asgi(self, result: Any, asgi_sender: Send):
         """Handle the result from user code and send it over the ASGI interface.
 
-        If the result is already a Response type, it will be sent directly. Else it
-        will be converted to our custom Response type that handles serialization for
+        If the result is already a Response type, it is sent directly. Otherwise, it
+        is converted to a custom Response type that handles serialization for
         common Python objects.
         """
         if not isinstance(result, (starlette.responses.Response, RawASGIResponse)):
@@ -517,8 +515,8 @@ class RayServeReplica:
         Returns the user-provided output and a boolean indicating if the
         request succeeded (user code didn't raise an exception).
 
-        If asgi_sender is provided, then the result will always be `None`
-        because the response will be sent over that interface instead.
+        If asgi_sender is provided, then the result is always `None`
+        because the response is sent over that interface instead.
         """
         logger.info(
             f"Started executing request {request_item.metadata.request_id}",
