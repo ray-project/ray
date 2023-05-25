@@ -350,6 +350,7 @@ class Learner:
         """The hyper-parameters for the learner."""
         return self._hps
 
+    @OverrideToImplementCustomLogic
     def configure_optimizers(self) -> ParamOptimizerPairs:
         """Configures and creates the optimizers for this Learner.
 
