@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 
+from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.logger import logger
 from ray_release.test import Test
 
@@ -15,6 +16,7 @@ DATAPLANE_FILENAME = "dataplane.tgz"
 DATAPLANE_DIGEST = "f9b0055085690ddad2faa804bb6b38addbcf345b9166f2204928a7ece1c8a39b"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
+RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 
 
 def build_anyscale_byod_images(tests: List[Test]) -> None:
@@ -66,6 +68,25 @@ def build_anyscale_byod_images(tests: List[Test]) -> None:
                         "-",
                     ],
                     stdin=build_file,
+                    stdout=sys.stderr,
+                    env=env,
+                )
+                subprocess.check_call(
+                    [
+                        "docker",
+                        "build",
+                        "--build-arg",
+                        f"BASE_IMAGE={byod_image}",
+                        "--build-arg",
+                        "PIP_REQUIREMENTS=requirements_byod.txt",
+                        "--build-arg",
+                        "DEBIAN_REQUIREMENTS=requirements_debian_byod.txt",
+                        "-t",
+                        byod_image,
+                        "-f",
+                        os.path.join(RELEASE_BYOD_DIR, "byod.Dockerfile"),
+                        RELEASE_BYOD_DIR,
+                    ],
                     stdout=sys.stderr,
                     env=env,
                 )
