@@ -325,6 +325,12 @@ def run(
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
     # Deprecated
+    keep_checkpoints_num: Optional[int] = None,  # Deprecated (2.7)
+    checkpoint_score_attr: Optional[str] = None,  # Deprecated (2.7)
+    checkpoint_freq: int = 0,  # Deprecated (2.7)
+    checkpoint_at_end: bool = False,  # Deprecated (2.7)
+    checkpoint_keep_all_ranks: bool = False,  # Deprecated (2.7)
+    checkpoint_upload_from_workers: bool = False,  # Deprecated (2.7)
     trial_executor: Optional[RayTrialExecutor] = None,
     local_dir: Optional[str] = None,
     # == internal only ==
@@ -694,6 +700,54 @@ def run(
     )
 
     checkpoint_config = checkpoint_config or CheckpointConfig()
+
+    # For backward compatibility
+    # TODO(jungong): remove after 2.7 release.
+    if keep_checkpoints_num is not None:
+        warnings.warn(
+            "keep_checkpoints_num is deprecated and will be removed. "
+            "use checkpoint_config.num_to_keep instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.num_to_keep = keep_checkpoints_num
+    if checkpoint_score_attr is not None:
+        warnings.warn(
+            "checkpoint_score_attr is deprecated and will be removed. "
+            "use checkpoint_config.checkpoint_score_attribute instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.score_attr = checkpoint_score_attr
+    if checkpoint_freq > 0:
+        warnings.warn(
+            "checkpoint_freq is deprecated and will be removed. "
+            "use checkpoint_config.checkpoint_frequency instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.checkpoint_frequency = checkpoint_freq
+    if checkpoint_at_end:
+        warnings.warn(
+            "checkpoint_at_end is deprecated and will be removed. "
+            "use checkpoint_config.checkpoint_at_end instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.checkpoint_at_end = checkpoint_at_end
+    if checkpoint_keep_all_ranks:
+        warnings.warn(
+            "checkpoint_keep_all_ranks is deprecated and will be removed. "
+            "use checkpoint_config._checkpoint_keep_all_ranks instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config._checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
+    if checkpoint_upload_from_workers:
+        warnings.warn(
+            "checkpoint_upload_from_workers is deprecated and will be removed. "
+            "use checkpoint_config._checkpoint_upload_from_workers instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config._checkpoint_upload_from_workers = (
+            checkpoint_upload_from_workers
+        )
+
     checkpoint_score_attr = (
         # Note(jungong) : we must use _tune_legacy_checkpoint_score_attr
         # here, instead of checkpoint_score_attribute, to make sure we
@@ -703,10 +757,11 @@ def run(
         or ""
     )
     if checkpoint_score_attr.startswith("min-"):
-        logger.warning(
+        warnings.warn(
             "using min- and max- prefixes to specify checkpoint score "
             "order is deprecated. Please use CheckpointConfig.checkpoint_score_order "
-            "instead"
+            "instead",
+            DeprecationWarning,
         )
         checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
         checkpoint_config.checkpoint_score_order = "min"
