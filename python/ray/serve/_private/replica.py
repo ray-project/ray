@@ -497,7 +497,7 @@ class RayServeReplica:
         else:
             await result(scope=None, receive=mock_asgi_receive, send=asgi_sender)
 
-    async def convert_streaming_response(
+    async def convert_streaming_response_to_unary(
         self, response: starlette.responses.StreamingResponse
     ) -> RawASGIResponse:
         """Convert a StreamingResponse to a custom buffered unary response.
@@ -567,7 +567,7 @@ class RayServeReplica:
 
             # Legacy codepath: always return the result, so ensure it can be serialized.
             elif isinstance(result, starlette.responses.StreamingResponse):
-                result = await self.convert_streaming_response(result)
+                result = await self.convert_streaming_response_to_unary(result)
 
             self.request_counter.inc(tags={"route": request_item.metadata.route})
         except Exception as e:
