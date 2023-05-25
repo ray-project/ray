@@ -81,7 +81,7 @@ Serve currently does not support WebSockets. If you have a use case that require
 Support for HTTP streaming responses is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
 ```
 
-Some applications require streaming incremental results back to the caller.
+Some applications must stream incremental results back to the caller.
 This is common for large language models (LLMs) used for text generation or video processing applications.
 The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
 
