@@ -262,33 +262,48 @@ Open the Grafana UI with the button in the Dashboard. The Grafana UI provides ad
 
 .. _dash-workflow-cpu-memory-analysis:
 
-Analyze the CPU and memory usage of tasks and actors
+Analyze the CPU and memory usage of Tasks and Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :ref:`Metrics view <dash-metrics-view>` in the Ray Dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each Task and Actor in the application (as well as system components).
-You can identify Tasks and Actors that may be consuming more resources than expected and optimize the performance of the application.
+The :ref:`Metrics view <dash-metrics-view>` in the Dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each Task and Actor in the application (as well as system components). 
+You can identify tasks and actors that may be consuming more resources than expected and optimize the performance of the application. 
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/node_cpu_by_comp.png
+    :align: center
+
 
 Per component CPU graph. 0.379 cores mean that it uses 40% of a single CPU core. Ray process names start with ``ray::``. ``raylet``, ``agent``, ``dashboard``, or ``gcs`` are system components.
 
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/node_memory_by_comp.png
+    :align: center
+
 Per component memory graph. Ray process names start with ``ray::``. ``raylet``, ``agent``, ``dashboard``, or ``gcs`` are system components.
 
-Additionally, users can see a snapshot of the hardware utilization from the :ref:`cluster page <dash-node-view>`, which provides an overview of resource usage across the entire Ray cluster.
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/cluster_page.png
+    :align: center
+
+Additionally, users can see a snapshot of hardware utilization from the :ref:`cluster page <dash-node-view>`, which provides an overview of resource usage across the entire Ray Cluster.
 
 .. _dash-workflow-resource-utilization:
 
-View the Resource Utilization
+View the resource utilization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors will use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
+Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors to use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``. 
 These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
 
-- YSee the logical and physical resource utilization over time from the :ref:`Metrics view <dash-metrics-view>`.
+- See the logical and physical resource utilization over time from the :ref:`Metrics view <dash-metrics-view>`.
 - The snapshot of physical resource utilization (CPU, GPU, memory, disk, network) is also available from the :ref:`Cluster view <dash-node-view>`.
+
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/logical_resource.png
+    :align: center
 
 The :ref:`logical resources <logical-resources>` usage.
 
-The physical resources (hardware) usage. Ray provides CPU, GPU, Memory, GRAM, disk, and network usage for each machine in a Cluster.
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/physical_resource.png
+    :align: center
 
+The physical resources (hardware) usage. Ray provides CPU, GPU, Memory, GRAM, disk, and network usage for each machine in a cluster.
 
 .. _dash-logs-view:
 
@@ -355,7 +370,7 @@ The Recent Jobs pane provides a list of recently submitted Ray Jobs.
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/event-page.png
     :align: center
 
-The Events view displays a list of events associated with a specific type (e.g., Autoscaler or job) in chronological order. The same information is accessible with the ``ray list cluster-events`` :ref:`(Ray state APIs)<state-api-overview-ref>` CLI commands.
+The Events view displays a list of events associated with a specific type (e.g., Autoscaler or Job) in chronological order. The same information is accessible with the ``ray list cluster-events`` :ref:`(Ray state APIs)<state-api-overview-ref>` CLI commands.
 
 Two types of events are available:
 
