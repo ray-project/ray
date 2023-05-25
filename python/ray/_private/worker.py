@@ -44,7 +44,6 @@ else:
     from typing_extensions import Literal, Protocol
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.import_thread as import_thread
 import ray._private.node
 import ray._private.parameter
@@ -64,11 +63,7 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager, make_function_table_key
-from ray._private.gcs_pubsub import (
-    GcsErrorSubscriber,
-    GcsFunctionKeySubscriber,
-    GcsLogSubscriber,
-)
+
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
@@ -1742,11 +1737,13 @@ normal_excepthook = sys.excepthook
 
 
 def custom_excepthook(type, value, tb):
+    import ray.core.generated.common_pb2 as common_pb2
+
     # If this is a driver, push the exception to GCS worker table.
     if global_worker.mode == SCRIPT_MODE and hasattr(global_worker, "worker_id"):
         error_message = "".join(traceback.format_tb(tb))
         worker_id = global_worker.worker_id
-        worker_type = gcs_utils.DRIVER
+        worker_type = common_pb2.DRIVER
         worker_info = {"exception": error_message}
 
         ray._private.state.state._check_connected()
@@ -2236,6 +2233,12 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
     )
+    # The following will be fixed with https://github.com/ray-project/ray/pull/35094
+    from ray._private.gcs_pubsub import (
+        GcsErrorSubscriber,
+        GcsFunctionKeySubscriber,
+        GcsLogSubscriber,
+    )
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
@@ -2586,14 +2589,15 @@ def put(
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray._private.state.state.global_state_accessor` is not None
         ray._private.state.state._check_connected()
-        owner_address = gcs_utils.ActorTableData.FromString(
-            ray._private.state.state.global_state_accessor.get_actor_info(
-                _owner._actor_id
+        serialize_owner_address = (
+            ray._raylet._get_actor_serialized_owner_address_or_none(
+                ray._private.state.state.global_state_accessor.get_actor_info(
+                    _owner._actor_id
+                )
             )
-        ).address
-        if len(owner_address.worker_id) == 0:
+        )
+        if not serialize_owner_address:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
-        serialize_owner_address = owner_address.SerializeToString()
     else:
         raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
 

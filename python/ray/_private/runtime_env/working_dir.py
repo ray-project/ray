@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     Protocol,
@@ -120,7 +119,9 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
     name = "working_dir"
 
-    def __init__(self, resources_dir: str, gcs_aio_client: GcsAioClient):
+    def __init__(
+        self, resources_dir: str, gcs_aio_client: "GcsAioClient"  # noqa: F821
+    ):
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         self._gcs_aio_client = gcs_aio_client
         try_to_create_directory(self._resources_dir)

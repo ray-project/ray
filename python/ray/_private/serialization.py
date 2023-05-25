@@ -7,7 +7,6 @@ from typing import Any
 import ray._private.utils
 import ray.cloudpickle as pickle
 from ray._private import ray_constants
-from ray._private.gcs_utils import ErrorType
 from ray._raylet import (
     MessagePackSerializedObject,
     MessagePackSerializer,
@@ -18,7 +17,7 @@ from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
 )
-from ray.core.generated.common_pb2 import RayErrorInfo
+from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
 from ray.exceptions import (
     ActorPlacementGroupRemoved,
     ActorUnschedulableError,
