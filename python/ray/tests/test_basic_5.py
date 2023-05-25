@@ -244,13 +244,10 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     freqs = ray.get(get_kv_metrics.remote())
     # So far we have the following gets
     """
-    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
-    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x02'
     b'cluster' b'CLUSTER_METADATA'
-    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
-    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
     b'tracing' b'tracing_startup_hook'
-    ???? # unknown
+    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
+    b'fun' b'RemoteFunction:01000000:'
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
     assert freqs["internal_kv_get"] == 4

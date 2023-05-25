@@ -2139,7 +2139,8 @@ def _auto_reconnect(f):
     @wraps(f)
     def wrapper(self, *args, **kwargs):
         if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
-            ray._private.utils._CALLED_FREQ[f.__name__] += 1
+            with ray._private.utils._CALLED_FREQ_LOCK:
+                ray._private.utils._CALLED_FREQ[f.__name__] += 1
         remaining_retry = self._nums_reconnect_retry
         while True:
             try:
