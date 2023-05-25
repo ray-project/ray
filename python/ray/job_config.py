@@ -1,7 +1,6 @@
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-import ray.core.generated.common_pb2 as common_pb2
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -135,6 +134,8 @@ class JobConfig:
         Args:
             default_actor_lifetime: The default actor lifetime to set.
         """
+        import ray.core.generated.common_pb2 as common_pb2
+
         if default_actor_lifetime == "detached":
             self._default_actor_lifetime = common_pb2.JobConfig.ActorLifetime.DETACHED
         elif default_actor_lifetime == "non_detached":
@@ -162,6 +163,7 @@ class JobConfig:
         # all over the place so this causes circular imports. We should remove
         # this dependency and pass in a validated runtime_env instead.
         from ray._private.utils import get_runtime_env_info
+        import ray.core.generated.common_pb2 as common_pb2
 
         if self._cached_pb is None:
             pb = common_pb2.JobConfig()
