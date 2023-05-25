@@ -71,6 +71,7 @@ _PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
+_CALLED_FREQ_LOCK = threading.Lock()
 
 
 def get_user_temp_dir():
