@@ -1,7 +1,8 @@
-import os
 import pytest
 from pathlib import Path
 import sys
+
+from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
 if __name__ == "__main__":
     curr_dir = Path(__file__).parent
@@ -13,7 +14,8 @@ if __name__ == "__main__":
     for test_file in serve_tests_files:
         print("->", test_file.split("/")[-1])
 
-    print("Setting RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1")
-    os.environ["RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING"] = "1"
+    assert (
+        RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+    ), "RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1 must be set."
 
     sys.exit(pytest.main(["-v", "-s"] + serve_tests_files))
