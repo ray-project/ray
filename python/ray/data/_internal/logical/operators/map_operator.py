@@ -65,7 +65,12 @@ class AbstractUDFMap(AbstractMap):
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args: Args to provide to ray.remote.
         """
-        name = f"{name}({fn.__qualname__})"
+        fn_name = (
+            fn.__name__
+            if not hasattr(fn, "__self__")
+            else f"{fn.__self__.__class__.__name__}.{fn.__name__}"
+        )
+        name = f"{name}({fn_name})"
         super().__init__(name, input_op, ray_remote_args)
         self._fn = fn
         self._fn_args = fn_args
