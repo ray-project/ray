@@ -632,6 +632,21 @@ py_test(
 )
 
 py_test(
+    name = "test_test",
+    size = "small",
+    srcs = ["ray_release/tests/test_test.py"],
+    exec_compatible_with = [":hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_wheels",
     size = "small",
     srcs = ["ray_release/tests/test_wheels.py"],

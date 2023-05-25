@@ -8,6 +8,7 @@ from ray_release.aws import (
 )
 from ray_release.anyscale_util import get_project_name
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
+from ray_release.test import Test
 from ray_release.exception import CloudInfoError
 from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
 from ray_release.logger import logger
@@ -19,20 +20,20 @@ if TYPE_CHECKING:
 class ClusterManager(abc.ABC):
     def __init__(
         self,
-        test_name: str,
+        test: Test,
         project_id: str,
         sdk: Optional["AnyscaleSDK"] = None,
         smoke_test: bool = False,
     ):
         self.sdk = sdk or get_anyscale_sdk()
 
-        self.test_name = test_name
+        self.test = test
         self.smoke_test = smoke_test
         self.project_id = project_id
         self.project_name = get_project_name(self.project_id, self.sdk)
 
         self.cluster_name = (
-            f"{test_name}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
+            f"{test.get_name()}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
         )
         self.cluster_id = None
 
@@ -59,11 +60,11 @@ class ClusterManager(abc.ABC):
         self.cluster_env["env_vars"]["RAY_USAGE_STATS_SOURCE"] = "nightly-tests"
         self.cluster_env["env_vars"][
             "RAY_USAGE_STATS_EXTRA_TAGS"
-        ] = f"test_name={self.test_name};smoke_test={self.smoke_test}"
+        ] = f"test_name={self.test.get_name()};smoke_test={self.smoke_test}"
 
         self.cluster_env_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
-            f"__env__{self.test_name.replace('.', '_')}__"
+            f"__env__{self.test.get_name().replace('.', '_')}__"
             f"{dict_hash(self.cluster_env)}"
         )
 
@@ -89,7 +90,7 @@ class ClusterManager(abc.ABC):
 
         self.cluster_compute_name = (
             f"{self.project_name}_{self.project_id[4:8]}"
-            f"__compute__{self.test_name}__"
+            f"__compute__{self.test.get_name()}__"
             f"{dict_hash(self.cluster_compute)}"
         )
 

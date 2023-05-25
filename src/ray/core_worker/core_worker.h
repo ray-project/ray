@@ -360,6 +360,40 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
+  /// Create the ObjectRefStream of generator_id.
+  ///
+  /// It is a pass-through method. See TaskManager::CreateObjectRefStream
+  /// for details.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  void CreateObjectRefStream(const ObjectID &generator_id);
+
+  /// Read the next index of a ObjectRefStream of generator_id.
+  /// This API always return immediately.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \param[out] object_ref_out The ObjectReference
+  /// that the caller can convert to its own ObjectRef.
+  /// The current process is always the owner of the
+  /// generated ObjectReference. It will be Nil() if there's
+  /// no next item.
+  /// \return Status ObjectRefEndOfStream if the stream reaches to EoF.
+  /// OK otherwise.
+  Status TryReadObjectRefStream(const ObjectID &generator_id,
+                                rpc::ObjectReference *object_ref_out);
+
+  /// Delete the ObjectRefStream of generator_id
+  /// created by CreateObjectRefStream.
+  ///
+  /// It is a pass-through method. See TaskManager::DelObjectRefStream
+  /// for details.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  void DelObjectRefStream(const ObjectID &generator_id);
+
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
   }
@@ -994,8 +1028,26 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the caller. This is in contrast to static allocation, where the caller
   /// decides at task invocation time how many returns the task should have.
   ///
-  /// \param[out] The ObjectID that the caller should use to store the object.
-  ObjectID AllocateDynamicReturnId();
+  /// NOTE: Normally task_id and put_index it not necessary to be specified
+  /// because we can obtain them from the global worker context. However,
+  /// when the async actor uses this API, it cannot find the correct
+  /// worker context due to the implementation limitation.
+  /// In this case, the caller is responsible for providing the correct
+  /// task ID and index.
+  /// See https://github.com/ray-project/ray/issues/10324 for the further details.
+  ///
+  /// \param[in] owner_address The address of the owner who will own this
+  /// dynamically generated object.
+  /// \param[in] task_id The task id of the dynamically generated return ID.
+  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// worker context.
+  /// \param[in] put_index The equivalent of the return value of
+  /// WorkerContext::GetNextPutIndex.
+  /// If std::nullopt is specified, it will deduce the put index from the
+  /// current worker context.
+  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
+                                   const TaskID &task_id = TaskID::Nil(),
+                                   std::optional<ObjectIDIndexType> put_index = -1);
 
   /// Get a handle to an actor.
   ///

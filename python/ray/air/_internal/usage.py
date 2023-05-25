@@ -1,4 +1,5 @@
 import collections
+from enum import Enum
 import json
 import os
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
@@ -63,6 +64,13 @@ TUNE_SCHEDULERS = {
     "PB2",
     "ResourceChangingScheduler",
 }
+
+
+class AirEntrypoint(Enum):
+    TUNER = "Tuner.fit"
+    TRAINER = "Trainer.fit"
+    TUNE_RUN = "tune.run"
+    TUNE_RUN_EXPERIMENTS = "tune.run_experiments"
 
 
 def _find_class_name(obj, allowed_module_path_prefix: str, whitelist: Set[str]):
@@ -280,3 +288,9 @@ def tag_ray_air_env_vars() -> bool:
         return True
 
     return False
+
+
+def tag_air_entrypoint(entrypoint: AirEntrypoint) -> None:
+    """Records the entrypoint to an AIR training run."""
+    assert entrypoint in AirEntrypoint
+    record_extra_usage_tag(TagKey.AIR_ENTRYPOINT, entrypoint.value)
