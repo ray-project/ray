@@ -1,7 +1,7 @@
+.. _state-api-ref:
+
 State API
 =========
-
-.. _state-api-ref:
 
 .. note::
 
