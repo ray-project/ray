@@ -38,7 +38,9 @@ def test_from_state_dict():
     assert actual_state_dict == expected_state_dict
 
 
-def test_pickle_large_model():
+def test_pickle_large_model_py38():
+    # TODO (ml-team): remove this unittest after we upgrade
+    # our ci image to Python 3.8
     ray.init(
         runtime_env={
             "pip": {
@@ -56,6 +58,12 @@ def test_pickle_large_model():
         pickle.dumps(checkpoint)
 
     ray.get(func.remote())
+
+
+def test_pickle_large_model():
+    data_dict = {"key": "1" * (4 * 1024 * 1024 * 1024 + 100)}
+    checkpoint = TorchCheckpoint(data_dict=data_dict)
+    pickle.dumps(checkpoint)
 
 
 def test_no_encoding_for_dir_checkpoints(tmpdir):
