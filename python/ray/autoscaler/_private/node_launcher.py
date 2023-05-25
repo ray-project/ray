@@ -61,7 +61,7 @@ class BaseNodeLauncher:
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
 
-    def launch_node(self, config: Dict[str, Any], count: int, node_type: str):
+    def launch_node(self, config: Dict[str, Any], count: int, node_type: str) -> Optional[Dict]:
         self.log("Got {} nodes to launch.".format(count))
         created_nodes = self._launch_node(config, count, node_type)
         self.pending.dec(node_type, count)
