@@ -3,7 +3,7 @@
 Monitoring and Debugging
 ========================
 
-The Ray Dashboard, State API, State CLI, and SDK help you monitor and debug Ray applications and clusters.
+The Ray Dashboard, State API, State CLI, and SDK help you monitor the health of your applications and Clusters or debug them when they behave unexpectedly.
 
 .. raw:: html
 
