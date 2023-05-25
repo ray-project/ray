@@ -57,12 +57,12 @@ params = SamplingParams(
     do_sample=False,
     max_new_tokens=64,
     stop_sequences=[],
-    ignore_eos_token=False,
+    ignore_eos_token=True,
     watermark=False,
     seed=42,
 )
 
-inputs = gen_random_prompts("facebook/opt-6.7b")
+inputs = gen_random_prompts("facebook/opt-6.7b", vocab_range=(0, 50000), context_length=512, num_prompts=100)
 
 scheduler = InferenceScheduler(
     tokenizer=TransfomerTokenizer(
@@ -70,7 +70,7 @@ scheduler = InferenceScheduler(
     ),
     inference_worker=InferenceWorker(lambda: OPT("facebook/opt-6.7b")),
     request_selection_policy=QuotaBasedRequestSelectionPolicy(
-        max_batch_total_tokens=22000, max_waiting_tokens=20
+        max_batch_total_tokens=25000, max_waiting_tokens=20
     ),
     request_queue=RequestQueue(),
     loop=None,
@@ -80,7 +80,7 @@ scheduler = InferenceScheduler(
 input("ready?")
 results = []
 for line, _ in inputs:
-    result = scheduler.process_request(line, params, max_length=512)
+    result = scheduler.process_request(line, params, max_length=512 + 64)
     results.append(result)
 
 scheduler._run_scheduling_loop()
