@@ -57,7 +57,7 @@
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --flaky_test_attempts=1
+    - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-cpu python/ray/... doc/...
 
 - label: ":zap: :python: Lightning 2.0 Train GPU tests"
