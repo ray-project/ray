@@ -177,10 +177,13 @@ if __name__ == "__main__":
     print(f"Using --no-config-cache flag: {no_config_cache}")
 
     config_yaml = yaml.safe_load(cluster_config.read_text())
+    # Make the cluster name unique
+    config_yaml["cluster_name"] = (
+        config_yaml["cluster_name"] + "-" + str(int(time.time()))
+    )
     provider_type = config_yaml.get("provider", {}).get("type")
     if provider_type == "aws":
         download_ssh_key()
-        run_ray_commands(cluster_config, retries, no_config_cache)
     elif provider_type == "gcp":
         print("======================================")
         print("GCP provider detected. Skipping ssh key download step.")
@@ -209,15 +212,14 @@ if __name__ == "__main__":
             f"Injecting GCP project '{project_id}' into cluster configuration file..."
         )
         config_yaml["provider"]["project_id"] = project_id
-
-        # Create a new temporary file and dump the updated configuration into it
-        with tempfile.NamedTemporaryFile(suffix=".yaml") as temp:
-            temp.write(yaml.dump(config_yaml).encode("utf-8"))
-            temp.flush()
-            cluster_config = Path(temp.name)
-            run_ray_commands(cluster_config, retries, no_config_cache)
-
     else:
         print("======================================")
         print("Provider type not recognized. Exiting script.")
         sys.exit(1)
+
+    # Create a new temporary file and dump the updated configuration into it
+    with tempfile.NamedTemporaryFile(suffix=".yaml") as temp:
+        temp.write(yaml.dump(config_yaml).encode("utf-8"))
+        temp.flush()
+        cluster_config = Path(temp.name)
+        run_ray_commands(cluster_config, retries, no_config_cache)
