@@ -23,7 +23,7 @@ another task that depends on the object.
   :start-after: __task_exceptions_begin__
   :end-before: __task_exceptions_end__
 
-From Ray 2.3 onwards, you can see task exit details (for example, OOM killed, or task execution errored) using the :ref:`State API CLI <state-api-overview-ref>`` ,or view them in the :ref:`Dashboard <observability-getting-started>`` for more details.
+From Ray 2.3 onwards, you can see task exit details (for example, OOM killed, or task execution errored) using the :ref:`State API CLI <state-api-overview-ref>`,or view them in the :ref:`Dashboard <observability-getting-started>` for more details.
 
 
 .. code-block:: bash
