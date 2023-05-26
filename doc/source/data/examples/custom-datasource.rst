@@ -40,7 +40,7 @@ By the end of the guide, you will have a ``MongoDatasource`` that you can use to
     which expresses document processing in a series of stages (e.g. match documents with a predicate, sort results, and then select a few fields).
     The execution results of the pipelines are used to create dataset.
 
-A custom datasource is an implementation of :class:`~ray.data.Datasource`. In the
+A custom datasource is an implementation of :class:`~ray.data.Datasource`. In this
 example, it's called ``MongoDatasource``. At a high level, it has two
 core parts to build out:
 
