@@ -11,8 +11,8 @@ for a sample configuration showing how to extract logs from a Ray pod.
 :::
 
 ## The Ray log directory
-Each Ray pod runs several component processes, such as the Raylet, object manager, dashboard agent, etc.
-These components log to files in the directory `/tmp/ray/session_latest/logs` in the pod's file system.
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application logs and Ray system logs. Learn more about the [log directory and log file structure](../../../ray-observability/user-guides/configure-logging.rst) before you start to collect the logs.
+
 Extracting and persisting these logs requires some setup.
 
 ## Log processing tools
