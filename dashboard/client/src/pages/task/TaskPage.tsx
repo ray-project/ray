@@ -238,7 +238,6 @@ const TaskLogs = ({
     error_message,
     error_type,
     worker_id,
-    node_id,
     task_log_info,
     actor_id,
   },
@@ -254,7 +253,7 @@ const TaskLogs = ({
       : undefined;
 
   const tabs: MultiTabLogViewerTabDetails[] = [
-    ...(worker_id !== null && node_id !== null && task_log_info !== null
+    ...(worker_id !== null && task_log_info !== null
       ? ([
           {
             title: "stderr",
@@ -273,8 +272,8 @@ const TaskLogs = ({
           {
             title: "Logs",
             contents:
-              "For async actors, logs of individual tasks are not available. " +
-              'Please use the "other logs" link to access the all the logs of the actor instead.',
+              "Logs of async actor tasks or threaded actor tasks (concurency > 1) are only available " +
+              'as part of the actor logs. Please click "Other logs" link above to access the actor logs.',
           },
         ]
       : []),
