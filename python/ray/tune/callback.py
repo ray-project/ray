@@ -323,12 +323,6 @@ class Callback(metaclass=_CallbackMeta):
                 def set_state(self, state: Dict) -> Optional[Dict]:
                     self._trial_ids = state["trial_ids"]
 
-        .. testoutput::
-            :hide:
-            :options: +SKIP
-
-            ...
-
         Returns:
             dict: State of the callback. Should be `None` if the callback does not
             have any state to save (this is the default).

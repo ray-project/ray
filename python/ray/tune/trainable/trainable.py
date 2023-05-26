@@ -1173,6 +1173,7 @@ class Trainable:
         This is not set if not using Tune.
 
         .. testcode::
+            from ray.tune import Trainable
 
             name = Trainable().trial_name
         """
@@ -1188,6 +1189,7 @@ class Trainable:
         This is not set if not using Tune.
 
         .. testcode::
+            from ray.tune import Trainable
 
             trial_id = Trainable().trial_id
         """
@@ -1203,6 +1205,7 @@ class Trainable:
         This is not set if not using Tune.
 
         .. testcode::
+            from ray.tune import Trainable
 
             trial_resources = Trainable().trial_resources
         """

@@ -211,7 +211,7 @@ class ResultGrid:
 
             .. testoutput::
                 :hide:
-                :options: +SKIP
+                :options: +ELLIPSIS
 
                 ...
 
