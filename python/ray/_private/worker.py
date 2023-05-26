@@ -2088,7 +2088,7 @@ def connect(
     try:
         if not faulthandler.is_enabled():
             faulthandler.enable(all_threads=False)
-    except io.UnsupportedOperation:
+    except:# io.UnsupportedOperation:
         pass  # ignore
 
     worker.gcs_client = node.get_gcs_client()
