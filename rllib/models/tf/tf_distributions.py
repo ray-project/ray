@@ -114,26 +114,12 @@ class TfCategorical(TfDistribution):
         self.one_hot = tfp.distributions.OneHotCategorical(probs=probs)
         super().__init__(probs=probs)
 
-    @override(Distribution)
-    def logp(self, value: TensorType, **kwargs) -> TensorType:
-        # This prevents an error in which float values at the boundaries of the range
-        # of the distribution are passed to this function.
-        return -tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=self.logits if self.logits is not None else self.probs,
-            labels=tf.cast(value, tf.int32),
-        )
-
     @override(TfDistribution)
     def _get_tf_distribution(
         self,
         probs: "tf.Tensor" = None,
-        logits: "tf.Tensor" = None,
-        temperature: float = 1.0,
     ) -> "tfp.distributions.Distribution":
-        if logits is not None:
-            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            logits /= temperature
-        return tfp.distributions.Categorical(probs=probs, logits=logits)
+        return tfp.distributions.Categorical(probs=probs)
 
     @staticmethod
     @override(Distribution)
