@@ -129,7 +129,7 @@ class TorchTrainer(DataParallelTrainer):
 
     Example:
 
-        .. testcode::
+        .. code-block:: python
 
             import torch
             import torch.nn as nn
@@ -228,12 +228,6 @@ class TorchTrainer(DataParallelTrainer):
 
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09   # doctest: +SKIP
-
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
-
-        ...
 
     Args:
 

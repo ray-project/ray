@@ -85,7 +85,7 @@ class TensorflowTrainer(DataParallelTrainer):
 
     Example:
 
-    .. testcode::
+    .. code-block:: python
 
         import tensorflow as tf
 
@@ -136,12 +136,6 @@ class TensorflowTrainer(DataParallelTrainer):
             train_loop_config={"num_epochs": 2},
         )
         result = trainer.fit()
-
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute.

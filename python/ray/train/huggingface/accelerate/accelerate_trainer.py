@@ -110,7 +110,7 @@ class AccelerateTrainer(TorchTrainer):
     It is tested with ``accelerate==0.17.1``.
 
     Example:
-        .. testcode::
+        .. code-block:: python
 
             import torch
             import torch.nn as nn
@@ -224,12 +224,6 @@ class AccelerateTrainer(TorchTrainer):
 
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09
-
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
-
-        ...
 
     Args:
         train_loop_per_worker: The training function to execute.
