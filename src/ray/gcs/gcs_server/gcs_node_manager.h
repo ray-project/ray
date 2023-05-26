@@ -104,6 +104,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     return alive_nodes_;
   }
 
+  /// Get all dead nodes.
+  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllDeadNodes()
+      const {
+    return dead_nodes_;
+  }
+
   /// Add listener to monitor the remove action of nodes.
   ///
   /// \param listener The handler which process the remove of nodes.

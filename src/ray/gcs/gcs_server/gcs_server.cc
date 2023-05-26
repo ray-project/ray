@@ -173,6 +173,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Install event listeners.
   InstallEventListeners();
 
+  // Init autoscaling manager
+  InitGcsAutoscalerStateManager();
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
@@ -573,6 +576,18 @@ void GcsServer::InitGcsWorkerManager() {
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
+}
+
+void GcsServer::InitGcsAutoscalerStateManager() {
+  gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
+      cluster_resource_scheduler_->GetClusterResourceManager(),
+      *gcs_resource_manager_,
+      *gcs_node_manager_);
+
+  autoscaler_state_service_.reset(
+      new rpc::AutoscalerStateGrpcService(main_service_, *gcs_autoscaler_state_manager_));
+
+  rpc_server_.RegisterService(*autoscaler_state_service_);
 }
 
 void GcsServer::InitGcsTaskManager() {

@@ -18,6 +18,7 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_client/usage_stats_client.h"
+#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -134,6 +135,9 @@ class GcsServer {
   /// Initialize gcs task manager.
   void InitGcsTaskManager();
 
+  /// Initialize gcs autoscaling manager.
+  void InitGcsAutoscalerStateManager();
+
   /// Initialize usage stats client.
   void InitUsageStatsClient();
 
@@ -196,6 +200,8 @@ class GcsServer {
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The cluster task manager.
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  /// The autoscaler state manager.
+  std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   /// The gcs node manager.
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
@@ -259,6 +265,8 @@ class GcsServer {
   std::unique_ptr<GcsTaskManager> gcs_task_manager_;
   /// Independent task info service from the main grpc service.
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
+  /// Gcs Autoscaler state manager.
+  std::unique_ptr<rpc::AutoscalerStateGrpcService> autoscaler_state_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.

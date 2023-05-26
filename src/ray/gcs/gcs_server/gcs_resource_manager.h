@@ -32,6 +32,9 @@ namespace ray {
 
 class GcsMonitorServerTest;
 
+using AggregatedResourceLoad =
+    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>;
+
 using raylet::ClusterTaskManager;
 namespace gcs {
 /// Ideally, the logic related to resource calculation should be moved from
@@ -53,7 +56,6 @@ namespace gcs {
 /// actor and placement group scheduling. It obtains the available resources of nodes
 /// through heartbeat reporting. Non-thread safe.
 class GcsResourceManager : public rpc::NodeResourceInfoHandler,
-                           public rpc::AutoscalerStateHandler,
                            public syncer::ReceiverInterface {
  public:
   /// Create a GcsResourceManager.
@@ -88,19 +90,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   void HandleGetAllResourceUsage(rpc::GetAllResourceUsageRequest request,
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
-
-  /// AutoscalerStateHandler implementation
-  void HandleGetClusterResourceState(
-      rpc::autoscaler::GetClusterResourceStateRequest request,
-      rpc::autoscaler::GetClusterResourceStateReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleReportAutoscalingState(
-      rpc::autoscaler::ReportAutoscalingStateRequest request,
-      rpc::autoscaler::ReportAutoscalingStateReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
-
-  /// AutoscalerStateHandler implementation ends.
 
   /// Handle a node registration.
   ///
@@ -157,85 +146,16 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \returns The mapping from node id to latest resource report.
   const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
 
+  /// Get aggregated resource load of all nodes.
+  AggregatedResourceLoad GetAggregatedResourceLoad() const;
+
  private:
   /// Aggregate nodes' pending task info.
   ///
   /// \param resources_data A node's pending task info (by shape).
   /// \param aggregate_load[out] The aggregate pending task info (across the cluster).
   void FillAggregateLoad(const rpc::ResourcesData &resources_data,
-                         std::unordered_map<google::protobuf::Map<std::string, double>,
-                                            rpc::ResourceDemand> *aggregate_load);
-
-  /// @brief  Add a new node state.
-  /// @param instance_id Instance id that's associated with the cloud provider if
-  /// relevant.
-  /// @param node_id Node id.
-  /// @param version Current cluster state version.
-  void AddNewNodeState(const std::string &instance_id,
-                       const std::string &node_id,
-                       int64_t version);
-
-  /// @brief  Remove a node state.
-  /// @param node_id Node id.
-  void RemoveNodeState(const NodeID &node_id);
-
-  /// @brief Get the current cluster resource state version.
-  ///
-  /// When the cluster state (that's currently reported to autoscaler) that represents the
-  /// resource state of the cluster is updated, a monotonically increasing version number
-  /// will be incremented. Current cluster state consists of :
-  ///   - node membership: when node is added/removed/drained.
-  ///   - cluster resources: available/total resources of the cluster.
-  ///   - resource requests: e.g. placement group requests, tasks/actors resource requests
-  ///     or cluster resources requested explicitly.
-  ///
-  /// Right now, consecutive versions are NOT guaranteed to be different. The version is
-  /// used for 2 major reasons:
-  ///   1. So that autoscaler can detect if the cluster state has changed since last time
-  ///     and reconcile inconsistency that might arise due to network partition or cloud
-  ///     providers errors.
-  ///   2. So that GCS could dump cluster state with versions for backtracing and
-  ///   debugging.
-  int64_t GetClusterResourceStateVersion() const {
-    return cluster_resource_state_version_;
-  }
-
-  /// @brief Increment the cluster resource state version.
-  ///
-  /// @return Return the new version.
-  /// Not thread safe.
-  int64_t IncrementClusterResourceStateVersion() {
-    return ++cluster_resource_state_version_;
-  }
-
-  /// @brief Get the current cluster resource state.
-  /// @param reply The reply to be filled.
-  ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::node_states for more details.
-  void GetNodeStates(rpc::autoscaler::GetClusterResourceStateReply *reply);
-
-  /// @brief Get the resource requests state.
-  /// @param reply The reply to be filled.
-  ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::pending_resource_requests for
-  /// more details.
-  void GetPendingResourceRequests(rpc::autoscaler::GetClusterResourceStateReply *reply);
-
-  /// @brief Get the gang resource requests (e.g. from placement group) state.
-  /// @param reply The reply to be filled.
-  ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::pending_gang_resource_requests
-  /// for more
-  void GetPendingGangResourceRequests(
-      rpc::autoscaler::GetClusterResourceStateReply *reply);
-
-  /// @brief Get the cluster resource constraints state.
-  /// @param reply The reply to be filled.
-  ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::cluster_resource_constraints for
-  /// more details. This is requested through autoscaler SDK for request_resources().
-  void GetClusterResourceConstraints(
-      rpc::autoscaler::GetClusterResourceStateReply *reply);
+                         AggregatedResourceLoad *aggregate_load) const;
 
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
@@ -248,21 +168,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;
   /// The resources changed listeners.
   std::vector<std::function<void()>> resources_changed_listeners_;
-
-  /// AutoscalerStateService only states.
-
-  absl::flat_hash_map<NodeID, rpc::NodeState> node_states_;
-
-  // The default value of the last seen version for the request is 0, which indicates
-  // no version has been seen. When node is added, the version will be incremented.
-  // Therefore, a cluster in init state with at least 1 node, will have the version > 0.
-  int64_t cluster_resource_state_version_ = 0;
-
-  /// The last seen autoscaler state version. Use 0 as the default value to indicate
-  /// no previous autoscaler state has been reported.
-  int64_t last_seen_autoscaler_state_version_ = 0;
-
-  /// AutoscalerStateService only states ends.
 
   /// Debug info.
   enum CountType {
