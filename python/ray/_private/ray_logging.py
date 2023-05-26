@@ -107,11 +107,14 @@ class StandardStreamInterceptor:
           logging.INFO severity level.
 
     Example:
-        >>> from contextlib import redirect_stdout
-        >>> logger = logging.getLogger("ray_logger")
-        >>> hook = StandardStreamHook(logger)
-        >>> with redirect_stdout(hook):
-        >>>     print("a") # stdout will be delegated to logger.
+
+        .. code-block:: python
+
+            from contextlib import redirect_stdout
+            logger = logging.getLogger("ray_logger")
+            hook = StandardStreamHook(logger)
+            with redirect_stdout(hook):
+                print("a") # stdout will be delegated to logger.
 
     Args:
         logger: Python logger that will receive messages streamed to

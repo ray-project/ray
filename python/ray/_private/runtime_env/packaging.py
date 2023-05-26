@@ -182,7 +182,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     only for setting up local directory folders by using package name as path.
 
     >>> parse_uri("https://test.com/file.zip")
-    (Protocol.HTTPS, "https_test_com_file.zip")
+    (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
     """
     uri = urlparse(pkg_uri)
     try:
@@ -449,9 +449,8 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
 
     Examples:
 
-    .. code-block:: python
-        >>> get_uri_for_directory("/my_directory")
-        .... _ray_pkg_af2734982a741.zip
+        >>> get_uri_for_directory("/my_directory")  # doctest: +SKIP
+        _ray_pkg_af2734982a741.zip
 
     Args:
         directory: The directory.
