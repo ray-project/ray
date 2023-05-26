@@ -22,10 +22,10 @@ def assert_no_leak():
         assert rc["submitted"] == 0
 
 
-# @pytest.mark.skipif(
-#     sys.platform != "linux" and sys.platform != "linux2",
-#     reason="This test requires Linux.",
-# )
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "linux2",
+    reason="This test requires Linux.",
+)
 def test_generator_oom(ray_start_regular):
     num_returns = 100
 
