@@ -2009,7 +2009,7 @@ py_test(
 py_test(
     name="test_algorithm_rl_module_restore",
     tags=["team:rllib", "core"],
-    size="medium",
+    size="large",
     srcs=["tests/test_algorithm_rl_module_restore.py"]
 )
 
