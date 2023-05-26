@@ -50,6 +50,10 @@ class TestResult:
 class Test(dict):
     """A class represents a test to run on buildkite"""
 
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self.test_results = None
+
     def is_byod_cluster(self) -> bool:
         """
         Returns whether this test is running on a BYOD cluster.
