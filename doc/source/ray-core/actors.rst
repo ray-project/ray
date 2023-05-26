@@ -91,7 +91,7 @@ that specific worker and can access and mutate the state of that worker.
 
 
 
-From Ray 2.0 onwards, you can use the :ref:`State API <state-api-overview-ref>`  to query for information about actors, or access the Actors View in the :ref:`Dashboard <observability-getting-started>` 
+Use `ray list actors`` from :ref:`State API <state-api-overview-ref>` to see actors states:
 
 .. code-block:: bash
   # This API is only available when you install Ray with `pip install "ray[default]"`.

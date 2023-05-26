@@ -81,7 +81,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
             ray::Task(SlowFunction).Remote();
           a
 
-From Ray 2.0 onwards, you can use the :ref:`State API <state-api-overview-ref>`  to query for information about tasks, or view them on the :ref:`Dashboard <observability-getting-started>`: 4 `slow_function` are running while `my_function` has already finished.
+Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see running and finished tasks and count:
 
 .. code-block:: bash
   # This API is only available when you download Ray via `pip install "ray[default]"`

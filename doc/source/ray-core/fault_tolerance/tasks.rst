@@ -23,8 +23,7 @@ another task that depends on the object.
   :start-after: __task_exceptions_begin__
   :end-before: __task_exceptions_end__
 
-From Ray 2.3 onwards, you can see task exit details (for example, OOM killed, or task execution errored) using the :ref:`State API CLI <state-api-overview-ref>`,or view them in the :ref:`Dashboard <observability-getting-started>` for more details.
-
+Use `ray list tasks` from :ref:`State API CLI <state-api-overview-ref>` to query task exit details:
 
 .. code-block:: bash
 
@@ -87,7 +86,7 @@ exception, or pass a list of retryable exceptions. An example is shown below.
   :end-before: __tasks_fault_tolerance_retries_exception_end__
 
 
-From Ray 2.0 onwards, you can see task attempts being retired with increasing attempt number for retried task using the :ref:`State API CLI <state-api-overview-ref>` ,or view them in the :ref:`Dashboard <observability-getting-started>`: Task `16310a0f0a45af5cffffffffffffffffffffffff01000000` has 2 attempts, with the first attempt failed due to worker died.
+Use `ray list tasks -f task_id=<task_id>` from :ref:`State API CLI <state-api-overview-ref>` to see task attempts failures and retries:
 
 .. code-block:: bash
 

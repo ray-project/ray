@@ -66,7 +66,7 @@ flag ``no_restart=False`` to ``ray.kill``.
 For :ref:`named and detached actors <actor-lifetimes>`, calling ``ray.kill`` on
 an actor handle destroys the actor and allow the name to be reused.
 
-From Ray 2.0 onwards, you should be able to view the death cause of an actor in `death_cause` as part of the actor state by querying for information about the actor, with the :ref:`State API <state-api-overview-ref>`, or see the Actors View in the :ref:`Dashboard <observability-getting-started>`.
+Use `ray list actors --detail` from :ref:`State API <state-api-overview-ref>` to see the death cause of dead actors:
 
 .. code-block:: bash
   # This API is only available when you download Ray via `pip install "ray[default]"`
