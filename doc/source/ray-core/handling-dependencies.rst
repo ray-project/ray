@@ -355,7 +355,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   The modules will be downloaded to each node on the cluster.
 
-  Note: Setting options (1) and (3) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
+  Note: Setting options (1), (3) and (4) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
 
   Note: For option (1), if the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
 
@@ -683,7 +683,7 @@ Here is a list of different use cases and corresponding URLs:
     runtime_env = {"working_dir": ("https://github.com"
                                    "/[username]/[repository]/archive/[commit hash].zip")}
 
-- Example: Retrieve package from a private GitHub repository using a Personal Access Token
+- Example: Retrieve package from a private GitHub repository using a Personal Access Token **during development**. **For production** see :ref:`this document <runtime-env-auth>` to learn how to authenticate private dependencies safely.
 
 .. testcode::
 

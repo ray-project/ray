@@ -1,3 +1,4 @@
+from abc import ABC
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass
@@ -6,7 +7,7 @@ import logging
 import pickle
 import random
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -23,12 +24,12 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
+    MetricsPusher,
 )
 from ray.serve.generated.serve_pb2 import (
-    RequestMetadata as RequestMetadataProto,
     DeploymentRoute,
+    RequestMetadata as RequestMetadataProto,
 )
-from ray.serve._private.utils import MetricsPusher
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -74,8 +75,64 @@ class Query:
         scanner.clear()
 
 
-class ReplicaSet:
-    """Data structure representing a set of replica actor handles"""
+class ReplicaScheduler(ABC):
+    async def assign_replica(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        pass
+
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        pass
+
+
+class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
+    """Round-robins requests across a set of actor replicas using streaming calls.
+
+    This policy does *not* respect `max_concurrent_queries`.
+    """
+
+    def __init__(self):
+        self._replica_iterator = itertools.cycle([])
+        self._replicas_updated_event = asyncio.Event()
+
+    async def assign_replica(
+        self, query: Query
+    ) -> "ray._raylet.StreamingObjectRefGenerator":
+        replica = None
+        while replica is None:
+            try:
+                replica = next(self._replica_iterator)
+            except StopIteration:
+                logger.info(
+                    "Tried to assign replica but none available",
+                    extra={"log_to_stderr": False},
+                )
+                await self._replicas_updated_event.wait()
+
+        if replica.is_cross_language:
+            raise RuntimeError(
+                "Streaming is not yet supported for cross-language actors."
+            )
+
+        return replica.actor_handle.handle_request_streaming.options(
+            num_returns="streaming"
+        ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
+
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        random.shuffle(running_replicas)
+        self._replica_iterator = itertools.cycle(running_replicas)
+        self._replicas_updated_event.set()
+
+
+class RoundRobinReplicaScheduler(ReplicaScheduler):
+    """Round-robins requests across a set of actor replicas.
+
+    The policy respects `max_concurrent_queries` for the replicas: a replica
+    is not chosen if `max_concurrent_queries` requests are already outstanding.
+
+    This is maintained using a "tracker" object ref to determine when a given request
+    has finished (to decrement the number of concurrent queries).
+    """
 
     def __init__(self, event_loop: asyncio.AbstractEventLoop):
         self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
@@ -316,6 +373,7 @@ class Router:
         controller_handle: ActorHandle,
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
+        _stream: bool = False,
     ):
         """Router process incoming queries: assign a replica.
 
@@ -323,7 +381,10 @@ class Router:
             controller_handle: The controller handle.
         """
         self._event_loop = event_loop
-        self._replica_set = ReplicaSet(event_loop)
+        if _stream:
+            self._replica_scheduler = RoundRobinStreamingReplicaScheduler()
+        else:
+            self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
@@ -350,7 +411,7 @@ class Router:
                 (
                     LongPollNamespace.RUNNING_REPLICAS,
                     deployment_name,
-                ): self._replica_set.update_running_replicas,
+                ): self._replica_scheduler.update_running_replicas,
             },
             call_in_event_loop=event_loop,
         )
@@ -370,18 +431,15 @@ class Router:
             self.metrics_pusher.start()
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {self.deployment_name: self.get_num_queued_queries()}
-
-    def get_num_queued_queries(self):
-        return self.num_queued_queries
+        return {self.deployment_name: self.num_queued_queries}
 
     async def assign_request(
         self,
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> ray.ObjectRef:
-        """Assign a query and returns an object ref represent the result"""
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        """Assign a query and returns an object ref represent the result."""
 
         self.num_router_requests.inc(
             tags={"route": request_meta.route, "application": request_meta.app_name}
@@ -394,13 +452,13 @@ class Router:
             },
         )
 
-        result: ray.ObjectRef = await self._replica_set.assign_replica(
-            Query(
-                args=list(request_args),
-                kwargs=request_kwargs,
-                metadata=request_meta,
-            )
+        query = Query(
+            args=list(request_args),
+            kwargs=request_kwargs,
+            metadata=request_meta,
         )
+        await query.resolve_async_tasks()
+        result = await self._replica_scheduler.assign_replica(query)
 
         self.num_queued_queries -= 1
         self.num_queued_queries_gauge.set(
