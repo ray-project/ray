@@ -27,10 +27,10 @@ class TestGymCheckEnv(unittest.TestCase):
     def test_has_observation_and_action_space(self):
         env = Mock(spec=[])
         with pytest.raises(AttributeError, match="Env must have observation_space."):
-            check_gym_environments(env)
+            check_gym_environments(env, Mock())
         env = Mock(spec=["observation_space"])
         with pytest.raises(AttributeError, match="Env must have action_space."):
-            check_gym_environments(env)
+            check_gym_environments(env, Mock())
 
     def test_obs_and_action_spaces_are_gym_spaces(self):
         env = RandomEnv()

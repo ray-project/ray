@@ -2,7 +2,7 @@
 import logging
 import traceback
 from copy import copy
-from typing import TYPE_CHECKING, Set, Union
+from typing import TYPE_CHECKING, Optional, Set, Union
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -19,6 +19,7 @@ from ray.rllib.utils.typing import EnvType
 from ray.util import log_once
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.env import BaseEnv, MultiAgentEnv, VectorEnv
 
 logger = logging.getLogger(__name__)
@@ -27,16 +28,18 @@ gym, old_gym = try_import_gymnasium_and_gym()
 
 
 @DeveloperAPI
-def check_env(env: EnvType) -> None:
+def check_env(env: EnvType, config: Optional["AlgorithmConfig"] = None) -> None:
     """Run pre-checks on env that uncover common errors in environments.
 
     Args:
         env: Environment to be checked.
+        config: Additional checks config.
 
     Raises:
         ValueError: If env is not an instance of SUPPORTED_ENVIRONMENT_TYPES.
         ValueError: See check_gym_env docstring for details.
     """
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.env import (
         BaseEnv,
         ExternalEnv,
@@ -79,7 +82,7 @@ def check_env(env: EnvType) -> None:
         elif isinstance(env, VectorEnv):
             check_vector_env(env)
         elif isinstance(env, gym.Env) or old_gym and isinstance(env, old_gym.Env):
-            check_gym_environments(env)
+            check_gym_environments(env, AlgorithmConfig() if config is None else config)
         elif isinstance(env, BaseEnv):
             check_base_env(env)
         else:
@@ -103,11 +106,14 @@ def check_env(env: EnvType) -> None:
 
 
 @DeveloperAPI
-def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
+def check_gym_environments(
+    env: Union[gym.Env, "old_gym.Env"], config: "AlgorithmConfig"
+) -> None:
     """Checking for common errors in a gymnasium/gym environments.
 
     Args:
         env: Environment to be checked.
+        config: Additional checks config.
 
     Warning:
         If env has no attribute spec with a sub attribute,
@@ -215,8 +221,10 @@ def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
             )
     # sample a valid action in case of parametric actions
     if isinstance(reset_obs, dict):
-        if "action_mask" in reset_obs:
-            sampled_action = env.action_space.sample(mask=reset_obs["action_mask"])
+        if config.action_mask_key in reset_obs:
+            sampled_action = env.action_space.sample(
+                mask=reset_obs[config.action_mask_key]
+            )
 
     # Check if env.step can run, and generates observations rewards, done
     # signals and infos that are within their respective spaces and are of
