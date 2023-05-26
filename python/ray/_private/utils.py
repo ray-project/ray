@@ -1616,7 +1616,7 @@ def split_address(address: str) -> Tuple[str, str]:
 
     Examples:
         >>> split_address("ray://my_cluster")
-        ("ray", "my_cluster")
+        ('ray', 'my_cluster')
     """
     if "://" not in address:
         raise ValueError("Address must contain '://'")
