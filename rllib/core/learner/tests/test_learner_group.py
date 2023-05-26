@@ -444,6 +444,58 @@ class TestLearnerGroup(unittest.TestCase):
                     check(learner_group.get_weights(), new_marl_module.get_state())
             del learner_group
 
+    def test_load_module_state_errors(self):
+        """Check error cases for load_module_state.
+
+        check that loading marl modules and specifing a module id to
+        be loaded using modules_to_load and rl_module_ckpt_dirs raises
+        an error
+        """
+        # env will have agent ids 0 and 1
+        env = MultiAgentCartPole({"num_agents": 2})
+
+        scaling_config = LOCAL_SCALING_CONFIGS["local-cpu"]
+        learner_group = get_learner_group(
+            "torch", env, scaling_config, eager_tracing=True, is_multi_agent=True
+        )
+        spec = get_module_spec(framework="torch", env=env)
+        learner_group.add_module(module_id="0", module_spec=spec)
+        learner_group.add_module(module_id="1", module_spec=spec)
+        learner_group.remove_module(DEFAULT_POLICY_ID)
+
+        module_0 = spec.build()
+        module_1 = spec.build()
+        marl_module = MultiAgentRLModule()
+        marl_module.add_module(module_id="0", module=module_0)
+        marl_module.add_module(module_id="1", module=module_1)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module_0.save_to_checkpoint(tmpdir)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                module_0 = spec.build()
+                marl_module = MultiAgentRLModule()
+                marl_module.add_module(module_id="0", module=module_0)
+                marl_module.add_module(module_id="1", module=spec.build())
+                marl_module.save_to_checkpoint(tmpdir)
+                with tempfile.TemporaryDirectory() as tmpdir2:
+                    module_1 = spec.build()
+                    module_1.save_to_checkpoint(tmpdir2)
+                    with self.assertRaisesRegex(
+                        (ValueError,),
+                        ".*modules_to_load and rl_module_ckpt_dirs. Please only.*",
+                    ):
+                        # check that loading marl modules and specifing a module id to
+                        # be loaded using modules_to_load and rl_module_ckpt_dirs raises
+                        # an error
+                        learner_group.load_module_state(
+                            marl_module_ckpt_dir=tmpdir,
+                            rl_module_ckpt_dirs={"1": tmpdir2},
+                            modules_to_load={
+                                "1",
+                            },
+                        )
+            del learner_group
+
 
 if __name__ == "__main__":
     import pytest
