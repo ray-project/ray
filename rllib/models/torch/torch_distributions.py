@@ -124,7 +124,7 @@ class TorchCategorical(TorchDistribution):
         self,
         probs: torch.Tensor = None,
     ) -> "torch.distributions.Distribution":
-        return torch.distributions.categorical.Categorical(probs=probs)
+        return torch.distributions.categorical.Categorical(probs)
 
     @staticmethod
     @override(Distribution)
