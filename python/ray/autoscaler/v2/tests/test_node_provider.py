@@ -5,7 +5,7 @@ import unittest
 
 import pytest  # noqa
 
-from ray._private.test_utils import MockProvider, load_test_config
+from ray._private.test_utils import load_test_config
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler._private.node_provider_availability_tracker import (
@@ -15,6 +15,7 @@ from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
 from ray.core.generated.instance_manager_pb2 import Instance
+from ray.tests.autoscaler_test_utils import MockProvider
 
 
 class FakeCounter:
