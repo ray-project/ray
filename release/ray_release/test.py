@@ -171,7 +171,7 @@ class Test(dict):
             Bucket=AWS_BUCKET,
             Key=f"{AWS_TEST_RESULT_KEY}/"
             f"{self.get_name()}-{int(time.time() * 1000)}.json",
-            Body=json.dumps(TestResult.from_result(result)),
+            Body=json.dumps(TestResult.from_result(result).__dict__),
         )
 
     def persist_to_s3(self) -> bool:
