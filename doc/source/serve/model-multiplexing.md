@@ -12,7 +12,7 @@ Model multiplexing is a technique used to efficiently serve multiple models with
 
 To write a multiplexed deployment, use the `serve.multiplexed` and `serve.get_multiplexed_model_id` APIs.
 
-Assuming you have multiple Torch models inside aws s3 bucket with the following structure:
+Assuming you have multiple Torch models inside an aws s3 bucket with the following structure:
 ```
 s3://my_bucket/1/model.pt
 s3://my_bucket/2/model.pt
