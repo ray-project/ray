@@ -135,13 +135,13 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     )
 
     # Make sure the inflight queries still one
-    assert len(handle.router._replica_set.in_flight_queries) == 1
-    key = list(handle.router._replica_set.in_flight_queries.keys())[0]
-    assert len(handle.router._replica_set.in_flight_queries[key]) == 1
+    assert len(handle.router._replica_scheduler.in_flight_queries) == 1
+    key = list(handle.router._replica_scheduler.in_flight_queries.keys())[0]
+    assert len(handle.router._replica_scheduler.in_flight_queries[key]) == 1
 
     # Make sure the first request is being run.
-    replicas = list(handle.router._replica_set.in_flight_queries.keys())
-    assert len(handle.router._replica_set.in_flight_queries[replicas[0]]) == 1
+    replicas = list(handle.router._replica_scheduler.in_flight_queries.keys())
+    assert len(handle.router._replica_scheduler.in_flight_queries[replicas[0]]) == 1
     # First ref should be still ongoing
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(first_ref, timeout=1)
@@ -307,7 +307,7 @@ def test_handle_early_detect_failure(shutdown_ray):
     handle = serve.run(f.bind())
     pids = ray.get([handle.remote() for _ in range(2)])
     assert len(set(pids)) == 2
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 2
+    assert len(handle.router._replica_scheduler.in_flight_queries.keys()) == 2
 
     client = get_global_client()
     # Kill the controller so that the replicas membership won't be updated
@@ -319,7 +319,7 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     pids = ray.get([handle.remote() for _ in range(10)])
     assert len(set(pids)) == 1
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 1
+    assert len(handle.router._replica_scheduler.in_flight_queries.keys()) == 1
 
     # Restart the controller, and then clean up all the replicas
     serve.start(detached=True)

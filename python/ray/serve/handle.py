@@ -119,12 +119,14 @@ class RayServeHandle:
         *,
         _router: Optional[Router] = None,
         _internal_pickled_http_request: bool = False,
+        _stream: bool = False,
     ):
         self.controller_handle = controller_handle
         self.deployment_name = deployment_name
         self.handle_options = handle_options or HandleOptions()
         self.handle_tag = f"{self.deployment_name}#{get_random_letters()}"
         self._pickled_http_request = _internal_pickled_http_request
+        self._stream = _stream
 
         self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
@@ -145,6 +147,7 @@ class RayServeHandle:
             self.controller_handle,
             self.deployment_name,
             event_loop=get_or_create_event_loop(),
+            _stream=self._stream,
         )
 
     @property
@@ -312,6 +315,7 @@ class RayServeSyncHandle(RayServeHandle):
             self.controller_handle,
             self.deployment_name,
             event_loop=_create_or_get_async_loop_in_thread(),
+            _stream=self._stream,
         )
 
     def options(

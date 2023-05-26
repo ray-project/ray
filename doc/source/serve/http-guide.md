@@ -3,7 +3,7 @@
 This section helps you understand how to:
 - send HTTP requests to Serve deployments
 - use Ray Serve to integrate with FastAPI
-- use customized HTTP Adapters
+- use customized HTTP adapters
 - choose which feature to use for your use case
 
 ## Choosing the right HTTP feature
@@ -72,6 +72,51 @@ Existing middlewares, **automatic OpenAPI documentation generation**, and other 
 
 ```{note}
 Serve currently does not support WebSockets. If you have a use case that requires it, please [let us know](https://github.com/ray-project/ray/issues/new/choose)!
+```
+
+(serve-http-streaming-response)=
+## Streaming Responses
+
+```{warning}
+Support for HTTP streaming responses is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
+```
+
+Some applications must stream incremental results back to the caller.
+This is common for text generation using large language models (LLMs) or video processing applications.
+The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
+
+To use HTTP response streaming, return a [StreamingResponse](https://www.starlette.io/responses/#streamingresponse) that wraps a generator from your HTTP handler.
+This is supported for basic HTTP ingress deployments using a `__call__` method and when using the [FastAPI integration](serve-fastapi-http).
+
+The code below defines a Serve application that incrementally streams numbers up to a provided `max`.
+The client-side code is also updated to handle the streaming outputs.
+This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced/#streaming-requests) library.
+
+```{literalinclude} ../serve/doc_code/streaming_example.py
+:start-after: __begin_example__
+:end-before: __end_example__
+:language: python
+```
+
+Save this code in `stream.py` and run it:
+
+```bash
+$ RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1 python stream.py
+[2023-05-25 10:44:23]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
+(ServeController pid=40401) INFO 2023-05-25 10:44:25,296 controller 40401 deployment_state.py:1259 - Deploying new version of deployment default_StreamingResponder.
+(HTTPProxyActor pid=40403) INFO:     Started server process [40403]
+(ServeController pid=40401) INFO 2023-05-25 10:44:25,333 controller 40401 deployment_state.py:1498 - Adding 1 replica to deployment default_StreamingResponder.
+Got result 0.0s after start: '0'
+Got result 0.1s after start: '1'
+Got result 0.2s after start: '2'
+Got result 0.3s after start: '3'
+Got result 0.4s after start: '4'
+Got result 0.5s after start: '5'
+Got result 0.6s after start: '6'
+Got result 0.7s after start: '7'
+Got result 0.8s after start: '8'
+Got result 0.9s after start: '9'
+(ServeReplica:default_StreamingResponder pid=41052) INFO 2023-05-25 10:49:52,230 default_StreamingResponder default_StreamingResponder#qlZFCa yomKnJifNJ / default replica.py:634 - __CALL__ OK 1017.6ms
 ```
 
 (serve-http-adapters)=
@@ -190,7 +235,7 @@ PredictorDeployment.deploy(..., http_adapter=User)
 DAGDriver.bind(other_node, http_adapter=User)
 
 ```
-### List of Built-in Adapters
+### List of built-in adapters
 
 Here is a list of adapters; please feel free to [contribute more](https://github.com/ray-project/ray/issues/new/choose)!
 

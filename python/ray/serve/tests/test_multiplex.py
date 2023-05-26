@@ -232,7 +232,7 @@ def test_multiplexed_replica_info(serve_instance):
 
     wait_for_condition(
         check_replica_information,
-        replicas=handle.router._replica_set.in_flight_queries.keys(),
+        replicas=handle.router._replica_scheduler.in_flight_queries.keys(),
         deployment=deployment,
         replica_tag=replica_tag,
         model_ids=[
@@ -243,7 +243,7 @@ def test_multiplexed_replica_info(serve_instance):
     ray.get(handle.remote("model2"))
     wait_for_condition(
         check_replica_information,
-        replicas=handle.router._replica_set.in_flight_queries.keys(),
+        replicas=handle.router._replica_scheduler.in_flight_queries.keys(),
         deployment=deployment,
         replica_tag=replica_tag,
         model_ids=[
@@ -256,7 +256,7 @@ def test_multiplexed_replica_info(serve_instance):
     ray.get(handle.remote("model3"))
     wait_for_condition(
         check_replica_information,
-        replicas=handle.router._replica_set.in_flight_queries.keys(),
+        replicas=handle.router._replica_scheduler.in_flight_queries.keys(),
         deployment=deployment,
         replica_tag=replica_tag,
         model_ids=[
@@ -291,7 +291,7 @@ def test_multiplexed_e2e(serve_instance):
         resp = requests.get("http://localhost:8000", headers=headers)
         assert resp.json() == pid
     wait_for_condition(
-        lambda: "1" in handle.router._replica_set.multiplexed_replicas_table,
+        lambda: "1" in handle.router._replica_scheduler.multiplexed_replicas_table,
     )
 
     for _ in range(10):
@@ -325,8 +325,8 @@ def test_multiplexed_lru_policy(serve_instance):
     requests.get("http://localhost:8000", headers=headers)
 
     wait_for_condition(
-        lambda: "1" in handle.router._replica_set.multiplexed_replicas_table
-        and "3" in handle.router._replica_set.multiplexed_replicas_table,
+        lambda: "1" in handle.router._replica_scheduler.multiplexed_replicas_table
+        and "3" in handle.router._replica_scheduler.multiplexed_replicas_table,
     )
 
 
@@ -354,8 +354,8 @@ def test_multiplexed_multiple_replicas(serve_instance):
     signal.send.remote()
     assert ray.get(resp1_ref) != ray.get(resp2_ref)
     wait_for_condition(
-        lambda: "1" in handle.router._replica_set.multiplexed_replicas_table
-        and len(handle.router._replica_set.multiplexed_replicas_table["1"]) == 2
+        lambda: "1" in handle.router._replica_scheduler.multiplexed_replicas_table
+        and len(handle.router._replica_scheduler.multiplexed_replicas_table["1"]) == 2
     )
 
 
