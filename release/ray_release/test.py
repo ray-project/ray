@@ -50,8 +50,8 @@ class TestResult:
 class Test(dict):
     """A class represents a test to run on buildkite"""
 
-    def __init__(self, data: dict):
-        super().__init__(data)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.test_results = None
 
     def is_byod_cluster(self) -> bool:
