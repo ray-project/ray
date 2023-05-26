@@ -539,7 +539,15 @@ class Worker:
         self._out_file = out_file
 
     def record_task_log_start(self):
-        """Record the task log info when task starts executing"""
+        """Record the task log info when task starts executing for
+        non concurrent actor tasks."""
+        if self.core_worker.current_actor_max_concurrency() != 1:
+            # This is a concurrent actor task, we will not record the start.
+            # We are skipping concurrent actor tasks because high contention
+            # and slow IO on concurrent actors would result in perf regression.
+            # https://github.com/ray-project/ray/issues/35598
+            return
+
         if not self._enable_record_task_log:
             return
 
@@ -551,7 +559,15 @@ class Worker:
         )
 
     def record_task_log_end(self):
-        """Record the task log info when task finishes executing"""
+        """Record the task log info when task finishes executing for
+        non concurrent actor tasks."""
+        if self.core_worker.current_actor_max_concurrency() != 1:
+            # This is a concurrent actor task, we will not record the end.
+            # We are skipping concurrent actor tasks because high contention
+            # and slow IO on concurrent actors would result in perf regression.
+            # https://github.com/ray-project/ray/issues/35598
+            return
+
         if not self._enable_record_task_log:
             return
 

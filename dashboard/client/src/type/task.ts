@@ -41,6 +41,7 @@ export type Task = {
   profiling_data: ProfilingData;
   error_type: string | null;
   error_message: string | null;
+  task_log_info: { [key: string]: string | null | number };
 };
 
 export type ProfilingData = {
