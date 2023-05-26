@@ -284,6 +284,7 @@ parts:
               - file: serve/managing-java-deployments
               - file: serve/migration
               - file: serve/direct-ingress
+              - file: serve/model-multiplexing
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:

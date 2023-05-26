@@ -307,8 +307,32 @@ The following metrics are exposed by Ray Serve:
    * - ``serve_http_request_latency_ms`` [*]
      - * route
        * application
-
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
+   * - ``serve_multiplexed_model_load_latency_s``
+     - * deployment
+       * replica
+       * application
+     - The time it takes to load a model.
+   * - ``serve_multiplexed_model_unload_latency_s``
+     - * deployment
+       * replica
+       * application
+     - The time it takes to unload a model.
+   * - ``serve_num_multiplexed_models``
+     - * deployment
+       * replica
+       * application
+     - The number of models loaded on the current replica.
+   * - ``serve_multiplexed_models_unload_counter``
+     - * deployment
+       * replica
+       * application
+     - The number of times models unloaded on the current replica.
+   * - ``serve_multiplexed_models_load_counter``
+     - * deployment
+       * replica
+       * application
+     - The number of times models loaded on the current replica.
 ```
 [*] - only available when using HTTP calls
 [**] - only available when using Python `ServeHandle` calls

@@ -16,3 +16,4 @@ This user guide will help you navigate the Ray Serve project and show you how to
 - [Experimental Java API](managing-java-deployments)
 - [1.x to 2.x API Migration Guide](migration)
 - [Experimental gRPC Support](direct-ingress)
+- [Model Multiplexing](model-multiplexing)
