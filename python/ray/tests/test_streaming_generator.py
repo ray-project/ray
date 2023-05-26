@@ -3,6 +3,7 @@ import pytest
 import numpy as np
 import sys
 import time
+import threading
 import gc
 
 from unittest.mock import patch, Mock
@@ -72,6 +73,36 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
 
         del generator
         c.delete_object_ref_stream.assert_called()
+
+
+def test_streaming_generator_bad_exception_not_failing(shutdown_only, capsys):
+    """This test verifies when a return value cannot be stored
+        e.g., because it holds a lock) if it handles failures gracefully.
+
+    Previously, when it happens, there was a check failure. This verifies
+    the check failure doesn't happen anymore.
+    """
+    ray.init()
+
+    class UnserializableException(Exception):
+        def __init__(self):
+            self.lock = threading.Lock()
+
+    @ray.remote
+    def f():
+        raise UnserializableException
+        yield 1  # noqa
+
+    for ref in f.options(num_returns="streaming").remote():
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(ref)
+    captured = capsys.readouterr()
+    lines = captured.err.strip().split("\n")
+
+    # Verify check failure doesn't happen because we handle the error
+    # properly.
+    for line in lines:
+        assert "Check failed:" not in line
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
@@ -466,7 +497,30 @@ def test_generator_dist_chain(ray_start_cluster):
 
     for ref in chain_actor_4.get_data.options(num_returns="streaming").remote():
         assert np.array_equal(np.ones(5 * 1024 * 1024), ray.get(ref))
+        print("getting the next data")
         del ref
+
+
+def test_generator_slow_pinning_requests(monkeypatch, shutdown_only):
+    """
+    Verify when the Object pinning request from the raylet
+    is reported slowly, there's no refernece leak.
+    """
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "CoreWorkerService.grpc_server.PubsubLongPolling=1000000:1000000",
+        )
+
+        @ray.remote
+        def f():
+            yield np.ones(5 * 1024 * 1024)
+
+        for ref in f.options(num_returns="streaming").remote():
+            del ref
+
+        print(list_objects())
 
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])

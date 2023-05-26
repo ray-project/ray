@@ -734,18 +734,21 @@ class options:
     """This class serves both as a decorator and options for workflow.
 
     Examples:
-        >>> import ray
-        >>> from ray import workflow
-        >>>
-        >>> # specify workflow options with a decorator
-        >>> @workflow.options(catch_exceptions=True):
-        >>> @ray.remote
-        >>> def foo():
-        >>>     return 1
-        >>>
-        >>> # speficy workflow options in ".options"
-        >>> foo_new = foo.options(**workflow.options(catch_exceptions=False))
-    """
+
+        .. code-block:: python
+
+            import ray
+            from ray import workflow
+
+            # specify workflow options with a decorator
+            @workflow.options(catch_exceptions=True)
+            @ray.remote
+            def foo():
+                return 1
+
+            # specify workflow options in ".options"
+            foo_new = foo.options(**workflow.options(catch_exceptions=False))
+    """  # noqa: E501
 
     def __init__(self, **workflow_options: Dict[str, Any]):
         # TODO(suquark): More rigid arguments check like @ray.remote arguments. This is
