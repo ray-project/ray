@@ -351,6 +351,7 @@ doctest(
             "source/ray-core/handling-dependencies.rst",
             "source/ray-core/tasks/nested-tasks.rst",
             "source/ray-observability/user-guides/ray-tracing.rst",
+            "source/ray-observability/user-guides/cli-sdk.rst",
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
         ]
