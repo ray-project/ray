@@ -170,7 +170,7 @@ a ``MongoDatasource``.
     :end-before: __mongo_datasource_end__
 
 Now you can create a Dataset from and write back to MongoDB, just like
-any other datasource!
+any other datasource.
 
 .. code-block:: python
 
