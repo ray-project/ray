@@ -215,7 +215,7 @@ class Dataset:
         >>> # Transform batches (Dict[str, np.ndarray]) with map_batches().
         >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})
         MapBatches(<lambda>)
-        +- Dataset(num_blocks=17, num_rows=1000, schema={id: int64})
+        +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Compute the maximum.
         >>> ds.max("id")
         999

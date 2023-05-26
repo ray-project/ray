@@ -6,7 +6,7 @@ Configuring Logging
 This guide helps you modify the default configuration of Ray's logging system.
 
 
-Internal Ray Logging Configuration
+Internal Ray logging configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 When ``import ray`` is executed, Ray's logger is initialized, generating a sensible configuration given in ``python/ray/_private/log.py``. The default logging level is ``logging.INFO``.
 
@@ -40,7 +40,7 @@ Similarly, to modify the logging configuration for any Ray subcomponent, specify
    # Here's how to add an aditional file handler for ray tune:
    ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 
-For more information about logging in workers, see :ref:`Customizing worker loggers`.
+For more information about logging in workers, see :ref:`Customizing worker loggers <customize-worker-loggers>`.
 
 Disabling logging to the driver
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -106,7 +106,7 @@ By default Ray prints Actor logs prefixes in light blue:
 Users may instead activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``.
 This will index into an array of colors modulo the PID of each process.
 
-.. image:: ./images/coloring-actor-log-prefixes.png
+.. image:: ../images/coloring-actor-log-prefixes.png
     :align: center
 
 Distributed progress bars (tqdm)
@@ -129,3 +129,49 @@ Limitations:
 
 By default, the builtin print will also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
 This avoids progress bar corruption on driver print statements. To disable this, set `RAY_TQDM_PATCH_PRINT=0`.
+
+.. _customize-worker-loggers:
+
+Customizing worker loggers
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using Ray, all tasks and actors are executed remotely in Ray's worker processes. 
+
+.. note::
+
+    To stream logs to a driver, they should be flushed to stdout and stderr.
+
+.. code-block:: python
+
+    import ray
+    import logging
+    # Initiate a driver.
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            # Basic config automatically configures logs to
+            # be streamed to stdout and stderr.
+            # Set the severity to INFO so that info logs are printed to stdout.
+            logging.basicConfig(level=logging.INFO)
+
+        def log(self, msg):
+            logger = logging.getLogger(__name__)
+            logger.info(msg)
+
+    actor = Actor.remote()
+    ray.get(actor.log.remote("A log message for an actor."))
+
+    @ray.remote
+    def f(msg):
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+        logger.info(msg)
+
+    ray.get(f.remote("A log message for a task."))
+
+.. code-block:: bash
+
+    (Actor pid=179641) INFO:__main__:A log message for an actor.
+    (f pid=177572) INFO:__main__:A log message for a task.
