@@ -1,6 +1,5 @@
 import json
 import logging
-import numpy as np
 import pathlib
 import tree  # pip install dm-tree
 from typing import (
@@ -28,6 +27,7 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
