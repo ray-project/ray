@@ -238,7 +238,7 @@ class LightningTrainer(TorchTrainer):
     run ``pytorch_lightning.Trainer.fit``.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn.functional as F
@@ -316,13 +316,21 @@ class LightningTrainer(TorchTrainer):
                 .build()
             )
 
-            scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+            scaling_config = ScalingConfig(
+                num_workers=4, use_gpu=False, resources_per_worker={"CPU": 1}
+            )
             trainer = LightningTrainer(
                 lightning_config=lightning_config,
                 scaling_config=scaling_config,
             )
             result = trainer.fit()
             result
+
+    .. testoutput::
+        :hide:
+        :options: +ELLIPSIS
+
+        ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.

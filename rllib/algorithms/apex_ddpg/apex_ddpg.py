@@ -14,41 +14,32 @@ class ApexDDPGConfig(DDPGConfig):
     """Defines a configuration class from which an ApexDDPG Trainer can be built.
 
     Example:
-
-        .. code-block:: python
-
-            from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
-
-            config = ApexDDPGConfig().training(lr=0.01).resources(num_gpus=1)
-            print(config.to_dict())
-
-            # Build a Trainer object from the config and run one training iteration.
-            algo = config.build(env="Pendulum-v1")
-            algo.train()
+        >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
+        >>> config = ApexDDPGConfig().training(lr=0.01).resources(num_gpus=1)
+        >>> print(config.to_dict()) # doctest: +SKIP
+        >>> # Build a Trainer object from the config and run one training iteration.
+        >>> algo = config.build(env="Pendulum-v1")
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
-
-        .. code-block:: python
-
-            from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
-            from ray import tune
-            import ray.air as air
-
-            config = ApexDDPGConfig()
-            # Print out some default values.
-            print(config.lr)
-
-            # Update the config object.
-            config.training(lr=tune.grid_search([0.001, 0.0001]))
-            # Set the config object's env.
-            config.environment(env="Pendulum-v1")
-            # Use to_dict() to get the old-style python config dict
-            # when running with tune.
-            tune.Tuner(
-                "APEX_DDPG",
-                run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-                param_space=config.to_dict(),
-            ).fit()
+        >>> from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
+        >>> from ray import tune
+        >>> import ray.air as air
+        >>> config = ApexDDPGConfig()
+        >>> # Print out some default values.
+        >>> print(config.lr) # doctest: +SKIP
+        0.0004
+        >>> # Update the config object.
+        >>> config.training(lr=tune.grid_search([0.001, 0.0001]))
+        >>> # Set the config object's env.
+        >>> config.environment(env="Pendulum-v1")
+        >>> # Use to_dict() to get the old-style python config dict
+        >>> # when running with tune.
+        >>> tune.Tuner( # doctest: +SKIP
+        ...     "APEX_DDPG",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict(),
+        ... ).fit()
     """
 
     def __init__(self, algo_class=None):

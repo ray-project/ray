@@ -47,67 +47,55 @@ class SimpleQConfig(AlgorithmConfig):
     """Defines a configuration class from which a SimpleQ Algorithm can be built.
 
     Example:
-
-        .. code-block:: python
-
-            from ray.rllib.algorithms.simple_q import SimpleQConfig
-            config = SimpleQConfig()
-            print(config.replay_buffer_config)  # doctest: +SKIP
-            replay_config = config.replay_buffer_config.update(
-                {
-                    "capacity":  40000,
-                }
-            )
-            config.training(replay_buffer_config=replay_config)\
-                .resources(num_gpus=1)\
-                .rollouts(num_rollout_workers=3)
+        >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
+        >>> config = SimpleQConfig()
+        >>> print(config.replay_buffer_config)  # doctest: +SKIP
+        >>> replay_config = config.replay_buffer_config.update(
+        >>>     {
+        >>>         "capacity":  40000,
+        >>>     }
+        >>> )
+        >>> config.training(replay_buffer_config=replay_config)\
+        ...       .resources(num_gpus=1)\
+        ...       .rollouts(num_rollout_workers=3)
 
     Example:
-
-        .. code-block:: python
-
-            from ray.rllib.algorithms.simple_q import SimpleQConfig
-            from ray import air
-            from ray import tune
-            config = SimpleQConfig()
-            config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
-            config.environment(env="CartPole-v1")
-            tune.Tuner(  # doctest: +SKIP
-                "SimpleQ",
-                run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
-                param_space=config.to_dict()
-            ).fit()
+        >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
+        >>> from ray import air
+        >>> from ray import tune
+        >>> config = SimpleQConfig()
+        >>> config.training(adam_epsilon=tune.grid_search([1e-8, 5e-8, 1e-7])
+        >>> config.environment(env="CartPole-v1")
+        >>> tune.Tuner(  # doctest: +SKIP
+        ...     "SimpleQ",
+        ...     run_config=air.RunConfig(stop={"episode_reward_mean": 200}),
+        ...     param_space=config.to_dict()
+        ... ).fit()
 
     Example:
-
-        .. code-block:: python
-
-            from ray.rllib.algorithms.simple_q import SimpleQConfig
-            config = SimpleQConfig()
-            print(config.exploration_config)  # doctest: +SKIP
-            explore_config = config.exploration_config.update(
-                {
-                    "initial_epsilon": 1.5,
-                    "final_epsilon": 0.01,
-                    "epsilon_timesteps": 5000,
-                })
-            config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
-                                    .exploration(exploration_config=explore_config)\
+        >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
+        >>> config = SimpleQConfig()
+        >>> print(config.exploration_config)  # doctest: +SKIP
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "initial_epsilon": 1.5,
+        >>>         "final_epsilon": 0.01,
+        >>>         "epsilon_timesteps": 5000,
+        >>>     })
+        >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
+        >>>                         .exploration(exploration_config=explore_config)\
 
     Example:
-
-        .. code-block:: python
-
-            from ray.rllib.algorithms.simple_q import SimpleQConfig
-            config = SimpleQConfig()
-            print(config.exploration_config)  # doctest: +SKIP
-            explore_config = config.exploration_config.update(
-                {
-                    "type": "softq",
-                    "temperature": [1.0],
-                })
-            config = SimpleQConfig().training(lr_schedule=[[1, 1e-3], [500, 5e-3]])\
-                                    .exploration(exploration_config=explore_config)
+        >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
+        >>> config = SimpleQConfig()
+        >>> print(config.exploration_config)  # doctest: +SKIP
+        >>> explore_config = config.exploration_config.update(
+        >>>     {
+        >>>         "type": "softq",
+        >>>         "temperature": [1.0],
+        >>>     })
+        >>> config = SimpleQConfig().training(lr_schedule=[[1, 1e-3], [500, 5e-3]])\
+        >>>                         .exploration(exploration_config=explore_config)
     """
 
     def __init__(self, algo_class=None):

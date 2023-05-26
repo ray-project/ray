@@ -15,9 +15,7 @@ class LightningPredictor(TorchPredictor):
     """A predictor for PyTorch Lightning modules.
 
     Example:
-        .. testcode::
-
-            import ray
+        .. testcode:: python
 
             import torch
             import numpy as np
@@ -56,6 +54,11 @@ class LightningPredictor(TorchPredictor):
             output = predictor.predict(batch)
 
             assert output["predictions"].shape == (batch_size, output_dim)
+
+
+        .. testoutput::
+            :hide:
+            :options: +ELLIPSIS
 
     Args:
         model: The PyTorch Lightning module to use for predictions.

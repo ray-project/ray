@@ -82,47 +82,40 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
 
     Example:
         Basic usage:
-
-            .. code-block:: python
-
-                foo_dict = NestedDict()
-                # Setting elements, possibly nested:
-                foo_dict['a'] = 100         # foo_dict = {'a': 100}
-                foo_dict['b', 'c'] = 200    # foo_dict = {'a': 100, 'b': {'c': 200}}
-                foo_dict['b', 'd'] = 300    # foo_dict = {'a': 100,
-                                            #             'b': {'c': 200, 'd': 300}}
-                foo_dict['b', 'e'] = {}     # foo_dict = {'a': 100,
-                                            #            'b': {'c': 200, 'd': 300}}
-                # Getting elements, possibly nested:
-                print(foo_dict['b', 'c'])   # 200
-                print(foo_dict['b'])        # {'c': 200, 'd': 300}
-                print(foo_dict.get('b'))    # {'c': 200, 'd': 300}
-                print(foo_dict) # {'a': 100, 'b': {'c': 200, 'd': 300}}
-                # Converting to a dict:
-                foo_dict.asdict()  # {'a': 100, 'b': {'c': 200, 'd': 300}}
-                # len function:
-                print(len(foo_dict))  # 3
-                # Iterating:
-                foo_dict.keys()  # dict_keys(['a', ('b', 'c'), ('b', 'd')])
-                foo_dict.items() # dict_items([('a', 100), (('b', 'c'), 200), (('b',
-                'd'), 300)])
-                foo_dict.shallow_keys()  # dict_keys(['a', 'b'])
-
+            >>> foo_dict = NestedDict()
+            >>> # Setting elements, possibly nested:
+            >>> foo_dict['a'] = 100         # foo_dict = {'a': 100}
+            >>> foo_dict['b', 'c'] = 200    # foo_dict = {'a': 100, 'b': {'c': 200}}
+            >>> foo_dict['b', 'd'] = 300    # foo_dict = {'a': 100,
+            >>>                             #             'b': {'c': 200, 'd': 300}}
+            >>> foo_dict['b', 'e'] = {}     # foo_dict = {'a': 100,
+            >>>                             #            'b': {'c': 200, 'd': 300}}
+            >>> # Getting elements, possibly nested:
+            >>> print(foo_dict['b', 'c'])   # 200
+            >>> print(foo_dict['b'])        # {'c': 200, 'd': 300}
+            >>> print(foo_dict.get('b'))    # {'c': 200, 'd': 300}
+            >>> print(foo_dict) # {'a': 100, 'b': {'c': 200, 'd': 300}}
+            >>> # Converting to a dict:
+            >>> foo_dict.asdict()  # {'a': 100, 'b': {'c': 200, 'd': 300}}
+            >>> # len function:
+            >>> print(len(foo_dict))  # 3
+            >>> # Iterating:
+            >>> foo_dict.keys()  # dict_keys(['a', ('b', 'c'), ('b', 'd')])
+            >>> foo_dict.items() # dict_items([('a', 100), (('b', 'c'), 200), (('b',
+            'd'), 300)])
+            >>> foo_dict.shallow_keys()  # dict_keys(['a', 'b'])
         Filter:
-
-            .. code-block:: python
-
-                dict1 = NestedDict([
-                    (('foo', 'a'), 10), (('foo', 'b'), 11),
-                    (('bar', 'c'), 11), (('bar', 'a'), 110)])
-                dict2 = NestedDict([('foo', NestedDict(dict(a=11)))])
-                dict3 = NestedDict([('foo', NestedDict(dict(a=100))),
-                                        ('bar', NestedDict(dict(d=11)))])
-                dict4 = NestedDict([('foo', NestedDict(dict(a=100))),
-                                        ('bar', NestedDict(dict(c=11)))])
-                dict1.filter(dict2).asdict()   # {'foo': {'a': 10}}
-                dict1.filter(dict4).asdict()   # {'bar': {'c': 11}, 'foo': {'a': 10}}
-                dict1.filter(dict3).asdict()   # KeyError - ('bar', 'd') not in dict1
+            >>> dict1 = NestedDict([
+                (('foo', 'a'), 10), (('foo', 'b'), 11),
+                (('bar', 'c'), 11), (('bar', 'a'), 110)])
+            >>> dict2 = NestedDict([('foo', NestedDict(dict(a=11)))])
+            >>> dict3 = NestedDict([('foo', NestedDict(dict(a=100))),
+                                    ('bar', NestedDict(dict(d=11)))])
+            >>> dict4 = NestedDict([('foo', NestedDict(dict(a=100))),
+                                    ('bar', NestedDict(dict(c=11)))])
+            >>> dict1.filter(dict2).asdict()   # {'foo': {'a': 10}}
+            >>> dict1.filter(dict4).asdict()   # {'bar': {'c': 11}, 'foo': {'a': 10}}
+            >>> dict1.filter(dict3).asdict()   # KeyError - ('bar', 'd') not in dict1
     """
 
     def __init__(

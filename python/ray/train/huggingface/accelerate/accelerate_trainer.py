@@ -124,11 +124,14 @@ class AccelerateTrainer(TorchTrainer):
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig
 
+            # If using GPUs, set this to True.
+            use_gpu = False
+
             # Define NN layers archicture, epochs, and number of workers
             input_size = 1
             layer_size = 32
             output_size = 1
-            num_epochs = 2
+            num_epochs = 200
             num_workers = 3
 
             # Define your network structure
@@ -201,7 +204,7 @@ class AccelerateTrainer(TorchTrainer):
             )
 
             # Define scaling and run configs
-            scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
+            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
             run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
 
             trainer = AccelerateTrainer(
@@ -219,11 +222,14 @@ class AccelerateTrainer(TorchTrainer):
 
             best_checkpoint_loss = result.metrics["loss"]
 
-        .. testoutput::
-            :hide:
-            :options: +ELLIPSIS
+            # Assert loss is less 0.09
+            assert best_checkpoint_loss <= 0.09
 
-            ...
+    .. testoutput::
+        :hide:
+        :options: +ELLIPSIS
+
+        ...
 
     Args:
         train_loop_per_worker: The training function to execute.
