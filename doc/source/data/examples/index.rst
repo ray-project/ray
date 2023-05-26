@@ -69,4 +69,4 @@ Other Examples
 
         .. button-ref:: custom-datasource
 
-            Implementing a custom datasource
+            Implementing a Custom Datasource
