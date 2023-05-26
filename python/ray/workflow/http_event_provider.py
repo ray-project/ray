@@ -212,15 +212,17 @@ class HTTPListener(EventListener):
 
     Example Usage
     =============
-    >>> from ray.workflow.http_event_provider import HTTPEventProvider, HTTPListener
-    >>> ray.init(address='auto', namespace='serve')
-    >>> serve.start(detached=True)
-    >>> event_node = workflow.wait_for_event( # doctest: +SKIP
-    ...     HTTPListener, event_key='')
-    >>> handle_event = ... # doctest: +SKIP
-    >>> workflow.run(handle_event.bind(event_node)) # doctest: +SKIP
-    >>>
 
+    .. code-block:: python
+
+        from ray.workflow.http_event_provider import HTTPEventProvider, HTTPListener
+
+        ray.init(address='auto', namespace='serve')
+
+        serve.start(detached=True)
+        event_node = workflow.wait_for_event(HTTPListener, event_key='')
+        handle_event = ...
+        workflow.run(handle_event.bind(event_node))
     """
 
     def __init__(self):
