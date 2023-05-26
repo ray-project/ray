@@ -74,19 +74,24 @@ def build(ray_dag_root_node: DAGNode, name: str = None) -> List[Deployment]:
             accessible via python .remote() call.
 
     Examples:
-        >>> with InputNode() as dag_input:
-        ...    m1 = Model.bind(1)
-        ...    m2 = Model.bind(2)
-        ...    m1_output = m1.forward.bind(dag_input[0])
-        ...    m2_output = m2.forward.bind(dag_input[1])
-        ...    ray_dag = ensemble.bind(m1_output, m2_output)
+
+        .. code-block:: python
+
+            with InputNode() as dag_input:
+                m1 = Model.bind(1)
+                m2 = Model.bind(2)
+                m1_output = m1.forward.bind(dag_input[0])
+                m2_output = m2.forward.bind(dag_input[1])
+                ray_dag = ensemble.bind(m1_output, m2_output)
 
         Assuming we have non-JSON serializable or inline defined class or
         function in local pipeline development.
 
-        >>> from ray.serve.api import build as build_app
-        >>> deployments = build_app(ray_dag) # it can be method node
-        >>> deployments = build_app(m1) # or just a regular node.
+        .. code-block:: python
+
+            from ray.serve.api import build as build_app
+            deployments = build_app(ray_dag) # it can be method node
+            deployments = build_app(m1) # or just a regular node.
     """
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag_root_node.apply_recursive(

@@ -56,7 +56,7 @@ class Response:
     It is expected to be called in async context and pass along
     `scope, receive, send` as in ASGI spec.
 
-    >>> from ray.serve.http_util import Response
+    >>> from ray.serve.http_util import Response  # doctest: +SKIP
     >>> scope, receive = ... # doctest: +SKIP
     >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
