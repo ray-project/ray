@@ -64,11 +64,11 @@ Ray to :ref:`automatically restart <fault-tolerance-actors>` the actor, make sur
 flag ``no_restart=False`` to ``ray.kill``.
 
 For :ref:`named and detached actors <actor-lifetimes>`, calling ``ray.kill`` on
-an actor handle will destroy the actor and allow the name to be reused.
+an actor handle destroys the actor and allow the name to be reused.
 
 .. tip::
     
-    From Ray 2.0 onwards, you could view the actor exit details with :ref:`Ray's State API <state-api-overview-ref>``  to query the actors information, or go to the :ref:`Dashboard <observability-getting-started>`` Actor page to see more details. (These features all require installing ray with `pip install "ray[default]"`). 
+    From Ray 2.0 onwards, view the actor exit details by querying for information about the actor, with the :ref:`State API <state-api-overview-ref>``, or see the Actors View in the :ref:`Dashboard <observability-getting-started>`` to see more details. (These features require installing Ray with `pip install "ray[default]"`). 
 
 .. code-block:: bash
   # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -91,7 +91,7 @@ an actor handle will destroy the actor and allow the name to be reused.
     required_resources: {}
     death_cause:
         actor_died_error_context: # <---- You could see the error message w.r.t why the actor exits. 
-            error_message: The actor is dead because it was killed by `ray.kill`.
+            error_message: The actor is dead because `ray.kill` killed it.
             owner_id: 01000000ffffffffffffffffffffffffffffffffffffffffffffffff
             owner_ip_address: 127.0.0.1
             ray_namespace: dbab546b-7ce5-4cbb-96f1-d0f64588ae60
@@ -152,13 +152,13 @@ This will kill the actor process and release resources associated/assigned to th
         can be waited on to wait for the actor to exit (calling ``ObjectRef::Get`` on it will
         throw a ``RayActorException``).
 
-Note that this method of termination will wait until any previously submitted
-tasks finish executing and then exit the process gracefully with sys.exit.
+Note that this method of termination waits until any previously submitted
+tasks finish executing and then exits the process gracefully with sys.exit.
 
 
 .. tip::
     
-    In this case you could see the actor death accordingly indicating users called exit_actor():
+    This response shows that the actor is dead, as a result of the user's exit_actor() call:
 
 .. code-block:: bash
   # This API is only available when you download Ray via `pip install "ray[default]"`

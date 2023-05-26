@@ -92,10 +92,10 @@ that specific worker and can access and mutate the state of that worker.
 
 .. tip::
     
-    From Ray 2.0 onwards, you could also use :ref:`Ray's State API <state-api-overview-ref>``  to query the actors information, or go to the :ref:`Dashboard <observability-getting-started>`` Actor page to see more details. (These features all require installing ray with `pip install "ray[default]"`). 
+    From Ray 2.0 onwards, you can also use the :ref:`State API <state-api-overview-ref>``  to query for information about actors, or access the Actors View in the :ref:`Dashboard <observability-getting-started>`` to see more details. (These features require installing Ray with `pip install "ray[default]"`). 
 
 .. code-block:: bash
-  # This API is only available when you download Ray via `pip install "ray[default]"`.
+  # This API is only available when you install Ray with `pip install "ray[default]"`.
   ray list actors
 
 .. code-block:: bash

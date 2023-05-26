@@ -81,7 +81,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
             ray::Task(SlowFunction).Remote();
           a
 
-From Ray 2.0 onwards, you could also use :ref:`Ray's State API <state-api-overview-ref>``  to query the tasks, or go to the :ref:`Dashboard <observability-getting-started>`` to see more task details. (These features all require installing ray with `pip install "ray[default]"`). 
+From Ray 2.0 onwards, you can also use the :ref:`State API <state-api-overview-ref>``  to query for information about tasks, or view the :ref:`Dashboard <observability-getting-started>`` to see more task details. (These features require installing Ray with `pip install "ray[default]"`). 
 
 .. code-block:: bash
   # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -90,7 +90,7 @@ From Ray 2.0 onwards, you could also use :ref:`Ray's State API <state-api-overvi
 
 .. code-block:: bash
 
-# We could see there are 4 slow_function running, while my_function is finished.
+# The response shows 4 `slow_function` tasks and a finished task called `my_function`.
 ======== List: 2023-05-25 09:41:21.710772 ========
 Stats:
 ------------------------------
@@ -285,7 +285,7 @@ See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
 
 .. tip::
 
-    From Ray 2.3 onwards, you could also see the tasks exit details (e.g. OOM killed) and task retries attempts with increasing attempt number using :ref:`Ray's State API <state-api-overview-ref>``  to query the actors information, or go to the :ref:`Dashboard <observability-getting-started>`` Actor page to see more details. (These features all require installing ray with `pip install "ray[default]"`). 
+    From Ray 2.3 onwards, you can also see task exit details (for example, OOM killed) and task retry attempts with increasing attempt numbers using the :ref:`State API <state-api-overview-ref>``  to query for information about the actors, or going to the Actors View in the :ref:`Dashboard <observability-getting-started>`` for more details. (These features require installing Ray with `pip install "ray[default]"`). 
 
 
 More about Ray Tasks
