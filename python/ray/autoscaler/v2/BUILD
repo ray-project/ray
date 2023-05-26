@@ -30,3 +30,11 @@ py_test(
         "//:ray_lib",
     ]
 )
+
+py_test(
+    name = "test_node_provider",
+    size = "small",
+    srcs = ["tests/test_node_provider.py"],
+    tags = ["team:core"],
+    deps = ["//:ray_lib",],
+)
