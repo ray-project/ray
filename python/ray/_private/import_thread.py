@@ -3,8 +3,6 @@ import threading
 import traceback
 from collections import defaultdict
 
-import grpc
-
 import ray
 import ray._private.profiling as profiling
 from ray import JobID
@@ -35,7 +33,7 @@ class ImportThread:
         self.gcs_client = worker.gcs_client
         self.subscriber = worker.gcs_function_key_subscriber
         self.subscriber.subscribe()
-        self.exception_type = grpc.RpcError
+        self.exception_type = ray.exceptions.RpcError
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
         self.t = None

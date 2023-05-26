@@ -63,6 +63,7 @@ from ray.includes.common cimport (
     CWorkerExitType,
     CRayObject,
     CRayStatus,
+    CActorTableData,
     CErrorTableData,
     CGcsClientOptions,
     CGcsNodeInfo,
@@ -157,7 +158,7 @@ from ray._private.async_compat import (
     is_async_func
 )
 from ray._private.client_mode_hook import disable_client_hook
-import ray._private.gcs_utils as gcs_utils
+import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
@@ -505,6 +506,18 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     for object_ref in object_refs:
         result.push_back((<ObjectRef>object_ref).native())
     return result
+
+
+def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
+    cdef:
+        CActorTableData data
+
+    data.ParseFromString(actor_table_data)
+
+    if data.address().worker_id() == b"":
+        return None
+    else:
+        return data.address().SerializeAsString()
 
 
 def compute_task_id(ObjectRef object_ref):
@@ -950,6 +963,7 @@ cdef execute_streaming_generator(
 
     cdef:
         CoreWorker core_worker = worker.core_worker
+        c_pair[CObjectID, shared_ptr[CRayObject]] return_obj
 
     generator_index = 0
     is_async = inspect.isasyncgen(generator)
@@ -971,7 +985,7 @@ cdef execute_streaming_generator(
         except StopIteration:
             break
         except Exception as e:
-            error_obj = create_generator_error_object(
+            create_generator_error_object(
                 e,
                 worker,
                 task_type,
@@ -986,11 +1000,12 @@ cdef execute_streaming_generator(
                 return_size,
                 generator_index,
                 is_async,
+                &return_obj,
                 is_retryable_error,
                 application_error
             )
             CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-                error_obj,
+                return_obj,
                 generator_id,
                 caller_address,
                 generator_index,
@@ -999,7 +1014,7 @@ cdef execute_streaming_generator(
             break
         else:
             # Report the intermediate result if there was no error.
-            generator_return_obj = create_generator_return_obj(
+            create_generator_return_obj(
                 output,
                 generator_id,
                 worker,
@@ -1007,7 +1022,8 @@ cdef execute_streaming_generator(
                 task_id,
                 return_size,
                 generator_index,
-                is_async)
+                is_async,
+                &return_obj)
             # Del output here so that we can GC the memory
             # usage asap.
             del output
@@ -1016,7 +1032,7 @@ cdef execute_streaming_generator(
                 "Writes to a ObjectRefStream of an "
                 "index {}".format(generator_index))
             CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-                generator_return_obj,
+                return_obj,
                 generator_id,
                 caller_address,
                 generator_index,
@@ -1036,7 +1052,7 @@ cdef execute_streaming_generator(
         True)  # finished.
 
 
-cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
+cdef create_generator_return_obj(
         output,
         const CObjectID &generator_id,
         worker: "Worker",
@@ -1044,7 +1060,8 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
         TaskID task_id,
         return_size,
         generator_index,
-        is_async):
+        is_async,
+        c_pair[CObjectID, shared_ptr[CRayObject]] *return_object):
     """Create a generator return object based on a given output.
 
     Args:
@@ -1059,9 +1076,7 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
         generator_index: The index of a current error object.
         is_async: Whether or not the given object is created within
             an async actor.
-
-    Returns:
-        A Ray Object that contains the given output.
+        return_object(out): A Ray Object that contains the given output.
     """
     cdef:
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
@@ -1083,10 +1098,10 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_return_obj(
         &intermediate_result,
         generator_id)
 
-    return intermediate_result.back()
+    return_object[0] = intermediate_result.back()
 
 
-cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
+cdef create_generator_error_object(
         e: Exception,
         worker: "Worker",
         CTaskType task_type,
@@ -1101,6 +1116,7 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
         return_size,
         generator_index,
         is_async,
+        c_pair[CObjectID, shared_ptr[CRayObject]] *error_object,
         c_bool *is_retryable_error,
         c_string *application_error):
     """Create a generator error object.
@@ -1132,13 +1148,11 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
         generator_index: The index of a current error object.
         is_async: Whether or not the given object is created within
             an async actor.
+        error_object(out): A Ray Object that contains the given error exception.
         is_retryable_error(out): It is set to True if the generator
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
             application error.
-
-    Returns:
-        A Ray Object that contains the given error exception.
     """
     cdef:
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
@@ -1186,7 +1200,7 @@ cdef c_pair[CObjectID, shared_ptr[CRayObject]] create_generator_error_object(
                 caller_address,
                 &intermediate_result, application_error)
 
-    return intermediate_result.back()
+    error_object[0] = intermediate_result.back()
 
 
 cdef execute_dynamic_generator_and_store_task_outputs(
@@ -3724,7 +3738,7 @@ cdef class CoreWorker:
         # the job config will not change after a job is submitted.
         if self.job_config is None:
             c_job_config = CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
-            self.job_config = gcs_utils.JobConfig()
+            self.job_config = common_pb2.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
 
