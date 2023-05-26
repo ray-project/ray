@@ -90,9 +90,8 @@ that specific worker and can access and mutate the state of that worker.
           auto counter = ray::Actor(CreateCounter).Remote();
 
 
-.. tip::
-    
-    From Ray 2.0 onwards, you can also use the :ref:`State API <state-api-overview-ref>``  to query for information about actors, or access the Actors View in the :ref:`Dashboard <observability-getting-started>`` to see more details. (These features require installing Ray with `pip install "ray[default]"`). 
+
+From Ray 2.0 onwards, you can use the :ref:`State API <state-api-overview-ref>`  to query for information about actors, or access the Actors View in the :ref:`Dashboard <observability-getting-started>` 
 
 .. code-block:: bash
   # This API is only available when you install Ray with `pip install "ray[default]"`.
@@ -100,15 +99,15 @@ that specific worker and can access and mutate the state of that worker.
 
 .. code-block:: bash
 
-======== List: 2023-05-25 10:10:50.095099 ========
-Stats:
-------------------------------
-Total: 1
-
-Table:
-------------------------------
-    ACTOR_ID                          CLASS_NAME    STATE      JOB_ID  NAME    NODE_ID                                                     PID  RAY_NAMESPACE
- 0  9e783840250840f87328c9f201000000  Counter       ALIVE    01000000          13a475571662b784b4522847692893a823c78f1d3fd8fd32a2624923  38906  ef9de910-64fb-4575-8eb5-50573faa3ddf
+  ======== List: 2023-05-25 10:10:50.095099 ========
+  Stats:
+  ------------------------------
+  Total: 1
+  
+  Table:
+  ------------------------------
+      ACTOR_ID                          CLASS_NAME    STATE      JOB_ID  NAME    NODE_ID                                                     PID  RAY_NAMESPACE
+   0  9e783840250840f87328c9f201000000  Counter       ALIVE    01000000          13a475571662b784b4522847692893a823c78f1d3fd8fd32a2624923  38906  ef9de910-64fb-4575-8eb5-50573faa3ddf
 
 
 Specifying required resources

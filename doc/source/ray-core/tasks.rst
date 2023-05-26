@@ -81,7 +81,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
             ray::Task(SlowFunction).Remote();
           a
 
-From Ray 2.0 onwards, you can also use the :ref:`State API <state-api-overview-ref>``  to query for information about tasks, or view the :ref:`Dashboard <observability-getting-started>`` to see more task details. (These features require installing Ray with `pip install "ray[default]"`). 
+From Ray 2.0 onwards, you can use the :ref:`State API <state-api-overview-ref>``  to query for information about tasks, or view them on the :ref:`Dashboard <observability-getting-started>``: 4 `slow_function` are running while `my_function` has already finished.
 
 .. code-block:: bash
   # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -90,20 +90,19 @@ From Ray 2.0 onwards, you can also use the :ref:`State API <state-api-overview-r
 
 .. code-block:: bash
 
-# The response shows 4 `slow_function` tasks and a finished task called `my_function`.
-======== List: 2023-05-25 09:41:21.710772 ========
-Stats:
-------------------------------
-Total: 5
+  ======== List: 2023-05-25 09:41:21.710772 ========
+  Stats:
+  ------------------------------
+  Total: 5
 
-Table:
-------------------------------
-    TASK_ID                                             ATTEMPT_NUMBER  NAME           STATE       JOB_ID  ACTOR_ID    TYPE         FUNC_OR_CLASS_NAME    PARENT_TASK_ID                                    NODE_ID                                                   WORKER_ID                                                 ERROR_TYPE
- 0  16310a0f0a45af5cffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  572107a249be09b305bb7e47de7c6bb3c58746114489d3a21bc6d636
- 1  32d950ec0ccf9d2affffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  d3ab8d40aaebd1b6a2bb4436f38a382a62ceaddeccb82c7594d25312
- 2  c2668a65bda616c1ffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  5543b328c97c8454d645c1337b551b8466b322247b72661b1933654f
- 3  c8ef45ccd0112571ffffffffffffffffffffffff01000000                 0  my_function    FINISHED  01000000              NORMAL_TASK  my_function           ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  572107a249be09b305bb7e47de7c6bb3c58746114489d3a21bc6d636
- 4  e0dc174c83599034ffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  5d411fb61e3eeb6faa9c3e77efc1b7be5831c65c587c0370825dc76e
+  Table:
+  ------------------------------
+      TASK_ID                                             ATTEMPT_NUMBER  NAME           STATE       JOB_ID  ACTOR_ID    TYPE         FUNC_OR_CLASS_NAME    PARENT_TASK_ID                                    NODE_ID                                                   WORKER_ID                                                 ERROR_TYPE
+   0  16310a0f0a45af5cffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  572107a249be09b305bb7e47de7c6bb3c58746114489d3a21bc6d636
+   1  32d950ec0ccf9d2affffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  d3ab8d40aaebd1b6a2bb4436f38a382a62ceaddeccb82c7594d25312
+   2  c2668a65bda616c1ffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  5543b328c97c8454d645c1337b551b8466b322247b72661b1933654f
+   3  c8ef45ccd0112571ffffffffffffffffffffffff01000000                 0  my_function    FINISHED  01000000              NORMAL_TASK  my_function           ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  572107a249be09b305bb7e47de7c6bb3c58746114489d3a21bc6d636
+   4  e0dc174c83599034ffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  5d411fb61e3eeb6faa9c3e77efc1b7be5831c65c587c0370825dc76e
 
 
 Specifying required resources
