@@ -132,10 +132,20 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
-         "source/serve/doc_code/object_detection.py",
+        "source/serve/doc_code/object_detection.py",
+        "source/serve/doc_code/streaming_example.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
+)
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["source/serve/doc_code/streaming_example.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve"],
+    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
 )
 
 py_test_run_all_subdirectory(
@@ -149,6 +159,7 @@ py_test_run_all_subdirectory(
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],
 )
+
 
 
 
@@ -184,10 +195,20 @@ py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
     exclude = [
+        # Too large. Use a custom test below.
+        "source/ray-air/doc_code/computer_vision.py",
         "source/ray-air/doc_code/hf_trainer.py",  # Too large
         "source/ray-air/doc_code/predictors.py",
     ],
     extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
+
+py_test(
+    size = "enormous",
+    name = "computer_vision_test",
+    main = "source/ray-air/doc_code/computer_vision.py",
+    srcs = ["source/ray-air/doc_code/computer_vision.py"],
     tags = ["exclusive", "team:ml"],
 )
 

@@ -30,8 +30,7 @@ class InputNode(DAGNode):
     In this pipeline, each user input is broadcasted to both m1.forward and
     m2.forward as first stop of the DAG, and authored like
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         import ray
 
@@ -204,8 +203,7 @@ class InputAttributeNode(DAGNode):
 
     Examples:
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             with InputNode() as dag_input:
                 a = dag_input[0]

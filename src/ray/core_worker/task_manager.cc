@@ -30,6 +30,26 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
+std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
+  std::vector<ObjectID> result;
+  if (next_index_ == end_of_stream_index_) {
+    return {};
+  }
+
+  for (const auto &it : item_index_to_refs_) {
+    const auto &index = it.first;
+    const auto &object_id = it.second;
+    if (index >= next_index_) {
+      result.push_back(object_id);
+    }
+  }
+  // Temporarily owned refs are not consumed.
+  for (const auto &object_id : temporarily_owned_refs_) {
+    result.push_back(object_id);
+  }
+  return result;
+}
+
 Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   bool is_eof_set = end_of_stream_index_ != -1;
   if (is_eof_set && next_index_ >= end_of_stream_index_) {
@@ -38,7 +58,7 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
                    << " has no more objects.";
     *object_id_out = ObjectID::Nil();
-    return Status::ObjectRefStreamEoF("");
+    return Status::ObjectRefEndOfStream("");
   }
 
   auto it = item_index_to_refs_.find(next_index_);
@@ -64,6 +84,28 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   return Status::OK();
 }
 
+bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
+  // Write to a stream if the object ID is not consumed yet.
+  auto last_consumed_index = next_index_ - 1;
+  if (item_index_to_refs_.find(last_consumed_index) != item_index_to_refs_.end()) {
+    // Object ID from the generator task always increment. I.e., the first
+    // return has a lower ObjectID bytes than the second return.
+    // If the last conusumed object ID's index is lower than a given ObjectID,
+    // it means the given ref is not consumed yet, meaning we should
+    // write to a stream.
+    auto not_consumed_yet =
+        item_index_to_refs_[last_consumed_index].ObjectIndex() < object_id.ObjectIndex();
+    return not_consumed_yet;
+  }
+
+  if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
+    temporarily_owned_refs_.insert(object_id);
+    return true;
+  }
+
+  return false;
+}
+
 bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_index) {
   if (end_of_stream_index_ != -1) {
     RAY_CHECK(next_index_ <= end_of_stream_index_);
@@ -73,6 +115,11 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
     // Index is already used. Don't write it to the stream.
     return false;
   }
+
+  if (temporarily_owned_refs_.find(object_id) != temporarily_owned_refs_.end()) {
+    temporarily_owned_refs_.erase(object_id);
+  }
+  refs_written_to_stream_.insert(object_id);
 
   auto it = item_index_to_refs_.find(item_index);
   if (it != item_index_to_refs_.end()) {
@@ -388,25 +435,8 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
       return;
     }
 
-    while (true) {
-      ObjectID object_id;
-      const auto &status = TryReadObjectRefStreamInternal(generator_id, &object_id);
-
-      // keyError means the stream reaches to EoF.
-      if (status.IsObjectRefStreamEoF()) {
-        break;
-      }
-
-      if (object_id == ObjectID::Nil()) {
-        // No more objects to obtain. Stop iteration.
-        break;
-      } else {
-        // It means the object hasn't been consumed.
-        // We should remove references since we have 1 reference to this object.
-        object_ids_unconsumed.push_back(object_id);
-      }
-    }
-
+    const auto &stream = it->second;
+    object_ids_unconsumed = stream.GetItemsUnconsumed();
     object_ref_streams_.erase(generator_id);
   }
 
@@ -414,7 +444,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   for (const auto &object_id : object_ids_unconsumed) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
-    RAY_CHECK_EQ(deleted.size(), 1UL);
+    RAY_CHECK_GE(deleted.size(), 1UL);
   }
 }
 
@@ -454,7 +484,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     absl::MutexLock lock(&mu_);
     auto stream_it = object_ref_streams_.find(generator_id);
     if (stream_it == object_ref_streams_.end()) {
-      // SANG-TODO add an unit test.
       // Stream has been already deleted. Do not handle it.
       return false;
     }
@@ -511,6 +540,29 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   }
 
   return num_objects_written != 0;
+}
+
+bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
+                                                           const ObjectID &generator_id) {
+  bool inserted_to_stream = false;
+  {
+    absl::MutexLock lock(&mu_);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    if (stream_it == object_ref_streams_.end()) {
+      return false;
+    }
+
+    auto &stream = stream_it->second;
+    inserted_to_stream = stream.TemporarilyInsertToStreamIfNeeded(object_id);
+  }
+
+  // We shouldn't hold a lock when calling refernece counter API.
+  if (inserted_to_stream) {
+    reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+    return true;
+  }
+
+  return false;
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
