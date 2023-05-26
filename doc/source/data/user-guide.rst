@@ -20,4 +20,3 @@ show you how achieve several tasks.
     custom-datasource
     data-internals
     performance-tips
-    pipelining-compute
