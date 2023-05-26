@@ -163,8 +163,7 @@ class Test(dict):
                     .decode("utf-8")
                 )
             )
-            for file in files
-        ]
+            self.test_results.append(TestResult.from_dict(result_dict))
         return self.test_results
 
     def persist_result_to_s3(self, result: Result) -> bool:
