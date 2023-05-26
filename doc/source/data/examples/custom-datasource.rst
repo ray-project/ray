@@ -106,7 +106,7 @@ to achieve this.
     :start-after: __read_single_partition_start__
     :end-before: __read_single_partition_end__
 
-Once we have this building block, we can just apply it for each of the provided MongoDB
+Once we have this building block, we apply it for each of the provided MongoDB
 pipelines. In particular, below, we construct a `_MongoDatasourceReader` by subclassing
 :class:`~ray.data.Datasource.Reader`, and implement the ``__init__`` and ``get_read_tasks``.
 
