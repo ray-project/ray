@@ -192,8 +192,8 @@ class LoadMetrics:
 
         Example:
             >>> from ray.autoscaler._private.load_metrics import LoadMetrics
-            >>> metrics = LoadMetrics(...) # doctest: +SKIP
-            >>> metrics.get_static_node_resources_by_ip()
+            >>> metrics = LoadMetrics(...)  # doctest: +SKIP
+            >>> metrics.get_static_node_resources_by_ip()  # doctest: +SKIP
             {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "GPU": 8}}
         """
         return self.static_resources_by_ip
