@@ -2460,6 +2460,9 @@ cdef class GcsErrorSubscriber(_GcsSubscriber):
         with nogil:
             check_status(self.inner.get().PollError(&key_id, timeout_ms, &error_data))
 
+        if key_id == b"":
+            return None, None
+
         return (bytes(key_id), {
             "job_id": error_data.job_id(),
             "type": error_data.type().decode(),
