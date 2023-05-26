@@ -41,7 +41,7 @@ By the end of the guide, you will have a ``MongoDatasource`` that you can use to
     The execution results of the pipelines are used to create dataset.
 
 A custom datasource is an implementation of :class:`~ray.data.Datasource`. In the
-example here, let's call it ``MongoDatasource``. At a high level, it will have two
+example, it's called ``MongoDatasource``. At a high level, it has two
 core parts to build out:
 
 * Read support with :meth:`create_reader() <ray.data.Datasource.create_reader>`
