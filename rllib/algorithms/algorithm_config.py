@@ -284,14 +284,14 @@ class AlgorithmConfig(_Config):
         # Torch compile settings
         self.torch_compile_learner = False
         self.torch_compile_learner_dynamo_backend = (
-            "aot_eager" if sys.platform == "darwin" else "inductor"
+            "aot_eager" if sys.platform == "darwin" else "cudagraphs"
         )
-        self.torch_compile_learner_dynamo_mode = "reduce-overhead"
+        self.torch_compile_learner_dynamo_mode = None
         self.torch_compile_worker = False
         self.torch_compile_worker_dynamo_backend = (
-            "aot_eager" if sys.platform == "darwin" else "inductor"
+            "aot_eager" if sys.platform == "darwin" else "cudagraphs"
         )
-        self.torch_compile_worker_dynamo_mode = "reduce-overhead"
+        self.torch_compile_worker_dynamo_mode = None
 
         # `self.environment()`
         self.env = None

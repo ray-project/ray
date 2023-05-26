@@ -27,7 +27,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
         and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
     ):
         raise ValueError("torch.compile is only supported from torch 2.0.0")
-
+    
     compiled_forward_train = torch.compile(
         rl_module._forward_train,
         backend=compile_config.torch_dynamo_backend,
@@ -81,9 +81,6 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-        # Whether to retrace torch compiled forward methods on set_weights.
-        self._retrace_on_set_weights = False
-
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         """forward pass of the module.
 
@@ -110,8 +107,6 @@ class TorchRLModule(nn.Module, RLModule):
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         self.load_state_dict(state_dict)
-        if self._retrace_on_set_weights:
-            torch._dynamo.reset()
 
     def _module_state_file_name(self) -> pathlib.Path:
         return pathlib.Path("module_state.pt")

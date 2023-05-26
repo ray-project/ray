@@ -32,6 +32,6 @@ class TorchCompileConfig:
         kwargs: Additional keyword arguments to pass to `torch.compile()`
     """
 
-    torch_dynamo_backend: str = "aot_eager" if sys.platform == "darwin" else "inductor"
-    torch_dynamo_mode: str = "reduce-overhead"
+    torch_dynamo_backend: str = "aot_eager" if sys.platform == "darwin" else "cudagraphs"
+    torch_dynamo_mode: str = None
     kwargs: dict = field(default_factory=lambda: dict())
