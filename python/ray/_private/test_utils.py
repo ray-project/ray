@@ -1916,3 +1916,9 @@ def find_available_port(start, end, port_num=1):
                 break
             except OSError:
                 pass
+
+    if len(ports) != port_num:
+        raise RuntimeError(
+            f"Can't find {port_num} available port from {start} to {end}."
+        )
+    return ports
