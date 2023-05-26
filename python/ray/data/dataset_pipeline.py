@@ -46,7 +46,7 @@ from ray.data.datasource.file_based_datasource import (
     DefaultBlockWritePathProvider,
 )
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if sys.version_info >= (3, 8):
@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@Deprecated
 class DatasetPipeline:
     """Implements a pipeline of Datasets.
 

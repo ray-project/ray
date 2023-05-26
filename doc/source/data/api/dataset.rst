@@ -68,15 +68,6 @@ Grouped and Global Aggregations
    Dataset.mean
    Dataset.std
 
-Converting to Pipeline
-----------------------
-
-.. autosummary::
-   :toctree: doc/
-
-   Dataset.repeat
-   Dataset.window
-
 Consuming Data
 ---------------------
 
