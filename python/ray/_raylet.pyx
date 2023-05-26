@@ -1284,14 +1284,8 @@ cdef void execute_task(
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
 
-            # Record the log file offsets instead
-            if core_worker.current_actor_max_concurrency() == 1:
-                # If it's not a concurrent actor task, we will record the start
-                # offset of the log file so that we could know where the task log
-                # begins.
-                # We are skipping concurrent actor tasks because high contention
-                # and slow IO on concurrent actors would result in perf regression.
-                worker.record_task_log_start()
+            # Record the log file offsets if applicable.
+            worker.record_task_log_start()
 
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
@@ -1372,11 +1366,8 @@ cdef void execute_task(
                                      exc_info=True)
                     raise e
                 finally:
-                    if core_worker.current_actor_max_concurrency() == 1:
-                        # Record the end of the task log.
-                        # See comments above where we do `record_task_log_start()`
-                        # for more details.
-                        worker.record_task_log_end()
+                    # Record the end of the task log.
+                    worker.record_task_log_end()
 
                 if returns[0].size() == 1 and not inspect.isgenerator(outputs):
                     # If there is only one return specified, we should return
