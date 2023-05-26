@@ -29,7 +29,7 @@ class TestResult:
     @classmethod
     def from_result(cls, result: Result):
         return cls(
-            status=result.status,
+            status=ResultStatus(result.status),
             commit=os.environ.get("BUILDKITE_COMMIT", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
@@ -163,7 +163,8 @@ class Test(dict):
                     .decode("utf-8")
                 )
             )
-            self.test_results.append(TestResult.from_dict(result_dict))
+            for file in files
+        ]
         return self.test_results
 
     def persist_result_to_s3(self, result: Result) -> bool:
