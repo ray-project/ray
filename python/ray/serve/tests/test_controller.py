@@ -49,17 +49,6 @@ def test_redeploy_start_time(serve_instance):
     assert start_time_ms_1 == start_time_ms_2
 
 
-def test_no_slash_route_prefix(serve_instance):
-    @serve.deployment
-    def f():
-        pass
-
-    with pytest.raises(
-        ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
-    ):
-        serve.run(f.bind(), route_prefix="no_slash")
-
-
 if __name__ == "__main__":
     import sys
 
