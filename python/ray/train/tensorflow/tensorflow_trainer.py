@@ -134,6 +134,12 @@ class TensorflowTrainer(DataParallelTrainer):
         )
         result = trainer.fit()
 
+    .. testoutput::
+        :options:+ELLIPSIS
+        :hide:
+
+        ...
+
     Args:
         train_loop_per_worker: The training function to execute.
             This can either take in no arguments or a ``config`` dict.
