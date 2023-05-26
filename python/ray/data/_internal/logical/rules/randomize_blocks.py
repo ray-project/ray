@@ -1,3 +1,4 @@
+import copy
 from collections import deque
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
@@ -43,7 +44,7 @@ class ReorderRandomizeBlocksRule(Rule):
                     # RandomizeBlocks operator.
                     current_seed = upstream_ops[i]._seed
                     if not operators or current_seed or operators[-1]._seed:
-                        operators.append(upstream_ops[i])
+                        operators.append(copy.copy(upstream_ops[i]))
 
                     # Remove RandomizeBlocks operator from the dag and wire in new input
                     # dependencies.
