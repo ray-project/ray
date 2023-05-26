@@ -746,7 +746,7 @@ class options:
             def foo():
                 return 1
 
-            # speficy workflow options in ".options"
+            # specify workflow options in ".options"
             foo_new = foo.options(**workflow.options(catch_exceptions=False))
     """  # noqa: E501
 
