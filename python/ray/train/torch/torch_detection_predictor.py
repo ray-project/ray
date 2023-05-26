@@ -96,13 +96,13 @@ class TorchDetectionPredictor(TorchPredictor):
             torch.as_tensor(image, dtype=dtype).to(self.device) for image in images
         ]
         outputs = self.call_model(inputs)
-        outputs = _convert_outputs_to_ndarray_batch(outputs)
+        outputs = _convert_outputs_to_batch(outputs)
         outputs = {"pred_" + key: value for key, value in outputs.items()}
 
         return outputs
 
 
-def _convert_outputs_to_ndarray_batch(
+def _convert_outputs_to_batch(
     outputs: List[Dict[str, torch.Tensor]],
 ) -> Dict[str, List[torch.Tensor]]:
     """Batch detection model outputs.
