@@ -25,8 +25,8 @@ PPO_MODULES = {"tf2": PPOTfRLModule, "torch": PPOTorchRLModule}
 NUM_AGENTS = 2
 
 
-class TestE2ERLModuleLoad(unittest.TestCase):
-    """Test RLModule loading from rl module spec across a multi node cluster."""
+class TestAlgorithmRLModuleRestore(unittest.TestCase):
+    """Test RLModule loading from rl module spec across a local node."""
 
     def setUp(self) -> None:
         ray.init()
@@ -42,8 +42,8 @@ class TestE2ERLModuleLoad(unittest.TestCase):
             return pol_id
 
         scaling_config = {
-            "num_learner_workers": 2,
-            "num_gpus_per_learner_worker": 1,
+            "num_learner_workers": 0,
+            "num_gpus_per_learner_worker": 0,
         }
 
         policies = {f"policy_{i}" for i in range(num_agents)}
@@ -180,8 +180,8 @@ class TestE2ERLModuleLoad(unittest.TestCase):
     def test_e2e_load_rl_module(self):
         """Test if we can train a PPO algorithm with a cpkt RL module e2e."""
         scaling_config = {
-            "num_learner_workers": 2,
-            "num_gpus_per_learner_worker": 1,
+            "num_learner_workers": 0,
+            "num_gpus_per_learner_worker": 0,
         }
 
         config = (

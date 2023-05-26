@@ -3123,6 +3123,7 @@ class AlgorithmConfig(_Config):
                 marl_module_spec = cur_marl_module_spec.__class__(
                     marl_module_class=cur_marl_module_spec.marl_module_class,
                     module_specs=module_specs,
+                    modules_to_load=cur_marl_module_spec.modules_to_load,
                     load_state_path=cur_marl_module_spec.load_state_path,
                 )
             else:
@@ -3151,6 +3152,7 @@ class AlgorithmConfig(_Config):
                     module_specs={
                         k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                     },
+                    modules_to_load=cur_marl_module_spec.modules_to_load,
                     load_state_path=cur_marl_module_spec.load_state_path,
                 )
 
