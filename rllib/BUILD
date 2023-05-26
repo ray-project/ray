@@ -2006,7 +2006,7 @@ py_test(
     srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
 )
 
-pytest(
+py_test(
     name="test_algorithm_rl_module_restore",
     tags=["team:rllib", "core"],
     size="medium",
