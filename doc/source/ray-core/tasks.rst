@@ -81,29 +81,28 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
             ray::Task(SlowFunction).Remote();
           a
 
-From Ray 2.0 onwards, you can use the :ref:`State API <state-api-overview-ref>``  to query for information about tasks, or view them on the :ref:`Dashboard <observability-getting-started>``: 4 `slow_function` are running while `my_function` has already finished.
+From Ray 2.0 onwards, you can use the :ref:`State API <state-api-overview-ref>`  to query for information about tasks, or view them on the :ref:`Dashboard <observability-getting-started>`: 4 `slow_function` are running while `my_function` has already finished.
 
 .. code-block:: bash
   # This API is only available when you download Ray via `pip install "ray[default]"`
-  ray list tasks
+  ray summary tasks
 
 
 .. code-block:: bash
 
-  ======== List: 2023-05-25 09:41:21.710772 ========
+  ======== Tasks Summary: 2023-05-26 11:09:32.092546 ========
   Stats:
-  ------------------------------
-  Total: 5
-
-  Table:
-  ------------------------------
-      TASK_ID                                             ATTEMPT_NUMBER  NAME           STATE       JOB_ID  ACTOR_ID    TYPE         FUNC_OR_CLASS_NAME    PARENT_TASK_ID                                    NODE_ID                                                   WORKER_ID                                                 ERROR_TYPE
-   0  16310a0f0a45af5cffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  572107a249be09b305bb7e47de7c6bb3c58746114489d3a21bc6d636
-   1  32d950ec0ccf9d2affffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  d3ab8d40aaebd1b6a2bb4436f38a382a62ceaddeccb82c7594d25312
-   2  c2668a65bda616c1ffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  5543b328c97c8454d645c1337b551b8466b322247b72661b1933654f
-   3  c8ef45ccd0112571ffffffffffffffffffffffff01000000                 0  my_function    FINISHED  01000000              NORMAL_TASK  my_function           ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  572107a249be09b305bb7e47de7c6bb3c58746114489d3a21bc6d636
-   4  e0dc174c83599034ffffffffffffffffffffffff01000000                 0  slow_function  RUNNING   01000000              NORMAL_TASK  slow_function         ffffffffffffffffffffffffffffffffffffffff01000000  8416c5fc88a190449d49daa3f26e2718ce03dc7f28c288903e61ec29  5d411fb61e3eeb6faa9c3e77efc1b7be5831c65c587c0370825dc76e
-
+  ------------------------------------
+  total_actor_scheduled: 0
+  total_actor_tasks: 0
+  total_tasks: 5
+  
+  
+  Table (group by func_name):
+  ------------------------------------
+      FUNC_OR_CLASS_NAME    STATE_COUNTS    TYPE
+  0   slow_function         RUNNING: 4      NORMAL_TASK
+  1   my_function           FINISHED: 1     NORMAL_TASK
 
 Specifying required resources
 -----------------------------
@@ -281,10 +280,6 @@ You can change this behavior by setting
 ``max_retries`` and ``retry_exceptions`` options
 in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
-
-.. tip::
-
-    From Ray 2.3 onwards, you can also see task exit details (for example, OOM killed) and task retry attempts with increasing attempt numbers using the :ref:`State API <state-api-overview-ref>``  to query for information about the actors, or going to the Actors View in the :ref:`Dashboard <observability-getting-started>`` for more details. (These features require installing Ray with `pip install "ray[default]"`). 
 
 
 More about Ray Tasks
