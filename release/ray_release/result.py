@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Optional, Dict, Tuple
 
 
-class ResultStatus(enum.Enum):
+class ResultStatus(enum.StrEnum):
     """
     Overall status of the result test run
     """

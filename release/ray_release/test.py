@@ -32,12 +32,13 @@ class TestResult:
     @classmethod
     def from_result(cls, result: Result):
         return cls(
-            status=result.status,
+            status=ResultStatus(result.status),
             commit=os.environ.get("BUILDKITE_COMMIT", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
         )
 
+    @classmethod
     def from_dict(cls, result: dict):
         return cls(
             status=ResultStatus(result["status"]),
@@ -147,18 +148,20 @@ class Test(dict):
             key=lambda file: int(file["LastModified"].strftime("%s")),
             reverse=True,
         )[:limit]
-        self.test_results = []
-        for file in files:
-            result_dict = json.loads(
-                s3_client.get_object(
-                    Bucket=AWS_BUCKET,
-                    Key=file["Key"],
+        self.test_results = [
+            TestResult.from_dict(
+                json.loads(
+                    s3_client.get_object(
+                        Bucket=AWS_BUCKET,
+                        Key=file["Key"],
+                    )
+                    .get("Body")
+                    .read()
+                    .decode("utf-8")
                 )
-                .get("Body")
-                .read()
-                .decode("utf-8")
             )
-            self.test_results.append(TestResult.from_dict(result_dict))
+            for file in files
+        ]
         return self.test_results
 
     def persist_result_to_s3(self, result: Result) -> bool:
