@@ -37,7 +37,7 @@ This code example uses the Pytorch Model object. You can also define your own mo
 :::
 
 
-`serve.get_multiplexed_model_id` is to retrieve the model id from the request header, and the model_id is supposed to be passed into the `get_model` function. If the model id is not found in the replica, Serve will load the model from the s3 bucket and cache it in the replica. If the model id is found in the replica, Serve will return the cached model.
+`serve.get_multiplexed_model_id` is used to retrieve the model id from the request header, and the model_id is then passed into the `get_model` function. If the model id is not found in the replica, Serve will load the model from the s3 bucket and cache it in the replica. If the model id is found in the replica, Serve will return the cached model.
 
 :::{note}
 Internally, serve router will route the traffic to the corresponding replica based on the model id in the request header.
