@@ -1441,15 +1441,8 @@ cdef void execute_task(
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
 
-            # Record the task id via magic token in the log file.
-            # This will be used to locate the beginning of logs from a task.
-            attempt_number = core_worker.get_current_task_attempt_number()
-            task_attempt_magic_token = "{}{}-{}\n".format(
-                ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
-                attempt_number)
-            # Print on both .out and .err
-            print(task_attempt_magic_token, end="")
-            print(task_attempt_magic_token, file=sys.stderr, end="")
+            # Record the log file offsets if applicable.
+            worker.record_task_log_start()
 
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
@@ -1533,14 +1526,8 @@ cdef void execute_task(
                                      exc_info=True)
                     raise e
                 finally:
-                    # Record the end of task via magic token in the log file.
-                    # This will be used to locate the end of logs from a task.
-                    task_attempt_magic_token = "{}{}-{}\n".format(
-                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
-                        attempt_number)
-                    # Print on both .out and .err
-                    print(task_attempt_magic_token, end="")
-                    print(task_attempt_magic_token, file=sys.stderr, end="")
+                    # Record the end of the task log.
+                    worker.record_task_log_end()
 
                 if (returns[0].size() == 1
                         and not inspect.isgenerator(outputs)
@@ -3658,6 +3645,10 @@ cdef class CoreWorker:
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
+
+    def current_actor_max_concurrency(self):
+        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .CurrentActorMaxConcurrency())
 
     def get_current_runtime_env(self) -> str:
         # This should never change, so we can safely cache it to avoid ser/de
