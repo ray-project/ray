@@ -213,18 +213,18 @@ class Dataset:
         >>> import ray
         >>> ds = ray.data.range(1000)
         >>> # Transform batches (Dict[str, np.ndarray]) with map_batches().
-        >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})
+        >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})  # doctest: +ELLIPSIS
         MapBatches(<lambda>)
         +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Compute the maximum.
         >>> ds.max("id")
         999
         >>> # Shuffle this dataset randomly.
-        >>> ds.random_shuffle()
+        >>> ds.random_shuffle()  # doctest: +ELLIPSIS
         RandomShuffle
         +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Sort it back in order.
-        >>> ds.sort("id")
+        >>> ds.sort("id")  # doctest: +ELLIPSIS
         Sort
         +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
 
