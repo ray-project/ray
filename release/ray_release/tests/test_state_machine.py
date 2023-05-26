@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from ray_release.test import (
     Test,
     TestState,
@@ -12,10 +16,14 @@ from ray_release.test_automation.state_machine import TestStateMachine
 def test_move():
     test = Test()
     test.test_results = []
-    test.add_test_result(Result(status=ResultStatus.PASSING))
+    test.add_test_result(Result(status=ResultStatus.SUCCESS))
     assert test.get_state() == TestState.PASSING
     test.add_test_result(Result(status=ResultStatus.ERROR))
     test.add_test_result(Result(status=ResultStatus.ERROR))
     sm = TestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.FAILING
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

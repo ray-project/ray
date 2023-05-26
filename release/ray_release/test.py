@@ -60,6 +60,12 @@ class TestResult:
             timestamp=result["timestamp"],
         )
 
+    def is_failing(self) -> bool:
+        return not self.is_passing()
+
+    def is_passing(self) -> bool:
+        return self.status == ResultStatus.SUCCESS.value
+
 
 class Test(dict):
     """A class represents a test to run on buildkite"""
@@ -120,7 +126,7 @@ class Test(dict):
         """
         Returns the state of the test.
         """
-        return TestState(self.get("state", TestState.GOOD.value))
+        return TestState(self.get("state", TestState.PASSING.value))
 
     def set_state(self, state: TestState) -> None:
         """
