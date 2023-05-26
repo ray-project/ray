@@ -255,11 +255,6 @@ def range_table(n: int, *, parallelism: int = -1) -> Dataset:
     )
 
 
-@Deprecated
-def range_arrow(*args, **kwargs):
-    raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
-
-
 @PublicAPI
 def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Dataset:
     """Create a Tensor stream from a range of integers [0..n).
