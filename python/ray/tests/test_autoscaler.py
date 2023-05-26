@@ -554,8 +554,8 @@ class AutoscalingTest(unittest.TestCase):
                             node.state = "pending"
                             node.tags.update(tags)
                 for _ in range(count):
-                    self.provider.mock_nodes[self.provider.next_id] = MockNode(
-                        self.provider.next_id,
+                    self.provider.mock_nodes[str(self.provider.next_id)] = MockNode(
+                        str(self.provider.next_id),
                         tags.copy(),
                         node_config,
                         tags.get(TAG_RAY_USER_NODE_TYPE),
@@ -2770,7 +2770,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call(worker_ip, "start_ray_worker")
 
         # Check the node was not reused
-        self.provider.terminate_node(1)
+        self.provider.terminate_node("1")
         autoscaler.update()
         runner.clear_history()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
@@ -2831,7 +2831,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call(worker_ip, "start_ray_worker")
 
         # Check the node was indeed reused
-        self.provider.terminate_node(1)
+        self.provider.terminate_node("1")
         runner.clear_history()
         autoscaler.update()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
@@ -2849,7 +2849,7 @@ class AutoscalingTest(unittest.TestCase):
             f.write("abcdefgh")
 
         # Check that run_init happens when file_mounts have updated
-        self.provider.terminate_node(1)
+        self.provider.terminate_node("1")
         autoscaler.update()
         runner.clear_history()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
@@ -2918,7 +2918,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call(worker_ip, "docker run")
 
         # Check the node was indeed reused
-        self.provider.terminate_node(1)
+        self.provider.terminate_node("1")
         runner.clear_history()
         autoscaler.update()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
@@ -2939,7 +2939,7 @@ class AutoscalingTest(unittest.TestCase):
             f.write("abcdefgh")
 
         # Check that run_init happens when file_mounts have updated
-        self.provider.terminate_node(0)
+        self.provider.terminate_node("0")
         runner.clear_history()
         autoscaler.update()
         self.waitForNodes(1, tag_filters=WORKER_FILTER)
@@ -3003,9 +3003,9 @@ class AutoscalingTest(unittest.TestCase):
             3, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE, **WORKER_FILTER}
         )
 
-        self.provider.terminate_node(1)
-        self.provider.terminate_node(2)
-        self.provider.terminate_node(3)
+        self.provider.terminate_node("1")
+        self.provider.terminate_node("2")
+        self.provider.terminate_node("3")
         runner.clear_history()
 
         # Scale up to 10 nodes, check we reuse the first 3 and add 5 more.
@@ -3280,7 +3280,7 @@ class AutoscalingTest(unittest.TestCase):
             _allow_uninitialized_state=True,
         )
 
-        assert allow_failed == 0
+        assert allow_failed == "0"
 
         # Node 1 is okay.
         self.provider.create_node(
@@ -3301,7 +3301,7 @@ class AutoscalingTest(unittest.TestCase):
             _provider=self.provider,
         )
 
-        assert node == 1
+        assert node == "1"
 
         # `_allow_uninitialized_state` should return the up-to-date head node
         # if it is present.
@@ -3314,7 +3314,7 @@ class AutoscalingTest(unittest.TestCase):
             _allow_uninitialized_state=True,
         )
 
-        assert optionally_failed == 1
+        assert optionally_failed == "1"
 
     def testNodeTerminatedDuringUpdate(self):
         """
@@ -3380,7 +3380,7 @@ class AutoscalingTest(unittest.TestCase):
         # Set up process runner to terminate worker 0 during missed heartbeat
         # recovery and also cause the updater to fail.
         def terminate_worker_zero():
-            self.provider.terminate_node(0)
+            self.provider.terminate_node("0")
 
         autoscaler.process_runner = MockProcessRunner(
             fail_cmds=["ray_start_cmd"],
@@ -3411,24 +3411,24 @@ class AutoscalingTest(unittest.TestCase):
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
         assert (
-            0 not in NonTerminatedNodes(self.provider).worker_ids
+            "0" not in NonTerminatedNodes(self.provider).worker_ids
         ), "Node zero still non-terminated."
-        assert not self.provider.is_terminated(1), "Node one terminated prematurely."
+        assert not self.provider.is_terminated("1"), "Node one terminated prematurely."
 
         fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         # Failed updates processed are now processed.
         assert (
-            autoscaler.num_failed_updates[0] == 1
+            autoscaler.num_failed_updates["0"] == 1
         ), "Node zero update failure not registered"
         assert (
-            autoscaler.num_failed_updates[1] == 1
+            autoscaler.num_failed_updates["1"] == 1
         ), "Node one update failure not registered"
         assert mock_metrics.failed_updates.inc.call_count == 2
         assert mock_metrics.failed_recoveries.inc.call_count == 2
         assert mock_metrics.successful_recoveries.inc.call_count == 0
         # Completed-update-processing logic should have terminated node 1.
-        assert self.provider.is_terminated(1), "Node 1 not terminated on time."
+        assert self.provider.is_terminated("1"), "Node 1 not terminated on time."
 
         events = autoscaler.event_summarizer.summary()
         # Just one node (node_id 1) terminated in the last update.
@@ -3447,8 +3447,8 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         assert set(NonTerminatedNodes(self.provider).worker_ids) == {
-            2,
-            3,
+            "2",
+            "3",
         }, "Unexpected node_ids"
 
         assert mock_metrics.stopped_nodes.inc.call_count == 1
