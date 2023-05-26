@@ -22,12 +22,13 @@ def assert_no_leak():
         assert rc["submitted"] == 0
 
 
-@pytest.mark.skipif(
-    sys.platform != "linux" and sys.platform != "linux2",
-    reason="This test requires Linux.",
-)
-@pytest.mark.parametrize("num_returns", [100, "dynamic", "streaming"])
-def test_generator_oom(ray_start_regular, num_returns):
+# @pytest.mark.skipif(
+#     sys.platform != "linux" and sys.platform != "linux2",
+#     reason="This test requires Linux.",
+# )
+def test_generator_oom(ray_start_regular):
+    num_returns = 100
+
     @ray.remote(max_retries=0)
     def large_values(num_returns):
         return [

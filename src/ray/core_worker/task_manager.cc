@@ -1040,7 +1040,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   // for more details.
   if (spec.IsStreamingGenerator()) {
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
-    for (int i = 0; i < num_streaming_generator_returns; i++) {
+    for (auto i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.count(generator_return_id)) {
         put_in_local_plasma_callback_(error, generator_return_id);
