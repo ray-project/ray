@@ -12,8 +12,8 @@ Implementing a Custom Datasource
 Ray Data supports multiple ways to :ref:`create a dataset <loading_data>`,
 allowing you to easily ingest data of common formats from popular sources. However, if the
 datasource you want to read from is not in the built-in list, don't worry, you can implement
-a custom one for your use case. In this guide, we will walk you through how to build
-your own custom datasource, using `MongoDB <https://www.mongodb.com/docs/manual/introduction/>`__ as an example.
+a custom one for your use case. This guide walks through building
+a custom datasource, using `MongoDB <https://www.mongodb.com/docs/manual/introduction/>`__ as an example.
 By the end of the guide, you will have a ``MongoDatasource`` that you can use to create dataset as follows:
 
 .. code-block:: python
@@ -40,8 +40,8 @@ By the end of the guide, you will have a ``MongoDatasource`` that you can use to
     which expresses document processing in a series of stages (e.g. match documents with a predicate, sort results, and then select a few fields).
     The execution results of the pipelines are used to create dataset.
 
-A custom datasource is an implementation of :class:`~ray.data.Datasource`. In the
-example here, let's call it ``MongoDatasource``. At a high level, it will have two
+A custom datasource is an implementation of :class:`~ray.data.Datasource`. In this
+example, it's called ``MongoDatasource``. At a high level, it has two
 core parts to build out:
 
 * Read support with :meth:`create_reader() <ray.data.Datasource.create_reader>`
@@ -106,7 +106,7 @@ to achieve this.
     :start-after: __read_single_partition_start__
     :end-before: __read_single_partition_end__
 
-Once we have this building block, we can just apply it for each of the provided MongoDB
+Once we have this building block, we apply it for each of the provided MongoDB
 pipelines. In particular, below, we construct a `_MongoDatasourceReader` by subclassing
 :class:`~ray.data.Datasource.Reader`, and implement the ``__init__`` and ``get_read_tasks``.
 
@@ -170,7 +170,7 @@ a ``MongoDatasource``.
     :end-before: __mongo_datasource_end__
 
 Now you can create a Dataset from and write back to MongoDB, just like
-any other datasource!
+any other datasource.
 
 .. code-block:: python
 
