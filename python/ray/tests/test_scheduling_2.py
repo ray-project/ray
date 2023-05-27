@@ -740,6 +740,7 @@ def test_data_locality_spilled_objects(
         print(i, x, task)
         ray.get(task)
 
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="Metrics flake on Windows.")
 def test_workload_placement_metrics(ray_start_regular):
     @ray.remote(num_cpus=1)
