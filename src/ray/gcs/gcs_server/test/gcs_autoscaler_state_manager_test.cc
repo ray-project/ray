@@ -22,9 +22,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
-using ::testing::_;
-using ::testing::Return;
-
 namespace ray {
 
 namespace gcs {
