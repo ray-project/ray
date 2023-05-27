@@ -19,7 +19,7 @@ from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import aiohttp, hdrs
+from ray.dashboard.optional_deps import aiohttp, aiohttp_cors, hdrs
 from ray._raylet import GcsClient
 
 
@@ -169,6 +169,21 @@ class HttpServerDashboardHead:
             client_max_size=100 * 1024**2, middlewares=[self.metrics_middleware]
         )
         app.add_routes(routes=routes.bound_routes())
+
+        # Enable CORS on all routes.
+        cors = aiohttp_cors.setup(
+            app,
+            defaults={
+                "*": aiohttp_cors.ResourceOptions(
+                    allow_credentials=True,
+                    expose_headers="*",
+                    allow_methods="*",
+                    allow_headers=("Content-Type", "X-Header"),
+                )
+            },
+        )
+        for route in list(app.router.routes()):
+            cors.add(route)
 
         self.runner = aiohttp.web.AppRunner(
             app,
