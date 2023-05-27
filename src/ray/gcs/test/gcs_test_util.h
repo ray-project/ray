@@ -283,14 +283,14 @@ struct Mocker {
 
   static rpc::ResourceDemand GenResourceDemand(
       const absl::flat_hash_map<std::string, double> &resource_demands,
-      int64_t num_ready,
+      int64_t num_ready_queued,
       int64_t num_infeasible,
       int64_t num_backlog) {
     rpc::ResourceDemand resource_demand;
     for (const auto &resource : resource_demands) {
       (*resource_demand.mutable_shape())[resource.first] = resource.second;
     }
-    resource_demand.set_num_ready_requests_queued(num_ready);
+    resource_demand.set_num_ready_requests_queued(num_ready_queued);
     resource_demand.set_num_infeasible_requests_queued(num_infeasible);
     resource_demand.set_backlog_size(num_backlog);
     return resource_demand;

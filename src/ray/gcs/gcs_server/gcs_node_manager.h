@@ -36,6 +36,7 @@
 namespace ray {
 namespace gcs {
 
+class GcsResourceManagerAutoscalerStateTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
@@ -184,6 +185,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   NodeIDAddrBiMap node_map_;
 
   friend GcsMonitorServerTest;
+  friend GcsResourceManagerAutoscalerStateTest;
 };
 
 }  // namespace gcs

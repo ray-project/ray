@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2023 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,9 +25,9 @@ namespace gcs {
 
 class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(ClusterResourceManager &cluster_resource_manager,
-                            GcsResourceManager &gcs_resource_manager,
-                            GcsNodeManager &gcs_node_manager);
+  GcsAutoscalerStateManager(const ClusterResourceManager &cluster_resource_manager,
+                            const GcsResourceManager &gcs_resource_manager,
+                            const GcsNodeManager &gcs_node_manager);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -44,8 +44,10 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
 
  private:
-  int64_t GetNextClusterResourceStateVersion() {
-    return ++cluster_resource_state_version_;
+  /// \brief Increment and get the next cluster resource state version.
+  /// \return The incremented cluster resource state version.
+  int64_t IncrementAndGetNextClusterResourceStateVersion() {
+    return ++last_cluster_resource_state_version_;
   }
 
   /// \brief Get the current cluster resource state.
@@ -78,21 +80,20 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
       rpc::autoscaler::GetClusterResourceStateReply *reply);
 
   /// Cluster resources manager that provides cluster resources information.
-  ClusterResourceManager &cluster_resource_manager_;
+  const ClusterResourceManager &cluster_resource_manager_;
 
   /// Gcs node manager that provides node status information.
-  GcsNodeManager &gcs_node_manager_;
+  const GcsNodeManager &gcs_node_manager_;
 
   /// GCS resource manager that provides resource demand/load information.
-  GcsResourceManager &gcs_resource_manager_;
+  const GcsResourceManager &gcs_resource_manager_;
 
   // The default value of the last seen version for the request is 0, which indicates
-  // no version has been seen. When node is added, the version will be incremented.
-  // Therefore, a cluster in init state with at least 1 node, will have the version > 0.
-  int64_t cluster_resource_state_version_ = 0;
+  // no version has been reported. So the first reported version should be 1.
+  int64_t last_cluster_resource_state_version_ = 0;
 
   /// The last seen autoscaler state version. Use 0 as the default value to indicate
-  /// no previous autoscaler state has been reported.
+  /// no previous autoscaler state has been seen.
   int64_t last_seen_autoscaler_state_version_ = 0;
 };
 

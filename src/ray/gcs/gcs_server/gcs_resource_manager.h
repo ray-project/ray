@@ -186,8 +186,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   size_t num_alive_nodes_ = 0;
 
   friend GcsMonitorServerTest;
-
-  FRIEND_TEST(GcsResourceManagerAutoscalerStateTest, TestClusterStateVersion);
 };
 
 }  // namespace gcs

@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2023 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@ namespace ray {
 namespace gcs {
 
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
-    ClusterResourceManager &cluster_resource_manager,
-    GcsResourceManager &gcs_resource_manager,
-    GcsNodeManager &gcs_node_manager)
+    const ClusterResourceManager &cluster_resource_manager,
+    const GcsResourceManager &gcs_resource_manager,
+    const GcsNodeManager &gcs_node_manager)
     : cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
-      cluster_resource_state_version_(0),
+      last_cluster_resource_state_version_(0),
       last_seen_autoscaler_state_version_(0) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
@@ -32,14 +32,15 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(request.last_seen_cluster_resource_state_version() <=
-            cluster_resource_state_version_);
+            last_cluster_resource_state_version_);
   reply->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
-  reply->set_cluster_resource_state_version(GetNextClusterResourceStateVersion());
+  reply->set_cluster_resource_state_version(
+      IncrementAndGetNextClusterResourceStateVersion());
 
   GetNodeStates(reply);
   GetPendingResourceRequests(reply);
-  GetPendingGangResourceRequests(reply);
-  GetClusterResourceConstraints(reply);
+  // GetPendingGangResourceRequests(reply);
+  // GetClusterResourceConstraints(reply);
 
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
@@ -90,7 +91,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
     auto node_state_proto = reply->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
     node_state_proto->set_instance_id(gcs_node_info.instance_id());
-    node_state_proto->set_node_state_version(cluster_resource_state_version_);
+    node_state_proto->set_node_state_version(last_cluster_resource_state_version_);
     node_state_proto->set_status(status);
 
     if (status == rpc::autoscaler::NodeState::ALIVE) {
@@ -115,6 +116,9 @@ void GcsAutoscalerStateManager::GetNodeStates(
     populate_node_state(*gcs_node_info.second, rpc::autoscaler::NodeState::ALIVE);
   });
 
+  // This might be large if there are many nodes for a long-running cluster.
+  // However, since we don't report resources for a dead node, the data size being
+  // reported by dead node should be small.
   const auto &dead_nodes = gcs_node_manager_.GetAllDeadNodes();
   std::for_each(dead_nodes.begin(), dead_nodes.end(), [&](const auto &gcs_node_info) {
     populate_node_state(*gcs_node_info.second, rpc::autoscaler::NodeState::DEAD);
