@@ -87,6 +87,5 @@ To resolve these issues, you can do the following:
 
     # Add this at the top of your Ray application.
     runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens5"}}
-    ray.init(runtime_env=runtime_env)
-
+    ray.init(runtime_env=runtime_env, ignore_reinit_error=True)
 
