@@ -23,7 +23,6 @@
 
 namespace ray {
 
-namespace gcs {
 using ::testing::_;
 
 class GcsResourceManagerTest : public ::testing::Test {
@@ -130,7 +129,6 @@ TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
 }
 
-}  // namespace gcs
 }  // namespace ray
 
 int main(int argc, char **argv) {
