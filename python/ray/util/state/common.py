@@ -518,8 +518,6 @@ class NodeState(StateSchema):
     end_time_ms: Optional[int] = state_column(
         filterable=False, detail=True, format_fn=Humanify.timestamp
     )
-    #: Cloud instance id if provided when starting the node.
-    instance_id: Optional[str] = state_column(filterable=True, detail=True)
 
 
 # NOTE:

@@ -28,8 +28,6 @@ class RayInstaller(object):
         """
 
         setup_commands = self._config.get_worker_setup_commands(instance)
-        # QQ:
-        # Should add the instance id here? Or we rely
         ray_start_commands = self._config.get_worker_start_ray_commands(instance)
         docker_config = self._config.get_docker_config(instance)
 
