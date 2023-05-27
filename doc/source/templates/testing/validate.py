@@ -7,20 +7,28 @@ def get_root_path() -> Path:
     """
     If we're running from a Ray repo, and just use the
     current file to get the doc directory.
-    ray/doc/source/examples/ -> ray/
+    ray/doc/source/templates/testing -> ray/
 
     For CI, the current file location is:
-    `<bazel_runfiles_dir>/doc/source/examples/validate.py`
+    `<bazel_runfiles_dir>/doc/source/templates/testing/validate.py`
     We can get the "ray root dir" in the same way:
-    <bazel_runfiles_dir>/doc/source/examples -> <bazel_runfiles_dir>/
+    <bazel_runfiles_dir>/doc/source/templates/testing -> <bazel_runfiles_dir>/
     """
-    root_path = Path(__file__).parent / ".." / ".." / ".."
+    root_path = Path(__file__).parent / ".." / ".." / ".." / ".."
     return root_path.resolve()
 
 
 def validate_templates_yaml_schema(templates) -> dict:
     all_missing_fields = {}
-    required_fields = {"title", "description", "path", "cluster_env", "compute_config"}
+    required_fields = {
+        "title",
+        "description",
+        "path",
+        "cluster_env",
+        "compute_config",
+        "emoji",
+        "labels",
+    }
 
     for template_name, template_config in templates.items():
         # ======= Schema check for templates.yaml ========
@@ -45,24 +53,17 @@ def validate_template_paths(templates, invalid_paths) -> None:
             invalid_paths[template_name].append(rel_path)
 
 
-def validate_cluster_envs(templates, invalid_paths, invalid_yamls) -> None:
-    root_path = get_root_path()
-
+def validate_cluster_envs(templates) -> None:
     for template_name, template_config in templates.items():
         if "cluster_env" not in template_config:
             continue
-
-        rel_path = template_config["cluster_env"]
-        cluster_env_path = root_path / rel_path
-        if not cluster_env_path.exists():
-            invalid_paths[template_name].append(rel_path)
-        else:
-            try:
-                # Assert that the yaml file is properly formatted.
-                with open(cluster_env_path, "r") as f:
-                    yaml.safe_load(f)
-            except yaml.parser.ParserError as e:
-                invalid_yamls[template_name].append(str(e))
+        cluster_env = template_config["cluster_env"]
+        assert isinstance(
+            cluster_env, dict
+        ), f"{template_name} cluster_env must be a dict"
+        assert (
+            "byod" in cluster_env or "build_id" in cluster_env
+        ), f"{template_name} cluster_env must have a `byod` config or `build_id`"
 
 
 def validate_compute_configs(templates, invalid_paths, invalid_yamls) -> dict:
@@ -110,7 +111,7 @@ if __name__ == "__main__":
 
     all_missing_fields = validate_templates_yaml_schema(templates)
     validate_template_paths(templates, invalid_paths)
-    validate_cluster_envs(templates, invalid_paths, invalid_yamls)
+    validate_cluster_envs(templates)
     all_missing_providers = validate_compute_configs(
         templates, invalid_paths, invalid_yamls
     )
