@@ -1,7 +1,10 @@
-from typing import List, Callable, Any
+from typing import List, Callable, Any, TypeVar
 
 import ray
 from ray.util.annotations import DeveloperAPI
+import ray.actor
+
+V = TypeVar("V")
 
 
 @DeveloperAPI
@@ -107,7 +110,9 @@ class ActorPool:
 
         return get_generator()
 
-    def map_unordered(self, fn: Callable[[Any], Any], values: List[Any]):
+    def map_unordered(
+        self, fn: Callable[[ray.actor.ActorHandle, V], Any], values: List[V]
+    ):
         """Similar to map(), but returning an unordered iterator.
 
         This returns an unordered iterator that will return results of the map
