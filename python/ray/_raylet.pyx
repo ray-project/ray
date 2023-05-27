@@ -104,6 +104,7 @@ from ray.includes.common cimport (
     RAY_ERROR_INFO_CHANNEL,
     RAY_LOG_CHANNEL,
     RAY_PYTHON_FUNCTION_CHANNEL,
+    GCS_ACTOR_CHANNEL,
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
@@ -2513,6 +2514,31 @@ cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
             return None
         else:
             return python_function.key()
+
+
+# This class should only be used for tests
+cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+
+    def __init__(self, address, worker_id=None):
+        self.connect(address, GCS_ACTOR_CHANNEL, worker_id)
+
+    def poll(self, timeout=None):
+        cdef:
+            CActorTableData actor_data
+            c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        with nogil:
+            check_status(self.inner.get().PollActor(
+                &key_id, timeout_ms, &actor_data))
+
+        from ray.core.generated import gcs_pb2
+
+        info = gcs_pb2.ActorTableData.FromString(
+            actor_data.SerializeAsString())
+
+        return [(key_id, info)]
 
 
 cdef class CoreWorker:

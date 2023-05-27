@@ -447,6 +447,16 @@ Status PythonGcsSubscriber::PollFunctionKey(std::string *key_id,
   return Status::OK();
 }
 
+Status PythonGcsSubscriber::PollActor(std::string *key_id,
+                                      int64_t timeout_ms,
+                                      rpc::ActorTableData *data) {
+  rpc::PubMessage message;
+  RAY_RETURN_NOT_OK(DoPoll(timeout_ms, &message));
+  *key_id = message.key_id();
+  *data = message.actor_message();
+  return Status::OK();
+}
+
 Status PythonGcsSubscriber::Close() {
   {
     absl::MutexLock lock(&mu_);

@@ -197,6 +197,9 @@ class RAY_EXPORT PythonGcsSubscriber {
                          int64_t timeout_ms,
                          rpc::PythonFunction *data);
 
+  /// Polls for actor messages.
+  Status PollActor(std::string *key_id, int64_t timeout_ms, rpc::ActorTableData *data);
+
   /// Closes the subscriber and its active subscription.
   Status Close();
 

@@ -394,6 +394,9 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
         CRayStatus PollFunctionKey(
             c_string* key_id, int64_t timeout_ms, CPythonFunction* data)
 
+        CRayStatus PollActor(
+            c_string* key_id, int64_t timeout_ms, CActorTableData* data)
+
         CRayStatus Close()
 
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
@@ -405,6 +408,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         RAY_LOG_CHANNEL "ray::rpc::ChannelType::RAY_LOG_CHANNEL",
         RAY_PYTHON_FUNCTION_CHANNEL \
             "ray::rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL",
+        GCS_ACTOR_CHANNEL "ray::rpc::ChannelType::GCS_ACTOR_CHANNEL",
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
@@ -465,6 +469,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CActorTableData "ray::rpc::ActorTableData":
         CAddress address() const
         void ParseFromString(const c_string &serialized)
+        const c_string &SerializeAsString()
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":

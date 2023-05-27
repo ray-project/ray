@@ -862,11 +862,9 @@ class Worker:
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
-        import grpc
-
         subscriber = self.gcs_log_subscriber
         subscriber.subscribe()
-        exception_type = grpc.RpcError
+        exception_type = ray.exceptions.RpcError
         localhost = services.get_node_ip_address()
         try:
             # Number of messages received from the last polling. When the batch
