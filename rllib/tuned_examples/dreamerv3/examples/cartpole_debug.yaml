@@ -1,0 +1,13 @@
+cartpole-debug:
+  env: CartPoleDebug-v0
+
+  model_dimension: XS
+
+  gae_lambda: 1.0  # simplify: only care about dreamed rewards, NOT previous vf outputs
+
+  training_ratio: 1024
+
+  summary_frequency_train_steps: 5
+  evaluation_frequency_main_iters:  1
+  evaluation_num_episodes: 10
+  model_save_frequency_main_iters: 1000

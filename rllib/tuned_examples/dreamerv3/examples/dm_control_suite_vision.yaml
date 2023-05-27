@@ -1,0 +1,17 @@
+dm-control-suite-vision:
+  # Run with --env DMC/[task]/[domain], e.g. DMC/cartpole/swingup
+
+  from_pixels: true  # use image observations
+
+  num_envs_per_worker: 4
+  remote_worker_envs: true  # parallel envs
+
+  # See Appendix A.
+  model_dimension: S
+  training_ratio: 512
+
+  # Run config.
+  summary_frequency_train_steps: 100
+  evaluation_frequency_main_iters: 1000
+  evaluation_num_episodes: 2
+  model_save_frequency_main_iters: 10000
