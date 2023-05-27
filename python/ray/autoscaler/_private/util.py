@@ -384,13 +384,35 @@ def fill_node_type_min_max_workers(config):
                 node_type_data.setdefault("max_workers", global_max_workers)
 
 
+def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:
+    """
+    Returns a list of commands with the given environment variables set.
+
+    Args:
+        cmds (List[str]): List of commands to set environment variables for.
+        kv (Dict[str, str]): Dictionary of environment variables to set.
+
+    Returns:
+        List[str]: List of commands with the given environment variables set.
+
+    Example:
+        with_envs(["echo $FOO"], {"FOO": "BAR"})
+            -> ["FOO=BAR echo $FOO"]
+    """
+    out_cmds = []
+    for cmd in cmds:
+        kv_str = ""
+        for k, v in kv.items():
+            kv_str += f"{k}={v} "
+
+        out_cmds.append(f"{kv_str}{cmd}")
+    return out_cmds
+
+
 def with_head_node_ip(cmds, head_ip=None):
     if head_ip is None:
         head_ip = services.get_node_ip_address()
-    out = []
-    for cmd in cmds:
-        out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))
-    return out
+    return with_envs(cmds, {"RAY_HEAD_IP": head_ip})
 
 
 def hash_launch_conf(node_conf, auth):

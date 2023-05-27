@@ -136,6 +136,22 @@ def state_api_manager():
     yield manager
 
 
+def state_source_client(gcs_address):
+    GRPC_CHANNEL_OPTIONS = (
+        *ray_constants.GLOBAL_GRPC_OPTIONS,
+        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    )
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
+    )
+    gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+    client = StateDataSourceClient(
+        gcs_channel=gcs_channel, gcs_aio_client=gcs_aio_client
+    )
+    return client
+
+
 @pytest.fixture
 def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
@@ -1490,16 +1506,7 @@ async def test_state_data_source_client(ray_start_cluster):
     # worker
     worker = cluster.add_node(num_cpus=2)
 
-    GRPC_CHANNEL_OPTIONS = (
-        *ray_constants.GLOBAL_GRPC_OPTIONS,
-        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    )
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
-    )
-    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    client = state_source_client(cluster.address)
 
     """
     Test actor
@@ -1657,17 +1664,7 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
-    GRPC_CHANNEL_OPTIONS = (
-        *ray_constants.GLOBAL_GRPC_OPTIONS,
-        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    )
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
-    )
-    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
-
+    client = state_source_client(gcs_address=cluster.address)
     """
     Test actor
     """
@@ -1723,17 +1720,7 @@ async def test_state_data_source_client_limit_distributed_sources(ray_start_clus
     # head
     cluster.add_node(num_cpus=8)
     ray.init(address=cluster.address)
-
-    GRPC_CHANNEL_OPTIONS = (
-        *ray_constants.GLOBAL_GRPC_OPTIONS,
-        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    )
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        cluster.address, GRPC_CHANNEL_OPTIONS, asynchronous=True
-    )
-    gcs_aio_client = GcsAioClient(address=cluster.address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    client = state_source_client(cluster.address)
     for node in ray.nodes():
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
@@ -2147,6 +2134,34 @@ def test_list_get_pgs(shutdown_only):
     print(list_placement_groups())
 
 
+@pytest.mark.asyncio
+async def test_node_instance_id(ray_start_cluster, monkeypatch):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, node_name="head_node")
+    ray.init(address=cluster.address)
+    with monkeypatch.context() as m:
+        m.setenv(
+            "RAY_CLOUD_INSTANCE_ID",
+            "test_cloud_id",
+        )
+        cluster.add_node(num_cpus=1, node_name="worker_node")
+    client = state_source_client(cluster.address)
+
+    async def verify():
+        reply = await client.get_all_node_info()
+        print(reply)
+        assert len(reply.node_info_list) == 2
+        for node_info in reply.node_info_list:
+            if node_info.node_name == "worker_node":
+                assert node_info.instance_id == "test_cloud_id"
+            else:
+                assert node_info.instance_id == ""
+
+        return True
+
+    await async_wait_for_condition_async_predicate(verify)
+
+
 @pytest.mark.skipif(
     sys.platform == "win32",
     reason="Failed on Windows",
@@ -2158,7 +2173,7 @@ def test_list_get_nodes(ray_start_cluster):
     cluster.add_node(num_cpus=1, node_name="worker_node")
 
     def verify():
-        nodes = list_nodes()
+        nodes = list_nodes(detail=True)
         for node in nodes:
             assert node["state"] == "ALIVE"
             assert is_hex(node["node_id"])
