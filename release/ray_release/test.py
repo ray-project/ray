@@ -6,10 +6,7 @@ from dataclasses import dataclass
 
 import boto3
 
-from ray_release.result import (
-    ResultStatus,
-    Result,
-)
+from ray_release.result import Result
 
 AWS_BUCKET = "ray-ci-results"
 AWS_TEST_KEY = "ray_tests"
@@ -24,7 +21,7 @@ DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 
 @dataclass
 class TestResult:
-    status: ResultStatus
+    status: str
     commit: str
     url: str
     timestamp: int
@@ -32,7 +29,7 @@ class TestResult:
     @classmethod
     def from_result(cls, result: Result):
         return cls(
-            status=ResultStatus(result.status),
+            status=result.status,
             commit=os.environ.get("BUILDKITE_COMMIT", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
@@ -41,7 +38,7 @@ class TestResult:
     @classmethod
     def from_dict(cls, result: dict):
         return cls(
-            status=ResultStatus(result["status"]),
+            status=result["status"],
             commit=result["commit"],
             url=result["url"],
             timestamp=result["timestamp"],
