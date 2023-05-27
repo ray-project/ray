@@ -7,10 +7,9 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from typing import Any, Dict, Mapping, Tuple, Union
+from typing import Any, Dict, Mapping, Tuple
 
 import gymnasium as gym
-import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
     DreamerV3Learner,
@@ -37,7 +36,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
     as it is framework independent.
 
     We define 3 local tensorflow optimizers for the sub components "world_model",
-    "actor", and "critic". Each of these optimizers might ue a different learning rate,
+    "actor", and "critic". Each of these optimizers might use a different learning rate,
     epsilon parameter, and gradient clipping thresholds and procedures.
     """
 
@@ -135,13 +134,13 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         hps: DreamerV3LearnerHyperparameters,
         batch: SampleBatch,
         fwd_out: Mapping[str, TensorType],
-    ) -> Union[Mapping[str, Any], TensorType]:
+    ) -> TensorType:
 
         # World model losses.
         prediction_losses = self._compute_world_model_prediction_losses(
             hps=hps,
-            rewards=batch[SampleBatch.REWARDS],
-            continues=(1.0 - batch["is_terminated"]),
+            rewards_B_T=batch[SampleBatch.REWARDS],
+            continues_B_T=(1.0 - batch["is_terminated"]),
             fwd_out=fwd_out,
         )
 
@@ -272,16 +271,22 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
     def _compute_world_model_prediction_losses(
         self,
         *,
-        hps,
-        rewards,
-        continues,
-        fwd_out,
-    ) -> ResultDict:
+        hps: DreamerV3LearnerHyperparameters,
+        rewards_B_T: TensorType,
+        continues_B_T: TensorType,
+        fwd_out: Mapping[str, TensorType],
+    ) -> Mapping[str, TensorType]:
         """Helper method computing all world-model related prediction losses.
 
-        Prediction losses are those to train the predictors of the world model:
-        Reward predictor, continue predictor, and the decoder (which predicts
+        Prediction losses are used to train the predictors of the world model, which
+        are: Reward predictor, continue predictor, and the decoder (which predicts
         observations).
+
+        Args:
+            hps: The DreamerV3LearnerHyperparameters to use.
+            rewards_B_T: The rewards batch in the shape (B, T) and of type float32.
+            continues_B_T: The continues batch in the shape (B, T) and of type float32
+                (1.0 -> continue; 0.0 -> end of episode).
         """
 
         # Learn to produce symlog'd observation predictions.
@@ -289,10 +294,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # same as `obs_BxT`.
         obs_BxT = fwd_out["sampled_obs_symlog_BxT"]
         obs_distr = fwd_out["obs_distribution_BxT"]
-        # Fold time dim and flatten all other (image?) dims.
-        obs_BxT = tf.reshape(
-            obs_BxT, shape=[-1, int(np.prod(obs_BxT.shape.as_list()[1:]))]
-        )
+        # Leave time dim folded (BxT) and flatten all other (e.g. image) dims.
+        obs_BxT = tf.reshape(obs_BxT, shape=[-1, tf.reduce_prod(obs_BxT.shape[1:])])
 
         # Neg logp loss.
         # decoder_loss = - obs_distr.log_prob(observations)
@@ -313,19 +316,19 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # [B x num_buckets].
         reward_logits_BxT = fwd_out["reward_logits_BxT"]
         # Learn to produce symlog'd reward predictions.
-        rewards = symlog(rewards)
+        rewards_symlog_B_T = symlog(rewards_B_T)
         # Fold time dim.
-        rewards = tf.reshape(rewards, shape=[-1])
+        rewards_symlog_BxT = tf.reshape(rewards_symlog_B_T, shape=[-1])
 
         # Two-hot encode.
-        two_hot_rewards = two_hot(rewards)
-        # two_hot_rewards=[B*T, num_buckets]
+        two_hot_rewards_symlog_BxT = two_hot(rewards_symlog_BxT)
+        # two_hot_rewards_symlog_BxT=[B*T, num_buckets]
         reward_log_pred_BxT = reward_logits_BxT - tf.math.reduce_logsumexp(
             reward_logits_BxT, axis=-1, keepdims=True
         )
         # Multiply with two-hot targets and neg.
         reward_loss_two_hot_BxT = -tf.reduce_sum(
-            reward_log_pred_BxT * two_hot_rewards, axis=-1
+            reward_log_pred_BxT * two_hot_rewards_symlog_BxT, axis=-1
         )
         # Unfold time rank back in.
         reward_loss_two_hot_B_T = tf.reshape(
@@ -338,8 +341,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         continue_distr = fwd_out["continue_distribution_BxT"]
         # -log(p) loss
         # Fold time dim.
-        continues = tf.reshape(continues, shape=[-1])
-        continue_loss_BxT = -continue_distr.log_prob(continues)
+        continues_BxT = tf.reshape(continues_B_T, shape=[-1])
+        continue_loss_BxT = -continue_distr.log_prob(continues_BxT)
         # Unfold time rank back in.
         continue_loss_B_T = tf.reshape(
             continue_loss_BxT, (hps.batch_size_B, hps.batch_length_T)
@@ -362,14 +365,18 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         }
 
     def _compute_world_model_dynamics_and_representation_loss(
-        self, *, hps, fwd_out
+        self, *, hps: DreamerV3LearnerHyperparameters, fwd_out: Dict[str, Any]
     ) -> Tuple[TensorType, TensorType]:
         """Helper method computing the world-model's dynamics and representation losses.
 
-        Dynamics loss: Trains the prior network, predicting z^ prior states from
-        h-states.
-        Representation loss: Trains posterior network, predicting z posterior states
-        from h-states and (encoded) observations.
+        Args:
+            hps: The DreamerV3LearnerHyperparameters to use.
+
+        Returns:
+            Tuple consisting of a) dynamics loss: Trains the prior network, predicting
+            z^ prior states from h-states and b) representation loss: Trains posterior
+            network, predicting z posterior states from h-states and (encoded)
+            observations.
         """
 
         # Actual distribution over stochastic internal states (z) produced by the
@@ -623,11 +630,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         self,
         *,
         hps: DreamerV3LearnerHyperparameters,
-        rewards_t0_to_H_BxT,
-        intrinsic_rewards_t1_to_H_BxT,
-        continues_t0_to_H_BxT,
-        value_predictions_t0_to_H_BxT,
-    ):
+        rewards_t0_to_H_BxT: TensorType,
+        intrinsic_rewards_t1_to_H_BxT: TensorType,
+        continues_t0_to_H_BxT: TensorType,
+        value_predictions_t0_to_H_BxT: TensorType,
+    ) -> TensorType:
         """Helper method computing the value targets.
 
         All args are (H, BxT, ...) and in non-symlog'd (real) reward space.
@@ -635,15 +642,34 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         See [1] eq. 8 and 10.
         Thus, targets are always returned in real (non-symlog'd space).
         They need to be re-symlog'd before computing the critic loss from them (b/c the
-        critic does produce predictions in symlog space).
+        critic produces predictions in symlog space).
+        Note that the original B and T ranks together form the new batch dimension
+        (folded into BxT) and the new time rank is the dream horizon (hence: [H, BxT]).
 
         Variable names nomenclature:
         `H`=1+horizon_H (start state + H steps dreamed),
-        `BxT`=batch_size * batch_length (original trajectory time rank has been folded).
+        `BxT`=batch_size * batch_length (meaning the original trajectory time rank has
+        been folded).
 
-        Rewards, continues, and value predictions are all of shape [t0-H, B]
+        Rewards, continues, and value predictions are all of shape [t0-H, BxT]
         (time-major), whereas returned targets are [t0 to H-1, B] (last timestep missing
         b/c the target value equals vf prediction in that location anyways.
+
+        Args:
+            hps: The DreamerV3LearnerHyperparameters to use.
+            rewards_t0_to_H_BxT: The reward predictor's predictions over the
+                dreamed trajectory t0 to H (and for the batch BxT).
+            intrinsic_rewards_t1_to_H_BxT: The predicted intrinsic rewards over the
+                dreamed trajectory t0 to H (and for the batch BxT).
+            continues_t0_to_H_BxT: The continue predictor's predictions over the
+                dreamed trajectory t0 to H (and for the batch BxT).
+            value_predictions_t0_to_H_BxT: The critic's value predictions over the
+                dreamed trajectory t0 to H (and for the batch BxT).
+
+        Returns:
+            The value targets in the shape: [t0toH-1, BxT]. Note that the last step (H)
+            does not require a value target as it matches the critic's value prediction
+            anyways.
         """
         # The first reward is irrelevant (not used for any VF target).
         rewards_t1_to_H_BxT = rewards_t0_to_H_BxT[1:]
@@ -667,24 +693,39 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         # Reverse along time axis and cut the last entry (value estimate at very end
         # cannot be learnt from as it's the same as the ... well ... value estimate).
-        targets = tf.stack(list(reversed(Rs))[:-1], axis=0)
+        targets_t0toHm1_BxT = tf.stack(list(reversed(Rs))[:-1], axis=0)
         # targets.shape=[t0 to H-1,BxT]
 
-        return targets
+        return targets_t0toHm1_BxT
 
     def _compute_scaled_value_targets(
         self,
         *,
-        module_id,
+        module_id: ModuleID,
         hps: DreamerV3LearnerHyperparameters,
-        value_targets,
-        value_predictions,
-    ):
-        """Helper method computing the scaled value targets."""
+        value_targets_t0_to_Hm1_BxT: TensorType,
+        value_predictions_t0_to_Hm1_BxT: TensorType,
+    ) -> TensorType:
+        """Helper method computing the scaled value targets.
+
+        Args:
+            module_id: The module_id to compute value targets for.
+            hps: The DreamerV3LearnerHyperparameters to use.
+            value_targets_t0_to_Hm1_BxT: The value targets computed by
+                `self._compute_value_targets` in the shape of (t0 to H-1, BxT)
+                and of type float32.
+            value_predictions_t0_to_Hm1_BxT: The critic's value predictions over the
+                dreamed trajectories (w/o the last timestep). The shape of this
+                tensor is (t0 to H-1, BxT) and the type is float32.
+
+        Returns:
+            The scaled value targets used by the actor for REINFORCE policy updates
+            (using scaled advantages). See [1] eq. 12 for more details.
+        """
         actor = self.module[module_id].actor
 
-        value_targets_H_B = value_targets
-        value_predictions_H_B = value_predictions
+        value_targets_H_B = value_targets_t0_to_Hm1_BxT
+        value_predictions_H_B = value_predictions_t0_to_Hm1_BxT
 
         # Compute S: [1] eq. 12.
         Per_R_5 = tfp.stats.percentile(value_targets_H_B, 5)
