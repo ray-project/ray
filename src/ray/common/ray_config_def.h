@@ -825,7 +825,3 @@ RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
 // See https://github.com/ray-project/ray/pull/33976 for more
 // info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
-
-// The cloud instance id for the node if it's started by
-// cloud provider.
-RAY_CONFIG(std::string, cloud_instance_id, "")

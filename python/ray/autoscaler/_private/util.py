@@ -397,13 +397,13 @@ def with_envs(cmds, kv=Dict[str, str]) -> str:
 
     Example:
         with_envs(["echo $FOO"], {"FOO": "BAR"})
-            -> ["export FOO=BAR; echo $FOO"]
+            -> ["FOO=BAR echo $FOO"]
     """
     out_cmds = []
     for cmd in cmds:
         kv_str = ""
         for k, v in kv.items():
-            kv_str += f"export {k}={v}; "
+            kv_str += f"{k}={v} "
 
         out_cmds.append(f"{kv_str}{cmd}")
     return out_cmds

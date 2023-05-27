@@ -52,14 +52,14 @@ class RayInstaller(object):
             ),
             setup_commands=with_head_node_ip(setup_commands, head_node_ip),
             # This will prepend envs to the begin of the ray start commands, e.g.
-            # `export RAY_HEAD_IP=<head_node_ip>; \
-            #  export RAY_cloud_instance_id=<instance_id>; \
+            # `RAY_HEAD_IP=<head_node_ip> \
+            #  RAY_CLOUD_INSTANCE_ID=<instance_id> \
             #  ray start --head ...`
             ray_start_commands=with_envs(
                 ray_start_commands,
                 {
                     "RAY_HEAD_IP": head_node_ip,
-                    "RAY_cloud_instance_id": instance.instance_id,
+                    "RAY_CLOUD_INSTANCE_ID": instance.instance_id,
                 },
             ),
             runtime_hash=self._config.runtime_hash,
