@@ -218,11 +218,11 @@ class RAY_EXPORT PythonGcsSubscriber {
   std::string subscriber_id_;
   std::string publisher_id_;
   std::string worker_id_;
-  int64_t max_processed_sequence_id_;
-  int64_t last_batch_size_;
-  std::deque<rpc::PubMessage> queue_;
-  bool closed_;
-  std::shared_ptr<grpc::ClientContext> current_polling_context_;
+  int64_t max_processed_sequence_id_ GUARDED_BY(mu_);
+  int64_t last_batch_size_ GUARDED_BY(mu_);
+  std::deque<rpc::PubMessage> queue_ GUARDED_BY(mu_);
+  bool closed_ GUARDED_BY(mu_);
+  std::shared_ptr<grpc::ClientContext> current_polling_context_ GUARDED_BY(mu_);
 };
 
 /// Get the .lines() attribute of a LogBatch as a std::vector

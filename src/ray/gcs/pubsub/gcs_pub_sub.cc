@@ -369,10 +369,10 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
     request.set_publisher_id(publisher_id_);
 
     rpc::GcsSubscriberPollReply reply;
+    auto context = current_polling_context_;
     // Drop the lock while in RPC
     mu_.Unlock();
-    grpc::Status status =
-        pubsub_stub_->GcsSubscriberPoll(current_polling_context_.get(), request, &reply);
+    grpc::Status status = pubsub_stub_->GcsSubscriberPoll(context.get(), request, &reply);
     mu_.Lock();
 
     if (status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
@@ -458,12 +458,14 @@ Status PythonGcsSubscriber::PollActor(std::string *key_id,
 }
 
 Status PythonGcsSubscriber::Close() {
+  std::shared_ptr<grpc::ClientContext> current_polling_context;
   {
     absl::MutexLock lock(&mu_);
     closed_ = true;
+    current_polling_context = current_polling_context_;
   }
-  if (current_polling_context_) {
-    current_polling_context_->TryCancel();
+  if (current_polling_context) {
+    current_polling_context->TryCancel();
   }
 
   grpc::ClientContext context;
