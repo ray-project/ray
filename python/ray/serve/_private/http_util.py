@@ -4,10 +4,9 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, Type
+from typing import Any, Dict, List, Type
 
-import starlette.responses
-import starlette.requests
+from starlette.requests import Request
 from starlette.types import Send, ASGIApp
 from fastapi.encoders import jsonable_encoder
 
@@ -48,7 +47,7 @@ def build_starlette_request(scope, serialized_body: bytes):
         received = True
         return {"body": serialized_body, "type": "http.request", "more_body": False}
 
-    return starlette.requests.Request(scope, mock_receive)
+    return Request(scope, mock_receive)
 
 
 class Response:
@@ -57,7 +56,7 @@ class Response:
     It is expected to be called in async context and pass along
     `scope, receive, send` as in ASGI spec.
 
-    >>> from ray.serve.http_util import Response
+    >>> from ray.serve.http_util import Response  # doctest: +SKIP
     >>> scope, receive = ... # doctest: +SKIP
     >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
@@ -134,7 +133,7 @@ class RawASGIResponse(ASGIApp):
     def __init__(self, messages):
         self.messages = messages
 
-    async def __call__(self, _scope, _receive, send):
+    async def __call__(self, scope, receive, send):
         for message in self.messages:
             await send(message)
 
@@ -157,6 +156,45 @@ class ASGIHTTPSender(Send):
 
     def build_asgi_response(self) -> RawASGIResponse:
         return RawASGIResponse(self.messages)
+
+
+class ASGIHTTPQueueSender(Send):
+    """ASGI sender that enables polling for the sent messages off a queue.
+
+    This class assumes a single consumer of the queue (concurrent calls to
+    `get_messages_nowait` and `wait_for_message` may result in undefined behavior).
+    """
+
+    def __init__(self):
+        self._message_queue = asyncio.Queue()
+        self._new_message_event = asyncio.Event()
+
+    async def __call__(self, message: Dict[str, Any]):
+        assert message["type"] in ("http.response.start", "http.response.body")
+        await self._message_queue.put(message)
+        self._new_message_event.set()
+
+    def get_messages_nowait(self) -> List[Dict[str, Any]]:
+        """Returns all messages that are currently available (non-blocking).
+
+        At least one message will be present if `wait_for_message` had previously
+        returned and a subsequent call to `wait_for_message` blocks until at
+        least one new message is available.
+        """
+        messages = []
+        while not self._message_queue.empty():
+            messages.append(self._message_queue.get_nowait())
+
+        self._new_message_event.clear()
+        return messages
+
+    async def wait_for_message(self):
+        """Wait until at least one new message is available.
+
+        If a message is available, this method will return immediately on each call
+        until `get_messages_nowait` is called.
+        """
+        await self._new_message_event.wait()
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:

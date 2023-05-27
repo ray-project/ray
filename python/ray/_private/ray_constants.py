@@ -288,8 +288,6 @@ LOG_PREFIX_JOB_ID = ":job_id:"
 LOG_PREFIX_TASK_ATTEMPT_START = ":task_attempt_start:"
 # Task attempts magic token marked the beginning of the task logs
 LOG_PREFIX_TASK_ATTEMPT_END = ":task_attempt_end:"
-# Task attempt magic token template
-LOG_PREFIX_TASK_ATTEMPT_TEMPLATE = "{prefix}_{task_name}_{task_id}_{attempt_number}\n"
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
@@ -431,7 +429,7 @@ RAY_ALLOWED_CACHED_PORTS = {
     "gcs_server_port",  # the `port` option for gcs port.
 }
 
-RAY_ENABLE_RECORD_TASK_LOGGING = env_bool("RAY_ENABLE_RECORD_TASK_LOGGING", False)
+RAY_ENABLE_RECORD_TASK_LOGGING = env_bool("RAY_ENABLE_RECORD_TASK_LOGGING", True)
 
 WORKER_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_SETUP_HOOK_ENV_VAR"
 RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = "RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT"
