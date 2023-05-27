@@ -691,3 +691,46 @@ API Reference
 - For the CLI Reference, see :ref:`State CLI Refernece <state-api-cli-ref>`.
 - For the SDK Reference, see :ref:`State API Reference <state-api-ref>`.
 - For the Log CLI Reference, see :ref:`Log CLI Reference <ray-logs-api-cli-ref>`.
+
+
+
+
+Using Ray Cluster CLI tools
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Ray provides several CLI tools for observing the current cluster and
+application state.  The ``ray status`` command provides information about the
+current status of nodes in the cluster, as well as information about
+autoscaling. Other Ray CLI tools allow you to read logs across the cluster and
+summarize application state such as the currently running tasks and actors.
+These tools are summarized :ref:`here <state-api-overview-ref>`.
+
+These CLI commands can be run on any node in a Ray Cluster. Examples for
+executing these commands from a machine outside the Ray Cluster are provided
+below.
+
+.. tab-set::
+
+    .. tab-item:: If using the VM cluster launcher
+
+        Execute a command on the cluster using ``ray exec``:
+
+        .. code-block:: shell
+
+            $ ray exec <cluster config file> "ray status"
+
+    .. tab-item:: If using Kubernetes
+
+        Execute a command on the cluster using ``kubectl exec`` and the configured
+        RayCluster name. We will use the Service targeting the Ray head pod to
+        execute a CLI command on the cluster.
+
+        .. code-block:: shell
+
+            # First, find the name of the Ray head service.
+            $ kubectl get pod | grep <RayCluster name>-head
+            # NAME                                             READY   STATUS    RESTARTS   AGE
+            # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
+
+            # Then, use the name of the Ray head service to run `ray status`.
+            $ kubectl exec <RayCluster name>-head-xxxxx -- ray status

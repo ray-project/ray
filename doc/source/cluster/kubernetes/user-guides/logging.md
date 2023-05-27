@@ -2,8 +2,9 @@
 
 # Log Persistence
 
-This page provides tips on how to collect logs from
-Ray clusters running on Kubernetes.
+Logs (both system and application logs) are useful for monitoring and troubleshooting your applications and the Ray system. For example, you may want to access your application's logs if a node dies.
+
+Similar to Kubenetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. This page provides tips on how to collect logs from Ray clusters running on Kubernetes.
 
 :::{tip}
 Skip to {ref}`the deployment instructions <kuberay-logging-tldr>`
@@ -11,13 +12,12 @@ for a sample configuration showing how to extract logs from a Ray pod.
 :::
 
 ## The Ray log directory
-By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application logs and Ray system logs. Learn more about the [log directory and log file structure](../../../ray-observability/user-guides/configure-logging.rst) before you start to collect the logs.
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application logs and Ray system logs. Learn more about the [log directory and log file structure](../../../ray-observability/user-guides/configure-logging.md) before you start to collect the logs.
 
 Extracting and persisting these logs requires some setup.
 
 ## Log processing tools
-There are a number of log processing tools available within the Kubernetes
-ecosystem. This page will shows how to extract Ray logs using [Fluent Bit][FluentBit].
+There are a number of open source log processing tools available within the Kubernetes ecosystem. This page will shows how to extract Ray logs using [Fluent Bit][FluentBit].
 Other popular tools include [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
 
 ## Log collection strategies
@@ -144,81 +144,8 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [KubDoc]: https://kubernetes.io/docs/concepts/cluster-administration/logging/
 [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 
-## Using structured logging
 
-The metadata of tasks or actors may be obtained by Ray's :ref:`runtime_context APIs <runtime-context-apis>`.
-Runtime context APIs help you to add metadata to your logging messages, making your logs more structured.
-
-```python
-import ray
-# Initiate a driver.
-ray.init()
-
- @ray.remote
-def task():
-    print(f"task_id: {ray.get_runtime_context().task_id}")
-
-ray.get(task.remote())
-```
-
-```bash
-(pid=47411) task_id: TaskID(a67dc375e60ddd1affffffffffffffffffffffff01000000)
-```
 ## Redirecting Ray logs to stderr
+By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. It may not be ideal if the log processing tool needs log to be written to stderr in order for them to be captured. View [configuring logging](../../../ray-observability/user-guides/configure-logging.md#redirecting-ray-logs-to-stderr) for details on redirect all the logs to stderr of the host pods instead.
 
-By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. If you wish to redirect all internal Ray logging and your own logging within tasks/actors to stderr of the host nodes, you can do so by ensuring that the ``RAY_LOG_TO_STDERR=1`` environment variable is set on the driver and on all Ray nodes. This practice is not recommended but may be useful if you are using a log aggregator that needs log records to be written to stderr in order for them to be captured.
 
-Redirecting logging to stderr will also cause a ``({component})`` prefix, e.g. ``(raylet)``, to be added to each of the log record messages.
-
-```bash
-[2022-01-24 19:42:02,978 I 1829336 1829336] (gcs_server) grpc_server.cc:103: GcsServer server started, listening on port 50009.
-[2022-01-24 19:42:06,696 I 1829415 1829415] (raylet) grpc_server.cc:103: ObjectManager server started, listening on port 40545.
-2022-01-24 19:42:05,087 INFO (dashboard) dashboard.py:95 -- Setup static dir for dashboard: /mnt/data/workspace/ray/python/ray/dashboard/client/build
-2022-01-24 19:42:07,500 INFO (dashboard_agent) agent.py:105 -- Dashboard agent grpc address: 0.0.0.0:49228
-```
-
-This should make it easier to filter the stderr stream of logs down to the component of interest. Note that multi-line log records will **not** have this component marker at the beginning of each line.
-
-When running a local Ray cluster, this environment variable should be set before starting the local cluster:
-
-```python
-os.environ["RAY_LOG_TO_STDERR"] = "1"
-ray.init()
-```
-
-When starting a local cluster via the CLI or when starting nodes in a multi-node Ray cluster, this environment variable should be set before starting up each node:
-
-```bash
-env RAY_LOG_TO_STDERR=1 ray start
-```
-
-If using the Ray cluster launcher, you would specify this environment variable in the Ray start commands:
-
-```bash
-head_start_ray_commands:
-    - ray stop
-    - env RAY_LOG_TO_STDERR=1 ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-
-worker_start_ray_commands:
-    - ray stop
-    - env RAY_LOG_TO_STDERR=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
-```
-
-When connecting to the cluster, be sure to set the environment variable before connecting:
-
-```python
-os.environ["RAY_LOG_TO_STDERR"] = "1"
-ray.init(address="auto")
-```
-
-## Rotating logs
-
-Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Raylet and Python/Java worker logs are not rotating).
-
-By default, logs are rotating when it reaches to 512MB (maxBytes), and there could be up to 5 backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
-If you'd like to change the log rotation configuration, you can do it by specifying environment variables. For example,
-
-```bash
-RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
-RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
-```

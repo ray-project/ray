@@ -2,10 +2,10 @@
 
 Logs (both system and application logs) are useful for monitoring and troubleshooting your applications and the Ray system. For example, you may want to access your application's logs if a node dies.
 
-Similar to Kubenetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. The following sections provide some guidan e on how to collect logs from Ray clusters running on VMs.
+Similar to Kubenetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. The following sections provide some guidane on how to collect logs from Ray clusters running on VMs.
 
 ## The Ray log directory
-By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray node's file system, including application logs and Ray system logs. Learn more about the [log directory and log file structure](../../../ray-observability/user-guides/configure-logging.rst) before you start to collect the logs.
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray node's file system, including application logs and Ray system logs. Learn more about the [log directory and log file structure](../../../ray-observability/user-guides/configure-logging.md) before you start to collect the logs.
 
 Extracting and persisting these logs requires some setup.
 
@@ -26,5 +26,9 @@ Other popular tools include [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promt
 After choosing a log processing tool based on your needs, usually you need to perform the following step:
 
 1. Ingest log files on each node of your Ray cluster as sources.
-2. Parse and transform the logs based on your needs. You may want to use [Ray's structured logging](../../../ray-observability/user-guides/configure-logging.rst) to simplify this step.
+2. Parse and transform the logs based on your needs. You may want to use [Ray's structured logging](../../../ray-observability/user-guides/configure-logging.md#structured-logging) to simplify this step.
 3. Ship the transformed logs to log storage or management systems.
+
+
+## Redirecting Ray logs to stderr
+By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. It may not be ideal if the log processing tool needs log to be written to stderr in order for them to be captured. View [configuring logging](../../../ray-observability/user-guides/configure-logging.md#redirecting-ray-logs-to-stderr) for details on redirect all the logs to stderr of the host nodes instead.

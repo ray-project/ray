@@ -62,6 +62,19 @@ ray_data_logger.setLevel(logging.WARNING)
 ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 ```
 
+## Log rotation
+
+Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Raylet and Python/Java worker logs are not rotating).
+
+By default, logs are rotating when it reaches to 512MB (maxBytes), and there could be up to 5 backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
+If you'd like to change the log rotation configuration, you can do it by specifying environment variables. For example,
+
+```bash
+RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
+RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
+```
+
+
 ## Structured logging
 Implementation of structured logging is usually recommended to make downstream users/applications consume the logs more efficiently.
 
@@ -231,6 +244,54 @@ import ray
 ray.init(log_to_driver=False)
 ```
 
+## Redirecting Ray logs to stderr
+
+By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. If you wish to redirect logs to stderr of the host nodes instead, you can do so by ensuring that the ``RAY_LOG_TO_STDERR=1`` environment variable is set on the driver and on all Ray nodes. This practice is not recommended but may be useful if your log processing tool needs log records to be written to stderr in order for them to be captured.
+
+Redirecting logging to stderr will also cause a ``({component})`` prefix, e.g. ``(raylet)``, to be added to each of the log record messages.
+
+```bash
+[2022-01-24 19:42:02,978 I 1829336 1829336] (gcs_server) grpc_server.cc:103: GcsServer server started, listening on port 50009.
+[2022-01-24 19:42:06,696 I 1829415 1829415] (raylet) grpc_server.cc:103: ObjectManager server started, listening on port 40545.
+2022-01-24 19:42:05,087 INFO (dashboard) dashboard.py:95 -- Setup static dir for dashboard: /mnt/data/workspace/ray/python/ray/dashboard/client/build
+2022-01-24 19:42:07,500 INFO (dashboard_agent) agent.py:105 -- Dashboard agent grpc address: 0.0.0.0:49228
+```
+
+This should make it easier to filter the stderr stream of logs down to the component of interest. Note that multi-line log records will **not** have this component marker at the beginning of each line.
+
+When running a local Ray cluster, this environment variable should be set before starting the local cluster:
+
+```python
+os.environ["RAY_LOG_TO_STDERR"] = "1"
+ray.init()
+```
+
+When starting a local cluster via the CLI or when starting nodes in a multi-node Ray cluster, this environment variable should be set before starting up each node:
+
+```bash
+env RAY_LOG_TO_STDERR=1 ray start
+```
+
+If using the Ray cluster launcher, you would specify this environment variable in the Ray start commands:
+
+```bash
+head_start_ray_commands:
+    - ray stop
+    - env RAY_LOG_TO_STDERR=1 ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+worker_start_ray_commands:
+    - ray stop
+    - env RAY_LOG_TO_STDERR=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+```
+
+When connecting to the cluster, be sure to set the environment variable before connecting:
+
+```python
+os.environ["RAY_LOG_TO_STDERR"] = "1"
+ray.init(address="auto")
+```
+
+
 
 ## Log deduplication
 
@@ -284,5 +345,3 @@ Limitations:
 
 By default, the builtin print will also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
 This avoids progress bar corruption on driver print statements. To disable this, set `RAY_TQDM_PATCH_PRINT=0`.
-
-
