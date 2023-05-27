@@ -189,6 +189,7 @@ class ResultGrid:
         Example:
 
             .. testcode::
+
                 from ray.air import session
                 from ray.air.config import RunConfig
                 from ray.tune import Tuner
