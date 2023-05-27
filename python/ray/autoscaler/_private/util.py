@@ -384,7 +384,7 @@ def fill_node_type_min_max_workers(config):
                 node_type_data.setdefault("max_workers", global_max_workers)
 
 
-def with_envs(cmds, kv=Dict[str, str]) -> str:
+def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:
     """
     Returns a list of commands with the given environment variables set.
 
