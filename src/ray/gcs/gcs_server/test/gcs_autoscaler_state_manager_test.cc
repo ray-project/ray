@@ -12,15 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
-
+// clang-format off
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/test/gcs_test_util.h"
+// clang-format on
 
 namespace ray {
 
@@ -28,9 +29,9 @@ namespace gcs {
 using ::testing::_;
 
 // Test suite for AutoscalerState related functionality.
-class GcsResourceManagerAutoscalerStateTest : public ::testing::Test {
+class GcsAutoscalerStateManagerTest : public ::testing::Test {
  public:
-  GcsResourceManagerAutoscalerStateTest() : cluster_resource_manager_(io_service_) {
+  GcsAutoscalerStateManagerTest() : cluster_resource_manager_(io_service_) {
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_, cluster_resource_manager_, NodeID::FromRandom());
     gcs_node_manager_ = std::make_shared<gcs::MockGcsNodeManager>();
@@ -138,7 +139,7 @@ class GcsResourceManagerAutoscalerStateTest : public ::testing::Test {
   }
 };
 
-TEST_F(GcsResourceManagerAutoscalerStateTest, TestNodeAddUpdateRemove) {
+TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
   auto node = Mocker::GenNodeInfo();
 
   // Adding a node.
@@ -178,7 +179,7 @@ TEST_F(GcsResourceManagerAutoscalerStateTest, TestNodeAddUpdateRemove) {
   }
 }
 
-TEST_F(GcsResourceManagerAutoscalerStateTest, TestBasicResourceRequests) {
+TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
   auto node = Mocker::GenNodeInfo();
   node->mutable_resources_total()->insert({"CPU", 2});
   node->mutable_resources_total()->insert({"GPU", 1});
