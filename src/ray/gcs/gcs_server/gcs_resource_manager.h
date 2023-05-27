@@ -32,9 +32,6 @@ namespace ray {
 
 class GcsMonitorServerTest;
 
-using AggregatedResourceLoad =
-    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>;
-
 using raylet::ClusterTaskManager;
 namespace gcs {
 /// Ideally, the logic related to resource calculation should be moved from
@@ -147,7 +144,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
 
   /// Get aggregated resource load of all nodes.
-  AggregatedResourceLoad GetAggregatedResourceLoad() const;
+  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+  GetAggregatedResourceLoad() const;
 
  private:
   /// Aggregate nodes' pending task info.
@@ -155,7 +153,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param resources_data A node's pending task info (by shape).
   /// \param aggregate_load[out] The aggregate pending task info (across the cluster).
   void FillAggregateLoad(const rpc::ResourcesData &resources_data,
-                         AggregatedResourceLoad *aggregate_load) const;
+                         std::unordered_map<google::protobuf::Map<std::string, double>,
+                                            rpc::ResourceDemand> *aggregate_load) const;
 
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.

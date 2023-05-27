@@ -118,9 +118,6 @@ void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    // QQ: So this doesn't update total resources, but the below UpdateNodeResourceUsage
-    // updates the total resources info in `node_resource_usages_`.
-    // Do we ever expect a node to have total resources changed during it's lifetime?
     if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
             scheduling::NodeID(node_id.Binary()), data)) {
       RAY_LOG(INFO)
@@ -162,8 +159,10 @@ void GcsResourceManager::HandleReportResourceUsage(
 
 // TODO(rickyx): We could update the cluster resource manager when we update the load
 // so that we will no longer need node_resource_usages_.
-AggregatedResourceLoad GcsResourceManager::GetAggregatedResourceLoad() const {
-  AggregatedResourceLoad aggregate_load;
+std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+GcsResourceManager::GetAggregatedResourceLoad() const {
+  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+      aggregate_load;
   if (node_resource_usages_.empty()) {
     return aggregate_load;
   }
@@ -174,8 +173,10 @@ AggregatedResourceLoad GcsResourceManager::GetAggregatedResourceLoad() const {
   return aggregate_load;
 }
 
-void GcsResourceManager::FillAggregateLoad(const rpc::ResourcesData &resources_data,
-                                           AggregatedResourceLoad *aggregate_load) const {
+void GcsResourceManager::FillAggregateLoad(
+    const rpc::ResourcesData &resources_data,
+    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+        *aggregate_load) const {
   auto load = resources_data.resource_load_by_shape();
   for (const auto &demand : load.resource_demands()) {
     auto &aggregate_demand = (*aggregate_load)[demand.shape()];
@@ -196,7 +197,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   if (!node_resource_usages_.empty()) {
     rpc::ResourceUsageBatchData batch;
-    AggregatedResourceLoad aggregate_load;
+    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+        aggregate_load;
 
     for (const auto &usage : node_resource_usages_) {
       // Aggregate the load reported by each raylet.

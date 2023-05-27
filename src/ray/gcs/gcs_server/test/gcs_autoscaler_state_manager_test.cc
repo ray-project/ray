@@ -127,7 +127,7 @@ class GcsResourceManagerAutoscalerStateTest : public ::testing::Test {
     auto pending_reqs = reply.pending_resource_requests();
     ASSERT_EQ(pending_reqs.size(), expect_requests_by_count.size());
     std::unordered_map<std::string, int> actual_requests_by_count;
-    for (size_t i = 0; i < pending_reqs.size(); i++) {
+    for (int i = 0; i < pending_reqs.size(); i++) {
       auto req_by_count = pending_reqs[i];
       auto req_str = ShapeToString(req_by_count.request());
       actual_requests_by_count[req_str] = req_by_count.count();
