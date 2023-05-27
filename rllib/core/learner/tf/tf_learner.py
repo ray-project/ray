@@ -1,6 +1,5 @@
 import json
 import logging
-import numpy as np
 import pathlib
 from typing import (
     Any,
@@ -27,6 +26,7 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
@@ -330,27 +330,9 @@ class TfLearner(Learner):
 
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
-        """Convert the arrays of batch to tf.Tensor's.
-
-        Note: This is an in place operation.
-
-        Args:
-            batch: The batch to convert.
-
-        Returns:
-            The converted batch.
-
-        """
-        # TODO(avnishn): This is a hack to get around the fact that
-        # SampleBatch.count becomes 0 after decorating the function with
-        # tf.function. This messes with input spec checking. Other fields of
-        # the sample batch are possibly modified by tf.function which may lead
-        # to unwanted consequences. We'll need to further investigate this.
-        ma_batch = NestedDict(batch.policy_batches)
-        for key, value in ma_batch.items():
-            if isinstance(value, np.ndarray):
-                ma_batch[key] = tf.convert_to_tensor(value, dtype=tf.float32)
-        return ma_batch
+        batch = _convert_to_tf(batch.policy_batches)
+        batch = NestedDict(batch)
+        return batch
 
     @override(Learner)
     def add_module(
