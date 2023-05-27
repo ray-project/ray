@@ -434,20 +434,21 @@ class StateDataSourceClient:
         lines: int,
         interval: Optional[float],
         timeout: int,
-        task_id: Optional[str] = None,
-        attempt_number: Optional[int] = None,
+        start_offset: Optional[int] = None,
+        end_offset: Optional[int] = None,
     ) -> UnaryStreamCall:
         stub = self._log_agent_stub.get(node_id)
         if not stub:
             raise ValueError(f"Agent for node id: {node_id} doesn't exist.")
+
         stream = stub.StreamLog(
             StreamLogRequest(
                 keep_alive=keep_alive,
                 log_file_name=log_file_name,
                 lines=lines,
                 interval=interval,
-                task_id=task_id,
-                attempt_number=attempt_number,
+                start_offset=start_offset,
+                end_offset=end_offset,
             ),
             timeout=timeout,
         )
