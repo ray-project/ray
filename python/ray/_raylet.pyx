@@ -2573,7 +2573,7 @@ cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
             check_status(self.inner.get().PollFunctionKey(
                 &key_id, timeout_ms, &python_function))
 
-        if key_id == b"":
+        if python_function.key() == b"":
             return None
         else:
             return python_function.key()
