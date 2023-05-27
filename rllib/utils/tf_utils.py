@@ -594,6 +594,7 @@ def scope_vars(
     )
 
 
+@PublicAPI
 def symlog(x: "tf.Tensor") -> "tf.Tensor":
     """The symlog function as described in [1]:
 
@@ -605,6 +606,7 @@ def symlog(x: "tf.Tensor") -> "tf.Tensor":
     return tf.math.sign(x) * tf.math.log(tf.math.abs(x) + 1)
 
 
+@PublicAPI
 def inverse_symlog(y: "tf.Tensor") -> "tf.Tensor":
     """Inverse of the `symlog` function as desribed in [1]:
 
