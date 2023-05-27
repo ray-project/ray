@@ -26,17 +26,17 @@ keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 
 :::{tab-item} VM Cluster Launcher
 To disable the dashboard while using the "VM cluster launcher", include the `ray start --head --include-dashboard=False` argument
-and specify the desired port number in the `head_start_ray_commands` section of the [cluster launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172)`.
+and specify the desired port number in the `head_start_ray_commands` section of the [cluster launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
 :::
 
 :::{tab-item} Kuberay
-See the [Specifying non-default ports](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#specifying-non-default-ports) page.
+View [specifying non-default ports](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/config.html#specifying-non-default-ports) page for details.
 :::
 
 ::::
 
 
-## View Ray Dashboard in browsers
+## Viewing Ray Dashboard in browsers
 When you start a single-node Ray cluster on your laptop, you can access the dashboard through a URL printed when Ray is initialized (the default URL is `http://localhost:8265`).
 
 
@@ -67,9 +67,10 @@ $ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
 ```
 For more information about configuring network access to a Ray cluster on Kubernetes, see the {ref}`networking notes <kuberay-networking>`.
 
-<!-- :::{note} -->
+```{admonition} Note
+:class: note
 It's not recommended to use port forwarding if you need have specific network security requirements. Follow the instructions below to add ingress rules to expose Ray Dashboard
-<!-- ::: -->
+```
 
 :::
 
@@ -88,7 +89,7 @@ For example, if your proxy is set up to handle requests to ``/ray/dashboard``, v
 
 The dashboard now sends HTTP requests with relative URL paths. Browsers will handle these requests as expected when the ``window.location.href`` ends in a trailing ``/``.
 
-This is a peculiarity of how many browsers handle requests with relative URLs, despite what [MDN](https://developer.mozilla.org/en-US/docs/Learn/Common_questions/What_is_a_URL#examples_of_relative_urls)` defines as the expected behavior.
+This is a peculiarity of how many browsers handle requests with relative URLs, despite what [MDN](https://developer.mozilla.org/en-US/docs/Learn/Common_questions/What_is_a_URL#examples_of_relative_urls) defines as the expected behavior.
 
 Make your dashboard visible without a trailing ``/`` by including a rule in your reverse proxy that redirects the user's browser to ``/``, i.e. ``/ray/dashboard`` --> ``/ray/dashboard/``.
 
@@ -147,7 +148,7 @@ ray.shutdown()
 
 :::{tab-item} VM Cluster Launcher
 To disable the dashboard while using the "VM cluster launcher", include the "ray start --head --include-dashboard=False" argument
-in the "head_start_ray_commands" section of the `cluster launcher's YAML file <https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172>`_.
+in the "head_start_ray_commands" section of the [cluster launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
 :::
 
 :::{tab-item} Kuberay
@@ -217,7 +218,7 @@ You can then see the default dashboard by going to dashboards -> manage -> Ray -
 If this is your first time using Grafana, you can login with the username: `admin` and password `admin`.
 ```
 
-![grafana login](images/graphs.png){align=center}
+![grafana login](images/graphs.png)
 
 :::
 

@@ -4,7 +4,8 @@
 
 This guide helps you understand and modify the configuration of Ray's logging system.
 
-## Ray’s logging directory
+(logging-directory)=
+## Logging directory
 By default, Ray log files are stored in a `/tmp/ray/session_*/logs` directory. View the [detailed logging structure](#) to understand how the log files are organized within the logs folder.
 
 :::{note}
@@ -29,7 +30,54 @@ Usually, temp directories are cleared up whenever the machines reboot. As a resu
 
 If you need to inspect logs after the clusters are stopped or terminated, you need to store and persist the logs. View the instructions for how to process and export logs for [clusters on VMs](#) and [KubeRay Clusters](#).
 
-## Ray's logging configuration
+(logging-directory-structure)=
+## Log files in logging directory
+
+Here lists the log files in the logging directory. Broadly speaking, there are two types of log files: system log files and application log files.
+Note that ``.out`` is logs from stdout/stderr and ``.err`` is logs from stderr. The backward compatibility of log directories is not guaranteed.
+
+:::{note}
+System logs may include info about your applications. For example, ``runtime_env_setup-[job_id].log`` may include info about you application's environment and depdenency.
+:::
+
+### Application logs
+- ``job-driver-[submission_id].log``: The stdout of a job submitted via the :ref:`Ray Jobs API <jobs-overview>`.
+- ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python or Java part of Ray drivers and workers. All of stdout and stderr from tasks or actors are streamed here. Note that job_id is an id of the driver.
+
+### System (component) logs
+- ``dashboard.[log|err]``: A log file of a Ray dashboard. ``log.`` file contains logs generated from the dashboard's logger. ``.err`` file contains stdout and stderr printed from the dashboard. They are usually empty except when the dashboard crashes unexpectedly.
+- ``dashboard_agent.log``: Every Ray node has one dashboard agent. This is a log file of the agent.
+- ``gcs_server.[out|err]``: The GCS server is a stateless server that manages Ray cluster metadata. It exists only in the head node.
+- ``io-worker-[worker_id]-[pid].[out|err]``: Ray creates IO workers to spill/restore objects to external storage by default from Ray 1.3+. This is a log file of IO workers.
+- ``log_monitor.[log|err]``: The log monitor is in charge of streaming logs to the driver. ``log.`` file contains logs generated from the log monitor's logger. ``.err`` file contains the stdout and stderr printed from the log monitor. They are usually empty except when the log monitor crashes unexpectedly.
+- ``monitor.[out|err]``: Stdout and stderr of a cluster launcher.
+- ``monitor.log``: Ray's cluster launcher is operated with a monitor process. It also manages the autoscaler.
+- ``plasma_store.[out|err]``: Deprecated.
+- ``python-core-driver-[worker_id]_[pid].log``: Ray drivers consist of CPP core and Python/Java frontend. This is a log file generated from CPP code.
+- ``python-core-worker-[worker_id]_[pid].log``: Ray workers consist of CPP core and Python/Java frontend. This is a log file generated from CPP code.
+- ``raylet.[out|err]``: A log file of raylets.
+- ``redis-shard_[shard_index].[out|err]``: Redis shard log files.
+- ``redis.[out|err]``: Redis log files.
+- ``runtime_env_agent.log``: Every Ray node has one agent that manages :ref:`runtime environment <runtime-environments>` creation, deletion and caching.
+  This is the log file of the agent containing logs of create/delete requests and cache hits and misses.
+  For the logs of the actual installations (including e.g. ``pip install`` logs), see the ``runtime_env_setup-[job_id].log`` file (see below).
+- ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a job when connecting via {ref}`Ray Client <ray-client-ref>`.
+- ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a task, actor or job.  This file will only be present if a runtime environment is installed.
+
+
+## Log rotation
+
+Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Raylet and Python/Java worker logs are not rotating).
+
+By default, logs are rotating when it reaches to 512MB (maxBytes), and there could be up to 5 backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
+If you'd like to change the log rotation configuration, you can do it by specifying environment variables. For example,
+
+```bash
+RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
+RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
+```
+
+## Using Ray's logger
 When ``import ray`` is executed, Ray's logger is initialized, generating a sensible configuration given in ``python/ray/_private/log.py``. The default logging level is ``logging.INFO``.
 
 All Ray loggers are automatically configured in ``ray._private.ray_logging``. To modify the Ray logger:
@@ -61,19 +109,6 @@ ray_data_logger.setLevel(logging.WARNING)
 # Here's how to add an aditional file handler for ray tune:
 ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 ```
-
-## Log rotation
-
-Ray supports log rotation of log files. Note that not all components are currently supporting log rotation. (Raylet and Python/Java worker logs are not rotating).
-
-By default, logs are rotating when it reaches to 512MB (maxBytes), and there could be up to 5 backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
-If you'd like to change the log rotation configuration, you can do it by specifying environment variables. For example,
-
-```bash
-RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
-RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
-```
-
 
 ## Structured logging
 Implementation of structured logging is usually recommended to make downstream users/applications consume the logs more efficiently.

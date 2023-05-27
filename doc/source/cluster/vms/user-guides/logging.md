@@ -1,13 +1,11 @@
 # Log Persistence
 
-Logs (both system and application logs) are useful for monitoring and troubleshooting your applications and the Ray system. For example, you may want to access your application's logs if a node dies.
+Logs (both system and application logs) are useful for troubleshooting Ray applications and system. For example, you may want to access system logs if a node dies unexpectedly.
 
-Similar to Kubenetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. The following sections provide some guidane on how to collect logs from Ray clusters running on VMs.
+Similar to Kubenetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. The following sections provide some instructions on how to collect logs from Ray clusters running on VMs.
 
-## The Ray log directory
-By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray node's file system, including application logs and Ray system logs. Learn more about the [log directory and log file structure](../../../ray-observability/user-guides/configure-logging.md) before you start to collect the logs.
-
-Extracting and persisting these logs requires some setup.
+## Ray log directory
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray node's file system, including application logs and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` before you start to collect the logs.
 
 
 ## Log processing tools

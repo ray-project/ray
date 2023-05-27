@@ -1,17 +1,17 @@
 # Collecting metrics
-Metrics (both system and application metrics) are useful for monitoring and troubleshooting your applications and the Ray system. For example, you may want to access your cluster's metrics after it is terminated.
+Metrics (both system and application metrics) are useful for monitoring and troubleshooting Ray applications and system. For example, you may want to access a node's metrics if it dies unexpectedly.
 
-Similar to Kubenetes, Ray records and emits time-series metrics in [Prometheus format](https://prometheus.io/docs/instrumenting/exposition_formats/). Ray does not provide a native storage solution for metrics. Users need to manage the lifecycle of the metrics by themselves. This page provides tips on how to collect metrics from Ray clusters.
+Similar to Kubenetes, Ray records and emits time-series metrics in [Prometheus format](https://prometheus.io/docs/instrumenting/exposition_formats/). Ray does not provide a native storage solution for metrics. Users need to manage the lifecycle of the metrics by themselves. This page provides instructions on how to collect metrics from Ray clusters.
 
 
 ## System and applcication metrics
-**System metrics**: Ray exports a number of system metrics. View [system metrics](../ray-observability/reference/system-metrics.rst) for more details of the metrics emitted.
+**System metrics**: Ray exports a number of system metrics. View {ref}`system metrics <system-metrics>` for more details of the emitted metrics .
 
-**Application metrics**: Application-specific metrics are useful to monitor your application states. Follow [adding applicatin metrics](../ray-observability/user-guides/add-app-metrics.rst) to record you metrics.
+**Application metrics**: Application-specific metrics are useful to monitor your application states. View {ref}`adding application metrics]<application-level-metrics>` for how to record your metrics.
 
 (prometheus-setup)=
-## Set up your Prometheus server
-Ray doesn't start Prometheus servers for users. Users need decide where to host it, then configure it so that it can scrape the metrics from clusters.
+## Setting up your Prometheus server
+Ray doesn't start Prometheus servers for users. Users need to decide where to host it and configure it so that it can scrape the metrics from clusters.
 
 ::::{tab-set}
 
@@ -19,7 +19,7 @@ Ray doesn't start Prometheus servers for users. Users need decide where to host 
 
 ```{admonition} Tip
 :class: tip
-The instructions below describe one way of setting up Prometheus on your local machine. View Prometheus documentation for more comprehensive info.
+The instructions below describe one way of setting up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for more comprehensive info.
 ```
 
 First, [download Prometheus](https://prometheus.io/download/). Make sure to download the correct binary for your operating system. (Ex: darwin for mac osx)
@@ -58,35 +58,33 @@ Next, let's start Prometheus.
 ```
 ```{admonition} Note
 :class: note
-If you are using mac, you may receive an error at this point about trying to launch an application where the developer has not been verified. See {ref}`this link <unverified-developer>` to fix the issue.
+If you are using mac, you may receive an error at this point about trying to launch an application where the developer has not been verified. See the "Troubelshooting" guide below to fix the issue.
 ```
 
 Now, you can access Ray metrics from the default Prometheus url, `http://localhost:9090`.
 
 
-### Troubleshooting
+**Troubleshooting**
+1. Getting Prometheus to use the Ray configurations when installed via Homebrew on macOS X
 
-#### Getting Prometheus to use the Ray configurations when installed via homebrew on macOS X
+  With Homebrew, Prometheus is installed as a service that is automatically launched for you.
+  Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
 
-With Homebrew, Prometheus is installed as a service that is automatically launched for you.
-Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
+  Instead, change the --config-file line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
 
-Instead, change the --config-file line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
+  You can then start or restart the services with `brew services start prometheus`.
 
-You can then start or restart the services with `brew services start prometheus`.
 
-(unverified-developer)=
+2. MacOS does not trust the developer to install Prometheus
 
-#### MacOS does not trust the developer to install Prometheus
+  You may have received an error that looks like this:
 
-You may have received an error that looks like this:
+  ![trust error](https://raw.githubusercontent.com/ray-project/Images/master/docs/troubleshooting/prometheus-trusted-developer.png)
 
-![trust error](https://raw.githubusercontent.com/ray-project/Images/master/docs/troubleshooting/prometheus-trusted-developer.png){align=center}
+  When downloading binaries from the internet, Mac requires that the binary be signed by a trusted developer ID.
+  Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
 
-When downloading binaries from the internet, Mac requires that the binary be signed by a trusted developer ID.
-Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
-
-See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) on how to override the restriction and install or run the application.
+  See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) on how to override the restriction and install or run the application.
 
 :::
 
@@ -105,14 +103,14 @@ To scrape the endpoints, we need to ensure service discovery, allowing Prometheu
 
 ### Auto-discovering metrics endpoints
 
-You can allow Prometheus to dynamically find endpoints it should scrape by using Prometheus' `file based service discovery <https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus>`_.
-This is the recommended way to export Prometheus metrics when using the Ray :ref:`cluster launcher <vm-cluster-quick-start>`, as node IP addresses can often change as the cluster scales up and down.
+You can allow Prometheus to dynamically find endpoints it should scrape by using Prometheus' [file based service discovery](https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus).
+This is the recommended way to export Prometheus metrics when using the Ray {ref}`cluster launcher <vm-cluster-quick-start>`, as node IP addresses can often change as the cluster scales up and down.
 
-Ray auto-generates a Prometheus `service discovery file <https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus>`_ on the head node to facilitate metrics agents' service discovery. This allows you to scrape all metrics in the cluster without knowing their IPs. Let's walk through how to acheive this.
+Ray auto-generates a Prometheus [service discovery file](https://prometheus.io/docs/guides/file-sd/#installing-configuring-and-running-prometheus) on the head node to facilitate metrics agents' service discovery. This allows you to scrape all metrics in the cluster without knowing their IPs. Let's walk through how to acheive this.
 
-The service discovery file is generated on the :ref:`head node <cluster-head-node>`. On this node, look for ``/tmp/ray/prom_metrics_service_discovery.json`` (or the eqiuvalent file if using a custom Ray ``temp_dir``). Ray will periodically update this file with the addresses of all metrics agents in the cluster.
+The service discovery file is generated on the {ref}`head node <cluster-head-node>`. On this node, look for ``/tmp/ray/prom_metrics_service_discovery.json`` (or the eqiuvalent file if using a custom Ray ``temp_dir``). Ray will periodically update this file with the addresses of all metrics agents in the cluster.
 
-Ray automatically produces a Prometheus config which scrapes the file for service discovery found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`. You can choose to use this config or modify your own to enable this behavior. The details of the config can be seen below and full documentation can be found `here <https://prometheus.io/docs/prometheus/latest/configuration/configuration/>`_.
+Ray automatically produces a Prometheus config which scrapes the file for service discovery found at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`. You can choose to use this config or modify your own to enable this behavior. The details of the config can be seen below and full documentation can be found [here](https://prometheus.io/docs/prometheus/latest/configuration/configuration/).
 
 With this config, Prometheus will automatically update the addresses that it scrapes based on the contents of Ray's service discovery file.
 
@@ -180,8 +178,7 @@ should be passed to Prometheus.
 """
 ```
 
-## Metric processing and collection
-Similar to logs, there are a number of open source metric processing tools available such as [Vector][Vector]. Choose the tools that better fit your needs to ingest the Prometheus metrics and export the metrics to the storage/management systems you want.
-
+## Processing and exporting metrics
+If you need to process and export metrics into other storage/management systems, there are a number of open source metric processing tools available such as [Vector][Vector].
 
 [Vector]: https://vector.dev/

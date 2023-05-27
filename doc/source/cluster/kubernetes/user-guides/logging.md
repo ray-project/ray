@@ -2,26 +2,24 @@
 
 # Log Persistence
 
-Logs (both system and application logs) are useful for monitoring and troubleshooting your applications and the Ray system. For example, you may want to access your application's logs if a node dies.
+Logs (both system and application logs) are useful for troubleshooting Ray applications and system. For example, you may want to access system logs if a node dies unexpectedly.
 
-Similar to Kubenetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. This page provides tips on how to collect logs from Ray clusters running on Kubernetes.
+Similar to Kubenetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. This page provides instructions on how to collect logs from Ray clusters running on Kubernetes.
 
 :::{tip}
 Skip to {ref}`the deployment instructions <kuberay-logging-tldr>`
 for a sample configuration showing how to extract logs from a Ray pod.
 :::
 
-## The Ray log directory
-By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application logs and Ray system logs. Learn more about the [log directory and log file structure](../../../ray-observability/user-guides/configure-logging.md) before you start to collect the logs.
-
-Extracting and persisting these logs requires some setup.
+## Ray log directory
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application logs and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` before you start to collect the logs.
 
 ## Log processing tools
 There are a number of open source log processing tools available within the Kubernetes ecosystem. This page will shows how to extract Ray logs using [Fluent Bit][FluentBit].
-Other popular tools include [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
+Other popular tools include [Vector][Vector], [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
 
 ## Log collection strategies
-We mention two strategies for collecting logs written to a pod's filesystem,
+Here lists two strategies for collecting logs written to a pod's filesystem,
 **sidecar containers** and **daemonsets**. You can read more about these logging
 patterns in the [Kubernetes documentation][KubDoc].
 
@@ -111,8 +109,9 @@ for a single-pod RayCluster will a log-processing sidecar.
 :language: yaml
 ```
 
-### Deploying a RayCluster with logging CR
 (kuberay-logging-tldr)=
+### Deploying a RayCluster with logging CR
+
 Now, we will see how to deploy the configuration described above.
 
 Deploy the KubeRay Operator if you haven't yet.
@@ -136,6 +135,7 @@ Examine the FluentBit sidecar's STDOUT to see logs for Ray's component processes
 kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 ```
 
+[Vector]: https://vector.dev/
 [FluentBit]: https://docs.fluentbit.io/manual
 [FluentBitStorage]: https://docs.fluentbit.io/manual
 [Filebeat]: https://www.elastic.co/guide/en/beats/filebeat/7.17/index.html
@@ -146,6 +146,6 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 
 
 ## Redirecting Ray logs to stderr
-By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. It may not be ideal if the log processing tool needs log to be written to stderr in order for them to be captured. View [configuring logging](../../../ray-observability/user-guides/configure-logging.md#redirecting-ray-logs-to-stderr) for details on redirect all the logs to stderr of the host pods instead.
+By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. It may not be ideal if the log processing tool needs log to be written to stderr in order for them to be captured. View [configuring logging](../../../ray-observability/user-guides/configure-logging.md#redirecting-ray-logs-to-stderr) for details on how to redirect all the logs to stderr of the host pods instead.
 
 

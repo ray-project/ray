@@ -166,6 +166,7 @@ Actor log messages look like the following by default:
 
     (MyActor pid=480956) actor log message
 
+<<<<<<< HEAD
 .. _logging-directory-structure:
 
 Logging directory structure
@@ -202,3 +203,5 @@ The Ray log directory structure follows. Note that files with the ``.out`` suffi
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing :ref:`runtime environments <runtime-environments>` for a Job when connecting with :ref:`Ray Client <ray-client-ref>`.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python or Java part of Ray drivers and workers. All of stdout and stderr from Tasks or Actors are streamed here. Note that job_id is an id of the driver. 
 
+=======
+>>>>>>> 0c57602348 (fixups)
