@@ -8,7 +8,6 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
     # NOTE: If you run `pytest` on `__init__.py`, it tries to test all files in that
     # package. We don't want that, so we exclude it from the list of input files.
     files = native.glob(include=files, exclude=["__init__.py"])
-    print(files)
     if gpu:
         name += "[gpu]"
         tags = tags + ["gpu"]
@@ -52,7 +51,7 @@ def py_test_module_list(files, size, deps, extra_srcs=[], name_suffix="", **kwar
 
 def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
     for file in native.glob(include = include, exclude = exclude, allow_empty=False):
-        # print(file)
+        print(file)
         basename = paths.split_extension(file)[0]
         if basename == file:
             basename = basename + "_test"
@@ -65,7 +64,7 @@ def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
 # Runs all included notebooks as py_test targets, by first converting them to .py files with "test_myst_doc.py".
 def py_test_run_all_notebooks(include, exclude, allow_empty=False, **kwargs):
     for file in native.glob(include = include, exclude = exclude, allow_empty=allow_empty):
-        # print(file)
+        print(file)
         basename = paths.split_extension(file)[0]
         if basename == file:
             basename = basename + "_test"

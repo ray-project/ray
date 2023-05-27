@@ -317,7 +317,6 @@ build_sphinx_docs() {
       # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
       FAST=True make develop
       pip install datasets==2.0.0
-      make html
     fi
   )
 }
