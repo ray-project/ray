@@ -2411,7 +2411,7 @@ cdef class _GcsSubscriber:
     cdef:
         shared_ptr[CPythonGcsSubscriber] inner
 
-    def connect(self, address, channel, worker_id):
+    def _connect(self, address, channel, worker_id):
         cdef:
             c_worker_id = worker_id or b""
         # subscriber_id needs to match the binary format of a random
@@ -2422,25 +2422,53 @@ cdef class _GcsSubscriber:
         check_status(self.inner.get().Connect())
 
     def subscribe(self):
+        """Registers a subscription for the subscriber's channel type.
+
+        Before the registration, published messages in the channel will not be
+        saved for the subscriber.
+        """
         with nogil:
             check_status(self.inner.get().Subscribe())
 
     @property
     def last_batch_size(self):
+        """Batch size of the result from last poll.
+
+        Used to indicate whether the subscriber can keep up.
+        """
         return self.inner.get().last_batch_size()
 
     def close(self):
+        """Closes the subscriber and its active subscription."""
         with nogil:
             check_status(self.inner.get().Close())
 
 
 cdef class GcsErrorSubscriber(_GcsSubscriber):
-    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    """Subscriber to error info. Thread safe.
+
+    Usage example:
+        subscriber = GcsErrorSubscriber()
+        # Subscribe to the error channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            error_id, error_data = subscriber.poll()
+            ......
+        # Unsubscribe from the error channels.
+        subscriber.close()
+    """
 
     def __init__(self, address, worker_id=None):
-        self.connect(address, RAY_ERROR_INFO_CHANNEL, worker_id)
+        self._connect(address, RAY_ERROR_INFO_CHANNEL, worker_id)
 
     def poll(self, timeout=None):
+        """Polls for new error messages.
+
+        Returns:
+            A tuple of error message ID and dict describing the error,
+            or None, None if polling times out or subscriber closed.
+        """
         cdef:
             CErrorTableData error_data
             c_string key_id
@@ -2461,12 +2489,29 @@ cdef class GcsErrorSubscriber(_GcsSubscriber):
 
 
 cdef class GcsLogSubscriber(_GcsSubscriber):
-    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    """Subscriber to logs. Thread safe.
+
+    Usage example:
+        subscriber = GcsLogSubscriber()
+        # Subscribe to the log channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            log = subscriber.poll()
+            ......
+        # Unsubscribe from the log channel.
+        subscriber.close()
+    """
 
     def __init__(self, address, worker_id=None):
-        self.connect(address, RAY_LOG_CHANNEL, worker_id)
+        self._connect(address, RAY_LOG_CHANNEL, worker_id)
 
     def poll(self, timeout=None):
+        """Polls for new log messages.
+
+        Returns:
+            A dict containing a batch of log lines and their metadata.
+        """
         cdef:
             CLogBatch log_batch
             c_string key_id
@@ -2495,12 +2540,30 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
 
 
 cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
-    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    """Subscriber to function（and actor class) dependency keys. Thread safe.
+
+    Usage example:
+        subscriber = GcsFunctionKeySubscriber()
+        # Subscribe to the function key channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            key = subscriber.poll()
+            ......
+        # Unsubscribe from the function key channel.
+        subscriber.close()
+    """
 
     def __init__(self, address, worker_id=None):
-        self.connect(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
+        self._connect(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
 
     def poll(self, timeout=None):
+        """Polls for new function key messages.
+
+        Returns:
+            A byte string of function key.
+            None if polling times out or subscriber closed.
+        """
         cdef:
             CPythonFunction python_function
             c_string key_id
@@ -2510,7 +2573,7 @@ cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
             check_status(self.inner.get().PollFunctionKey(
                 &key_id, timeout_ms, &python_function))
 
-        if python_function.key() == b"":
+        if key_id == b"":
             return None
         else:
             return python_function.key()
@@ -2518,12 +2581,30 @@ cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
 
 # This class should only be used for tests
 cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
-    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    """Subscriber to actor updates. Thread safe.
+
+    Usage example:
+        subscriber = GcsActorSubscriber()
+        # Subscribe to the actor channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            actor_data = subscriber.poll()
+            ......
+        # Unsubscribe from the channel.
+        subscriber.close()
+    """
 
     def __init__(self, address, worker_id=None):
-        self.connect(address, GCS_ACTOR_CHANNEL, worker_id)
+        self._connect(address, GCS_ACTOR_CHANNEL, worker_id)
 
     def poll(self, timeout=None):
+        """Polls for new actor messages.
+
+        Returns:
+            A byte string of function key.
+            None if polling times out or subscriber closed.
+        """
         cdef:
             CActorTableData actor_data
             c_string key_id
