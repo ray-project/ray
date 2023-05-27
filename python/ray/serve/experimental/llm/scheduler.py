@@ -102,21 +102,20 @@ class InferenceScheduler:
     def __init__(
         self,
         tokenizer: Tokenizer,
-        inference_worker: InferenceWorker,
+        inference_worker_loader,
         request_selection_policy: RequestSelectionPolicy,
         request_queue: RequestQueue,
         loop: asyncio.AbstractEventLoop,
         inline: bool = False,
     ):
         self._tokenizer = tokenizer
-        self._inference_worker = inference_worker
         self._request_selection_policy = request_selection_policy
+        self._inference_worker_loader = inference_worker_loader
         self._request_queue = request_queue
         self._loop = loop
         self._lock = Lock()
         self._stop = False
         self._stats = Stats()
-        assert inline, "Torch will leak memory if running in a different thread!"
         if not inline:
             self._thread = Thread(target=self._run_scheduling_loop)
             self._thread.start()
@@ -149,6 +148,8 @@ class InferenceScheduler:
 
     def _run_scheduling_loop(self):
         """Schedule requests to be processed by the inference worker."""
+        # start work the in the scheduling loop to avoid GPU memory leak.
+        self._inference_worker = self._inference_worker_loader()
         self._stats.start()
 
         # The main schedule loop:
@@ -247,6 +248,7 @@ class InferenceScheduler:
             requests[i].output_stream.put(generation.token_text)
             if generation.stopped:
                 self._stats.request_finished()
+                requests[i].output_stream.put(generation.generated_text.text)
                 requests[i].output_stream.end()
                 some_request_finished = True
             else:

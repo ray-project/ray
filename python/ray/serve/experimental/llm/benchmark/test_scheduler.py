@@ -43,7 +43,7 @@ tokenizer=NaiveTokenizer()
 scheduler = InferenceScheduler(
     tokenizer=tokenizer,
     #inference_worker=InferenceWorker(lambda: OPT("facebook/opt-350m")),
-    inference_worker=InferenceWorker(lambda: OPT("facebook/opt-6.7b")),
+    inference_worker_loader=lambda: InferenceWorker(lambda: OPT("facebook/opt-6.7b")),
     request_selection_policy=QuotaBasedRequestSelectionPolicy(max_batch_total_tokens=1000, max_waiting_tokens=16),
     request_queue=RequestQueue(),
     loop=None,
