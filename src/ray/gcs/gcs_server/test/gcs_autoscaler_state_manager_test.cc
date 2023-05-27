@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
+#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
+
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/test/gcs_test_util.h"
-// clang-format on
 
 namespace ray {
 
@@ -32,20 +31,20 @@ using ::testing::_;
 class GcsAutoscalerStateManagerTest : public ::testing::Test {
  public:
   GcsAutoscalerStateManagerTest() : cluster_resource_manager_(io_service_) {
-    gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
+    gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
         io_service_, cluster_resource_manager_, NodeID::FromRandom());
-    gcs_node_manager_ = std::make_shared<gcs::MockGcsNodeManager>();
+    gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
 
-    gcs_autoscaler_state_manager_.reset(new gcs::GcsAutoscalerStateManager(
+    gcs_autoscaler_state_manager_.reset(new GcsAutoscalerStateManager(
         cluster_resource_manager_, *gcs_resource_manager_, *gcs_node_manager_));
   }
 
  protected:
   instrumented_io_context io_service_;
   ClusterResourceManager cluster_resource_manager_;
-  std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;
-  std::shared_ptr<gcs::MockGcsNodeManager> gcs_node_manager_;
-  std::unique_ptr<gcs::GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
+  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
