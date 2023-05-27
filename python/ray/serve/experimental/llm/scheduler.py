@@ -13,7 +13,7 @@ from ray.serve.experimental.llm.types import (
     GenerationRequest,
     Generation,
 )
-from ray.serve.experimental.llm.tokenstream import FakeTokenStream
+from ray.serve.experimental.llm.tokenstream import FakeTokenStream, Event_ts
 from ray.serve.experimental.llm.queue import RequestQueue, InferenceRequest
 from ray.serve.experimental.llm.policy import RequestSelectionPolicy
 
@@ -130,7 +130,7 @@ class InferenceScheduler:
             return self._stop
 
     def process_request(
-        self, input_text: str, params: SamplingParams, max_length: int = 1024
+        self, input_text: str, params: SamplingParams, max_length: int = 1024, event=None
     ) -> FakeTokenStream:
         request = GenerationRequest(
             id=get_request_id(),
@@ -139,10 +139,19 @@ class InferenceScheduler:
             input_length=self._tokenizer.get_input_length(input_text, max_length),
             sampling_params=params,
         )
-        return self._add_request(request)
+        return self._add_request(request, event)
 
-    def _add_request(self, request: GenerationRequest) -> FakeTokenStream:
-        pending_request = InferenceRequest.from_request(request, self._loop)
+    async def async_process_request(
+       self, input_text: str, params: SamplingParams, max_length: int = 1024 
+    ) -> str:
+        event = Event_ts()
+        output = self.process_request(input_text, params, max_length, event)
+        await event.wait()
+        event.clear()
+        return output.last()
+
+    def _add_request(self, request: GenerationRequest, event=None) -> FakeTokenStream:
+        pending_request = InferenceRequest.from_request(request, self._loop, event)
         self._request_queue.push(pending_request)
         return pending_request.output_stream
 
@@ -150,6 +159,7 @@ class InferenceScheduler:
         """Schedule requests to be processed by the inference worker."""
         # start work the in the scheduling loop to avoid GPU memory leak.
         self._inference_worker = self._inference_worker_loader()
+        print("model loaded")
         self._stats.start()
 
         # The main schedule loop:

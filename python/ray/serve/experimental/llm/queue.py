@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from threading import RLock, Condition
 from typing import List, Optional
 from ray.serve.experimental.llm.types import GenerationRequest
-from ray.serve.experimental.llm.tokenstream import FakeTokenStream
+from ray.serve.experimental.llm.tokenstream import FakeTokenStream, Event_ts
 
 
 @dataclass
@@ -16,11 +16,11 @@ class InferenceRequest:
     submit_time_ns: int
 
     @classmethod
-    def from_request(cls, request: GenerationRequest, loop: asyncio.AbstractEventLoop):
+    def from_request(cls, request: GenerationRequest, loop: asyncio.AbstractEventLoop, event: Event_ts):
         return cls(
             id=request.id,
             request=request,
-            output_stream=FakeTokenStream(loop=loop),
+            output_stream=FakeTokenStream(loop=loop, event=event),
             submit_time_ns=int(time.time()),
         )
 

@@ -9,20 +9,29 @@ class _EndOfStream:
 
 EOS = _EndOfStream()
 
+class Event_ts(asyncio.Event):
+    #TODO: clear() method
+    def set(self):
+        #FIXME: The _loop attribute is not documented as public api!
+        self._loop.call_soon_threadsafe(super().set)
+
 
 class FakeTokenStream:
-    def __init__(self, loop=None):
+    def __init__(self, loop=None, event=None):
         self._lock = RLock()
         self._cv = Condition(self._lock)
-
         self._num_tokens = 0
         self._end = False
         self._data = []
+        self._event = event
 
     def end(self):
         with self._lock:
             self._end = True
             self._cv.notify_all()
+
+        if self._event:
+            self._event.set()
 
     def put(self, item):
         with self._lock:
