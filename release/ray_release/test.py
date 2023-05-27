@@ -29,7 +29,7 @@ class TestResult:
     @classmethod
     def from_result(cls, result: Result):
         return cls(
-            status=ResultStatus(result.status),
+            status=result.status,
             commit=os.environ.get("BUILDKITE_COMMIT", ""),
             url=result.buildkite_url,
             timestamp=int(time.time() * 1000),
