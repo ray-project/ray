@@ -135,6 +135,7 @@ def state_api_manager():
     manager = StateAPIManager(data_source_client)
     yield manager
 
+
 def state_source_client(gcs_address):
     GRPC_CHANNEL_OPTIONS = (
         *ray_constants.GLOBAL_GRPC_OPTIONS,
@@ -145,8 +146,11 @@ def state_source_client(gcs_address):
         gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
     )
     gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel=gcs_channel,gcs_aio_client= gcs_aio_client)
+    client = StateDataSourceClient(
+        gcs_channel=gcs_channel, gcs_aio_client=gcs_aio_client
+    )
     return client
+
 
 @pytest.fixture
 def state_api_manager_e2e(ray_start_with_dashboard):
@@ -2128,6 +2132,7 @@ def test_list_get_pgs(shutdown_only):
 
     wait_for_condition(verify)
     print(list_placement_groups())
+
 
 @pytest.mark.asyncio
 async def test_node_instance_id(ray_start_cluster, monkeypatch):
