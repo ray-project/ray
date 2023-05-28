@@ -306,7 +306,7 @@ Windows Support
 ---------------
 
 Windows support is in Beta. Ray supports running on Windows with the following caveats (only the first is
-ray-specific, the rest are true anywhere windows is used):
+Ray-specific, the rest are true anywhere Windows is used):
 
 * multi-node Ray clusters are untested.
 
