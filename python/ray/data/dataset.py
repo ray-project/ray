@@ -70,6 +70,7 @@ from ray.data._internal.equalize import _equalize
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
+    _has_scheme,
     _is_local_scheme,
     validate_compute,
     ConsumptionAPI,
@@ -2744,12 +2745,9 @@ class Dataset:
         """
         if ray_remote_args is None:
             ray_remote_args = {}
+
         path = write_args.get("path", None)
-        if path and _is_local_scheme(path):
-            if ray.util.client.ray.is_connected():
-                raise ValueError(
-                    f"The local scheme paths {path} are not supported in Ray Client."
-                )
+        if path and not _has_scheme(path) or _is_local_scheme(path):
             ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(),
                 soft=False,

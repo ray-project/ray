@@ -221,6 +221,12 @@ def _resolve_custom_scheme(path: str) -> str:
     return path
 
 
+def _has_scheme(path: str) -> bool:
+    assert isinstance(path, str)
+    parse_result = urllib.parse.urlparse(path)
+    return parse_result.schema != ""
+
+
 def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     """Returns True if the given paths are in local scheme.
     Note: The paths must be in same scheme, i.e. it's invalid and

@@ -41,6 +41,7 @@ from ray.data.datasource.partitioning import (
 )
 
 from ray.types import ObjectRef
+from ray.util import client
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 
@@ -286,8 +287,17 @@ class FileBasedDatasource(Datasource):
         **write_args,
     ) -> WriteResult:
         """Write blocks for a file-based datasource."""
+        from pyarrow import fs
+
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
+
+        if isinstance(filesystem, fs.LocalFilesystem) and client.ray.is_connected():
+            raise ValueError(
+                f"You're using Ray Client and trying to write to local path {path!r}, "
+                "but Ray Data can't write to local filesystems in Ray Client mode."
+            )
+
         if try_create_dir:
             # Arrow's S3FileSystem doesn't allow creating buckets by default, so we add
             # a query arg enabling bucket creation if an S3 URI is provided.

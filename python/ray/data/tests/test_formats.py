@@ -184,6 +184,13 @@ def test_write_datasource(ray_start_regular_shared, pipelined):
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
 
+def test_write_datasource_local_path(ray_started_regular_shared, tmpdir):
+    ds = ray.data.range(1)
+    path = tmpdir.mkdir("spam")
+    ds.write_csv(path)
+    assert os.listdir(path)
+
+
 def test_from_tf(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
