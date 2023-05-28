@@ -207,7 +207,7 @@ class TestAlgorithmConfig(unittest.TestCase):
                 algorithm_config_overrides_per_module={
                     "module_1": PPOConfig.overrides(lr=0.01, kl_coeff=0.1),
                     "module_2": PPOConfig.overrides(grad_clip=100.0),
-                }
+                },
             )
             .get_learner_hyperparameters()
         )

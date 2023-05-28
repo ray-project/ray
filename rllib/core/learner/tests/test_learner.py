@@ -281,7 +281,7 @@ class TestLearner(unittest.TestCase):
                 self._check_learner_states(fw, learner1, learner2)
 
     def _check_learner_states(self, framework, learner1, learner2):
-        check(learner1.get_weights(), learner2.get_weights())
+        check(learner1.get_module_state(), learner2.get_module_state())
 
         # Method to call on the local optimizer object to get the optimizer's
         # state.

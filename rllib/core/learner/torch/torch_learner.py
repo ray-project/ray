@@ -130,51 +130,51 @@ class TorchLearner(Learner):
             optim.step()
 
     @override(Learner)
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
+    def set_module_state(self, state: Mapping[str, Any]) -> None:
         """Sets the weights of the underlying MultiAgentRLModule"""
-        weights = convert_to_torch_tensor(weights, device=self._device)
-        return self._module.set_state(weights)
+        state = convert_to_torch_tensor(state, device=self._device)
+        return self._module.set_state(state)
 
     @override(Learner)
     def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        optim_weights = self.get_optimizer_weights()
-        for name, weights in optim_weights.items():
-            torch.save(weights, path / f"{name}.pt")
+        optim_state = self.get_optimizer_state()
+        for name, state in optim_state.items():
+            torch.save(state, path / f"{name}.pt")
 
     @override(Learner)
     def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
         if not path.exists():
             raise ValueError(f"Directory {path} does not exist.")
-        weights = {}
+        state = {}
         for name in self._named_optimizers.keys():
-            weights[name] = torch.load(path / f"{name}.pt")
-        self.set_optimizer_weights(weights)
+            state[name] = torch.load(path / f"{name}.pt")
+        self.set_optimizer_state(state)
 
     @override(Learner)
-    def get_optimizer_weights(self) -> Mapping[str, Any]:
-        optimizer_name_weights = {}
+    def get_optimizer_state(self) -> Mapping[str, Any]:
+        optimizer_name_state = {}
         for name, optim in self._named_optimizers.items():
             optim_state_dict = optim.state_dict()
             optim_state_dict_cpu = copy_torch_tensors(optim_state_dict, device="cpu")
-            optimizer_name_weights[name] = optim_state_dict_cpu
-        return optimizer_name_weights
+            optimizer_name_state[name] = optim_state_dict_cpu
+        return optimizer_name_state
 
     @override(Learner)
-    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
-        for name, weight_dict in weights.items():
+    def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
+        for name, state_dict in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(
-                    f"Optimizer {name} in weights is not known."
+                    f"Optimizer {name} in `state` is not known."
                     f"Known optimizers are {self._named_optimizers.keys()}"
                 )
             optim = self._named_optimizers[name]
-            weight_dict_correct_device = copy_torch_tensors(
-                weight_dict, device=self._device
+            state_dict_correct_device = copy_torch_tensors(
+                state_dict, device=self._device
             )
-            optim.load_state_dict(weight_dict_correct_device)
+            optim.load_state_dict(state_dict_correct_device)
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:

@@ -412,16 +412,16 @@ class LearnerGroup:
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self.is_local:
-            weights = self._learner.get_weights(module_ids)
+            state = self._learner.get_module_state(module_ids)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            weights = self._worker_manager.foreach_actor(
-                lambda w: w.get_weights(module_ids), remote_actor_ids=[worker]
+            state = self._worker_manager.foreach_actor(
+                lambda w: w.get_module_state(module_ids), remote_actor_ids=[worker]
             )
-            weights = self._get_results(weights)[0]
+            state = self._get_results(state)[0]
 
-        return convert_to_numpy(weights)
+        return convert_to_numpy(state)
 
     def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
         """Get the states of the first Learners.
