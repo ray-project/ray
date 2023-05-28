@@ -832,7 +832,10 @@ class Learner:
         self.module.add_module(module_id, module)
 
         # Allow the user to configure one or more optimizers for this new module.
-        self.configure_optimizers_for_module(module_id)
+        self.configure_optimizers_for_module(
+            module_id=module_id,
+            hps=self.hps.get_hps_for_module(module_id),
+        )
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def remove_module(self, module_id: ModuleID) -> None:
