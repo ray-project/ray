@@ -421,10 +421,11 @@ def run(
     ray_address = worker.node.address
     if address is not None and address != ray_address:
         cli_logger.warning(
-            f"Existing ray instance has address: {ray_address} which is different from the address passed from the "
-            f"command: {address}. \nPlease double check the address to ensure you are using the intended ray "
-            "instance. \nServe does not automatically create a new ray instance from the given address. \nExisting ray "
-            "instance is used to serve the app."
+            f"Existing ray instance has address: {ray_address} which is different from "
+            f"the address passed from the command: {address}. \nPlease double check "
+            "the address to ensure you are using the intended ray instance. \nServe "
+            "does not automatically create a new ray instance from the given address. "
+            "\nExisting ray instance is used to serve the app."
         )
 
     client = _private_api.serve_start(

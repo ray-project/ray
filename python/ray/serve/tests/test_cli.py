@@ -1242,7 +1242,8 @@ class TestRayReinitialization:
 
     def test_run_without_address(self, import_file_name, ray_start_stop):
         """
-        when the imported file already initialized a ray instance and serve doesn't run with address argument,
+        when the imported file already initialized a ray instance
+            and serve doesn't run with address argument,
         then serve does not reinitialize another ray instance and cause error
         """
         p = subprocess.Popen(["serve", "run", import_file_name])
@@ -1281,10 +1282,11 @@ class TestRayReinitialization:
         process_output, _ = p.communicate()
         logs = process_output.decode("utf-8").strip()
         expected_warning_message = (
-            "Existing ray instance has address: 127.0.0.1:6379 which is different from the address passed from the "
-            "command: ray://123.45.67.89:50005. \nPlease double check the address to ensure you are using the intended "
-            "ray instance. \nServe does not automatically create a new ray instance from the given address. \nExisting "
-            "ray instance is used to serve the app."
+            "Existing ray instance has address: 127.0.0.1:6379 which is different from "
+            "the address passed from the command: ray://123.45.67.89:50005. \nPlease "
+            "double check the address to ensure you are using the intended ray "
+            "instance. \nServe does not automatically create a new ray instance from "
+            "the given address. \nExisting ray instance is used to serve the app."
         )
         assert expected_warning_message in logs
 
