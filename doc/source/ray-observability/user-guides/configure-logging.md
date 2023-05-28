@@ -109,7 +109,7 @@ ray_data_logger.setLevel(logging.WARNING)
 # Here's how to add an aditional file handler for ray tune:
 ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 ```
-
+(structured-logging)=
 ## Structured logging
 Implementation of structured logging is usually recommended to make downstream users/applications consume the logs more efficiently.
 
@@ -278,7 +278,7 @@ import ray
 # Task and actor logs will not be copied to the driver stdout.
 ray.init(log_to_driver=False)
 ```
-
+(redirect-to-stderr)=
 ## Redirecting Ray logs to stderr
 
 By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. If you wish to redirect logs to stderr of the host nodes instead, you can do so by ensuring that the ``RAY_LOG_TO_STDERR=1`` environment variable is set on the driver and on all Ray nodes. This practice is not recommended but may be useful if your log processing tool needs log records to be written to stderr in order for them to be captured.
