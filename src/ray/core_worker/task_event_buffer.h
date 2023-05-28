@@ -269,6 +269,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param job_id Corresponding Job ID
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client, const JobID &job_id);
 
+  ~TaskEventBufferImpl() override;
+
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
       LOCKS_EXCLUDED(mutex_) override;
 

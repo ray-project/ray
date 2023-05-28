@@ -146,6 +146,12 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
       gcs_client_(std::move(gcs_client)),
       buffer_() {}
 
+TaskEventBufferImpl::~TaskEventBufferImpl() {
+  if (enabled_) {
+    Stop();
+  }
+}
+
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();

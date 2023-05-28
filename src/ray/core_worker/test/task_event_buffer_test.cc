@@ -49,7 +49,9 @@ class TaskEventBufferTest : public ::testing::Test {
 
   virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
 
-  virtual void TearDown() { task_event_buffer_->Stop(); };
+  virtual void TearDown() {
+    if (task_event_buffer_) task_event_buffer_->Stop();
+  };
 
   std::vector<TaskID> GenTaskIDs(size_t num_tasks) {
     std::vector<TaskID> task_ids;
@@ -448,6 +450,10 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
 
   // Counter is reset correctly.
   EXPECT_EQ(task_event_buffer_->GetNumProfileTaskEventsDroppedSinceLastFlush(), 0);
+}
+
+TEST_F(TaskEventBufferTest, TestGracefulDestruction) {
+  delete task_event_buffer_.release();
 }
 
 }  // namespace worker
