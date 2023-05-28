@@ -308,7 +308,7 @@ Windows Support
 Windows support is in Beta. Ray supports running on Windows with the following caveats (only the first is
 Ray-specific, the rest are true anywhere Windows is used):
 
-* multi-node Ray clusters are untested.
+* Multi-node Ray clusters are untested.
 
 * Filenames are tricky on windows and there still may be a few places where ray
   assumes unix filenames rather than windows ones. This can be true in downstream
