@@ -15,7 +15,7 @@ Set up
     </div>
 
 
-To use the dashboard, you should use `ray[default]`, `ray[air]` or :ref:`other installation commands <installation>`` that include Ray Dashboard component:
+To use the dashboard, you should use `ray[default]`, `ray[air]` or :ref:`other installation commands <installation>` that include Ray Dashboard component:
 
 .. code-block:: bash
 
@@ -44,7 +44,7 @@ When you start a single-node Ray cluster on your laptop, you can access the dash
 
   INFO worker.py:1487 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265.
 
-When you start a remote Ray cluster via the :ref:`VM cluster launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray Dashboard will be launched on the head node but the dashboard port may not be publicly exposed. View :ref: `configuring dashboard` for how to view dashboard from outside the head node.
+When you start a remote Ray cluster via the :ref:`VM cluster launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray Dashboard will be launched on the head node but the dashboard port may not be publicly exposed. View :ref: `configuring dashboard <observability-configure-manage-dashboard>` for how to view dashboard from outside the head node.
 
 .. note::
 
