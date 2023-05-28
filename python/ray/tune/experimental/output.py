@@ -482,17 +482,31 @@ def _get_dict_as_table_data(
         return upper + lower
 
 
-# Copied/adjusted from tabulate
-AIR_TABULATE_TABLEFMT = TableFormat(
-    lineabove=Line("╭", "─", "─", "╮"),
-    linebelowheader=Line("├", "─", "─", "┤"),
-    linebetweenrows=None,
-    linebelow=Line("╰", "─", "─", "╯"),
-    headerrow=DataRow("│", " ", "│"),
-    datarow=DataRow("│", " ", "│"),
-    padding=1,
-    with_header_hide=None,
-)
+if sys.stdout.encoding.startswith("utf"):
+    # Copied/adjusted from tabulate
+    AIR_TABULATE_TABLEFMT = TableFormat(
+        lineabove=Line("╭", "─", "─", "╮"),
+        linebelowheader=Line("├", "─", "─", "┤"),
+        linebetweenrows=None,
+        linebelow=Line("╰", "─", "─", "╯"),
+        headerrow=DataRow("│", " ", "│"),
+        datarow=DataRow("│", " ", "│"),
+        padding=1,
+        with_header_hide=None,
+    )
+else:
+    # For non-utf output, use ascii-compatible characters.
+    # This prevents errors e.g. when legacy windows encoding is used.
+    AIR_TABULATE_TABLEFMT = TableFormat(
+        lineabove=Line("+", "-", "-", "+"),
+        linebelowheader=Line("+", "-", "-", "+"),
+        linebetweenrows=None,
+        linebelow=Line("+", "-", "-", "+"),
+        headerrow=DataRow("|", " ", "|"),
+        datarow=DataRow("|", " ", "|"),
+        padding=1,
+        with_header_hide=None,
+    )
 
 
 def _print_dict_as_table(
