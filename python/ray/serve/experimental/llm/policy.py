@@ -75,3 +75,27 @@ class QuotaBasedRequestSelectionPolicy(RequestSelectionPolicy):
             - sum([r.total_tokens() for r in in_process_requests]),
         )
         return min_num_requests, token_budget
+
+
+class StaticBatchPolicy(RequestSelectionPolicy):
+    def __init__(
+        self,
+        batch_size: int,
+    ):
+        self.batch_size = batch_size
+
+    def select_new_requests(
+        self, in_process_requests: List[InferenceRequest], queue: RequestQueue
+    ) -> List[InferenceRequest]:
+        if in_process_requests:
+            return []
+        if len(queue) < self.batch_size:
+            return []
+
+        results = []
+        while not queue.empty() and len(results) < self.batch_size:
+            request = queue.peek()
+            results.append(request)
+            queue.pop()
+
+        return results
