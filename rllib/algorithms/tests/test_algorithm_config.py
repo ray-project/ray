@@ -197,10 +197,13 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_learner_hyperparameters_per_module(self):
         """Tests, whether per-module config overrides (multi-agent) work as expected."""
 
+        # Compile PPO HPs from a config object.
         hps = (
             PPOConfig()
             .training(kl_coeff=0.5)
             .multi_agent(
+                policies={"module_1", "module_2", "module_3"},
+                # Override config settings fro `module_1` and `module_2`.
                 algorithm_config_overrides_per_module={
                     "module_1": PPOConfig.overrides(lr=0.01, kl_coeff=0.1),
                     "module_2": PPOConfig.overrides(grad_clip=100.0),
@@ -208,27 +211,28 @@ class TestAlgorithmConfig(unittest.TestCase):
             )
             .get_learner_hyperparameters()
         )
-        # Default HPs.
+
+        # Check default HPs.
         check(hps.learning_rate, 0.00005)
         check(hps.grad_clip, None)
         check(hps.grad_clip_by, "global_norm")
         check(hps.kl_coeff, 0.5)
 
-        # Module_1 overrides.
+        # `module_1` overrides.
         hps_1 = hps.get_hps_for_module("module_1")
         check(hps_1.learning_rate, 0.01)
         check(hps_1.grad_clip, None)
         check(hps_1.grad_clip_by, "global_norm")
         check(hps_1.kl_coeff, 0.1)
 
-        # Module_1 overrides.
+        # `module_2` overrides.
         hps_2 = hps.get_hps_for_module("module_2")
         check(hps_2.learning_rate, 0.00005)
         check(hps_2.grad_clip, 100.0)
         check(hps_2.grad_clip_by, "global_norm")
         check(hps_2.kl_coeff, 0.5)
 
-        # No Module_3 overrides (module_3 uses the top-level HP object directly).
+        # No `module_3` overrides (b/c module_3 uses the top-level HP object directly).
         self.assertTrue("module_3" not in hps._per_module_overrides)
         hps_3 = hps.get_hps_for_module("module_3")
         self.assertTrue(hps_3 is hps)

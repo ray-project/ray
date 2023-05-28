@@ -53,7 +53,15 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
-from ray.rllib.utils.typing import LearningRateOrSchedule, ResultDict, TensorType
+from ray.rllib.utils.typing import (
+    LearningRateOrSchedule,
+    Optimizer,
+    Param,
+    ParamRef,
+    ParamDict,
+    ResultDict,
+    TensorType,
+)
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
@@ -63,13 +71,7 @@ tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
-Optimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
-Param = Union["torch.Tensor", "tf.Variable"]
-ParamOptimizerPair = Tuple[Sequence[Param], Optimizer]
-ParamOptimizerPairs = List[ParamOptimizerPair]
-NamedParamOptimizerPairs = Dict[str, ParamOptimizerPair]
-ParamRef = Hashable
-ParamDict = Dict[ParamRef, Param]
+DefaultOptimizerName = "default_optimizer"
 
 # COMMON LEARNER LOSS_KEYS
 POLICY_LOSS_KEY = "policy_loss"
@@ -321,6 +323,8 @@ class Learner:
         # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
 
+        # Whether the user has configured their own optimizers, in which case RLlib
+        # will not manage the learning rate setup and scheduling.
         self._user_configured_optimizers = is_overridden(
             self.configure_optimizers_for_module
         ) or is_overridden(self.configure_optimizers)
@@ -350,156 +354,139 @@ class Learner:
         """The hyper-parameters for the learner."""
         return self._hps
 
+    def register_optimizer(
+        self,
+        *,
+        module_id: ModuleID = ALL_MODULES,
+        optimizer_name: str = DefaultOptimizerName,
+        optimizer: Optimizer,
+        params: Sequence[Param],
+        lr_or_lr_schedule: Optional[LearningRateOrSchedule] = None,
+    ) -> None:
+        """Registers an optimizer with a ModuleID, name, param list and lr-scheduler.
+
+        Use this method in your custom implementations of either
+        `self.configure_optimizers()` or `self.configure_optimzers_for_module()` (you
+        should only override one of these!). If you register a lr Scheduler setting
+        with an optimizer, RLlib will automatically keep its learning rate updated
+        throughout the training process. Alternatively, you can construct your
+        optimizers directly with a learning rate and manage lr scheduling or updating
+        yourself.
+
+        Args:
+            module_id: The `module_id` under which to register the optimizer. If not
+                provided, will assume ALL_MODULES.
+            optimizer_name: The name (str) of the optimizer. If not provided, will
+                assume DefaultOptimizerName.
+            optimizer: The already instantiated optimizer object to register.
+            params: A list of parameters (framework-specific variables) that will be
+                trained/updated
+            lr_or_lr_schedule: An optional fixed learning rate or learning rate schedule
+                setup. If provided, RLlib will automatically keep the optimizer's
+                learning rate updated.
+        """
+        full_registration_name = module_id + "_" + optimizer_name
+
+        # Store the given optimizer under the given `module_id`.
+        self._module_optimizers[module_id].append(full_registration_name)
+
+        # Store the optimizer instance under its full `module_id`_`optimizer_name`
+        # key.
+        self._named_optimizers[full_registration_name] = optimizer
+
+        # Store all given parameters under the given optimizer.
+        self._optimizer_parameters[optimizer] = []
+        for param in params:
+            param_ref = self.get_param_ref(param)
+            self._optimizer_parameters[optimizer].append(param_ref)
+            self._params[param_ref] = param
+
+        # Optionally, store a scheduler object along with this optimizer. If such a
+        # setting is provided, RLlib will handle updating the optimizer's learning rate
+        # over time.
+        if lr_or_lr_schedule is not None:
+            # Validate the given setting.
+            Scheduler.validate(
+                fixed_value_or_schedule=lr_or_lr_schedule,
+                setting_name="lr_or_lr_schedule",
+                description="learning rate or schedule",
+            )
+            # Create the scheduler object for this optimizer.
+            scheduler = Scheduler(
+                fixed_value_or_schedule=lr_or_lr_schedule,
+                framework=self.framework,
+                device=self._device,
+            )
+            self._optimizer_lr_schedules[optimizer] = scheduler
+            # Set the optimizer to the current (first) learning rate.
+            self._set_optimizer_lr(
+                optimizer=optimizer,
+                lr=scheduler.get_current_value(),
+            )
+
     @OverrideToImplementCustomLogic
-    def configure_optimizers(self) -> ParamOptimizerPairs:
-        """Configures and creates the optimizers for this Learner.
+    def configure_optimizers(self) -> None:
+        """Configures, creates, and registers the optimizers for this Learner.
 
-        Do not override this method for your custom algorithms (which require certain
-        optimizers), but rather override the `self.configure_optimizers_for_module(
-        module_id=..)` method and return those optimizers from there that you need for
-        the given module.
+        Optimizers are responsible for updating the model's parameters during training,
+        based on the computed gradients.
 
-        This method configures, creates, and returns the optimizers that will be used to
-        train the model. The optimizers are responsible for updating the model's
-        parameters during training, based on the computed gradients. The method should
-        return a list of tuples, where each tuple consists of a list of model
-        parameters and a deep learning optimizer that should be used to optimize those
-        parameters. To support both tf and torch, we must explicitly return the
-        parameters as the first element of the tuple regardless of whether those
-        exist in the optimizer objects or not. This method is called once at
-        initialization.
+        Normally, you should not override this method for your custom algorithms
+        (which require certain optimizers), but rather override the
+        `self.configure_optimizers_for_module(module_id=..)` method and register those
+        optimizers in there that you need for the given `module_id`.
 
-        Returns:
-            A list of tuples (parameters, optimizer), where parameters is a list of
-            model parameters and optimizer is a deep learning optimizer.
+        You can register an optimizer for any RLModule within `self.module` (or for
+        the ALL_MODULES ID) by calling `self.register_optimizer()` and passing the
+        module_id, optimizer_name (only in case you would like to register more than
+        one optimizer for a given module), the optimizer instane itself, a list
+        of all the optimizer's parameters (to be updated by the optimizer), and
+        an optional learning rate or learning rate schedule setting.
+
+        This method is called once during building (`self.build()`).
         """
-        param_optimizer_pairs = []
-        name_to_optim = {}
+
+        # The default implementation simply calls `self.configure_optimizers_for_module`
+        # on each RLModule within `self.module`.
         for module_id in self.module.keys():
-            if self._is_module_compatible_with_learner(self.module[module_id]):
-                (
-                    module_param_optimizer_pairs,
-                    module_named_optims,
-                ) = self._configure_optimizers_for_module_helper(module_id)
-                param_optimizer_pairs.extend(module_param_optimizer_pairs)
-                name_to_optim.update(module_named_optims)
-                self._module_optimizers[module_id].extend(
-                    list(module_named_optims.keys())
-                )
-        self._named_optimizers = name_to_optim
-        return param_optimizer_pairs
+            hps = self.hps.get_hps_for_module(module_id)
+            self.configure_optimizers_for_module(module_id=module_id, hps=hps)
 
-    def _configure_optimizers_for_module_helper(
-        self, module_id: ModuleID
-    ) -> Tuple[ParamOptimizerPairs, Dict[str, Optimizer]]:
-        """Configures the optimizers for the given module_id.
-
-        This method is a helper method for processing the output of
-        configure_optimizers_for_module into a dictionary of names mapping to optimizers
-        and a list of ParamOptimizerPairs. Developers should call this method
-        instead of configure_optimizers_for_module, but users should still override
-        configure_optimizers_for_module.
+    def _check_registered_optimizer(
+        self,
+        optimizer: Optimizer,
+        params: Sequence[Param],
+    ) -> None:
+        """Checks that the given optimizer and parameters are valid for the framework.
 
         Args:
-            module_id: The module_id of the module to configure optimizers for.
-
-        Returns:
-            A tuple consisting of: A list of ParamOptimizerPairs and a dict of names
-            mapping from optimizer names to optimizers.
+            optimizer: The optimizer object to check.
+            params: The list of parameters to check.
         """
-        hps = self.hps.get_hps_for_module(module_id)
-
-        pairs = []
-        name_to_optim = {}
-        pair_or_pairs: Union[
-            ParamOptimizerPair, NamedParamOptimizerPairs
-        ] = self.configure_optimizers_for_module(module_id, hps=hps)
-        if isinstance(pair_or_pairs, tuple):
-            # pair_or_pairs is a single ParamOptimizerPair
-            pair = pair_or_pairs
-            self._check_structure_param_optim_pair(pair)
-            _, optim = pair
-            name = f"{module_id}"
-            name_to_optim[name] = optim
-            pairs.append(pair)
-            self._pair_optim_with_lr_scheduler(hps, optim)
-        elif isinstance(pair_or_pairs, dict):
-            # pair_or_pairs is a NamedParamOptimizerPairs
-            for name, pair in pair_or_pairs.items():
-                self._check_structure_param_optim_pair(pair)
-                _, optim = pair
-                if not isinstance(name, str):
-                    raise ValueError(
-                        "The output of configure_optimizers_for_module must be a "
-                        "NamedParamOptimizerPairs. The key of a "
-                        "NamedParamOptimizerPairs must be a string."
-                    )
-                name = f"{module_id}_{name}"
-                name_to_optim[name] = optim
-                pairs.append(pair)
-                self._pair_optim_with_lr_scheduler(hps, optim)
-        else:
-            raise ValueError(
-                "The output of configure_optimizers_for_module must be a "
-                "ParamOptimizerPair or NamedParamOptimizerPairs."
-            )
-        return pairs, name_to_optim
-
-    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
-        """Checks that the given param_optim_pair is a valid ParamOptimizerPair.
-
-        Args:
-            param_optim_pair: The param_optim_pair to check.
-
-        """
-        if not isinstance(param_optim_pair, tuple):
-            raise ValueError(
-                "ParamOptimizerPair must be a tuple of (parameters, optim)."
-                f"Got a {type(param_optim_pair)} instead."
-            )
-        if len(param_optim_pair) != 2:
-            raise ValueError(
-                "ParamOptimizerPair must be a tuple of length 2 (parameters, optim)."
-                f"This tuple has a length of {len(param_optim_pair)}."
-            )
-        params, _ = param_optim_pair
         if not isinstance(params, list):
             raise ValueError(
-                "The first element of a ParamOptimizerPair must be a list of "
-                "parameters."
+                f"`params` ({params}) must be a list of framework-specifi parameters "
+                "(variables)!"
             )
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
         self, module_id: ModuleID, hps: LearnerHyperparameters
-    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
+    ) -> None:
         """Configures an optimizer for the given module_id.
 
         This method is called for each RLModule in the Multi-Agent RLModule being
         trained by the Learner, as well as any new module added during training via
-        add_module. It should construct a ParamOptimizerPair or
-        NamedParamOptimizerPairs.
-
-        In order to construct one optimizer for the entire RLModule, it should return a
-        ParamOptimizerPair. A ParamOptimzierPair is a tuple (parameters, optimizer),
-        where parameters is a list of model parameters and optimizer is a deep learning
-        framework optimizer The parameter module_id can be used to determine which
-        module to configure the optimizer for.
-
-        Alternatively, for a module with different optimizers for policy and value
-        networks, it should return a NamedParamOptimizerPairs, which is a dictionary
-        mapping from optimizer name to a ParamOptimizerPair. e.g.
-        {"policy_optim" : policy_param_optim_pair, "value_optim" : ...}
+        `self.add_module()`. It should configure and construct one or more optimizers
+        and register them via calls to `self.register_optimizer()` along with the
+        `module_id`, an optional optimizer name (str), a list of the optimizer's
+        framework specific parameters (variables), and an optional learning rate value
+        of -schedule.
 
         Args:
             module_id: The module_id of the RLModule that is being configured.
             hps: The LearnerHyperparameters specific to the given `module_id`.
-
-        Returns:
-            A ParamOptimizerPair (for a single optimizer) or NamedParamOptimizerPairs
-            (in case the user would like to define multiple optimizers) for this
-            `module_id`.
         """
 
     @OverrideToImplementCustomLogic
@@ -662,72 +649,64 @@ class Learner:
             self.register_metric(module_id, key, value)
 
     def get_optimizers_for_module(
-        self, module_id: ModuleID
+        self, module_id: ModuleID = ALL_MODULES
     ) -> List[Tuple[Optional[str], Optimizer]]:
         """Returns a list of (optimizer_name, optimizer instance)-tuples for module_id.
 
         Args:
             module_id: The ModuleID for which to return the configured
-                (optimizer name, optimizer)-pairs.
+                (optimizer name, optimizer)-pairs. If not provided, will return
+                optimizers registered under ALL_MODULES.
 
         Returns:
             A list of tuples of the format: ([optimizer_name], [optimizer object]),
-            where optimizer_name is the name under which the optimizer was configured
-            in `self.configure_optimizers_for_module`. If only a single optimizer was
-            configured for `module_id`, [optimizer_name] will be None.
+            where optimizer_name is the name under which the optimizer was registered
+            in `self.register_optimizer`. If only a single optimizer was
+            configured for `module_id`, [optimizer_name] will be DefaultOptimizerName.
         """
         named_optimizers = []
         for name in self._module_optimizers[module_id]:
             optimizer = self._named_optimizers[name]
-            # If only one optimizer was configured under this module_id, its returned
-            # optimizer name will be None.
-            if name == module_id:
-                optim_name = None
-            # If several optimizers were configured under module_id, return the pure
-            # optimizer names here (w/o the `[module_id]_` prefix).
-            else:
-                # TODO (sven): How can we avoid registering optimziers under this
-                #  constructed `[module_id]_[optim_name]` format?
-                optim_name = name[len(module_id) + 1 :]
+            # TODO (sven): How can we avoid registering optimziers under this
+            #  constructed `[module_id]_[optim_name]` format?
+            optim_name = name[len(module_id) + 1 :]
             named_optimizers.append((optim_name, optimizer))
         return named_optimizers
 
     def get_optimizer_by_module_id_and_optimizer_name(
-        self, module_id: ModuleID, optimizer_name: Optional[str] = None
+        self,
+        module_id: ModuleID = ALL_MODULES,
+        optimizer_name: str = DefaultOptimizerName,
     ) -> Optimizer:
         """Returns the optimizer object, configured under the given module_id and name.
 
-        If only one optimizer was configure under the module_id via the
-        `self.configure_optimizer_for_module` method, `optimizer_name` should be left
-        None.
+        If only one optimizer was registered under `module_id` (or ALL_MODULES) via the
+        `self.register_optimizer` method, `optimizer_name` is assumed to be
+        DefaultOptimizerName.
 
         Args:
             module_id: The ModuleID for which to return the configured optimizer.
             optimizer_name: The name of the optimizer (configured under `module_id` via
-                `self.configure_optimizers_for_module()`) to return. If only one
-                optimizer exists under module_id, leave this arg None.
+                `self.register_optimizer()`) to return. If no name was provided during
+                registration, the optimizer's name will be DefaultOptimizerName.
 
         Returns:
             The optimizer object, configured under the given `module_id` and
-            `optimizer_name` (if applicable).
+            `optimizer_name`.
         """
-        if module_id in self._named_optimizers:
-            assert optimizer_name is None
-            return self._named_optimizers[module_id]
-        else:
-            lookup_name = module_id + "_" + optimizer_name
-            assert lookup_name in self._named_optimizers
-            return self._named_optimizers[lookup_name]
+        lookup_name = module_id + "_" + optimizer_name
+        assert lookup_name in self._named_optimizers
+        return self._named_optimizers[lookup_name]
 
     def compile_param_dict_for_optimizer(
         self, param_dict: ParamDict, optimizer: Optimizer
     ) -> ParamDict:
-        """Reduces the given ParamDict to contain only parameters for given optimizier.
+        """Reduces the given ParamDict to contain only parameters for given optimizer.
 
         Args:
             param_dict: The ParamDict to reduce/filter down to the given `optimizer`.
                 The returned dict will be a subset of `param_dict` only containing keys
-                (param refs) that were confgured together with `optimizer` (and thus
+                (param refs) that were registered together with `optimizer` (and thus
                 that `optimizer` is responsible for applying gradients to).
             optimizer: The optimizer object to whose parameter refs the given
                 `param_dict` should be reduced.
@@ -924,19 +903,19 @@ class Learner:
             return
         self._is_built = True
 
+        # Build the module to be trained by this learner.
         self._module = self._make_module()
 
-        # TODO (sven): It's not clear yet, what would happen if the user would override
-        #  self.configure_optimizers (rather than overriding
-        #  self.configure_optimizer_for_module) and thus we would NOT have module_ids
-        #  per optimizer(s). Right now, this scenario would break b/c we do assume that
-        #  `self._module_optimizers` is properly structured.
-        for param_seq, optimizer in self.configure_optimizers():
-            self._optimizer_parameters[optimizer] = []
-            for param in param_seq:
-                param_ref = self.get_param_ref(param)
-                self._optimizer_parameters[optimizer].append(param_ref)
-                self._params[param_ref] = param
+        # Configure, construct, and register all optimizers needed to train
+        # `self.module`.
+        self.configure_optimizers()
+
+        #for param_seq, optimizer in :
+        #    self._optimizer_parameters[optimizer] = []
+        #    for param in param_seq:
+        #        param_ref = self.get_param_ref(param)
+        #        self._optimizer_parameters[optimizer].append(param_ref)
+        #        self._params[param_ref] = param
 
     @OverrideToImplementCustomLogic
     def compute_loss(
@@ -1107,22 +1086,21 @@ class Learner:
         """
         results = {}
 
-        # Handle lr-scheduling updates and apply new learning rates to the optimizers.
-        if not self._user_configured_optimizers:
-            # Only cover the optimizer mapped to this particular module.
-            # There should only be one b/c otherwise, `self._user_configured_optimizers`
-            # must be True.
-            assert len(self._module_optimizers[module_id]) == 1
-            for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
+        # Only cover the optimizer mapped to this particular module.
+        for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
+            # Only update this optimizer's lr, if a scheduler has been registered
+            # along with it.
+            if optimizer in self._optimizer_lr_schedules:
                 new_lr = self._optimizer_lr_schedules[optimizer].update(
                     timestep=timestep
                 )
                 self._set_optimizer_lr(optimizer, lr=new_lr)
-                # There is only one optimizer, so updating here with a key that does not
-                # have the optimizer name in it is fine. Users that configured several
-                # optimzier per module must also handle lr-scheduling (and lr-reporting)
-                # themselves.
-                results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
+                # Make sure our returned results differentiate by optimizer name
+                # (if not the default name).
+                stats_name = LEARNER_RESULTS_CURR_LR_KEY
+                if optimizer_name != DefaultOptimizerName:
+                    stats_name += "_" + optimizer_name
+                results.update({stats_name: new_lr})
 
         return results
 
@@ -1477,20 +1455,17 @@ class Learner:
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
 
-    def _pair_optim_with_lr_scheduler(self, hps, optim):
-        # Only manage optimizer's learning rate if user has NOT overridden
-        # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
-        # to handle lr-updates entirely in user's hands.
-        if not self._user_configured_optimizers:
-            # Build learning rate scheduling tools (one Schedule per optimizer).
-            self._optimizer_lr_schedules[optim] = Scheduler(
-                fixed_value_or_schedule=hps.learning_rate,
-                framework=self.framework,
-                device=self._device,
-            )
-            # Set the optimizer to the current (first) learning rate.
-            lr = self._optimizer_lr_schedules[optim].get_current_value()
-            self._set_optimizer_lr(optimizer=optim, lr=lr)
+    #def _pair_optim_with_lr_scheduler(self, hps, optim):
+    #    # Only manage optimizer's learning rate if user has NOT overridden
+    #    # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
+    #    # to handle lr-updates entirely in user's hands.
+    #    if not self._user_configured_optimizers:
+    #        # Build learning rate scheduling tools (one Schedule per optimizer).
+    #        self._optimizer_lr_schedules[optim] = Scheduler(
+    #            fixed_value_or_schedule=hps.learning_rate,
+    #            framework=self.framework,
+    #            device=self._device,
+    #        )
 
     @abc.abstractmethod
     def _get_tensor_variable(

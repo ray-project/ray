@@ -11,7 +11,8 @@ from ray.rllib.utils.typing import TensorType
 
 
 class BaseTestingLearnerHyperparameters(LearnerHyperparameters):
-    compile_mean_weights: bool = True
+    # A test setting to activate metrics on mean weights.
+    report_mean_weights: bool = True
 
 
 class BaseTestingLearner(Learner):
@@ -51,9 +52,9 @@ class BaseTestingLearner(Learner):
             loss_per_module=loss_per_module,
             metrics_per_module=metrics_per_module,
         )
-        # this is to check if in the multi-gpu case, the weights across workers are
+        # This is to check if in the multi-gpu case, the weights across workers are
         # the same. It is really only needed during testing.
-        if self.hps.compile_mean_weights:
+        if self.hps.report_mean_weights:
             mean_ws = {}
             for module_id in self.module.keys():
                 m = self.module[module_id]

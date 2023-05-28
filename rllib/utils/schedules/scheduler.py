@@ -110,6 +110,9 @@ class Scheduler:
     def get_current_value(self) -> TensorType:
         """Returns the current value (as a tensor variable).
 
+        This method should be used in loss functions of other (in-graph) places
+        where the current value is needed.
+
         Returns:
             The tensor variable (holding the current value to be used).
         """
@@ -118,8 +121,11 @@ class Scheduler:
     def update(self, timestep: int) -> float:
         """Updates the underlying (framework specific) tensor variable.
 
+        In case of a fixed value, this method does nothing and only returns the fixed
+        value as-is.
+
         Args:
-            timestep: The current timestep.
+            timestep: The current timestep that the update might depend on.
 
         Returns:
             The current value of the tensor variable as a python float.

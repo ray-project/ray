@@ -383,7 +383,7 @@ class ImpalaConfig(AlgorithmConfig):
                 setting_name="entropy_coeff",
                 description="entropy coefficient",
             )
-        if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
+        elif isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
         # Check whether worker to aggregation-worker ratio makes sense.

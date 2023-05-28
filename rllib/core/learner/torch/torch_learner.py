@@ -14,10 +14,6 @@ from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
     LearnerHyperparameters,
-    ParamOptimizerPair,
-    NamedParamOptimizerPairs,
-    ParamDict,
-    Param,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import (
@@ -41,7 +37,7 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
 
 torch, nn = try_import_torch()
 
@@ -75,16 +71,22 @@ class TorchLearner(Learner):
     @override(Learner)
     def configure_optimizers_for_module(
         self, module_id: ModuleID, hps: LearnerHyperparameters
-    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
+    ) -> None:
         module = self._module[module_id]
 
-        pair: ParamOptimizerPair = (
-            self.get_parameters(module),
-            # For this default implementation, the learning rate is handled by the
-            # attached lr Scheduler (controlled by self.hps.learning_rate).
-            torch.optim.Adam(self.get_parameters(module)),
+        # For this default implementation, the learning rate is handled by the
+        # attached lr Scheduler (controlled by self.hps.learning_rate, which can be a
+        # fixed value of a schedule setting).
+        optimizer = torch.optim.Adam(self.get_parameters(module))
+        params = self.get_parameters(module)
+
+        # Register the created optimizer (under the default optimizer name).
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer=optimizer,
+            params=params,
+            lr_or_lr_schedule=hps.learning_rate,
         )
-        return pair
 
     @override(Learner)
     def _update(
@@ -282,20 +284,22 @@ class TorchLearner(Learner):
         return isinstance(module, nn.Module)
 
     @override(Learner)
-    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
-        super()._check_structure_param_optim_pair(param_optim_pair)
-        params, optim = param_optim_pair
-        if not isinstance(optim, torch.optim.Optimizer):
+    def _check_registered_optimizer(
+        self,
+        optimizer: Optimizer,
+        params: Sequence[Param],
+    ) -> None:
+        super()._check_registered_optimizer(optimizer, params)
+        if not isinstance(optimizer, torch.optim.Optimizer):
             raise ValueError(
-                f"The optimizer in {param_optim_pair} is not a torch.optim.Optimizer. "
-                "Please use a torch.optim.Optimizer for TorchLearner."
+                f"The optimizer ({optimizer}) is not a torch.optim.Optimizer! "
+                "Only use torch.optim.Optimizer subclasses for TorchLearner."
             )
         for param in params:
             if not isinstance(param, torch.Tensor):
                 raise ValueError(
-                    f"One of the parameters {param} in this ParamOptimizerPair "
-                    f"{param_optim_pair} is not a torch.Tensor. Please use a "
-                    "torch.Tensor for TorchLearner."
+                    f"One of the parameters ({param}) in the registered optimizer "
+                    "is not a torch.Tensor!"
                 )
 
     @override(Learner)

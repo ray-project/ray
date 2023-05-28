@@ -1673,45 +1673,43 @@ class AlgorithmConfig(_Config):
             lr: The learning rate (float) or learning rate schedule in the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
                 In case of a schedule, intermediary timesteps will be assigned to
-                interpolated learning rate values. A schedule config's first entry must
-                start with timestep 0, i.e.: [[0, initial_value], [...]].
+                linearly interpolated learning rate values. A schedule config's first
+                entry must start with timestep 0, i.e.: [[0, initial_value], [...]].
                 Note: If you require a) more than one optimizer (per RLModule),
                 b) optimizer types that are not Adam, c) a learning rate schedule that
-                is not a piecewise schedule as described above, or d) specifying
-                c'tor arguments of the optimizer that are not the learning rate
-                (e.g. Adam's epsilon), then you must override your Learner's
-                `configure_optimizer_for_module` method and handle lr-scheduling
-                yourself.
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
             grad_clip: If None, no gradient clipping will be applied. Otherwise,
-                depending on the setting of `grad_clip_by`, the float value of
+                depending on the setting of `grad_clip_by`, the (float) value of
                 `grad_clip` will have the following effect:
                 If `grad_clip_by=value`: Will clip all computed gradients individually
                 inside the interval [-`grad_clip`, +`grad_clip`].
                 If `grad_clip_by=norm`, will compute the L2-norm of each weight/bias
-                gradient tensor and then clip all gradients such that this L2-norm does
-                not exceed `grad_clip`. The L2-norm of a tensor is computed via:
-                `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of the
-                tensor (no matter what the shape of this tensor is).
+                gradient tensor individually and then clip all gradients such that these
+                L2-norms do not exceed `grad_clip`. The L2-norm of a tensor is computed
+                via: `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of
+                the tensor (no matter what the shape of this tensor is).
                 If `grad_clip_by=global_norm`, will compute the square of the L2-norm of
-                each weight/bias gradient tensor, sum up all these squared L2-norms
-                across all given gradient tensors (e.g. the entire module to
+                each weight/bias gradient tensor individually, sum up all these squared
+                L2-norms across all given gradient tensors (e.g. the entire module to
                 be updated), square root that overall sum, and then clip all gradients
-                such that this "global" L2-norm does not exceed the given value.
+                such that this global L2-norm does not exceed the given value.
                 The global L2-norm over a list of tensors (e.g. W and V) is computed
                 via:
                 `sqrt[SUM(w0^2, w1^2, ..., wn^2) + SUM(v0^2, v1^2, ..., vm^2)]`, where
                 w[i] and v[j] are the elements of the tensors W and V (no matter what
                 the shapes of these tensors are).
-                Note that if `grad_clip` is None, the `grad_clip_by` setting has no
-                effect and no grad clipping whatsoever will be applied.
             grad_clip_by: See `grad_clip` for the effect of this setting on gradient
                 clipping. Allowed values are `value`, `norm`, and `global_norm`.
             train_batch_size: Training batch size, if applicable.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
-            optimizer: Arguments to pass to the policy optimizer. Not used when
-                _enable_learner_api=True.
+            optimizer: Arguments to pass to the policy optimizer. This setting is not
+                used when `_enable_learner_api=True`.
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the FaultTolerantActorManager class for
                 more details.
@@ -2149,7 +2147,8 @@ class AlgorithmConfig(_Config):
                 e.g. the learning rate, from the main AlgorithmConfig only to this
                 particular module (within a MultiAgentRLModule).
                 You can create override dicts by using the `AlgorithmConfig.overrides`
-                utility. For example:
+                utility. For example, to override your learning rate and (PPO) lambda
+                setting just for a single RLModule with your MultiAgentRLModule, do:
                 config.multi_agent(algorithm_config_overrides_per_module={
                     "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
                 })
