@@ -268,12 +268,12 @@ class TfLearner(Learner):
         self._module.set_state(state)
 
     @override(Learner)
-    def get_optimizer_weights(self) -> Mapping[str, Any]:
-        optim_weights = {}
+    def get_optimizer_state(self) -> Mapping[str, Any]:
+        optim_state = {}
         with tf.init_scope():
             for name, optim in self._named_optimizers.items():
-                optim_weights[name] = [var.numpy() for var in optim.variables()]
-        return optim_weights
+                optim_state[name] = [var.numpy() for var in optim.variables()]
+        return optim_state
 
     @override(Learner)
     def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
