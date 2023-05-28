@@ -459,7 +459,7 @@ class Learner:
         and register them via calls to `self.register_optimizer()` along with the
         `module_id`, an optional optimizer name (str), a list of the optimizer's
         framework specific parameters (variables), and an optional learning rate value
-        of -schedule.
+        or -schedule.
 
         Args:
             module_id: The module_id of the RLModule that is being configured.
@@ -601,7 +601,7 @@ class Learner:
         """
 
     def register_metric(self, module_id: str, key: str, value: Any) -> None:
-        """Registers a single key/value metric pair for loss and gradient stats.
+        """Registers a single key/value metric pair for loss- and gradient stats.
 
         Args:
             module_id: The module_id to register the metric under. This may be
@@ -613,7 +613,7 @@ class Learner:
         self._metrics[module_id][key] = value
 
     def register_metrics(self, module_id: str, metrics_dict: Dict[str, Any]) -> None:
-        """Registers a several key/value metric pairs for loss and gradient stats.
+        """Registers several key/value metric pairs for loss- and gradient stats.
 
         Args:
             module_id: The module_id to register the metrics under. This may be
@@ -621,6 +621,7 @@ class Learner:
             metrics_dict: A dict mapping names of metrics to be registered (below the
                 given `module_id`) to the actual values of these metrics. Values might
                 also be tensor vars (e.g. from within a traced tf2 function).
+                These will be automatically converted to numpy values.
         """
         for key, value in metrics_dict.items():
             self.register_metric(module_id, key, value)
