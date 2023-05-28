@@ -310,7 +310,7 @@ Ray-specific, the rest are true anywhere Windows is used):
 
 * Multi-node Ray clusters are untested.
 
-* Filenames are tricky on windows and there still may be a few places where ray
+* Filenames are tricky on Windows and there still may be a few places where Ray
   assumes unix filenames rather than windows ones. This can be true in downstream
   packages as well.
 
