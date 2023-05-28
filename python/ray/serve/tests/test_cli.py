@@ -1234,5 +1234,60 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     ray.shutdown()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+class TestRayReinitialization:
+    @pytest.fixture
+    def import_file_name(self) -> str:
+        return "ray.serve.tests.test_config_files.ray_already_initialized:app"
+
+    def test_run_without_address(self, import_file_name, ray_start_stop):
+        """
+        when the imported file already initialized a ray instance and serve doesn't run with address argument,
+        then serve does not reinitialize another ray instance and cause error
+        """
+        p = subprocess.Popen(["serve", "run", import_file_name])
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+
+    def test_run_with_address_same_address(self, import_file_name, ray_start_stop):
+        """
+        when the imported file already initialized a ray instance
+            and serve runs with address argument same as the ray instance,
+        then serve does not reinitialize another ray instance and cause error
+        """
+        p = subprocess.Popen(
+            ["serve", "run", "--address=127.0.0.1:6379", import_file_name]
+        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+
+    def test_run_with_address_different_address(self, import_file_name, ray_start_stop):
+        """
+        when the imported file already initialized a ray instance
+            and serve runs with address argument different as the ray instance,
+        then serve does not reinitialize another ray instance and cause error
+            and logs warning to the user
+        """
+        p = subprocess.Popen(
+            ["serve", "run", "--address=ray://123.45.67.89:50005", import_file_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+        process_output, _ = p.communicate()
+        logs = process_output.decode("utf-8").strip()
+        expected_warning_message = (
+            "Existing ray instance has address: 127.0.0.1:6379 which is different from the address passed from the "
+            "command: ray://123.45.67.89:50005. \nPlease double check the address to ensure you are using the intended "
+            "ray instance. \nServe does not automatically create a new ray instance from the given address. \nExisting "
+            "ray instance is used to serve the app."
+        )
+        assert expected_warning_message in logs
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

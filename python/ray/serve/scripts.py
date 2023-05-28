@@ -409,8 +409,24 @@ def run(
             import_attr(import_path), args_dict
         )
 
-    # Setting the runtime_env here will set defaults for the deployments.
-    ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
+    # only initialize ray if it has not happened yet
+    if not ray.is_initialized():
+        # Setting the runtime_env here will set defaults for the deployments.
+        ray.init(
+            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
+        )
+
+    # warning users the address they passed is different from the existing ray instance
+    worker = ray._private.worker.global_worker
+    ray_address = worker.node.address
+    if address is not None and address != ray_address:
+        cli_logger.warning(
+            f"Existing ray instance has address: {ray_address} which is different from the address passed from the "
+            f"command: {address}. \nPlease double check the address to ensure you are using the intended ray "
+            "instance. \nServe does not automatically create a new ray instance from the given address. \nExisting ray "
+            "instance is used to serve the app."
+        )
+
     client = _private_api.serve_start(
         detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
