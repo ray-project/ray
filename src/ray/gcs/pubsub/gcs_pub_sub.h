@@ -208,10 +208,10 @@ class RAY_EXPORT PythonGcsSubscriber {
   std::shared_ptr<grpc::Channel> channel_;
   std::string gcs_address_;
   int gcs_port_;
-  rpc::ChannelType channel_type_;
-  std::string subscriber_id_;
+  const rpc::ChannelType channel_type_;
+  const std::string subscriber_id_;
   std::string publisher_id_;
-  std::string worker_id_;
+  const std::string worker_id_;
   int64_t max_processed_sequence_id_ GUARDED_BY(mu_);
   int64_t last_batch_size_ GUARDED_BY(mu_);
   std::deque<rpc::PubMessage> queue_ GUARDED_BY(mu_);

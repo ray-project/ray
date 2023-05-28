@@ -452,6 +452,9 @@ Status PythonGcsSubscriber::Close() {
   std::shared_ptr<grpc::ClientContext> current_polling_context;
   {
     absl::MutexLock lock(&mu_);
+    if (closed_) {
+      return Status::OK();
+    }
     closed_ = true;
     current_polling_context = current_polling_context_;
   }
