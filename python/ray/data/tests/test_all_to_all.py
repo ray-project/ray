@@ -1621,37 +1621,30 @@ def test_random_block_order(ray_start_regular_shared, restore_data_context):
 # tests should only be carefully reordered to retain this invariant!
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
+def test_random_shuffle(shutdown_only, use_push_based_shuffle):
     def range(n, parallelism=200):
         ds = ray.data.range(n, parallelism=parallelism)
-        if pipelined:
-            pipe = ds.repeat(2)
-            pipe.random_shuffle = pipe.random_shuffle_each_window
-            return pipe
-        else:
-            return ds
+        return ds
 
-    r1 = range(100).random_shuffle().take(999)
-    r2 = range(100).random_shuffle().take(999)
+    r1 = ray.data.range(100).random_shuffle().take(999)
+    r2 = ray.data.range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
-    r1 = range(100, parallelism=1).random_shuffle().take(999)
-    r2 = range(100, parallelism=1).random_shuffle().take(999)
+    r1 = ray.data.range(100, parallelism=1).random_shuffle().take(999)
+    r2 = ray.data.range(100, parallelism=1).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
     # TODO(swang): fix this
     if not use_push_based_shuffle:
-        if not pipelined:
-            assert range(100).random_shuffle(num_blocks=1).num_blocks() == 1
-        r1 = range(100).random_shuffle(num_blocks=1).take(999)
-        r2 = range(100).random_shuffle(num_blocks=1).take(999)
+        assert ray.data.range(100).random_shuffle(num_blocks=1).num_blocks() == 1
+        r1 = ray.data.range(100).random_shuffle(num_blocks=1).take(999)
+        r2 = ray.data.range(100).random_shuffle(num_blocks=1).take(999)
         assert r1 != r2, (r1, r2)
 
-    r0 = range(100, parallelism=5).take(999)
-    r1 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-    r2 = range(100, parallelism=5).random_shuffle(seed=0).take(999)
-    r3 = range(100, parallelism=5).random_shuffle(seed=12345).take(999)
+    r0 = ray.data.range(100, parallelism=5).take(999)
+    r1 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r2 = ray.data.range(100, parallelism=5).random_shuffle(seed=0).take(999)
+    r3 = ray.data.range(100, parallelism=5).random_shuffle(seed=12345).take(999)
     assert r1 == r2, (r1, r2)
     assert r1 != r0, (r1, r0)
     assert r1 != r3, (r1, r3)
@@ -1663,14 +1656,10 @@ def test_random_shuffle(shutdown_only, pipelined, use_push_based_shuffle):
     assert r1 != r0, (r1, r0)
 
     # Test move.
-    ds = range(100, parallelism=2)
+    ds = ray.data.range(100, parallelism=2)
     r1 = ds.random_shuffle().take(999)
-    if pipelined:
-        with pytest.raises(RuntimeError):
-            ds = ds.map(lambda x: x).take(999)
-    else:
-        ds = ds.map(lambda x: x).take(999)
-    r2 = range(100).random_shuffle().take(999)
+    ds = ds.map(lambda x: x).take(999)
+    r2 = ray.data.range(100).random_shuffle().take(999)
     assert r1 != r2, (r1, r2)
 
     # Test empty dataset.
