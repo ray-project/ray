@@ -301,27 +301,18 @@ PythonGcsSubscriber::PythonGcsSubscriber(const std::string &gcs_address,
                                          const std::string &worker_id)
     : channel_type_(channel_type),
       subscriber_id_(subscriber_id),
+      publisher_id_(""),
       worker_id_(worker_id),
+      max_processed_sequence_id_(0),
       closed_(false) {
   std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
   RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
   RAY_CHECK(address.size() == 2);
   gcs_address_ = address[0];
   gcs_port_ = std::stoi(address[1]);
-  max_processed_sequence_id_ = 0;
-  publisher_id_ = "";
-}
-
-Status PythonGcsSubscriber::Connect() {
-  absl::MutexLock lock(&mu_);
-
-  if (closed_) {
-    return Status::OK();
-  }
 
   channel_ = rpc::GcsRpcClient::CreateGcsChannel(gcs_address_, gcs_port_);
   pubsub_stub_ = rpc::InternalPubSubGcsService::NewStub(channel_);
-  return Status::OK();
 }
 
 Status PythonGcsSubscriber::Subscribe() {

@@ -2411,7 +2411,7 @@ cdef class _GcsSubscriber:
     cdef:
         shared_ptr[CPythonGcsSubscriber] inner
 
-    def _connect(self, address, channel, worker_id):
+    def _construct(self, address, channel, worker_id):
         cdef:
             c_worker_id = worker_id or b""
         # subscriber_id needs to match the binary format of a random
@@ -2419,7 +2419,6 @@ cdef class _GcsSubscriber:
         subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
         self.inner.reset(new CPythonGcsSubscriber(
             address, channel, subscriber_id, c_worker_id))
-        check_status(self.inner.get().Connect())
 
     def subscribe(self):
         """Registers a subscription for the subscriber's channel type.
@@ -2460,7 +2459,7 @@ cdef class GcsErrorSubscriber(_GcsSubscriber):
     """
 
     def __init__(self, address, worker_id=None):
-        self._connect(address, RAY_ERROR_INFO_CHANNEL, worker_id)
+        self._construct(address, RAY_ERROR_INFO_CHANNEL, worker_id)
 
     def poll(self, timeout=None):
         """Polls for new error messages.
@@ -2504,7 +2503,7 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
     """
 
     def __init__(self, address, worker_id=None):
-        self._connect(address, RAY_LOG_CHANNEL, worker_id)
+        self._construct(address, RAY_LOG_CHANNEL, worker_id)
 
     def poll(self, timeout=None):
         """Polls for new log messages.
@@ -2555,7 +2554,7 @@ cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
     """
 
     def __init__(self, address, worker_id=None):
-        self._connect(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
+        self._construct(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
 
     def poll(self, timeout=None):
         """Polls for new function key messages.
@@ -2596,7 +2595,7 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
     """
 
     def __init__(self, address, worker_id=None):
-        self._connect(address, GCS_ACTOR_CHANNEL, worker_id)
+        self._construct(address, GCS_ACTOR_CHANNEL, worker_id)
 
     def poll(self, timeout=None):
         """Polls for new actor messages.

@@ -173,12 +173,6 @@ class RAY_EXPORT PythonGcsSubscriber {
                                const std::string &subscriber_id,
                                const std::string &worker_id);
 
-  /// Connect to the subscriber service of the GCS.
-  /// This function must be called before calling other functions.
-  ///
-  /// \return Status
-  Status Connect();
-
   /// Register a subscription for the subscriber's channel type.
   ///
   /// Before the registration, published messages in the channel

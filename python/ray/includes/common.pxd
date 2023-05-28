@@ -379,8 +379,6 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
             const c_string& gcs_address, CChannelType channel_type,
             const c_string& subscriber_id, const c_string& worker_id)
 
-        CRayStatus Connect()
-
         CRayStatus Subscribe()
 
         int64_t last_batch_size()
