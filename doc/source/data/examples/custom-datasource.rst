@@ -11,7 +11,7 @@ Implementing a Custom Datasource
 
 Ray Data supports multiple ways to :ref:`create a dataset <loading_data>`,
 allowing you to easily ingest data of common formats from popular sources. However, if the
-datasource you want to read from is not in the built-in list, don't worry, you can implement
+datasource you want to read from is not in the :ref:`built-in list <input-output>`, don't worry, you can implement
 a custom one for your use case. This guide walks through building
 a custom datasource, using `MongoDB <https://www.mongodb.com/docs/manual/introduction/>`__ as an example.
 By the end of the guide, you will have a ``MongoDatasource`` that you can use to create dataset as follows:
