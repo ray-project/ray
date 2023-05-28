@@ -5,7 +5,6 @@ import importlib.util
 import logging
 import numpy as np
 import os
-import platform
 import threading
 import tree  # pip install dm_tree
 from types import FunctionType
@@ -33,6 +32,7 @@ from ray.rllib.connectors.util import (
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
@@ -66,8 +66,7 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
-from ray.rllib.utils.actor_manager import FaultAwareApply
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -99,7 +98,6 @@ from ray.rllib.utils.typing import (
 )
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
-from ray.util.iter import ParallelIteratorWorker
 from ray.tune.registry import registry_contains_input, registry_get_input
 
 
@@ -163,7 +161,7 @@ def _update_env_seed_if_necessary(
 
 
 @DeveloperAPI
-class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
+class RolloutWorker(EnvRunner):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -217,42 +215,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             "traffic_light_policy": SampleBatch(...)})
     """
 
-    @classmethod
-    @DeveloperAPI
-    def as_remote(
-        cls,
-        num_cpus: Optional[int] = None,
-        num_gpus: Optional[Union[int, float]] = None,
-        memory: Optional[int] = None,
-        resources: Optional[dict] = None,
-        max_num_worker_restarts: int = 0,
-    ) -> type:
-        """Returns RolloutWorker class as a `@ray.remote using given options`.
-
-        The returned class can then be used to instantiate ray actors.
-
-        Args:
-            num_cpus: The number of CPUs to allocate for the remote actor.
-            num_gpus: The number of GPUs to allocate for the remote actor.
-                This could be a fraction as well.
-            memory: The heap memory request in bytes for this task/actor,
-                rounded down to the nearest integer.
-            resources: The default custom resources to allocate for the remote
-                actor.
-
-        Returns:
-            The `@ray.remote` decorated RolloutWorker class.
-        """
-        return ray.remote(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            memory=memory,
-            resources=resources,
-            # Automatically restart failed workers.
-            max_restarts=max_num_worker_restarts,
-        )(cls)
-
-    @DeveloperAPI
     def __init__(
         self,
         *,
@@ -267,37 +229,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         default_policy_class: Optional[Type[Policy]] = None,
         dataset_shards: Optional[List[ray.data.Dataset]] = None,
         # Deprecated: This is all specified in `config` anyways.
-        policy_config=DEPRECATED_VALUE,
-        input_creator=DEPRECATED_VALUE,
-        output_creator=DEPRECATED_VALUE,
-        rollout_fragment_length=DEPRECATED_VALUE,
-        count_steps_by=DEPRECATED_VALUE,
-        batch_mode=DEPRECATED_VALUE,
-        episode_horizon=DEPRECATED_VALUE,
-        preprocessor_pref=DEPRECATED_VALUE,
-        sample_async=DEPRECATED_VALUE,
-        compress_observations=DEPRECATED_VALUE,
-        num_envs=DEPRECATED_VALUE,
-        observation_fn=DEPRECATED_VALUE,
-        clip_rewards=DEPRECATED_VALUE,
-        normalize_actions=DEPRECATED_VALUE,
-        clip_actions=DEPRECATED_VALUE,
-        env_config=DEPRECATED_VALUE,
-        model_config=DEPRECATED_VALUE,
-        remote_worker_envs=DEPRECATED_VALUE,
-        remote_env_batch_wait_ms=DEPRECATED_VALUE,
-        soft_horizon=DEPRECATED_VALUE,
-        no_done_at_end=DEPRECATED_VALUE,
-        fake_sampler=DEPRECATED_VALUE,
-        seed=DEPRECATED_VALUE,
-        log_level=DEPRECATED_VALUE,
-        callbacks=DEPRECATED_VALUE,
-        disable_env_checking=DEPRECATED_VALUE,
-        policy_spec=DEPRECATED_VALUE,
-        policy_mapping_fn=DEPRECATED_VALUE,
-        policies_to_train=DEPRECATED_VALUE,
-        extra_python_environs=DEPRECATED_VALUE,
-        policy=DEPRECATED_VALUE,
         tf_session_creator=DEPRECATED_VALUE,  # Use config.tf_session_options instead.
     ):
         """Initializes a RolloutWorker instance.
@@ -321,146 +252,11 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 Env is created on this RolloutWorker.
         """
         # Deprecated args.
-        if policy != DEPRECATED_VALUE:
-            deprecation_warning("policy", "policy_spec", error=True)
-        if policy_spec != DEPRECATED_VALUE:
-            deprecation_warning(
-                "policy_spec",
-                "RolloutWorker(default_policy_class=...)",
-                error=True,
-            )
-        if policy_config != DEPRECATED_VALUE:
-            deprecation_warning("policy_config", "config", error=True)
-        if input_creator != DEPRECATED_VALUE:
-            deprecation_warning(
-                "input_creator",
-                "config.offline_data(input_=..)",
-                error=True,
-            )
-        if output_creator != DEPRECATED_VALUE:
-            deprecation_warning(
-                "output_creator",
-                "config.offline_data(output=..)",
-                error=True,
-            )
-        if rollout_fragment_length != DEPRECATED_VALUE:
-            deprecation_warning(
-                "rollout_fragment_length",
-                "config.rollouts(rollout_fragment_length=..)",
-                error=True,
-            )
-        if count_steps_by != DEPRECATED_VALUE:
-            deprecation_warning(
-                "count_steps_by", "config.multi_agent(count_steps_by=..)", error=True
-            )
-        if batch_mode != DEPRECATED_VALUE:
-            deprecation_warning(
-                "batch_mode", "config.rollouts(batch_mode=..)", error=True
-            )
-        if episode_horizon != DEPRECATED_VALUE:
-            deprecation_warning("episode_horizon", error=True)
-        if preprocessor_pref != DEPRECATED_VALUE:
-            deprecation_warning(
-                "preprocessor_pref", "config.rollouts(preprocessor_pref=..)", error=True
-            )
-        if sample_async != DEPRECATED_VALUE:
-            deprecation_warning(
-                "sample_async", "config.rollouts(sample_async=..)", error=True
-            )
-        if compress_observations != DEPRECATED_VALUE:
-            deprecation_warning(
-                "compress_observations",
-                "config.rollouts(compress_observations=..)",
-                error=True,
-            )
-        if num_envs != DEPRECATED_VALUE:
-            deprecation_warning(
-                "num_envs", "config.rollouts(num_envs_per_worker=..)", error=True
-            )
-        if observation_fn != DEPRECATED_VALUE:
-            deprecation_warning(
-                "observation_fn", "config.multi_agent(observation_fn=..)", error=True
-            )
-        if clip_rewards != DEPRECATED_VALUE:
-            deprecation_warning(
-                "clip_rewards", "config.environment(clip_rewards=..)", error=True
-            )
-        if normalize_actions != DEPRECATED_VALUE:
-            deprecation_warning(
-                "normalize_actions",
-                "config.environment(normalize_actions=..)",
-                error=True,
-            )
-        if clip_actions != DEPRECATED_VALUE:
-            deprecation_warning(
-                "clip_actions", "config.environment(clip_actions=..)", error=True
-            )
-        if env_config != DEPRECATED_VALUE:
-            deprecation_warning(
-                "env_config", "config.environment(env_config=..)", error=True
-            )
-        if model_config != DEPRECATED_VALUE:
-            deprecation_warning("model_config", "config.training(model=..)", error=True)
-        if remote_worker_envs != DEPRECATED_VALUE:
-            deprecation_warning(
-                "remote_worker_envs",
-                "config.rollouts(remote_worker_envs=..)",
-                error=True,
-            )
-        if remote_env_batch_wait_ms != DEPRECATED_VALUE:
-            deprecation_warning(
-                "remote_env_batch_wait_ms",
-                "config.rollouts(remote_env_batch_wait_ms=..)",
-                error=True,
-            )
-        if soft_horizon != DEPRECATED_VALUE:
-            deprecation_warning("soft_horizon", error=True)
-        if no_done_at_end != DEPRECATED_VALUE:
-            deprecation_warning("no_done_at_end", error=True)
-        if fake_sampler != DEPRECATED_VALUE:
-            deprecation_warning(
-                "fake_sampler", "config.rollouts(fake_sampler=..)", error=True
-            )
-        if seed != DEPRECATED_VALUE:
-            deprecation_warning("seed", "config.debugging(seed=..)", error=True)
-        if log_level != DEPRECATED_VALUE:
-            deprecation_warning(
-                "log_level", "config.debugging(log_level=..)", error=True
-            )
-        if callbacks != DEPRECATED_VALUE:
-            deprecation_warning(
-                "callbacks", "config.callbacks([DefaultCallbacks subclass])", error=True
-            )
-        if disable_env_checking != DEPRECATED_VALUE:
-            deprecation_warning(
-                "disable_env_checking",
-                "config.environment(disable_env_checking=..)",
-                error=True,
-            )
-        if policy_mapping_fn != DEPRECATED_VALUE:
-            deprecation_warning(
-                "policy_mapping_fn",
-                "config.multi_agent(policy_mapping_fn=..)",
-                error=True,
-            )
-        if policies_to_train != DEPRECATED_VALUE:
-            deprecation_warning(
-                "policies_to_train",
-                "config.multi_agent(policies_to_train=..)",
-                error=True,
-            )
-        if extra_python_environs != DEPRECATED_VALUE:
-            deprecation_warning(
-                "extra_python_environs",
-                "config.python_environment(extra_python_environs_for_driver=.., "
-                "extra_python_environs_for_worker=..)",
-                error=True,
-            )
         if tf_session_creator != DEPRECATED_VALUE:
             deprecation_warning(
                 old="RolloutWorker(.., tf_session_creator=.., ..)",
                 new="RolloutWorker(.., policy_config={tf_session_options=..}, ..)",
-                error=False,
+                error=True,
             )
 
         self._original_kwargs: dict = locals().copy()
@@ -489,9 +285,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             while True:
                 yield self.sample()
 
-        ParallelIteratorWorker.__init__(self, gen_rollouts, False)
+        EnvRunner.__init__(self, config)
 
-        self.config = config
         # TODO: Remove this backward compatibility.
         #  This property (old-style python config dict) should no longer be used!
         self.policy_config = config.to_dict()
@@ -859,43 +654,16 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             )
         )
 
-    @DeveloperAPI
+    @override(EnvRunner)
     def assert_healthy(self):
-        """Checks that __init__ has been completed properly.
-
-        Useful in case a RolloutWorker is run as @ray.remote (Actor) and the owner
-        would like to make sure the worker has been properly initialized.
-
-        Returns:
-            True if the worker is properly initialized
-        """
         is_healthy = self.policy_map and self.input_reader and self.output_writer
         assert is_healthy, (
             f"RolloutWorker {self} (idx={self.worker_index}; "
             f"num_workers={self.num_workers}) not healthy!"
         )
 
-    @DeveloperAPI
+    @override(EnvRunner)
     def sample(self) -> SampleBatchType:
-        """Returns a batch of experience sampled from this worker.
-
-        This method must be implemented by subclasses.
-
-        Returns:
-            A columnar batch of experiences (e.g., tensors).
-
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTF1Policy, # doctest: +SKIP
-            ...   config=AlgorithmConfig(), # doctest: +SKIP
-            ... )
-            >>> print(worker.sample()) # doctest: +SKIP
-            SampleBatch({"obs": [...], "action": [...], ...})
-        """
         if self.config.fake_sampler and self.last_batch is not None:
             return self.last_batch
         elif self.input_reader is None:
@@ -956,7 +724,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             self.last_batch = batch
         return batch
 
-    @DeveloperAPI
     @ray.method(num_returns=2)
     def sample_with_count(self) -> Tuple[SampleBatchType, int]:
         """Same as sample() but returns the count as a separate value.
@@ -978,7 +745,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         batch = self.sample()
         return batch, batch.count
 
-    @DeveloperAPI
     def learn_on_batch(self, samples: SampleBatchType) -> Dict:
         """Update policies based on the given batch.
 
@@ -1089,7 +855,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         )
         return info, batch.count
 
-    @DeveloperAPI
     def compute_gradients(
         self,
         samples: SampleBatchType,
@@ -1169,7 +934,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         return grad_out, info_out
 
-    @DeveloperAPI
     def apply_gradients(
         self,
         grads: Union[ModelGradients, Dict[PolicyID, ModelGradients]],
@@ -1211,15 +975,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         ):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
-    @DeveloperAPI
+    @override(EnvRunner)
     def get_metrics(self) -> List[RolloutMetrics]:
-        """Returns the thus-far collected metrics from this worker's rollouts.
-
-        Returns:
-             List of RolloutMetrics
-             collected thus-far.
-        """
-
         # Get metrics from sampler (if any).
         if self.sampler is not None:
             out = self.sampler.get_metrics()
@@ -1228,7 +985,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         return out
 
-    @DeveloperAPI
     def foreach_env(self, func: Callable[[EnvType], T]) -> List[T]:
         """Calls the given function with each sub-environment as arg.
 
@@ -1252,7 +1008,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         else:
             return [func(e) for e in envs]
 
-    @DeveloperAPI
     def foreach_env_with_context(
         self, func: Callable[[EnvType, EnvContext], T]
     ) -> List[T]:
@@ -1282,7 +1037,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 ret.append(func(e, ctx))
             return ret
 
-    @DeveloperAPI
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Optional[Policy]:
         """Return policy for the specified id, or None.
 
@@ -1295,7 +1049,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         """
         return self.policy_map.get(policy_id)
 
-    @DeveloperAPI
     def add_policy(
         self,
         policy_id: PolicyID,
@@ -1403,7 +1156,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         return self.policy_map[policy_id]
 
-    @DeveloperAPI
     def remove_policy(
         self,
         *,
@@ -1437,7 +1189,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if policies_to_train is not None:
             self.set_is_policy_to_train(policies_to_train)
 
-    @DeveloperAPI
     def set_policy_mapping_fn(
         self,
         policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
@@ -1453,7 +1204,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if not callable(self.policy_mapping_fn):
                 raise ValueError("`policy_mapping_fn` must be a callable!")
 
-    @DeveloperAPI
     def set_is_policy_to_train(
         self,
         is_policy_to_train: Union[
@@ -1508,7 +1258,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if self.is_policy_to_train is None or self.is_policy_to_train(pid, batch)
         }
 
-    @DeveloperAPI
     def for_policy(
         self,
         func: Callable[[Policy, Optional[Any]], T],
@@ -1530,7 +1279,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
 
         return func(self.policy_map[policy_id], **kwargs)
 
-    @DeveloperAPI
     def foreach_policy(
         self, func: Callable[[Policy, PolicyID, Optional[Any]], T], **kwargs
     ) -> List[T]:
@@ -1548,7 +1296,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         """
         return [func(policy, pid, **kwargs) for pid, policy in self.policy_map.items()]
 
-    @DeveloperAPI
     def foreach_policy_to_train(
         self, func: Callable[[Policy, PolicyID, Optional[Any]], T], **kwargs
     ) -> List[T]:
@@ -1582,7 +1329,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if self.is_policy_to_train is None or self.is_policy_to_train(pid, None)
         ]
 
-    @DeveloperAPI
     def sync_filters(self, new_filters: dict) -> None:
         """Changes self's filter to given and rebases any accumulated delta.
 
@@ -1593,7 +1339,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         for k in self.filters:
             self.filters[k].sync(new_filters[k])
 
-    @DeveloperAPI
     def get_filters(self, flush_after: bool = False) -> Dict:
         """Returns a snapshot of filters.
 
@@ -1610,7 +1355,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 f.reset_buffer()
         return return_filters
 
-    @DeveloperAPI
     def get_state(self) -> dict:
         """Serializes this RolloutWorker's current state and returns it.
 
@@ -1647,7 +1391,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             "filters": filters,
         }
 
-    @DeveloperAPI
     def set_state(self, state: dict) -> None:
         """Restores this RolloutWorker's state from a state dict.
 
@@ -1714,7 +1457,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if state.get("is_policy_to_train") is not None:
             self.set_is_policy_to_train(state["is_policy_to_train"])
 
-    @DeveloperAPI
     def get_weights(
         self,
         policies: Optional[Container[PolicyID]] = None,
@@ -1752,7 +1494,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             if pid in policies
         }
 
-    @DeveloperAPI
     def set_weights(
         self,
         weights: Dict[PolicyID, ModelWeights],
@@ -1796,7 +1537,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if global_vars:
             self.set_global_vars(global_vars)
 
-    @DeveloperAPI
     def get_global_vars(self) -> dict:
         """Returns the current `self.global_vars` dict of this RolloutWorker.
 
@@ -1813,7 +1553,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         """
         return self.global_vars
 
-    @DeveloperAPI
     def set_global_vars(
         self,
         global_vars: dict,
@@ -1859,7 +1598,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         # Update all other global vars.
         self.global_vars.update(global_vars_copy)
 
-    @DeveloperAPI
     def stop(self) -> None:
         """Releases all resources used by this RolloutWorker."""
         # If we have an env -> Release its resources.
@@ -1900,31 +1638,12 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
                 )
             policy.distributed_world_size = world_size
 
-    @DeveloperAPI
     def creation_args(self) -> dict:
         """Returns the kwargs dict used to create this worker."""
         return self._original_kwargs
 
-    @DeveloperAPI
-    def get_host(self) -> str:
-        """Returns the hostname of the process running this evaluator."""
-        return platform.node()
-
-    @DeveloperAPI
-    def get_node_ip(self) -> str:
-        """Returns the IP address of the node that this worker runs on."""
-        return ray.util.get_node_ip_address()
-
-    @DeveloperAPI
-    def find_free_port(self) -> int:
-        """Finds a free port on the node that this worker runs on."""
-        from ray.air._internal.util import find_free_port
-
-        return find_free_port()
-
+    @override(EnvRunner)
     def __del__(self):
-        """If this worker is deleted, clears all resources used by it."""
-
         # In case we have-an AsyncSampler, kill its sampling thread.
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
             self.sampler.shutdown = True
@@ -1939,7 +1658,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
     ) -> None:
         """Updates the policy map (and other stuff) on this worker.
 
-        It performes the following:
+        It performs the following:
             1. It updates the observation preprocessors and updates the policy_specs
                 with the postprocessed observation_spaces.
             2. It updates the policy_specs with the complete algorithm_config (merged
@@ -2309,46 +2028,32 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             return _make_sub_env_local
 
     @Deprecated(
-        new="Trainer.get_policy().export_model([export_dir], [onnx]?)", error=False
+        new="Trainer.get_policy().export_model([export_dir], [onnx]?)", error=True
     )
-    def export_policy_model(
-        self,
-        export_dir: str,
-        policy_id: PolicyID = DEFAULT_POLICY_ID,
-        onnx: Optional[int] = None,
-    ):
-        self.policy_map[policy_id].export_model(export_dir, onnx=onnx)
+    def export_policy_model(self, *args, **kwargs):
+        pass
 
     @Deprecated(
-        new="Trainer.get_policy().import_model_from_h5([import_file])", error=False
+        new="Trainer.get_policy().import_model_from_h5([import_file])", error=True
     )
-    def import_policy_model_from_h5(
-        self, import_file: str, policy_id: PolicyID = DEFAULT_POLICY_ID
-    ):
-        self.policy_map[policy_id].import_model_from_h5(import_file)
+    def import_policy_model_from_h5(self, *args, **kwargs):
+        pass
 
     @Deprecated(
         new="Trainer.get_policy().export_checkpoint([export_dir], [filename]?)",
-        error=False,
+        error=True,
     )
-    def export_policy_checkpoint(
-        self,
-        export_dir: str,
-        filename_prefix: str = "model",
-        policy_id: PolicyID = DEFAULT_POLICY_ID,
-    ):
-        self.policy_map[policy_id].export_checkpoint(export_dir, filename_prefix)
+    def export_policy_checkpoint(self, *args, **kwargs):
+        pass
 
     @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func, **kwargs):
-        return self.foreach_policy_to_train(func, **kwargs)
+        pass
 
-    @Deprecated(new="state_dict = RolloutWorker.get_state()", error=False)
+    @Deprecated(new="state_dict = RolloutWorker.get_state()", error=True)
     def save(self):
-        state = self.get_state()
-        return pickle.dumps(state)
+        pass
 
-    @Deprecated(new="RolloutWorker.set_state([state_dict])", error=False)
+    @Deprecated(new="RolloutWorker.set_state([state_dict])", error=True)
     def restore(self, objs):
-        state_dict = pickle.loads(objs)
-        self.set_state(state_dict)
+        pass
