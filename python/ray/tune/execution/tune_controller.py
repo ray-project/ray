@@ -203,8 +203,11 @@ class TuneController(_TuneControllerBase):
         # This is a bit costly, so we want to avoid running it too often
         times = deque(
             sorted(
-                (timestamp, tracked_actor)
-                for tracked_actor, timestamp in self._stopping_actors.items()
+                [
+                    (timestamp, tracked_actor)
+                    for tracked_actor, timestamp in self._stopping_actors.items()
+                ],
+                key=lambda item: item[0],
             )
         )
 
