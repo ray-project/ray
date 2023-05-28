@@ -354,7 +354,7 @@ Status PythonGcsSubscriber::Subscribe() {
 Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message) {
   absl::MutexLock lock(&mu_);
 
-  while (queue_.size() == 0) {
+  while (queue_.empty()) {
     if (closed_) {
       return Status::OK();
     }
