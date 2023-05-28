@@ -305,7 +305,7 @@ Multi-node clusters are untested. To get started with local Ray development:
 Windows Support
 ---------------
 
-Windows support is currently in Beta. Ray supports running on windows with the following caveats (only the first is
+Windows support is in Beta. Ray supports running on Windows with the following caveats (only the first is
 ray-specific, the rest are true anywhere windows is used):
 
 * multi-node Ray clusters are untested.
