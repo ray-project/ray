@@ -358,7 +358,7 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
     if (closed_) {
       return Status::OK();
     }
-    current_polling_context_.reset(new grpc::ClientContext());
+    current_polling_context_ = std::make_shared<grpc::ClientContext>();
     if (timeout_ms != -1) {
       current_polling_context_->set_deadline(std::chrono::system_clock::now() +
                                              std::chrono::milliseconds(timeout_ms));
