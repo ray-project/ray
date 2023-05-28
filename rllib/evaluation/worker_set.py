@@ -970,6 +970,10 @@ class WorkerSet:
                 )
         return False
 
+    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=True)
+    def foreach_trainable_policy(self, func):
+        pass
+
     @property
     @Deprecated(
         old="_remote_workers",

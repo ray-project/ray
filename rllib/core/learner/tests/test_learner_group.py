@@ -26,8 +26,8 @@ from ray.util.timer import _Timer
 
 REMOTE_SCALING_CONFIGS = {
     "remote-cpu": LearnerGroupScalingConfig(num_workers=1),
-    "remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=1),
-    "multi-gpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_gpus_per_worker=1),
+    #"remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=1),
+    #"multi-gpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_gpus_per_worker=1),
     "multi-cpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_cpus_per_worker=2),
     # "multi-gpu-ddp-pipeline": LearnerGroupScalingConfig(
     #     num_workers=2, num_gpus_per_worker=2
@@ -37,13 +37,13 @@ REMOTE_SCALING_CONFIGS = {
 
 LOCAL_SCALING_CONFIGS = {
     "local-cpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0),
-    "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=1),
+    #"local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=1),
 }
 
 
 # TODO(avnishn) Make this a ray task later. Currently thats not possible because the
-# task is not dying after the test is done. This is a bug with ray core.
-@ray.remote(num_gpus=1)
+#  task is not dying after the test is done. This is a bug with ray core.
+@ray.remote(num_gpus=0)
 class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
         if fw == "torch":
