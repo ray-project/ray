@@ -320,7 +320,7 @@ Ray-specific, the rest are true anywhere Windows is used):
 * Windows does not have a copy-on-write forking model, so spinning up new
   processes can require more memory.
 
-Please submit any issues you encounter to
+Submit any issues you encounter to
 `GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
