@@ -376,7 +376,7 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
     cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
 
         CPythonGcsSubscriber(
-            const c_string& gcs_address, CChannelType channel_type,
+            const c_string& gcs_address, int gcs_port, CChannelType channel_type,
             const c_string& subscriber_id, const c_string& worker_id)
 
         CRayStatus Subscribe()

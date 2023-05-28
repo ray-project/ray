@@ -169,6 +169,7 @@ class RAY_EXPORT PythonGcsPublisher {
 class RAY_EXPORT PythonGcsSubscriber {
  public:
   explicit PythonGcsSubscriber(const std::string &gcs_address,
+                               int gcs_port,
                                rpc::ChannelType channel_type,
                                const std::string &subscriber_id,
                                const std::string &worker_id);
@@ -206,8 +207,6 @@ class RAY_EXPORT PythonGcsSubscriber {
 
   std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
   std::shared_ptr<grpc::Channel> channel_;
-  std::string gcs_address_;
-  int gcs_port_;
   const rpc::ChannelType channel_type_;
   const std::string subscriber_id_;
   std::string publisher_id_;
