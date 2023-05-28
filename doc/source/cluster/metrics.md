@@ -7,19 +7,15 @@ Similar to Kubenetes, Ray records and emits time-series metrics in [Prometheus f
 ## System and applcication metrics
 **System metrics**: Ray exports a number of system metrics. View {ref}`system metrics <system-metrics>` for more details of the emitted metrics .
 
-**Application metrics**: Application-specific metrics are useful to monitor your application states. View {ref}`adding application metrics]<application-level-metrics>` for how to record your metrics.
+**Application metrics**: Application-specific metrics are useful to monitor your application states. View {ref}`adding application metrics <application-level-metrics>` for how to record your metrics.
 
 (prometheus-setup)=
 ## Setting up your Prometheus server
 Ray doesn't start Prometheus servers for users. Users need to decide where to host it and configure it so that it can scrape the metrics from clusters.
 
-::::{tab-set}
-
-:::{tab-item} Single-node local cluster
-
 ```{admonition} Tip
 :class: tip
-The instructions below describe one way of setting up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for more comprehensive info.
+The instructions below describe how to up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus Server (e.g., whether to use a multi-tenant Prometheus instance).
 ```
 
 First, [download Prometheus](https://prometheus.io/download/). Make sure to download the correct binary for your operating system. (Ex: darwin for mac osx)
@@ -64,35 +60,26 @@ If you are using mac, you may receive an error at this point about trying to lau
 Now, you can access Ray metrics from the default Prometheus url, `http://localhost:9090`.
 
 
-**Troubleshooting**
-1. Getting Prometheus to use the Ray configurations when installed via Homebrew on macOS X
+### Troubleshooting
+#### Getting Prometheus to use the Ray configurations when installed via Homebrew on macOS X
+With Homebrew, Prometheus is installed as a service that is automatically launched for you.
+Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
 
-  With Homebrew, Prometheus is installed as a service that is automatically launched for you.
-  Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
+Instead, change the --config-file line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
 
-  Instead, change the --config-file line in `/usr/local/etc/prometheus.args` to read `--config.file /tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
-
-  You can then start or restart the services with `brew services start prometheus`.
+You can then start or restart the services with `brew services start prometheus`.
 
 
-2. MacOS does not trust the developer to install Prometheus
+#### MacOS does not trust the developer to install Prometheus
+You may have received an error that looks like this:
 
-  You may have received an error that looks like this:
+![trust error](https://raw.githubusercontent.com/ray-project/Images/master/docs/troubleshooting/prometheus-trusted-developer.png)
 
-  ![trust error](https://raw.githubusercontent.com/ray-project/Images/master/docs/troubleshooting/prometheus-trusted-developer.png)
+When downloading binaries from the internet, Mac requires that the binary be signed by a trusted developer ID.
+Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
 
-  When downloading binaries from the internet, Mac requires that the binary be signed by a trusted developer ID.
-  Unfortunately, many developers today are not trusted by Mac and so this requirement must be overridden by the user manaully.
+See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) on how to override the restriction and install or run the application.
 
-  See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) on how to override the restriction and install or run the application.
-
-:::
-
-:::{tab-item} VM Cluster Launcher & KubeRay
-View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus Server (e.g., whether to use a central Prometheus instance).
-:::
-
-::::
 
 (scrape-metrics)=
 ## Scraping metrics
@@ -133,7 +120,7 @@ scrape_configs:
 ### Manually discovering metrics endpoints
 
 If you already know the IP addresses of all nodes in your Ray Cluster, you can configure Prometheus to read metrics from a static list of endpoints. To
-do this, first set a fixed port that Ray should use to export metrics.  If using the cluster VM launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If using KubeRay, you can specify``rayStartParams.metrics-export-port`` in the RayCluster configuration file. The port must be specified on all nodes in the cluster.
+do this, first set a fixed port that Ray should use to export metrics.  If using the cluster VM launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If using KubeRay, you can specify ``rayStartParams.metrics-export-port`` in the RayCluster configuration file. The port must be specified on all nodes in the cluster.
 
 If you do not know the IP addresses of the nodes in your Ray cluster, you can also programmatically discover the endpoints by reading the Ray Cluster information. Here, we will use a Python script and the ``ray.nodes()`` API to find the metrics agents' URLs, by combining the ``NodeManagerAddress`` with the ``MetricsExportPort``. For example:
 

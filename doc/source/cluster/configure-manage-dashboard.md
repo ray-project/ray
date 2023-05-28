@@ -16,17 +16,15 @@ Ray Dashobard runs on port `8265` of the head node. Follow the instructions belo
 
 :::{tab-item} Single-node local cluster
 **Start the cluster explicitly with CLI** <br/>
-To customize the port on which the dashboard runs, you can pass
+To customize the port on which the dashboard runs, pass
 the ``--dashboard-port`` argument with ``ray start`` in the command line.
 
-**Start the cluster implicitly with ray.init** <br/>
-If you need to customize the port on which the dashboard runs, you can pass the
-keyword argument ``dashboard_port`` in your call to ``ray.init()``.
+**Start the cluster implicitly with `ray.init`** <br/>
+Pass the keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 :::
 
 :::{tab-item} VM Cluster Launcher
-To disable the dashboard while using the "VM cluster launcher", include the `ray start --head --include-dashboard=False` argument
-and specify the desired port number in the `head_start_ray_commands` section of the [cluster launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
+To be added
 :::
 
 :::{tab-item} Kuberay
@@ -40,12 +38,12 @@ View [specifying non-default ports](https://docs.ray.io/en/latest/cluster/kubern
 When you start a single-node Ray cluster on your laptop, you can access the dashboard through a URL printed when Ray is initialized (the default URL is `http://localhost:8265`).
 
 
-When you start a Ray cluster via the {ref}`VM cluster launcher <vm-cluster-quick-start>` or {ref}`KubeRay operator <kuberay-quickstart>`, Ray Dashboard will be launched but the dashboard port is not publicly exposed. Additional setup is needed if you want to access the Ray Dashboard from your laptop's browser.
+When you start a remote Ray cluster via the {ref}`VM cluster launcher <vm-cluster-quick-start>`, {ref}`KubeRay operator <kuberay-quickstart>` or manual configuration, Ray Dashboard will be launched on the head node but the dashboard port may not be publicly exposed. Additional setup is needed if you want to access the Ray Dashboard from outside the head node.
 
-### Port forwarding
 ::::{tab-set}
 
 :::{tab-item} VM Cluster Launcher
+**Port forwarding**
 You can securely port-forward local traffic to the dashboard via the ``ray
 dashboard`` command.
 
@@ -57,27 +55,28 @@ The dashboard is now be visible at ``http://localhost:8265``.
 :::
 
 :::{tab-item} Kuberay
+
 The KubeRay operator makes the dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. You can access the
 dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
 
-You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
+**Add Ingress rule**
 
-```shell
-$ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
-```
-For more information about configuring network access to a Ray cluster on Kubernetes, see the {ref}`networking notes <kuberay-networking>`.
+**Port forwarding**
+You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
 
 ```{admonition} Note
 :class: note
 It's not recommended to use port forwarding if you need have specific network security requirements. Follow the instructions below to add ingress rules to expose Ray Dashboard
 ```
 
+```shell
+$ kubectl port-forward service/raycluster-autoscaler-head-svc 8265:8265
+```
+For more information about configuring network access to a Ray cluster on Kubernetes, see the {ref}`networking notes <kuberay-networking>`.
+
 :::
 
 ::::
-
-### Adding ingress rule for KubeRay
-To be added
 
 
 ## Running Behind a Reverse Proxy
@@ -130,7 +129,7 @@ To disable the dashboard, use the following arguments `--include-dashboard`.
 ray start --include-dashboard=False
 ```
 
-**Start the cluster implicitly with ray.init** <br/>
+**Start the cluster implicitly with `ray.init`** <br/>
 
 ```{testcode}
 :hide:
@@ -147,12 +146,12 @@ ray.shutdown()
 :::
 
 :::{tab-item} VM Cluster Launcher
-To disable the dashboard while using the "VM cluster launcher", include the "ray start --head --include-dashboard=False" argument
-in the "head_start_ray_commands" section of the [cluster launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
+To disable the dashboard while using the {ref}`VM cluster launcher <vm-cluster-quick-start>`, include the `ray start --head --include-dashboard=False` argument
+in the `head_start_ray_commands` section of the [cluster launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
 :::
 
 :::{tab-item} Kuberay
-TODO
+To be added
 :::
 ::::
 

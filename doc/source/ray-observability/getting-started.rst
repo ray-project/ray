@@ -10,13 +10,18 @@ of applications and troubleshoot issues.
 Set up
 ------
 
-Install `ray[default]` to access the dashboard:
+    <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
+        <iframe width="560" height="315" src="https://www.youtube.com/embed/i33b1DYjYRQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+
+
+To use the dashboard, you should use `ray[default]`, `ray[air]` or :ref:`other installation commands <installation>`` that include Ray Dashboard component:
 
 .. code-block:: bash
 
   pip install -U "ray[default]"
 
-Access the dashboard with the URL that Ray prints when it initializes, or via the context object that `ray.init` returns. The default URL is **http://localhost:8265**. 
+When you start a single-node Ray cluster on your laptop, you can access the dashboard through a URL printed when Ray is initialized (the default URL is **http://localhost:8265**) or via the context object returned from `ray.init`.
 
 .. testcode::
   :hide:
@@ -39,7 +44,7 @@ Access the dashboard with the URL that Ray prints when it initializes, or via th
 
   INFO worker.py:1487 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265.
 
-The Ray Cluster installation includes the Dashboard. See :ref:`Cluster Monitoring <monitor-cluster-via-dashboard>` for more details.
+When you start a remote Ray cluster via the :ref:`VM cluster launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray Dashboard will be launched on the head node but the dashboard port may not be publicly exposed. View :ref: `configuring dashboard` for how to view dashboard from outside the head node.
 
 .. note::
 
