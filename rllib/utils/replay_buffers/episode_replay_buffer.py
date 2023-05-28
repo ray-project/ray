@@ -1,10 +1,10 @@
 from collections import deque
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 import uuid
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
@@ -100,21 +100,13 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         return self.get_num_timesteps()
 
     @override(ReplayBufferInterface)
-    def add(self, batch: SampleBatchType, **kwargs) -> None:
+    def add(self, episodes: Union[List["_Episode"], "_Episode"]):
         """Converts the incoming SampleBatch into a number of _Episode objects.
 
         Then adds these episodes to the internal deque.
         """
-        if isinstance(batch, MultiAgentBatch):
-            raise ValueError(
-                "`EpisodeReplayBuffer` cannot operate on MultiAgentBatches yet! "
-                "For single-agent use only."
-            )
-
-        episode_slices = batch.split_by_episode()
-        episodes = [
-            _Episode.from_sample_batch(eps_slice) for eps_slice in episode_slices
-        ]
+        if isinstance(episodes, _Episode):
+            episodes = [episodes]
 
         for eps in episodes:
             self._num_timesteps += len(eps)

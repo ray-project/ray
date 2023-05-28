@@ -10,7 +10,7 @@ from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
 
 class TestEpisodeReplayBuffer(unittest.TestCase):
     @staticmethod
-    def _get_episode_sample_batch(episode_len=None, id_=None):
+    def _get_episode(episode_len=None, id_=None):
         eps = _Episode(id_=id_, observations=[0.0])
         ts = np.random.randint(1, 200) if episode_len is None else episode_len
         for t in range(ts):
@@ -21,8 +21,7 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
             )
         eps.is_terminated = np.random.random() > 0.5
         eps.is_truncated = False if eps.is_terminated else np.random.random() > 0.8
-        sample_batch = eps.to_sample_batch()
-        return sample_batch
+        return eps
 
     def test_add_and_eviction_logic(self):
         """Tests batches getting properly added to buffer and cause proper eviction."""
@@ -30,54 +29,54 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
         # Fill a buffer till capacity (100 ts).
         buffer = EpisodeReplayBuffer(capacity=100)
 
-        batch = self._get_episode_sample_batch(id_="A", episode_len=50)
-        buffer.add(batch)
+        episode = self._get_episode(id_="A", episode_len=50)
+        buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 1)
         self.assertTrue(buffer.get_num_timesteps() == 50)
 
-        batch = self._get_episode_sample_batch(id_="B", episode_len=25)
-        buffer.add(batch)
+        episode = self._get_episode(id_="B", episode_len=25)
+        buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 2)
         self.assertTrue(buffer.get_num_timesteps() == 75)
 
         # No eviction yet (but we are full).
-        batch = self._get_episode_sample_batch(id_="C", episode_len=25)
-        buffer.add(batch)
+        episode = self._get_episode(id_="C", episode_len=25)
+        buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 3)
         self.assertTrue(buffer.get_num_timesteps() == 100)
 
         # Trigger eviction of first episode by adding a single timestep episode.
-        batch = self._get_episode_sample_batch(id_="D", episode_len=1)
-        buffer.add(batch)
+        episode = self._get_episode(id_="D", episode_len=1)
+        buffer.add(episode)
 
         self.assertTrue(buffer.get_num_episodes() == 3)
         self.assertTrue(buffer.get_num_timesteps() == 51)
         self.assertTrue({eps.id_ for eps in buffer.episodes} == {"B", "C", "D"})
 
         # Add another big episode and trigger another eviction.
-        batch = self._get_episode_sample_batch(id_="E", episode_len=200)
-        buffer.add(batch)
+        episode = self._get_episode(id_="E", episode_len=200)
+        buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 1)
         self.assertTrue(buffer.get_num_timesteps() == 200)
         self.assertTrue({eps.id_ for eps in buffer.episodes} == {"E"})
 
         # Add another small episode and trigger another eviction.
-        batch = self._get_episode_sample_batch(id_="F", episode_len=2)
-        buffer.add(batch)
+        episode = self._get_episode(id_="F", episode_len=2)
+        buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 1)
         self.assertTrue(buffer.get_num_timesteps() == 2)
         self.assertTrue({eps.id_ for eps in buffer.episodes} == {"F"})
 
         # Add N small episodes.
         for i in range(10):
-            batch = self._get_episode_sample_batch(id_=str(i), episode_len=10)
-            buffer.add(batch)
+            episode = self._get_episode(id_=str(i), episode_len=10)
+            buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 10)
         self.assertTrue(buffer.get_num_timesteps() == 100)
 
         # Add a 20-ts episode and expect to have evicted 3 episodes.
-        batch = self._get_episode_sample_batch(id_="G", episode_len=21)
-        buffer.add(batch)
+        episode = self._get_episode(id_="G", episode_len=21)
+        buffer.add(episode)
         self.assertTrue(buffer.get_num_episodes() == 8)
         self.assertTrue(buffer.get_num_timesteps() == 91)
         self.assertTrue(
@@ -90,8 +89,8 @@ class TestEpisodeReplayBuffer(unittest.TestCase):
         buffer = EpisodeReplayBuffer(capacity=10000)
 
         for _ in range(200):
-            batch = self._get_episode_sample_batch()
-            buffer.add(batch)
+            episode = self._get_episode()
+            buffer.add(episode)
 
         for _ in range(1000):
             sample = buffer.sample(batch_size_B=16, batch_length_T=64)

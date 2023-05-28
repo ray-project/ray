@@ -27,7 +27,6 @@ from ray.data.read_api import (  # noqa: F401
     from_tf,
     from_torch,
     range,
-    range_arrow,
     range_table,
     range_tensor,
     read_binary_files,
