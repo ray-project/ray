@@ -592,11 +592,7 @@ class Algorithm(Trainable):
 
         # Only if user did not override `_init()`:
         if _init is False:
-            # - Create rollout workers here automatically.
-            # - Run the execution plan to create the local iterator to `next()`
-            #   in each training iteration.
-            # This matches the behavior of using `build_trainer()`, which
-            # has been deprecated.
+            # Create a set of env runner actors via a WorkerSet.
             self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,

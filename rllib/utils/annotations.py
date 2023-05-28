@@ -151,6 +151,7 @@ def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
 
 def is_overridden(obj):
     """Check whether a function has been overridden.
+
     Note, this only works for API calls decorated with OverrideToImplementCustomLogic
     or OverrideToImplementCustomLogic_CallToSuperRecommended.
     """
