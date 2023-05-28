@@ -43,7 +43,7 @@ When you start a remote Ray cluster via the {ref}`VM cluster launcher <vm-cluste
 ::::{tab-set}
 
 :::{tab-item} VM Cluster Launcher
-**Port forwarding**
+**Port forwarding** <br/>
 You can securely port-forward local traffic to the dashboard via the ``ray
 dashboard`` command.
 
@@ -61,7 +61,7 @@ dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-
 
 **Add Ingress rule**
 
-**Port forwarding**
+**Port forwarding** <br/>
 You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
 
 ```{admonition} Note
@@ -115,7 +115,7 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
 
 ## Disabling the Dashboard
 
-Dashboard is included in the `ray[default]` installation by default and automatically started.
+Dashboard is included if you use `ray[default]`, `ray[air]` or {ref}`other installation commands <installation>` and automatically started.
 
 To disable the dashboard, use the following arguments `--include-dashboard`.
 

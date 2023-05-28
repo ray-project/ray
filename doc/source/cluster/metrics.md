@@ -15,7 +15,7 @@ Ray doesn't start Prometheus servers for users. Users need to decide where to ho
 
 ```{admonition} Tip
 :class: tip
-The instructions below describe how to up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus Server (e.g., whether to use a multi-tenant Prometheus instance).
+The instructions below describe how to set up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus Server (e.g., whether to use a multi-tenant Prometheus instance).
 ```
 
 First, [download Prometheus](https://prometheus.io/download/). Make sure to download the correct binary for your operating system. (Ex: darwin for mac osx)
