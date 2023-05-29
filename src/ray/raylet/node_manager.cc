@@ -318,7 +318,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
         }
       },
       /*get_pull_manager_at_capacity*/
-      [this]() { return object_manager_.PullManagerHasPullsQueued(); });
+      [this]() { return object_manager_.PullManagerHasPullsQueued(); },
+      /*labels*/ config.labels);
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -987,6 +988,12 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   // Store address of the new node manager for rpc requests.
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
+
+  // Reset node labels when node added.
+  absl::flat_hash_map<std::string, std::string> labels(node_info.labels().begin(),
+                                                       node_info.labels().end());
+  cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(
+      scheduling::NodeID(node_id.Binary()), labels);
 
   // Fetch resource info for the remote node and update cluster resource map.
   RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
