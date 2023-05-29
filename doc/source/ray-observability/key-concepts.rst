@@ -7,11 +7,16 @@ This section covers key concepts for monitoring and debugging tools and features
 
 Dashboard (Web UI)
 ------------------
+<<<<<<< HEAD
 Ray supports a web-based dashboard to help users monitor the Cluster. When a new Cluster is started, the Dashboard is available
 through the default address `localhost:8265` (port can be automatically incremented if port 8265 is already occupied).
+=======
+Ray provides a web-based dashboard to help users monitor and debug Ray applications and clusters.
+>>>>>>> 9dd21f527b (update to concepts and get started page)
 
 See :ref:`Getting Started <observability-getting-started>` for more details about the Dashboard.
 
+<<<<<<< HEAD
 Accessing Ray states
 --------------------
 Ray 2.0 and later versions support CLI and Python APIs for querying the state of resources (e.g., Actor, Task, Object, etc.)
@@ -37,6 +42,11 @@ For example, the following command summarizes the task state of the Cluster:
         FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
     0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
     1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
+=======
+Ray States
+--------------------
+Ray States refer to the state of various Ray entities (e.g., actor, task, object, etc.). Ray 2.0 and later versions support :ref:`querying the states of entities via CLI and Python APIs <observability-programmatic>`
+>>>>>>> 9dd21f527b (update to concepts and get started page)
 
 The following command lists all the Actors from the Cluster:
 
@@ -57,16 +67,22 @@ The following command lists all the Actors from the Cluster:
     0  31405554844820381c2f0f8501000000  Actor                 96956  ALIVE
     1  f36758a9f8871a9ca993b1d201000000  Actor                 96955  ALIVE
 
-See :ref:`Ray State API <state-api-overview-ref>` for more details.
+View :ref:`Monitoring with the CLI or SDK <state-api-overview-ref>` for more details.
 
 Metrics
 -------
 Ray collects and exposes the physical stats (e.g., CPU, memory, GRAM, disk, and network usage of each node),
+<<<<<<< HEAD
 internal stats (e.g., number of Actors in the Cluster, number of worker failures of the Cluster),
 and custom metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used
 to monitor the Cluster over time.
+=======
+internal stats (e.g., number of actors in the cluster, number of worker failures of the cluster),
+and custom application metrics (e.g., metrics defined by users). All stats can be exported as time series data (to Prometheus by default) and used
+to monitor the cluster over time.
+>>>>>>> 9dd21f527b (update to concepts and get started page)
 
-See :ref:`Ray Metrics <dash-metrics-view>` for more details.
+View :ref:`Metrics View <dash-metrics-view>` for where to view the metrics in Ray Dashboard. View :ref:`collecting metrics <collect-metrics>` for how to collect metrics from Ray clusters.
 
 Exceptions
 ----------
@@ -89,13 +105,22 @@ drop into a PDB session to:
 - Step within a Task or Actor
 - Move up or down the stack
 
-See :ref:`Ray Debugger <ray-debugger>` for more details.
+View :ref:`Ray Debugger <ray-debugger>` for more details.
 
 Profiling
 ---------
+<<<<<<< HEAD
 Ray is compatible with Python profiling tools, such as ``CProfile``. It also supports its built-in profiling tool, such as :ref:`ray timeline <ray-timeline-doc>`.
 
 See :ref:`Profiling <dashboard-profiling>` for more details.
+=======
+Profiling is way of analyzing the performance of an application by sampling the resource usage of it. Ray supports various profiling tools:
+- CPU profiling for worker processes, including integration with :ref:`py-spy <dashboard-profiling>` and :ref:`cProfile <dashboard-cprofile>`
+- Memory profiling for worker processes with :ref:`memray <ray-core-mem-profiling>``
+- Built in task/actor profiling tool called :ref:`ray timeline <ray-timeline-doc>`
+
+Ray currently doesn't provide native integration with GPU profiling tools. Try running GPU profilers like PyTorch Profiler without Ray to identify the issues.
+>>>>>>> 9dd21f527b (update to concepts and get started page)
 
 Tracing
 -------
@@ -103,6 +128,7 @@ To help debug and monitor Ray applications, Ray supports distributed tracing (in
 
 See :ref:`Ray Tracing <ray-tracing>` for more details.
 
+<<<<<<< HEAD
 Application logging
 -------------------
 By default, all stdout and stderr of Tasks and Actors are streamed to the Ray driver (the entrypoint script that calls ``ray.init``).
@@ -129,14 +155,33 @@ Job logs
 Retrieve logs for Jobs submitted with the :ref:`Ray Jobs API <jobs-overview>` using the ``ray job logs`` :ref:`CLI command <ray-job-logs-doc>`, ``JobSubmissionClient.get_logs()``, or ``JobSubmissionClient.tail_job_logs()`` via the :ref:`Python SDK <ray-job-submission-sdk-ref>`.
 The log file consists of the stdout of the entrypoint command of the Job.  For the location of the log file on disk, see :ref:`Logging directory structure <logging-directory-structure>`.
 
+=======
+Application logs
+-------------------
+Logs are important for general monitoring and debugging. For distributed Ray applications, logs are even more important but more complicated at the same time. A Ray applications runs both on Driver and Worker processes (or even across multiple machines) and the logs of those processes are the main sources of applications logs.
+![application logging](./images/application-logging.png)
+
+Driver logs
+~~~~~~~~~~~
+An entry point of Ray applications that calls ``ray.init()`` is called a **Driver**.
+All the driver logs are handled in the same way as normal Python programs.
+
+>>>>>>> 9dd21f527b (update to concepts and get started page)
 .. _ray-worker-logs:
 
-Worker stdout and stderr
+Worker logs (stdout and stderr)
 ~~~~~~~~~~~~~~~~~~~~~~~~
+<<<<<<< HEAD
 Ray executes Tasks or Actors are remotely within Ray's worker processes. Ray has special support to improve the visibility of stdout and stderr produced by workers.
 
 - By default, stdout and stderr from all Tasks and Actors are redirected to the worker log files, including any log messages generated by the worker. See :ref:`Logging directory structure <logging-directory-structure>` to understand the structure of the Ray logging directory.
 - By default, the driver reads the worker log files to which the stdout and stderr for all tasks and actors are redirected. Drivers display all stdout and stderr generated from their Tasks or Actors to their own stdout and stderr.
+=======
+Ray's tasks or actors are executed remotely within Ray's worker processes. Ray has special support to improve the visibility of stdout and stderr produced by worker processes.
+
+- By default, stdout and stderr from all tasks and actors are redirected to the worker log files, including any log messages generated by the worker. See :ref:`Logging directory and file structure <logging-directory-structure>` to understand the structure of the Ray logging directory.
+- By default, the driver reads the worker log files (where the stdout and stderr of all tasks and actors sit) and sends the log records to its own stdout and stderr (as known as "worker logs being redirected to driver").
+>>>>>>> 9dd21f527b (update to concepts and get started page)
 
 For the following code:
 
@@ -166,6 +211,7 @@ Actor log messages look like the following by default:
 
     (MyActor pid=480956) actor log message
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 .. _logging-directory-structure:
 
@@ -205,3 +251,15 @@ The Ray log directory structure follows. Note that files with the ``.out`` suffi
 
 =======
 >>>>>>> 0c57602348 (fixups)
+=======
+
+By default, all stdout and stderr of tasks and actors are redirected to the Ray driver. View :ref:`Configuring Logging <log-redirction-to-driverg>` for more details.
+
+
+
+Job logs
+~~~~~~~~
+Ray applications are usually run as Ray Jobs. Worker logs of Ray jobs are also captured in Ray logging directory while Driver logs are not also captured in it.
+If the Ray job is submitted by :ref:`Ray Jobs API <jobs-quickstart>`, the driver log is captured in the direcotry and available from the dashboard, CLI (using the ``ray job logs`` :ref:`CLI command <ray-job-logs-doc>`), or the :ref:`Python SDK <ray-job-submission-sdk-ref>` (``JobSubmissionClient.get_logs()`` or ``JobSubmissionClient.tail_job_logs()``).
+
+>>>>>>> 9dd21f527b (update to concepts and get started page)

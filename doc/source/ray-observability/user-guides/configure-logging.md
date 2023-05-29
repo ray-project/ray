@@ -234,7 +234,7 @@ If you use Ray AIR or any of the Ray libraries, follow the instructions provided
 ::::
 
 
-
+(log-redirction-to-driver)=
 ## Logging to the driver
 By default, all stdout and stderr of tasks and actors are streamed to the Ray driver (the entrypoint script that calls ``ray.init``). It helps users aggregate the logs for the distributed Ray application in a single place.
 

@@ -1,5 +1,4 @@
 (observability-configure-manage-dashboard)=
-
 # Configuring and Managing Ray Dashboard
 {ref}`Ray Dashboard<observability-getting-started>` is one of the most important tools to monitor and debug Ray applications and clusters. This page describes how to configure Ray Dashboard on your clusters.
 
@@ -16,8 +15,7 @@ Ray Dashobard runs on port `8265` of the head node. Follow the instructions belo
 
 :::{tab-item} Single-node local cluster
 **Start the cluster explicitly with CLI** <br/>
-To customize the port on which the dashboard runs, pass
-the ``--dashboard-port`` argument with ``ray start`` in the command line.
+Pass the ``--dashboard-port`` argument with ``ray start`` in the command line.
 
 **Start the cluster implicitly with `ray.init`** <br/>
 Pass the keyword argument ``dashboard_port`` in your call to ``ray.init()``.

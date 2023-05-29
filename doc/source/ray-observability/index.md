@@ -27,5 +27,5 @@ Toubleshooting is an iterative process and it includes 4 main steps:
 3. Debug with various tools and data
 4. Form a hypothesis, implement a fix, and validate it.
 
-You'll Learn about all the available Observability tools Ray provides to accerelate your troubleshooting workflow in rest of this section.
+You'll Learn about all the available Observability tools Ray provides to accerelate your troubleshooting workflow in the rest of this section.
 

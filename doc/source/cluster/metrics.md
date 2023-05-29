@@ -1,3 +1,4 @@
+(collect-metrics)=
 # Collecting metrics
 Metrics (both system and application metrics) are useful for monitoring and troubleshooting Ray applications and system. For example, you may want to access a node's metrics if it dies unexpectedly.
 

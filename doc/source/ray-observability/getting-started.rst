@@ -15,7 +15,7 @@ Set up
     </div>
 
 
-To use the dashboard, you should use `ray[default]`, `ray[air]` or :ref:`other installation commands <installation>` that include Ray Dashboard component:
+To access the dashboard, you should use `ray[default]`, `ray[air]` or :ref:`other installation commands <installation>` that include Ray Dashboard component. Here is an example:
 
 .. code-block:: bash
 
@@ -44,13 +44,13 @@ When you start a single-node Ray cluster on your laptop, you can access the dash
 
   INFO worker.py:1487 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265.
 
-When you start a remote Ray cluster via the :ref:`VM cluster launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray Dashboard will be launched on the head node but the dashboard port may not be publicly exposed. View :ref: `configuring dashboard <observability-configure-manage-dashboard>` for how to view dashboard from outside the head node.
+When you start a remote Ray cluster via the :ref:`VM cluster launcher <vm-cluster-quick-start>`, :ref:`KubeRay operator <kuberay-quickstart>`, or manual configuration, Ray Dashboard will be launched on the head node but the dashboard port may not be publicly exposed. View :ref:`configuring dashboard <observability-configure-manage-dashboard>` for how to view dashboard from outside the head node.
 
 .. note::
 
-  Set up Prometheus and Grafana for enhanced visualization features such as the :ref:`Metrics view <dash-metrics-view>`.
-  See :ref:`Configuring and Managing the Dashboard <observability-configure-manage-dashboard>` for instructions.
-  You can still use the Dashboard without the Prometheus and Grafana integrations.
+  When using the Ray dashboard, it is highly recommended to also set up Prometheus and Grafana.
+  They are necessary for critical features such as :ref:`Metrics View <dash-metrics-view>`.
+  See :ref:`Configuring and Managing the Dashboard <observability-visualization-setup>` for how to integrate Prometheus and Grafana wtih Ray Dashboard.
 
 
 Navigate the views
@@ -79,15 +79,22 @@ The Jobs view lists the active, finished, and failed Jobs on the Ray Cluster. Cl
 A Job is a Ray workload that uses Ray APIs (e.g., ``ray.init``). You can submit a Job directly (by executing a Python script within a head node) or with the :ref:`Ray Job API <jobs-quickstart>`.
 For more information about Ray Jobs, see the :ref:`Ray Job Overview <jobs-overview>` section.
 
-Job profiling
+A Ray :ref:`job <jobs-overview>` is a ray workload that uses Ray APIs (e.g., ``ray.init``). It is recommended to submit your job to clusters via :ref:`Ray job API <jobs-quickstart>`. You can also interactively run ray jobs (e.g., by executing a Python script within a head node).
+
+The job page displays a list of active, finished, and failed jobs, and clicking on an ID allows users to view detailed information about that job.
+For more information on Ray jobs, see the :ref:`Ray Job Overview section <jobs-overview>`.
+
+Job Profiling
 ~~~~~~~~~~~~~
 
 Profile Ray Jobs by clicking on the “Stack Trace” or “CPU Flame Graph” links. See the :ref:`Dashboard Profiling <dashboard-profiling>` for more details.
 
 .. _dash-workflow-job-progress:
 
-Advanced Task and Actor breakdown
+Task and Actor Breakdown
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/advanced-progress.png
+    :align: center
 
 The Jobs view breaks down tasks and actors by their states.
 Tasks and Actors are grouped and nested by default. You can see the nested entries by clicking the expand button.
@@ -103,7 +110,7 @@ Tasks and Actors are grouped and nested using the following criteria:
 
 .. note::
 
-  The Dashboard can display or retrieve up to 10K tasks at a time. If your job has more than 10K tasks,
+  Job detail page can only display or retrieve up to 10K tasks per job. If there are more than 10K tasks from your job,
   they are unaccounted. The number of unaccounted tasks is available from the task breakdown.
 
 Task timeline
@@ -123,8 +130,8 @@ Ray status
 
 The Jobs view displays the Autoscaler status of the Ray Cluster. This information is the output of the ``ray status`` CLI command.
 
-The left pane shows the Autoscaling status, including pending, active, and failed nodes.
-The right pane displays the Cluster's demands, which are resources that cannot be scheduled on the Cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
+The left panel shows the autoscaling status, including pending, active, and failed nodes.
+The right panel displays the cluster's demands, which are resources that cannot be scheduled to the cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
 
 .. note::
 
@@ -151,7 +158,8 @@ Serve view
         <iframe width="560" height="315" src="https://www.youtube.com/embed/eqXfwM641a4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
-Use the Serve view to monitor the status of your :ref:`Ray Serve <rayserve>` applications.
+The initial page showcases your general Serve configurations, a list of the Serve applications, and, if you have :ref:`Grafana and Prometheus <observability-visualization-setup>` configured, some high-level
+metrics of all your Serve applications. Click the name of a Serve application to go to the Serve Application Detail Page.
 
 See your general Serve configurations, a list of the Serve applications, and, if you configured :ref:`Grafana and Prometheus <observability-configure-manage-dashboard>`, high-level
 metrics of your Serve applications. Click the name of a Serve application to go to the Serve Application Detail page.
@@ -165,22 +173,22 @@ Click the expand button of a deployment to see the replicas.
 Each deployment has two available actions. You can view the Deployment config and, if you configured :ref:`Grafana and Prometheus <observability-configure-manage-dashboard>`, you can open
 a Grafana dashboard with detailed metrics about that deployment.
 
-Each replica has two available actions. You can see the logs of that replica and, if you configured :ref:`Grafana and Prometheus <observability-configure-manage-dashboard>`, you can open
-a Grafana dashboard with detailed metrics about that replica. Click on the replica name to go to the Serve Replica Detail page.
+For each replica, there are two available actions. You can see the logs of that replica and, if you configured :ref:`Grafana and Prometheus <observability-visualization-setup>`, you can open
+a Grafana dashboard with detailed metrics about that replica. Click on the replica name to go to the Serve Replica Detail Page.
 
 
 Serve Replica Detail page
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-See the metadata about the Serve replica, high-level metrics about the replica if you configured :ref:`Grafana and Prometheus <observability-configure-manage-dashboard>`, and
-a history of completed :ref:`tasks <core-key-concepts>` for that replica.
+This page shows metadata about the Serve replica, high-level metrics about the replica if you configured :ref:`Grafana and Prometheus <observability-visualization-setup>`, and
+a history of completed :ref:`tasks <core-key-concepts>` of that replica.
 
 
 Serve metrics
 ~~~~~~~~~~~~~
 
-Ray Serve exports various time-series metrics to understand the status of your Serve application over time. See more details of these metrics :ref:`here <serve-production-monitoring-metrics>`.
-To store and visualize these metrics, you must set up Prometheus and Grafana by following the instructions :ref:`here <observability-configure-manage-dashboard>`.
+Ray serve exports various time-series metrics to understand the status of your Serve application over time. More details of these metrics can be found :ref:`here <serve-production-monitoring-metrics>`.
+In order to store and visualize these metrics, you must set up Prometheus and Grafana by following the instructions :ref:`here <observability-visualization-setup>`.
 
 These metrics are available in the Ray Dashboard in the Serve page and the Serve Replica Detail page. They are also accessible as Grafana dashboards.
 Within the Grafana dashboard, use the dropdown filters on the top to filter metrics by route, deployment, or replica. Exact descriptions
@@ -246,7 +254,7 @@ Metrics view
         <iframe width="560" height="315" src="https://www.youtube.com/embed/yn5Q65iHAR8" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
-Use the Metrics view to view visualizations of the time series metrics emitted by Ray.
+Ray exports default metrics which are available from the Metrics View. Here are some available example metrics.
 
 Ray exports default metrics which are available from the :ref:`Metrics view <dash-metrics-view>`. Here are some available example metrics.
 
@@ -261,7 +269,7 @@ See :ref:`System Metrics Page <system-metrics>` for available metrics.
 
 .. note::
 
-  The following functionality requires the Prometheus and Grafana setup. See :ref:`Configuring and Managing the Dashboard <observability-configure-manage-dashboard>` to learn how to set up Prometheus and Grafana.
+  The metrics view required the Prometheus and Grafana setup. See :ref:`Configuring and Managing the Dashboard <observability-visualization-setup>` to learn how to set up Prometheus and Grafana.
 
 Open the Grafana UI with the button in the Dashboard. The Grafana UI provides additional customizability of the charts.
 
@@ -338,17 +346,21 @@ If the Ray Job is submitted by the :ref:`Ray job API <jobs-quickstart>`, the Job
 
   If the driver is executed directly on the head node of the Ray cluster (without the Job API) or run with the :ref:`Ray client <ray-client-ref>`, the driver logs are not accessible from the Dashboard. In this case, see the terminal output to view the driver logs.
 
-**Task and Actor logs**
+**Task and Actor Logs (worker logs)**
 
-Task and Actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the log button.
-See the worker logs (``worker-[worker_id]-[job_id]-[pid].[out|err]``) that execute the Task and Actor. ``.out`` (stdout) and ``.err`` (stderr) logs contain the logs emitted from Tasks and Actors.
-The core worker logs (``python-core-worker-[worker_id]_[pid].log``) contain the system-level logs for the corresponding worker.
+Task and actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the log button.
+You can see the ``stdout`` and ``stderr`` logs that contain the logs emitted from the tasks and actors.
+For actors, you can also see the system logs logs for the corresponding worker.
+
+.. note::
+
+    Logs of aysnc actor tasks or threaded actor tasks (concurrency>1) are only available as part of the actor logs. Follow the instruction in Dashboard to view the actor logs.
 
 **Task and Actor errors**
 
-Identify failed tasks or actors by looking at the Job progress bar, which links to the table.
+You can easily identify failed tasks or actors by looking at the job progress bar.
 
-The table displays the name of the failed Tasks or Actors and provides access to their corresponding log or error messages.
+The task/actor table displays the name of the failed tasks or actors and provides access to their corresponding log or error messages.
 
 .. _dash-overview:
 

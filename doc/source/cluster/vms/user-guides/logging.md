@@ -21,12 +21,12 @@ Other popular tools include [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promt
 
 ## Log collection
 
-After choosing a log processing tool based on your needs, usually you need to perform the following step:
+After choosing a log processing tool based on your needs, you may need to perform the following steps:
 
 1. Ingest log files on each node of your Ray cluster as sources.
-2. Parse and transform the logs based on your needs. You may want to use {ref}`Ray's structured logging <structured-logging>` to simplify this step.
+2. Parse and transform the logs. You may want to use {ref}`Ray's structured logging <structured-logging>` to simplify this step.
 3. Ship the transformed logs to log storage or management systems.
 
 
 ## Redirecting Ray logs to stderr
-By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. It may not be ideal if the log processing tool needs log to be written to stderr in order for them to be captured. View {ref}`configuring logging <redirect-to-stderr>` for details on redirect all the logs to stderr of the host nodes instead.
+By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. It may not be ideal if the log processing tool needs log to be written to stderr in order for them to be captured. View {ref}`configuring logging <redirect-to-stderr>` for details on how to redirect all the logs to stderr of the host nodes instead.
