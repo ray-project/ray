@@ -115,6 +115,7 @@ Ray is compatible with Python profiling tools, such as ``CProfile``. It also sup
 See :ref:`Profiling <dashboard-profiling>` for more details.
 =======
 Profiling is way of analyzing the performance of an application by sampling the resource usage of it. Ray supports various profiling tools:
+
 - CPU profiling for worker processes, including integration with :ref:`py-spy <dashboard-profiling>` and :ref:`cProfile <dashboard-cprofile>`
 - Memory profiling for worker processes with :ref:`memray <ray-core-mem-profiling>``
 - Built in task/actor profiling tool called :ref:`ray timeline <ray-timeline-doc>`
