@@ -725,11 +725,11 @@ class LearnerGroup:
             if marl_module_ckpt_dir:
                 # load the MARLModule checkpoint if they were specified
                 w.module.load_state(
-                    marl_module_ckpt_dir, modules_to_load=modules_to_load
+                    tmp_marl_module_ckpt_dir, modules_to_load=modules_to_load
                 )
             if rl_module_ckpt_dirs:
                 # load the RLModule if they were specified
-                for module_id, path in rl_module_ckpt_dirs.items():
+                for module_id, path in tmp_rl_module_ckpt_dirs.items():
                     w.module[module_id].load_state(path / RLMODULE_STATE_DIR_NAME)
 
             # remove the temporary directories on the worker if any were created
