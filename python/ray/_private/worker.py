@@ -2701,7 +2701,7 @@ def wait(
             )
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_refs, ObjectRef):
+    if isinstance(object_refs, ObjectRef) or isinstance(object_refs, ray._raylet.StreamingObjectRefGenerator):
         raise TypeError(
             "wait() expected a list of ray.ObjectRef, got a single ray.ObjectRef"
         )
@@ -2717,7 +2717,7 @@ def wait(
         )
 
     for object_ref in object_refs:
-        if not isinstance(object_ref, ObjectRef):
+        if not isinstance(object_ref, ObjectRef) and not isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
             raise TypeError(
                 "wait() expected a list of ray.ObjectRef, "
                 f"got list containing {type(object_ref)}"
@@ -2726,32 +2726,113 @@ def wait(
     worker.check_connected()
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):
-        # TODO(rkn): This is a temporary workaround for
-        # https://github.com/ray-project/ray/issues/997. However, it should be
-        # fixed in Arrow instead of here.
-        if len(object_refs) == 0:
-            return [], []
+        object_ref_list = []
+        generator_list = []
+        order_dict = {}
 
-        if len(object_refs) != len(set(object_refs)):
-            raise ValueError("Wait requires a list of unique object refs.")
-        if num_returns <= 0:
-            raise ValueError("Invalid number of objects to return %d." % num_returns)
-        if num_returns > len(object_refs):
-            raise ValueError(
-                "num_returns cannot be greater than the number "
-                "of objects provided to ray.wait."
-            )
+        for i, ref in enumerate(object_refs):
+            if isinstance(ref, ObjectRef):
+                object_ref_list.append(ref)
+            elif isinstance(ref, ray._raylet.StreamingObjectRefGenerator):
+                generator_list.append(ref)
+            else:
+                assert False
+            
+            order_dict[ref] = i
 
-        timeout = timeout if timeout is not None else 10**6
-        timeout_milliseconds = int(timeout * 1000)
-        ready_ids, remaining_ids = worker.core_worker.wait(
-            object_refs,
-            num_returns,
-            timeout_milliseconds,
-            worker.current_task_id,
-            fetch_local,
+        start = time.time()
+        ready, unready = wait_object_refs(
+            object_ref_list,
+            num_returns=num_returns,
+            timeout=timeout,
+            fetch_local=fetch_local)
+        if timeout:
+            timeout = max(timeout - time.time() - start, 0)
+        ready_generator, unready_generator = wait_object_ref_generator(
+            generator_list,
+            num_returns=num_returns - len(ready),
+            timeout=timeout)
+
+        # Combine the ready and unready results
+        ready += ready_generator
+        unready += unready_generator
+
+        # Sort the combined lists by the original order
+        ready = sorted(ready, key=order_dict.get)
+        unready = sorted(unready, key=order_dict.get)
+
+        return ready, unready
+    
+
+def wait_object_ref_generator(
+    generators: List["ray._raylet.StreamingObjectRefGenerator"],
+    *,
+    num_returns: int = 1,
+    timeout: Optional[float] = None,
+) -> Tuple[List["ray._raylet.StreamingObjectRefGenerator"], List["ray._raylet.StreamingObjectRefGenerator"]]:
+    ready, unready = [], []
+    if not timeout:
+        timeout = -1
+
+    ready_generator = 0
+    for generator in generators:
+        if ready_generator >= num_returns:
+            break
+
+        s = time.time()
+
+        try:
+            ref = generator._next_sync(timeout)
+        except StopIteration:
+            ready.append(generator)
+            ready_generator += 1
+            continue
+
+        timeout -= max(0, time.time() - s)
+
+        if not ref.is_nil():
+            ready.append(ref)
+            ready_generator += 1
+        else:
+            unready.append(generator)
+
+    return ready, unready
+
+
+def wait_object_refs(
+    object_refs: List["ray.ObjectRef"],
+    *,
+    num_returns: int = 1,
+    timeout: Optional[float] = None,
+    fetch_local: bool = True,
+) -> Tuple[List["ray.ObjectRef"], List["ray.ObjectRef"]]:
+    worker = global_worker
+    # TODO(rkn): This is a temporary workaround for
+    # https://github.com/ray-project/ray/issues/997. However, it should be
+    # fixed in Arrow instead of here.
+    if len(object_refs) == 0:
+        return [], []
+
+    if len(object_refs) != len(set(object_refs)):
+        raise ValueError("Wait requires a list of unique object refs.")
+    if num_returns <= 0:
+        raise ValueError("Invalid number of objects to return %d." % num_returns)
+    if num_returns > len(object_refs):
+        raise ValueError(
+            "num_returns cannot be greater than the number "
+            "of objects provided to ray.wait."
         )
-        return ready_ids, remaining_ids
+
+    timeout = timeout if timeout is not None else 10**6
+    timeout_milliseconds = int(timeout * 1000)
+    ready_ids, remaining_ids = worker.core_worker.wait(
+        object_refs,
+        num_returns,
+        timeout_milliseconds,
+        worker.current_task_id,
+        fetch_local,
+    )
+    return ready_ids, remaining_ids
 
 
 @PublicAPI
