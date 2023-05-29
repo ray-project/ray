@@ -104,6 +104,10 @@ class ObjectRefStream {
   /// \return KeyError if it reaches to EoF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
 
+  /// Return true if the next item is available from the stream or the stream
+  /// reaches to the end of the stream.
+  bool HasNext() const;
+
   /// Insert the object id to the stream of an index item_index.
   ///
   /// If the item_index has been already read (by TryReadNextItem),
@@ -143,6 +147,13 @@ class ObjectRefStream {
   std::vector<ObjectID> GetItemsUnconsumed() const;
 
  private:
+  /// Read the next object ID from the stream without changing
+  /// the index.
+  /// \param[out] object_id_out The next object ID from the stream.
+  /// Nil ID is returned if the next index hasn't been written.
+  /// \return KeyError if it reaches to EoF. Ok otherwise.
+  Status Peek(ObjectID *object_id_out) const;
+
   const ObjectID generator_id_;
 
   /// The item_index -> object reference ids.
@@ -314,7 +325,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// generator task.
   bool ObjectRefStreamExists(const ObjectID &generator_id);
 
-  /// Read object reference of the next index from the
+  /// Read and consume a object reference of the next index from the
   /// object stream of a generator_id.
   /// This API always return immediately.
   ///
@@ -323,10 +334,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// If it is called after the stream hasn't been created or deleted
   /// it will panic.
   ///
+  /// \param[in] generator_id The objectID of a generator task.
   /// \param[out] object_id_out The next object ID from the stream.
   /// Nil ID is returned if the next index hasn't been written.
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
+
+  /// Return True if a generator task of generator_id has a next object reference
+  /// available or reaches to the end of the stream. Return false otherwise.
+  bool HasNextObjectRefFromObjectRefStream(const ObjectID &generator_id) const;
 
   /// Returns true if task can be retried.
   ///

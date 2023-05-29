@@ -2743,7 +2743,7 @@ def wait(
         start = time.time()
         ready, unready = wait_object_refs(
             object_ref_list,
-            num_returns=num_returns,
+            num_returns=min(num_returns, len(object_ref_list)),
             timeout=timeout,
             fetch_local=fetch_local)
         if timeout:
@@ -2777,21 +2777,17 @@ def wait_object_ref_generator(
     ready_generator = 0
     for generator in generators:
         if ready_generator >= num_returns:
-            break
+            unready.append(generator)
+            continue
 
         s = time.time()
 
-        try:
-            ref = generator._next_sync(timeout)
-        except StopIteration:
+        has_next = generator.has_next(timeout)
+        if timeout != -1:
+            timeout -= max(0, time.time() - s)
+
+        if has_next:
             ready.append(generator)
-            ready_generator += 1
-            continue
-
-        timeout -= max(0, time.time() - s)
-
-        if not ref.is_nil():
-            ready.append(ref)
             ready_generator += 1
         else:
             unready.append(generator)

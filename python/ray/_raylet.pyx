@@ -303,6 +303,31 @@ class StreamingObjectRefGenerator:
 
         return obj
 
+    def has_next(
+            self,
+            timeout_s: float = -1,
+            sleep_interval_s: float = 0.0001,
+            unexpected_network_failure_timeout_s: float = 30):
+        has_next = self.worker.core_worker.has_next_object_ref_stream(self._generator_ref)
+        last_time = time.time()
+
+        # The generator ref will be None if the task succeeds.
+        # It will contain an exception if the task fails by
+        # a system error.
+        while not has_next:
+            error_ref = self._handle_error(
+                False,
+                last_time,
+                timeout_s,
+                unexpected_network_failure_timeout_s)
+            if error_ref is not None:
+                return True
+
+            time.sleep(sleep_interval_s)
+            has_next = self.worker.core_worker.has_next_object_ref_stream(self._generator_ref)
+
+        return has_next
+
     async def _next_async(
             self,
             timeout_s: float = -1,
@@ -3881,6 +3906,14 @@ cdef class CoreWorker:
             "",
             # Already added when the ref is updated.
             skip_adding_local_ref=True)
+
+    def has_next_object_ref_stream(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+
+        return CCoreWorkerProcess.GetCoreWorker().HasNextObjectRefFromObjectRefStream(
+                c_generator_id)
+
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

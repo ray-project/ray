@@ -6,6 +6,7 @@ import time
 import threading
 import gc
 
+from collections import Counter
 from unittest.mock import patch, Mock
 
 import ray
@@ -462,6 +463,150 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
             lambda: len(list_objects(filters=[("object_id", "=", id)])) == 0
         )
         i += 1
+
+
+def test_generator_wait(shutdown_only):
+    """
+    Make sure the generator works with ray.wait.
+    """
+    ray.init(num_cpus=8)
+
+    @ray.remote
+    def f(sleep_time):
+        for i in range(2):
+            time.sleep(sleep_time)
+            yield i
+
+    @ray.remote
+    def g(sleep_time):
+        time.sleep(sleep_time)
+        return 10
+
+    gen = f.options(num_returns="streaming").remote(1)
+
+    """
+    Test basic cases.
+    """
+    s = time.time()
+    r, ur = ray.wait([gen], num_returns=1)
+    print(time.time() - s)
+    assert len(r) == 1
+    assert ray.get(next(r[0])) == 0
+    assert len(ur) == 0
+
+    s = time.time()
+    r, ur = ray.wait([gen], num_returns=1)
+    print(time.time() - s)
+    assert len(r) == 1
+    assert ray.get(next(r[0])) == 1
+    assert len(ur) == 0
+
+    # Should raise a stop iteration.
+    for _ in range(3):
+        s = time.time()
+        r, ur = ray.wait([gen], num_returns=1)
+        print(time.time() - s)
+        assert len(r) == 1
+        with pytest.raises(StopIteration):
+            assert next(r[0]) == 0
+        assert len(ur) == 0
+
+    gen = f.options(num_returns="streaming").remote(0)
+    # Wait until the generator task finishes
+    ray.get(gen._generator_ref)
+    for i in range(2):
+        r, ur = ray.wait([gen], timeout=0)
+        assert len(r) == 1
+        assert len(ur) == 0
+        assert ray.get(next(r[0])) == i
+    
+    """
+    Test the case ref is mixed with regular object ref.
+    """
+    gen = f.options(num_returns="streaming").remote(0)
+    ref = g.remote(3)
+    ready, unready = [], [gen, ref]
+    result_set = set()
+    while unready:
+        ready, unready = ray.wait(unready)
+        print(ready, unready)
+        assert len(ready) == 1
+        for r in ready:
+            if isinstance(r, StreamingObjectRefGenerator):
+                try:
+                    ref = next(r)
+                    print(ref)
+                    print(ray.get(ref))
+                    result_set.add(ray.get(ref))
+                except StopIteration:
+                    pass
+                else:
+                    unready.append(r)
+            else:
+                result_set.add(ray.get(r))
+    
+    assert result_set == {0, 1, 10}
+
+    """
+    Test timeout.
+    """
+    gen = f.options(num_returns="streaming").remote(3)
+    ref = g.remote(1)
+    ready, unready = ray.wait([gen, ref], timeout=2)
+    assert len(ready) == 1
+    assert len(unready) == 1
+
+    """
+    Test num_returns
+    """
+    gen = f.options(num_returns="streaming").remote(1)
+    ref = g.remote(1)
+    ready, unready = ray.wait([ref, gen], num_returns=2)
+    assert len(ready) == 2
+    assert len(unready) == 0
+
+
+def test_generator_wait_e2e(shutdown_only):
+    ray.init(num_cpus=8)
+
+    @ray.remote
+    def f(sleep_time):
+        for i in range(2):
+            time.sleep(sleep_time)
+            yield i
+
+    @ray.remote
+    def g(sleep_time):
+        time.sleep(sleep_time)
+        return 10
+
+    gen = [f.options(num_returns="streaming").remote(1) for _ in range(4)]
+    ref = [g.remote(2) for _ in range(4)]
+    ready, unready = [], [*gen, *ref]
+    result = []
+    start = time.time()
+    while unready:
+        ready, unready = ray.wait(unready, num_returns=len(unready), timeout=0.1)
+        for r in ready:
+            if isinstance(r, StreamingObjectRefGenerator):
+                try:
+                    ref = next(r)
+                    result.append(ray.get(ref))
+                except StopIteration:
+                    pass
+                else:
+                    unready.append(r)
+            else:
+                result.append(ray.get(r))
+    elapsed = time.time() - start
+    assert elapsed < 3
+    assert 2 < elapsed 
+    
+    assert len(result) == 12
+    result = Counter(result)
+    assert result[0] == 4
+    assert result[1] == 4
+    assert result[10] == 4
 
 
 def test_generator_dist_chain(ray_start_cluster):

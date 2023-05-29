@@ -50,7 +50,7 @@ std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   return result;
 }
 
-Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
+Status ObjectRefStream::Peek(ObjectID *object_id_out) const {
   bool is_eof_set = end_of_stream_index_ != -1;
   if (is_eof_set && next_index_ >= end_of_stream_index_) {
     // next_index_ cannot be bigger than end_of_stream_index_.
@@ -69,7 +69,6 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
     // The caller of this API is supposed to remove the reference
     // when the obtained object id goes out of scope.
     *object_id_out = it->second;
-    next_index_ += 1;
     RAY_LOG_EVERY_MS(DEBUG, 10000) << "Get the next object id " << *object_id_out
                                    << " generator id: " << generator_id_;
   } else {
@@ -82,6 +81,25 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
     *object_id_out = ObjectID::Nil();
   }
   return Status::OK();
+}
+
+Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
+  auto status = Peek(object_id_out);
+  if (!object_id_out->IsNil()) {
+    RAY_CHECK(!status.IsObjectRefEndOfStream());
+    next_index_ += 1;
+  }
+  return status;
+}
+
+bool ObjectRefStream::HasNext() const {
+  ObjectID object_id_out;
+  auto status = Peek(&object_id_out);
+  if (status.IsObjectRefEndOfStream()) {
+    return true;
+  }
+
+  return !object_id_out.IsNil();
 }
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
@@ -464,6 +482,16 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
                                            ObjectID *object_id_out) {
   absl::MutexLock lock(&mu_);
   return TryReadObjectRefStreamInternal(generator_id, object_id_out);
+}
+
+bool TaskManager::HasNextObjectRefFromObjectRefStream(const ObjectID &generator_id) const {
+  absl::MutexLock lock(&mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "TryReadObjectRefStreamInternal API can be used only when the stream has been "
+         "created "
+         "and not removed.";
+  return stream_it->second.HasNext();
 }
 
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {

@@ -2820,6 +2820,10 @@ Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
+bool CoreWorker::HasNextObjectRefFromObjectRefStream(const ObjectID &generator_id) const {
+  return task_manager_->HasNextObjectRefFromObjectRefStream(generator_id);
+}
+
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                          std::shared_ptr<RayObject> *return_object,
                                          const ObjectID &generator_id) {
