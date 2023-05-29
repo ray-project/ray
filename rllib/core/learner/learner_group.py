@@ -12,6 +12,7 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
+import uuid
 
 import ray
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
@@ -135,6 +136,10 @@ class LearnerGroup:
                 #  an async algo, remove this restriction entirely.
                 max_remote_requests_in_flight_per_actor=3,
             )
+            # This is a list of the tags for asynchronous update requests that are
+            # inflight, and is used for grouping together the results of requests
+            # that were sent to the workers at the same time.
+            self._inflight_request_tags: Set[str] = set()
             self._in_queue = deque(maxlen=max_queue_len)
 
     def get_in_queue_stats(self) -> Mapping[str, Any]:
@@ -176,7 +181,18 @@ class LearnerGroup:
             block: Whether to block until the update is complete.
 
         Returns:
-            A list of dictionaries of results from the updates from the Learner(s)
+            if block is true and reduce_fn is None:
+                A list of dictionaries of results from the updates from the Learner(s)
+            if block is true and reduce_fn is not None:
+                A single dictionary of results from the updates from the Learner(s),
+                reduced by reduce_fn.
+            if block is false and reduce_fn is None:
+                A list of list of dictionaries of results, where the outer list
+                corresponds to separate non-blocking calls to `update`, and the inner
+                list corresponds to the results from each Learner(s).
+            if block is false and reduce_fn is not None:
+                A list of dictionaries of reduced results by reduce_fn, where the
+                list corresponds to separate non-blocking calls to `update`.
         """
 
         # Construct a multi-agent batch with only the trainable modules.
@@ -209,16 +225,24 @@ class LearnerGroup:
                 block=block,
             )
 
+        # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
         # No reduce function -> Return results as is: (possibly empty) list of mappings.
         if reduce_fn is None:
             return results
-        # If results are empty, don't run them through reduce_fn, but return empty dict.
-        elif not results:
+        # If results are empty and doing a blocking update, don't reduce but return
+        # empty dict.
+        elif not results and block:
             return {}
+        # If results are empty and doing a non-blocking update, don't reduce but
+        # return empty list.
+        elif not results and not block:
+            return []
         # Run results (list of result dicts from our n learner actors) through
         # reduction function and return single mapping.
-        # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
-        return reduce_fn(results)
+        elif block:
+            return reduce_fn(results)
+        else:
+            return [reduce_fn(r) for r in results]
 
     def _distributed_update(
         self,
@@ -230,7 +254,7 @@ class LearnerGroup:
             _reduce_mean_results
         ),
         block: bool = True,
-    ) -> List[Mapping[str, Any]]:
+    ) -> List[List[Mapping[str, Any]]]:
         """Do a gradient based update to the Learners using DDP training.
 
         Note: this function is used if the num_gpus this LearnerGroup is configured
@@ -242,8 +266,8 @@ class LearnerGroup:
             See `.update()` docstring.
 
         Returns:
-            A list of dictionaries of results from the updates from the individual
-            Learner(s)
+            A list of remote update results where each remote update result is a list of
+            dictionaries of results from the updates from the individual Learner(s)
         """
         # Make sure minibatch size is reduced to the correct number of shards as well
         # (just like we split each batch into the number of learner workers).
@@ -277,7 +301,9 @@ class LearnerGroup:
             self._in_queue.append(batch)
 
             # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs()
+            results = self._worker_manager.fetch_ready_async_reqs(
+                tags=list(self._inflight_request_tags)
+            )
             # Only if there are no more requests in-flight on any of the learners,
             # we can send in one new batch for sharding and parallel learning.
             if self._worker_manager_ready():
@@ -289,6 +315,8 @@ class LearnerGroup:
                 while len(self._in_queue) > 0 and count < 3:
                     # Pull a single batch from the queue (from the left side, meaning:
                     # use the oldest one first).
+                    new_tag = str(uuid.uuid4())
+                    self._inflight_request_tags.add(new_tag)
                     batch = self._in_queue.popleft()
                     self._worker_manager.foreach_actor_async(
                         [
@@ -296,11 +324,18 @@ class LearnerGroup:
                             for minibatch in ShardBatchIterator(
                                 batch, len(self._workers)
                             )
-                        ]
+                        ],
+                        tag=new_tag,
                     )
                     count += 1
 
-            results = self._get_results(results)
+            # NOTE: There is a strong assumption here that the requests launched to
+            # learner workers will return at the same time, since they are have a
+            # barrier inside of themselves for gradient aggregation. Therefore results
+            # should be a list of lists where each inner list should be the length of
+            # the number of learner workers, if results from an  non-blocking update are
+            # ready.
+            results = self._get_tagged_results(results)
 
         return results
 
@@ -322,6 +357,38 @@ class LearnerGroup:
                 processed_results.append(result_or_error)
             else:
                 raise result_or_error
+        return processed_results
+
+    def _get_tagged_results(self, results):
+        """Get results from the worker manager and group them by tag.
+
+        Returns:
+            A list of lists of results, where each inner list contains all results
+            for same tags.
+
+        """
+        unprocessed_results = []
+        removed_tags = set()
+        for result in results:
+            result_or_error = result.get()
+            if result.ok:
+                assert result.tag, (
+                    "Cannot call _get_tagged_results on untagged async " "requests."
+                )
+                unprocessed_results.append((result.tag, result_or_error))
+                removed_tags.add(result.tag)
+            else:
+                raise result_or_error
+
+        processed_results = []
+
+        for tag in removed_tags:
+            processed_result_for_tag = []
+            for result in unprocessed_results:
+                if result[0] == tag:
+                    processed_result_for_tag.append(result[1])
+            processed_results.append(processed_result_for_tag)
+            self._inflight_request_tags.remove(tag)
         return processed_results
 
     def additional_update(

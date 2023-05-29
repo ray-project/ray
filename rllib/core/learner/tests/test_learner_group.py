@@ -255,7 +255,9 @@ class TestLearnerGroup(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            learner_group = get_learner_group(fw, env, scaling_config)
+            learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True
+            )
             reader = get_cartpole_dataset_reader(batch_size=512)
             min_loss = float("inf")
             batch = reader.next()
@@ -273,28 +275,37 @@ class TestLearnerGroup(unittest.TestCase):
             self.assertLess(timer_async.mean, timer_sync.mean)
             self.assertIsInstance(result_async, list)
             self.assertEqual(len(result_async), 0)
-            for iter_i in range(1000):
+            iter_i = 0
+            while True:
                 batch = reader.next()
-                results = learner_group.update(
+                async_results = learner_group.update(
                     batch.as_multi_agent(), block=False, reduce_fn=None
                 )
-                if not results:
+                if not async_results:
                     continue
-                loss = np.mean(
-                    [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
+                losses = [
+                    np.mean(
+                        [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
+                    )
+                    for results in async_results
+                ]
+                min_loss_this_iter = min(losses)
+                min_loss = min(min_loss_this_iter, min_loss)
+                print(
+                    f"[iter = {iter_i}] Loss: {min_loss_this_iter:.3f}, Min Loss: "
+                    f"{min_loss:.3f}"
                 )
-                min_loss = min(loss, min_loss)
-                print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
                 # The loss is initially around 0.69 (ln2). When it gets to around
                 # 0.57 the return of the policy gets to around 100.
                 if min_loss < 0.57:
                     break
-
-                for res1, res2 in zip(results, results[1:]):
-                    self.assertEqual(
-                        res1[DEFAULT_POLICY_ID]["mean_weight"],
-                        res2[DEFAULT_POLICY_ID]["mean_weight"],
-                    )
+                for results in async_results:
+                    for res1, res2 in zip(results, results[1:]):
+                        self.assertEqual(
+                            res1[DEFAULT_POLICY_ID]["mean_weight"],
+                            res2[DEFAULT_POLICY_ID]["mean_weight"],
+                        )
+                iter_i += 1
             learner_group.shutdown()
             self.assertLess(min_loss, 0.57)
 
