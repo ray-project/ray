@@ -18,7 +18,6 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_client/usage_stats_client.h"
-#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -68,6 +67,7 @@ class GcsWorkerManager;
 class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
 class GcsTaskManager;
+class GcsAutoscalerStateManager;
 
 /// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.

@@ -14,6 +14,10 @@
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+
 namespace ray {
 namespace gcs {
 

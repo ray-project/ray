@@ -13,7 +13,6 @@
 // limitations under the License.
 
 // clang-format off
-// NOTE(rickyx): Not doing the manual ordering will break Windows build somehow.
 #include <memory>
 
 #include "gmock/gmock.h"
