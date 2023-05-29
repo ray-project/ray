@@ -308,7 +308,8 @@ class StreamingObjectRefGenerator:
             timeout_s: float = -1,
             sleep_interval_s: float = 0.0001,
             unexpected_network_failure_timeout_s: float = 30):
-        has_next = self.worker.core_worker.has_next_object_ref_stream(self._generator_ref)
+        has_next = self.worker.core_worker.has_next_object_ref_stream(
+            self._generator_ref)
         last_time = time.time()
 
         # The generator ref will be None if the task succeeds.
@@ -324,7 +325,8 @@ class StreamingObjectRefGenerator:
                 return True
 
             time.sleep(sleep_interval_s)
-            has_next = self.worker.core_worker.has_next_object_ref_stream(self._generator_ref)
+            has_next = self.worker.core_worker.has_next_object_ref_stream(
+                self._generator_ref)
 
         return has_next
 

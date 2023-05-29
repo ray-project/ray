@@ -484,7 +484,8 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   return TryReadObjectRefStreamInternal(generator_id, object_id_out);
 }
 
-bool TaskManager::HasNextObjectRefFromObjectRefStream(const ObjectID &generator_id) const {
+bool TaskManager::HasNextObjectRefFromObjectRefStream(
+    const ObjectID &generator_id) const {
   absl::MutexLock lock(&mu_);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())

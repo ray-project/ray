@@ -2701,7 +2701,9 @@ def wait(
             )
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_refs, ObjectRef) or isinstance(object_refs, ray._raylet.StreamingObjectRefGenerator):
+    if isinstance(object_refs, ObjectRef) or isinstance(
+        object_refs, ray._raylet.StreamingObjectRefGenerator
+    ):
         raise TypeError(
             "wait() expected a list of ray.ObjectRef, got a single ray.ObjectRef"
         )
@@ -2717,7 +2719,9 @@ def wait(
         )
 
     for object_ref in object_refs:
-        if not isinstance(object_ref, ObjectRef) and not isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
+        if not isinstance(object_ref, ObjectRef) and not isinstance(
+            object_ref, ray._raylet.StreamingObjectRefGenerator
+        ):
             raise TypeError(
                 "wait() expected a list of ray.ObjectRef, "
                 f"got list containing {type(object_ref)}"
@@ -2737,7 +2741,7 @@ def wait(
                 generator_list.append(ref)
             else:
                 assert False
-            
+
             order_dict[ref] = i
 
         start = time.time()
@@ -2745,13 +2749,13 @@ def wait(
             object_ref_list,
             num_returns=min(num_returns, len(object_ref_list)),
             timeout=timeout,
-            fetch_local=fetch_local)
+            fetch_local=fetch_local,
+        )
         if timeout:
             timeout = max(timeout - time.time() - start, 0)
         ready_generator, unready_generator = wait_object_ref_generator(
-            generator_list,
-            num_returns=num_returns - len(ready),
-            timeout=timeout)
+            generator_list, num_returns=num_returns - len(ready), timeout=timeout
+        )
 
         # Combine the ready and unready results
         ready += ready_generator
@@ -2762,14 +2766,17 @@ def wait(
         unready = sorted(unready, key=order_dict.get)
 
         return ready, unready
-    
+
 
 def wait_object_ref_generator(
     generators: List["ray._raylet.StreamingObjectRefGenerator"],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
-) -> Tuple[List["ray._raylet.StreamingObjectRefGenerator"], List["ray._raylet.StreamingObjectRefGenerator"]]:
+) -> Tuple[
+    List["ray._raylet.StreamingObjectRefGenerator"],
+    List["ray._raylet.StreamingObjectRefGenerator"],
+]:
     ready, unready = [], []
     if not timeout:
         timeout = -1

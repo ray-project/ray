@@ -519,7 +519,7 @@ def test_generator_wait(shutdown_only):
         assert len(r) == 1
         assert len(ur) == 0
         assert ray.get(next(r[0])) == i
-    
+
     """
     Test the case ref is mixed with regular object ref.
     """
@@ -544,7 +544,7 @@ def test_generator_wait(shutdown_only):
                     unready.append(r)
             else:
                 result_set.add(ray.get(r))
-    
+
     assert result_set == {0, 1, 10}
 
     """
@@ -600,8 +600,8 @@ def test_generator_wait_e2e(shutdown_only):
                 result.append(ray.get(r))
     elapsed = time.time() - start
     assert elapsed < 3
-    assert 2 < elapsed 
-    
+    assert 2 < elapsed
+
     assert len(result) == 12
     result = Counter(result)
     assert result[0] == 4
