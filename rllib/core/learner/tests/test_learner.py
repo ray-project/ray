@@ -188,7 +188,7 @@ class TestLearner(unittest.TestCase):
             expected = [
                 (
                     convert_to_numpy(param)
-                    - n_steps * learner._optimizer_config["lr"] * np.ones(param.shape)
+                    - n_steps * learner.hps.learning_rate * np.ones(param.shape)
                 )
                 for param in params
             ]
@@ -230,7 +230,7 @@ class TestLearner(unittest.TestCase):
             n_steps = 100
             expected = [
                 convert_to_numpy(param)
-                - n_steps * learner._optimizer_config["lr"] * np.ones(param.shape)
+                - n_steps * learner.hps.learning_rate * np.ones(param.shape)
                 for param in params
             ]
             for _ in range(n_steps):
