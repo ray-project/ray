@@ -400,12 +400,12 @@ class LearnerGroup:
 
     def set_weights(self, weights) -> None:
         # TODO (Kourosh) Set / get weight has to be thoroughly
-        # tested across actors and multi-gpus
+        #  tested across actors and multi-gpus
         if self.is_local:
-            self._learner.set_weights(weights)
+            self._learner.set_module_state(weights)
         else:
             results_or_errors = self._worker_manager.foreach_actor(
-                lambda w: w.set_weights(weights)
+                lambda w: w.set_module_state(weights)
             )
             # raise errors if any
             self._get_results(results_or_errors)
