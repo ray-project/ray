@@ -165,8 +165,10 @@ class HttpServerDashboardHead:
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
+        mega = int(os.getenv("BYTED_RAY_DASHBOARD_CLIENT_MAX_SIZE", "500"))
+        logger.info(f"Byted use BYTED_RAY_DASHBOARD_CLIENT_MAX_SIZE {mega}M.")
         app = aiohttp.web.Application(
-            client_max_size=100 * 1024**2, middlewares=[self.metrics_middleware]
+            client_max_size=mega * 1024**2, middlewares=[self.metrics_middleware]
         )
         app.add_routes(routes=routes.bound_routes())
 
