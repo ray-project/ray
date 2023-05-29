@@ -477,9 +477,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
+  uint64_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
+
   {
     absl::MutexLock lock(&mu_);
     auto stream_it = object_ref_streams_.find(generator_id);
@@ -493,6 +495,15 @@ bool TaskManager::HandleReportGeneratorItemReturns(
       stream_it->second.MarkEndOfStream(item_index);
       RAY_CHECK(request.dynamic_return_objects_size() == 0);
       return true;
+    }
+
+    auto it = submissible_tasks_.find(task_id);
+    if (it != submissible_tasks_.end()) {
+      if (it->second.spec.AttemptNumber() > attempt_number) {
+        // It is a stale report from the previous task attempt.
+        // Ignore it.
+        return false;
+      }
     }
   }
 
