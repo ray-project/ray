@@ -12,15 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
-
+// clang-format off
+// NOTE(rickyx): Not doing the manual ordering will break Windows build somehow.
 #include <memory>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "src/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "src/ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+
+#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
+// clang-format on
 
 namespace ray {
 
