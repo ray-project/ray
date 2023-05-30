@@ -2,7 +2,7 @@ from typing import List, Optional, Union
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import LearningRateOrSchedule, TensorType
 
 
 _, tf, _ = try_import_tf()
@@ -18,7 +18,7 @@ class Scheduler:
     def __init__(
         self,
         *,
-        fixed_value_or_schedule: Union[float, List[List[Union[int, float]]]],
+        fixed_value_or_schedule: LearningRateOrSchedule,
         framework: str = "torch",
         device: Optional[str] = None,
     ):
@@ -60,7 +60,7 @@ class Scheduler:
     @staticmethod
     def validate(
         *,
-        fixed_value_or_schedule: Union[float, List[List[Union[int, float]]]],
+        fixed_value_or_schedule: LearningRateOrSchedule,
         setting_name: str,
         description: str,
     ) -> None:

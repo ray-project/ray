@@ -70,7 +70,7 @@ tf1, tf, tfv = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
-DefaultOptimizerName = "default_optimizer"
+DEFAULT_OPTIMIZER = "default_optimizer"
 
 # COMMON LEARNER LOSS_KEYS
 POLICY_LOSS_KEY = "policy_loss"
@@ -351,7 +351,7 @@ class Learner:
         self,
         *,
         module_id: ModuleID = ALL_MODULES,
-        optimizer_name: str = DefaultOptimizerName,
+        optimizer_name: str = DEFAULT_OPTIMIZER,
         optimizer: Optimizer,
         params: Sequence[Param],
         lr_or_lr_schedule: Optional[LearningRateOrSchedule] = None,
@@ -370,7 +370,7 @@ class Learner:
             module_id: The `module_id` under which to register the optimizer. If not
                 provided, will assume ALL_MODULES.
             optimizer_name: The name (str) of the optimizer. If not provided, will
-                assume DefaultOptimizerName.
+                assume DEFAULT_OPTIMIZER.
             optimizer: The already instantiated optimizer object to register.
             params: A list of parameters (framework-specific variables) that will be
                 trained/updated
@@ -629,27 +629,27 @@ class Learner:
     def get_optimizer(
         self,
         module_id: ModuleID = ALL_MODULES,
-        optimizer_name: str = DefaultOptimizerName,
+        optimizer_name: str = DEFAULT_OPTIMIZER,
     ) -> Optimizer:
         """Returns the optimizer object, configured under the given module_id and name.
 
         If only one optimizer was registered under `module_id` (or ALL_MODULES) via the
         `self.register_optimizer` method, `optimizer_name` is assumed to be
-        DefaultOptimizerName.
+        DEFAULT_OPTIMIZER.
 
         Args:
             module_id: The ModuleID for which to return the configured optimizer.
             optimizer_name: The name of the optimizer (configured under `module_id` via
                 `self.register_optimizer()`) to return. If no name was provided during
-                registration, the optimizer's name will be DefaultOptimizerName.
+                registration, the optimizer's name will be DEFAULT_OPTIMIZER.
 
         Returns:
             The optimizer object, configured under the given `module_id` and
             `optimizer_name`.
         """
-        lookup_name = module_id + "_" + optimizer_name
-        assert lookup_name in self._named_optimizers
-        return self._named_optimizers[lookup_name]
+        full_registration_name = module_id + "_" + optimizer_name
+        assert full_registration_name in self._named_optimizers
+        return self._named_optimizers[full_registration_name]
 
     def get_optimizers_for_module(
         self, module_id: ModuleID = ALL_MODULES
@@ -665,14 +665,14 @@ class Learner:
             A list of tuples of the format: ([optimizer_name], [optimizer object]),
             where optimizer_name is the name under which the optimizer was registered
             in `self.register_optimizer`. If only a single optimizer was
-            configured for `module_id`, [optimizer_name] will be DefaultOptimizerName.
+            configured for `module_id`, [optimizer_name] will be DEFAULT_OPTIMIZER.
         """
         named_optimizers = []
-        for name in self._module_optimizers[module_id]:
-            optimizer = self._named_optimizers[name]
+        for full_registration_name in self._module_optimizers[module_id]:
+            optimizer = self._named_optimizers[full_registration_name]
             # TODO (sven): How can we avoid registering optimziers under this
             #  constructed `[module_id]_[optim_name]` format?
-            optim_name = name[len(module_id) + 1 :]
+            optim_name = full_registration_name[len(module_id) + 1 :]
             named_optimizers.append((optim_name, optimizer))
         return named_optimizers
 
@@ -1065,7 +1065,7 @@ class Learner:
                 # Make sure our returned results differentiate by optimizer name
                 # (if not the default name).
                 stats_name = LEARNER_RESULTS_CURR_LR_KEY
-                if optimizer_name != DefaultOptimizerName:
+                if optimizer_name != DEFAULT_OPTIMIZER:
                     stats_name += "_" + optimizer_name
                 results.update({stats_name: new_lr})
 
