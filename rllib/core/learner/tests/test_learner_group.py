@@ -248,7 +248,7 @@ class TestLearnerGroup(unittest.TestCase):
         fws = ["torch", "tf2"]
         # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
-        scaling_modes = ["multi-cpu-ddp"]
+        scaling_modes = ["multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:

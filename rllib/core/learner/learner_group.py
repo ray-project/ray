@@ -1,4 +1,4 @@
-from collections import deque
+from collections import defaultdict, deque
 from functools import partial
 import pathlib
 from typing import (
@@ -351,29 +351,20 @@ class LearnerGroup:
             for same tags.
 
         """
-        unprocessed_results = []
-        removed_tags = set()
+        unprocessed_results = defaultdict(list)
         for result in results:
             result_or_error = result.get()
             if result.ok:
                 assert (
                     result.tag
                 ), "Cannot call _get_async_results on untagged async requests."
-                unprocessed_results.append((result.tag, result_or_error))
-                removed_tags.add(result.tag)
+                unprocessed_results[result.tag].append(result_or_error)
             else:
                 raise result_or_error
 
-        processed_results = []
-
-        for tag in removed_tags:
-            processed_result_for_tag = []
-            for result in unprocessed_results:
-                if result[0] == tag:
-                    processed_result_for_tag.append(result[1])
-            processed_results.append(processed_result_for_tag)
+        for tag in unprocessed_results.keys():
             self._inflight_request_tags.remove(tag)
-        return processed_results
+        return list(unprocessed_results.values())
 
     def additional_update(
         self,
