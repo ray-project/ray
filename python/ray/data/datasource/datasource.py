@@ -32,6 +32,9 @@ class Datasource:
 
     Datasource instances must be serializable, since ``create_reader()`` and
     ``write()`` are called in remote tasks.
+
+    For an example of subclassing ``Datasource``, read
+    :ref:`Implementing a Custom Datasource <custom_datasources>`.
     """
 
     def create_reader(self, **read_args) -> "Reader":

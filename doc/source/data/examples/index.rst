@@ -62,3 +62,11 @@ Other Examples
         .. button-ref:: random-access
 
             Random Data Access (Experimental)
+
+    .. grid-item-card::
+        :img-top: ../images/MongoDB_Logo.svg
+        :class-img-top: pt-5 w-75 d-block mx-auto
+
+        .. button-ref:: custom-datasource
+
+            Implementing a Custom Datasource
