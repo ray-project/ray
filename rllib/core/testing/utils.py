@@ -126,7 +126,7 @@ def get_learner(
     # that is used in the learner.
     learner = _cls(
         module_spec=spec,
-        learner_hyperparameters=learner_hps,
+        learner_hyperparameters=learner_hps or LearnerHyperparameters(),
         framework_hyperparameters=FrameworkHyperparameters(eager_tracing=eager_tracing),
     )
     learner.build()

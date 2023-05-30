@@ -33,7 +33,7 @@ from ray.rllib.core.rl_module.rl_module import (
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -628,20 +628,21 @@ class Learner:
 
     def get_optimizer(
         self,
-        module_id: ModuleID = ALL_MODULES,
+        module_id: ModuleID = DEFAULT_POLICY_ID,
         optimizer_name: str = DEFAULT_OPTIMIZER,
     ) -> Optimizer:
         """Returns the optimizer object, configured under the given module_id and name.
 
-        If only one optimizer was registered under `module_id` (or ALL_MODULES) via the
-        `self.register_optimizer` method, `optimizer_name` is assumed to be
+        If only one optimizer was registered under `module_id` (or ALL_MODULES)
+        via the `self.register_optimizer` method, `optimizer_name` is assumed to be
         DEFAULT_OPTIMIZER.
 
         Args:
             module_id: The ModuleID for which to return the configured optimizer.
-            optimizer_name: The name of the optimizer (configured under `module_id` via
-                `self.register_optimizer()`) to return. If no name was provided during
-                registration, the optimizer's name will be DEFAULT_OPTIMIZER.
+                If not provided, will assume DEFAULT_POLICY_ID.
+            optimizer_name: The name of the optimizer (registered under `module_id` via
+                `self.register_optimizer()`) to return. If not provided, will assume
+                DEFAULT_OPTIMIZER.
 
         Returns:
             The optimizer object, configured under the given `module_id` and
