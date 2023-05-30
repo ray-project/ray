@@ -491,6 +491,17 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
 
+- label: ":book: Doctest (CPU)"
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
+    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/install-horovod.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=doctest,-gpu
+      python/ray/... doc/...
+
 - label: ":python: Ray on Spark Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium

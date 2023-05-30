@@ -1,3 +1,10 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*", "callbacks/*.py", "integrations/wandb.py"])),  # TODO: Add note for callbacks
+    tags = ["team:ml"]
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/air/examples directory.
 # Please keep these sorted alphabetically.

@@ -1,5 +1,6 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
+load("//bazel:python.bzl", "doctest")
 
 exports_files(["test_myst_doc.py"])
 
@@ -298,4 +299,25 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml", "external"],
+)
+
+
+# --------------------------------------------------------------------
+# Tests code snippets in user guides.
+# --------------------------------------------------------------------
+
+doctest(
+    files = glob(
+        include=["source/**/*.rst"],
+        exclude=[
+            "source/ray-contribute/getting-involved.rst",
+            "source/ray-core/handling-dependencies.rst",
+            "source/ray-core/tasks/nested-tasks.rst",
+            "source/ray-observability/user-guides/ray-tracing.rst",
+            "source/ray-observability/user-guides/cli-sdk.rst",
+            "source/rllib/rllib-env.rst",
+            "source/rllib/rllib-sample-collection.rst",
+        ]
+    ),
+    size="large"
 )
