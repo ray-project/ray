@@ -19,7 +19,6 @@
 
 - label: ":tv: :brain: RLlib: Multi-GPU Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
-  parallelism: 2
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -28,12 +27,8 @@
     # --jobs 2 is necessary as we only need to have at least 2 gpus on the machine
     # and running tests in parallel would cause timeouts as the other scripts would
     # wait for the GPU to become available.
-    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
-      --build_tests_only
-      --jobs=2
-      --test_tag_filters=multi_gpu
-      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
-      rllib/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --jobs 2
+      --test_tag_filters=multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 - label: ":tv: :airplane: AIR GPU tests (ray/air)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
