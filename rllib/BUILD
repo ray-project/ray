@@ -61,6 +61,29 @@
 # these tests in n different jobs.
 
 load("//bazel:python.bzl", "py_test_module_list")
+load("//bazel:python.bzl", "doctest")
+
+# TODO(@bveeramani): Enable doctests.
+# doctest(
+#     files = glob(
+#         ["**/*.py"],
+#         exclude=[
+#             "**/examples/**",
+#             "**/tests/**",
+#             # Deprecations
+#             "utils/window_stat.py",
+#             "utils/timer.py",
+#             "utils/memory.py",
+#             "offline/off_policy_estimator.py",
+#             "offline/estimators/feature_importance.py",
+#             "env/wrappers/recsim_wrapper.py",
+#             "env/remote_vector_env.py",
+#             # Missing imports
+#             "algorithms/dreamerv3/**"
+#         ]
+#     ),
+#     tags = ["team:rllib"]
+# )
 
 # --------------------------------------------------------------------
 # Algorithms learning regression tests.
@@ -4075,8 +4098,8 @@ py_test(
 # --------------------------------------------------------------------
 # examples/learner directory
 #
-# 
-# Description: These are RLlib tests for the new multi-gpu enabled 
+#
+# Description: These are RLlib tests for the new multi-gpu enabled
 # training stack via Learners.
 #
 # NOTE: Add tests alphabetically to this list.
