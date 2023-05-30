@@ -2,7 +2,7 @@
 
 import argparse
 import json
-import logging.handlers
+import logging
 import os
 import signal
 import sys
@@ -370,6 +370,7 @@ class Monitor:
 
     def _run(self):
         """Run the monitor loop."""
+
         while True:
             try:
                 gcs_request_start_time = time.time()

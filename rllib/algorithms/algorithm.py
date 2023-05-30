@@ -61,7 +61,6 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
@@ -593,11 +592,7 @@ class Algorithm(Trainable):
 
         # Only if user did not override `_init()`:
         if _init is False:
-            # - Create rollout workers here automatically.
-            # - Run the execution plan to create the local iterator to `next()`
-            #   in each training iteration.
-            # This matches the behavior of using `build_trainer()`, which
-            # has been deprecated.
+            # Create a set of env runner actors via a WorkerSet.
             self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
@@ -666,17 +661,8 @@ class Algorithm(Trainable):
             # the num worker is set to 0 to avoid creating shards. The dataset will not
             # be repartioned to num_workers blocks.
             logger.info("Creating evaluation dataset ...")
-            ds, _ = get_dataset_and_shards(self.evaluation_config, num_workers=0)
-
-            # Dataset should be in form of one episode per row. in case of bandits each
-            # row is just one time step. To make the computation more efficient later
-            # we remove the time dimension here.
-            parallelism = self.evaluation_config.evaluation_num_workers or 1
-            batch_size = max(ds.count() // parallelism, 1)
-            self.evaluation_dataset = ds.map_batches(
-                remove_time_dim,
-                batch_size=batch_size,
-                batch_format="pandas",
+            self.evaluation_dataset, _ = get_dataset_and_shards(
+                self.evaluation_config, num_workers=0
             )
             logger.info("Evaluation dataset created")
 
@@ -732,9 +718,25 @@ class Algorithm(Trainable):
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
-            # sync the weights from local rollout worker to trainers
-            weights = local_worker.get_weights()
-            self.learner_group.set_weights(weights)
+            # check if there are modules to load from the module_spec
+            marl_module_ckpt_dir = None
+            modules_to_load = None
+            rl_module_ckpt_dirs = {}
+            marl_module_ckpt_dir = module_spec.load_state_path
+            modules_to_load = module_spec.modules_to_load
+            for module_id, sub_module_spec in module_spec.module_specs.items():
+                if sub_module_spec.load_state_path:
+                    rl_module_ckpt_dirs[module_id] = sub_module_spec.load_state_path
+            if marl_module_ckpt_dir or rl_module_ckpt_dirs:
+                self.learner_group.load_module_state(
+                    marl_module_ckpt_dir=marl_module_ckpt_dir,
+                    modules_to_load=modules_to_load,
+                    rl_module_ckpt_dirs=rl_module_ckpt_dirs,
+                )
+            # sync the weights from the learner group to the rollout workers
+            weights = self.learner_group.get_weights()
+            local_worker.set_weights(weights)
+            self.workers.sync_weights()
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self)
@@ -2272,13 +2274,22 @@ class Algorithm(Trainable):
         # resources for remote learner workers
         learner_bundles = []
         if cf._enable_learner_api and cf.num_learner_workers > 0:
-            learner_bundles = [
-                {
-                    "CPU": cf.num_cpus_per_learner_worker,
-                    "GPU": cf.num_gpus_per_learner_worker,
-                }
-                for _ in range(cf.num_learner_workers)
-            ]
+            # can't specify cpus for learner workers at the same
+            # time as gpus
+            if cf.num_gpus_per_learner_worker:
+                learner_bundles = [
+                    {
+                        "GPU": cf.num_gpus_per_learner_worker,
+                    }
+                    for _ in range(cf.num_learner_workers)
+                ]
+            elif cf.num_cpus_per_learner_worker:
+                learner_bundles = [
+                    {
+                        "CPU": cf.num_cpus_per_learner_worker,
+                    }
+                    for _ in range(cf.num_learner_workers)
+                ]
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 

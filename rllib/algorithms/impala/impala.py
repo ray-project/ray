@@ -16,7 +16,7 @@ from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaHyperparameters,
+    ImpalaLearnerHyperparameters,
     _reduce_impala_results,
 )
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -427,9 +427,9 @@ class ImpalaConfig(AlgorithmConfig):
                 )
 
     @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> ImpalaHyperparameters:
+    def get_learner_hyperparameters(self) -> ImpalaLearnerHyperparameters:
         base_hps = super().get_learner_hyperparameters()
-        learner_hps = ImpalaHyperparameters(
+        learner_hps = ImpalaLearnerHyperparameters(
             rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
             discount_factor=self.gamma,
             entropy_coeff=self.entropy_coeff,
@@ -446,7 +446,7 @@ class ImpalaConfig(AlgorithmConfig):
             learner_hps.recurrent_seq_len is None
         ), (
             "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
-            "None in ImpalaHyperparameters!"
+            "None in ImpalaLearnerHyperparameters!"
         )
         return learner_hps
 
@@ -481,7 +481,10 @@ class ImpalaConfig(AlgorithmConfig):
 
             return ImpalaTfLearner
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -500,7 +503,10 @@ class ImpalaConfig(AlgorithmConfig):
                 module_class=PPOTorchRLModule, catalog_class=PPOCatalog
             )
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
 
 def make_learner_thread(local_worker, config):
@@ -844,13 +850,20 @@ class Impala(Algorithm):
                     }
                 ]
             else:
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
+                if cf.num_gpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "GPU": cf.num_gpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
+                elif cf.num_cpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "CPU": cf.num_cpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
 
             bundles += trainer_bundle
 
@@ -950,21 +963,30 @@ class Impala(Algorithm):
             blocking = self.config.num_learner_workers == 0
             results = []
             for batch in batches:
-                result = self.learner_group.update(
-                    batch,
-                    reduce_fn=_reduce_impala_results,
-                    block=blocking,
-                    num_iters=self.config.num_sgd_iter,
-                    minibatch_size=self.config.minibatch_size,
-                )
-                if result:
-                    self._counters[NUM_ENV_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                if blocking:
+                    result = self.learner_group.update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
+                    results = [result]
+                else:
+                    results = self.learner_group.async_update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
+
+                for r in results:
+                    self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
                         NUM_ENV_STEPS_TRAINED
                     )
-                    self._counters[NUM_AGENT_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                    self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
                         NUM_AGENT_STEPS_TRAINED
                     )
-                    results.append(result)
+
             self._counters.update(self.learner_group.get_in_queue_stats())
             # If there are results, reduce-mean over each individual value and return.
             if results:
@@ -1221,7 +1243,7 @@ class Impala(Algorithm):
         """Returns the kwargs to `LearnerGroup.additional_update()`.
 
         Should be overridden by subclasses to specify wanted/needed kwargs for
-        their own implementation of `Learner.additional_update_per_module()`.
+        their own implementation of `Learner.additional_update_for_module()`.
         """
         return {}
 

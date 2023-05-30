@@ -6,6 +6,7 @@ import logging
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
 import zipfile
 from enum import Enum
 from itertools import chain
@@ -38,6 +40,7 @@ SUPPORTED_BAZEL = (5, 4, 0)
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
+BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
@@ -348,8 +351,8 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
-# Calls Bazel in PATH, falling back to the standard user installatation path
-# (~/.bazel/bin/bazel) if it isn't found.
+# Calls Bazel in PATH, falling back to the standard user installation path
+# (~/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
     first_candidate = os.getenv("BAZEL_PATH", "bazel")
@@ -359,7 +362,7 @@ def bazel_invoke(invoker, cmdline, *args, **kwargs):
         if mingw_dir:
             candidates.append(mingw_dir + "/bin/bazel.exe")
     else:
-        candidates.append(os.path.join(home, ".bazel", "bin", "bazel"))
+        candidates.append(os.path.join(home, "bin", "bazel"))
     result = None
     for i, cmd in enumerate(candidates):
         try:
@@ -560,9 +563,17 @@ def build(build_python, build_java, build_cpp):
         )
 
     bazel_flags = ["--verbose_failures"]
+    if BAZEL_ARGS:
+        bazel_flags.extend(shlex.split(BAZEL_ARGS))
+
     if BAZEL_LIMIT_CPUS:
         n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
         bazel_flags.append(f"--local_cpu_resources={n}")
+        warnings.warn(
+            "Setting BAZEL_LIMIT_CPUS is deprecated and will be removed in a future"
+            " version. Please use BAZEL_ARGS instead.",
+            FutureWarning,
+        )
 
     if not is_automated_build:
         bazel_precmd_flags = []

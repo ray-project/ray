@@ -61,6 +61,29 @@
 # these tests in n different jobs.
 
 load("//bazel:python.bzl", "py_test_module_list")
+load("//bazel:python.bzl", "doctest")
+
+# TODO(@bveeramani): Enable doctests.
+# doctest(
+#     files = glob(
+#         ["**/*.py"],
+#         exclude=[
+#             "**/examples/**",
+#             "**/tests/**",
+#             # Deprecations
+#             "utils/window_stat.py",
+#             "utils/timer.py",
+#             "utils/memory.py",
+#             "offline/off_policy_estimator.py",
+#             "offline/estimators/feature_importance.py",
+#             "env/wrappers/recsim_wrapper.py",
+#             "env/remote_vector_env.py",
+#             # Missing imports
+#             "algorithms/dreamerv3/**"
+#         ]
+#     ),
+#     tags = ["team:rllib"]
+# )
 
 # --------------------------------------------------------------------
 # Algorithms learning regression tests.
@@ -1159,7 +1182,7 @@ py_test(
 py_test(
     name = "test_ppo_learner",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_learner.py"]
 )
 
@@ -2004,6 +2027,13 @@ py_test(
     tags = ["team:rllib", "core"],
     size = "medium",
     srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
+)
+
+py_test(
+    name="test_algorithm_rl_module_restore",
+    tags=["team:rllib", "core"],
+    size="large",
+    srcs=["tests/test_algorithm_rl_module_restore.py"]
 )
 
 py_test(
@@ -4068,8 +4098,8 @@ py_test(
 # --------------------------------------------------------------------
 # examples/learner directory
 #
-# 
-# Description: These are RLlib tests for the new multi-gpu enabled 
+#
+# Description: These are RLlib tests for the new multi-gpu enabled
 # training stack via Learners.
 #
 # NOTE: Add tests alphabetically to this list.
