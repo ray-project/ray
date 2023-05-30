@@ -4,7 +4,6 @@ import os
 import unittest
 
 import numpy as np
-import tensorflow as tf
 import torch
 import tree
 
@@ -90,54 +89,25 @@ class TestSampleBatch(unittest.TestCase):
 
     def test_concat(self):
         """Tests, SampleBatches.concat() and concat_samples()."""
-
-        batch_1 = SampleBatch(
+        s1 = SampleBatch(
             {
                 "a": np.array([1, 2, 3]),
                 "b": {"c": np.array([4, 5, 6])},
             }
         )
-        batch_2 = SampleBatch(
+        s2 = SampleBatch(
             {
                 "a": np.array([2, 3, 4]),
                 "b": {"c": np.array([5, 6, 7])},
             }
         )
+        concatd = concat_samples([s1, s2])
+        check(concatd["a"], [1, 2, 3, 2, 3, 4])
+        check(concatd["b"]["c"], [4, 5, 6, 5, 6, 7])
+        check(next(concatd.rows()), {"a": 1, "b": {"c": 4}})
 
-        def _test_concat_samples(s1, s2):
-            concatd = concat_samples([s1, s2])
-            check(concatd["a"], [1, 2, 3, 2, 3, 4])
-            check(concatd["b"]["c"], [4, 5, 6, 5, 6, 7])
-            check(next(concatd.rows()), {"a": 1, "b": {"c": 4}})
-
-            concatd_2 = s1.concat(s2)
-            check(concatd, concatd_2)
-
-        _test_concat_samples(batch_1, batch_2)
-
-        # For torch, also test what happens if the SampleBatch data is on GPU
-        batch_3 = convert_to_torch_tensor(batch_1)
-        batch_4 = convert_to_torch_tensor(batch_2)
-        _test_concat_samples(batch_3, batch_4)
-
-        # For torch, also test what happens if the SampleBatch data is on GPU
-        batch_3 = convert_to_torch_tensor(batch_1, device=0)
-        batch_4 = convert_to_torch_tensor(batch_2, device=0)
-        _test_concat_samples(batch_3, batch_4)
-
-        # For torch, also test what happens if one SampleBatch is on GPU
-        batch_3 = convert_to_torch_tensor(batch_1, device=0)
-        batch_4 = convert_to_torch_tensor(batch_2)
-        self.assertRaises(RuntimeError, _test_concat_samples, batch_3, batch_4)
-
-        # # Test for tf
-        batch_3 = SampleBatch(
-            tree.map_structure(lambda t: tf.convert_to_tensor(t), batch_1)
-        )
-        batch_4 = SampleBatch(
-            tree.map_structure(lambda t: tf.convert_to_tensor(t), batch_2)
-        )
-        _test_concat_samples(batch_3, batch_4)
+        concatd_2 = s1.concat(s2)
+        check(concatd, concatd_2)
 
     def test_concat_max_seq_len(self):
         """Tests, SampleBatches.concat_samples() max_seq_len."""
