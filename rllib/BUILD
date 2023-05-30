@@ -2584,7 +2584,7 @@ py_test(
 py_test(
     name = "tests/test_gpus_large_batch",
     main = "tests/test_gpus.py",
-    tags = ["team:rllib", "tests_dir", "exclusive", "multi_gpu"],
+    tags = ["team:rllib", "tests_dir", "exclusive", "gpu"],
     size = "medium",
     srcs = ["tests/test_gpus.py"],
     args = ["TestGPUsLargeBatch"]
