@@ -460,7 +460,7 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
             deprecation_warning(
                 old="RolloutWorker(.., tf_session_creator=.., ..)",
                 new="config.framework(tf_session_args={..}); "
-                    "RolloutWorker(config=config, ..)",
+                "RolloutWorker(config=config, ..)",
                 error=False,
             )
 
