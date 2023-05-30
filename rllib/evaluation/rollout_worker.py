@@ -459,7 +459,8 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         if tf_session_creator != DEPRECATED_VALUE:
             deprecation_warning(
                 old="RolloutWorker(.., tf_session_creator=.., ..)",
-                new="RolloutWorker(.., policy_config={tf_session_options=..}, ..)",
+                new="config.framework(tf_session_args={..}); "
+                "RolloutWorker(config=config, ..)",
                 error=False,
             )
 
@@ -492,9 +493,6 @@ class RolloutWorker(ParallelIteratorWorker, FaultAwareApply):
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         self.config = config
-        # TODO: Remove this backward compatibility.
-        #  This property (old-style python config dict) should no longer be used!
-        self.policy_config = config.to_dict()
 
         self.num_workers = (
             num_workers if num_workers is not None else self.config.num_rollout_workers

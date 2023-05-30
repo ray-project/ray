@@ -100,7 +100,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus NotFound()
 
         @staticmethod
-        CRayStatus ObjectRefStreamEoF()
+        CRayStatus ObjectRefEndOfStream()
 
         c_bool ok()
         c_bool IsOutOfMemory()
@@ -121,7 +121,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectUnknownOwner()
         c_bool IsRpcError()
         c_bool IsOutOfResource()
-        c_bool IsObjectRefStreamEoF()
+        c_bool IsObjectRefEndOfStream()
 
         c_string ToString()
         c_string CodeAsString()
@@ -422,6 +422,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void set_actor_name(const c_string &actor_name)
         void set_task_name(const c_string &task_name)
 
+    cdef cppclass CActorTableData "ray::rpc::ActorTableData":
+        CAddress address() const
+        void ParseFromString(const c_string &serialized)
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":

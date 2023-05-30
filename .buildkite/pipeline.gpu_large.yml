@@ -15,7 +15,7 @@
     - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=datasets_train doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=datasets_train,-doctest doc/...
 
 - label: ":tv: :brain: RLlib: Multi-GPU Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
@@ -48,7 +48,17 @@
     - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-py37,-post_wheel_build doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-py37,-post_wheel_build,-doctest doc/...
+
+- label: ":book: Doctest (GPU)"
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
+    - ./ci/env/install-horovod.sh
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=doctest,-cpu python/ray/... doc/...
 
 - label: ":zap: :python: Lightning 2.0 Train GPU tests"
   conditions:

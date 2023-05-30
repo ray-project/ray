@@ -144,48 +144,6 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [KubDoc]: https://kubernetes.io/docs/concepts/cluster-administration/logging/
 [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 
-## Customizing Worker Loggers
-
-When using Ray, all tasks and actors are executed remotely in Ray's worker processes. 
-
-:::{note}
-To stream logs to a driver, they should be flushed to stdout and stderr.
-:::
-
-```python
-import ray
-import logging
-# Initiate a driver.
-ray.init()
-
-@ray.remote
-class Actor:
-     def __init__(self):
-        # Basic config automatically configures logs to
-        # be streamed to stdout and stderr.
-        # Set the severity to INFO so that info logs are printed to stdout.
-        logging.basicConfig(level=logging.INFO)
-
-    def log(self, msg):
-        logger = logging.getLogger(__name__)
-        logger.info(msg)
-
-actor = Actor.remote()
-ray.get(actor.log.remote("A log message for an actor."))
-
-@ray.remote
-def f(msg):
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-    logger.info(msg)
-
-ray.get(f.remote("A log message for a task."))
-```
-
-```bash
-(Actor pid=179641) INFO:__main__:A log message for an actor.
-(f pid=177572) INFO:__main__:A log message for a task.
-```
 ## Using structured logging
 
 The metadata of tasks or actors may be obtained by Ray's :ref:`runtime_context APIs <runtime-context-apis>`.
