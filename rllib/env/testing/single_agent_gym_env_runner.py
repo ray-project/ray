@@ -13,6 +13,7 @@ class SingleAgentGymEnvRunner(EnvRunner):
 
     Uses a gym.vector.Env environment and random actions.
     """
+
     def __init__(self, *, config: AlgorithmConfig, **kwargs):
         """Initializes a SimpleEnvRunner instance.
 

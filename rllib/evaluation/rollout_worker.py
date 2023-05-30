@@ -1615,6 +1615,7 @@ class RolloutWorker(EnvRunner):
             # Closes the tf session, if any.
             if sess is not None:
                 sess.close()
+
     def lock(self) -> None:
         """Locks this RolloutWorker via its own threading.Lock."""
         self._lock.acquire()

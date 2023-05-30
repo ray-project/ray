@@ -16,8 +16,7 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
 
     def test_sample(self):
         config = (
-            AlgorithmConfig()
-            .environment("CartPole-v1")
+            AlgorithmConfig().environment("CartPole-v1")
             # Vectorize x2 and by default, rollout 64 timesteps per individual env.
             .rollouts(num_envs_per_worker=2, rollout_fragment_length=64)
         )
@@ -46,8 +45,7 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
     def test_distributed_simple_env_runner(self):
         """Tests, whether SimpleEnvRunner can be distributed."""
         config = (
-            AlgorithmConfig()
-            .environment("CartPole-v1")
+            AlgorithmConfig().environment("CartPole-v1")
             # Vectorize x2 and by default, rollout 64 timesteps per individual env.
             .rollouts(num_envs_per_worker=4, rollout_fragment_length=10)
         )

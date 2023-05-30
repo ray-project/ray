@@ -4,10 +4,10 @@ from typing import Any, Optional, Union
 
 import ray
 from ray.rllib.utils.actor_manager import FaultAwareApply
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import ExperimentalAPI
 
 
-@DeveloperAPI
+@ExperimentalAPI
 class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     """Base class for distributed RL-style data collection from an environment.
 
