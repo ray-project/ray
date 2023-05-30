@@ -415,11 +415,10 @@ def run(
         ray.init(
             address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
         )
-
-    # Warning users the address they passed is different from the existing ray instance.
-    worker = ray._private.worker.global_worker
-    ray_address = worker.node.address
-    if address is not None and address != ray_address:
+    elif address is not None and address != ray.get_runtime_context().gcs_address:
+        # Warning users the address they passed is different from the existing ray
+        # instance.
+        ray_address = ray.get_runtime_context().gcs_address
         cli_logger.warning(
             f"Existing ray instance has address: {ray_address} which is different from "
             f"the address passed from the command: {address}. \nPlease double check "
