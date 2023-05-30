@@ -4,7 +4,7 @@ from ray.data.block import Block, DataBatch, BlockAccessor
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
 
-class BlockOutputBuffer(object):
+class BlockOutputBuffer:
     """Generates output blocks of a given size given a stream of inputs.
 
     This class is used to turn a stream of items / blocks of arbitrary size
