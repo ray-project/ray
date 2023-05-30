@@ -1,7 +1,6 @@
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import gymnasium as gym
-import numpy as np
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.env_runner import EnvRunner
@@ -9,8 +8,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 
 
-class SimpleEnvRunner(EnvRunner):
-    """A simple EnvRunner subclass for testing purposes.
+class SingleAgentGymEnvRunner(EnvRunner):
+    """A simple single-agent EnvRunner subclass for testing purposes.
 
     Uses a gym.vector.Env environment and random actions.
     """

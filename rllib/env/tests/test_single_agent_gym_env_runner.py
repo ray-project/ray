@@ -2,10 +2,10 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.env.testing.simple_env_runner import SimpleEnvRunner
+from ray.rllib.env.testing.single_agent_gym_env_runner import SingleAgentGymEnvRunner
 
 
-class TestSimpleEnvRunner(unittest.TestCase):
+class TestSingleAgentGymEnvRunner(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -21,7 +21,7 @@ class TestSimpleEnvRunner(unittest.TestCase):
             # Vectorize x2 and by default, rollout 64 timesteps per individual env.
             .rollouts(num_envs_per_worker=2, rollout_fragment_length=64)
         )
-        env_runner = SimpleEnvRunner(config=config)
+        env_runner = SingleAgentGymEnvRunner(config=config)
 
         # Sample 10 episodes 10 times.
         for _ in range(10):
@@ -52,7 +52,7 @@ class TestSimpleEnvRunner(unittest.TestCase):
             .rollouts(num_envs_per_worker=4, rollout_fragment_length=10)
         )
 
-        remote_class = SimpleEnvRunner.as_remote(num_cpus=1, num_gpus=0)
+        remote_class = SingleAgentGymEnvRunner.as_remote(num_cpus=1, num_gpus=0)
         array = [remote_class.remote(config=config) for _ in range(5)]
         # Sample in parallel.
         results = [a.sample.remote() for a in array]

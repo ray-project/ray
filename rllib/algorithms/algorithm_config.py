@@ -310,8 +310,6 @@ class AlgorithmConfig(_Config):
         self.auto_wrap_old_gym_envs = True
 
         # `self.rollouts()`
-        # TODO (sven): Clean up the configuration of fully customizable
-        #  env runner classes.
         self.env_runner_cls = None
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
@@ -333,8 +331,8 @@ class AlgorithmConfig(_Config):
 
         # `self.training()`
         self.gamma = 0.99
-        self.optimizer_type = "adam"
         self.lr = 0.001
+        self.lr_schedule = None
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
