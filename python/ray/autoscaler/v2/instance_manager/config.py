@@ -85,6 +85,9 @@ class NodeProviderConfig(object):
     def get_config(self, config_name, default=None) -> Any:
         return self._node_configs.get(config_name, default)
 
+    def get_raw_config_mutable(self) -> Dict[str, Any]:
+        return self._node_configs
+
     @property
     def restart_only(self) -> bool:
         return self._node_configs.get("restart_only", False)

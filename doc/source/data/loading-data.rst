@@ -804,7 +804,7 @@ Once you have implemented `YourCustomDataSource`, you can use it like any other 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
 
-For more details, check out :ref:`guide for implementing a custom datasource <custom_datasources>`.
+For more details, read :ref:`Implementing a Custom Datasource <custom_datasources>`.
 
 --------------------------
 Performance Considerations
