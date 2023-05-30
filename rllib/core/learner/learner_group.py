@@ -217,8 +217,7 @@ class LearnerGroup:
                 )
             )
 
-        # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
-        # No reduce function -> Return results as is: (possibly empty) list of mappings.
+        # TODO(sven): Move reduce_fn to the training_step
         if reduce_fn is None:
             return results
         else:
@@ -318,6 +317,7 @@ class LearnerGroup:
             # ready.
             results = self._get_async_results(results)
 
+            # TODO(sven): Move reduce_fn to the training_step
             if reduce_fn is None:
                 return results
             else:
@@ -396,6 +396,7 @@ class LearnerGroup:
             results = self._get_results(results)
             if reduce_fn is None:
                 return results
+            # TODO(sven): Move reduce_fn to the training_step
             return reduce_fn(results)
 
     def add_module(
