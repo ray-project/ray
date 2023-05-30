@@ -1,4 +1,5 @@
 import logging
+import subprocess
 
 from ray.autoscaler._private.updater import NodeUpdater
 from ray.autoscaler._private.util import with_envs, with_head_node_ip
@@ -18,9 +19,11 @@ class RayInstaller(object):
         self,
         provider: NodeProviderV1,
         config: NodeProviderConfig,
+        process_runner=subprocess,
     ) -> None:
         self._provider = provider
         self._config = config
+        self._process_runner = process_runner
 
     def install_ray(self, instance: Instance, head_node_ip: str) -> bool:
         """
@@ -71,6 +74,11 @@ class RayInstaller(object):
             use_internal_ip=True,
             docker_config=docker_config,
             node_resources=instance.node_resources,
+            process_runner=self._process_runner,
         )
-        updater.run()
-        # TODO: handle failures
+        try:
+            updater.run()
+        except Exception as e:
+            # Errors has already been handled.
+            return False
+        return True
