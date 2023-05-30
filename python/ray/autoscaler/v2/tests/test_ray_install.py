@@ -12,11 +12,6 @@ from ray.core.generated.instance_manager_pb2 import Instance
 from ray.tests.autoscaler_test_utils import MockProcessRunner, MockProvider
 
 
-class FakeCounter:
-    def dec(self, *args, **kwargs):
-        pass
-
-
 class RayInstallerTest(unittest.TestCase):
     def setUp(self):
         self.base_provider = MockProvider()
@@ -27,64 +22,16 @@ class RayInstallerTest(unittest.TestCase):
             self.base_provider, self.instance_config_provider, MockProcessRunner()
         )
 
-    def test_node_providers_pass_through(self):
-        nodes = self.node_provider.create_nodes("worker_nodes1", 1)
-        assert len(nodes) == 1
-        assert nodes[0] == Instance(
-            instance_type="worker_nodes1",
-            cloud_instance_id="0",
-            internal_ip="172.0.0.0",
-            external_ip="1.2.3.4",
-            status=Instance.INSTANCE_STATUS_UNSPECIFIED,
+    def test_install_succeeded(self):
+        assert self.ray_installer.install_ray(
+            Instance(
+                instance_id="0", instance_type="worker_nodes1", cloud_instance_id="0"
+            ),
+            head_node_ip="1.2.3.4",
         )
-        self.assertEqual(len(self.base_provider.mock_nodes), 1)
-        self.assertEqual(self.node_provider.get_non_terminated_nodes(), {"0": nodes[0]})
-        nodes1 = self.node_provider.create_nodes("worker_nodes", 2)
-        assert len(nodes1) == 2
-        assert nodes1[0] == Instance(
-            instance_type="worker_nodes",
-            cloud_instance_id="1",
-            internal_ip="172.0.0.1",
-            external_ip="1.2.3.4",
-            status=Instance.INSTANCE_STATUS_UNSPECIFIED,
-        )
-        assert nodes1[1] == Instance(
-            instance_type="worker_nodes",
-            cloud_instance_id="2",
-            internal_ip="172.0.0.2",
-            external_ip="1.2.3.4",
-            status=Instance.INSTANCE_STATUS_UNSPECIFIED,
-        )
-        self.assertEqual(
-            self.node_provider.get_non_terminated_nodes(),
-            {"0": nodes[0], "1": nodes1[0], "2": nodes1[1]},
-        )
-        self.assertEqual(
-            self.node_provider.get_nodes_by_cloud_instance_id(["0"]),
-            {
-                "0": nodes[0],
-            },
-        )
-        self.node_provider.terminate_node("0")
-        self.assertEqual(
-            self.node_provider.get_non_terminated_nodes(),
-            {"1": nodes1[0], "2": nodes1[1]},
-        )
-        self.assertFalse(self.node_provider.is_readonly())
 
-    def test_create_node_failure(self):
-        self.base_provider.error_creates = NodeLaunchException(
-            "hello", "failed to create node", src_exc_info=None
-        )
-        self.assertEqual(self.node_provider.create_nodes("worker_nodes1", 1), [])
-        self.assertEqual(len(self.base_provider.mock_nodes), 0)
-        self.assertTrue(
-            "worker_nodes1" in self.availability_tracker.summary().node_availabilities
-        )
-        self.assertEqual(
-            self.node_provider.get_non_terminated_nodes(),
-            {},
-        )
+    def test_install_failure(self):
+        pass
 
 
 if __name__ == "__main__":
