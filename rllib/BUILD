@@ -1223,7 +1223,7 @@ py_test(
 # SimpleQ Reproducibility
 py_test(
     name = "test_repro_simple_q",
-    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    tags = ["team:rllib", "algorithms_dir", "gpu", "exclusive"],
     size = "large",
     srcs = ["algorithms/simple_q/tests/test_repro_simple_q.py"]
 )
