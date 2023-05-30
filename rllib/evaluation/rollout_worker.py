@@ -98,6 +98,7 @@ from ray.rllib.utils.typing import (
 )
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
+from ray.util.iter import ParallelIteratorWorker
 from ray.tune.registry import registry_contains_input, registry_get_input
 
 
@@ -161,7 +162,7 @@ def _update_env_seed_if_necessary(
 
 
 @DeveloperAPI
-class RolloutWorker(EnvRunner):
+class RolloutWorker(EnvRunner, ParallelIteratorWorker):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -286,6 +287,7 @@ class RolloutWorker(EnvRunner):
                 yield self.sample()
 
         EnvRunner.__init__(self, config=config)
+        ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         # TODO: Remove this backward compatibility.
         #  This property (old-style python config dict) should no longer be used!
