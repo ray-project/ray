@@ -286,7 +286,7 @@ By default, all stdout and stderr of tasks and actors are redirected to the driv
 
 Job logs
 ~~~~~~~~
-Ray applications are usually run as Ray Jobs. Worker logs of Ray jobs are always captured in the Ray logging directory while Driver logs are not.
+Ray applications are usually run as Ray Jobs. Worker logs of Ray Jobs are always captured in the Ray logging directory while Driver logs are not.
 
 Only if the Ray job is submitted via :ref:`Ray Jobs API <jobs-quickstart>`, the driver log is captured in the logging direcotry and available from the dashboard, CLI (using the ``ray job logs`` :ref:`CLI command <ray-job-logs-doc>`), or the :ref:`Python SDK <ray-job-submission-sdk-ref>` (``JobSubmissionClient.get_logs()`` or ``JobSubmissionClient.tail_job_logs()``).
 

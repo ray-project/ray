@@ -8,10 +8,10 @@ Monitoring and debugging capabilities in Ray are available through a CLI or SDK.
 
 CLI command ``ray status`` 
 ----------------------------
-You can monitor node status and resource usage by running (on the head node) a CLI command ``ray status``. It displays
+You can monitor node status and resource usage by running the CLI command, ``ray status``, on the head node. It displays
 
 - **Node Status**: Nodes that are running and autoscaling up or down. Addresses of running nodes. Information about pending nodes and failed nodes.
-- **Resource Usage**: The Ray resource usage of the cluster. E.g., requested CPUs from all Ray tasks and actors. Number of GPUs that are used.
+- **Resource Usage**: The Ray resource usage of the cluster. For example, requested CPUs from all Ray Tasks and Actors. Number of GPUs that are used.
 
 Following is an example output:
 

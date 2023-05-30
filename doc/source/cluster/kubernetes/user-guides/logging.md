@@ -2,9 +2,9 @@
 
 # Log Persistence
 
-Logs (both system and application logs) are useful for troubleshooting Ray applications and system. For example, you may want to access system logs if a node dies unexpectedly.
+Logs (both system and application logs) are useful for troubleshooting Ray applications and your system. For example, you may want to access system logs if a node terminates unexpectedly.
 
-Similar to Kubenetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. This page provides instructions on how to collect logs from Ray clusters running on Kubernetes.
+Similar to Kubernetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. This page provides instructions on how to collect logs from Ray Clusters that are running on Kubernetes.
 
 :::{tip}
 Skip to {ref}`the deployment instructions <kuberay-logging-tldr>`
@@ -12,7 +12,7 @@ for a sample configuration showing how to extract logs from a Ray pod.
 :::
 
 ## Ray log directory
-By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application logs and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` before you start to collect the logs.
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` before you start to collect the logs.
 
 ## Log processing tools
 There are a number of open source log processing tools available within the Kubernetes ecosystem. This page will shows how to extract Ray logs using [Fluent Bit][FluentBit].
