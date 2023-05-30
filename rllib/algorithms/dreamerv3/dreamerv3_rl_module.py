@@ -22,6 +22,7 @@ from ray.rllib.utils.numpy import one_hot
 
 @ExperimentalAPI
 class DreamerV3RLModule(RLModule, abc.ABC):
+    @override(RLModule)
     def setup(self):
         # Gather model-relevant settings.
         B = 1
@@ -101,6 +102,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def get_initial_state(self) -> NestedDict:
+        # Use `DreamerModel`'s `get_initial_state` method.
         return self.dreamer_model.get_initial_state()
 
     @override(RLModule)

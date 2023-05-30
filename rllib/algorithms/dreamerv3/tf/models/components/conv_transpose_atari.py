@@ -24,6 +24,7 @@ class ConvTransposeAtari(tf.keras.Model):
     Sampling is done with a fixed stddev=1.0 and using the mean values coming from the
     last Conv2DTranspose layer.
     """
+
     def __init__(
         self,
         *,
@@ -39,8 +40,8 @@ class ConvTransposeAtari(tf.keras.Model):
             cnn_multiplier: Optional override for the additional factor used to multiply
                 the number of filters with each CNN transpose layer. Starting with
                 8 * `cnn_multiplier` filters in the first CNN transpose layer, the
-                number of filters then decreases via `4*cnn_multiplier`, `2*cnn_multiplier`, till
-                `1*cnn_multiplier`.
+                number of filters then decreases via `4*cnn_multiplier`,
+                `2*cnn_multiplier`, till `1*cnn_multiplier`.
             gray_scaled: Whether the last Conv2DTranspose layer's output has only 1
                 color channel (gray_scaled=True) or 3 RGB channels (gray_scaled=False).
         """

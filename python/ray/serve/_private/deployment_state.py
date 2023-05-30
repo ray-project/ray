@@ -31,6 +31,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     RunningReplicaInfo,
     ReplicaState,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.schema import (
     DeploymentDetails,
@@ -765,6 +766,7 @@ class DeploymentReplica(VersionedReplica):
             state=ReplicaState.STARTING,
             start_time_s=0,
         )
+        self._multiplexed_model_ids: List = []
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
@@ -773,7 +775,16 @@ class DeploymentReplica(VersionedReplica):
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
+            multiplexed_model_ids=self.multiplexed_model_ids,
         )
+
+    def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
+        """Record the multiplexed model ids for this replica."""
+        self._multiplexed_model_ids = multiplexed_model_ids
+
+    @property
+    def multiplexed_model_ids(self) -> List[str]:
+        return self._multiplexed_model_ids
 
     @property
     def actor_details(self) -> ReplicaDetails:
@@ -1102,6 +1113,10 @@ class DeploymentState:
             ),
             tag_keys=("deployment", "replica", "application"),
         )
+
+        # Whether the multiplexed model ids have been updated since the last
+        # time we checked.
+        self._multiplexed_model_ids_updated = False
 
     def should_autoscale(self) -> bool:
         """
@@ -1853,8 +1868,12 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             running_replicas_changed |= self._check_and_update_replicas()
 
+            # Check if the model_id has changed.
+            running_replicas_changed |= self._multiplexed_model_ids_updated
+
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
+                self._multiplexed_model_ids_updated = False
 
             deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
@@ -1865,6 +1884,23 @@ class DeploymentState:
             )
 
         return deleted, any_replicas_recovering
+
+    def record_multiplexed_model_ids(
+        self, replica_name: str, multiplexed_model_ids: List[str]
+    ) -> None:
+        """Records the multiplexed model IDs of a replica.
+
+        Args:
+            replica_name: Name of the replica.
+            multiplexed_model_ids: List of model IDs that replica is serving.
+        """
+        # Find the replica
+        for replica in self._replicas.get():
+            if replica.replica_tag == replica_name:
+                replica.record_multiplexed_model_ids(multiplexed_model_ids)
+                self._multiplexed_model_ids_updated = True
+                return
+        logger.warn(f"Replia {replica_name} not found in deployment {self._name}")
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -2389,4 +2425,21 @@ class DeploymentStateManager:
                 num_gpu_deployments += 1
         record_extra_usage_tag(
             TagKey.SERVE_NUM_GPU_DEPLOYMENTS, str(num_gpu_deployments)
+        )
+
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """
+        Record multiplexed model ids for a multiplexed replica.
+
+        Args:
+            info: Multiplexed replica info including deployment name,
+                replica tag and model ids.
+        """
+        if info.deployment_name not in self._deployment_states:
+            logger.error(
+                f"Deployment {info.deployment_name} not found in state manager."
+            )
+            return
+        self._deployment_states[info.deployment_name].record_multiplexed_model_ids(
+            info.replica_tag, info.model_ids
         )

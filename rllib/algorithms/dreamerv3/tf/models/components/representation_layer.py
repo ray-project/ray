@@ -9,7 +9,6 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from typing import Optional
 
-import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -127,13 +126,3 @@ class RepresentationLayer(tf.keras.layers.Layer):
         if return_z_probs:
             return differentiable_sample, probs
         return differentiable_sample
-
-
-if __name__ == "__main__":
-    layer = RepresentationLayer(num_categoricals=32, num_classes_per_categorical=32)
-    # encoder output
-    x = np.random.random(size=(1, 128))
-    # GRU output
-    h = np.random.random(size=(1, 512))
-    out = layer(tf.concat([x, h], axis=-1))
-    print(out.shape)

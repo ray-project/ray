@@ -202,7 +202,11 @@ def test_strict_schema(ray_start_regular_shared, enable_strict_mode):
     ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
     schema = ds.schema()
     assert schema.names == ["x", "y", "z"]
-    assert schema.types == [pa.int64(), object, object]
+    assert schema.types == [
+        pa.int64(),
+        object,
+        object,
+    ]
 
     ds = ray.data.from_numpy(np.ones((100, 10)))
     schema = ds.schema()

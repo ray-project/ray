@@ -22,6 +22,7 @@ class ContinuePredictor(tf.keras.Model):
     >0.5, we predict a continuation of the episode, otherwise we predict an episode
     terminal.
     """
+
     def __init__(self, *, model_dimension: Optional[str] = "XS"):
         """Initializes a ContinuePredictor instance.
 
@@ -39,8 +40,8 @@ class ContinuePredictor(tf.keras.Model):
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
-            return_distribution: Whether to return (as a second tuple item) the Bernoulli
-                distribution object created by the underlying MLP.
+            return_distribution: Whether to return (as a second tuple item) the
+                Bernoulli distribution object created by the underlying MLP.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3

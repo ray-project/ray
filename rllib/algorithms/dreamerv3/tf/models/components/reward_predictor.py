@@ -18,6 +18,7 @@ class RewardPredictor(tf.keras.Model):
 
     Predicted rewards are used to produce "dream data" to learn the policy in.
     """
+
     def __init__(
         self,
         *,

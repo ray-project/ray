@@ -14,7 +14,6 @@
   commands:
     # Build the wheels and jars
     - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
-    - bash ./java/build-jar-multiplatform.sh linux
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -578,7 +577,8 @@
     # Horovod needs to be installed separately (needed for API ref imports)
     - ./ci/env/install-horovod.sh
     # See https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
-    - pip install mosaicml==0.12.1 --ignore-installed
+    # Pin urllib to avoid downstream ssl incompatibility issues. This matches requirements-doc.txt.
+    - pip install "mosaicml==0.12.1" "urllib3<1.27" --ignore-installed
     - ./ci/ci.sh build
 
 - label: ":octopus: Tune multinode tests"

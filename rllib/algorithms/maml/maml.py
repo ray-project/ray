@@ -20,7 +20,7 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.util.iter import from_actors, LocalIterator
@@ -294,6 +294,17 @@ class MAML(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
+        deprecation_warning(
+            old="rllib/algorithms/maml/maml.py",
+            new="rllib_contrib/maml/",
+            help=(
+                "This algorithm will be "
+                "deprecated from RLlib in future releases. It is being moved to the "
+                "ray/rllib_contrib directory. See "
+                "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                "for more details."
+            ),
+        )
         return MAMLConfig()
 
     @classmethod

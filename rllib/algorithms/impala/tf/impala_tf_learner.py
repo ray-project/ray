@@ -7,6 +7,7 @@ from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 _, tf, _ = try_import_tf()
@@ -16,8 +17,8 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
     """Implements the IMPALA loss function in tensorflow."""
 
     @override(TfLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
         action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
         target_policy_dist = action_dist_class_train.from_logits(
@@ -98,9 +99,15 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
             + mean_entropy_loss
             * (self.entropy_coeff_scheduler.get_current_value(module_id))
         )
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "pi_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
-            ENTROPY_KEY: -mean_entropy_loss,
-        }
+
+        # Register important loss stats.
+        self.register_metrics(
+            module_id,
+            {
+                "pi_loss": mean_pi_loss,
+                "vf_loss": mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+            },
+        )
+        # Return the total loss.
+        return total_loss

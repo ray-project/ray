@@ -24,6 +24,7 @@ class MLP(tf.keras.Model):
 
     See Appendix B in [1] for the MLP sizes depending on the given `model_dimension`.
     """
+
     def __init__(
         self,
         *,

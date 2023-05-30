@@ -60,7 +60,11 @@ class PolicyClient:
 
     @PublicAPI
     def __init__(
-        self, address: str, inference_mode: str = "local", update_interval: float = 10.0
+        self,
+        address: str,
+        inference_mode: str = "local",
+        update_interval: float = 10.0,
+        session: Optional[requests.Session] = None,
     ):
         """Create a PolicyClient instance.
 
@@ -71,8 +75,13 @@ class PolicyClient:
             update_interval (float or None): If using 'local' inference mode,
                 the policy is refreshed after this many seconds have passed,
                 or None for manual control via client.
+            session (requests.Session or None): If available the session object
+                is used to communicate with the policy server. Using a session
+                can lead to speedups as connections are reused. It is the
+                responsibility of the creator of the session to close it.
         """
         self.address = address
+        self.session = session
         self.env: ExternalEnv = None
         if inference_mode == "local":
             self.local = True
@@ -241,7 +250,12 @@ class PolicyClient:
 
     def _send(self, data):
         payload = pickle.dumps(data)
-        response = requests.post(self.address, data=payload)
+
+        if self.session is None:
+            response = requests.post(self.address, data=payload)
+        else:
+            response = self.session.post(self.address, data=payload)
+
         if response.status_code != 200:
             logger.error("Request failed {}: {}".format(response.text, data))
         response.raise_for_status()

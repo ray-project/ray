@@ -23,6 +23,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
     StatusOverview,
     ServeDeployMode,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
@@ -795,6 +796,14 @@ class ServeController:
             )
             self.application_state_manager.delete_application(name)
         self.delete_deployments(deployments_to_delete)
+
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """Record multiplexed model ids for a replica of deployment
+        Args:
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
+        """
+        self.deployment_state_manager.record_multiplexed_replica_info(info)
 
 
 @ray.remote(num_cpus=0, max_calls=1)

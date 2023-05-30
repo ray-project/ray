@@ -45,14 +45,11 @@ class DisagreeNetworks(tf.keras.Model):
                 )
             )
 
-        # Optimizer.
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, epsilon=1e-5)
-
-    #@tf.functionction
+    @tf.function
     def call(self, inputs, z, a, training=None):
         return self.forward_train(a=a, h=inputs, z=z)
 
-    #@tf.functionction
+    @tf.function
     def compute_intrinsic_rewards(self, h, z, a):
         forward_train_outs = self.forward_train(a=a, h=h, z=z)
         B = tf.shape(h)[0]
@@ -82,7 +79,7 @@ class DisagreeNetworks(tf.keras.Model):
             "forward_train_outs": forward_train_outs,
         }
 
-    #@tf.functionction
+    @tf.function
     def forward_train(self, a, h, z):
         HxB = tf.shape(h)[0]
         # Fold z-dims.

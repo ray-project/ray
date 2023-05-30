@@ -67,7 +67,7 @@ class DreamerModel(tf.keras.Model):
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 
-    #@tf.functionction
+    @tf.function
     def call(
         self,
         inputs,
@@ -131,7 +131,7 @@ class DreamerModel(tf.keras.Model):
             "values_ema": values_ema,
         }
 
-    #@tf.functionction
+    @tf.function
     def forward_inference(self, observations, previous_states, is_first, training=None):
         """Performs a (non-exploring) action computation step given obs and states.
 
@@ -160,7 +160,7 @@ class DreamerModel(tf.keras.Model):
         actions = distr.mode()
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
-    #@tf.functionction
+    @tf.function
     def forward_exploration(
         self, observations, previous_states, is_first, training=None
     ):
@@ -189,7 +189,7 @@ class DreamerModel(tf.keras.Model):
         actions = self.actor(h=states["h"], z=states["z"])
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
-    #@tf.functionction
+    @tf.function
     def forward_train(self, observations, actions, is_first, training=None):
         """Performs a training forward pass given observations and actions.
 
@@ -218,7 +218,7 @@ class DreamerModel(tf.keras.Model):
             is_first=is_first,
         )
 
-    #@tf.functionction
+    @tf.function
     def get_initial_state(self):
         """Returns the (current) initial state of the dreamer model (a, h-, z-states).
 
@@ -244,7 +244,7 @@ class DreamerModel(tf.keras.Model):
         )
         return states
 
-    #@tf.functionction
+    @tf.function
     def dream_trajectory(
         self, *, start_states, start_is_terminated, timesteps_H, gamma
     ):
@@ -411,7 +411,7 @@ class DreamerModel(tf.keras.Model):
 
         return ret
 
-    #@tf.functionction
+    @tf.function
     def dream_trajectory_with_burn_in(
         self,
         *,
@@ -454,7 +454,7 @@ class DreamerModel(tf.keras.Model):
         """
         assert not (use_sampled_actions_in_dream and use_random_actions_in_dream)
 
-        B, T = observations.shape[0], observations.shape[1]
+        B = observations.shape[0]
 
         # Produce initial N internal posterior states (burn-in) using the given
         # observations:

@@ -24,6 +24,7 @@ class ActorNetwork(tf.keras.Model):
     compute the "scaled value targets" for actor learning. These two variables decay
     over time exponentially (see [1] for more details).
     """
+
     def __init__(
         self,
         *,
@@ -74,7 +75,7 @@ class ActorNetwork(tf.keras.Model):
         else:
             raise ValueError(f"Invalid action space: {action_space}")
 
-    #@tf.functionction
+    @tf.function
     def call(self, h, z, return_distribution=False):
         """Performs a forward pass through this policy network.
 

@@ -233,15 +233,27 @@ type TaskLogsProps = {
 };
 
 const TaskLogs = ({
-  task: { task_id, error_message, error_type, worker_id, node_id },
+  task: {
+    task_id,
+    error_message,
+    error_type,
+    worker_id,
+    task_log_info,
+    actor_id,
+  },
 }: TaskLogsProps) => {
   const errorDetails =
     error_type !== null && error_message !== null
       ? `Error Type: ${error_type}\n\n${error_message}`
       : undefined;
 
+  const otherLogsLink =
+    task_log_info === null && actor_id !== null
+      ? `/actors/${actor_id}`
+      : undefined;
+
   const tabs: MultiTabLogViewerTabDetails[] = [
-    ...(worker_id !== null && node_id !== null
+    ...(worker_id !== null && task_log_info !== null
       ? ([
           {
             title: "stderr",
@@ -255,6 +267,16 @@ const TaskLogs = ({
           },
         ] as const)
       : []),
+    ...(task_log_info === null
+      ? [
+          {
+            title: "Logs",
+            contents:
+              "Logs of async actor tasks or threaded actor tasks (concurency > 1) are only available " +
+              'as part of the actor logs. Please click "Other logs" link above to access the actor logs.',
+          },
+        ]
+      : []),
     // TODO(aguo): uncomment once PID is available in the API.
     // {
     //   title: "system",
@@ -266,5 +288,5 @@ const TaskLogs = ({
       ? [{ title: "Error stack trace", contents: errorDetails }]
       : []),
   ];
-  return <MultiTabLogViewer tabs={tabs} />;
+  return <MultiTabLogViewer tabs={tabs} otherLogsLink={otherLogsLink} />;
 };

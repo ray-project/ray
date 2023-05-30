@@ -5,7 +5,6 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import numpy as np
 import tensorflow as tf
 
 from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
@@ -13,6 +12,7 @@ from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
 
 class CNNAtari(tf.keras.Model):
     """An image encoder mapping 64x64 RGB images via 4 CNN layers into a 1D space."""
+
     def __init__(
         self,
         *,

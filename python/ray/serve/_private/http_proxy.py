@@ -6,12 +6,13 @@ import logging
 import pickle
 import socket
 import time
-from typing import Callable, List, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from ray._private.utils import get_or_create_event_loop
 
 import uvicorn
 import starlette.responses
 import starlette.routing
+from starlette.types import Receive, Scope, Send
 
 import ray
 from ray.exceptions import RayActorError, RayTaskError
@@ -29,8 +30,10 @@ from ray.serve._private.http_util import (
 from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
@@ -69,6 +72,63 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
         "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
         "future versions."
     )
+
+
+async def _handle_streaming_response(
+    asgi_response_generator: "ray._raylet.StreamingObjectRefGenerator",
+    scope: Scope,
+    receive: Receive,
+    send: Send,
+) -> str:
+    """Consumes the `asgi_response_generator` and sends its data over `send`.
+
+    This function is a proxy for a downstream ASGI response. The passed
+    generator is expected to return a stream of pickled ASGI messages
+    (dictionaries) that are sent using the provided ASGI interface.
+
+    Exception handling depends on whether the first message has already been sent:
+        - if an exception happens *before* the first message, a 500 status is sent.
+        - if an exception happens *after* the first message, the response stream is
+          terminated.
+
+    The difference in behavior is because once the first message has been sent, the
+    client has already received the status code so we cannot send a `500` (internal
+    server error).
+
+    Returns:
+        status_code
+    """
+
+    status_code = ""
+    try:
+        async for obj_ref in asgi_response_generator:
+            asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
+            for asgi_message in asgi_messages:
+                # There must be exactly one "http.response.start" message that
+                # always contains the "status" field.
+                if not status_code:
+                    assert asgi_message["type"] == "http.response.start", (
+                        "First response message must be 'http.response.start'",
+                    )
+                    assert "status" in asgi_message, (
+                        "'http.response.start' message must contain 'status'",
+                    )
+                    status_code = str(asgi_message["status"])
+
+                await send(asgi_message)
+    except Exception as e:
+        error_message = f"Unexpected error, traceback: {e}."
+        logger.warning(error_message)
+
+        if status_code == "":
+            # If first message hasn't been sent, return 500 status.
+            await Response(error_message, status_code=500).send(scope, receive, send)
+            return "500"
+        else:
+            # If first message has been sent, terminate the response stream.
+            return status_code
+
+    return status_code
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -111,6 +171,11 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         try:
             object_ref = await assignment_task
 
+            if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
+                return await _handle_streaming_response(
+                    object_ref, scope, receive, send
+                )
+
             # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
             # some replicas crash simultaneously (e.g. if the head node crashes),
             # requests to the dead replicas hang until the gcs recovers.
@@ -138,8 +203,8 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # Here because the client disconnected, we will return a custom
             # error code for metric tracking.
             return DISCONNECT_ERROR_CODE
-        except RayTaskError as error:
-            error_message = "Task Error. Traceback: {}.".format(error)
+        except RayTaskError as e:
+            error_message = f"Unexpected error, traceback: {e}."
             await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
         except RayActorError:
@@ -276,6 +341,7 @@ class HTTPProxy:
                 sync=False,
                 missing_ok=True,
                 _internal_pickled_http_request=True,
+                _stream=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
@@ -424,14 +490,20 @@ class HTTPProxy:
             scope["path"] = route_path.replace(route_prefix, "", 1)
             scope["root_path"] = root_path + route_prefix
 
+        request_context_info = {
+            "route": route_path,
+            "request_id": get_random_letters(10),
+            "app_name": app_name,
+        }
         start_time = time.time()
+        for key, value in scope["headers"]:
+            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+                request_context_info["multiplexed_model_id"] = value.decode()
+                break
         ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(
-                route_path, get_random_letters(10), app_name
-            )
+            ray.serve.context.RequestContext(**request_context_info)
         )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
-
         self.request_counter.inc(
             tags={
                 "route": route_path,

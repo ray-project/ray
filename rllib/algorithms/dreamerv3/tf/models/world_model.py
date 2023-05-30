@@ -157,7 +157,7 @@ class WorldModel(tf.keras.Model):
         # Decoder: [ht, zt] -> x^t.
         self.decoder = decoder
 
-    #@tf.functionction
+    @tf.function
     def get_initial_state(self):
         """Returns the (current) initial state of the world model (h- and z-states).
 
@@ -174,11 +174,11 @@ class WorldModel(tf.keras.Model):
 
         return {"h": h, "z": z}
 
-    #@tf.functionction
+    @tf.function
     def call(self, inputs, *args, **kwargs):
         return self.forward_train(inputs, *args, **kwargs)
 
-    #@tf.functionction  # (experimental_relax_shapes=True)
+    @tf.function  # (experimental_relax_shapes=True)
     def forward_inference(self, observations, previous_states, is_first, training=None):
         """Performs a forward step for inference (e.g. environment stepping).
 
@@ -218,14 +218,14 @@ class WorldModel(tf.keras.Model):
 
         return {"h": h, "z": z}
 
-    #@tf.functionction
+    @tf.function
     def forward_train(self, observations, actions, is_first, training=None):
         """Performs a forward step for training.
 
         1) Forwards all observations [B, T, ...] through the encoder network to yield
         o_processed[B, T, ...].
-        2) Uses initial state (h0/z^0/a0[B, 0, ...]) and sequence model (RSSM) to compute
-        the first internal state (h1 and z^1).
+        2) Uses initial state (h0/z^0/a0[B, 0, ...]) and sequence model (RSSM) to
+        compute the first internal state (h1 and z^1).
         3) Uses action a[B, 1, ...], z[B, 1, ...] and h[B, 1, ...] to compute the
         next h-state (h[B, 2, ...]), etc..
         4) Repeats 2) and 3) until t=T.
@@ -276,7 +276,7 @@ class WorldModel(tf.keras.Model):
         # Make actions and `is_first` time-major.
         actions = tf.transpose(
             actions,
-            perm=[1, 0] + list(range(2, len(actions.shape))), #.as_list() TODO
+            perm=[1, 0] + list(range(2, len(actions.shape))),  #.as_list() TODO
         )
         is_first = tf.transpose(is_first, perm=[1, 0])
 
@@ -377,7 +377,7 @@ class WorldModel(tf.keras.Model):
             "z_prior_probs_BxT": z_prior_probs,
         }
 
-    #@tf.functionction
+    @tf.function
     def compute_posterior_z(self, observations, initial_h):
         # Compute bare encoder outputs (not including z, which is computed in next step
         # with involvement of the previous output (initial_h) of the sequence model).

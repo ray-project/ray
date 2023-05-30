@@ -3,10 +3,10 @@ import numpy as np
 
 from typing import TYPE_CHECKING, Dict
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
 from ray.util.debug import log_once
 from ray.tune.result import (
-    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
 )

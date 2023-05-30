@@ -18,6 +18,7 @@ class VectorDecoder(tf.keras.Model):
     Wraps an MLP for mean parameter computations and a Gaussian distribution,
     from which we then sample using these mean values and a fixed stddev of 1.0.
     """
+
     def __init__(
         self,
         *,

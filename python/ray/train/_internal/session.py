@@ -15,7 +15,12 @@ from typing import Callable, Dict, Optional, Type, Union
 import ray
 from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import _RESULT_FETCH_TIMEOUT, _ERROR_FETCH_TIMEOUT
+from ray.air.constants import (
+    _RESULT_FETCH_TIMEOUT,
+    _ERROR_FETCH_TIMEOUT,
+    TIMESTAMP,
+    TIME_THIS_ITER_S,
+)
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import (
@@ -26,11 +31,10 @@ from ray.train.constants import (
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
     WORKER_PID,
-    TIME_THIS_ITER_S,
     TIME_TOTAL_S,
-    TIMESTAMP,
     LAZY_CHECKPOINT_MARKER_FILE,
 )
+
 from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
 from ray.util.annotations import DeveloperAPI

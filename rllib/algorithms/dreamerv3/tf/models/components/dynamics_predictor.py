@@ -5,7 +5,6 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import numpy as np
 import tensorflow as tf
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
@@ -23,6 +22,7 @@ class DynamicsPredictor(tf.keras.Model):
     - compute prior-z-states during dream data generation. Note that during dreaming,
     no actual observations are available and thus no posterior z-states can be computed.
     """
+
     def __init__(
         self,
         *,
@@ -70,12 +70,3 @@ class DynamicsPredictor(tf.keras.Model):
         out = self.mlp(h)
         # Generate a z vector (stochastic, discrete sample).
         return self.representation_layer(out, return_z_probs=return_z_probs)
-
-
-if __name__ == "__main__":
-    # DreamerV2/3 Atari input space: B x 32 (num_categoricals) x 32 (num_classes)
-    h_dim = 8
-    inputs = np.random.random(size=(1, 8))
-    model = DynamicsPredictor()
-    out = model(inputs)
-    print(out.shape)

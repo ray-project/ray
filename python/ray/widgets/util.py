@@ -65,81 +65,6 @@ def make_table_html_repr(
     return content
 
 
-@DeveloperAPI
-def ensure_notebook_deps(
-    *deps: Iterable[Union[str, Optional[str]]],
-    missing_message: Optional[str] = None,
-    outdated_message: Optional[str] = None,
-) -> Callable[[F], F]:
-    """Generate a decorator which checks for soft dependencies.
-
-    This decorator is meant to wrap repr methods. If the dependency is not found,
-    or a version is specified here and the version of the package is older than the
-    specified version, the original repr is used.
-    If the dependency is missing or the version is old, a log message is displayed.
-
-    Args:
-        *deps: Iterable of (dependency name, min version (optional))
-        missing_message: Message to log if missing package is found
-        outdated_message: Message to log if outdated package is found
-
-    Returns:
-        Wrapped function. Guaranteed to be safe to import soft dependencies specified
-        above.
-    """
-
-    def wrapper(func: F) -> F:
-        @wraps(func)
-        def wrapped(self, *args, **kwargs):
-            if _has_missing(*deps, message=missing_message) or _has_outdated(
-                *deps, message=outdated_message
-            ):
-                # Fallback to plaintext repr if dependencies are missing.
-                return {"text/plain": repr(self)}
-            return func(self, *args, **kwargs)
-
-        return wrapped
-
-    return wrapper
-
-
-@DeveloperAPI
-def ensure_ipywidgets_dep(version: str) -> Callable[[F], F]:
-    """Generate a decorator which checks for a soft ipywidgets dependency.
-
-    This is a convencience function separate from `ensure_notebook_deps` because
-    of its custom missing and outdated messages, which suggest the user restart the
-    notebook server after installation/upgrade.
-
-    Args:
-        version: Version of ipywidgets required.
-
-    Returns:
-        Wrapped function. Guaranteed to be safe against the specified ipywidgets
-        version.
-    """
-    text = (
-        "Run `pip install {}ipywidgets`, then restart "
-        "the notebook server for rich notebook output."
-    )
-
-    if in_notebook():
-        return ensure_notebook_deps(
-            ["ipywidgets", version],
-            missing_message=text.format(""),
-            outdated_message=text.format("-U "),
-        )
-    else:
-        # If not in a notebook, then immediately short-circuit.
-        # We do not log has_missing or has_outdated messages if not in a notebook
-        # setting.
-        def dummy_decorator(func):
-            # Return the original function without any changes.
-            return func
-
-        return dummy_decorator
-
-
 def _has_missing(
     *deps: Iterable[Union[str, Optional[str]]], message: Optional[str] = None
 ):
@@ -202,20 +127,27 @@ def _has_outdated(
 
 
 @DeveloperAPI
-def repr_fallback_if_colab(func: F) -> Callable[[F], F]:
-    """Decorator which strips rich notebook output from mimebundles if run in colab.
+def repr_with_fallback(
+    *notebook_deps: Iterable[Union[str, Optional[str]]]
+) -> Callable[[F], F]:
+    """Decorator which strips rich notebook output from mimebundles in certain cases.
 
-    See https://github.com/googlecolab/colabtools/issues/60 for more information about
-    the status of this issue.
+    Fallback to plaintext and don't use rich output in the following cases:
+    1. In a notebook environment and the appropriate dependencies are not installed.
+    2. In a ipython shell environment.
+    3. In Google Colab environment.
+        See https://github.com/googlecolab/colabtools/ issues/60 for more information
+        about the status of this issue.
 
     Args:
-        func: Function to wrap; must be a _repr_mimebundle_ method.
+        notebook_deps: The required dependencies and version for notebook environment.
 
     Returns:
-        A function that returns the usual _repr_mimebundle_ unless it is run in
-        google colab, in which case it returns a mimebundle that only contains a
-        single text/plain mimetype, preventing rich notebook integration in colab.
+        A function that returns the usual _repr_mimebundle_, unless any of the 3
+        conditions above hold, in which case it returns a mimebundle that only contains
+        a single text/plain mimetype.
     """
+
     try:
         import IPython
 
@@ -223,30 +155,58 @@ def repr_fallback_if_colab(func: F) -> Callable[[F], F]:
     except (ModuleNotFoundError, ValueError):
         ipython = None
 
-    @wraps(func)
-    def wrapped(*args, **kwargs):
-        result = func(*args, **kwargs)
-        if ipython and "google.colab" in str(ipython):
-            if isinstance(result, dict) and "text/plain" in result:
-                return {"text/plain": result["text/plain"]}
+    message = (
+        "Run `pip install -U ipywidgets`, then restart "
+        "the notebook server for rich notebook output."
+    )
 
-        return result
+    def wrapper(func: F) -> F:
+        @wraps(func)
+        def wrapped(self, *args, **kwargs):
+            fallback = (
+                # In Google Colab.
+                (ipython and "google.colab" in str(ipython))
+                or
+                # In notebook environment without required dependencies.
+                (
+                    in_notebook()
+                    and (
+                        _has_missing(*notebook_deps, message=message)
+                        or _has_outdated(*notebook_deps, message=message)
+                    )
+                )
+                or
+                # In ipython shell.
+                in_ipython_shell()
+            )
+            if fallback:
+                return {"text/plain": repr(self)}
+            else:
+                return func(self, *args, **kwargs)
 
-    return wrapped
+        return wrapped
+
+    return wrapper
+
+
+def _get_ipython_shell_name() -> str:
+    try:
+        import IPython
+
+        shell = IPython.get_ipython().__class__.__name__
+        return shell
+    except (ModuleNotFoundError, NameError, ValueError):
+        return ""
 
 
 @DeveloperAPI
 def in_notebook() -> bool:
     """Return whether we are in a Jupyter notebook."""
-    try:
-        import IPython
+    shell = _get_ipython_shell_name()
+    return shell == "ZMQInteractiveShell"  # Jupyter notebook or qtconsole
 
-        shell = IPython.get_ipython().__class__.__name__
-        if shell == "ZMQInteractiveShell":
-            return True  # Jupyter notebook or qtconsole
-        elif shell == "TerminalInteractiveShell":
-            return False  # Terminal running IPython
-        else:
-            return False  # Other type
-    except (ModuleNotFoundError, NameError, ValueError):
-        return False
+
+@DeveloperAPI
+def in_ipython_shell() -> bool:
+    shell = _get_ipython_shell_name()
+    return shell == "TerminalInteractiveShell"  # Terminal running IPython

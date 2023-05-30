@@ -121,14 +121,16 @@ class WorkerSet:
             deprecation_warning(
                 old="WorkerSet(policy_class=..)",
                 new="WorkerSet(default_policy_class=..)",
-                error=True,
+                error=False,
             )
+            default_policy_class = policy_class
         if trainer_config != DEPRECATED_VALUE:
             deprecation_warning(
                 old="WorkerSet(trainer_config=..)",
                 new="WorkerSet(config=..)",
-                error=True,
+                error=False,
             )
+            config = trainer_config
 
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
@@ -320,6 +322,35 @@ class WorkerSet:
     def local_worker(self) -> RolloutWorker:
         """Returns the local rollout worker."""
         return self._local_worker
+
+    @property
+    @Deprecated(
+        old="_remote_workers",
+        help=(
+            "Accessing remote workers directly through "
+            "_remote_workers is strongly discouraged. "
+            "Please try to use one of the foreach accessors "
+            "that is fault tolerant. "
+        ),
+        error=False,
+    )
+    def _remote_workers(self) -> List[ActorHandle]:
+        """Returns the list of remote rollout workers."""
+        return list(self.__worker_manager.actors().values())
+
+    @Deprecated(
+        old="remote_workers()",
+        help=(
+            "Accessing the list of remote workers directly through "
+            "remote_workers() is strongly discouraged. "
+            "Please try to use one of the foreach accessors "
+            "that is fault tolerant. "
+        ),
+        error=False,
+    )
+    def remote_workers(self) -> List[ActorHandle]:
+        """Returns the list of remote rollout workers."""
+        return list(self.__worker_manager.actors().values())
 
     @DeveloperAPI
     def healthy_worker_ids(self) -> List[int]:
@@ -970,29 +1001,10 @@ class WorkerSet:
                 )
         return False
 
-    @property
-    @Deprecated(
-        old="_remote_workers",
-        help=(
-            "Accessing remote workers directly through "
-            "_remote_workers is strongly discouraged. "
-            "Please try to use one of the foreach accessors "
-            "that is fault tolerant. "
-        ),
-        error=True,
-    )
-    def _remote_workers(self) -> List[ActorHandle]:
+    @Deprecated(new="WorkerSet.foreach_policy_to_train", error=True)
+    def foreach_trainable_policy(self, func):
         pass
 
-    @Deprecated(
-        old="remote_workers()",
-        help=(
-            "Accessing the list of remote workers directly through "
-            "remote_workers() is strongly discouraged. "
-            "Please try to use one of the foreach accessors "
-            "that is fault tolerant. "
-        ),
-        error=True,
-    )
-    def remote_workers(self) -> List[ActorHandle]:
+    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
+    def trainable_policies(self):
         pass

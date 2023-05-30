@@ -8,22 +8,18 @@ D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
 from dataclasses import dataclass
-from typing import Any, Dict, List
-
-import numpy as np
-import tree  # pip install dm_tree
+from typing import Any, Dict
 
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import ResultDict
 
 
 @dataclass
-class DreamerV3Hyperparameters(LearnerHyperparameters):
+class DreamerV3LearnerHyperparameters(LearnerHyperparameters):
     """Hyperparameters for the DreamerV3Learner sub-classes (framework specific).
 
-    These should never be set directly by the user. Instead, use the PPOConfig
+    These should never be set directly by the user. Instead, use the DreamerV3Config
     class to configure your algorithm.
     See `ray.rllib.algorithms.dreamerv3.dreamerv3::DreamerV3Config::training()` for
     more details on the individual properties.
@@ -38,7 +34,6 @@ class DreamerV3Hyperparameters(LearnerHyperparameters):
     gae_lambda: float = None
     entropy_scale: float = None
     return_normalization_decay: float = None
-    # symlog_obs: bool = None
     world_model_lr: float = None
     actor_lr: float = None
     critic_lr: float = None
@@ -49,34 +44,31 @@ class DreamerV3Hyperparameters(LearnerHyperparameters):
     world_model_grad_clip_by_global_norm: float = None
     actor_grad_clip_by_global_norm: float = None
     critic_grad_clip_by_global_norm: float = None
-    # disagree_grad_clip_by_global_norm: float = None
 
 
 class DreamerV3Learner(Learner):
+    """DreamerV3 specific Learner class.
+
+    Only implements the `additional_update_for_module()` method to define the logic
+    for updating the critic EMA-copy after each training step.
+    """
+
     @override(Learner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, sampled_kl_values: dict, timestep: int
+    def additional_update_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: DreamerV3LearnerHyperparameters,
+        timestep: int,
     ) -> Dict[str, Any]:
         """Updates the EMA weights of the critic network."""
-        results = super().additional_update_per_module(
-            module_id,
-            sampled_kl_values=sampled_kl_values,
-            timestep=timestep,
+
+        # Call the base class' method.
+        results = super().additional_update_for_module(
+            module_id=module_id, hps=hps, timestep=timestep
         )
 
         # Update EMA weights of the critic.
         self.module[module_id].critic.update_ema()
 
         return results
-
-
-def _reduce_dreamerv3_results(results: List[ResultDict]) -> ResultDict:
-    def _reduce(path, *x):
-        # Reduce data that still has some B/T structure only over
-        # the last dimension and leave the B/T/H dimensions intact.
-        # -1=actual data key.
-        #if path[-1].endswith(("T", "H", "B")):
-        #    return np.mean(x, axis=-1)
-        return np.mean(x, axis=0)
-
-    return tree.map_structure_with_path(_reduce, *results)

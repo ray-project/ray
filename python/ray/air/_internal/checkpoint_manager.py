@@ -74,7 +74,7 @@ class _TrackedCheckpoint:
         self.storage_mode = storage_mode
         self.rank = rank
 
-        self.metrics = flatten_dict(metrics) if metrics else {}
+        self.metrics = metrics or {}
         self.node_ip = node_ip or self.metrics.get(NODE_IP, None)
         # If True, and the checkpoint is an AIR Checkpoint backed by
         # a local directory, will move files instead of copying them
@@ -379,18 +379,34 @@ class _CheckpointManager:
     def _get_checkpoint_score(
         self, checkpoint: _TrackedCheckpoint
     ) -> Tuple[bool, numbers.Number, int]:
+        """Get scoring tuple for a checkpoint, according to checkpoint strategy.
+
+        We sort checkpoints by this score. Checkpoints with a higher score are kept.
+        To achieve the desired ordering, we return a tuple of
+        (is_not_na: bool, metric: Number, checkpoint_id: int).
+
+        The first index means that checkpoints that are NaN are rated worst.
+        The second index sorts the checkpoints by metric value. The third index
+        sorts checkpoints with the same metric value by their ID - more recent
+        checkpoints are rated higher.
+        """
         checkpoint_score_attribute = (
             self._checkpoint_strategy.checkpoint_score_attribute
         )
-        if checkpoint_score_attribute not in checkpoint.metrics:
-            logger.error(
-                f"Result dict has no key: {checkpoint_score_attribute}. "
-                f"checkpoint_score_attr must be set to a key in the "
-                f"result dict. Valid keys are: {list(checkpoint.metrics.keys())}"
-            )
-            checkpoint_result = float("-inf")
+        if checkpoint_score_attribute:
+            flat_metrics = flatten_dict(checkpoint.metrics)
+            try:
+                checkpoint_result = flat_metrics[checkpoint_score_attribute]
+            except KeyError:
+                valid_keys = list(flat_metrics.keys())
+                logger.error(
+                    f"Result dict has no key: {checkpoint_score_attribute}. "
+                    f"checkpoint_score_attr must be set to a key in the "
+                    f"result dict. Valid keys are: {valid_keys}"
+                )
+                checkpoint_result = float("-inf")
         else:
-            checkpoint_result = checkpoint.metrics[checkpoint_score_attribute]
+            checkpoint_result = float("-inf")
 
         checkpoint_score_order = self._checkpoint_strategy.checkpoint_score_order
         if checkpoint_score_order == MAX:

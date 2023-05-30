@@ -20,8 +20,6 @@ from ray._private.ray_constants import (
 from ray._private.utils import binary_to_hex
 from ray.util.debug import log_once
 
-_default_handler = None
-
 
 def setup_logger(
     logging_level: int,
@@ -32,14 +30,6 @@ def setup_logger(
     if type(logging_level) is str:
         logging_level = logging.getLevelName(logging_level.upper())
     logger.setLevel(logging_level)
-    global _default_handler
-    if _default_handler is None:
-        _default_handler = logging._StderrHandler()
-        logger.addHandler(_default_handler)
-    _default_handler.setFormatter(logging.Formatter(logging_format))
-    # Setting this will avoid the message
-    # being propagated to the parent logger.
-    logger.propagate = False
 
 
 def setup_component_logger(
@@ -53,10 +43,17 @@ def setup_component_logger(
     logger_name=None,
     propagate=True,
 ):
-    """Configure the root logger that is used for Ray's python components.
+    """Configure the logger that is used for Ray's python components.
 
     For example, it should be used for monitor, dashboard, and log monitor.
     The only exception is workers. They use the different logging config.
+
+    Ray's python components generally should not write to stdout/stderr, because
+    messages written there will be redirected to the head node. For deployments where
+    there may be thousands of workers, this would create unacceptable levels of log
+    spam. For this reason, we disable the "ray" logger's handlers, and enable
+    propagation so that log messages that actually do need to be sent to the head node
+    can reach it.
 
     Args:
         logging_level: Logging level in string or logging enum.
@@ -73,6 +70,10 @@ def setup_component_logger(
     Returns:
         the created or modified logger.
     """
+    ray_logger = logging.getLogger("ray")
+    ray_logger.propagate = True
+    ray_logger.handlers.clear()
+
     logger = logging.getLogger(logger_name)
     if type(logging_level) is str:
         logging_level = logging.getLevelName(logging_level.upper())
@@ -106,11 +107,14 @@ class StandardStreamInterceptor:
           logging.INFO severity level.
 
     Example:
-        >>> from contextlib import redirect_stdout
-        >>> logger = logging.getLogger("ray_logger")
-        >>> hook = StandardStreamHook(logger)
-        >>> with redirect_stdout(hook):
-        >>>     print("a") # stdout will be delegated to logger.
+
+        .. code-block:: python
+
+            from contextlib import redirect_stdout
+            logger = logging.getLogger("ray_logger")
+            hook = StandardStreamHook(logger)
+            with redirect_stdout(hook):
+                print("a") # stdout will be delegated to logger.
 
     Args:
         logger: Python logger that will receive messages streamed to
