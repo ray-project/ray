@@ -160,12 +160,14 @@ def get_learner_group(
         framework_hps = FrameworkHyperparameters(eager_tracing=eager_tracing)
     else:
         framework_hps = None
+
     learner_spec = LearnerSpec(
         learner_class=get_learner_class(framework),
         module_spec=get_module_spec(
             framework=framework, env=env, is_multi_agent=is_multi_agent
         ),
         learner_group_scaling_config=scaling_config,
+        learner_hyperparameters=BaseTestingLearnerHyperparameters(),
         framework_hyperparameters=framework_hps,
     )
     lg = LearnerGroup(learner_spec)
