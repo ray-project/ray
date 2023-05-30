@@ -1552,6 +1552,9 @@ class _TrialExecutorWrapper:
         self._trial_executor = trial_executor
         self._whitelist_attr = whitelist_attr or set()
 
+        for attr in self._whitelist_attr:
+            assert hasattr(self, attr)
+
     def __getattr__(self, attr):
         if attr not in self._whitelist_attr:
             if log_once("restrict_accessing_trial_executor"):
@@ -1590,6 +1593,9 @@ class TrialRunnerWrapper:
             trial_executor, executor_whitelist_attr
         )
         self._runner_whitelist_attr = runner_whitelist_attr or set()
+
+        for attr in self._runner_whitelist_attr:
+            assert hasattr(self, attr)
 
     def __getattr__(self, attr):
         if attr == self._EXECUTOR_ATTR:
