@@ -10,7 +10,7 @@ from ray.rllib.core.learner.learner import (
     LearnerSpec,
 )
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-
+from ray.rllib.core.testing.testing_learner import BaseTestingLearnerHyperparameters
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
@@ -100,7 +100,7 @@ def get_learner(
     framework: str,
     eager_tracing: bool = True,
     env: "gym.Env",
-    learner_hps: Optional[LearnerHyperparameters] = None,
+    learner_hps: Optional[BaseTestingLearnerHyperparameters] = None,
     is_multi_agent: bool = False,
 ) -> "Learner":
     """Construct a learner for testing.
@@ -126,7 +126,7 @@ def get_learner(
     # that is used in the learner.
     learner = _cls(
         module_spec=spec,
-        learner_hyperparameters=learner_hps or LearnerHyperparameters(),
+        learner_hyperparameters=learner_hps or BaseTestingLearnerHyperparameters(),
         framework_hyperparameters=FrameworkHyperparameters(eager_tracing=eager_tracing),
     )
     learner.build()
