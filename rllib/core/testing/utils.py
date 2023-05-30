@@ -6,7 +6,6 @@ from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.core.learner.learner_group import LearnerGroup
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
-    LearnerHyperparameters,
     LearnerSpec,
 )
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig

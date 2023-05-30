@@ -672,10 +672,8 @@ class LearnerGroup:
             # also in the RLModule checkpoints.
             if modules_to_load:
                 if any(
-                    [
-                        module_id in modules_to_load
-                        for module_id in rl_module_ckpt_dirs.keys()
-                    ]
+                    module_id in modules_to_load
+                    for module_id in rl_module_ckpt_dirs.keys()
                 ):
                     raise ValueError(
                         f"module_id {module_id} was specified in both "
