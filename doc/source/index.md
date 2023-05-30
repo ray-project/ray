@@ -22,41 +22,8 @@
 
 <title>Welcome to Ray!</title>
 
-<div style = "background-image: url(_static/img/LandingPageBG.JPG); background-repeat:no-repeat; background-size:cover;">
-<div class="container remove-mobile">
-  <div class="row">
-    <div class="col-6">
-      <h1 style="font-weight:600;">Welcome to Ray!</h1>
-      <p>Ray is an open-source unified framework for scaling AI and Python applications. 
-      It provides the compute layer for parallel processing so that 
-      you don’t need to be a distributed systems expert.
-      </p>
-      <div class="image-header" style="padding:0px;">
-        <a href="https://github.com/ray-project/ray">
-            <img class="icon-hover" src="_static/img/github-fill.png" width="25px" height="25px" />
-        </a>
-        <a href="https://docs.google.com/forms/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform">
-            <img class="icon-hover" src="_static/img/slack-fill.png" width="25px" height="25px" />
-        </a>
-        <a href="https://twitter.com/raydistributed">
-            <img class="icon-hover" src="_static/img/twitter-fill.png" width="25px" height="25px" />
-        </a>
-      </div>
-    </div>
-    <div class="col-6">
-      <iframe width="450px" height="240px" style="border-radius:"10px";"
-       src="https://www.youtube.com/embed/Iu_F_EzQb5o?modestbranding=1" 
-       title="YouTube Preview" 
-       frameborder="0" allow="accelerometer; autoplay;" 
-       allowfullscreen></iframe>
-    </div>
-  </div>
-</div>
-</div>
-
-
 <div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
-    <h2 style="font-weight:600;">Getting Started</h2>
+    <h2 style="font-weight:600;">Get started with Ray 🎉</h2>
     
 <div class="grid-container">
   <a class="no-underline" href="./ray-overview/index.html" target="_blank"> <div class="info-box">
