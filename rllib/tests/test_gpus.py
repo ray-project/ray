@@ -158,16 +158,13 @@ class TestGPUsLargeBatch(unittest.TestCase):
             }
         )
 
-        try:
-            batch_copy = copy.deepcopy(CARTPOLE_FAKE_BATCH)
-            batch_copy.to_device(0)
-            raise ValueError(
-                "We should not be able to move this batch to the device. "
-                "If this error occurs, this means that this test cannot fail "
-                "inside multi_gpu_train_one_step."
-            )
-        except torch.cuda.OutOfMemoryError:
-            pass
+        # Fail if GPU possibly has enough memory to fit whole batch
+        if torch.cuda.get_device_properties(0).total_memory > 1.6e+10:
+            raise ValueError("This test was calibrated to fail on a Tesla T4 (16GB GPU memory). When run on a larger device, this test might not fail and needs to be recallibrated.")
+
+        # The following should raise a torch.cuda.OutOfMemoryError (can be used to recallibrate this test)
+        # batch_copy = copy.deepcopy(CARTPOLE_FAKE_BATCH)
+        # batch_copy.to_device(0)
 
         config = (
             PPOConfig()
