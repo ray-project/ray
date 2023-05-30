@@ -975,6 +975,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     def get_metrics(self) -> List[RolloutMetrics]:
+        """Returns the thus-far collected metrics from this worker's rollouts.
+
+        Returns:
+             List of RolloutMetrics collected thus-far.
+        """
         # Get metrics from sampler (if any).
         if self.sampler is not None:
             out = self.sampler.get_metrics()

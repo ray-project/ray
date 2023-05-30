@@ -379,7 +379,7 @@ class TestWorkerFailures(unittest.TestCase):
         self._do_test_fault_ignore(
             A3CConfig()
             .training(optimizer={"grads_per_step": 1})
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
+            .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_async_replay(self):
