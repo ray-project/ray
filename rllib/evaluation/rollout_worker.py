@@ -975,7 +975,6 @@ class RolloutWorker(EnvRunner):
         ):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
-    @override(EnvRunner)
     def get_metrics(self) -> List[RolloutMetrics]:
         # Get metrics from sampler (if any).
         if self.sampler is not None:
@@ -1598,18 +1597,24 @@ class RolloutWorker(EnvRunner):
         # Update all other global vars.
         self.global_vars.update(global_vars_copy)
 
+    @override(EnvRunner)
     def stop(self) -> None:
         """Releases all resources used by this RolloutWorker."""
+
         # If we have an env -> Release its resources.
         if self.env is not None:
             self.async_env.stop()
+
+        # In case we have-an AsyncSampler, kill its sampling thread.
+        if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
+            self.sampler.shutdown = True
+
         # Close all policies' sessions (if tf static graph).
         for policy in self.policy_map.cache.values():
             sess = policy.get_session()
             # Closes the tf session, if any.
             if sess is not None:
                 sess.close()
-
     def lock(self) -> None:
         """Locks this RolloutWorker via its own threading.Lock."""
         self._lock.acquire()
@@ -1641,12 +1646,6 @@ class RolloutWorker(EnvRunner):
     def creation_args(self) -> dict:
         """Returns the kwargs dict used to create this worker."""
         return self._original_kwargs
-
-    @override(EnvRunner)
-    def __del__(self):
-        # In case we have-an AsyncSampler, kill its sampling thread.
-        if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
-            self.sampler.shutdown = True
 
     def _update_policy_map(
         self,
