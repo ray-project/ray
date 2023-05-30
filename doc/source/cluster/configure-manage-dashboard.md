@@ -137,8 +137,8 @@ ray.shutdown()
 ```
 
 ```{testcode}
-  import ray
-  ray.init(include_dashboard=False)
+import ray
+ray.init(include_dashboard=False)
 ```
 
 :::
