@@ -502,6 +502,23 @@ class AlgorithmConfig(_Config):
             config["input"] = getattr(self, "input_")
             config.pop("input_")
 
+        # Convert `policies` (PolicySpecs?) into dict.
+        # Convert policies dict such that each policy ID maps to a old-style.
+        # 4-tuple: class, obs-, and action space, config.
+        if "policies" in config and isinstance(config["policies"], dict):
+            policies_dict = {}
+            for policy_id, policy_spec in config.pop("policies").items():
+                if isinstance(policy_spec, PolicySpec):
+                    policies_dict[policy_id] = (
+                        policy_spec.policy_class,
+                        policy_spec.observation_space,
+                        policy_spec.action_space,
+                        policy_spec.config,
+                    )
+                else:
+                    policies_dict[policy_id] = policy_spec
+            config["policies"] = policies_dict
+
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
