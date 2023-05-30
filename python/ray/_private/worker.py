@@ -91,6 +91,7 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
+from ray.widgets.util import repr_with_fallback
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -1030,6 +1031,10 @@ class BaseContext(metaclass=ABCMeta):
     Base class for RayContext and ClientContext
     """
 
+    dashboard_url: Optional[str]
+    python_version: str
+    ray_version: str
+
     @abstractmethod
     def disconnect(self):
         """
@@ -1047,6 +1052,73 @@ class BaseContext(metaclass=ABCMeta):
     def __exit__(self):
         pass
 
+    def _context_table_template(self):
+        if self.dashboard_url:
+            dashboard_row = Template("context_dashrow.html.j2").render(
+                dashboard_url="http://" + self.dashboard_url
+            )
+        else:
+            dashboard_row = None
+
+        return Template("context_table.html.j2").render(
+            python_version=self.python_version,
+            ray_version=self.ray_version,
+            dashboard_row=dashboard_row,
+        )
+
+    def _repr_html_(self):
+        return Template("context.html.j2").render(
+            context_logo=Template("context_logo.html.j2").render(),
+            context_table=self._context_table_template(),
+        )
+
+    @repr_with_fallback(["ipywidgets", "8"])
+    def _get_widget_bundle(self, **kwargs) -> Dict[str, Any]:
+        """Get the mimebundle for the widget representation of the context.
+
+        Args:
+            **kwargs: Passed to the _repr_mimebundle_() function for the widget
+
+        Returns:
+            Dictionary ("mimebundle") of the widget representation of the context.
+        """
+        import ipywidgets
+
+        disconnect_button = ipywidgets.Button(
+            description="Disconnect",
+            disabled=False,
+            button_style="",
+            tooltip="Disconnect from the Ray cluster",
+            layout=ipywidgets.Layout(margin="auto 0px 0px 0px"),
+        )
+
+        def disconnect_callback(button):
+            button.disabled = True
+            button.description = "Disconnecting..."
+            self.disconnect()
+            button.description = "Disconnected"
+
+        disconnect_button.on_click(disconnect_callback)
+        left_content = ipywidgets.VBox(
+            [
+                ipywidgets.HTML(Template("context_logo.html.j2").render()),
+                disconnect_button,
+            ],
+            layout=ipywidgets.Layout(),
+        )
+        right_content = ipywidgets.HTML(self._context_table_template())
+        widget = ipywidgets.HBox(
+            [left_content, right_content], layout=ipywidgets.Layout(width="100%")
+        )
+        return widget._repr_mimebundle_(**kwargs)
+
+    def _repr_mimebundle_(self, **kwargs):
+        bundle = self._get_widget_bundle(**kwargs)
+
+        # Overwrite the widget html repr and default repr with those of the BaseContext
+        bundle.update({"text/html": self._repr_html_(), "text/plain": repr(self)})
+        return bundle
+
 
 @dataclass
 class RayContext(BaseContext, Mapping):
@@ -1058,10 +1130,10 @@ class RayContext(BaseContext, Mapping):
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version = Optional[str]
-    address_info: Dict[str, Optional[str]]
+    protocol_version: Optional[str]
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
+        super().__init__()
         self.dashboard_url = get_dashboard_url()
         self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
@@ -1102,20 +1174,6 @@ class RayContext(BaseContext, Mapping):
     def disconnect(self):
         # Include disconnect() to stay consistent with ClientContext
         ray.shutdown()
-
-    def _repr_html_(self):
-        if self.dashboard_url:
-            dashboard_row = Template("context_dashrow.html.j2").render(
-                dashboard_url="http://" + self.dashboard_url
-            )
-        else:
-            dashboard_row = None
-
-        return Template("context.html.j2").render(
-            python_version=self.python_version,
-            ray_version=self.ray_version,
-            dashboard_row=dashboard_row,
-        )
 
 
 global_worker = Worker()
