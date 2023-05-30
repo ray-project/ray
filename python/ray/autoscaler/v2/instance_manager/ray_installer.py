@@ -78,7 +78,7 @@ class RayInstaller(object):
         )
         try:
             updater.run()
-        except Exception:
+        except Exception as e:
             # Errors has already been handled.
             return False
         return True
