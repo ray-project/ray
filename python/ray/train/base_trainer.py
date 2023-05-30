@@ -17,6 +17,7 @@ from ray.air._internal.remote_storage import (
     list_at_uri,
 )
 from ray.air._internal import usage as air_usage
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
@@ -157,7 +158,7 @@ class BaseTrainer(abc.ABC):
     Args:
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use the key "train"
+        datasets: Any Datasets to use for training. Use the key "train"
             to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -425,7 +426,8 @@ class BaseTrainer(abc.ABC):
                     dataset
                 ):
                     raise ValueError(
-                        f"The Dataset under '{key}' key is not a `ray.data.Dataset`. "
+                        f"The Dataset under '{key}' key is not a "
+                        "`ray.data.Dataset`. "
                         f"Received {dataset} instead."
                     )
 
@@ -461,7 +463,7 @@ class BaseTrainer(abc.ABC):
         """Sync down trainer state from remote storage.
 
         Returns:
-            local_dir of the synced trainer state
+            str: Local directory containing the trainer state
         """
         if not is_non_local_path_uri(restore_path):
             return Path(os.path.expanduser(restore_path)) / _TRAINER_PKL
@@ -577,7 +579,10 @@ class BaseTrainer(abc.ABC):
             )
         else:
             tuner = Tuner(
-                trainable=trainable, param_space=param_space, run_config=self.run_config
+                trainable=trainable,
+                param_space=param_space,
+                run_config=self.run_config,
+                _entrypoint=AirEntrypoint.TRAINER,
             )
 
         experiment_path = Path(
@@ -622,7 +627,7 @@ class BaseTrainer(abc.ABC):
         of parameters can be passed in again), that parameter will be loaded
         from the saved copy.
 
-        Ray Datasets should not be saved as part of the state. Instead, we save the
+        Datasets should not be saved as part of the state. Instead, we save the
         keys and replace the dataset values with dummy functions that will
         raise an error if invoked. The error only serves as a guardrail for
         misuse (e.g., manually unpickling and constructing the Trainer again)

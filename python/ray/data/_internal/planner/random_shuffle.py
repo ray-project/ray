@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
+    MapTransformFn,
     RefBundle,
     TaskContext,
 )
@@ -28,7 +29,20 @@ def generate_random_shuffle_fn(
         ctx: TaskContext,
     ) -> Tuple[List[RefBundle], StatsDict]:
         num_input_blocks = sum(len(r.blocks) for r in refs)
-        shuffle_spec = ShuffleTaskSpec(random_shuffle=True, random_seed=seed)
+
+        # If map_transform_fn is specified (e.g. from fusing
+        # MapOperator->AllToAllOperator), we pass a map function which
+        # is applied to each block before shuffling.
+        map_transform_fn: Optional[MapTransformFn] = ctx.upstream_map_transform_fn
+        upstream_map_fn = None
+        if map_transform_fn:
+            upstream_map_fn = lambda block: map_transform_fn(block, ctx)  # noqa: E731
+
+        shuffle_spec = ShuffleTaskSpec(
+            random_shuffle=True,
+            random_seed=seed,
+            upstream_map_fn=upstream_map_fn,
+        )
 
         if DataContext.get_current().use_push_based_shuffle:
             if num_outputs is not None:

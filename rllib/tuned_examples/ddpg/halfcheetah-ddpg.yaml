@@ -3,7 +3,7 @@ halfcheetah-ddpg:
     env: HalfCheetah-v2
     run: DDPG
     stop:
-        episode_reward_mean: 2000
+        sampler_results/episode_reward_mean: 2000
         time_total_s: 5400 # 90 minutes
     config:
         # Works for both torch and tf.

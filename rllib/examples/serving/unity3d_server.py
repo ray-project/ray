@@ -151,6 +151,11 @@ if __name__ == "__main__":
         .evaluation(off_policy_estimation_methods={})
     )
 
+    # Disable RLModules because they need connectors
+    # TODO(Artur): Deprecate ExternalEnv and reenable connectors and RL Modules here
+    config.rl_module(_enable_rl_module_api=False)
+    config._enable_learner_api = False
+
     # Create the Trainer used for Policy serving.
     algo = config.build()
 

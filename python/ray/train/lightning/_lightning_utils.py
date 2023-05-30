@@ -1,24 +1,51 @@
+import ray
+from ray.air import session
+from ray.air.constants import MODEL_KEY
+from ray.data.dataset import DataIterator
+from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
+
 import logging
 import shutil
 import torch
 import tempfile
-import pytorch_lightning as pl
-
+from packaging.version import Version
 from typing import Any, Dict, Optional
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.plugins.environments import LightningEnvironment
-
-import ray
-from ray.air import session
-from ray.air.constants import MODEL_KEY
-from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 from torch.utils.data import IterableDataset, DataLoader
-from ray.data.dataset import DataIterator
+
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.plugins.environments import LightningEnvironment
+from pytorch_lightning.strategies import DDPStrategy
+
+_LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
+_TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
+_TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_available()
+
+if _LIGHTNING_GREATER_EQUAL_2_0:
+    from pytorch_lightning.strategies import FSDPStrategy
+else:
+    from pytorch_lightning.strategies import DDPFullyShardedStrategy as FSDPStrategy
+
+if _TORCH_FSDP_AVAILABLE:
+    from torch.distributed.fsdp import (
+        FullStateDictConfig,
+        FullyShardedDataParallel,
+        StateDictType,
+    )
+
 
 logger = logging.getLogger(__name__)
 
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
+
+
+def get_worker_root_device():
+    """Get the first torch device of the current worker if there are multiple."""
+    devices = ray.train.torch.get_device()
+    if isinstance(devices, list):
+        return devices[0]
+    else:
+        return devices
 
 
 class RayDDPStrategy(DDPStrategy):
@@ -26,7 +53,7 @@ class RayDDPStrategy(DDPStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return ray.train.torch.get_device()
+        return get_worker_root_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -34,6 +61,40 @@ class RayDDPStrategy(DDPStrategy):
             num_replicas=self.world_size,
             rank=self.global_rank,
         )
+
+
+class RayFSDPStrategy(FSDPStrategy):
+    """Subclass of FSDPStrategy to ensure compatibility with Ray orchestration."""
+
+    @property
+    def root_device(self) -> torch.device:
+        return get_worker_root_device()
+
+    @property
+    def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        return dict(
+            num_replicas=self.world_size,
+            rank=self.global_rank,
+        )
+
+    def lightning_module_state_dict(self) -> Dict[str, Any]:
+        """Gathers the full state dict to rank 0 on CPU."""
+        assert self.model is not None, "Failed to get the state dict for a None model!"
+
+        if _LIGHTNING_GREATER_EQUAL_2_0 and _TORCH_FSDP_AVAILABLE:
+            with FullyShardedDataParallel.state_dict_type(
+                module=self.model,
+                state_dict_type=StateDictType.FULL_STATE_DICT,
+                state_dict_config=FullStateDictConfig(
+                    offload_to_cpu=True, rank0_only=True
+                ),
+            ):
+                state_dict = self.model.state_dict()
+                prefix_len = len("_forward_module.")
+                return {k[prefix_len:]: v for k, v in state_dict.items()}
+        else:
+            # Otherwise Lightning uses Fairscale FSDP, no need to unshard by ourself.
+            return super().lightning_module_state_dict()
 
 
 class RayEnvironment(LightningEnvironment):

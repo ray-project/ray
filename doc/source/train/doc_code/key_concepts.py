@@ -98,14 +98,20 @@ scaling_config = ScalingConfig(
 
 # __run_config_start__
 from ray.air import RunConfig
+from ray.air.integrations.wandb import WandbLoggerCallback
 
 run_config = RunConfig(
     # Name of the training run (directory name).
     name="my_train_run",
-    # Directory to store results in (will be storage_path/name).
+    # The experiment results will be saved to: storage_path/name
     storage_path="~/ray_results",
+    # storage_path="s3://my_bucket/tune_results",
     # Low training verbosity.
     verbose=1,
+    # Custom and built-in callbacks
+    callbacks=[WandbLoggerCallback()],
+    # Stopping criteria
+    stop={"training_iteration": 10},
 )
 # __run_config_end__
 
@@ -120,26 +126,37 @@ run_config = RunConfig(
 )
 # __failure_config_end__
 
-# __sync_config_start__
-from ray.air import RunConfig
-from ray.tune import SyncConfig
-
-run_config = RunConfig(
-    # This will store checkpoints on S3.
-    storage_path="s3://remote-bucket/location"
-)
-# __sync_config_end__
-
 # __checkpoint_config_start__
 from ray.air import RunConfig, CheckpointConfig
 
 run_config = RunConfig(
     checkpoint_config=CheckpointConfig(
-        # Only keep this many checkpoints.
-        num_to_keep=2
-    )
+        # Only keep the 2 *best* checkpoints and delete the others.
+        num_to_keep=2,
+        # *Best* checkpoints are determined by these params:
+        checkpoint_score_attribute="mean_accuracy",
+        checkpoint_score_order="max",
+    ),
+    # This will store checkpoints on S3.
+    storage_path="s3://remote-bucket/location",
 )
 # __checkpoint_config_end__
+
+# __checkpoint_config_ckpt_freq_start__
+from ray.air import RunConfig, CheckpointConfig
+
+run_config = RunConfig(
+    checkpoint_config=CheckpointConfig(
+        # Checkpoint every iteration.
+        checkpoint_frequency=1,
+        # Only keep the latest checkpoint and delete the others.
+        num_to_keep=1,
+    )
+)
+
+# from ray.train.xgboost import XGBoostTrainer
+# trainer = XGBoostTrainer(..., run_config=run_config)
+# __checkpoint_config_ckpt_freq_end__
 
 
 # __results_start__

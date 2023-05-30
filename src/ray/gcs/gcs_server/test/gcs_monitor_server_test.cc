@@ -73,7 +73,7 @@ class GcsMonitorServerTest : public ::testing::Test {
  public:
   GcsMonitorServerTest()
       : mock_node_manager_(std::make_shared<gcs::MockGcsNodeManager>()),
-        cluster_resource_manager_(),
+        cluster_resource_manager_(io_context_),
         mock_resource_manager_(
             std::make_shared<gcs::MockGcsResourceManager>(cluster_resource_manager_)),
         mock_placement_group_manager_(

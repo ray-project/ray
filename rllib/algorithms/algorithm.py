@@ -61,7 +61,6 @@ from ray.rllib.offline.estimators import (
     DirectMethod,
     DoublyRobust,
 )
-from ray.rllib.offline.offline_evaluation_utils import remove_time_dim
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, concat_samples
@@ -76,6 +75,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
+    CHECKPOINT_VERSION_LEARNER,
     get_checkpoint_info,
     try_import_msgpack,
 )
@@ -209,12 +209,14 @@ class Algorithm(Trainable):
     # List of keys that are always fully overridden if present in any dict or sub-dict
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
-    _progress_metrics = [
-        "episode_reward_mean",
-        "evaluation/episode_reward_mean",
+    _progress_metrics = (
         "num_env_steps_sampled",
         "num_env_steps_trained",
-    ]
+        "episodes_total",
+        "sampler_results/episode_len_mean",
+        "sampler_results/episode_reward_mean",
+        "evaluation/sampler_results/episode_reward_mean",
+    )
 
     @staticmethod
     def from_checkpoint(
@@ -456,11 +458,17 @@ class Algorithm(Trainable):
         # (although their values may be nan), so that Tune does not complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
+            # TODO: Don't dump sampler results into top-level.
             "evaluation": {
                 "episode_reward_max": np.nan,
                 "episode_reward_min": np.nan,
                 "episode_reward_mean": np.nan,
-            }
+                "sampler_results": {
+                    "episode_reward_max": np.nan,
+                    "episode_reward_min": np.nan,
+                    "episode_reward_mean": np.nan,
+                },
+            },
         }
 
         super().__init__(
@@ -584,11 +592,7 @@ class Algorithm(Trainable):
 
         # Only if user did not override `_init()`:
         if _init is False:
-            # - Create rollout workers here automatically.
-            # - Run the execution plan to create the local iterator to `next()`
-            #   in each training iteration.
-            # This matches the behavior of using `build_trainer()`, which
-            # has been deprecated.
+            # Create a set of env runner actors via a WorkerSet.
             self.workers = WorkerSet(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
@@ -657,15 +661,8 @@ class Algorithm(Trainable):
             # the num worker is set to 0 to avoid creating shards. The dataset will not
             # be repartioned to num_workers blocks.
             logger.info("Creating evaluation dataset ...")
-            ds, _ = get_dataset_and_shards(self.evaluation_config, num_workers=0)
-
-            # Dataset should be in form of one episode per row. in case of bandits each
-            # row is just one time step. To make the computation more efficient later
-            # we remove the time dimension here.
-            parallelism = self.evaluation_config.evaluation_num_workers or 1
-            batch_size = max(ds.count() // parallelism, 1)
-            self.evaluation_dataset = ds.map_batches(
-                remove_time_dim, batch_size=batch_size
+            self.evaluation_dataset, _ = get_dataset_and_shards(
+                self.evaluation_config, num_workers=0
             )
             logger.info("Evaluation dataset created")
 
@@ -712,10 +709,10 @@ class Algorithm(Trainable):
         self.learner_group = None
         if self.config._enable_learner_api:
             # TODO (Kourosh): This is an interim solution where policies and modules
-            # co-exist. In this world we have both policy_map and MARLModule that need
-            # to be consistent with one another. To make a consistent parity between
-            # the two we need to loop through the policy modules and create a simple
-            # MARLModule from the RLModule within each policy.
+            #  co-exist. In this world we have both policy_map and MARLModule that need
+            #  to be consistent with one another. To make a consistent parity between
+            #  the two we need to loop through the policy modules and create a simple
+            #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
             module_spec = local_worker.marl_module_spec
             learner_group_config = self.config.get_learner_group_config(module_spec)
@@ -1059,6 +1056,11 @@ class Algorithm(Trainable):
                     keep_custom_metrics=self.config.keep_per_episode_custom_metrics,
                     timeout_seconds=eval_cfg.metrics_episode_collection_timeout_s,
                 )
+
+            # TODO: Don't dump sampler results into top-level.
+            if not self.config.custom_evaluation_function:
+                metrics = dict({"sampler_results": metrics}, **metrics)
+
             metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
             metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
             # TODO: Remove this key at some point. Here for backward compatibility.
@@ -1256,10 +1258,13 @@ class Algorithm(Trainable):
                 f"{unit} done)"
             )
 
-        metrics = summarize_episodes(
+        sampler_results = summarize_episodes(
             rollout_metrics,
             keep_custom_metrics=eval_cfg["keep_per_episode_custom_metrics"],
         )
+
+        # TODO: Don't dump sampler results into top-level.
+        metrics = dict({"sampler_results": sampler_results}, **sampler_results)
 
         metrics[NUM_AGENT_STEPS_SAMPLED_THIS_ITER] = agent_steps_this_iter
         metrics[NUM_ENV_STEPS_SAMPLED_THIS_ITER] = env_steps_this_iter
@@ -2063,6 +2068,14 @@ class Algorithm(Trainable):
                     policy_state.pkl
                 pol_2/
                     policy_state.pkl
+            learner/
+                learner_state.json
+                module_state/
+                    module_1/
+                        ...
+                optimizer_state/
+                    optimizers_module_1/
+                        ...
             rllib_checkpoint.json
             algorithm_state.pkl
 
@@ -2085,7 +2098,10 @@ class Algorithm(Trainable):
             policy_states = state["worker"].pop("policy_states", {})
 
         # Add RLlib checkpoint version.
-        state["checkpoint_version"] = CHECKPOINT_VERSION
+        if self.config._enable_learner_api:
+            state["checkpoint_version"] = CHECKPOINT_VERSION_LEARNER
+        else:
+            state["checkpoint_version"] = CHECKPOINT_VERSION
 
         # Write state (w/o policies) to disk.
         state_file = os.path.join(checkpoint_dir, "algorithm_state.pkl")
@@ -2116,21 +2132,24 @@ class Algorithm(Trainable):
             policy = self.get_policy(pid)
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
+        # if we are using the learner API, save the learner group state
+        if self.config._enable_learner_api:
+            learner_state_dir = os.path.join(checkpoint_dir, "learner")
+            self.learner_group.save_state(learner_state_dir)
+
         return checkpoint_dir
 
     @override(Trainable)
-    def load_checkpoint(self, checkpoint: Union[Dict, str]) -> None:
+    def load_checkpoint(self, checkpoint: str) -> None:
         # Checkpoint is provided as a directory name.
         # Restore from the checkpoint file or dir.
-        if isinstance(checkpoint, str):
-            checkpoint_info = get_checkpoint_info(checkpoint)
-            checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(
-                checkpoint_info
-            )
-        # Checkpoint is a checkpoint-as-dict -> Restore state from it as-is.
-        else:
-            checkpoint_data = checkpoint
+
+        checkpoint_info = get_checkpoint_info(checkpoint)
+        checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
+        if self.config._enable_learner_api:
+            learner_state_dir = os.path.join(checkpoint, "learner")
+            self.learner_group.load_state(learner_state_dir)
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
@@ -2158,7 +2177,7 @@ class Algorithm(Trainable):
 
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
-        # Use `num_cpus_for_driver` and `num_gpus` for the local worker and
+        # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
         # `num_cpus_per_worker` and `num_gpus_per_worker` for the remote
         # workers to determine their CPU/GPU resource needs.
 
@@ -2239,13 +2258,22 @@ class Algorithm(Trainable):
         # resources for remote learner workers
         learner_bundles = []
         if cf._enable_learner_api and cf.num_learner_workers > 0:
-            learner_bundles = [
-                {
-                    "CPU": cf.num_cpus_per_learner_worker,
-                    "GPU": cf.num_gpus_per_learner_worker,
-                }
-                for _ in range(cf.num_learner_workers)
-            ]
+            # can't specify cpus for learner workers at the same
+            # time as gpus
+            if cf.num_gpus_per_learner_worker:
+                learner_bundles = [
+                    {
+                        "GPU": cf.num_gpus_per_learner_worker,
+                    }
+                    for _ in range(cf.num_learner_workers)
+                ]
+            elif cf.num_cpus_per_learner_worker:
+                learner_bundles = [
+                    {
+                        "CPU": cf.num_cpus_per_learner_worker,
+                    }
+                    for _ in range(cf.num_learner_workers)
+                ]
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
 
@@ -3023,22 +3051,32 @@ class Algorithm(Trainable):
             NUM_ENV_STEPS_TRAINED,
         ]:
             results[c] = self._counters[c]
+        time_taken_sec = step_ctx.get_time_taken_sec()
         if self.config.count_steps_by == "agent_steps":
             results[NUM_AGENT_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_AGENT_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            results[NUM_AGENT_STEPS_SAMPLED + "_throughput_per_sec"] = (
+                step_ctx.sampled / time_taken_sec
+            )
+            results[NUM_AGENT_STEPS_TRAINED + "_throughput_per_sec"] = (
+                step_ctx.trained / time_taken_sec
+            )
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
-            # TODO: Backward compatibility.
-            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         else:
             results[NUM_ENV_STEPS_SAMPLED + "_this_iter"] = step_ctx.sampled
             results[NUM_ENV_STEPS_TRAINED + "_this_iter"] = step_ctx.trained
+            results[NUM_ENV_STEPS_SAMPLED + "_throughput_per_sec"] = (
+                step_ctx.sampled / time_taken_sec
+            )
+            results[NUM_ENV_STEPS_TRAINED + "_throughput_per_sec"] = (
+                step_ctx.trained / time_taken_sec
+            )
             # TODO: For CQL and other algos, count by trained steps.
             results["timesteps_total"] = self._counters[NUM_ENV_STEPS_SAMPLED]
-            # TODO: Backward compatibility.
-            results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
 
         # TODO: Backward compatibility.
+        results[STEPS_TRAINED_THIS_ITER_COUNTER] = step_ctx.trained
         results["agent_timesteps_total"] = self._counters[NUM_AGENT_STEPS_SAMPLED]
 
         # Process timer results.
@@ -3102,6 +3140,8 @@ COMMON_CONFIG: AlgorithmConfigDict = AlgorithmConfig(Algorithm).to_dict()
 class TrainIterCtx:
     def __init__(self, algo: Algorithm):
         self.algo = algo
+        self.time_start = None
+        self.time_stop = None
 
     def __enter__(self):
         # Before first call to `step()`, `results` is expected to be None ->
@@ -3122,7 +3162,11 @@ class TrainIterCtx:
         return self
 
     def __exit__(self, *args):
-        pass
+        self.time_stop = time.time()
+
+    def get_time_taken_sec(self) -> float:
+        """Returns the time we spent in the context in seconds."""
+        return self.time_stop - self.time_start
 
     def should_stop(self, results):
 

@@ -5,9 +5,11 @@ import {
   makeStyles,
   Typography,
 } from "@material-ui/core";
+import classNames from "classnames";
 import yaml from "js-yaml";
 import React, { useState } from "react";
 import DialogWithTitle from "../DialogWithTitle";
+import { ClassNameProps } from "../props";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -15,7 +17,8 @@ const useStyles = makeStyles((theme) =>
       whiteSpace: "pre",
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
       padding: theme.spacing(2),
-      // borderRadius: theme.spacing(1),
+      overflow: "scroll",
+      maxHeight: 600,
     },
   }),
 );
@@ -92,13 +95,14 @@ const useCodeDialogButtonWithPreviewStyles = makeStyles((theme) =>
   }),
 );
 
-type CodeDialogButtonWithPreviewProps = CodeDialogButtonProps;
+type CodeDialogButtonWithPreviewProps = CodeDialogButtonProps & ClassNameProps;
 /**
  * Similar to CodeDialogButton but also shows a snippet of the expanded text next to the button.
  */
 export const CodeDialogButtonWithPreview = ({
   code,
   buttonText,
+  className,
   ...props
 }: CodeDialogButtonWithPreviewProps) => {
   const classes = useCodeDialogButtonWithPreviewStyles();
@@ -109,7 +113,7 @@ export const CodeDialogButtonWithPreview = ({
   const buttonTextToPass = buttonText ?? "Expand";
 
   return (
-    <div className={classes.root}>
+    <div className={classNames(classes.root, className)}>
       <span className={classes.previewText}>{codeText}</span>
       <CodeDialogButton
         code={codeText}

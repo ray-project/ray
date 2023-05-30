@@ -2,7 +2,7 @@ cartpole-crashing-with-remote-envs-pg:
     env: ray.rllib.examples.env.cartpole_crashing.CartPoleCrashing
     run: PG
     stop:
-        evaluation/episode_reward_mean: 35.0
+        evaluation/sampler_results/episode_reward_mean: 35.0
         timesteps_total: 25000
     config:
         # Works for both torch and tf.

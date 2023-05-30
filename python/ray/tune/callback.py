@@ -292,17 +292,48 @@ class Callback(metaclass=_CallbackMeta):
         This method should be implemented by subclasses to return a dictionary
         representation of the object's current state.
 
+        This is called automatically by Tune to periodically checkpoint callback state.
+        Upon :ref:`Tune experiment restoration <tune-experiment-level-fault-tolerance>`,
+        callback state will be restored via :meth:`~ray.tune.Callback.set_state`.
+
+        .. code-block:: python
+
+            from typing import Dict, List, Optional
+
+            from ray.tune import Callback
+            from ray.tune.experiment import Trial
+
+            class MyCallback(Callback):
+                def __init__(self):
+                    self._trial_ids = set()
+
+                def on_trial_start(
+                    self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+                ):
+                    self._trial_ids.add(trial.trial_id)
+
+                def get_state(self) -> Optional[Dict]:
+                    return {"trial_ids": self._trial_ids.copy()}
+
+                def set_state(self, state: Dict) -> Optional[Dict]:
+                    self._trial_ids = state["trial_ids"]
+
         Returns:
-            state: State of the callback. Should be `None` if the callback does not
-                have any state to save (this is the default).
+            dict: State of the callback. Should be `None` if the callback does not
+            have any state to save (this is the default).
         """
         return None
 
     def set_state(self, state: Dict):
-        """Get the state of the callback.
+        """Set the state of the callback.
 
         This method should be implemented by subclasses to restore the callback's
         state based on the given dict state.
+
+        This is used automatically by Tune to restore checkpoint callback state
+        on :ref:`Tune experiment restoration <tune-experiment-level-fault-tolerance>`.
+
+        See :meth:`~ray.tune.Callback.get_state` for an example implementation.
 
         Args:
             state: State of the callback.

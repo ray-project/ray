@@ -8,9 +8,10 @@ import shutil
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from ray.air._internal.checkpoint_manager import CheckpointStorage
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.execution import trial_runner
 from ray.tune.error import TuneError
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search import SearchGenerator
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.search.sample import Domain, Function

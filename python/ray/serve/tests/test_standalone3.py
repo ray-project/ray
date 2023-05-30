@@ -22,6 +22,7 @@ from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
     SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
+    SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.context import get_global_client
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
@@ -134,13 +135,13 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     )
 
     # Make sure the inflight queries still one
-    assert len(handle.router._replica_set.in_flight_queries) == 1
-    key = list(handle.router._replica_set.in_flight_queries.keys())[0]
-    assert len(handle.router._replica_set.in_flight_queries[key]) == 1
+    assert len(handle.router._replica_scheduler.in_flight_queries) == 1
+    key = list(handle.router._replica_scheduler.in_flight_queries.keys())[0]
+    assert len(handle.router._replica_scheduler.in_flight_queries[key]) == 1
 
     # Make sure the first request is being run.
-    replicas = list(handle.router._replica_set.in_flight_queries.keys())
-    assert len(handle.router._replica_set.in_flight_queries[replicas[0]]) == 1
+    replicas = list(handle.router._replica_scheduler.in_flight_queries.keys())
+    assert len(handle.router._replica_scheduler.in_flight_queries[replicas[0]]) == 1
     # First ref should be still ongoing
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(first_ref, timeout=1)
@@ -193,6 +194,50 @@ def test_http_request_number_of_retries(ray_instance, crash):
 
     wait_for_condition(verify_metrics, timeout=60, retry_interval_ms=500)
     signal_actor.send.remote()
+    serve.shutdown()
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [],
+    indirect=True,
+)
+def test_replica_health_metric(ray_instance):
+    """Test replica health metrics"""
+
+    @serve.deployment(num_replicas=2)
+    def f():
+        return "hello"
+
+    serve.run(f.bind())
+
+    def count_live_replica_metrics():
+        resp = requests.get("http://127.0.0.1:9999").text
+        resp = resp.split("\n")
+        count = 0
+        for metrics in resp:
+            if "# HELP" in metrics or "# TYPE" in metrics:
+                continue
+            if "serve_deployment_replica_healthy" in metrics:
+                if "1.0" in metrics:
+                    count += 1
+        return count
+
+    wait_for_condition(
+        lambda: count_live_replica_metrics() == 2, timeout=120, retry_interval_ms=500
+    )
+
+    # Add more replicas
+    serve.run(f.options(num_replicas=10).bind())
+    wait_for_condition(
+        lambda: count_live_replica_metrics() == 10, timeout=120, retry_interval_ms=500
+    )
+
+    # delete the application
+    serve.delete(SERVE_DEFAULT_APP_NAME)
+    wait_for_condition(
+        lambda: count_live_replica_metrics() == 0, timeout=120, retry_interval_ms=500
+    )
     serve.shutdown()
 
 
@@ -262,7 +307,7 @@ def test_handle_early_detect_failure(shutdown_ray):
     handle = serve.run(f.bind())
     pids = ray.get([handle.remote() for _ in range(2)])
     assert len(set(pids)) == 2
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 2
+    assert len(handle.router._replica_scheduler.in_flight_queries.keys()) == 2
 
     client = get_global_client()
     # Kill the controller so that the replicas membership won't be updated
@@ -274,7 +319,7 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     pids = ray.get([handle.remote() for _ in range(10)])
     assert len(set(pids)) == 1
-    assert len(handle.router._replica_set.in_flight_queries.keys()) == 1
+    assert len(handle.router._replica_scheduler.in_flight_queries.keys()) == 1
 
     # Restart the controller, and then clean up all the replicas
     serve.start(detached=True)

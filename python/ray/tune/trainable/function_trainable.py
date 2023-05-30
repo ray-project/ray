@@ -15,7 +15,11 @@ from ray.air._internal.util import StartTraceback, RunnerThread
 import queue
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import _ERROR_FETCH_TIMEOUT, _RESULT_FETCH_TIMEOUT
+from ray.air.constants import (
+    _ERROR_FETCH_TIMEOUT,
+    _RESULT_FETCH_TIMEOUT,
+    TIME_THIS_ITER_S,
+)
 from ray.tune import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import session
@@ -23,7 +27,6 @@ from ray.tune.result import (
     DEFAULT_METRIC,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
-    TIME_THIS_ITER_S,
 )
 from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.utils import (

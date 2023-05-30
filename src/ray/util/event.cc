@@ -303,7 +303,7 @@ void RayEvent::SendMessage(const std::string &message) {
     event.set_severity(severity_);
     event.set_label(label_);
     event.set_message(message);
-    event.set_timestamp(current_time_s());
+    event.set_timestamp(current_sys_time_s());
 
     auto mp = context.GetCustomFields();
     for (const auto &pair : mp) {

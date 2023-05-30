@@ -23,7 +23,7 @@ NUM_NODES = 5
 
 @ray.remote(num_cpus=1)
 def get_node_id():
-    return ray.get_runtime_context().node_id
+    return ray.get_runtime_context().get_node_id()
 
 
 # Allow one fewer node in case a node fails to come up.

@@ -2,7 +2,7 @@ pendulum-td3-fake-gpus:
     env: Pendulum-v1
     run: TD3
     stop:
-        episode_reward_mean: -900
+        sampler_results/episode_reward_mean: -900
         timesteps_total: 100000
     config:
         # Works for both torch and tf.

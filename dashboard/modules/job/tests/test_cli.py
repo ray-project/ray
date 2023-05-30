@@ -89,20 +89,22 @@ def _job_cli_group_test_address(mock_sdk_client, cmd, *args):
     create_cluster_if_needed = True if cmd == "submit" else False
     # Test passing address via command line.
     result = runner.invoke(job_cli_group, [cmd, "--address=arg_addr", *args])
-    mock_sdk_client.assert_called_with("arg_addr", create_cluster_if_needed)
+    mock_sdk_client.assert_called_with(
+        "arg_addr", create_cluster_if_needed, verify=True
+    )
     with pytest.raises(AssertionError):
-        mock_sdk_client.assert_called_with("some_other_addr", True)
+        mock_sdk_client.assert_called_with("some_other_addr", True, verify=True)
     check_exit_code(result, 0)
     # Test passing address via env var.
     with set_env_var("RAY_ADDRESS", "env_addr"):
         result = runner.invoke(job_cli_group, [cmd, *args])
         check_exit_code(result, 0)
         # RAY_ADDRESS is read inside the SDK client.
-        mock_sdk_client.assert_called_with(None, create_cluster_if_needed)
+        mock_sdk_client.assert_called_with(None, create_cluster_if_needed, verify=True)
     # Test passing no address.
     result = runner.invoke(job_cli_group, [cmd, *args])
     check_exit_code(result, 0)
-    mock_sdk_client.assert_called_with(None, create_cluster_if_needed)
+    mock_sdk_client.assert_called_with(None, create_cluster_if_needed, verify=True)
 
 
 class TestList:
@@ -389,6 +391,29 @@ class TestSubmit:
             print(result.output)
             assert result.exit_code == 1
             assert "not a valid JSON string" in result.output
+
+    @pytest.mark.parametrize(
+        "cli_val, verify_param",
+        [
+            ("True", True),
+            ("true", True),
+            ("1", True),
+            ("False", False),
+            ("false", False),
+            ("0", False),
+            ("a/rel/path", "a/rel/path"),
+            ("/an/abs/path", "/an/abs/path"),
+        ],
+    )
+    def test_entrypoint_verify(self, mock_sdk_client, cli_val, verify_param):
+        runner = CliRunner()
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                ["submit", f"--verify={cli_val}", "--", "echo hello"],
+            )
+            assert result.exit_code == 0
+            mock_sdk_client.assert_called_with(None, True, verify=verify_param)
 
 
 class TestDelete:

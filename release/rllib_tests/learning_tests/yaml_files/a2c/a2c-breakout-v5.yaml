@@ -3,7 +3,7 @@ a2c-breakoutnoframeskip-v5:
     run: A2C
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 50.0
+        sampler_results/episode_reward_mean: 50.0
         timesteps_total: 5000000
     stop:
         time_total_s: 7200

@@ -73,9 +73,8 @@ def read_numpy():
     # __read_numpy2_start__
     dataset = images.zip(labels)
     dataset = dataset.map_batches(
-        lambda batch: batch.rename(
-            columns={"__value__": "image", "__value___1": "label"}
-        )
+        lambda batch: batch.rename(columns={"data": "image", "data_1": "label"}),
+        batch_format="pandas",
     )
     # __read_numpy2_stop__
     return dataset

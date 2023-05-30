@@ -60,6 +60,11 @@ export const NodeRow = ({
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
 
+  /**
+   * Why do we use raylet.state instead of node.state in the following code?
+   * Because in ray, raylet == node
+   */
+
   return (
     <TableRow>
       <TableCell>
@@ -94,7 +99,9 @@ export const NodeRow = ({
         </Box>
       </TableCell>
       <TableCell>
-        <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+        {raylet.state !== "DEAD" && (
+          <Link to={`/logs/${encodeURIComponent(logUrl)}`}>Log</Link>
+        )}
       </TableCell>
       <TableCell>
         <PercentageBar num={Number(cpu)} total={100}>

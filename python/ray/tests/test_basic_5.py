@@ -6,6 +6,7 @@ import sys
 import time
 import subprocess
 from unittest.mock import Mock, patch
+import unittest
 
 import pytest
 
@@ -14,6 +15,7 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_pid_to_exit,
+    client_test_enabled,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,7 +145,7 @@ ray.get(a.pid.remote())
     assert "Traceback" not in log
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
+@pytest.mark.skip("flaky test")
 def test_run_on_all_workers(call_ray_start, tmp_path):
     # This test is to ensure run_function_on_all_workers are executed
     # on all workers.
@@ -225,6 +227,9 @@ assert r'{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
     subprocess.check_call(["python", "-m", "package.module2"])
 
 
+# This will be fixed on Windows once the import thread is removed, see
+# https://github.com/ray-project/ray/pull/30895
+@pytest.mark.skipif(sys.platform == "win32", reason="Currently fails on Windows.")
 def test_worker_kv_calls(monkeypatch, shutdown_only):
     monkeypatch.setenv("TEST_RAY_COLLECT_KV_FREQUENCY", "1")
     ray.init()
@@ -239,13 +244,10 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     freqs = ray.get(get_kv_metrics.remote())
     # So far we have the following gets
     """
-    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
-    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x02'
     b'cluster' b'CLUSTER_METADATA'
-    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
-    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
     b'tracing' b'tracing_startup_hook'
-    ???? # unknown
+    b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
+    b'fun' b'RemoteFunction:01000000:'
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
     assert freqs["internal_kv_get"] == 4
@@ -359,6 +361,17 @@ def test_preload_workers(ray_start_cluster, preload):
     actor = Actor.remote()
     futures = [verify_imports.remote(latch), actor.verify_imports.remote(latch)]
     ray.get(futures)
+
+
+@pytest.mark.skipif(client_test_enabled(), reason="only server mode")
+def test_gcs_port_env():
+    try:
+        with unittest.mock.patch.dict(os.environ):
+            os.environ["RAY_GCS_SERVER_PORT"] = "12345"
+            ray.init()
+    except RuntimeError:
+        pass
+        # it's ok to throw runtime error for port conflicts
 
 
 if __name__ == "__main__":

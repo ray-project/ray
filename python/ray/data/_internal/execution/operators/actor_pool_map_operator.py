@@ -6,7 +6,7 @@ import ray
 from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
 from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.dataset_logger import DatastreamLogger
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     RefBundle,
     ExecutionResources,
@@ -24,7 +24,7 @@ from ray.data._internal.execution.operators.map_operator import (
 from ray.types import ObjectRef
 from ray._raylet import ObjectRefGenerator
 
-logger = DatastreamLogger(__name__)
+logger = DatasetLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -32,7 +32,18 @@ DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
 
 class ActorPoolMapOperator(MapOperator):
-    """A MapOperator implementation that executes tasks on an actor pool."""
+    """A MapOperator implementation that executes tasks on an actor pool.
+
+    This class manages the state of a pool of actors used for task execution, as well
+    as dispatch of tasks to those actors.
+
+    It operates in two modes. In bulk mode, tasks are queued internally and executed
+    when the operator has free actor slots. In streaming mode, the streaming executor
+    only adds input when `should_add_input() = True` (i.e., there are free slots).
+    This allows for better control of backpressure (e.g., suppose we go over memory
+    limits after adding put, then there isn't any way to "take back" the inputs prior
+    to actual execution).
+    """
 
     def __init__(
         self,
@@ -56,7 +67,7 @@ class ActorPoolMapOperator(MapOperator):
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
-                The actual rows passed may be less if the datastream is small.
+                The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
@@ -64,6 +75,7 @@ class ActorPoolMapOperator(MapOperator):
         )
         self._init_fn = init_fn
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
+        self._min_rows_per_bundle = min_rows_per_bundle
 
         # Create autoscaling policy from compute strategy.
         self._autoscaling_policy = autoscaling_policy
@@ -103,6 +115,21 @@ class ActorPoolMapOperator(MapOperator):
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
         ray.get(refs)
+
+    def should_add_input(self) -> bool:
+        return self._actor_pool.num_free_slots() > 0
+
+    # Called by streaming executor periodically to trigger autoscaling.
+    def notify_resource_usage(
+        self, input_queue_size: int, under_resource_limits: bool
+    ) -> None:
+        free_slots = self._actor_pool.num_free_slots()
+        if input_queue_size > free_slots and under_resource_limits:
+            # Try to scale up if work remains in the work queue.
+            self._scale_up_if_needed()
+        else:
+            # Try to remove any idle actors.
+            self._scale_down_if_needed()
 
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
@@ -145,6 +172,8 @@ class ActorPoolMapOperator(MapOperator):
             self._tasks[ref] = (task, actor)
             self._handle_task_submitted(task)
 
+        # Needed in the bulk execution path for triggering autoscaling. This is a
+        # no-op in the streaming execution case.
         if self._bundle_queue:
             # Try to scale up if work remains in the work queue.
             self._scale_up_if_needed()
@@ -220,6 +249,32 @@ class ActorPoolMapOperator(MapOperator):
         # We kill all actors in the pool on shutdown, even if they are busy doing work.
         self._actor_pool.kill_all_actors()
         super().shutdown()
+
+        # Warn if the user specified a batch or block size that prevents full
+        # parallelization across the actor pool. We only know this information after
+        # execution has completed.
+        total_rows = sum([m.num_rows for m in self._output_metadata])
+        min_workers = self._autoscaling_policy.min_workers
+        max_desired_batch_size = total_rows // min_workers
+        if (
+            self._min_rows_per_bundle is not None
+            and self._min_rows_per_bundle > max_desired_batch_size
+        ):
+            # The user specified a batch size, but it was probably too large.
+            logger.get_logger().warning(
+                "To ensure full parallelization across an actor pool of size "
+                f"{min_workers}, the specified batch size "
+                f"should be at most {max_desired_batch_size}. Your configured batch "
+                f"size for this operator was {self._min_rows_per_bundle}."
+            )
+        elif len(self._output_metadata) < min_workers:
+            # The user created a stream that has too few blocks to begin with.
+            logger.get_logger().warning(
+                "To ensure full parallelization across an actor pool of size "
+                f"{min_workers}, the Dataset should consist of at least "
+                f"{min_workers} distinct blocks. Consider increasing "
+                "the parallelism when creating the Dataset."
+            )
 
     def get_work_refs(self) -> List[ray.ObjectRef]:
         # Work references that we wish the executor to wait on includes both task
@@ -471,7 +526,7 @@ class _ActorPool:
     actors when the operator is done submitting work to the pool.
     """
 
-    def __init__(self, max_tasks_in_flight: int = float("inf")):
+    def __init__(self, max_tasks_in_flight: int = DEFAULT_MAX_TASKS_IN_FLIGHT):
         self._max_tasks_in_flight = max_tasks_in_flight
         # Number of tasks in flight per actor.
         self._num_tasks_in_flight: Dict[ray.actor.ActorHandle, int] = {}
@@ -598,6 +653,15 @@ class _ActorPool:
     def num_pending_actors(self) -> int:
         """Return the number of pending actors in the pool."""
         return len(self._pending_actors)
+
+    def num_free_slots(self) -> int:
+        """Return the number of free slots for task execution."""
+        if not self._num_tasks_in_flight:
+            return 0
+        return sum(
+            max(0, self._max_tasks_in_flight - num_tasks_in_flight)
+            for num_tasks_in_flight in self._num_tasks_in_flight.values()
+        )
 
     def num_active_actors(self) -> int:
         """Return the number of actors in the pool with at least one active task."""

@@ -34,8 +34,8 @@ download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERS
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp311-cp311-manylinux2014_aarch64.whl"
 
 # macOS.
-echo "Downloading Ray core MacOS wheels (intel)"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_15_intel.whl"
+echo "Downloading Ray core MacOS wheels (x86_64)"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp38-cp38-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp39-cp39-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp310-cp310-macosx_10_15_universal2.whl"
@@ -71,8 +71,8 @@ download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERS
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp311-cp311-manylinux2014_aarch64.whl"
 
 # macOS CPP.
-echo "Downloading Ray CPP MacOS wheels (intel)"
-download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp37-cp37m-macosx_10_15_intel.whl"
+echo "Downloading Ray CPP MacOS wheels (x86_64)"
+download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp37-cp37m-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp38-cp38-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp39-cp39-macosx_10_15_x86_64.whl"
 download_wheel "https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray_cpp-$RAY_VERSION-cp310-cp310-macosx_10_15_universal2.whl"

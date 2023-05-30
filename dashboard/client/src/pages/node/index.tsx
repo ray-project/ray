@@ -158,6 +158,7 @@ const Nodes = () => {
   const classes = useStyles();
   const {
     msg,
+    isLoading,
     isRefreshing,
     onSwitchChange,
     nodeList,
@@ -172,7 +173,7 @@ const Nodes = () => {
 
   return (
     <div className={classes.root}>
-      <Loading loading={msg.startsWith("Loading")} />
+      <Loading loading={isLoading} />
       <TitleCard title="NODES">
         Auto Refresh:
         <Switch

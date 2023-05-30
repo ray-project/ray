@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -8,6 +9,7 @@ import unittest
 import pytest
 
 import ray
+import ray.cloudpickle as ray_pickle
 from ray import tune
 from ray.air import (
     Checkpoint,
@@ -35,10 +37,27 @@ from ray.tune.tuner import Tuner
 
 
 @pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
+
+
+@pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2, configure_logging=False)
     yield address_info
     # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
+@pytest.fixture
+def ray_shutdown():
+    yield
     ray.shutdown()
 
 
@@ -350,7 +369,7 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
             callbacks=[_FailOnStats(num_trials=4, num_finished=2, delay=1)],
         ),
         param_space={
-            # First trial succeeds, second hangs, third fails, fourth hangs
+            # First trial succeeds, second hangs, third fails, fourth hangs.
             "failing_hanging": tune.grid_search(
                 [
                     (None, None),
@@ -393,37 +412,35 @@ def test_tuner_resume_errored_only(ray_start_2_cpus, tmpdir):
     assert sorted([r.metrics.get("it", 0) for r in results]) == sorted([2, 1, 3, 0])
 
 
-def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys):
+def _test_tuner_restore_from_cloud(tmpdir, configure_storage_path, storage_path):
     """Check that restoring Tuner() objects from cloud storage works"""
     tuner = Tuner(
         _dummy_train_fn,
         run_config=RunConfig(
             name="exp_dir",
-            storage_path="memory:///test/restore",
+            storage_path=configure_storage_path,
             local_dir=str(tmpdir / "ray_results"),
         ),
     )
     tuner.fit()
 
     check_path = tmpdir / "check_save"
-    download_from_uri("memory:///test/restore", str(check_path))
+    download_from_uri(storage_path, str(check_path))
     remote_contents = os.listdir(check_path / "exp_dir")
 
     assert "tuner.pkl" in remote_contents
-    assert "trainable.pkl" in remote_contents
 
     prev_cp = _find_newest_experiment_checkpoint(str(check_path / "exp_dir"))
     prev_lstat = os.lstat(prev_cp)
 
     (tmpdir / "ray_results").remove(ignore_errors=True)
 
-    tuner2 = Tuner.restore("memory:///test/restore/exp_dir", trainable=_dummy_train_fn)
+    tuner2 = Tuner.restore(storage_path + "/exp_dir", trainable=_dummy_train_fn)
     results = tuner2.fit()
 
     assert results[0].metrics["_metric"] == 1
     local_contents = os.listdir(tmpdir / "ray_results" / "exp_dir")
     assert "tuner.pkl" in local_contents
-    assert "trainable.pkl" in local_contents
 
     after_cp = _find_newest_experiment_checkpoint(
         str(tmpdir / "ray_results" / "exp_dir")
@@ -438,8 +455,27 @@ def test_tuner_restore_from_cloud(ray_start_2_cpus, tmpdir, clear_memory_filesys
     assert prev_lstat.st_size != after_lstat.st_size
 
     # Overwriting should work
-    tuner3 = Tuner.restore("memory:///test/restore/exp_dir", trainable=_dummy_train_fn)
+    tuner3 = Tuner.restore(storage_path + "/exp_dir", trainable=_dummy_train_fn)
     tuner3.fit()
+
+
+def test_tuner_restore_from_cloud_manual_path(
+    ray_start_2_cpus, tmpdir, clear_memory_filesys
+):
+    storage_path = "memory:///test/restore"
+    _test_tuner_restore_from_cloud(
+        tmpdir, configure_storage_path=storage_path, storage_path=storage_path
+    )
+
+
+def test_tuner_restore_from_cloud_ray_storage(ray_shutdown, tmpdir):
+    storage_path = "mock:///test/restore"
+
+    ray.init(num_cpus=2, configure_logging=False, storage=storage_path)
+
+    _test_tuner_restore_from_cloud(
+        tmpdir / "local", configure_storage_path=None, storage_path=storage_path
+    )
 
 
 @pytest.mark.parametrize(
@@ -570,7 +606,7 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
             assert result.metrics["score"] == 2
 
 
-def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir, caplog):
+def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
     """Test validation for trainable compatibility, when re-specifying a trainable
     on restore."""
 
@@ -608,7 +644,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir, caplog):
             resume_errored=True,
         )
 
-    # Can still change trainable code, but logs a warning
+    # Can technically change trainable code (not recommended!)
     def train_func_1(config):
         checkpoint = session.get_checkpoint()
         assert checkpoint and checkpoint.to_dict()["data"] == config["data"]
@@ -682,8 +718,8 @@ def test_restore_with_parameters(ray_start_2_cpus, tmp_path, use_function_traina
     fail_marker.unlink()
     tuner = Tuner.restore(
         str(tmp_path / exp_name),
-        resume_errored=True,
         trainable=create_trainable_with_params(),
+        resume_errored=True,
     )
     results = tuner.fit()
     assert not results.errors
@@ -1028,7 +1064,40 @@ def test_tuner_can_restore(tmp_path, upload_dir):
         assert not Tuner.can_restore(tmp_path / "new_exp")
 
 
-def testParamSpaceOverwrite(tmp_path, monkeypatch):
+def testParamSpaceOverwriteValidation(ray_start_4_cpus, tmp_path):
+    """Check that validation on restore fails if we try adding or removing
+    hyperparameters to the param_space."""
+    name = "test_param_space_valid"
+    param_space = {"a": 1, "b": {"c": tune.choice([0, 1])}, "d": tune.uniform(0, 1)}
+    tuner = Tuner(
+        _train_fn_sometimes_failing,
+        param_space=param_space,
+        run_config=RunConfig(storage_path=str(tmp_path), name=name),
+    )
+    tuner.fit()
+
+    bad_param_spaces = [
+        {},
+        {"a": 1, "b": {}, "d": 2},
+        {"a": 1, "b": {"c": 2, "e": 3}, "d": 4},
+    ]
+    for bad_param_space in bad_param_spaces:
+        with pytest.raises(ValueError):
+            Tuner.restore(
+                str(tmp_path / name),
+                trainable=_train_fn_sometimes_failing,
+                param_space=bad_param_space,
+            )
+
+    # Should work with the original param space
+    Tuner.restore(
+        str(tmp_path / name),
+        trainable=_train_fn_sometimes_failing,
+        param_space=param_space,
+    )
+
+
+def testParamSpaceOverwrite(ray_start_4_cpus, tmp_path, monkeypatch):
     """Test that overwriting param space on restore propagates new refs to existing
     trials and newly generated trials."""
 
@@ -1106,6 +1175,18 @@ def testParamSpaceOverwrite(tmp_path, monkeypatch):
         # Make sure that test and test2 are updated.
         assert r.config["test"].name in ["8", "9", "10"]
         assert r.config["test2"].name in ["11", "12", "13", "14"]
+
+
+def test_tuner_pkl_backwards_compatibility(tmp_path, propagate_logs, caplog):
+    tuner_internal = Tuner(
+        _train_fn_sometimes_failing, param_space={"a": 1}
+    )._local_tuner
+    with open(tmp_path / "tuner.pkl", "wb") as f:
+        ray_pickle.dump(tuner_internal, f)
+
+    with caplog.at_level(logging.WARNING, "ray.tune.impl.tuner_internal"):
+        tuner_internal._load_tuner_state(tmp_path / "tuner.pkl")
+        assert "run with an older version of Ray" in caplog.text
 
 
 if __name__ == "__main__":

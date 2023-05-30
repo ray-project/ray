@@ -137,7 +137,6 @@ then all experiment outputs can be saved in a shared cloud bucket.
 We can configure cloud storage by telling Ray Tune to **upload to a remote** ``storage_path``:
 
 .. code-block:: python
-    :emphasize-lines: 8, 9, 10, 11
 
     from ray import tune
     from ray.air.config import RunConfig
@@ -154,7 +153,7 @@ We can configure cloud storage by telling Ray Tune to **upload to a remote** ``s
 Ray AIR automatically configures a default syncer that uses pyarrow to
 perform syncing with the specified cloud ``storage_path``.
 You can also pass a custom :class:`Syncer <ray.tune.syncer.Syncer>` object
-to the :class:`tune.SyncConfig <ray.tune.SyncConfig>`
+to a :class:`tune.SyncConfig <ray.tune.SyncConfig>` within the :class:`air.RunConfig <ray.air.RunConfig>`
 if you want to implement custom logic for uploading/downloading from the cloud.
 See :ref:`tune-cloud-syncing` and :ref:`tune-cloud-syncing-command-line-example`
 for more details and examples of custom syncing.
@@ -213,8 +212,6 @@ that implements saving and loading checkpoints.
             # We recommend cloud storage checkpointing as it survives the cluster when
             # instances are terminated and has better performance.
             storage_path="s3://my-checkpoints-bucket/path/",
-            # See above! we will sync our checkpoints to S3 directory
-            sync_config=sync_config,
             checkpoint_config=air.CheckpointConfig(
                 # We'll keep the best five checkpoints at all times
                 # (with the highest AUC scores, a metric reported by the trainable)

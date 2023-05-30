@@ -2,35 +2,47 @@ import logging
 import pathlib
 from typing import (
     Any,
-    Mapping,
-    Union,
-    Sequence,
     Hashable,
+    Mapping,
     Optional,
+    Sequence,
+    Union,
 )
 
+from ray.rllib.core.learner.learner import (
+    FrameworkHyperparameters,
+    Learner,
+    LEARNER_RESULTS_CURR_LR_KEY,
+    ParamOptimizerPair,
+    NamedParamOptimizerPairs,
+    ParamDict,
+    Param,
+)
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.core.learner.learner import (
-    FrameworkHPs,
-    Learner,
-    ParamOptimizerPair,
-    NamedParamOptimizerPairs,
-    ParamType,
-    ParamDictType,
-)
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import (
+    TorchRLModule,
+)
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import TensorType
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.torch_utils import (
+    clip_gradients,
+    convert_to_torch_tensor,
+    copy_torch_tensors,
+)
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -47,20 +59,26 @@ class TorchLearner(Learner):
     def __init__(
         self,
         *,
-        framework_hyperparameters: Optional[FrameworkHPs] = FrameworkHPs(),
+        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__(
+            framework_hyperparameters=(
+                framework_hyperparameters or FrameworkHyperparameters()
+            ),
+            **kwargs,
+        )
 
-        # will be set during build
+        # Will be set during build.
         self._device = None
 
+    @OverrideToImplementCustomLogic
     @override(Learner)
-    def configure_optimizer_per_module(
+    def configure_optimizers_for_module(
         self, module_id: ModuleID
     ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
         module = self._module[module_id]
-        lr = self._optimizer_config["lr"]
+        lr = self.lr_scheduler.get_current_value(module_id)
         pair: ParamOptimizerPair = (
             self.get_parameters(module),
             torch.optim.Adam(self.get_parameters(module), lr=lr),
@@ -68,28 +86,74 @@ class TorchLearner(Learner):
         return pair
 
     @override(Learner)
+    def _update(
+        self,
+        batch: NestedDict,
+        **kwargs,
+    ):
+        """Performs a single update given a batch of data."""
+        fwd_out = self.module.forward_train(batch)
+        loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
+
+        gradients = self.compute_gradients(loss_per_module)
+        postprocessed_gradients = self.postprocess_gradients(gradients)
+        self.apply_gradients(postprocessed_gradients)
+        return fwd_out, loss_per_module, self._metrics
+
+    @override(Learner)
     def compute_gradients(
-        self, loss: Union[TensorType, Mapping[str, Any]]
-    ) -> ParamDictType:
+        self, loss_per_module: Mapping[str, TensorType], **kwargs
+    ) -> ParamDict:
         for optim in self._optimizer_parameters:
             # set_to_none is a faster way to zero out the gradients
             optim.zero_grad(set_to_none=True)
-        loss[self.TOTAL_LOSS_KEY].backward()
+        loss_per_module[ALL_MODULES].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)
-    def apply_gradients(self, gradients: ParamDictType) -> None:
-        # make sure the parameters do not carry gradients on their own
+    def additional_update_for_module(
+        self, *, module_id: ModuleID, timestep: int, **kwargs
+    ) -> Mapping[str, Any]:
+        results = super().additional_update_for_module(
+            module_id=module_id, timestep=timestep
+        )
+
+        # Handle lr scheduling updates and apply new learning rates to the optimizers.
+        new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
+        results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
+
+        return results
+
+    @override(Learner)
+    def postprocess_gradients(
+        self,
+        gradients_dict: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Postprocesses gradients depending on the optimizer config."""
+
+        # Perform gradient clipping, if necessary.
+        clip_gradients(
+            gradients_dict,
+            grad_clip=self._optimizer_config.get("grad_clip"),
+            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
+        )
+
+        return gradients_dict
+
+    @override(Learner)
+    def apply_gradients(self, gradients: ParamDict) -> None:
+        # Make sure the parameters do not carry gradients on their own.
         for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
 
-        # set the gradient of the parameters
+        # Set the gradient of the parameters.
         for pid, grad in gradients.items():
             self._params[pid].grad = grad
 
-        # for each optimizer call its step function with the gradients
+        # For each optimizer call its step function.
         for optim in self._optimizer_parameters:
             optim.step()
 
@@ -103,23 +167,49 @@ class TorchLearner(Learner):
     def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        for name, optim in self._named_optimizers.items():
-            torch.save(optim.state_dict(), path / f"{name}.pt")
+        optim_weights = self.get_optimizer_weights()
+        for name, weights in optim_weights.items():
+            torch.save(weights, path / f"{name}.pt")
 
     @override(Learner)
     def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
         if not path.exists():
             raise ValueError(f"Directory {path} does not exist.")
-        for name, optim in self._named_optimizers.items():
-            optim.load_state_dict(torch.load(path / f"{name}.pt"))
+        weights = {}
+        for name in self._named_optimizers.keys():
+            weights[name] = torch.load(path / f"{name}.pt")
+        self.set_optimizer_weights(weights)
 
     @override(Learner)
-    def get_param_ref(self, param: ParamType) -> Hashable:
+    def get_optimizer_weights(self) -> Mapping[str, Any]:
+        optimizer_name_weights = {}
+        for name, optim in self._named_optimizers.items():
+            optim_state_dict = optim.state_dict()
+            optim_state_dict_cpu = copy_torch_tensors(optim_state_dict, device="cpu")
+            optimizer_name_weights[name] = optim_state_dict_cpu
+        return optimizer_name_weights
+
+    @override(Learner)
+    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
+        for name, weight_dict in weights.items():
+            if name not in self._named_optimizers:
+                raise ValueError(
+                    f"Optimizer {name} in weights is not known."
+                    f"Known optimizers are {self._named_optimizers.keys()}"
+                )
+            optim = self._named_optimizers[name]
+            weight_dict_correct_device = copy_torch_tensors(
+                weight_dict, device=self._device
+            )
+            optim.load_state_dict(weight_dict_correct_device)
+
+    @override(Learner)
+    def get_param_ref(self, param: Param) -> Hashable:
         return param
 
     @override(Learner)
-    def get_parameters(self, module: RLModule) -> Sequence[ParamType]:
+    def get_parameters(self, module: RLModule) -> Sequence[Param]:
         return list(module.parameters())
 
     @override(Learner)
@@ -154,14 +244,14 @@ class TorchLearner(Learner):
         """Builds the TorchLearner.
 
         This method is specific to TorchLearner. Before running super() it will
-        initialzed the device properly based on use_gpu and distributed flags, so that
-        _make_module() can place the created module on the correct device. After
-        running super() it will wrap the module in a TorchDDPRLModule if distributed is
-        set.
+        initialze the device properly based on the `_use_gpu` and `_distributed`
+        flags, so that `_make_module()` can place the created module on the correct
+        device. After running super() it will wrap the module in a TorchDDPRLModule
+        if `_distributed` is True.
         """
-        # TODO (Kourosh): How do we handle model parallism?
+        # TODO (Kourosh): How do we handle model parallelism?
         # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
-        # api in ray.train but allow for session to be None without any errors raised.
+        #  API in ray.train but allow for session to be None without any errors raised.
         if self._use_gpu:
             # get_device() returns the 0th device if
             # it is called from outside of a Ray Train session. Its necessary to give
@@ -183,20 +273,39 @@ class TorchLearner(Learner):
             self._device = torch.device("cpu")
 
         super().build()
-        # if the module is a MultiAgentRLModule and nn.Module we can simply assume
+
+        # Maybe torch compile forward methods.
+        compile_config = self._framework_hyperparameters.torch_compile_cfg
+        if compile_config is not None:
+            for module in self._module._rl_modules.values():
+                if isinstance(module, TorchRLModule):
+                    module.compile(compile_config)
+
+        self._make_modules_ddp_if_necessary()
+
+    @OverrideToImplementCustomLogic
+    def _make_modules_ddp_if_necessary(self) -> None:
+        """Default logic for (maybe) making all Modules within self._module DDP."""
+
+        # If the module is a MultiAgentRLModule and nn.Module we can simply assume
         # all the submodules are registered. Otherwise, we need to loop through
         # each submodule and move it to the correct device.
         # TODO (Kourosh): This can result in missing modules if the user does not
-        # register them in the MultiAgentRLModule. We should find a better way to
-        # handle this.
+        #  register them in the MultiAgentRLModule. We should find a better way to
+        #  handle this.
         if self._distributed:
+            # Single agent module: Convert to `TorchDDPRLModule`.
             if isinstance(self._module, TorchRLModule):
                 self._module = TorchDDPRLModule(self._module)
+            # Multi agent module: Convert each submodule to `TorchDDPRLModule`.
             else:
+                assert isinstance(self._module, MultiAgentRLModule)
                 for key in self._module.keys():
-                    if isinstance(self._module[key], TorchRLModule):
+                    sub_module = self._module[key]
+                    if isinstance(sub_module, TorchRLModule):
+                        # Wrap and override the module ID key in self._module.
                         self._module.add_module(
-                            key, TorchDDPRLModule(self._module[key]), override=True
+                            key, TorchDDPRLModule(sub_module), override=True
                         )
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
@@ -233,3 +342,23 @@ class TorchLearner(Learner):
             for key in module.keys():
                 if isinstance(module[key], torch.nn.Module):
                     module[key].to(self._device)
+
+    @override(Learner)
+    def _get_tensor_variable(
+        self, value, dtype=None, trainable=False
+    ) -> "torch.Tensor":
+        return torch.tensor(
+            value,
+            requires_grad=trainable,
+            device=self._device,
+            dtype=(
+                dtype
+                or (
+                    torch.float32
+                    if isinstance(value, float)
+                    else torch.int32
+                    if isinstance(value, int)
+                    else None
+                )
+            ),
+        )

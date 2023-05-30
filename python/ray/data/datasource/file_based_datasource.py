@@ -21,7 +21,6 @@ from typing import (
 import numpy as np
 
 from ray.air._internal.remote_storage import _is_local_windows_path
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
@@ -63,7 +62,7 @@ PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 @DeveloperAPI
 class BlockWritePathProvider:
     """Abstract callable that provides concrete output paths when writing
-    datastream blocks.
+    dataset blocks.
 
     Current subclasses:
         DefaultBlockWritePathProvider
@@ -74,32 +73,32 @@ class BlockWritePathProvider:
         base_path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        datastream_uuid: Optional[str] = None,
+        dataset_uuid: Optional[str] = None,
         block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
         """
-        Resolves and returns the write path for the given datastream block. When
+        Resolves and returns the write path for the given dataset block. When
         implementing this method, care should be taken to ensure that a unique
-        path is provided for every datastream block.
+        path is provided for every dataset block.
 
         Args:
-            base_path: The base path to write the datastream block out to. This is
-                expected to be the same for all blocks in the datastream, and may
+            base_path: The base path to write the dataset block out to. This is
+                expected to be the same for all blocks in the dataset, and may
                 point to either a directory or file prefix.
             filesystem: The filesystem implementation that will be used to
                 write a file out to the write path returned.
-            datastream_uuid: Unique identifier for the datastream that this block
+            dataset_uuid: Unique identifier for the dataset that this block
                 belongs to.
             block: The block to write.
             block_index: Ordered index of the block to write within its parent
-                datastream.
+                dataset.
             file_format: File format string for the block that can be used as
                 the file extension in the write path returned.
 
         Returns:
-            The datastream block write path.
+            The dataset block write path.
         """
         raise NotImplementedError
 
@@ -108,7 +107,7 @@ class BlockWritePathProvider:
         base_path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        datastream_uuid: Optional[str] = None,
+        dataset_uuid: Optional[str] = None,
         block: Optional[Block] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
@@ -116,7 +115,7 @@ class BlockWritePathProvider:
         return self._get_write_path_for_block(
             base_path,
             filesystem=filesystem,
-            datastream_uuid=datastream_uuid,
+            dataset_uuid=dataset_uuid,
             block=block,
             block_index=block_index,
             file_format=file_format,
@@ -126,8 +125,8 @@ class BlockWritePathProvider:
 @DeveloperAPI
 class DefaultBlockWritePathProvider(BlockWritePathProvider):
     """Default block write path provider implementation that writes each
-    datastream block out to a file of the form:
-    {base_path}/{datastream_uuid}_{block_index}.{file_format}
+    dataset block out to a file of the form:
+    {base_path}/{dataset_uuid}_{block_index}.{file_format}
     """
 
     def _get_write_path_for_block(
@@ -135,12 +134,12 @@ class DefaultBlockWritePathProvider(BlockWritePathProvider):
         base_path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-        datastream_uuid: Optional[str] = None,
+        dataset_uuid: Optional[str] = None,
         block: Optional[ObjectRef[Block]] = None,
         block_index: Optional[int] = None,
         file_format: Optional[str] = None,
     ) -> str:
-        suffix = f"{datastream_uuid}_{block_index:06}.{file_format}"
+        suffix = f"{dataset_uuid}_{block_index:06}.{file_format}"
         # Uses POSIX path for cross-filesystem compatibility, since PyArrow
         # FileSystem paths are always forward slash separated, see:
         # https://arrow.apache.org/docs/python/filesystems.html
@@ -190,7 +189,7 @@ class FileExtensionFilter(PathPartitionFilter):
 
 
 @DeveloperAPI
-class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
+class FileBasedDatasource(Datasource):
     """File-based datasource, for reading and writing files.
 
     This class should not be used directly, and should instead be subclassed
@@ -277,7 +276,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         blocks: Iterable[Block],
         ctx: TaskContext,
         path: str,
-        datastream_uuid: str,
+        dataset_uuid: str,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -332,7 +331,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         write_path = block_path_provider(
             path,
             filesystem=filesystem,
-            datastream_uuid=datastream_uuid,
+            dataset_uuid=dataset_uuid,
             block=block,
             block_index=ctx.task_idx,
             file_format=file_format,
@@ -427,6 +426,7 @@ class _FileBasedDatasourceReader(Reader):
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
 
+        ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
         reader_args = self._reader_args
         partitioning = self._partitioning
@@ -447,9 +447,9 @@ class _FileBasedDatasourceReader(Reader):
             read_paths: List[str],
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
+            DataContext._set_current(ctx)
             logger.debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
-            ctx = DataContext.get_current()
             output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
             )

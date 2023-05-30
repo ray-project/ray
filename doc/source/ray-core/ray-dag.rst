@@ -40,12 +40,14 @@ functions to form more complex DAGs.
 Any IR node can be executed directly ``dag_node.execute()`` that acts as root
 of the DAG, where all other non-reachable nodes from the root will be igored.
 
-.. tabbed:: Python
+.. tab-set::
 
-    .. literalinclude:: ./doc_code/ray-dag.py
-      :language: python
-      :start-after: __dag_tasks_begin__
-      :end-before: __dag_tasks_end__
+    .. tab-item:: Python
+
+        .. literalinclude:: ./doc_code/ray-dag.py
+          :language: python
+          :start-after: __dag_tasks_begin__
+          :end-before: __dag_tasks_end__
 
 
 Ray DAG with classes and class methods
@@ -59,13 +61,15 @@ function calls specific to the parent actor instance.
 DAG IR nodes generated from a function, class or classmethod can be combined
 together to form a DAG.
 
-.. tabbed:: Python
+.. tab-set::
 
-    .. literalinclude:: ./doc_code/ray-dag.py
-      :language: python
-      :start-after: __dag_actors_begin__
-      :end-before: __dag_actors_end__
-          
+    .. tab-item:: Python
+
+        .. literalinclude:: ./doc_code/ray-dag.py
+          :language: python
+          :start-after: __dag_actors_begin__
+          :end-before: __dag_actors_end__
+
 
 
 Ray DAG with custom InputNode
@@ -75,12 +79,14 @@ Ray DAG with custom InputNode
 runtime. It should be used within a context manager with no args, and called
 as args of ``dag_node.execute()``
 
-.. tabbed:: Python
+.. tab-set::
 
-    .. literalinclude:: ./doc_code/ray-dag.py
-      :language: python
-      :start-after: __dag_input_node_begin__
-      :end-before: __dag_input_node_end__
+    .. tab-item:: Python
+
+        .. literalinclude:: ./doc_code/ray-dag.py
+          :language: python
+          :start-after: __dag_input_node_begin__
+          :end-before: __dag_input_node_end__
 
 More Resources
 --------------

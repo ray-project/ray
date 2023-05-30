@@ -99,7 +99,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*periodical_runner=*/&pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
-      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size());
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+      /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_shared<GcsPublisher>(std::move(inner_publisher));
 }
@@ -325,6 +326,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      main_service_,
       scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
@@ -556,7 +558,7 @@ void GcsServer::InitRuntimeEnvManager() {
       main_service_,
       *runtime_env_manager_, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(main_service_, task, delay_ms);
+        return execute_after(main_service_, task, std::chrono::milliseconds(delay_ms));
       });
   runtime_env_service_ =
       std::make_unique<rpc::RuntimeEnvGrpcService>(main_service_, *runtime_env_handler_);
@@ -657,6 +659,7 @@ void GcsServer::InstallEventListeners() {
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->RemoveSubscriberFrom(worker_id.Binary());
+        gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
       });
 
   // Install job event listeners.
@@ -699,7 +702,8 @@ void GcsServer::RecordMetrics() const {
   execute_after(
       main_service_,
       [this] { RecordMetrics(); },
-      (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
+      std::chrono::milliseconds(RayConfig::instance().metrics_report_interval_ms() /
+                                2) /* milliseconds */);
 }
 
 void GcsServer::DumpDebugStateToFile() const {

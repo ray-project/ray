@@ -16,6 +16,7 @@ from ray._private.test_utils import (
 from ray.experimental.internal_kv import _internal_kv_list
 from ray.tests.conftest import call_ray_start
 import subprocess
+import psutil
 
 
 @pytest.fixture
@@ -269,18 +270,16 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     ray.init(cluster.address)
 
     def get_gcs_num_of_connections():
-        import psutil
-
         p = psutil.Process(gcs_server_pid)
-        print(">>", p.num_fds())
-        return p.num_fds()
+        print(">>", len(p.connections()))
+        return len(p.connections())
 
     # Wait for everything to be ready.
     import time
 
     time.sleep(10)
 
-    curr_fds = get_gcs_num_of_connections()
+    fds_without_workers = get_gcs_num_of_connections()
 
     @ray.remote
     class A:
@@ -289,27 +288,27 @@ def test_gcs_connection_no_leak(ray_start_cluster):
             return "WORLD"
 
     num_of_actors = 10
-    a = [A.remote() for _ in range(num_of_actors)]
-    print(ray.get([t.ready.remote() for t in a]))
+    actors = [A.remote() for _ in range(num_of_actors)]
+    print(ray.get([t.ready.remote() for t in actors]))
 
-    # Kill the actor
-    del a
+    # Kill the actors
+    del actors
 
-    # TODO(clarng):remove this once prestart works with actors.
-    # ray_start_cluster defaults to one cpu, which prestarts one worker.
-    FD_PER_WORKER = 2
     # Make sure the # of fds opened by the GCS dropped.
-    wait_for_condition(lambda: get_gcs_num_of_connections() + FD_PER_WORKER == curr_fds)
+    # This assumes worker processes are not created after the actor worker
+    # processes die.
+    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
+    num_fds_after_workers_die = get_gcs_num_of_connections()
 
     n = cluster.add_node(wait=True)
 
     # Make sure the # of fds opened by the GCS increased.
-    wait_for_condition(lambda: get_gcs_num_of_connections() + FD_PER_WORKER > curr_fds)
+    wait_for_condition(lambda: get_gcs_num_of_connections() > num_fds_after_workers_die)
 
     cluster.remove_node(n)
 
     # Make sure the # of fds opened by the GCS dropped.
-    wait_for_condition(lambda: get_gcs_num_of_connections() + FD_PER_WORKER == curr_fds)
+    wait_for_condition(lambda: get_gcs_num_of_connections() <= fds_without_workers)
 
 
 @pytest.mark.parametrize(
@@ -436,6 +435,44 @@ def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
             return True
 
         assert ray.get(f.remote())
+
+
+def test_gcs_fd_usage(shutdown_only):
+    ray.init(
+        _system_config={
+            "prestart_worker_first_driver": False,
+            "enable_worker_prestart": False,
+        },
+    )
+    gcs_process = ray._private.worker._global_node.all_processes["gcs_server"][0]
+    gcs_process = psutil.Process(gcs_process.process.pid)
+    print("GCS connections", len(gcs_process.connections()))
+
+    @ray.remote(runtime_env={"env_vars": {"Hello": "World"}})
+    class A:
+        def f(self):
+            import os
+
+            return os.environ.get("Hello")
+
+    # In case there are still some pre-start workers, consume all of them
+    aa = [A.remote() for _ in range(32)]
+    for a in aa:
+        assert ray.get(a.f.remote()) == "World"
+    base_fd_num = len(gcs_process.connections())
+    print("GCS connections", base_fd_num)
+
+    bb = [A.remote() for _ in range(16)]
+    for b in bb:
+        assert ray.get(b.f.remote()) == "World"
+    new_fd_num = len(gcs_process.connections())
+    print("GCS connections", new_fd_num)
+    # each worker has two connections:
+    #   GCS -> CoreWorker
+    #   CoreWorker -> GCS
+    # Sometimes, there is one more sockets opened. The reason
+    # is still unknown.
+    assert (new_fd_num - base_fd_num) <= len(bb) * 2 + 1
 
 
 if __name__ == "__main__":

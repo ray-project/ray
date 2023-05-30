@@ -1,9 +1,9 @@
-Ray Dataset Ingest into AIR Trainers
-=====================================
+Ray Data Ingest into AIR Trainers
+=================================
 
 .. seealso::
 
-    See this :ref:`AIR Dataset ingest guide <air-configure-ingest>` for usage examples.
+    See this :ref:`AIR Data ingest guide <air-configure-ingest>` for usage examples.
 
 .. currentmodule:: ray
 

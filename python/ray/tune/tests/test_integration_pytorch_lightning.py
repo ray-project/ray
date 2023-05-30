@@ -4,7 +4,7 @@ import tempfile
 import unittest
 import pytorch_lightning as pl
 import torch
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 
 from torch.utils.data import DataLoader, Dataset
 

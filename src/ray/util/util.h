@@ -87,11 +87,10 @@ inline std::string AppendToEachLine(const std::string &str,
   return ss.str();
 }
 
-inline int64_t current_time_s() {
-  std::chrono::milliseconds ms_since_epoch =
-      std::chrono::duration_cast<std::chrono::seconds>(
-          std::chrono::steady_clock::now().time_since_epoch());
-  return ms_since_epoch.count();
+inline int64_t current_sys_time_s() {
+  std::chrono::seconds s_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(
+      std::chrono::system_clock::now().time_since_epoch());
+  return s_since_epoch.count();
 }
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The

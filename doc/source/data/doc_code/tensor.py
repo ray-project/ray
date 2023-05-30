@@ -1,65 +1,31 @@
 # flake8: noqa
 
+import ray
 from typing import Dict, Any
 
 # fmt: off
 # __create_range_begin__
-import ray
-
 # Create a Dataset of tensors.
 ds = ray.data.range_tensor(10000, shape=(64, 64))
 # -> Dataset(num_blocks=200, num_rows=10000,
-#            schema={__value__: numpy.ndarray(shape=(64, 64), dtype=int64)})
+#               schema={data: numpy.ndarray(shape=(64, 64), dtype=int64)})
 
-ds.take(2)
-# -> [array([[0, 0, 0, ..., 0, 0, 0],
-#            [0, 0, 0, ..., 0, 0, 0],
-#            [0, 0, 0, ..., 0, 0, 0],
-#            ...,
-#            [0, 0, 0, ..., 0, 0, 0],
-#            [0, 0, 0, ..., 0, 0, 0],
-#            [0, 0, 0, ..., 0, 0, 0]]),
-#     array([[1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1],
-#            ...,
-#            [1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1]])]
+ds.take(1)
+# -> {'data': array([[0, 0, 0, ..., 0, 0, 0],
+#                    [0, 0, 0, ..., 0, 0, 0],
+#                    [0, 0, 0, ..., 0, 0, 0],
+#                    ...,
+#                    [0, 0, 0, ..., 0, 0, 0],
+#                    [0, 0, 0, ..., 0, 0, 0],
+#                    [0, 0, 0, ..., 0, 0, 0]])}
 # __create_range_end__
 
-# __create_pandas_begin__
-import ray
-
+# __create_pandas_2_begin__
 import pandas as pd
 import numpy as np
 
-# Start with a tabular base dataset.
-ds = ray.data.range_table(1000)
-
-# Create a single TensorArray column.
-def single_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
-    bs = len(batch)
-
-    # Lists of ndarrays are automatically cast to TensorArray.
-    arr = [np.zeros((128, 128, 3)) for _ in range(bs)]
-    return pd.DataFrame({"__value__": arr})
-
-    ## Alternatively, manually construct a TensorArray from a single ndarray.
-    # from ray.data.extensions.tensor_extension import TensorArray
-    # arr = TensorArray(np.zeros((bs, 128, 128, 3), dtype=np.int64))
-    # return pd.DataFrame({"__value__": arr})
-
-
-ds.map_batches(single_col_udf)
-ds.materialize()
-# -> Dataset(num_blocks=17, num_rows=1000,
-#            schema={__value__: TensorDtype(shape=(128, 128, 3), dtype=int64)})
-# __create_pandas_end__
-
-# __create_pandas_2_begin__
 # Create multiple TensorArray columns.
-def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
+def gen_image_and_embed(batch: pd.DataFrame) -> pd.DataFrame:
     bs = len(batch)
 
     # Lists of ndarrays are automatically cast to TensorArray.
@@ -72,36 +38,31 @@ def multi_col_udf(batch: pd.DataFrame) -> pd.DataFrame:
     # embed = TensorArray(np.zeros((bs, 256,), dtype=np.uint8))
     # return pd.DataFrame({"image": image, "embed": embed})
 
-
-ds.map_batches(multi_col_udf)
+ds.map_batches(gen_image_and_embed, batch_format="pandas")
 ds.materialize()
 # -> Dataset(num_blocks=17, num_rows=1000,
-#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=int64),
-#                    embed: TensorDtype(shape=(256,), dtype=uint8)})
+#               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=int64),
+#                       embed: numpy.ndarray(shape=(256,), dtype=uint8)})
 # __create_pandas_2_end__
 
 # __create_numpy_begin__
-import ray
-
 # From in-memory numpy data.
 ray.data.from_numpy(np.zeros((1000, 128, 128, 3), dtype=np.int64))
 # -> Dataset(num_blocks=1, num_rows=1000,
-#            schema={__value__: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
+#               schema={data: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
 
 # From saved numpy files.
 ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
+#               schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 # __create_numpy_end__
 
 # __create_parquet_1_begin__
-import ray
-
 # Reading previously saved Tensor data works out of the box.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
-#                    label: string})
+#               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
+#                       label: string})
 
 ds.take(1)
 # -> [{'image':
@@ -126,7 +87,6 @@ import shutil
 shutil.rmtree("/tmp/some_path", ignore_errors=True)
 
 # __create_parquet_2_begin__
-import ray
 import numpy as np
 import pandas as pd
 
@@ -198,7 +158,7 @@ ds.materialize()
 # __create_images_begin__
 ds = ray.data.read_images("example://image-datasets/simple")
 # -> Dataset(num_blocks=3, num_rows=3, 
-#            schema={__value__: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
+#               schema={data: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
 
 ds.take(1)
 # -> [array([[[ 88,  70,  68],
@@ -210,93 +170,11 @@ ds.take(1)
 #            [166, 148,  82]]], dtype=uint8)]
 # __create_images_end__
 
-
-# __consume_native_begin__
-import ray
-
-# Read a single-column example dataset.
-ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
-
-def add_one(batch: np.ndarray) -> np.ndarray:
-    return batch + 1
-
-# This processes batches in numpy.ndarray format.
-ds = ds.map_batches(add_one)
-
-# This returns batches in numpy.ndarray format.
-next(ds.iter_batches())
-# -> array([[[1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1],
-#            ...,
-#            [1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1]],
-#
-#           ...,
-#
-#           [[1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1],
-#            ...,
-#            [1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1]]], dtype=uint8)
-# __consume_native_end__
-
-# __consume_native_2_begin__
-import ray
-
-# Read a multi-column example dataset.
-ds = ray.data.read_parquet("example://parquet_images_mini")
-# -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
-#                    label: string})
-
-def add_one(batch: pd.DataFrame) -> pd.DataFrame:
-    batch["image"] += 1
-    return batch
-
-# This processes batches in pd.DataFrame format.
-ds = ds.map_batches(add_one)
-
-# This returns pandas batches with List[np.ndarray] columns.
-next(ds.iter_batches())
-# ->                                             image label
-# 0  [[[ 96,  76,  61], [ 92,  72,  57], [ 92,  72,...   cat
-# 1  [[[ 38,  38,  39], [ 39,  39,  40], [ 39,  39,...   cat
-# 2  [[[ 47,  39,  33], [ 43,  36,  29], [ 43,  36,...   dog
-# __consume_native_2_end__
-
-# __consume_pandas_begin__
-import ray
-
-# Read a single-column example dataset.
-ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
-
-def add_one(batch: pd.DataFrame) -> pd.DataFrame:
-    batch["__value__"] += 1
-    return batch
-
-# This processes batches in pd.DataFrame format.
-ds = ds.map_batches(add_one, batch_format="pandas")
-
-# This returns pandas batches with List[np.ndarray] columns.
-next(ds.iter_batches(batch_format="pandas"))
-# ->                                            __value__
-# 0  [[  1,   1,   1,   1,   1,   1,   1,   1,   1,...
-# 1  [[  1,   1,   1,   1,   1,   1,   1,   1,   1,...
-# 2  [[  1,   1,   1,   1,   1,   1,   1,   1,   1,...
-# __consume_pandas_end__
-
 # __consume_pandas_2_begin__
-import ray
-
-# Read a multi-column example dataset.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
-#                    label: string})
+#               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
+#                       label: string})
 
 def add_one(batch: pd.DataFrame) -> pd.DataFrame:
     batch["image"] += 1
@@ -313,54 +191,24 @@ next(ds.iter_batches(batch_format="pandas"))
 # 2  [[[ 47,  39,  33], [ 43,  36,  29], [ 43,  36,...   dog
 # __consume_pandas_2_end__
 
-# __consume_pyarrow_begin__
-import ray
+# __consume_pyarrow_2_begin__
 from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-import pyarrow
-
-# Read a single-column example dataset.
-ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
-
-def add_one(batch: pyarrow.Table) -> pyarrow.Table:
-    np_col = np.array(
-        [
-            np.ndarray((28, 28), buffer=buf, dtype=np.uint8)
-            for buf in batch.column("__value__")
-        ]
-    )
-    np_col += 1
-
-    return batch.set_column(
-        batch._ensure_integer_index("__value__"),
-        "__value__",
-        ArrowTensorArray.from_numpy(np_col),
-    )
-
-# This processes batches in pyarrow.Table format.
-ds = ds.map_batches(add_one, batch_format="pyarrow")
-
-# This returns batches in pyarrow.Table format.
-next(ds.iter_batches(batch_format="pyarrow"))
-# pyarrow.Table
-# __value__: extension<arrow.py_extension_type<ArrowTensorType>>
-# ----
-# __value__: [[[1,1,1,1,1,1,1,1,1,1,...],...,[1,1,1,1,1,1,1,1,1,1,...]]]
-# __consume_pyarrow_end__
-
-# __consume_pyarrow_2_begin__
-# Read a multi-column example dataset.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8), label: object})
+#               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
+#                       label: object})
 
-def add_one(batch: pyarrow.Table) -> pyarrow.Table:
+def add_one(batch: pa.Table) -> pa.Table:
+
+    def to_numpy(buf):
+        if not isinstance(buf, np.ndarray):
+            buf = buf.as_py()
+        return buf
+
     np_col = np.array(
         [
-            np.ndarray((128, 128, 3), buffer=buf, dtype=np.uint8)
-            for buf in batch.column("image")
+            to_numpy(buf) for buf in batch.column("image")
         ]
     )
     np_col += 1
@@ -384,43 +232,11 @@ next(ds.iter_batches(batch_format="pyarrow"))
 # label: [["cat"]]
 # __consume_pyarrow_2_end__
 
-# __consume_numpy_begin__
-import ray
-
-# Read a single-column example dataset.
-ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
-
-def add_one(batch: np.ndarray) -> np.ndarray:
-    batch += 1
-    return batch
-
-# This processes batches in np.ndarray format.
-ds = ds.map_batches(add_one, batch_format="numpy")
-
-# This returns batches in np.ndarray format.
-next(ds.iter_batches(batch_format="numpy"))
-# -> array([[[1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1],
-#            ...,
-#            [1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1]],
-#
-#           ...,
-#
-#           [[1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1],
-#            ...,
-#            [1, 1, 1, ..., 1, 1, 1],
-#            [1, 1, 1, ..., 1, 1, 1]]], dtype=uint8)
-# __consume_numpy_end__
-
 # __consume_numpy_2_begin__
-# Read a multi-column example dataset.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8), label: object})
+#               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
+#                       label: object})
 
 def add_one(batch: Dict[str, Any]) -> Dict[str, Any]:
     assert isinstance(batch, dict)
@@ -456,7 +272,8 @@ shutil.rmtree("/tmp/some_path")
 # Read a multi-column example dataset.
 ds = ray.data.read_parquet("example://parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
-#            schema={image: TensorDtype(shape=(128, 128, 3), dtype=uint8), label: object})
+#               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
+#                       label: object})
 
 # You can write the dataset to Parquet.
 ds.write_parquet("/tmp/some_path")
@@ -475,15 +292,15 @@ shutil.rmtree("/tmp/some_path")
 # Read a single-column example dataset.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
-#            schema={__value__: numpy.ndarray(shape=(28, 28), dtype=uint8)})
+#               schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 
 # You can write the dataset to Parquet.
-ds.write_numpy("/tmp/some_path")
+ds.write_numpy("/tmp/some_path", column="data")
 
 # And you can read it back.
 read_ds = ray.data.read_numpy("/tmp/some_path")
 print(read_ds.schema())
-# -> __value__: extension<arrow.py_extension_type<ArrowTensorType>>
+# -> data: extension<arrow.py_extension_type<ArrowTensorType>>
 # __write_2_end__
 
 # fmt: off
@@ -493,8 +310,8 @@ ragged_array = np.array([np.ones((2, 2)), np.ones((3, 3))], dtype=object)
 df = pd.DataFrame({"feature": ragged_array, "label": [1, 1]})
 ds = ray.data.from_pandas([df, df])
 # -> Dataset(num_blocks=2, num_rows=4,
-#            schema={feature: TensorDtype(shape=(None, None), dtype=float64), 
-#            label: int64})
+#               schema={feature: numpy.ndarray(shape=(None, None), dtype=float64), 
+#                       label: int64})
 
 ds.take(2)
 # -> [{'feature': array([[1., 1.],
@@ -508,7 +325,7 @@ ds.take(2)
 
 # fmt: off
 # __tf_variable_shaped_tensors_begin___
-# Convert Ray Dataset to a TensorFlow Dataset.
+# Convert Dataset to a TensorFlow Dataset.
 tf_ds = ds.to_tf(
     batch_size=2,
     feature_columns="feature",

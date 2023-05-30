@@ -49,11 +49,14 @@ void GcsSubscriberClient::PubsubLongPolling(
     const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
   rpc::GcsSubscriberPollRequest req;
   req.set_subscriber_id(request.subscriber_id());
+  req.set_max_processed_sequence_id(request.max_processed_sequence_id());
+  req.set_publisher_id(request.publisher_id());
   rpc_client_->GcsSubscriberPoll(
       req,
       [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
         rpc::PubsubLongPollingReply reply;
         *reply.mutable_pub_messages() = poll_reply.pub_messages();
+        *reply.mutable_publisher_id() = poll_reply.publisher_id();
         callback(status, reply);
       });
 }
@@ -125,7 +128,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
 
-  RAY_LOG(DEBUG) << "GcsClient connected.";
+  RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
+                 << options_.gcs_port_;
   return Status::OK();
 }
 
@@ -142,11 +146,8 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
 Status PythonGcsClient::Connect() {
-  grpc::ChannelArguments arguments;
-  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
-  channel_ = rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
+  channel_ =
+      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
@@ -393,6 +394,12 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
     return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
+}
+
+std::unordered_map<std::string, double> PythonGetResourcesTotal(
+    const rpc::GcsNodeInfo &node_info) {
+  return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
+                                                 node_info.resources_total().end());
 }
 
 }  // namespace gcs

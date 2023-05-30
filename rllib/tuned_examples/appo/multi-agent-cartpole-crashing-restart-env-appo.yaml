@@ -2,7 +2,7 @@ multi-agent-cartpole-crashing-appo:
     env: ray.rllib.examples.env.cartpole_crashing.MultiAgentCartPoleCrashing
     run: APPO
     stop:
-        evaluation/episode_reward_mean: 300.0
+        evaluation/sampler_results/episode_reward_mean: 300.0
     config:
         # Works for both torch and tf.
         framework: torch

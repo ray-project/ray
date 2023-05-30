@@ -10,6 +10,7 @@ from collections import OrderedDict
 import ray
 from ray import tune
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.tune.logger import DEFAULT_LOGGERS, LoggerCallback, LegacyLoggerCallback
 from ray.tune.execution.ray_trial_executor import (
@@ -17,7 +18,6 @@ from ray.tune.execution.ray_trial_executor import (
     _ExecutorEventType,
     RayTrialExecutor,
 )
-from ray.tune.result import TRAINING_ITERATION
 from ray.tune.syncer import SyncConfig, SyncerCallback
 
 from ray.tune.callback import warnings

@@ -1,10 +1,10 @@
-"""Utility for debugging object store memory eager deletion in Datastreams.
+"""Utility for debugging object store memory eager deletion in Datasets.
 
 NOTE: the performance overhead of tracing object allocation is fairly substantial.
 This is meant to use in unit test for debugging. Please do not enable in production,
 without performance optimization.
 
-Enable with RAY_DATASET_TRACE_ALLOCATIONS=1.
+Enable with RAY_DATA_TRACE_ALLOCATIONS=1.
 
 Basic usage is to call `trace_allocation` each time a new object is created, and call
 `trace_deallocation` when an object should be disposed of. When the workload is

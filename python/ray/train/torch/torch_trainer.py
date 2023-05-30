@@ -56,7 +56,7 @@ class TorchTrainer(DataParallelTrainer):
             # Get dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Session returns the Ray Dataset shard for the given key.
+            # Session returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Get the total number of workers executing training.
@@ -129,7 +129,7 @@ class TorchTrainer(DataParallelTrainer):
 
     Example:
 
-        .. testcode::
+        .. code-block:: python
 
             import torch
             import torch.nn as nn
@@ -229,12 +229,6 @@ class TorchTrainer(DataParallelTrainer):
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09   # doctest: +SKIP
 
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
-
-        ...
-
     Args:
 
         train_loop_per_worker: The training function to execute.
@@ -247,7 +241,7 @@ class TorchTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed

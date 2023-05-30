@@ -11,6 +11,7 @@ import click
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step
+from ray_release.byod.build import build_anyscale_byod_images
 from ray_release.config import (
     read_and_validate_release_test_collection,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
@@ -22,6 +23,7 @@ from ray_release.wheels import (
     find_and_wait_for_ray_wheels_url,
     find_ray_wheels_url,
     get_buildkite_repo_branch,
+    parse_commit_from_wheel_url,
 )
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
@@ -44,7 +46,18 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
         "(for internal use)."
     ),
 )
-def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False):
+@click.option(
+    "--run-jailed-tests",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Will run jailed tests."),
+)
+def main(
+    test_collection_file: Optional[str] = None,
+    no_clone_repo: bool = False,
+    run_jailed_tests: bool = False,
+):
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
@@ -131,6 +144,7 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
         frequency=frequency,
         test_attr_regex_filters=test_attr_regex_filters,
         prefer_smoke_tests=prefer_smoke_tests,
+        run_jailed_tests=run_jailed_tests,
     )
     logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:
@@ -138,6 +152,8 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
             "Empty test collection. The selected frequency or filter did "
             "not return any tests to run. Adjust your filters."
         )
+    logger.info("Build anyscale BYOD images")
+    build_anyscale_byod_images([test for test, _ in filtered_tests])
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
@@ -185,6 +201,9 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
             else:
                 this_ray_wheels_url = ray_wheels_url
 
+            ray_commit = parse_commit_from_wheel_url(this_ray_wheels_url)
+            if ray_commit:
+                env.update({"RAY_COMMIT_OF_WHEEL": ray_commit})
             step = get_step(
                 test,
                 report=report,

@@ -1,9 +1,9 @@
 import os
 import uuid
-from collections import Counter
 from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import ray
+from ray.air.execution import FixedResourceManager
 from ray.air.execution._internal import RayActorManager
 from ray.air.execution.resources import (
     ResourceManager,
@@ -20,22 +20,12 @@ class NoopClassCache:
         return trainable_name
 
 
-class NoopResourceManager(ResourceManager):
-    def __init__(self):
-        self.requested_resources = []
-        self.canceled_resource_requests = []
-        self.currently_requested_resources = Counter()
-
-    def request_resources(self, resource_request: ResourceRequest):
-        self.requested_resources.append(resource_request)
-        self.currently_requested_resources[resource_request] += 1
-
-    def cancel_resource_request(self, resource_request: ResourceRequest):
-        self.canceled_resource_requests.append(resource_request)
-        self.currently_requested_resources[resource_request] -= 1
-
-    def has_resources_ready(self, resource_request: ResourceRequest) -> bool:
-        return True
+class BudgetResourceManager(FixedResourceManager):
+    def __init__(self, total_resources: Dict[str, float]):
+        self._allow_strict_pack = True
+        self._total_resources = total_resources
+        self._requested_resources = []
+        self._used_resources = []
 
 
 class NoopActorManager(RayActorManager):
@@ -68,6 +58,7 @@ class NoopActorManager(RayActorManager):
         self,
         tracked_actor: TrackedActor,
         kill: bool = False,
+        stop_future: Optional[ray.ObjectRef] = None,
     ) -> None:
         self.removed_actors.append(tracked_actor)
 
@@ -106,14 +97,18 @@ class TestingTrial(Trial):
         pass
 
 
-def create_execution_test_objects(tmpdir, max_pending_trials: int = 8):
+def create_execution_test_objects(
+    tmpdir, max_pending_trials: int = 8, resources: Optional[Dict[str, float]] = None
+):
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = str(max_pending_trials)
+
+    resources = resources or {"CPU": 4}
 
     tune_controller = TuneController(
         experiment_path=str(tmpdir),
         reuse_actors=True,
     )
-    resource_manager = NoopResourceManager()
+    resource_manager = BudgetResourceManager(total_resources=resources)
     actor_manger = NoopActorManager(resource_manager)
     tune_controller._actor_manager = actor_manger
     tune_controller._class_cache = NoopClassCache()

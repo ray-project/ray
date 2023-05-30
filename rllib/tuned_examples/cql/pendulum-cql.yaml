@@ -6,7 +6,7 @@ pendulum-cql:
     env: Pendulum-v1
     run: CQL
     stop:
-        evaluation/episode_reward_mean: -700
+        evaluation/sampler_results/episode_reward_mean: -700
         timesteps_total: 800000
     config:
         # Works for both torch and tf.

@@ -80,6 +80,7 @@ Batch Prediction API
     batch_predictor.BatchPredictor.predict
     batch_predictor.BatchPredictor.predict_pipelined
 
+.. _air_framework_predictors:
 
 Built-in Predictors for Library Integrations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -91,6 +92,6 @@ Built-in Predictors for Library Integrations
     ~lightgbm.LightGBMPredictor
     ~tensorflow.TensorflowPredictor
     ~torch.TorchPredictor
-    ~huggingface.HuggingFacePredictor
+    ~huggingface.TransformersPredictor
     ~sklearn.SklearnPredictor
     ~rl.RLPredictor

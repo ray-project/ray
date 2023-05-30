@@ -146,34 +146,37 @@ Below, we provide examples of using common frameworks to do batch inference for 
 Tabular
 ~~~~~~~
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: examples/xgboost_batch_prediction.py
-        :language: python
+    .. tab-item:: XGBoost
 
-.. tabbed:: Pytorch
+        .. literalinclude:: examples/xgboost_batch_prediction.py
+            :language: python
 
-    .. literalinclude:: examples/pytorch_tabular_batch_prediction.py
-        :language: python
+    .. tab-item:: Pytorch
 
-.. tabbed:: Tensorflow
+        .. literalinclude:: examples/pytorch_tabular_batch_prediction.py
+            :language: python
 
-    .. literalinclude:: examples/tf_tabular_batch_prediction.py
-        :language: python
+    .. tab-item:: Tensorflow
 
+        .. literalinclude:: examples/tf_tabular_batch_prediction.py
+            :language: python
 
 Image
 ~~~~~
 
-.. tabbed:: Pytorch
+.. tab-set::
 
-    .. literalinclude:: examples/torch_image_batch_pretrained.py
-        :language: python
+    .. tab-item:: Pytorch
+
+        .. literalinclude:: examples/torch_image_batch_pretrained.py
+            :language: python
 
 
-.. tabbed:: Tensorflow
+    .. tab-item:: Tensorflow
 
-    Coming soon!
+        Coming soon!
 
 Text
 ~~~~

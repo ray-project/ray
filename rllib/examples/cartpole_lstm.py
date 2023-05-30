@@ -105,7 +105,8 @@ if __name__ == "__main__":
     # >>
     # >> while True:
     # >>     a, state_out, _ = algo.compute_single_action(
-    # ..         obs, state, prev_a, prev_r)
+    # ..         obs, state, prev_action=prev_a, prev_reward=prev_r
+    # ..     )
     # >>     obs, reward, done, truncated, _ = env.step(a)
     # >>     if done:
     # >>         obs, info = env.reset()

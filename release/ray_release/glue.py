@@ -1,5 +1,6 @@
 import os
 import time
+import traceback
 from typing import Optional, List, Tuple
 
 from ray_release.alerts.handle import handle_result, require_result
@@ -11,16 +12,14 @@ from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.command_runner.job_runner import JobRunner
 from ray_release.command_runner.command_runner import CommandRunner
 from ray_release.command_runner.anyscale_job_runner import AnyscaleJobRunner
-from ray_release.command_runner.sdk_runner import SDKRunner
+from ray_release.test import Test
 from ray_release.config import (
-    Test,
     DEFAULT_BUILD_TIMEOUT,
     DEFAULT_CLUSTER_TIMEOUT,
     DEFAULT_COMMAND_TIMEOUT,
     DEFAULT_WAIT_FOR_NODES_TIMEOUT,
     RELEASE_PACKAGE_DIR,
     DEFAULT_AUTOSUSPEND_MINS,
-    validate_test,
 )
 from ray_release.template import load_test_cluster_env, load_test_cluster_compute
 from ray_release.exception import (
@@ -32,11 +31,9 @@ from ray_release.exception import (
     PrepareCommandTimeout,
     TestCommandError,
     TestCommandTimeout,
-    LocalEnvSetupError,
     ClusterEnvCreateError,
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
-from ray_release.file_manager.session_controller import SessionControllerFileManager
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, handle_exception
@@ -45,36 +42,16 @@ from ray_release.signal_handling import (
     reset_signal_handling,
     register_handler,
 )
-from ray_release.util import (
-    run_bash_script,
-    get_pip_packages,
-    reinstall_anyscale_dependencies,
-)
 
 type_str_to_command_runner = {
-    "command": SDKRunner,
-    "sdk_command": SDKRunner,
+    "job": JobRunner,
     "anyscale_job": AnyscaleJobRunner,
 }
 
 command_runner_to_cluster_manager = {
-    SDKRunner: FullClusterManager,
     JobRunner: FullClusterManager,
     AnyscaleJobRunner: MinimalClusterManager,
 }
-
-file_manager_str_to_file_manager = {
-    "sdk": SessionControllerFileManager,
-    "job": JobFileManager,
-    "anyscale_job": JobFileManager,
-}
-
-command_runner_to_file_manager = {
-    SDKRunner: JobFileManager,  # Use job file manager per default
-    JobRunner: JobFileManager,
-    AnyscaleJobRunner: JobFileManager,
-}
-
 
 DEFAULT_RUN_TYPE = "anyscale_job"
 TIMEOUT_BUFFER_MINUTES = 15
@@ -99,7 +76,6 @@ def _load_test_configuration(
     smoke_test: bool = False,
     no_terminate: bool = False,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
-    validate_test(test)
     logger.info(f"Test config: {test}")
 
     # Populate result paramaters
@@ -138,20 +114,7 @@ def _load_test_configuration(
         )
 
     cluster_manager_cls = command_runner_to_cluster_manager[command_runner_cls]
-
-    file_manager_str = test["run"].get("file_manager", None)
-    if file_manager_str:
-        if file_manager_str not in file_manager_str_to_file_manager:
-            raise ReleaseTestConfigError(
-                f"Unknown file manager: {file_manager_str}. Must be one of "
-                f"{list(file_manager_str_to_file_manager.keys())}"
-            )
-        file_manager_cls = file_manager_str_to_file_manager[file_manager_str]
-    else:
-        file_manager_cls = command_runner_to_file_manager[command_runner_cls]
-
     logger.info(f"Got command runner cls: {command_runner_cls}")
-    logger.info(f"Got file manager cls: {file_manager_cls}")
     # Extra tags to be set on resources on cloud provider's side
     extra_tags = _get_extra_tags_from_env()
     # We don't need other attributes as they can be derived from the name
@@ -164,13 +127,15 @@ def _load_test_configuration(
     # Instantiate managers and command runner
     try:
         cluster_manager = cluster_manager_cls(
-            test["name"],
+            test,
             anyscale_project,
             smoke_test=smoke_test,
         )
-        file_manager = file_manager_cls(cluster_manager=cluster_manager)
         command_runner = command_runner_cls(
-            cluster_manager, file_manager, working_dir, artifact_path=artifact_path
+            cluster_manager,
+            JobFileManager(cluster_manager=cluster_manager),
+            working_dir,
+            artifact_path=artifact_path,
         )
     except Exception as e:
         raise ReleaseTestSetupError(f"Error setting up release test: {e}") from e
@@ -262,26 +227,6 @@ def _setup_cluster_environment(
     return prepare_cmd, prepare_timeout, build_timeout, cluster_timeout, command_timeout
 
 
-def _setup_local_environment(
-    test: Test,
-    command_runner: CommandRunner,
-    ray_wheels_url: str,
-) -> None:
-    driver_setup_script = test.get("driver_setup", None)
-    if driver_setup_script:
-        try:
-            run_bash_script(driver_setup_script)
-        except Exception as e:
-            raise LocalEnvSetupError(f"Driver setup script failed: {e}") from e
-
-    # Install local dependencies
-    command_runner.prepare_local_env(ray_wheels_url)
-
-    # Re-install anyscale package as local dependencies might have changed
-    # from local env setup
-    reinstall_anyscale_dependencies()
-
-
 def _local_environment_information(
     result: Result,
     cluster_manager: ClusterManager,
@@ -292,10 +237,6 @@ def _local_environment_information(
     cluster_id: Optional[str],
     cluster_env_id: Optional[str],
 ) -> None:
-    pip_packages = get_pip_packages()
-    pip_package_string = "\n".join(pip_packages)
-    logger.info(f"Installed python packages:\n{pip_package_string}")
-
     if isinstance(cluster_manager, FullClusterManager):
         if not no_terminate:
             register_handler(
@@ -348,6 +289,14 @@ def _prepare_remote_environment(
     if prepare_cmd:
         try:
             command_runner.run_prepare_command(prepare_cmd, timeout=prepare_timeout)
+        except CommandError as e:
+            raise PrepareCommandError(e)
+        except CommandTimeout as e:
+            raise PrepareCommandTimeout(e)
+
+    for pre_run_cmd in test.get_byod_pre_run_cmds():
+        try:
+            command_runner.run_prepare_command(pre_run_cmd, timeout=300)
         except CommandError as e:
             raise PrepareCommandError(e)
         except CommandTimeout as e:
@@ -453,21 +402,21 @@ def run_release_test(
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
-
-    buildkite_group(":spiral_note_pad: Loading test configuration")
-    cluster_manager, command_runner, artifact_path = _load_test_configuration(
-        test,
-        anyscale_project,
-        result,
-        ray_wheels_url,
-        smoke_test,
-        no_terminate,
-    )
-
+    command_runner = None
+    cluster_manager = None
     pipeline_exception = None
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
     try:
+        buildkite_group(":spiral_note_pad: Loading test configuration")
+        cluster_manager, command_runner, artifact_path = _load_test_configuration(
+            test,
+            anyscale_project,
+            result,
+            ray_wheels_url,
+            smoke_test,
+            no_terminate,
+        )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
         (
             prepare_cmd,
@@ -483,10 +432,6 @@ def run_release_test(
             cluster_env_id,
         )
 
-        buildkite_group(":nut_and_bolt: Setting up local environment")
-        _setup_local_environment(test, command_runner, ray_wheels_url)
-
-        # Print installed pip packages
         buildkite_group(":bulb: Local environment information")
         _local_environment_information(
             result,
@@ -525,7 +470,6 @@ def run_release_test(
             smoke_test,
             start_time_unix,
         )
-
     except Exception as e:
         logger.exception(e)
         buildkite_open_last()
@@ -540,9 +484,9 @@ def run_release_test(
         result.job_url = command_runner.job_manager.job_url
         result.job_id = command_runner.job_manager.job_id
 
-    result.last_logs = command_runner.get_last_logs()
+    result.last_logs = command_runner.get_last_logs() if command_runner else None
 
-    if not no_terminate:
+    if not no_terminate and cluster_manager:
         buildkite_group(":earth_africa: Terminating cluster")
         cluster_manager.terminate_cluster(wait=False)
 
@@ -570,12 +514,20 @@ def run_release_test(
 
     if pipeline_exception:
         buildkite_group(":rotating_light: Handling errors")
-        exit_code, error_type, runtime = handle_exception(pipeline_exception)
+        exit_code, result_status, runtime = handle_exception(
+            pipeline_exception,
+            result.runtime,
+        )
 
         result.return_code = exit_code.value
-        result.status = error_type
+        result.status = result_status.value
         if runtime is not None:
             result.runtime = runtime
+        try:
+            raise pipeline_exception
+        except Exception:
+            if not result.last_logs:
+                result.last_logs = traceback.format_exc()
 
     buildkite_group(":memo: Reporting results", open=True)
     for reporter in reporters or []:

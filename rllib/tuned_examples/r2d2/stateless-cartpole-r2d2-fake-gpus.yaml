@@ -2,7 +2,7 @@ stateless-cartpole-r2d2:
     env: ray.rllib.examples.env.stateless_cartpole.StatelessCartPole
     run: R2D2
     stop:
-        episode_reward_mean: 150
+        sampler_results/episode_reward_mean: 150
         timesteps_total: 1000000
     config:
         # Works for both torch and tf.

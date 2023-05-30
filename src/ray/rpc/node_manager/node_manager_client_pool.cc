@@ -30,7 +30,8 @@ shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByAddr
   auto connection = client_factory_(address);
   client_map_[raylet_id] = connection;
 
-  RAY_LOG(DEBUG) << "Connected to " << address.ip_address() << ":" << address.port();
+  RAY_LOG(DEBUG) << "Connected to raylet " << raylet_id << " at " << address.ip_address()
+                 << ":" << address.port();
   RAY_CHECK(connection != nullptr);
   return connection;
 }

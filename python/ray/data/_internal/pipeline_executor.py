@@ -1,12 +1,11 @@
-from typing import Any, Callable, List, Optional, TYPE_CHECKING
+from typing import Callable, List, Optional, TYPE_CHECKING
 import time
 import concurrent.futures
 import logging
 
 import ray
-from ray.data.block import T
 from ray.data.context import DataContext
-from ray.data.dataset import Datastream
+from ray.data.dataset import Dataset
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal import progress_bar
 
@@ -16,7 +15,7 @@ if TYPE_CHECKING:
     from ray.data.dataset_pipeline import DatasetPipeline
 
 
-def pipeline_stage(fn: Callable[[], Datastream[T]]) -> Datastream[T]:
+def pipeline_stage(fn: Callable[[], Dataset]) -> Dataset:
     # Force eager evaluation of all blocks in the pipeline stage. This
     # prevents resource deadlocks due to overlapping stage execution (e.g.,
     # task -> actor stage).
@@ -24,9 +23,9 @@ def pipeline_stage(fn: Callable[[], Datastream[T]]) -> Datastream[T]:
 
 
 class PipelineExecutor:
-    def __init__(self, pipeline: "DatasetPipeline[T]"):
-        self._pipeline: "DatasetPipeline[T]" = pipeline
-        self._stages: List[concurrent.futures.Future[Datastream[Any]]] = [None] * (
+    def __init__(self, pipeline: "DatasetPipeline"):
+        self._pipeline: "DatasetPipeline" = pipeline
+        self._stages: List[concurrent.futures.Future[Dataset]] = [None] * (
             len(self._pipeline._optimized_stages) + 1
         )
         self._iter = iter(self._pipeline._base_iterable)
@@ -160,9 +159,9 @@ class PipelineExecutor:
 class PipelineSplitExecutorCoordinator:
     def __init__(
         self,
-        pipeline: "DatasetPipeline[T]",
+        pipeline: "DatasetPipeline",
         n: int,
-        splitter: Callable[[Datastream], List["Datastream[T]"]],
+        splitter: Callable[[Dataset], List["Dataset"]],
         context: DataContext,
     ):
         DataContext._set_current(context)
@@ -172,17 +171,17 @@ class PipelineSplitExecutorCoordinator:
         self.splitter = splitter
         self.cur_splits = [None] * self.n
 
-    def next_datastream_if_ready(self, split_index: int) -> Optional[Datastream[T]]:
+    def next_dataset_if_ready(self, split_index: int) -> Optional[Dataset]:
         # TODO(swang): This will hang if one of the consumers fails and is
         # re-executed from the beginning. To make this fault-tolerant, we need
-        # to make next_datastream_if_ready idempotent.
-        # Pull the next datastream once all splits are fully consumed.
+        # to make next_dataset_if_ready idempotent.
+        # Pull the next dataset once all splits are fully consumed.
         if all(s is None for s in self.cur_splits):
             ds = next(self.executor)
             self.cur_splits = self.splitter(ds)
             assert len(self.cur_splits) == self.n, (self.cur_splits, self.n)
 
-        # Return the datastream at the split index once per split.
+        # Return the dataset at the split index once per split.
         ret = self.cur_splits[split_index]
         self.cur_splits[split_index] = None
         return ret

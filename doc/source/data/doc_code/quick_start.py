@@ -48,13 +48,13 @@ ds.schema()
 # __create_from_files_begin__
 # Create from CSV.
 ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-# Dataset(num_blocks=1, num_rows=150, 
+# Dataset(num_blocks=1, num_rows=150,
 #         schema={sepal length (cm): double, sepal width (cm): double, 
 #         petal length (cm): double, petal width (cm): double, target: int64})
 
 # Create from Parquet.
 ds = ray.data.read_parquet("s3://anonymous@air-example-data/iris.parquet")
-# Dataset(num_blocks=1, num_rows=150, 
+# Dataset(num_blocks=1, num_rows=150,
 #         schema={sepal.length: double, sepal.width: double, 
 #         petal.length: double, petal.width: double, variety: string})
 
@@ -75,7 +75,7 @@ ds = ds.repartition(10)
 def transform_batch(df: pandas.DataFrame) -> pandas.DataFrame:
     return df[(df["sepal.length"] < 5.5) & (df["petal.length"] > 3.5)]
 
-transformed_ds = ds.map_batches(transform_batch)
+transformed_ds = ds.map_batches(transform_batch, batch_format="pandas")
 # Dataset(num_blocks=10, num_rows=3,
 #         schema={sepal.length: float64, sepal.width: float64,
 #                 petal.length: float64, petal.width: float64, variety: object})

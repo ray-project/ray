@@ -65,13 +65,12 @@ def run_storage_cp(source: str, target: str):
         return False
 
     if not Path(source).exists():
-        logger.error(f"Couldn't upload to cloud storage: '{source}' does not exist.")
+        logger.warning(f"Couldn't upload to cloud storage: '{source}' does not exist.")
         return False
 
     storage_service = urlparse(target).scheme
     cp_cmd_args = []
     if storage_service == "s3":
-        install_pip("awscli")
         cp_cmd_args = [
             "aws",
             "s3",

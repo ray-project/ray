@@ -17,9 +17,9 @@ RayDataset = Union["Dataset", "DatasetPipeline"]
 
 @dataclass
 class RayDatasetSpec:
-    """Configuration for Ray Datasets to pass to the training workers.
+    """Configuration for Datasets to pass to the training workers.
 
-    dataset_or_dict: An optional Ray Dataset (or DatasetPipeline) or a dictionary of
+    dataset_or_dict: An optional Dataset (or DatasetPipeline) or a dictionary of
         datasets to be sharded across all the training workers, which can be accessed
         from the training function via ``session.get_dataset_shard()``. Multiple
         Datasets can be passed in as a dictionary that maps each name key to a
@@ -32,7 +32,7 @@ class RayDatasetSpec:
         training workers (to use as locality hints). The Callable is expected to
         return a list of RayDatasets or a list of dictionaries of RayDatasets,
         with the length of the list equal to the length of the list of actor handles.
-        If None is provided, the provided Ray Dataset(s) will be equally split.
+        If None is provided, the provided Dataset(s) will be equally split.
 
     """
 

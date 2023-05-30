@@ -16,27 +16,13 @@
 
 import logging
 import os
-import sys
 from argparse import Namespace
 from typing import Optional, Tuple, Union
 import tempfile
 from pathlib import Path
+from packaging.version import Version
 
-
-if sys.version_info >= (3, 7):
-    from contextlib import nullcontext
-else:
-    from contextlib import contextmanager
-
-    @contextmanager
-    def nullcontext(enter_result=None):
-        yield enter_result
-
-
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
+from contextlib import nullcontext
 
 import accelerate
 

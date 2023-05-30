@@ -121,6 +121,7 @@ class OpState:
         self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
+        self.dependents_completed_called = False
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
         """Create progress bars at the given index (line offset in console).
@@ -176,7 +177,10 @@ class OpState:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_work_refs()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
-        mem = memory_string(self.op.current_resource_usage().object_store_memory or 0)
+        mem = memory_string(
+            (self.op.current_resource_usage().object_store_memory or 0)
+            + self.inqueue_memory_usage()
+        )
         desc += f", {mem} objects"
         suffix = self.op.progress_str()
         if suffix:
@@ -221,8 +225,21 @@ class OpState:
                 pass
             time.sleep(0.01)
 
+    def inqueue_memory_usage(self) -> int:
+        """Return the object store memory of this operator's inqueue."""
+        total = 0
+        for op, inq in zip(self.op.input_dependencies, self.inqueues):
+            # Exclude existing input data items from dynamic memory usage.
+            if not isinstance(op, InputDataBuffer):
+                total += self._queue_memory_usage(inq)
+        return total
+
     def outqueue_memory_usage(self) -> int:
-        """Return the object store memory of this operator's outqueue.
+        """Return the object store memory of this operator's outqueue."""
+        return self._queue_memory_usage(self.outqueue)
+
+    def _queue_memory_usage(self, queue: Deque[RefBundle]) -> int:
+        """Sum the object store memory usage in this queue.
 
         Note: Python's deque isn't truly thread-safe since it raises RuntimeError
         if it detects concurrent iteration. Hence we don't use its iterator but
@@ -230,9 +247,9 @@ class OpState:
         """
 
         object_store_memory = 0
-        for i in range(len(self.outqueue)):
+        for i in range(len(queue)):
             try:
-                bundle = self.outqueue[i]
+                bundle = queue[i]
                 object_store_memory += bundle.size_bytes()
             except IndexError:
                 break  # Concurrent pop from the outqueue by the consumer thread.
@@ -318,15 +335,30 @@ def process_completed_tasks(topology: Topology) -> None:
 
     # Call inputs_done() on ops where no more inputs are coming.
     for op, op_state in topology.items():
+        if op_state.inputs_done_called:
+            continue
         inputs_done = all(
             [
                 dep.completed() and not topology[dep].outqueue
                 for dep in op.input_dependencies
             ]
         )
-        if inputs_done and not op_state.inputs_done_called:
+        if inputs_done:
             op.inputs_done()
             op_state.inputs_done_called = True
+
+    # Traverse the topology in reverse topological order.
+    # For each op, if all of its downstream operators don't need any more inputs,
+    # call all_dependents_complete() to also complete this op.
+    for op, op_state in reversed(list(topology.items())):
+        if op_state.dependents_completed_called:
+            continue
+        dependents_completed = len(op.output_dependencies) > 0 and all(
+            not dep.need_more_inputs() for dep in op.output_dependencies
+        )
+        if dependents_completed:
+            op.all_dependents_complete()
+            op_state.dependents_completed_called = True
 
 
 def select_operator_to_run(
@@ -353,11 +385,18 @@ def select_operator_to_run(
     assert isinstance(cur_usage, TopologyResourceUsage), cur_usage
 
     # Filter to ops that are eligible for execution.
-    ops = [
-        op
-        for op, state in topology.items()
-        if state.num_queued() > 0 and _execution_allowed(op, cur_usage, limits)
-    ]
+    ops = []
+    for op, state in topology.items():
+        under_resource_limits = _execution_allowed(op, cur_usage, limits)
+        if (
+            op.need_more_inputs()
+            and state.num_queued() > 0
+            and op.should_add_input()
+            and under_resource_limits
+        ):
+            ops.append(op)
+        # Update the op in all cases to enable internal autoscaling, etc.
+        op.notify_resource_usage(state.num_queued(), under_resource_limits)
 
     # If no ops are allowed to execute due to resource constraints, try to trigger
     # cluster scale-up.
@@ -378,7 +417,11 @@ def select_operator_to_run(
         and all(op.num_active_work_refs() == 0 for op in topology)
     ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
-        ops = [op for op, state in topology.items() if state.num_queued() > 0]
+        ops = [
+            op
+            for op, state in topology.items()
+            if op.need_more_inputs() and state.num_queued() > 0
+        ]
 
     # Nothing to run.
     if not ops:

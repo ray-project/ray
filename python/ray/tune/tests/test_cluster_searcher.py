@@ -40,7 +40,7 @@ def start_connected_cluster():
 
 
 @pytest.mark.skipif(
-    os.environ.get("TUNE_NEW_EXECUTION") == "1",
+    os.environ.get("TUNE_NEW_EXECUTION") != "0",
     reason=(
         "This test uses the TrialRunner directly and needs to be rewritten "
         "for the new execution backend."
