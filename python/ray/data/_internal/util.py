@@ -1,9 +1,11 @@
 import importlib
 import logging
 import os
+import pathlib
 from typing import Any, List, Union, Optional, TYPE_CHECKING
 from types import ModuleType
 import sys
+import urllib.parse
 
 import numpy as np
 
@@ -209,9 +211,6 @@ def _resolve_custom_scheme(path: str) -> str:
 
     The supported custom schemes are: "local", "example".
     """
-    import pathlib
-    import urllib.parse
-
     parsed_uri = urllib.parse.urlparse(path)
     if parsed_uri.scheme == _LOCAL_SCHEME:
         path = parsed_uri.netloc + parsed_uri.path
@@ -227,9 +226,6 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     Note: The paths must be in same scheme, i.e. it's invalid and
     will raise error if paths are mixed with different schemes.
     """
-    import pathlib
-    import urllib.parse
-
     if isinstance(paths, str):
         paths = [paths]
     if isinstance(paths, pathlib.Path):
