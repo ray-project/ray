@@ -13,12 +13,8 @@ from ray.rllib.utils.nested_dict import NestedDict
 tf1, tf, _ = try_import_tf()
 
 
-class PPOTfRLModule(PPORLModule, TfRLModule):
+class PPOTfRLModule(TfRLModule, PPORLModule):
     framework: str = "tf2"
-
-    def __init__(self, *args, **kwargs):
-        TfRLModule.__init__(self, *args, **kwargs)
-        PPORLModule.__init__(self, *args, **kwargs)
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
