@@ -963,22 +963,30 @@ class Impala(Algorithm):
             blocking = self.config.num_learner_workers == 0
             results = []
             for batch in batches:
-                async_results = self.learner_group.update(
-                    batch,
-                    reduce_fn=_reduce_impala_results,
-                    block=blocking,
-                    num_iters=self.config.num_sgd_iter,
-                    minibatch_size=self.config.minibatch_size,
-                )
-                if async_results:
-                    for r in async_results:
-                        self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
-                            NUM_ENV_STEPS_TRAINED
-                        )
-                        self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
-                            NUM_AGENT_STEPS_TRAINED
-                        )
-                    results.append(r)
+                if blocking:
+                    result = self.learner_group.update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
+                    results = [result]
+                else:
+                    results = self.learner_group.async_update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
+
+                for r in results:
+                    self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
+                        NUM_ENV_STEPS_TRAINED
+                    )
+                    self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
+                        NUM_AGENT_STEPS_TRAINED
+                    )
+
             self._counters.update(self.learner_group.get_in_queue_stats())
             # If there are results, reduce-mean over each individual value and return.
             if results:

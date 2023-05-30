@@ -246,9 +246,9 @@ class TestLearnerGroup(unittest.TestCase):
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
         fws = ["torch", "tf2"]
-        # block=True only needs to be tested for the most complex case.
+        # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
-        scaling_modes = ["multi-gpu-ddp"]
+        scaling_modes = ["multi-cpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
@@ -264,10 +264,10 @@ class TestLearnerGroup(unittest.TestCase):
             timer_sync = _Timer()
             timer_async = _Timer()
             with timer_sync:
-                learner_group.update(batch.as_multi_agent(), block=True, reduce_fn=None)
+                learner_group.update(batch.as_multi_agent(), reduce_fn=None)
             with timer_async:
-                result_async = learner_group.update(
-                    batch.as_multi_agent(), block=False, reduce_fn=None
+                result_async = learner_group.async_update(
+                    batch.as_multi_agent(), reduce_fn=None
                 )
             # ideally the the first async update will return nothing, and an easy
             # way to check that is if the time for an async update call is faster
@@ -278,8 +278,8 @@ class TestLearnerGroup(unittest.TestCase):
             iter_i = 0
             while True:
                 batch = reader.next()
-                async_results = learner_group.update(
-                    batch.as_multi_agent(), block=False, reduce_fn=None
+                async_results = learner_group.async_update(
+                    batch.as_multi_agent(), reduce_fn=None
                 )
                 if not async_results:
                     continue

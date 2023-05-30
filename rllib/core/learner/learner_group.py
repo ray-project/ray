@@ -74,9 +74,8 @@ class LearnerGroup:
                             by this LearnerGroup.
     Args:
         learner_spec: The specification for constructing Learners.
-        max_queue_len: The maximum number of batches to queue up if doing non-blocking
-            updates (e.g. `self.update(batch, block=False)`). If the queue is full it
-            will evict the oldest batch first.
+        max_queue_len: The maximum number of batches to queue up if doing async_update
+            If the queue is full itwill evict the oldest batch first.
     """
 
     def __init__(
@@ -162,7 +161,6 @@ class LearnerGroup:
         reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-        block: bool = True,
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do one or more gradient based updates to the Learner(s) based on given data.
 
@@ -178,7 +176,6 @@ class LearnerGroup:
                 results (for example for metrics) or be more selective about you want to
                 report back to the algorithm's training_step. If None is passed, the
                 results will not get reduced.
-            block: Whether to block until the update is complete.
 
         Returns:
             A dictionary with the reduced results of the updates from the Learner(s) or
@@ -202,12 +199,22 @@ class LearnerGroup:
                 )
             ]
         else:
-            results = self._distributed_update(
-                train_batch,
-                minibatch_size=minibatch_size,
-                num_iters=num_iters,
-                reduce_fn=reduce_fn,
-                block=block,
+
+            def _learner_update(learner, minibatch):
+                return learner.update(
+                    minibatch,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    reduce_fn=reduce_fn,
+                )
+
+            results = self._get_results(
+                self._worker_manager.foreach_actor(
+                    [
+                        partial(_learner_update, minibatch=minibatch)
+                        for minibatch in ShardBatchIterator(batch, len(self._workers))
+                    ]
+                )
             )
 
         # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
