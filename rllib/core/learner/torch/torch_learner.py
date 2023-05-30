@@ -73,7 +73,13 @@ class TorchLearner(Learner):
         # Will be set during build.
         self._device = None
 
-        self._enable_torch_compile = self._framework_hyperparameters.torch_compile
+        self._torch_compile_rlm = False
+        self._torch_compile_update = False
+        if self._framework_hyperparameters.torch_compile:
+            if self._framework_hyperparameters.what_to_compile == "complete_update":
+                self._torch_compile_update = True
+            else:
+                self._torch_compile_rlm = True
 
     @OverrideToImplementCustomLogic
     @override(Learner)
@@ -235,20 +241,22 @@ class TorchLearner(Learner):
         # we need to ddpify the module that was just added to the pool
         module = self._module[module_id]
 
-        if self._enable_torch_compile:
+        if self._torch_compile_rlm:
+            module.compile(self._framework_hyperparameters.torch_compile_cfg)
+        elif self._torch_compile_update:
             torch._dynamo.reset()
             torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
-                torch_dynamo_backend=torch_compile_cfg.torch_dynamo_backend,
-                torch_dynamo_mode=torch_compile_cfg.torch_dynamo_mode,
+                backend=torch_compile_cfg.torch_dynamo_backend,
+                mode=torch_compile_cfg.torch_dynamo_mode,
                 **torch_compile_cfg.kwargs,
             )
 
         if isinstance(module, TorchRLModule):
             self._module[module_id].to(self._device)
             if self.distributed:
-                if self._enable_torch_compile:
+                if self._torch_compile_update or self._torch_compile_rlm:
                     raise ValueError(
                         "Using torch distributed and torch compile "
                         "together tested for now. Please disable "
@@ -260,16 +268,15 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def remove_module(self, module_id: ModuleID) -> None:
-        with self._strategy.scope():
-            super().remove_module(module_id)
+        super().remove_module(module_id)
 
-        if self._enable_torch_compile:
+        if self._torch_compile_update:
             torch._dynamo.reset()
             torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
-                torch_dynamo_backend=torch_compile_cfg.torch_dynamo_backend,
-                torch_dynamo_mode=torch_compile_cfg.torch_dynamo_mode,
+                backend=torch_compile_cfg.torch_dynamo_backend,
+                mode=torch_compile_cfg.torch_dynamo_mode,
                 **torch_compile_cfg.kwargs,
             )
 
@@ -308,7 +315,7 @@ class TorchLearner(Learner):
 
         super().build()
 
-        if self._enable_torch_compile:
+        if self._torch_compile_update:
             torch._dynamo.reset()
             torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
@@ -318,6 +325,18 @@ class TorchLearner(Learner):
                 **torch_compile_cfg.kwargs,
             )
         else:
+            if self._torch_compile_rlm:
+                if isinstance(self._module, TorchRLModule):
+                    self._module.compile(
+                        self._framework_hyperparameters.torch_compile_cfg
+                    )
+                else:
+                    assert isinstance(self._module, MultiAgentRLModule)
+                    for module in self._module._rl_modules.values():
+                        module.compile(
+                            self._framework_hyperparameters.torch_compile_cfg
+                        )
+
             self._possibly_compiled_update = self._uncompiled_update
 
         self._make_modules_ddp_if_necessary()

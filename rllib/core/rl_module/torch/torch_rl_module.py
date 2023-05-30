@@ -27,7 +27,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
         and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
     ):
         raise ValueError("torch.compile is only supported from torch 2.0.0")
-    
+
     compiled_forward_train = torch.compile(
         rl_module._forward_train,
         backend=compile_config.torch_dynamo_backend,

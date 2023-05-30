@@ -5,9 +5,11 @@ import tempfile
 import torch
 
 import ray
+import itertools
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -225,12 +227,17 @@ class TestLearner(unittest.TestCase):
         """
 
         env = gym.make("CartPole-v1")
-        framework_hps = FrameworkHyperparameters(
-            torch_compile=True,
-            torch_compile_cfg=TorchCompileConfig(),
-        )
+        is_multi_agents = [False, True]
+        what_to_compiles = ["complete_update", "forward_train"]
 
-        for is_multi_agent in [False, True]:
+        for is_multi_agent, what_to_compile in itertools.product(
+            is_multi_agents, what_to_compiles
+        ):
+            framework_hps = FrameworkHyperparameters(
+                torch_compile=True,
+                torch_compile_cfg=TorchCompileConfig(),
+                what_to_compile=what_to_compile,
+            )
             spec = get_module_spec(
                 framework="torch", env=env, is_multi_agent=is_multi_agent
             )
@@ -243,9 +250,21 @@ class TestLearner(unittest.TestCase):
 
             reader = get_cartpole_dataset_reader(batch_size=512)
 
-            for iter_i in range(100):
+            for iter_i in range(10):
                 batch = reader.next()
                 learner.update(batch.as_multi_agent())
+
+            spec = get_module_spec(framework="torch", env=env, is_multi_agent=False)
+            learner.add_module(module_id="another_module", module_spec=spec)
+
+            for iter_i in range(10):
+                batch = MultiAgentBatch(
+                    {"another_module": reader.next(), "default_policy": reader.next()},
+                    0,
+                )
+                learner.update(batch)
+
+            learner.remove_module(module_id="another_module")
 
     @unittest.skipIf(not _dynamo_is_available(), "torch._dynamo not available")
     def test_torch_compile_no_breaks(self):
