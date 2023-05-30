@@ -76,3 +76,10 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
                 # Assert length of all fragments is 10 (our rollout_fragment_length).
                 # 4 (num_envs_per_worker) * 10 (rollout_fragment_length) = 40.
                 self.assertEqual(sum(len(e) for e in completed + ongoing), 40)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
