@@ -165,7 +165,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             + 0.1 * L_rep_B_T
         )
 
-        # Sum up timesteps, and average over batch (see eq. 4 in [1]).
+        # In the paper, it says to sum up timesteps, and average over
+        # batch (see eq. 4 in [1]). But Danijar's implementation only does
+        # averaging (over B and T), so we'll do this here as well. This is generally
+        # true for all other loss terms as well (we'll always just average, no summing
+        # over T axis!).
         L_world_model_total = tf.reduce_mean(L_world_model_total_B_T)
 
         # Register world model loss stats.

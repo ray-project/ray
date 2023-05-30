@@ -18,7 +18,10 @@ import numpy as np
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamerv3.dreamerv3_catalog import DreamerV3Catalog
-from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import DreamerV3Hyperparameters
+from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
+    DreamerV3LearnerHyperparameters,
+    #_reduce_dreamerv3_results,
+)
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
@@ -31,7 +34,7 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
 )
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
@@ -125,6 +128,7 @@ class DreamerV3Config(AlgorithmConfig):
 
         self.summary_frequency_train_steps = 20
         self.summary_include_histograms = False
+        self.summary_include_images = False
         self.gc_frequency_train_steps = 100
 
         # Override some of AlgorithmConfig's default values with DreamerV3-specific
@@ -149,6 +153,7 @@ class DreamerV3Config(AlgorithmConfig):
         training_ratio: Optional[float] = NotProvided,
         summary_frequency_train_steps: Optional[int] = NotProvided,
         summary_include_histograms: Optional[bool] = NotProvided,
+        summary_include_images: Optional[bool] = NotProvided,
         gc_frequency_train_steps: Optional[int] = NotProvided,
         batch_size_B: Optional[int] = NotProvided,
         batch_length_T: Optional[int] = NotProvided,
@@ -183,6 +188,7 @@ class DreamerV3Config(AlgorithmConfig):
                 the more debug-relevant information and basic stats, such as total loss,
                 etc.. are logged at each training step.
             summary_include_histograms: Whether to summarize histograms data as well.
+            summary_include_images: Whether to summarize image/video data as well.
             gc_frequency_train_steps: Every how many training steps do we collect
                 garbage?
             batch_size_B: The batch size (B) interpreted as number of rows (each of
@@ -237,6 +243,8 @@ class DreamerV3Config(AlgorithmConfig):
             self.summary_frequency_train_steps = summary_frequency_train_steps
         if summary_include_histograms is not NotProvided:
             self.summary_include_histograms = summary_include_histograms
+        if summary_include_images is not NotProvided:
+            self.summary_include_images = summary_include_images
         if gc_frequency_train_steps is not NotProvided:
             self.gc_frequency_train_steps = gc_frequency_train_steps
         if batch_size_B is not NotProvided:
@@ -306,7 +314,7 @@ class DreamerV3Config(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_learner_hyperparameters(self) -> LearnerHyperparameters:
         base_hps = super().get_learner_hyperparameters()
-        return DreamerV3Hyperparameters(
+        return DreamerV3LearnerHyperparameters(
             model_dimension=self.model_dimension,
             training_ratio=self.training_ratio,
             batch_size_B=self.batch_size_B,
@@ -441,19 +449,16 @@ class DreamerV3(Algorithm):
                     results=results,
                     step=self._counters[NUM_ENV_STEPS_SAMPLED],
                     replay_buffer=self.replay_buffer,
-                    sampler_metrics=env_runner.get_metrics(),
-                    print_=True,
                 )
                 break
 
-        replayed_steps = 0
-
-        # TEST: re-use same sample.
-        # sample = buffer.sample(num_items=batch_size_B)
-        # sample = tree.map_structure(lambda v: tf.convert_to_tensor(v), sample)
-        # END TEST
-
-        sub_iter = 0
+        # Repeat the following steps until we reach the correct training ratio:
+        # - Draw a sample from the replay buffer and push it through the
+        # LearnerGroup.update() procedure.
+        # - This will perform a dreamer model forward pass, compute all losses and
+        # gradients and apply the gradients to the models.
+        # -
+        replayed_steps = sub_iter = 0
         while replayed_steps / env_steps_last_sample < self.config.training_ratio:
             logger.info(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
 
@@ -476,10 +481,12 @@ class DreamerV3(Algorithm):
                 )
 
             # Perform the actual update via our learner group.
+            # TODO (sven): DreamerV3 is single-agent only.
             train_results = self.learner_group.update(
-                # TODO (sven): DreamerV3 is single-agent only.
-                SampleBatch(sample).as_multi_agent()
+                SampleBatch(sample).as_multi_agent(),
+                #reduce_fn=_reduce_dreamerv3_results,
             )
+            train_results = train_results[DEFAULT_POLICY_ID]["learner_stats"]
 
             if self.config.summary_frequency_train_steps and (
                 self._counters[NUM_GRAD_UPDATES_LIFETIME]
@@ -488,7 +495,7 @@ class DreamerV3(Algorithm):
             ):
                 summarize_forward_train_outs_vs_samples(
                     results=results,
-                    train_results=train_results["fwd_out"],
+                    train_results=train_results,
                     sample=sample,
                     batch_size_B=self.config.batch_size_B,
                     batch_length_T=self.config.batch_length_T,
@@ -496,6 +503,7 @@ class DreamerV3(Algorithm):
                         env_runner.env.single_observation_space,
                         self.config.model.get("symlog_obs", "auto"),
                     ),
+                    include_images=self.config.summary_include_images,
                 )
                 summarize_world_model_train_results(
                     results=results,
@@ -528,40 +536,35 @@ class DreamerV3(Algorithm):
                     "FrozenLake-v1",
                 ]:
                     summarize_dreamed_trajectory(
-                        dream_data=train_results["dream_data"],
+                        results=results,
                         train_results=train_results,
                         env=env_runner.config.env,
                         dreamer_model=env_runner.model.dreamer_model,
                         obs_dims_shape=sample[SampleBatch.OBS].shape[2:],
                         desc="for_actor_critic_learning",
+                        include_images=self.config.summary_include_images,
                     )
 
             logger.info(
                 "\t\tWORLD_MODEL_L_total="
-                f"{train_results['WORLD_MODEL_L_total'].numpy():.5f} ("
+                f"{train_results['WORLD_MODEL_L_total']:.5f} ("
                 "L_pred="
-                f"{train_results['WORLD_MODEL_L_prediction'].numpy():.5f} ("
-                f"dec/obs={train_results['WORLD_MODEL_L_decoder'].numpy()} "
-                f"rew(two-hot)={train_results['WORLD_MODEL_L_reward'].numpy()} "
-                f"cont={train_results['WORLD_MODEL_L_continue'].numpy()}"
+                f"{train_results['WORLD_MODEL_L_prediction']:.5f} ("
+                f"dec/obs={train_results['WORLD_MODEL_L_decoder']} "
+                f"rew(two-hot)={train_results['WORLD_MODEL_L_reward']} "
+                f"cont={train_results['WORLD_MODEL_L_continue']}"
                 "); "
-                f"L_dyn={train_results['WORLD_MODEL_L_dynamics'].numpy():.5f}; "
+                f"L_dyn={train_results['WORLD_MODEL_L_dynamics']:.5f}; "
                 "L_rep="
-                f"{train_results['WORLD_MODEL_L_representation'].numpy():.5f})"
+                f"{train_results['WORLD_MODEL_L_representation']:.5f})"
             )
             msg = "\t\t"
             if self.config.train_actor:
-                L_actor = train_results["ACTOR_L_total"]
-                msg += (
-                    "L_actor="
-                    f"{L_actor.numpy() if self.config.train_actor else 0.0:.5f} "
-                )
+                msg += f"L_actor={train_results['ACTOR_L_total']:.5f} "
             if self.config.train_critic:
-                L_critic = train_results["CRITIC_L_total"]
-                msg += f"L_critic={L_critic.numpy():.5f} "
+                msg += f"L_critic={train_results['CRITIC_L_total']:.5f} "
             if self.config.use_curiosity:
-                L_disagree = train_results["DISAGREE_L_total"]
-                msg += f"L_disagree={L_disagree.numpy():.5f}"
+                msg += f"L_disagree={train_results['DISAGREE_L_total']:.5f}"
             logger.info(msg)
 
             sub_iter += 1

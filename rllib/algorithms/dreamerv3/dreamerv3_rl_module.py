@@ -75,7 +75,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         # Perform a test `call()` to force building the dreamer model's variables.
         test_obs = np.tile(
             np.expand_dims(self.config.observation_space.sample(), (0, 1)),
-            reps=(B, T, 1),
+            reps=(B, T) + (1,) * len(self.config.observation_space.shape),
         )
         test_actions = np.tile(
             np.expand_dims(
