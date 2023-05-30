@@ -3632,11 +3632,67 @@
 
   cluster:
     cluster_env: app_config.yaml
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf2
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+- name: rllib_learning_tests_appo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+# TODO (sven): Remove this test once we are on new stack by default for APPO.
+- name: rllib_learning_tests_appo_old_stack_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=tf2
 
   alert: default
 
@@ -3649,7 +3705,8 @@
         cluster_env: app_config.yaml
         cluster_compute: 2gpus_32cpus_gce.yaml
 
-- name: rllib_learning_tests_appo_torch
+# TODO (sven): Remove this test once we are on new stack by default for APPO.
+- name: rllib_learning_tests_appo_old_stack_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -3665,7 +3722,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=torch
 
   alert: default
 
@@ -4066,11 +4123,67 @@
 
   cluster:
     cluster_env: app_config.yaml
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf2
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+- name: rllib_learning_tests_ppo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+# TODO (sven): Remove this test once we are on new stack by default for APPO.
+- name: rllib_learning_tests_ppo_old_stack_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/tf --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf
 
   alert: default
 
@@ -4083,7 +4196,8 @@
         cluster_env: app_config.yaml
         cluster_compute: 2gpus_32cpus_gce.yaml
 
-- name: rllib_learning_tests_ppo_torch
+# TODO (sven): Remove this test once we are on new stack by default for APPO.
+- name: rllib_learning_tests_ppo_old_stack_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -4099,7 +4213,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/torch --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/old_stack --framework=torch
 
   alert: default
 
