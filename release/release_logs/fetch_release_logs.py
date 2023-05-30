@@ -53,7 +53,7 @@ RESULTS_TO_FETCH = {
         "stress_tests/stress_test_dead_actors.json",
     r"^stress_test_many_tasks.aws \(.+\)$": "stress_tests/stress_test_many_tasks.json",
     r"^stress_test_placement_group.aws \(.+\)$": (
-        "stress_tests/" "stress_test_placement_group.json"
+        "stress_tests/stress_test_placement_group.json"
     ),
 }
 
