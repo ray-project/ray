@@ -1,6 +1,6 @@
 import abc
 import platform
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import ray
 from ray.rllib.utils.actor_manager import FaultAwareApply
@@ -127,13 +127,37 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             A batch of data of any form.
         """
 
+    def get_state(self) -> Dict[str, Any]:
+        """Returns this EnvRunner's (possibly serialized) current state as a dict.
+
+        Returns:
+            The current state of this EnvRunner.
+        """
+        return {}
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Restores this EnvRunner's state from the given state dict.
+
+        Args:
+            state: The state dict to restore the state from.
+
+        Examples:
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> # Create a RolloutWorker.
+            >>> worker = ... # doctest: +SKIP
+            >>> state = worker.get_state() # doctest: +SKIP
+            >>> new_worker = RolloutWorker(...) # doctest: +SKIP
+            >>> new_worker.set_state(state) # doctest: +SKIP
+        """
+        pass
+
     def stop(self) -> None:
         """Releases all resources used by this EnvRunner."""
         pass
 
     def __del__(self) -> None:
         """If this Actor is deleted, clears all resources used by it."""
-        self.stop()
+        pass
 
     def get_host(self) -> str:
         """Returns the hostname of the process running this Actor."""

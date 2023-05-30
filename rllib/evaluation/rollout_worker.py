@@ -1354,13 +1354,8 @@ class RolloutWorker(EnvRunner):
                 f.reset_buffer()
         return return_filters
 
+    @override(EnvRunner)
     def get_state(self) -> dict:
-        """Serializes this RolloutWorker's current state and returns it.
-
-        Returns:
-            The current state of this RolloutWorker as a serialized, pickled
-            byte sequence.
-        """
         filters = self.get_filters(flush_after=True)
         policy_states = {}
         for pid in self.policy_map.keys():
@@ -1390,20 +1385,8 @@ class RolloutWorker(EnvRunner):
             "filters": filters,
         }
 
+    @override(EnvRunner)
     def set_state(self, state: dict) -> None:
-        """Restores this RolloutWorker's state from a state dict.
-
-        Args:
-            state: The state dict to restore this worker's state from.
-
-        Examples:
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> # Create a RolloutWorker.
-            >>> worker = ... # doctest: +SKIP
-            >>> state = worker.get_state() # doctest: +SKIP
-            >>> new_worker = RolloutWorker(...) # doctest: +SKIP
-            >>> new_worker.set_state(state) # doctest: +SKIP
-        """
         # Backward compatibility (old checkpoints' states would have the local
         # worker state as a bytes object, not a dict).
         if isinstance(state, bytes):

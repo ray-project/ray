@@ -44,15 +44,35 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
 
     def test_distributed_simple_env_runner(self):
         """Tests, whether SimpleEnvRunner can be distributed."""
-        config = (
-            AlgorithmConfig().environment("CartPole-v1")
-            # Vectorize x2 and by default, rollout 64 timesteps per individual env.
-            .rollouts(num_envs_per_worker=4, rollout_fragment_length=10)
-        )
 
         remote_class = SingleAgentGymEnvRunner.as_remote(num_cpus=1, num_gpus=0)
-        array = [remote_class.remote(config=config) for _ in range(5)]
-        # Sample in parallel.
-        results = [a.sample.remote() for a in array]
-        results = ray.get(results)
-        print(results)
+
+        # Test with both parallelized sub-envs and w/o.
+        remote_worker_envs = [False, True]
+
+        for envs_parallel in remote_worker_envs:
+            config = (
+                AlgorithmConfig().environment("CartPole-v1")
+                # Vectorize x2 and by default, rollout 64 timesteps per individual env.
+                .rollouts(
+                    num_envs_per_worker=4,
+                    rollout_fragment_length=10,
+                    remote_worker_envs=envs_parallel,
+                )
+            )
+
+            array = [remote_class.remote(config=config) for _ in range(5)]
+            # Sample in parallel.
+            results = [a.sample.remote() for a in array]
+            results = ray.get(results)
+            # Loop over individual EnvRunner Actor's results and inspect each.
+            for result in results:
+                # SingleAgentGymEnvRunners return tuples: (completed eps, ongoing eps).
+                completed, ongoing = result
+                # Make sure all completed Episodes are indeed done.
+                self.assertTrue(all(e.is_terminated for e in completed))
+                # Same for uncomplete ones (make sure they are not done).
+                self.assertTrue(not any(e.is_terminated for e in ongoing))
+                # Assert length of all fragments is 10 (our rollout_fragment_length).
+                # 4 (num_envs_per_worker) * 10 (rollout_fragment_length) = 40.
+                self.assertEqual(sum(len(e) for e in completed + ongoing), 40)
