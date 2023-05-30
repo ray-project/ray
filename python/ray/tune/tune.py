@@ -716,6 +716,20 @@ def run(
             "use checkpoint_config.checkpoint_score_attribute instead.",
             DeprecationWarning,
         )
+
+        if checkpoint_score_attr.startswith("min-"):
+            warnings.warn(
+                "using min- and max- prefixes to specify checkpoint score "
+                "order is deprecated. Use CheckpointConfig.checkpoint_score_order "
+                "instead",
+                DeprecationWarning,
+            )
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
+            checkpoint_config.checkpoint_score_order = "min"
+        else:
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr
+            checkpoint_config.checkpoint_score_order = "max"
+
         checkpoint_config.score_attr = checkpoint_score_attr
     if checkpoint_freq > 0:
         warnings.warn(
@@ -747,26 +761,6 @@ def run(
         checkpoint_config._checkpoint_upload_from_workers = (
             checkpoint_upload_from_workers
         )
-
-    checkpoint_score_attr = (
-        # Note(jungong) : we must use _tune_legacy_checkpoint_score_attr
-        # here, instead of checkpoint_score_attribute, to make sure we
-        # handle legacy cases correctly (e.g., someone purposefully
-        # specify checkpoint_score_order="min-loss").
-        checkpoint_config._tune_legacy_checkpoint_score_attr
-        or ""
-    )
-    if checkpoint_score_attr.startswith("min-"):
-        warnings.warn(
-            "using min- and max- prefixes to specify checkpoint score "
-            "order is deprecated. Please use CheckpointConfig.checkpoint_score_order "
-            "instead",
-            DeprecationWarning,
-        )
-        checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
-        checkpoint_config.checkpoint_score_order = "min"
-    else:
-        checkpoint_config.checkpoint_score_order = "max"
 
     if num_samples == -1:
         num_samples = sys.maxsize
