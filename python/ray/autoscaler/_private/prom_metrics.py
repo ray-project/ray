@@ -100,29 +100,29 @@ try:
                 buckets=update_time_buckets,
             ).labels(SessionName=session_name)
             self.pending_nodes: Gauge = Gauge(
-                "pending_nodes",
+                "cluster_pending_nodes",
                 "Number of nodes pending to be started.",
                 labelnames=(
                     "NodeType",
                     "SessionName",
                 ),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray",
                 registry=self.registry,
             )
             self.active_nodes: Gauge = Gauge(
-                "active_nodes",
+                "cluster_active_nodes",
                 "Number of nodes in the cluster.",
                 labelnames=(
                     "NodeType",
                     "SessionName",
                 ),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray",
                 registry=self.registry,
             )
             self.recently_failed_nodes = Gauge(
-                "recently_failed_nodes",
+                "cluster_failed_nodes",
                 "The number of recently failed nodes. This count could reset "
                 "at undefined times.",
                 labelnames=(
@@ -130,7 +130,7 @@ try:
                     "SessionName",
                 ),
                 unit="nodes",
-                namespace="autoscaler",
+                namespace="ray",
                 registry=self.registry,
             )
             self.started_nodes: Counter = Counter(
@@ -264,7 +264,7 @@ try:
                 "Total logical resources in the cluster.",
                 labelnames=("resource", "SessionName"),
                 unit="resources",
-                namespace="autoscaler",
+                namespace="ray",
                 registry=self.registry,
             )
             # This represents the pending launches + nodes being set up for the
@@ -274,7 +274,7 @@ try:
                 "Pending logical resources in the cluster.",
                 labelnames=("resource", "SessionName"),
                 unit="resources",
-                namespace="autoscaler",
+                namespace="ray",
                 registry=self.registry,
             )
 
