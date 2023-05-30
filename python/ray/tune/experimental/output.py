@@ -482,7 +482,7 @@ def _get_dict_as_table_data(
         return upper + lower
 
 
-if sys.stdout.encoding.startswith("utf"):
+if sys.stdout.encoding is not None and sys.stdout.encoding.startswith("utf"):
     # Copied/adjusted from tabulate
     AIR_TABULATE_TABLEFMT = TableFormat(
         lineabove=Line("╭", "─", "─", "╮"),
