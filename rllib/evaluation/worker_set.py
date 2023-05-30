@@ -983,10 +983,10 @@ class WorkerSet:
             "Please try to use one of the foreach accessors "
             "that is fault tolerant. "
         ),
-        error=True,
+        error=False,
     )
     def _remote_workers(self) -> List[ActorHandle]:
-        pass
+        return list(self.__worker_manager.actors().values())
 
     @Deprecated(
         old="remote_workers()",
@@ -996,7 +996,7 @@ class WorkerSet:
             "Please try to use one of the foreach accessors "
             "that is fault tolerant. "
         ),
-        error=True,
+        error=False,
     )
     def remote_workers(self) -> List[ActorHandle]:
-        pass
+        return list(self.__worker_manager.actors().values())
