@@ -42,14 +42,12 @@ def export_test(
         test_obs = np.array([[0.1, 0.2, 0.3]])
     else:
         if multi_agent:
-            config["multiagent"] = {
-                "policies": {"pol1", "pol2"},
-                "policy_mapping_fn": (
-                    lambda agent_id, episode, worker, **kwargs: "pol1"
-                    if agent_id == "agent1"
-                    else "pol2"
-                ),
-            }
+            config["policies"] = ({"pol1", "pol2"},)
+            config["policy_mapping_fn"] = (
+                lambda agent_id, episode, worker, **kwargs: "pol1"
+                if agent_id == "agent1"
+                else "pol2"
+            )
             config["env"] = MultiAgentCartPole
             config["env_config"] = {
                 "num_agents": 2,

@@ -502,27 +502,6 @@ class AlgorithmConfig(_Config):
             config["input"] = getattr(self, "input_")
             config.pop("input_")
 
-        # Setup legacy multi-agent sub-dict:
-        config["multiagent"] = {}
-        for k in self.multiagent.keys():
-            # Convert policies dict such that each policy ID maps to a old-style
-            # 4-tuple: class, obs-, and action space, config.
-            if k == "policies" and isinstance(self.multiagent[k], dict):
-                policies_dict = {}
-                for policy_id, policy_spec in config.pop(k).items():
-                    if isinstance(policy_spec, PolicySpec):
-                        policies_dict[policy_id] = (
-                            policy_spec.policy_class,
-                            policy_spec.observation_space,
-                            policy_spec.action_space,
-                            policy_spec.config,
-                        )
-                    else:
-                        policies_dict[policy_id] = policy_spec
-                config["multiagent"][k] = policies_dict
-            else:
-                config["multiagent"][k] = config.pop(k)
-
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
@@ -3387,6 +3366,17 @@ class AlgorithmConfig(_Config):
                 ma_config["policy_mapping_fn"] = NOT_SERIALIZABLE
             if ma_config.get("policies_to_train"):
                 ma_config["policies_to_train"] = NOT_SERIALIZABLE
+        # However, if these "multiagent" settings have been provided directly
+        # on the top-level (as they should), we override the settings under
+        # "multiagent". Note that the "multiagent" key should no longer be used anyways.
+        if isinstance(config.get("policies"), (set, tuple)):
+            config["policies"] = list(config["policies"])
+        # Do NOT serialize functions/lambdas.
+        if config.get("policy_mapping_fn"):
+            config["policy_mapping_fn"] = NOT_SERIALIZABLE
+        if config.get("policies_to_train"):
+            config["policies_to_train"] = NOT_SERIALIZABLE
+
         return config
 
     @staticmethod

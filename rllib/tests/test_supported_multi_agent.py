@@ -1,13 +1,14 @@
 import unittest
 
 import ray
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, MultiAgentMountainCar
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import check_train_results, framework_iterator
 from ray.tune.registry import get_trainable_cls, register_env
 
 
-def check_support_multiagent(alg, config):
+def check_support_multiagent(alg: str, config: AlgorithmConfig):
     register_env(
         "multi_agent_mountaincar", lambda _: MultiAgentMountainCar({"num_agents": 2})
     )
@@ -26,18 +27,15 @@ def check_support_multiagent(alg, config):
         pol_id = policy_ids[agent_id]
         return pol_id
 
-    config["multiagent"] = {
-        "policies": policies,
-        "policy_mapping_fn": policy_mapping_fn,
-    }
+    config.multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
 
     for fw in framework_iterator(config):
         if fw == "tf2" and alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
             continue
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
-            a = get_trainable_cls(alg)(config=config, env="multi_agent_mountaincar")
+            a = config.build(env="multi_agent_mountaincar")
         else:
-            a = get_trainable_cls(alg)(config=config, env="multi_agent_cartpole")
+            a = config.build(env="multi_agent_cartpole")
 
         results = a.train()
         check_train_results(results)
@@ -56,25 +54,41 @@ class TestSupportedMultiAgentPG(unittest.TestCase):
 
     def test_a3c_multiagent(self):
         check_support_multiagent(
-            "A3C", {"num_workers": 1, "optimizer": {"grads_per_step": 1}}
+            "A3C",
+            (
+                get_trainable_cls("A3C")
+                .get_default_config()
+                .rollouts(num_rollout_workers=1)
+                .training(optimizer={"grads_per_step": 1})
+            ),
         )
 
     def test_impala_multiagent(self):
-        check_support_multiagent("IMPALA", {"num_gpus": 0})
+        check_support_multiagent(
+            "IMPALA",
+            (get_trainable_cls("IMPALA").get_default_config().resources(num_gpus=0)),
+        )
 
     def test_pg_multiagent(self):
-        check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
+        check_support_multiagent(
+            "PG",
+            (
+                get_trainable_cls("PG")
+                .get_default_config()
+                .rollouts(num_rollout_workers=1)
+                .training(optimizer={})
+            ),
+        )
 
     def test_ppo_multiagent(self):
         check_support_multiagent(
             "PPO",
-            {
-                "num_workers": 1,
-                "num_sgd_iter": 1,
-                "train_batch_size": 10,
-                "rollout_fragment_length": 10,
-                "sgd_minibatch_size": 1,
-            },
+            (
+                get_trainable_cls("PPO")
+                .get_default_config()
+                .rollouts(num_rollout_workers=1, rollout_fragment_length=10)
+                .training(num_sgd_iter=1, train_batch_size=10, sgd_minibatch_size=1)
+            ),
         )
 
 
@@ -90,73 +104,86 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
     def test_apex_multiagent(self):
         check_support_multiagent(
             "APEX",
-            {
-                "num_workers": 2,
-                "min_sample_timesteps_per_iteration": 100,
-                "num_gpus": 0,
-                "replay_buffer_config": {
-                    "capacity": 1000,
-                },
-                "num_steps_sampled_before_learning_starts": 10,
-                "min_time_s_per_iteration": 1,
-                "target_network_update_freq": 100,
-                "optimizer": {
-                    "num_replay_buffer_shards": 1,
-                },
-            },
+            (
+                get_trainable_cls("APEX")
+                .get_default_config()
+                .resources(num_gpus=0)
+                .rollouts(num_rollout_workers=2)
+                .training(
+                    target_network_update_freq=100,
+                    optimizer={
+                        "num_replay_buffer_shards": 1,
+                    },
+                    replay_buffer_config={
+                        "capacity": 1000,
+                    },
+                    num_steps_sampled_before_learning_starts=10,
+                )
+                .reporting(
+                    min_sample_timesteps_per_iteration=100,
+                    min_time_s_per_iteration=1,
+                )
+            ),
         )
 
     def test_apex_ddpg_multiagent(self):
         check_support_multiagent(
             "APEX_DDPG",
-            {
-                "num_workers": 2,
-                "min_sample_timesteps_per_iteration": 100,
-                "replay_buffer_config": {
-                    "capacity": 1000,
-                },
-                "num_steps_sampled_before_learning_starts": 10,
-                "num_gpus": 0,
-                "min_time_s_per_iteration": 1,
-                "target_network_update_freq": 100,
-                "use_state_preprocessor": True,
-            },
+            (
+                get_trainable_cls("APEX_DDPG")
+                .get_default_config()
+                .resources(num_gpus=0)
+                .rollouts(num_rollout_workers=2)
+                .training(
+                    target_network_update_freq=100,
+                    replay_buffer_config={
+                        "capacity": 1000,
+                    },
+                    num_steps_sampled_before_learning_starts=10,
+                    use_state_preprocessor=True,
+                )
+                .reporting(
+                    min_sample_timesteps_per_iteration=100,
+                    min_time_s_per_iteration=1,
+                )
+            ),
         )
 
     def test_ddpg_multiagent(self):
         check_support_multiagent(
             "DDPG",
-            {
-                "min_sample_timesteps_per_iteration": 1,
-                "replay_buffer_config": {
-                    "capacity": 1000,
-                },
-                "num_steps_sampled_before_learning_starts": 10,
-                "use_state_preprocessor": True,
-            },
+            (
+                get_trainable_cls("DDPG")
+                .get_default_config()
+                .reporting(min_sample_timesteps_per_iteration=1)
+                .training(
+                    replay_buffer_config={"capacity": 1000},
+                    num_steps_sampled_before_learning_starts=10,
+                    use_state_preprocessor=True,
+                )
+            ),
         )
 
     def test_dqn_multiagent(self):
         check_support_multiagent(
             "DQN",
-            {
-                "min_sample_timesteps_per_iteration": 1,
-                "replay_buffer_config": {
-                    "capacity": 1000,
-                },
-            },
+            (
+                get_trainable_cls("DQN")
+                .get_default_config()
+                .reporting(min_sample_timesteps_per_iteration=1)
+                .training(replay_buffer_config={"capacity": 1000})
+            ),
         )
 
     def test_sac_multiagent(self):
         check_support_multiagent(
             "SAC",
-            {
-                "num_workers": 0,
-                "replay_buffer_config": {
-                    "capacity": 1000,
-                },
-                "normalize_actions": False,
-            },
+            (
+                get_trainable_cls("SAC")
+                .get_default_config()
+                .rollouts(num_rollout_workers=0, normalize_actions=False)
+                .training(replay_buffer_config={"capacity": 1000})
+            ),
         )
 
 
@@ -170,7 +197,14 @@ class TestSupportedMultiAgentMultiGPU(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_multiagent_multi_gpu(self):
-        check_support_multiagent("IMPALA", {"num_gpus": 2})
+        check_support_multiagent(
+            "IMPALA",
+            (
+                get_trainable_cls("IMPALA")
+                .get_default_config()
+                .resources(num_gpus=2)
+            ),
+        )
 
 
 if __name__ == "__main__":

@@ -329,7 +329,7 @@ def rollout(
         env = agent.workers.local_worker().env
         multiagent = isinstance(env, MultiAgentEnv)
         if agent.workers.local_worker().multiagent:
-            policy_agent_mapping = agent.config["multiagent"]["policy_mapping_fn"]
+            policy_agent_mapping = agent.config.policy_mapping_fn
         policy_map = agent.workers.local_worker().policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
