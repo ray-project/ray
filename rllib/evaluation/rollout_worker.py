@@ -285,7 +285,7 @@ class RolloutWorker(EnvRunner):
             while True:
                 yield self.sample()
 
-        EnvRunner.__init__(self, config)
+        EnvRunner.__init__(self, config=config)
 
         # TODO: Remove this backward compatibility.
         #  This property (old-style python config dict) should no longer be used!
