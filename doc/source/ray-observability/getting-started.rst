@@ -87,7 +87,7 @@ For more information on Ray jobs, see the :ref:`Ray Job Overview section <jobs-o
 Job Profiling
 ~~~~~~~~~~~~~
 
-Profile Ray Jobs by clicking on the “Stack Trace” or “CPU Flame Graph” links. See the :ref:`Dashboard Profiling <dashboard-profiling>` for more details.
+You can profile Ray jobs by clicking on the “Stack Trace” or “CPU Flame Graph” actions. See :ref:` Profiling <profiling-concept>` for more details.
 
 .. _dash-workflow-job-progress:
 
@@ -333,7 +333,7 @@ Use the Logs view to see the Ray logs in your Cluster.
 
 Logs view is organized by node and log file name. Many links to logs in the other views link to a filtered list of this view.
 
-To understand the log file structure of Ray, see the :ref:`Logging directory structure page <logging-directory-structure>`.
+To understand the logging structure of Ray, see :ref:`logging directory and file structure <logging-directory-structure>`.
 
 The Logs view provides search functionality to help you find specific log messages.
 
@@ -348,9 +348,9 @@ If the Ray Job is submitted by the :ref:`Ray job API <jobs-quickstart>`, the Job
 
 **Task and Actor Logs (worker logs)**
 
-Task and actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the log button.
-You can see the ``stdout`` and ``stderr`` logs that contain the logs emitted from the tasks and actors.
-For actors, you can also see the system logs logs for the corresponding worker.
+Task and actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the "Log" button.
+You can see the ``stdout`` and ``stderr`` logs that contain the output emitted from the tasks and actors.
+For actors, you can also see the system logs logs for the corresponding worker process.
 
 .. note::
 
