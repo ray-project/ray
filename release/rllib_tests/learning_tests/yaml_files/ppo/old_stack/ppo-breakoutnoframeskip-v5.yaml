@@ -6,7 +6,7 @@ ppo-breakoutnoframeskip-v5:
         sampler_results/episode_reward_mean: 50.0
         timesteps_total: 7000000
     stop:
-        time_total_s: 3600
+        time_total_s: 7200
     config:
         # Make analogous to old v4 + NoFrameskip.
         env_config:
