@@ -77,7 +77,6 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
   // from gcs_resource_manager_.
   auto aggregate_load = gcs_resource_manager_.GetAggregatedResourceLoad();
   for (const auto &[shape, demand] : aggregate_load) {
-    // QQ: should backlog size to be included here?
     auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size();
     if (num_pending > 0) {
       auto pending_req = reply->add_pending_resource_requests();
@@ -123,6 +122,8 @@ void GcsAutoscalerStateManager::GetNodeStates(
   // This might be large if there are many nodes for a long-running cluster.
   // However, since we don't report resources for a dead node, the data size being
   // reported by dead node should be small.
+  // TODO(rickyx): We will need to GC the head nodes in the future.
+  // https://github.com/ray-project/ray/issues/35874
   const auto &dead_nodes = gcs_node_manager_.GetAllDeadNodes();
   std::for_each(dead_nodes.begin(), dead_nodes.end(), [&](const auto &gcs_node_info) {
     populate_node_state(*gcs_node_info.second, rpc::autoscaler::NodeState::DEAD);
