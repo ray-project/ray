@@ -10,9 +10,9 @@ import yaml
 from ray_release.bazel import bazel_runfile
 from ray_release.config import (
     parse_python_version,
-    DEFAULT_PYTHON_VERSION,
     get_test_cloud_id,
 )
+from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.util import python_version_str
 

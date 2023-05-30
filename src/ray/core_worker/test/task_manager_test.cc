@@ -1268,7 +1268,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   }
   // READ (EoF)
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
   ASSERT_EQ(obj_id, ObjectID::Nil());
   // DELETE
   manager_.DelObjectRefStream(generator_id);
@@ -1315,13 +1315,13 @@ TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
   ObjectID obj_id;
   // READ (EoF)
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
   ASSERT_EQ(obj_id, ObjectID::Nil());
   // DELETE
   manager_.DelObjectRefStream(generator_id);
 }
 
-TEST_F(TaskManagerTest, TestObjectRefStreamEoF) {
+TEST_F(TaskManagerTest, TestObjectRefEndOfStream) {
   /**
    * Test that after writing EoF, write/read doesn't work.
    * CREATE WRITE WRITEEoF, WRITE(verify no op) DELETE
@@ -1364,7 +1364,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEoF) {
   ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
   // READ (doesn't works because EoF is already written)
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
 }
 
 TEST_F(TaskManagerTest, TestObjectRefStreamIndexDiscarded) {
@@ -1529,7 +1529,7 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
 
   // Nothing more to read.
   status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
 
   manager_.DelObjectRefStream(generator_id);
 }
@@ -1670,10 +1670,160 @@ TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
 
   // READ (EoF)
   auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
-  ASSERT_TRUE(status.IsObjectRefStreamEoF());
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
   ASSERT_EQ(obj_id, ObjectID::Nil());
   // DELETE
   manager_.DelObjectRefStream(generator_id);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
+  /**
+   * Verify there's no leak when we delete a ObjectRefStream
+   * that has out of order WRITEs.
+   * WRITE index 1 -> Del -> Write index 0. Both 0 and 1 have to be
+   * deleted.
+   */
+  // Submit a generator task.
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  // CREATE
+  manager_.CreateObjectRefStream(generator_id);
+
+  // WRITE to index 1
+  auto dynamic_return_id_index_1 = ObjectID::FromIndex(spec.TaskId(), 3);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id_index_1,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_1));
+
+  // Delete the stream. This should remove references from ^.
+  manager_.DelObjectRefStream(generator_id);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
+
+  // WRITE to index 0. It should fail cuz the stream has been removed.
+  auto dynamic_return_id_index_0 = ObjectID::FromIndex(spec.TaskId(), 2);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id_index_0,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_FALSE(manager_.HandleReportGeneratorItemReturns(req));
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_0));
+
+  rpc::PushTaskReply reply;
+  manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
+
+  // There must be only a generator ID.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
+}
+
+TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNeeded) {
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded
+   */
+  // Submit a generator task.
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
+  auto generator_id = spec.ReturnId(0);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
+  manager_.MarkDependenciesResolved(spec.TaskId());
+  manager_.MarkTaskWaitingForExecution(
+      spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded is no-op when the stream is
+   * not created yet.
+   */
+  auto dynamic_return_id_index_0 = ObjectID::FromIndex(spec.TaskId(), 2);
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
+                                                    generator_id);
+  // It is no-op if the object ref stream is not created.
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_0));
+
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded called before any
+   * HandleReportGeneratorItemReturns adds a refernece.
+   */
+  // CREATE
+  manager_.CreateObjectRefStream(generator_id);
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
+                                                    generator_id);
+  // We has a reference to this object before the ref is
+  // reported via HandleReportGeneratorItemReturns.
+  ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_0));
+
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded called after the
+   * ref consumed / removed will be no-op.
+   */
+  // WRITE 0 -> WRITE 1
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id_index_0,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+  auto dynamic_return_id_index_1 = ObjectID::FromIndex(spec.TaskId(), 3);
+  data = GenerateRandomBuffer();
+  req = GetIntermediateTaskReturn(
+      /*idx*/ 1,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id_index_1,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(req));
+
+  // READ 0 -> READ 1
+  for (auto i = 0; i < 2; i++) {
+    ObjectID object_id;
+    auto status = manager_.TryReadObjectRefStream(generator_id, &object_id);
+    ASSERT_TRUE(status.ok());
+  }
+
+  std::vector<ObjectID> removed;
+  reference_counter_->RemoveLocalReference(dynamic_return_id_index_1, &removed);
+  ASSERT_EQ(removed.size(), 1UL);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
+  // If the ref has been already consumed and deleted,
+  // this shouldn't add a reference.
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_1,
+                                                    generator_id);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_1));
+
+  /**
+   * Test TemporarilyOwnGeneratorReturnRefIfNeeded called but
+   * HandleReportGeneratorItemReturns is never called. In this case, when
+   * the stream is deleted these refs should be cleaned up.
+   */
+  manager_.DelObjectRefStream(generator_id);
+  manager_.CreateObjectRefStream(generator_id);
+  manager_.TemporarilyOwnGeneratorReturnRefIfNeeded(dynamic_return_id_index_0,
+                                                    generator_id);
+  ASSERT_TRUE(reference_counter_->HasReference(dynamic_return_id_index_0));
+  manager_.DelObjectRefStream(generator_id);
+  ASSERT_FALSE(reference_counter_->HasReference(dynamic_return_id_index_0));
+
+  rpc::PushTaskReply reply;
+  manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
 }
 
 }  // namespace core

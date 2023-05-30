@@ -3,9 +3,9 @@ import yaml
 import pytest
 
 from ray_release.bazel import bazel_runfile
+from ray_release.test import Test
 from ray_release.config import (
     read_and_validate_release_test_collection,
-    Test,
     validate_cluster_compute,
     load_schema_file,
     parse_test_definition,
