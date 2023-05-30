@@ -879,7 +879,7 @@ class AlgorithmConfig(_Config):
             )
 
         # Learner API requires RLModule API.
-        if self._enable_learner_api is not self._enable_rl_module_api:
+        if self._enable_learner_api ^ self._enable_rl_module_api:
             raise ValueError(
                 "Learner API requires RLModule API and vice-versa! "
                 "Enable RLModule API via "
@@ -2507,9 +2507,8 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
 
-        if _enable_rl_module_api is not NotProvided or self._enable_rl_module_api:
-            if not self._enable_rl_module_api:
-                self._enable_rl_module_api = _enable_rl_module_api
+        if _enable_rl_module_api is not NotProvided:
+            self._enable_rl_module_api = _enable_rl_module_api
             if _enable_rl_module_api is True and self.exploration_config:
                 logger.warning(
                     "Setting `exploration_config={}` because you set "
