@@ -19,7 +19,7 @@ from ray.rllib.utils.test_utils import check
 class TestAlgorithmConfig(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=6, local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
