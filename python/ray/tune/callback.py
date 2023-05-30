@@ -81,7 +81,7 @@ class Callback(metaclass=_CallbackMeta):
 
     This example will print a metric each time a result is received:
 
-    .. code-block:: python
+    .. testcode::
 
         from ray import air, tune
         from ray.tune import Callback
@@ -105,6 +105,11 @@ class Callback(metaclass=_CallbackMeta):
         )
         tuner.fit()
 
+    .. testoutput::
+        :hide:
+        :options: +SKIP
+
+        ...
     """
 
     # File templates for any artifacts written by this callback
@@ -296,7 +301,7 @@ class Callback(metaclass=_CallbackMeta):
         Upon :ref:`Tune experiment restoration <tune-experiment-level-fault-tolerance>`,
         callback state will be restored via :meth:`~ray.tune.Callback.set_state`.
 
-        .. code-block:: python
+        .. testcode::
 
             from typing import Dict, List, Optional
 
