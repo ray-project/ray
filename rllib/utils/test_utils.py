@@ -1481,7 +1481,7 @@ def check_supported_spaces(
     ]
 
     # TODO(Artur): Add back tf2 once we CNNs there
-    rlmodule_supported_frameworks = ("torch")
+    rlmodule_supported_frameworks = "torch"
 
     # The action spaces that we test RLModules with
     rlmodule_supported_action_spaces = ["discrete", "continuous"]
@@ -1579,7 +1579,9 @@ def check_supported_spaces(
 
     if config._enable_rl_module_api:
         # Only test the frameworks that are supported by RLModules.
-        frameworks = tuple(fw for fw in frameworks if fw in rlmodule_supported_frameworks)
+        frameworks = tuple(
+            fw for fw in frameworks if fw in rlmodule_supported_frameworks
+        )
 
     _do_check_remote = ray.remote(_do_check)
     _do_check_remote = _do_check_remote.options(num_gpus=1 if use_gpu else 0)
