@@ -285,7 +285,7 @@ class RolloutWorker(EnvRunner):
             while True:
                 yield self.sample()
 
-        EnvRunner.__init__(self, config)
+        EnvRunner.__init__(self, config=config)
 
         # TODO: Remove this backward compatibility.
         #  This property (old-style python config dict) should no longer be used!
@@ -975,7 +975,6 @@ class RolloutWorker(EnvRunner):
         ):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
-    @override(EnvRunner)
     def get_metrics(self) -> List[RolloutMetrics]:
         # Get metrics from sampler (if any).
         if self.sampler is not None:
@@ -1355,13 +1354,8 @@ class RolloutWorker(EnvRunner):
                 f.reset_buffer()
         return return_filters
 
+    @override(EnvRunner)
     def get_state(self) -> dict:
-        """Serializes this RolloutWorker's current state and returns it.
-
-        Returns:
-            The current state of this RolloutWorker as a serialized, pickled
-            byte sequence.
-        """
         filters = self.get_filters(flush_after=True)
         policy_states = {}
         for pid in self.policy_map.keys():
@@ -1391,20 +1385,8 @@ class RolloutWorker(EnvRunner):
             "filters": filters,
         }
 
+    @override(EnvRunner)
     def set_state(self, state: dict) -> None:
-        """Restores this RolloutWorker's state from a state dict.
-
-        Args:
-            state: The state dict to restore this worker's state from.
-
-        Examples:
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> # Create a RolloutWorker.
-            >>> worker = ... # doctest: +SKIP
-            >>> state = worker.get_state() # doctest: +SKIP
-            >>> new_worker = RolloutWorker(...) # doctest: +SKIP
-            >>> new_worker.set_state(state) # doctest: +SKIP
-        """
         # Backward compatibility (old checkpoints' states would have the local
         # worker state as a bytes object, not a dict).
         if isinstance(state, bytes):
@@ -1598,11 +1580,18 @@ class RolloutWorker(EnvRunner):
         # Update all other global vars.
         self.global_vars.update(global_vars_copy)
 
+    @override(EnvRunner)
     def stop(self) -> None:
         """Releases all resources used by this RolloutWorker."""
+
         # If we have an env -> Release its resources.
         if self.env is not None:
             self.async_env.stop()
+
+        # In case we have-an AsyncSampler, kill its sampling thread.
+        if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
+            self.sampler.shutdown = True
+
         # Close all policies' sessions (if tf static graph).
         for policy in self.policy_map.cache.values():
             sess = policy.get_session()
@@ -1641,12 +1630,6 @@ class RolloutWorker(EnvRunner):
     def creation_args(self) -> dict:
         """Returns the kwargs dict used to create this worker."""
         return self._original_kwargs
-
-    @override(EnvRunner)
-    def __del__(self):
-        # In case we have-an AsyncSampler, kill its sampling thread.
-        if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
-            self.sampler.shutdown = True
 
     def _update_policy_map(
         self,
