@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, Optional
 
 import ray._private.worker
+from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import client_mode_hook
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import Deprecated, PublicAPI
@@ -373,6 +374,7 @@ _runtime_context = None
 
 @PublicAPI
 @client_mode_hook
+@wrap_auto_init
 def get_runtime_context():
     """Get the runtime context of the current driver/worker.
 
