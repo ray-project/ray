@@ -44,9 +44,14 @@ For example, the following command summarizes the task state of the Cluster:
     1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
 =======
 Ray States
+<<<<<<< HEAD
 --------------------
 Ray States refer to the state of various Ray entities (e.g., actor, task, object, etc.). Ray 2.0 and later versions support :ref:`querying the states of entities via CLI and Python APIs <observability-programmatic>`
 >>>>>>> 9dd21f527b (update to concepts and get started page)
+=======
+----------
+Ray States refer to the state of various Ray entities (e.g., Actor, Task, Object, etc.). Ray 2.0 and later versions support :ref:`querying the states of entities with the CLI and Python APIs <observability-programmatic>`
+>>>>>>> 7d2faf360d (Apply suggestions from code review)
 
 The following command lists all the Actors from the Cluster:
 
@@ -122,8 +127,12 @@ Profiling is way of analyzing the performance of an application by sampling the 
 - Memory profiling for worker processes with :ref:`memray <ray-core-mem-profiling>`
 - Built in task/actor profiling tool called :ref:`ray timeline <ray-core-timeline>`
 
+<<<<<<< HEAD
 Ray currently doesn't provide native integration with GPU profiling tools. Try running GPU profilers like PyTorch Profiler without Ray to identify the issues.
 >>>>>>> 9dd21f527b (update to concepts and get started page)
+=======
+Ray doesn't provide native integration with GPU profiling tools. Try running GPU profilers like PyTorch Profiler without Ray to identify the issues.
+>>>>>>> 7d2faf360d (Apply suggestions from code review)
 
 Tracing
 -------
@@ -160,8 +169,8 @@ The log file consists of the stdout of the entrypoint command of the Job.  For t
 
 =======
 Application logs
--------------------
-Logs are important for general monitoring and debugging. For distributed Ray applications, logs are even more important but more complicated at the same time. A Ray applications runs both on Driver and Worker processes (or even across multiple machines) and the logs of those processes are the main sources of application logs.
+----------------
+Logs are important for general monitoring and debugging. For distributed Ray applications, logs are even more important but more complicated at the same time. A Ray application runs both on Driver and Worker processes (or even across multiple machines) and the logs of these processes are the main sources of application logs.
 
 ![application logging](./images/application-logging.png)
 

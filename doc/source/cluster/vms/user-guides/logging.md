@@ -1,16 +1,16 @@
 # Log Persistence
 
-Logs (both system and application logs) are useful for troubleshooting Ray applications and system. For example, you may want to access system logs if a node dies unexpectedly.
+Logs are useful for troubleshooting Ray applications and your system. For example, you may want to access system logs if a node terminates unexpectedly.
 
-Similar to Kubenetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. The following sections provide some instructions on how to collect logs from Ray clusters running on VMs.
+Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. The following sections provide instructions on how to collect logs from Ray Clusters running on VMs.
 
 ## Ray log directory
-By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray node's file system, including application logs and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` before you start to collect the logs.
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray node's file system, including application logs and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` before you start to collect logs.
 
 
 ## Log processing tools
 
-There are a number of open source log processing tools available, e.g, [Vector][Vector] and [Fluent Bit][FluentBit].
+A number of open source log processing tools are available. Some popular ones are listed below:
 Other popular tools include [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
 
 [Vector]: https://vector.dev/
@@ -23,7 +23,7 @@ Other popular tools include [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promt
 
 After choosing a log processing tool based on your needs, you may need to perform the following steps:
 
-1. Ingest log files on each node of your Ray cluster as sources.
+1. Ingest log files on each node of your Ray Cluster as sources.
 2. Parse and transform the logs. You may want to use {ref}`Ray's structured logging <structured-logging>` to simplify this step.
 3. Ship the transformed logs to log storage or management systems.
 
