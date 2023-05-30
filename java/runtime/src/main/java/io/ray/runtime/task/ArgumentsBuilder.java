@@ -49,7 +49,7 @@ public class ArgumentsBuilder {
             throw new IllegalArgumentException(
                 String.format(
                     "Can't transfer %s data to %s",
-                    Arrays.toString(value.metadata), language.getValueDescriptor().getName()));
+                    new String(value.metadata), language.getValueDescriptor().getName()));
           }
         }
         if (value.data.length > SystemConfig.getLargestSizePassedByValue()) {
