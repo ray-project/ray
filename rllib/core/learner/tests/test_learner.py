@@ -180,6 +180,7 @@ class TestLearner(unittest.TestCase):
             learner = get_learner(
                 framework=fw,
                 env=self.ENV,
+                learner_hps=BaseTestingLearnerHyperparameters(learning_rate=0.0003),
             )
 
             # calculated the expected new params based on gradients of all ones.
@@ -213,7 +214,11 @@ class TestLearner(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         for fw in framework_iterator(frameworks=("torch", "tf2")):
-            learner = get_learner(framework=fw, env=self.ENV)
+            learner = get_learner(
+                framework=fw,
+                env=self.ENV,
+                learner_hps=BaseTestingLearnerHyperparameters(learning_rate=0.0003),
+            )
 
             learner.add_module(
                 module_id="test",

@@ -378,6 +378,9 @@ class Learner:
                 setup. If provided, RLlib will automatically keep the optimizer's
                 learning rate updated.
         """
+        # Validate optimizer instance and its param list.
+        self._check_registered_optimizer(optimizer, params)
+
         full_registration_name = module_id + "_" + optimizer_name
 
         # Store the given optimizer under the given `module_id`.
@@ -521,7 +524,7 @@ class Learner:
             module_grads_dict = {}
             for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
                 module_grads_dict.update(
-                    self.compile_param_dict_for_optimizer(gradients_dict, optimizer)
+                    self.filter_param_dict_for_optimizer(gradients_dict, optimizer)
                 )
 
             module_grads_dict = self.postprocess_gradients_for_module(
@@ -568,7 +571,7 @@ class Learner:
             return postprocessed_grads
 
         for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
-            grad_dict_to_clip = self.compile_param_dict_for_optimizer(
+            grad_dict_to_clip = self.filter_param_dict_for_optimizer(
                 param_dict=module_gradients_dict,
                 optimizer=optimizer,
             )
@@ -677,7 +680,7 @@ class Learner:
             named_optimizers.append((optim_name, optimizer))
         return named_optimizers
 
-    def compile_param_dict_for_optimizer(
+    def filter_param_dict_for_optimizer(
         self, param_dict: ParamDict, optimizer: Optimizer
     ) -> ParamDict:
         """Reduces the given ParamDict to contain only parameters for given optimizer.
@@ -1381,7 +1384,7 @@ class Learner:
         """
         if not isinstance(params, list):
             raise ValueError(
-                f"`params` ({params}) must be a list of framework-specifi parameters "
+                f"`params` ({params}) must be a list of framework-specific parameters "
                 "(variables)!"
             )
 
