@@ -84,7 +84,7 @@ class TestLearner(unittest.TestCase):
     def test_postprocess_gradients(self):
         """Tests the base grad clipping logic in `postprocess_gradients()`."""
 
-        for fw in ["torch", "tf2"]:
+        for fw in framework_iterator(frameworks=("torch", "tf2")):
             # Clip by value only.
             hps = BaseTestingLearnerHyperparameters(
                 learning_rate=0.0003,
