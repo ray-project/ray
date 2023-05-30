@@ -831,7 +831,7 @@ class TestAppBuilder:
 
 
 def test_no_slash_route_prefix(serve_instance):
-    """Test serve run with no slash route_prefix
+    """Test serve run with no slash route_prefix.
 
     This test ensure when serve runs with no prefix slash in route_prefix, it will throw
     good error message.
