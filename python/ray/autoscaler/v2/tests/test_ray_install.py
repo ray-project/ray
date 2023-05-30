@@ -6,7 +6,7 @@ import unittest
 import pytest  # noqa
 
 from ray._private.test_utils import load_test_config
-from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS
+from ray.autoscaler.tags import TAG_RAY_NODE_KIND
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 from ray.autoscaler.v2.instance_manager.ray_installer import RayInstaller
 from ray.core.generated.instance_manager_pb2 import Instance
