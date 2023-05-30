@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import Optional
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
