@@ -250,16 +250,7 @@ def test_report_stats():
     # Assume it is a head node.
     agent._is_head_node = True
 
-    cluster_stats = {
-        "autoscaler_report": {
-            "active_nodes": {"head_node": 1, "worker-node-0": 2},
-            "failed_nodes": [],
-            "pending_launches": {},
-            "pending_nodes": [],
-        }
-    }
-
-    records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
+    records = agent._record_stats(STATS_TEMPLATE)
     for record in records:
         name = record.gauge.name
         val = record.value
@@ -267,20 +258,16 @@ def test_report_stats():
             assert val == STATS_TEMPLATE["shm"]
         print(record.gauge.name)
         print(record)
-    assert len(records) == 33
+    assert len(records) == 31
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
-    records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 30
+    records = agent._record_stats(STATS_TEMPLATE)
+    assert len(records) == 28
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
-    records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
-    assert len(records) == 34
-    # Test stats without autoscaler report
-    cluster_stats = {}
-    records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
+    records = agent._record_stats(STATS_TEMPLATE)
     assert len(records) == 32
 
 
@@ -389,7 +376,7 @@ def test_report_stats_gpu():
         "node_gram_used": 0,
         "node_gram_available": 0,
     }
-    records = agent._record_stats(STATS_TEMPLATE, {})
+    records = agent._record_stats(STATS_TEMPLATE)
     # If index is not available, we don't emit metrics.
     num_gpu_records = 0
     for record in records:
@@ -504,15 +491,6 @@ def test_report_per_component_stats():
     test_stats["raylet"] = raylet_stast
     test_stats["agent"] = agent_stats
 
-    cluster_stats = {
-        "autoscaler_report": {
-            "active_nodes": {"head_node": 1, "worker-node-0": 2},
-            "failed_nodes": [],
-            "pending_launches": {},
-            "pending_nodes": [],
-        }
-    }
-
     def get_uss_and_cpu_records(records):
         component_uss_mb_records = defaultdict(list)
         component_cpu_percentage_records = defaultdict(list)
@@ -529,7 +507,7 @@ def test_report_per_component_stats():
     """
     Test basic case.
     """
-    records = agent._record_stats(test_stats, cluster_stats)
+    records = agent._record_stats(test_stats)
     uss_records, cpu_records = get_uss_and_cpu_records(records)
 
     def verify_metrics_values(uss_records, cpu_records, comp, uss, cpu_percent):
@@ -563,7 +541,7 @@ def test_report_per_component_stats():
     """
     # Verify the metrics are reset after ray::func is killed.
     test_stats["workers"] = [idle_stats]
-    records = agent._record_stats(test_stats, cluster_stats)
+    records = agent._record_stats(test_stats)
     uss_records, cpu_records = get_uss_and_cpu_records(records)
     verify_metrics_values(
         uss_records,
@@ -604,7 +582,7 @@ def test_report_per_component_stats():
     }
     test_stats["workers"] = [idle_stats, unknown_stats]
 
-    records = agent._record_stats(test_stats, cluster_stats)
+    records = agent._record_stats(test_stats)
     uss_records, cpu_records = get_uss_and_cpu_records(records)
     assert "python mock" not in uss_records
     assert "python mock" not in cpu_records

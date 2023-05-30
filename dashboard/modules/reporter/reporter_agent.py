@@ -16,10 +16,7 @@ from collections import defaultdict
 import ray
 import ray._private.services
 import ray._private.utils
-from ray.dashboard.consts import (
-    GCS_RPC_TIMEOUT_SECONDS,
-    COMPONENT_METRICS_TAG_KEYS,
-)
+from ray.dashboard.consts import COMPONENT_METRICS_TAG_KEYS
 from ray.dashboard.modules.reporter.profile_manager import CpuProfilingManager
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
@@ -27,7 +24,6 @@ from opencensus.stats import stats as stats_module
 import ray._private.prometheus_exporter as prometheus_exporter
 from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.util.debug import log_once
 from ray.dashboard import k8s_utils
@@ -769,7 +765,7 @@ class ReporterAgent(
 
         return records
 
-    def _record_stats(self, stats, cluster_stats):
+    def _record_stats(self, stats):
         records_reported = []
         ip = stats["ip"]
 
@@ -1021,21 +1017,10 @@ class ReporterAgent(
         """Get any changes to the log files and push updates to kv."""
         while True:
             try:
-                formatted_status_string = await self._gcs_aio_client.internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS.encode(),
-                    None,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
-
                 stats = self._get_all_stats()
                 # Report stats only when metrics collection is enabled.
                 if not self._metrics_collection_disabled:
-                    cluster_stats = (
-                        json.loads(formatted_status_string.decode())
-                        if formatted_status_string
-                        else {}
-                    )
-                    records_reported = self._record_stats(stats, cluster_stats)
+                    records_reported = self._record_stats(stats)
                     self._metrics_agent.record_and_export(
                         records_reported,
                         global_tags={"SessionName": self._session_name},
