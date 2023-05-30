@@ -1241,10 +1241,11 @@ class TestRayReinitialization:
         return "ray.serve.tests.test_config_files.ray_already_initialized:app"
 
     def test_run_without_address(self, import_file_name, ray_start_stop):
-        """
-        when the imported file already initialized a ray instance
-            and serve doesn't run with address argument,
-        then serve does not reinitialize another ray instance and cause error
+        """Test serve run with ray already initialized and run without address argument.
+
+        When the imported file already initialized a ray instance and serve doesn't run
+        with address argument, then serve does not reinitialize another ray instance and
+        cause error.
         """
         p = subprocess.Popen(["serve", "run", import_file_name])
         wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
@@ -1252,10 +1253,12 @@ class TestRayReinitialization:
         p.wait()
 
     def test_run_with_address_same_address(self, import_file_name, ray_start_stop):
-        """
-        when the imported file already initialized a ray instance
-            and serve runs with address argument same as the ray instance,
-        then serve does not reinitialize another ray instance and cause error
+        """Test serve run with ray already initialized and run with address argument
+        that has the same address as existing ray instance.
+
+        When the imported file already initialized a ray instance and serve runs with
+        address argument same as the ray instance, then serve does not reinitialize
+        another ray instance and cause error.
         """
         p = subprocess.Popen(
             ["serve", "run", "--address=127.0.0.1:6379", import_file_name]
@@ -1265,11 +1268,12 @@ class TestRayReinitialization:
         p.wait()
 
     def test_run_with_address_different_address(self, import_file_name, ray_start_stop):
-        """
-        when the imported file already initialized a ray instance
-            and serve runs with address argument different as the ray instance,
-        then serve does not reinitialize another ray instance and cause error
-            and logs warning to the user
+        """Test serve run with ray already initialized and run with address argument
+        that has the different address as existing ray instance.
+
+        When the imported file already initialized a ray instance and serve runs with
+        address argument different as the ray instance, then serve does not reinitialize
+        another ray instance and cause error and logs warning to the user.
         """
         p = subprocess.Popen(
             ["serve", "run", "--address=ray://123.45.67.89:50005", import_file_name],
