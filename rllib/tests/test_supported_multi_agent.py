@@ -199,11 +199,7 @@ class TestSupportedMultiAgentMultiGPU(unittest.TestCase):
     def test_impala_multiagent_multi_gpu(self):
         check_support_multiagent(
             "IMPALA",
-            (
-                get_trainable_cls("IMPALA")
-                .get_default_config()
-                .resources(num_gpus=2)
-            ),
+            (get_trainable_cls("IMPALA").get_default_config().resources(num_gpus=2)),
         )
 
 
