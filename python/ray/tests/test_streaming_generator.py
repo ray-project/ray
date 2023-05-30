@@ -683,8 +683,6 @@ def test_threaded_actor_generator(shutdown_only):
             i = 0
             async for ref in a.f.options(num_returns="streaming").remote():
                 val = ray.get(ref)
-                print(val)
-                print(ref)
                 assert np.array_equal(val, np.ones(1024 * 1024) * i)
                 i += 1
                 del ref
@@ -693,8 +691,6 @@ def test_threaded_actor_generator(shutdown_only):
             i = 0
             async for ref in asy.f.options(num_returns="streaming").remote():
                 val = await ref
-                print(ref)
-                print(val)
                 assert np.array_equal(val, np.ones(1024 * 1024) * i), ref
                 i += 1
                 del ref

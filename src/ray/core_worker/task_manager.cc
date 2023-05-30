@@ -107,8 +107,10 @@ bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_i
 }
 
 bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_index) {
-  if (end_of_stream_index_ != -1) {
+  if (end_of_stream_index_ != -1 && item_index >= end_of_stream_index_) {
     RAY_CHECK(next_index_ <= end_of_stream_index_);
+    // Ignore the index after the end of the stream index.
+    return false;
   }
 
   if (item_index < next_index_) {
@@ -141,6 +143,7 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
 }
 
 void ObjectRefStream::MarkEndOfStream(int64_t item_index) {
+  RAY_CHECK_EQ(end_of_stream_index_, -1);
   end_of_stream_index_ = item_index;
 }
 
@@ -472,6 +475,19 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
   return it != object_ref_streams_.end();
 }
 
+bool TaskManager::MarkEndOfStream(const ObjectID &generator_id,
+                                  int64_t end_of_stream_index) {
+  auto stream_it = object_ref_streams_.find(generator_id);
+  if (stream_it == object_ref_streams_.end()) {
+    // Stream has been already deleted. Do not handle it.
+    return false;
+  }
+
+  RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index;
+  stream_it->second.MarkEndOfStream(end_of_stream_index);
+  return true;
+}
+
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
@@ -488,13 +504,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     if (stream_it == object_ref_streams_.end()) {
       // Stream has been already deleted. Do not handle it.
       return false;
-    }
-
-    if (request.finished()) {
-      RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << item_index;
-      stream_it->second.MarkEndOfStream(item_index);
-      RAY_CHECK(request.dynamic_return_objects_size() == 0);
-      return true;
     }
 
     auto it = submissible_tasks_.find(task_id);
@@ -533,14 +542,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
       num_objects_written += 1;
     }
     // When an object is reported, the object is ready to be fetched.
-    // TODO(sang): It is possible this invairant is not true
-    // if tasks can be retried. For example, imagine the intermediate
-    // task return is reported after a task is resubmitted.
-    // It is okay now because we don't support retry yet. But when
-    // we support retry, we should guarantee it is not called
-    // after the task resubmission. We can do it by guaranteeing
-    // HandleReportGeneratorItemReturns is not called after the task
-    // CompletePendingTask.
     reference_counter_->UpdateObjectReady(object_id);
     HandleTaskReturn(object_id,
                      return_object,
@@ -627,17 +628,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
 
-    if (reply.streaming_generator_return_ids_size() > 0) {
-      RAY_CHECK(spec.IsStreamingGenerator());
-      spec.SetNumStreamingGeneratorReturns(reply.streaming_generator_return_ids_size());
-      for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
-        if (return_id_info.is_plasma_object()) {
-          it->second.reconstructable_return_ids.insert(
-              ObjectID::FromBinary(return_id_info.object_id()));
-        }
-      }
-    }
-
     // Record any dynamically returned objects. We need to store these with the
     // task spec so that the worker will recreate them if the task gets
     // re-executed.
@@ -650,6 +640,30 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       }
       for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
         it->second.reconstructable_return_ids.insert(dynamic_return_id);
+      }
+
+      // Handles treaming generator returns.
+      if (spec.IsStreamingGenerator()) {
+        // The return object for a generator task is always contains a generator id.
+        const auto generator_id =
+            ObjectID::FromBinary(reply.return_objects(0).object_id());
+
+        // Update the task spec accordingly since the first execution is finished.
+        auto num_streaming_generator_returns =
+            reply.streaming_generator_return_ids_size();
+        if (num_streaming_generator_returns > 0) {
+          spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
+          for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
+            if (return_id_info.is_plasma_object()) {
+              it->second.reconstructable_return_ids.insert(
+                  ObjectID::FromBinary(return_id_info.object_id()));
+            }
+          }
+        }
+
+        // End of stream should be marked to ObjectRefStream since the
+        // task finishes.
+        MarkEndOfStream(generator_id, num_streaming_generator_returns);
       }
     }
 

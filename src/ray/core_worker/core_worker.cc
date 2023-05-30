@@ -2887,20 +2887,17 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
     int64_t item_index,
-    uint64_t attempt_number,
-    bool finished) {
+    uint64_t attempt_number) {
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << " finished: " << finished << ", id: " << dynamic_return_object.first;
+                 << ", id: " << dynamic_return_object.first;
   rpc::ReportGeneratorItemReturnsRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_item_index(item_index);
-  request.set_finished(finished);
   request.set_generator_id(generator_id.Binary());
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
   if (!dynamic_return_object.first.IsNil()) {
-    RAY_CHECK_EQ(finished, false);
     auto return_object_proto = request.add_dynamic_return_objects();
     SerializeReturnObject(
         dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
@@ -2913,9 +2910,6 @@ Status CoreWorker::ReportGeneratorItemReturns(
     reference_counter_->PopAndClearLocalBorrowers(
         {dynamic_return_object.first}, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
-  } else {
-    // fininshed must be set when dynamic_return_object is nil.
-    RAY_CHECK_EQ(finished, true);
   }
 
   client->ReportGeneratorItemReturns(

@@ -766,16 +766,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// report from the caller side.
   /// \param[in] attempt_number The number of time the current task is retried.
   /// 0 means it is the first attempt.
-  /// \param[in] finished True indicates there's going to be no more intermediate
-  /// task return. When finished is provided dynamic_return_object's key must be
-  /// pair<nil, empty_pointer>
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
-      uint64_t attempt_number,
-      bool finished);
+      uint64_t attempt_number);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,

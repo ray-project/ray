@@ -396,9 +396,6 @@ message ReportGeneratorItemReturnsRequest {
   // because the ordering of this request
   // is not guaranteed.
   int64 item_index = 3;
-  // If true, it means there's going to be no more
-  // task return after this request.
-  bool finished = 4;
   // The object ref id of the executor task that
   // generates intermediate results.
   bytes generator_id = 5;

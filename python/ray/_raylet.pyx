@@ -1032,8 +1032,7 @@ cdef execute_streaming_generator(
                 generator_id,
                 caller_address,
                 generator_index,
-                attempt_number,
-                False)  # finished
+                attempt_number)
             generator_index += 1
             break
         else:
@@ -1065,22 +1064,8 @@ cdef execute_streaming_generator(
                 generator_id,
                 caller_address,
                 generator_index,
-                attempt_number,
-                False)  # finished
+                attempt_number)
             generator_index += 1
-
-    # Report the owner that there's no more objects.
-    logger.debug(
-        "Writes End of stream to a ObjectRefStream "
-        "of an index {}".format(generator_index))
-    CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-        c_pair[CObjectID, shared_ptr[CRayObject]](
-            CObjectID.Nil(), shared_ptr[CRayObject]()),
-        generator_id,
-        caller_address,
-        generator_index,
-        attempt_number,
-        True)  # finished.
 
 
 cdef create_generator_return_obj(

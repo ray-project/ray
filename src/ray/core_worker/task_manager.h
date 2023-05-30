@@ -672,6 +672,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                                         ObjectID *object_id_out)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  bool MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
