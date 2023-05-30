@@ -14,7 +14,6 @@ import io.ray.runtime.object.ObjectSerializer;
 import io.ray.runtime.util.SystemConfig;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /** Helper methods to convert arguments from/to objects. */
