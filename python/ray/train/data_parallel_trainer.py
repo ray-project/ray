@@ -272,21 +272,24 @@ class DataParallelTrainer(BaseTrainer):
                 )
             elif preprocessor:
                 logger.warning(
-                    "The `preprocessor` argument to Trainer is deprecated. Apply "
-                    "dataset transformations ahead of time instead. Support for this "
-                    "will be dropped in a future release."
+                    "The `preprocessor` arg to Trainer is deprecated. Apply "
+                    "preprocessor transformations ahead of time by calling "
+                    "`preprocessor.transform(ds)`. Support for the preprocessor "
+                    "arg will be dropped in a future release."
                 )
             # If using the new API, hard-disallow deprecated features.
             if isinstance(dataset_config, DataConfig):
                 if self._dataset_config:
                     raise ValueError(
-                        "The new DataConfig class is not supported for use with the "
-                        "legacy Trainer._dataset_config field."
+                        "The DataConfig class is not compatible with the "
+                        "Trainer._dataset_config field. Remove `_dataset_config` "
+                        "from your trainer subclass to use DataConfig."
                     )
                 elif preprocessor:
                     raise ValueError(
-                        "The new DataConfig class is not supported for use with the "
-                        "legacy preprocessor argument for Trainer."
+                        "The DataConfig class is not compatible with the "
+                        "Trainer preprocessor arg. Remove the `preprocessor` arg "
+                        "to use DataConfig."
                     )
             if self._dataset_config is None:
                 base_dataset_config = {

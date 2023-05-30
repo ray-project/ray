@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Tuple, Type
 
@@ -16,6 +17,8 @@ from ray.train.huggingface.transformers.transformers_checkpoint import (
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
+
+logger = logging.getLogger(__name__)
 
 
 def maybe_add_length(obj: Any, length: Optional[int]) -> Any:
@@ -97,6 +100,12 @@ def process_dataset_for_hf(
         else:
             # Otherwise don't count to avoid breaking streaming.
             dataset_length = None
+            logger.warning(
+                f"The length for {dataset._base_dataset} cannot be determined "
+                "since it is a streaming dataset. HF transformers requires "
+                "`max_steps` to be passed in this case, or you can materialize the "
+                "dataset with `ds.materialize()`."
+            )
     else:
         # Legacy + non-split case.
         try:

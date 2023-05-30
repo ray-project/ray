@@ -84,7 +84,7 @@ class BaseTrainer(abc.ABC):
     - ``trainer.setup()``: Any heavyweight Trainer setup should be
       specified here.
     - ``trainer.preprocess_datasets()``: The datasets passed to the Trainer will be
-      setup and assigned to workers.
+      setup here.
     - ``trainer.train_loop()``: Executes the main training logic.
     - Calling ``trainer.fit()`` will return a ``ray.result.Result``
       object where you can access metrics from your training run, as well
@@ -113,7 +113,6 @@ class BaseTrainer(abc.ABC):
             def training_loop(self):
                 # You can access any Trainer attributes directly in this method.
                 # self.datasets["train"] has already been
-                # preprocessed by self.preprocessor
                 dataset = self.datasets["train"]
 
                 torch_ds = dataset.iter_torch_batches(dtypes=torch.float)
@@ -158,11 +157,7 @@ class BaseTrainer(abc.ABC):
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
         datasets: Any Datasets to use for training. Use the key "train"
-            to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
-        preprocessor: A preprocessor to preprocess the provided datasets.
+            to denote which dataset is the training dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
@@ -183,8 +178,9 @@ class BaseTrainer(abc.ABC):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
