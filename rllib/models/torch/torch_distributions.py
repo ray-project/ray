@@ -248,12 +248,9 @@ class TorchDeterministic(Distribution):
     def sample(
         self,
         *,
-        sample_shape: Tuple[int, ...] = None,
+        sample_shape: Tuple[int, ...] = torch.Size(),
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        if sample_shape is None:
-            sample_shape = torch.Size()
-
         device = self.loc.device
         dtype = self.loc.dtype
         shape = sample_shape + self.loc.shape

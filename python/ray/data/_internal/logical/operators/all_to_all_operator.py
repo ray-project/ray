@@ -19,7 +19,7 @@ class AbstractAllToAll(LogicalOperator):
         """
         Args:
             name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Datastream.
+                inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
             num_outputs: The number of expected output bundles outputted by this
@@ -52,12 +52,13 @@ class RandomShuffle(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
+        name: str = "RandomShuffle",
         seed: Optional[int] = None,
         num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "RandomShuffle",
+            name,
             input_op,
             num_outputs=num_outputs,
             ray_remote_args=ray_remote_args,

@@ -3,7 +3,7 @@ import numpy as np
 from typing import Optional, Union, List
 
 import ray
-from ray.data.datastream import Dataset
+from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 

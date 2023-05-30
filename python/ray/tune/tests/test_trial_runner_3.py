@@ -15,13 +15,13 @@ from freezegun import freeze_time
 import ray
 from ray.air import CheckpointConfig
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.tune import TuneError, PlacementGroupFactory
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
-from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.search import BasicVariantGenerator
@@ -1159,7 +1159,7 @@ class TrialRunnerTest3(unittest.TestCase):
             assert syncer.sync_up_counter == 2
 
     def testExperimentCheckpointWithDatasets(self):
-        """Test trial runner checkpointing where trials contain Datastreams.
+        """Test trial runner checkpointing where trials contain Datasets.
         When possible, a dataset plan should be saved (for read_* APIs).
         See `Dataset.serialize_lineage` for more information.
 

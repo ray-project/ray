@@ -44,7 +44,7 @@ export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES B
 
 if [ -z "${NO_INSTALL}" ]; then
   pip install --use-deprecated=legacy-resolver -q -r requirements.txt
-  pip install -q -U boto3 botocore
+  pip install -q -U boto3 botocore bazel-runfiles
 
   if [ "${INSTALL_MATCHING_RAY-false}" == "true" ]; then
     # Find ray-wheels parameter and install locally

@@ -2946,6 +2946,57 @@ TEST_F(ReferenceCountTest, TestForwardNestedRefs) {
   borrower2->rc_.RemoveLocalReference(inner_id, nullptr);
 }
 
+TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
+  auto object_id = ObjectID::FromRandom();
+  auto generator_id = ObjectID::FromRandom();
+  auto generator_id_2 = ObjectID::FromRandom();
+  rpc::Address added_address;
+
+  // Verify OwnDynamicStreamingTaskReturnRef is ignored
+  // when there's no generator id.
+  rc->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+  ASSERT_FALSE(rc->GetOwner(generator_id, &added_address));
+  ASSERT_FALSE(rc->GetOwner(object_id, &added_address));
+  ASSERT_FALSE(rc->HasReference(object_id));
+  ASSERT_FALSE(rc->HasReference(generator_id));
+
+  // Add a generator id.
+  rpc::Address address;
+  address.set_ip_address("1234");
+  rc->AddOwnedObject(generator_id, {}, address, "", 0, false, /*add_local_ref=*/true);
+  ASSERT_TRUE(rc->HasReference(generator_id));
+
+  // Verify object id is not registered if the incorrect generator id is given.
+  rc->OwnDynamicStreamingTaskReturnRef(object_id, generator_id_2);
+  ASSERT_FALSE(rc->HasReference(object_id));
+
+  // Verify object is owned.
+  rc->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+  ASSERT_TRUE(rc->HasReference(object_id));
+  // Verify the number of objects: Generator + object.
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
+  // Verify it is owned by us.
+  ASSERT_TRUE(rc->GetOwner(object_id, &added_address));
+  ASSERT_EQ(address.ip_address(), added_address.ip_address());
+  // Verify it had 1 local reference.
+  std::vector<ObjectID> deleted;
+  rc->RemoveLocalReference(object_id, &deleted);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
+  ASSERT_EQ(deleted.size(), 1);
+  ASSERT_FALSE(rc->GetOwner(object_id, &added_address));
+
+  // Remove the generator.
+  rc->RemoveLocalReference(generator_id, nullptr);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+  ASSERT_FALSE(rc->GetOwner(generator_id, &added_address));
+
+  // Verify we cannot register a new object after the generator id is removed.
+  auto object_id_2 = ObjectID::FromRandom();
+  rc->OwnDynamicStreamingTaskReturnRef(object_id_2, generator_id);
+  ASSERT_FALSE(rc->GetOwner(object_id_2, &added_address));
+  ASSERT_FALSE(rc->HasReference(object_id_2));
+}
+
 }  // namespace core
 }  // namespace ray
 

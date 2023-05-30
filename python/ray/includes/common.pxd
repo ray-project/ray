@@ -99,6 +99,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         @staticmethod
         CRayStatus NotFound()
 
+        @staticmethod
+        CRayStatus ObjectRefEndOfStream()
+
         c_bool ok()
         c_bool IsOutOfMemory()
         c_bool IsKeyError()
@@ -118,6 +121,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectUnknownOwner()
         c_bool IsRpcError()
         c_bool IsOutOfResource()
+        c_bool IsObjectRefEndOfStream()
 
         c_string ToString()
         c_string CodeAsString()
@@ -153,6 +157,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef cppclass CLanguage "Language":
         pass
     cdef cppclass CWorkerType "ray::core::WorkerType":
+        pass
+    cdef cppclass CWorkerExitType "ray::rpc::WorkerExitType":
         pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
@@ -204,6 +210,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::core::WorkerType::SPILL_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::core::WorkerType::RESTORE_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_USER_ERROR "ray::rpc::WorkerExitType::USER_ERROR"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_SYSTEM_ERROR "ray::rpc::WorkerExitType::SYSTEM_ERROR"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -308,6 +316,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
+    cdef enum CGrpcStatusCode "grpc::StatusCode":
+        UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
+        UNKNOWN "grpc::StatusCode::UNKNOWN",
+
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
 
@@ -410,6 +422,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void set_actor_name(const c_string &actor_name)
         void set_task_name(const c_string &task_name)
 
+    cdef cppclass CActorTableData "ray::rpc::ActorTableData":
+        CAddress address() const
+        void ParseFromString(const c_string &serialized)
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
@@ -421,3 +436,8 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
         c_string GetName() const
         uint32_t GetMaxConcurrency() const
         c_vector[CFunctionDescriptor] GetFunctionDescriptors() const
+
+cdef extern from "ray/common/constants.h" nogil:
+    cdef const char[] kWorkerSetupHookKeyName
+    cdef int kResourceUnitScaling
+    cdef int kStreamingGeneratorReturn

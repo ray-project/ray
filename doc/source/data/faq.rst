@@ -62,7 +62,7 @@ What should I use Ray Data for?
 
 Ray Data is the standard way to load, process, and exchange data in Ray libraries
 and applications, with a particular emphasis on ease-of-use, performance, and
-scalability in both data size and cluster size. Within that, Datastreams is designed for
+scalability in both data size and cluster size. Within that, Datasets is designed for
 two core uses cases:
 
 * **ML (training) ingest:** Loading, preprocessing, and ingesting data into one or more
@@ -70,7 +70,7 @@ two core uses cases:
 * **Batch inference:** Loading, preprocessing, and performing parallel batch
   inference on data.
 
-We have designed the Datastream APIs, data model, execution model, and
+We have designed the Dataset APIs, data model, execution model, and
 integrations with these use cases in mind, and have captured these use cases in
 large-scale nightly tests to ensure that we're hitting our scalability, performance,
 and efficiency marks for these use cases.
@@ -80,13 +80,13 @@ What should I not use Ray Data for?
 
 Ray Data is not meant to be used for generic ETL pipelines (like Spark) or
 scalable data science (like Dask, Modin, or Mars). However, each of these frameworks
-are :ref:`runnable on Ray <data_integrations>`, and Datastreams integrates tightly with
+are :ref:`runnable on Ray <data_integrations>`, and Datasets integrates tightly with
 these frameworks, allowing for efficient exchange of distributed data partitions often
 with zero-copy. Check out the
-:ref:`datastream creation feature guide <datastream_from_in_memory_data_distributed>` to learn
+:ref:`dataset creation feature guide <dataset_from_in_memory_data_distributed>` to learn
 more about these integrations.
 
-Datastreams is specifically targeting
+Datasets is specifically targeting
 the ML ingest and batch inference use cases, with focus on data loading and last-mile
 preprocessing for ML pipelines.
 
@@ -94,19 +94,19 @@ For data loading for training, how does Ray Data compare to other solutions?
 ================================================================================
 
 There are several ML framework-specific and general solutions for loading data into
-model trainers. Below, we summarize some advantages Datastreams offers over these more
+model trainers. Below, we summarize some advantages Datasets offers over these more
 specific ingest frameworks.
 
 Torch datasets (and data loaders)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* **Framework-agnostic:** Datastreams is framework-agnostic and portable between different
+* **Framework-agnostic:** Datasets is framework-agnostic and portable between different
   distributed training frameworks, while
   `Torch datasets <https://pytorch.org/docs/stable/data.html>`__ are specific to Torch.
 * **No built-in IO layer:** Torch datasets do not have an I/O layer for common file formats or in-memory exchange
   with other frameworks; users need to bring in other libraries and roll this
   integration themselves.
-* **Generic distributed data processing:** Datastreams is more general: it can handle
+* **Generic distributed data processing:** Datasets is more general: it can handle
   generic distributed operations, including global per-epoch shuffling,
   which would otherwise have to be implemented by stitching together two separate
   systems. Torch datasets would require such stitching for anything more involved
@@ -114,22 +114,22 @@ Torch datasets (and data loaders)
   shards. See our
   `blog post <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`__
   on why this shared infrastructure is important for 3rd generation ML architectures.
-* **Lower overhead:** Datastreams is lower overhead: it supports zero-copy exchange between
+* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
   processes, in contrast to the multi-processing-based pipelines of Torch datasets.
 
 TensorFlow datasets
 ~~~~~~~~~~~~~~~~~~~
 
-* **Framework-agnostic:** Datastreams is framework-agnostic and portable between different
+* **Framework-agnostic:** Datasets is framework-agnostic and portable between different
   distributed training frameworks, while
   `TensorFlow datasets <https://www.tensorflow.org/api_docs/python/tf/data/Dataset>`__
   is specific to TensorFlow.
-* **Unified single-node and distributed:** Datastreams unifies single and multi-node training under
+* **Unified single-node and distributed:** Datasets unifies single and multi-node training under
   the same abstraction. TensorFlow datasets presents
   `separate concepts <https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset>`__
   for distributed data loading and prevents code from being seamlessly scaled to larger
   clusters.
-* **Generic distributed data processing:** Datastreams is more general: it can handle
+* **Generic distributed data processing:** Datasets is more general: it can handle
   generic distributed operations, including global per-epoch shuffling,
   which would otherwise have to be implemented by stitching together two separate
   systems. TensorFlow datasets would require such stitching for anything more involved
@@ -137,7 +137,7 @@ TensorFlow datasets
   shards; only file interleaving is supported. See our
   `blog post <https://www.anyscale.com/blog/deep-dive-data-ingest-in-a-third-generation-ml-architecture>`__
   on why this shared infrastructure is important for 3rd generation ML architectures.
-* **Lower overhead:** Datastreams is lower overhead: it supports zero-copy exchange between
+* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
   processes, in contrast to the multi-processing-based pipelines of TensorFlow datasets.
 
 Petastorm
@@ -145,7 +145,7 @@ Petastorm
 
 * **Supported data types:** `Petastorm <https://github.com/uber/petastorm>`__ only supports Parquet data, while
   Ray Data supports many file formats.
-* **Lower overhead:** Datastreams is lower overhead: it supports zero-copy exchange between
+* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
   processes, in contrast to the multi-processing-based pipelines used by Petastorm.
 * **No data processing:** Petastorm does not expose any data processing APIs.
 
@@ -154,9 +154,9 @@ NVTabular
 
 * **Supported data types:** `NVTabular <https://github.com/NVIDIA-Merlin/NVTabular>`__ only supports tabular
   (Parquet, CSV, Avro) data, while Ray Data supports many other file formats.
-* **Lower overhead:** Datastreams is lower overhead: it supports zero-copy exchange between
+* **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between
   processes, in contrast to the multi-processing-based pipelines used by Petastorm.
-* **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in datastream transforms (e.g.
+* **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g.
   both CPU and GPU transformations), while Ray Data supports this.
 * **ML-specific ops:** NVTabular has a bunch of great ML-specific preprocessing
   operations; this is currently WIP for Ray Data:
@@ -168,7 +168,7 @@ For batch (offline) inference, why should I use Ray Data instead of an actor poo
 ======================================================================================
 
 Ray Data provides its own autoscaling actor pool via the actor compute strategy for
-:meth:`ds.map_batches() <ray.data.Datastream.map_batches>`, allowing you to perform CPU- or
+:meth:`ds.map_batches() <ray.data.Dataset.map_batches>`, allowing you to perform CPU- or
 GPU-based batch inference on this actor pool. Using this instead of the
 `Ray actor pool <https://github.com/ray-project/ray/blob/b17cbd825fe3fbde4fe9b03c9dd33be2454d4737/python/ray/util/actor_pool.py#L6>`__
 has a few advantages:
@@ -193,7 +193,7 @@ Please see this
 `blog post on Ray Data <https://www.anyscale.com/blog/ray-data-for-machine-learning-training-and-scoring>`__
 for more information on this benchmarking.
 
-The new streaming backend for Ray Data (Datastream) supports throughputs of up to
+The new streaming backend for Ray Data (Dataset) supports throughputs of up to
 hundreds of gigabytes per second in a large cluster.
 
 Does all of my data need to fit into memory?
@@ -202,20 +202,20 @@ Does all of my data need to fit into memory?
 No, with Ray's support for :ref:`spilling objects to disk <object-spilling>`, you only
 need to be able to fit your data into memory OR disk. However, keeping your data in
 distributed memory may speed up your workload, which can be done on arbitrarily large
-datastreams by windowing them, creating pipelines.
+datasets by windowing them, creating pipelines.
 
 How much data can Ray Data handle?
 ==================================
 
 Ray Data has been tested at multi-petabyte scale for I/O and multi-terabyte scale for
 shuffling, and we're continuously working on improving this scalability. If you have a
-very large datastream that you'd like to process and you're running into scalability
+very large dataset that you'd like to process and you're running into scalability
 issues, please reach out to us on our `Discourse <https://discuss.ray.io/>`__.
 
 How do I get my data into Ray Data?
 ===================================
 
-Ray Data supports creating a ``Datastream`` from local and distributed in-memory data
+Ray Data supports creating a ``Dataset`` from local and distributed in-memory data
 via integrations with common data libraries, as well as from local and remote storage
 systems via our support for many common file formats and storage backends.
 
@@ -227,7 +227,7 @@ When should I use global per-epoch shuffling?
 Background
 ~~~~~~~~~~
 
-When training a machine learning model, shuffling your training datastream is important in
+When training a machine learning model, shuffling your training dataset is important in
 general in order to ensure that your model isn't overfitting on some unintended pattern
 in your data, e.g. sorting on the label column, or time-correlated samples. Per-epoch
 shuffling in particular can improve your model's precision gain per epoch by reducing
@@ -238,8 +238,8 @@ out of such a gradient rut. In the distributed data-parallel training case, the 
 status quo solution is typically to have a per-shard in-memory shuffle buffer that you
 fill up and pop random batches from, without mixing data across shards between epochs.
 Ray Data also offers fully global random shuffling via
-:meth:`ds.random_shuffle() <ray.data.Datastream.random_shuffle()>`, and doing so on an
-epoch-repeated datastream pipeline to provide global per-epoch shuffling is as simple as
+:meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle()>`, and doing so on an
+epoch-repeated dataset pipeline to provide global per-epoch shuffling is as simple as
 ``ray.data.read().repeat().random_shuffle_each_window()``. But when should you opt for
 global per-epoch shuffling instead of local shuffle buffer shuffling?
 
@@ -253,7 +253,7 @@ gradient-descent-based model trainers benefiting from improved (global) shuffle 
 and we've found that this is particular pronounced for tabular data/models in practice.
 However, the more global your shuffle is, the expensive the shuffling operation, and
 this compounds when doing distributed data-parallel training on a multi-node cluster due
-to data transfer costs, and this cost can be prohibitive when using very large datastreams.
+to data transfer costs, and this cost can be prohibitive when using very large datasets.
 
 The best route for determining the best tradeoff between preprocessing time + cost and
 per-epoch shuffle quality is to measure the precision gain per training step for your
@@ -287,16 +287,13 @@ Ray Data doesn't perform query optimization, so some manual performance
 tuning may be necessary depending on your use case and data scale. Please see our
 :ref:`performance tuning guide <data_performance_tips>` for more information.
 
-What is strict mode?
-====================
+Migrating to strict mode
+========================
 
 In Ray 2.5, Ray Data by default always requires data schemas, dropping support for
 standalone Python objects. In addition to unification and simplicity benefits, this
 aligns the Ray Data API closer to industry-standard distributed data APIs like Apache
 Spark and also emerging standards for machine learning datasets like HuggingFace.
-
-Migrating to strict mode
-~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can disable strict mode temporarily by setting the environment variable
 ``RAY_DATA_STRICT_MODE=0`` on all cluster processes. Strict mode will not be
@@ -330,6 +327,7 @@ just need to be aware of ``Dict[str, Any]`` (non-batched data records) and
 * There is no more special interpretation of single-column schema containing just ``__value__`` as a column.
 * The default batch format is ``numpy`` instead of ``default`` (pandas).
 * ``schema()`` returns a unified Schema class instead of ``Union[pyarrow.lib.Schema, type]``.
+* When lists of array-like objects are returned from map batches, they will be converted into a contiguous numpy array, rather than treated as a list of objects.
 
 **Datasource behavior changes**:
 

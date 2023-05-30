@@ -94,6 +94,9 @@ Raylet::Raylet(instrumented_io_context &main_service,
                                                     resource_map.end());
   self_node_info_.set_start_time_ms(current_sys_time_ms());
   self_node_info_.set_is_head_node(is_head_node);
+  // Read from env
+  auto instance_id = std::getenv(kNodeCloudInstanceIdEnv);
+  self_node_info_.set_instance_id(instance_id ? instance_id : "");
 }
 
 Raylet::~Raylet() {}

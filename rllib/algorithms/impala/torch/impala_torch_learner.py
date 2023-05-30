@@ -1,16 +1,15 @@
-from typing import Any, Dict, Mapping
+from typing import Mapping
 
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
-from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
@@ -22,10 +21,15 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
     """Implements the IMPALA loss function in torch."""
 
     @override(TorchLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self, module_id: str, batch: NestedDict, fwd_out: Mapping[str, TensorType]
     ) -> TensorType:
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        action_dist_class_train = (
+            self.module[module_id].unwrapped().get_train_action_dist_cls()
+        )
+        target_policy_dist = action_dist_class_train.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
         values = fwd_out[SampleBatch.VF_PREDS]
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
@@ -110,29 +114,18 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         total_loss = (
             pi_loss
             + vf_loss * self.hps.vf_loss_coeff
-            + mean_entropy_loss * self.hps.entropy_coeff
+            + mean_entropy_loss
+            * (self.entropy_coeff_scheduler.get_current_value(module_id))
         )
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "pi_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
-            ENTROPY_KEY: -mean_entropy_loss,
-        }
 
-    @override(ImpalaLearner)
-    def additional_update_per_module(
-        self, module_id: ModuleID, timestep: int
-    ) -> Dict[str, Any]:
-        results = super().additional_update_per_module(
+        # Register important loss stats.
+        self.register_metrics(
             module_id,
-            timestep=timestep,
+            {
+                "pi_loss": mean_pi_loss,
+                "vf_loss": mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+            },
         )
-
-        # Update entropy coefficient.
-        value = self.hps.entropy_coeff
-        if self.hps.entropy_coeff_schedule is not None:
-            value = self.entropy_coeff_schedule_per_module[module_id].value(t=timestep)
-            self.curr_entropy_coeffs_per_module[module_id].data = torch.tensor(value)
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: value})
-
-        return results
+        # Return the total loss.
+        return total_loss

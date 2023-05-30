@@ -385,6 +385,7 @@ class TestCatalog(unittest.TestCase):
                 _enable_rl_module_api=True,
                 rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog),
             )
+            .training(_enable_learner_api=True)
             .framework("torch")
         )
 

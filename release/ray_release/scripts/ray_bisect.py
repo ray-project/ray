@@ -4,12 +4,17 @@ import os
 import json
 import time
 from typing import Dict, List, Set
+
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.config import (
     read_and_validate_release_test_collection,
+    parse_python_version,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
+)
+from ray_release.test import (
     Test,
+    DEFAULT_PYTHON_VERSION,
 )
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
@@ -122,9 +127,12 @@ def _run_test(
 
 
 def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
+    python_version = DEFAULT_PYTHON_VERSION
+    if "python" in test:
+        python_version = parse_python_version(test["python"])
+
     ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        commit,
-        timeout=DEFAULT_WHEEL_WAIT_TIMEOUT,
+        commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
     )
     for run in range(run_per_commit):
         step = get_step(

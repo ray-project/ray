@@ -44,7 +44,6 @@ else:
     from typing_extensions import Literal, Protocol
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.import_thread as import_thread
 import ray._private.node
 import ray._private.parameter
@@ -64,11 +63,7 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager, make_function_table_key
-from ray._private.gcs_pubsub import (
-    GcsErrorSubscriber,
-    GcsFunctionKeySubscriber,
-    GcsLogSubscriber,
-)
+
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
@@ -79,6 +74,7 @@ from ray._private.ray_logging import (
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
 from ray._private.storage import _load_class
 from ray._private.utils import check_oversized_function, get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
@@ -461,6 +457,11 @@ class Worker:
         # Create the lock here because the serializer will use it before
         # initializing Ray.
         self.lock = threading.RLock()
+        # By default, don't show logs from other drivers. This is set to true by Serve
+        # in order to stream logs from the controller and replica actors across
+        # different drivers that connect to the same Serve instance.
+        # See https://github.com/ray-project/ray/pull/35070.
+        self._filter_logs_by_job = True
 
     @property
     def connected(self):
@@ -538,7 +539,15 @@ class Worker:
         self._out_file = out_file
 
     def record_task_log_start(self):
-        """Record the task log info when task starts executing"""
+        """Record the task log info when task starts executing for
+        non concurrent actor tasks."""
+        if self.core_worker.current_actor_max_concurrency() != 1:
+            # This is a concurrent actor task, we will not record the start.
+            # We are skipping concurrent actor tasks because high contention
+            # and slow IO on concurrent actors would result in perf regression.
+            # https://github.com/ray-project/ray/issues/35598
+            return
+
         if not self._enable_record_task_log:
             return
 
@@ -550,7 +559,15 @@ class Worker:
         )
 
     def record_task_log_end(self):
-        """Record the task log info when task finishes executing"""
+        """Record the task log info when task finishes executing for
+        non concurrent actor tasks."""
+        if self.core_worker.current_actor_max_concurrency() != 1:
+            # This is a concurrent actor task, we will not record the end.
+            # We are skipping concurrent actor tasks because high contention
+            # and slow IO on concurrent actors would result in perf regression.
+            # https://github.com/ray-project/ray/issues/35598
+            return
+
         if not self._enable_record_task_log:
             return
 
@@ -737,12 +754,12 @@ class Worker:
                     "which is not an ray.ObjectRef."
                 )
 
-        timeout_ms = int(timeout * 1000) if timeout else -1
+        timeout_ms = int(timeout * 1000) if timeout is not None else -1
         data_metadata_pairs = self.core_worker.get_objects(
             object_refs, self.current_task_id, timeout_ms
         )
         debugger_breakpoint = b""
-        for (data, metadata) in data_metadata_pairs:
+        for data, metadata in data_metadata_pairs:
             if metadata:
                 metadata_fields = metadata.split(b",")
                 if len(metadata_fields) >= 2 and metadata_fields[1].startswith(
@@ -870,8 +887,11 @@ class Worker:
                     last_polling_batch_size = 0
                     continue
 
-                # Don't show logs from other drivers.
-                if data["job"] and data["job"] != job_id_hex:
+                if (
+                    self._filter_logs_by_job
+                    and data["job"]
+                    and data["job"] != job_id_hex
+                ):
                     last_polling_batch_size = 0
                     continue
 
@@ -1277,6 +1297,8 @@ def init(
     """
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
+    else:
+        logging.getLogger("ray").handlers.clear()
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1731,11 +1753,13 @@ normal_excepthook = sys.excepthook
 
 
 def custom_excepthook(type, value, tb):
+    import ray.core.generated.common_pb2 as common_pb2
+
     # If this is a driver, push the exception to GCS worker table.
     if global_worker.mode == SCRIPT_MODE and hasattr(global_worker, "worker_id"):
         error_message = "".join(traceback.format_tb(tb))
         worker_id = global_worker.worker_id
-        worker_type = gcs_utils.DRIVER
+        worker_type = common_pb2.DRIVER
         worker_info = {"exception": error_message}
 
         ray._private.state.state._check_connected()
@@ -2156,7 +2180,7 @@ def connect(
     # If it's a driver and it's not coming from ray client, we'll prepare the
     # environment here. If it's ray client, the environment will be prepared
     # at the server side.
-    if mode == SCRIPT_MODE and not job_config.client_job and job_config.runtime_env:
+    if mode == SCRIPT_MODE and not job_config._client_job and job_config.runtime_env:
         scratch_dir: str = worker.node.get_runtime_env_dir_path()
         runtime_env = job_config.runtime_env or {}
         runtime_env = upload_py_modules_if_needed(
@@ -2164,6 +2188,10 @@ def connect(
         )
         runtime_env = upload_working_dir_if_needed(
             runtime_env, scratch_dir, logger=logger
+        )
+        runtime_env = upload_worker_setup_hook_if_needed(
+            runtime_env,
+            worker,
         )
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
@@ -2186,13 +2214,13 @@ def connect(
                 code_paths.append(script_directory)
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_working_dir():
+        if not job_config._client_job and not job_config._runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             code_paths.append(current_directory)
         if len(code_paths) != 0:
-            job_config.py_driver_sys_path.extend(code_paths)
+            job_config._py_driver_sys_path.extend(code_paths)
 
-    serialized_job_config = job_config.serialize()
+    serialized_job_config = job_config._serialize()
     if not node.should_redirect_logs():
         # Logging to stderr, so give core worker empty logs directory.
         logs_dir = ""
@@ -2220,6 +2248,12 @@ def connect(
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
+    )
+    # The following will be fixed with https://github.com/ray-project/ray/pull/35094
+    from ray._private.gcs_pubsub import (
+        GcsErrorSubscriber,
+        GcsFunctionKeySubscriber,
+        GcsLogSubscriber,
     )
 
     # Notify raylet that the core worker is ready.
@@ -2463,12 +2497,9 @@ def get(
             to get.
         timeout (Optional[float]): The maximum amount of time in seconds to
             wait before returning. Set this to None will block until the
-            corresponding object becomes available.
-            WARNING: In future ray releases ``timeout=0`` will return the object
-            immediately if it's available, else raise GetTimeoutError in accordance with
-            the above docstring. The current behavior of blocking until objects become
-            available of ``timeout=0`` is considered to be a bug, see
-            https://github.com/ray-project/ray/issues/28465.
+            corresponding object becomes available. Setting ``timeout=0`` will
+            return the object immediately if it's available, else raise
+            GetTimeoutError in accordance with the above docstring.
 
     Returns:
         A Python object or a list of Python objects.
@@ -2479,26 +2510,6 @@ def get(
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
-    if timeout == 0:
-        if os.environ.get("RAY_WARN_RAY_GET_TIMEOUT_ZERO", "1") == "1":
-            import warnings
-
-            warnings.warn(
-                (
-                    "Please use timeout=None if you expect ray.get() to block. "
-                    "Setting timeout=0 in future ray releases will raise "
-                    "GetTimeoutError if the objects references are not available. "
-                    "You could suppress this warning by setting "
-                    "RAY_WARN_RAY_GET_TIMEOUT_ZERO=0."
-                ),
-                UserWarning,
-            )
-
-        # Record this usage in telemetry
-        import ray._private.usage.usage_lib as usage_lib
-
-        usage_lib.record_extra_usage_tag(usage_lib.TagKey.RAY_GET_TIMEOUT_ZERO, "True")
-
     worker = global_worker
     worker.check_connected()
 
@@ -2514,6 +2525,11 @@ def get(
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
+        # TODO(sang): Should make StreamingObjectRefGenerator
+        # compatible to ray.get for dataset.
+        if isinstance(object_refs, ray._raylet.StreamingObjectRefGenerator):
+            return object_refs
+
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
             object_refs = [object_refs]
@@ -2589,14 +2605,15 @@ def put(
     elif isinstance(_owner, ray.actor.ActorHandle):
         # Ensure `ray._private.state.state.global_state_accessor` is not None
         ray._private.state.state._check_connected()
-        owner_address = gcs_utils.ActorTableData.FromString(
-            ray._private.state.state.global_state_accessor.get_actor_info(
-                _owner._actor_id
+        serialize_owner_address = (
+            ray._raylet._get_actor_serialized_owner_address_or_none(
+                ray._private.state.state.global_state_accessor.get_actor_info(
+                    _owner._actor_id
+                )
             )
-        ).address
-        if len(owner_address.worker_id) == 0:
+        )
+        if not serialize_owner_address:
             raise RuntimeError(f"{_owner} is not alive, it's worker_id is empty!")
-        serialize_owner_address = owner_address.SerializeToString()
     else:
         raise TypeError(f"Expect an `ray.actor.ActorHandle`, but got: {type(_owner)}")
 
@@ -2709,7 +2726,6 @@ def wait(
     worker.check_connected()
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):
-
         # TODO(rkn): This is a temporary workaround for
         # https://github.com/ray-project/ray/issues/997. However, it should be
         # fixed in Arrow instead of here.
@@ -2832,6 +2848,10 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
+
+    if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
+        assert hasattr(object_ref, "_generator_ref")
+        object_ref = object_ref._generator_ref
 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(

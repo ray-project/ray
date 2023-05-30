@@ -1,18 +1,18 @@
 from typing import Type, Optional, TYPE_CHECKING, Union, Dict
 
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.learner.learner_group import LearnerGroup
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
     LearnerHyperparameters,
     FrameworkHyperparameters,
 )
+from ray.rllib.core.learner.learner_group import LearnerGroup
+from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.from_config import NotProvided
 
-
 if TYPE_CHECKING:
+    from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
     from ray.rllib.core.learner import Learner
 
 ModuleSpec = Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
@@ -58,6 +58,7 @@ class LearnerGroupConfig:
 
         # `self.framework()`
         self.eager_tracing = False
+        self.torch_compile_cfg = None
 
     def validate(self) -> None:
 
@@ -83,7 +84,10 @@ class LearnerGroupConfig:
             local_gpu_idx=self.local_gpu_idx,
         )
 
-        framework_hps = FrameworkHyperparameters(eager_tracing=self.eager_tracing)
+        framework_hps = FrameworkHyperparameters(
+            eager_tracing=self.eager_tracing,
+            torch_compile_cfg=self.torch_compile_cfg,
+        )
 
         learner_spec = LearnerSpec(
             learner_class=self.learner_class,
@@ -97,11 +101,17 @@ class LearnerGroupConfig:
         return self.learner_group_class(learner_spec)
 
     def framework(
-        self, eager_tracing: Optional[bool] = NotProvided
+        self,
+        eager_tracing: Optional[bool] = NotProvided,
+        torch_compile_cfg: Optional["TorchCompileConfig"] = NotProvided,
     ) -> "LearnerGroupConfig":
 
         if eager_tracing is not NotProvided:
             self.eager_tracing = eager_tracing
+
+        if torch_compile_cfg is not NotProvided:
+            self.torch_compile_cfg = torch_compile_cfg
+
         return self
 
     def module(

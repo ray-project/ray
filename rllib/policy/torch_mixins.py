@@ -8,8 +8,6 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 torch, nn = try_import_torch()
 
 
-# TODO: (sven) Unify hyperparam annealing procedures across RLlib (tf/torch)
-#   and for all possible hyperparams, not just lr.
 @DeveloperAPI
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
@@ -17,6 +15,8 @@ class LearningRateSchedule:
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
         if lr_schedule is None:
             self.cur_lr = lr
         else:
@@ -28,7 +28,7 @@ class LearningRateSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if self._lr_schedule:
+        if self._lr_schedule and not self.config.get("_enable_learner_api", False):
             self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
             for opt in self._optimizers:
                 for p in opt.param_groups:
@@ -42,7 +42,11 @@ class EntropyCoeffSchedule:
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
+        if entropy_coeff_schedule is None or (
+            self.config.get("_enable_learner_api", False)
+        ):
             self.entropy_coeff = entropy_coeff
         else:
             # Allows for custom schedule similar to lr_schedule format

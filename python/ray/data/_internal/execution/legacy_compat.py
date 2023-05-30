@@ -11,9 +11,9 @@ from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, List
+from ray.data.block import Block, BlockMetadata, CallableClass, List
 from ray.data.datasource import ReadTask
-from ray.data._internal.stats import StatsDict, DatastreamStats
+from ray.data._internal.stats import StatsDict, DatasetStats
 from ray.data._internal.stage_impl import (
     RandomizeBlocksStage,
     LimitStage,
@@ -22,8 +22,6 @@ from ray.data._internal.block_list import BlockList
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.compute import (
     get_compute,
-    CallableClass,
-    TaskPoolStrategy,
     ActorPoolStrategy,
 )
 from ray.data._internal.memory_tracing import trace_allocation
@@ -38,6 +36,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.util import validate_compute
 from ray.data._internal.execution.util import make_callable_class_concurrent
 
 # Warn about tasks larger than this.
@@ -48,11 +47,11 @@ def execute_to_legacy_block_iterator(
     executor: Executor,
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
-    datastream_uuid: str,
+    dataset_uuid: str,
 ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Same as execute_to_legacy_bundle_iterator but returning blocks and metadata."""
     bundle_iter = execute_to_legacy_bundle_iterator(
-        executor, plan, allow_clear_input_blocks, datastream_uuid
+        executor, plan, allow_clear_input_blocks, dataset_uuid
     )
     for bundle in bundle_iter:
         for block, metadata in bundle.blocks:
@@ -63,7 +62,7 @@ def execute_to_legacy_bundle_iterator(
     executor: Executor,
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
-    datastream_uuid: str,
+    dataset_uuid: str,
     dag_rewrite=None,
 ) -> Iterator[RefBundle]:
     """Execute a plan with the new executor and return a bundle iterator.
@@ -72,10 +71,10 @@ def execute_to_legacy_bundle_iterator(
         executor: The executor to use.
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
-        datastream_uuid: UUID of the datastream for this execution.
+        dataset_uuid: UUID of the dataset for this execution.
         dag_rewrite: Callback that can be used to mutate the DAG prior to execution.
             This is currently used as a legacy hack to inject the OutputSplit operator
-            for `Datastream.streaming_split()`.
+            for `Dataset.streaming_split()`.
 
     Returns:
         The output as a bundle iterator.
@@ -97,7 +96,7 @@ def execute_to_legacy_block_list(
     executor: Executor,
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
-    datastream_uuid: str,
+    dataset_uuid: str,
     preserve_order: bool,
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
@@ -106,7 +105,7 @@ def execute_to_legacy_block_list(
         executor: The executor to use.
         plan: The legacy plan to execute.
         allow_clear_input_blocks: Whether the executor may consider clearing blocks.
-        datastream_uuid: UUID of the datastream for this execution.
+        dataset_uuid: UUID of the dataset for this execution.
         preserve_order: Whether to preserve order in execution.
 
     Returns:
@@ -121,7 +120,7 @@ def execute_to_legacy_block_list(
     bundles = executor.execute(dag, initial_stats=stats)
     block_list = _bundles_to_block_list(bundles)
     # Set the stats UUID after execution finishes.
-    _set_stats_uuid_recursive(executor.get_stats(), datastream_uuid)
+    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
     return block_list
 
 
@@ -130,7 +129,7 @@ def _get_execution_dag(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     preserve_order: bool,
-) -> Tuple[PhysicalOperator, DatastreamStats]:
+) -> Tuple[PhysicalOperator, DatasetStats]:
     """Get the physical operators DAG from a plan."""
     # Record usage of logical operators if available.
     if hasattr(plan, "_logical_plan") and plan._logical_plan is not None:
@@ -152,7 +151,7 @@ def _get_execution_dag(
     return dag, stats
 
 
-def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatastreamStats:
+def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
     assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
@@ -161,7 +160,7 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatastreamStats:
 
 def _to_operator_dag(
     plan: ExecutionPlan, allow_clear_input_blocks: bool
-) -> Tuple[PhysicalOperator, DatastreamStats]:
+) -> Tuple[PhysicalOperator, DatasetStats]:
     """Translate a plan into an operator DAG for the new execution backend."""
 
     blocks, stats, stages = plan._optimize()
@@ -267,16 +266,11 @@ def _stage_to_operator(stage: Stage, input_op: PhysicalOperator) -> PhysicalOper
 
     if isinstance(stage, OneToOneStage):
         compute = get_compute(stage.compute)
+        validate_compute(stage.fn, compute)
 
         block_fn = stage.block_fn
         if stage.fn:
             if isinstance(stage.fn, CallableClass):
-                if isinstance(compute, TaskPoolStrategy):
-                    raise ValueError(
-                        "``compute`` must be specified when using a callable class, "
-                        "and must specify the actor compute strategy. "
-                        "For example, use ``compute=ActorPoolStrategy(size=n)``."
-                    )
                 assert isinstance(compute, ActorPoolStrategy)
 
                 fn_constructor_args = stage.fn_constructor_args or ()
@@ -384,8 +378,8 @@ def _block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List[RefBund
     return output
 
 
-def _set_stats_uuid_recursive(stats: DatastreamStats, datastream_uuid: str) -> None:
-    if not stats.datastream_uuid:
-        stats.datastream_uuid = datastream_uuid
+def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:
+    if not stats.dataset_uuid:
+        stats.dataset_uuid = dataset_uuid
     for parent in stats.parents or []:
-        _set_stats_uuid_recursive(parent, datastream_uuid)
+        _set_stats_uuid_recursive(parent, dataset_uuid)

@@ -4,6 +4,8 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
+from ray.air import session
+from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import StartTraceback
 from ray.train._internal.backend_executor import (
     BackendExecutor,
@@ -25,6 +27,7 @@ from ray.train.base_trainer import (  # noqa: F401
     GenDataset,
     TrainingFailedError,
 )
+from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import DeveloperAPI
 
 T = TypeVar("T")
@@ -47,6 +50,7 @@ class TrainingIterator:
         checkpoint: Optional[Union[Dict, str, Path, Checkpoint]],
         checkpoint_strategy: Optional[CheckpointConfig],
         run_dir: Optional[Path] = None,
+        storage_path: Optional[str] = None,
     ):
         self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
@@ -55,12 +59,12 @@ class TrainingIterator:
         self._run_dir = run_dir
         self._checkpoint_manager = checkpoint_manager
         self._checkpoint_strategy = checkpoint_strategy
+        self._storage_path = storage_path
         self._start_training(
             train_func=train_func,
             run_dir=run_dir,
             dataset_spec=self._dataset_spec,
             checkpoint=checkpoint,
-            checkpoint_strategy=checkpoint_strategy,
         )
 
         self._final_results = None
@@ -75,11 +79,10 @@ class TrainingIterator:
         run_dir,
         dataset_spec,
         checkpoint,
-        checkpoint_strategy,
         latest_checkpoint_id=None,
     ):
         self._checkpoint_manager.on_start_training(
-            checkpoint_strategy=checkpoint_strategy,
+            checkpoint_strategy=self._checkpoint_strategy,
             run_dir=run_dir,
             latest_checkpoint_id=latest_checkpoint_id,
         )
@@ -91,6 +94,12 @@ class TrainingIterator:
                 checkpoint=checkpoint,
             )
         )
+
+        # Session has started. Set current cloud checkpoint dir if necessary.
+        if self._checkpoint_strategy._checkpoint_upload_from_workers:
+            self._backend_executor._set_checkpoint_uri(
+                self.__get_cloud_checkpoint_dir()
+            )
 
     def _run_with_error_handling(self, func: Callable):
         try:
@@ -109,8 +118,7 @@ class TrainingIterator:
                 self._run_dir,
                 self._dataset_spec,
                 self._checkpoint_manager.latest_checkpoint,
-                self._checkpoint_strategy,
-                latest_checkpoint_id=self._checkpoint_manager.latest_checkpoint_id,
+                self._checkpoint_manager.latest_checkpoint_id,
             )
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
@@ -174,9 +182,22 @@ class TrainingIterator:
                 result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(
+                self._checkpoint_manager._process_checkpoints(
                     results, decode_checkpoint_fn=self._backend._decode_data
                 )
+
+                # Note(jungong) : This is kinda funky. We update the cloud
+                # checkpoint dir on every distributed worker right after
+                # an existing checkpoint is processed. We must do this because
+                # Trainers do not have the concept of iterations or steps,
+                # which must be synced between Trainable driver and the trainers.
+                # TODO(jungong) : It would be nicer if we find a cleaner way
+                # to sync the current cloud checkpointing directory between
+                # Tuner, Trainable, and Trainers.
+                if self._checkpoint_strategy._checkpoint_upload_from_workers:
+                    self._backend_executor._set_checkpoint_uri(
+                        self.__get_cloud_checkpoint_dir()
+                    )
                 # Iterate until next REPORT call or training has finished.
             else:
                 raise TrainBackendError(
@@ -194,9 +215,13 @@ class TrainingIterator:
             result_type = results[0].type
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(
+                self._checkpoint_manager._process_checkpoints(
                     results, decode_checkpoint_fn=self._backend._decode_data
                 )
+                if self._checkpoint_strategy._checkpoint_upload_from_workers:
+                    self._backend_executor._set_checkpoint_uri(
+                        self.__get_cloud_checkpoint_dir()
+                    )
 
     def _finish_training(self):
         """Finish training and return final results. Propagate any exceptions.
@@ -248,3 +273,24 @@ class TrainingIterator:
                 )
 
         return self._final_results
+
+    # This is extremely hacky and fragile.
+    # TODO(jungong) : We should refactor things so Tuner, Trinable, and
+    # Trainers have a consistent view of the current cloud checkpointing
+    # directory.
+    # We should probably also refactor things so Syncer and SyncConfig
+    # are available everywhere session is available.
+    def __get_cloud_checkpoint_dir(self):
+        if not self._storage_path:
+            # Can't run cloud upload if storage path is not set.
+            return None
+
+        base_dir = URI(self._storage_path)
+        path = Path(session.get_trial_dir())
+        trial_dir_name = path.name
+        exp_dir_name = path.parent.name
+        checkpoint_dir_name = TrainableUtil._make_checkpoint_dir_name(
+            self._checkpoint_manager._latest_checkpoint_id
+        )
+
+        return str(base_dir / exp_dir_name / trial_dir_name / checkpoint_dir_name)

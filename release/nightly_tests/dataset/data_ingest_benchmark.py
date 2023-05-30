@@ -10,23 +10,39 @@ from ray.data import Dataset
 from ray.data import DatasetPipeline
 
 import pandas as pd
+import torch
 
 GiB = 1024 * 1024 * 1024
 
 
-@ray.remote(num_cpus=0.5)
+@ray.remote
 class ConsumingActor:
     def __init__(self, rank):
         self._rank = rank
 
-    def consume(self, split):
-        DoConsume(split, self._rank)
+    def consume(
+        self,
+        split,
+        use_gpu=False,
+        max_bytes_to_read=None,
+    ):
+        do_consume(
+            split,
+            self._rank,
+            use_gpu,
+            max_bytes_to_read,
+        )
 
     def get_location(self):
         return ray.get_runtime_context().get_node_id()
 
 
-def DoConsume(split, rank):
+def do_consume(
+    split,
+    rank,
+    use_gpu=False,
+    max_bytes_to_read=None,
+):
     prefetch_batches = 1
     batch_size = 4096
     num_epochs = 1
@@ -56,9 +72,16 @@ def DoConsume(split, rank):
                 prefetch_blocks=prefetch_batches, batch_size=batch_size
             )
         else:
-            batch_iterator = epoch_data.iter_batches(
-                prefetch_batches=prefetch_batches, batch_size=batch_size
-            )
+            if not use_gpu:
+                batch_iterator = epoch_data.iter_batches(
+                    prefetch_batches=prefetch_batches, batch_size=batch_size
+                )
+            else:
+                batch_iterator = epoch_data.iter_torch_batches(
+                    prefetch_batches=prefetch_batches,
+                    batch_size=batch_size,
+                    device="cuda",
+                )
 
         for batch in batch_iterator:
             batch_delay = time.perf_counter() - batch_start
@@ -68,11 +91,19 @@ def DoConsume(split, rank):
                 bytes_read += int(batch.memory_usage(index=True, deep=True).sum())
             elif isinstance(batch, np.ndarray):
                 bytes_read += batch.nbytes
+            elif isinstance(batch, dict) and isinstance(
+                batch.get("data"), torch.Tensor
+            ):
+                tensor = batch["data"]
+                bytes_read += tensor.element_size() * tensor.nelement()
             else:
                 # NOTE: This isn't recursive and will just return the size of
                 # the object pointers if list of non-primitive types.
                 bytes_read += sys.getsizeof(batch)
             batch_start = time.perf_counter()
+            if max_bytes_to_read is not None:
+                if bytes_read >= max_bytes_to_read:
+                    break
     delta = time.perf_counter() - start
 
     print("Time to read all data", delta, "seconds")
@@ -94,7 +125,7 @@ def DoConsume(split, rank):
 def make_ds(size_gb: int, parallelism: int = -1):
     # Dataset of 10KiB tensor records.
     total_size = 1024 * 1024 * 1024 * size_gb
-    record_dim = 1280
+    record_dim = 1024
     record_size = record_dim * 8
     num_records = int(total_size / record_size)
     dataset = ray.data.range_tensor(
@@ -104,23 +135,37 @@ def make_ds(size_gb: int, parallelism: int = -1):
     return dataset
 
 
-def run_ingest_streaming(dataset_size_gb, num_workers):
+def run_ingest_streaming(dataset_size_gb, num_workers, use_gpu, early_stop):
     ds = make_ds(dataset_size_gb)
+    resources = {"num_cpus": 0.5}
+    if use_gpu:
+        resources["num_gpus"] = 0.5
     consumers = [
-        ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
+        ConsumingActor.options(scheduling_strategy="SPREAD", **resources).remote(i)
         for i in range(num_workers)
     ]
     locality_hints = ray.get([actor.get_location.remote() for actor in consumers])
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.streaming_split(num_workers, equal=True, locality_hints=locality_hints)
-    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
+    max_bytes_to_read = None
+    if early_stop:
+        max_bytes_to_read = dataset_size_gb * GiB // num_workers // 2
+    # Early stop when we've read half the dataset.
+    future = [
+        consumers[i].consume.remote(
+            s,
+            use_gpu,
+            max_bytes_to_read,
+        )
+        for i, s in enumerate(splits)
+    ]
     ray.get(future)
 
 
 def run_ingest_bulk(dataset_size_gb, num_workers):
     ds = make_ds(dataset_size_gb, parallelism=200)
     consumers = [
-        ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
+        ConsumingActor.options(scheduling_strategy="SPREAD", num_cpus=0.5).remote(i)
         for i in range(num_workers)
     ]
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
@@ -146,7 +191,7 @@ def run_ingest_bulk(dataset_size_gb, num_workers):
 def run_ingest_dataset_pipeline(dataset_size_gb, num_workers):
     ds = make_ds(dataset_size_gb)
     consumers = [
-        ConsumingActor.options(scheduling_strategy="SPREAD").remote(i)
+        ConsumingActor.options(scheduling_strategy="SPREAD", num_cpus=0.5).remote(i)
         for i in range(num_workers)
     ]
     p = (
@@ -186,11 +231,15 @@ if __name__ == "__main__":
     parser.add_argument("--dataset-size-gb", type=int, default=200)
     parser.add_argument("--streaming", action="store_true", default=False)
     parser.add_argument("--new_streaming", action="store_true", default=False)
+    parser.add_argument("--use-gpu", action="store_true", default=False)
+    parser.add_argument("--early-stop", action="store_true", default=False)
     args = parser.parse_args()
 
     start = time.time()
     if args.new_streaming:
-        run_ingest_streaming(args.dataset_size_gb, args.num_workers)
+        run_ingest_streaming(
+            args.dataset_size_gb, args.num_workers, args.use_gpu, args.early_stop
+        )
     elif args.streaming:
         run_ingest_dataset_pipeline(args.dataset_size_gb, args.num_workers)
     else:

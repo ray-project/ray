@@ -13,11 +13,11 @@ from unittest.mock import patch
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.datastream_logger import DatastreamLogger
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
-from ray.data.datastream import Dataset, MaterializedDatastream, _sliding_window
+from ray.data.dataset import Dataset, MaterializedDataset, _sliding_window
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.tests.conftest import *  # noqa
@@ -67,7 +67,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     ds = ds.random_shuffle()
     epoch = ds._get_epoch()
     uuid = ds._get_uuid()
-    plan_uuid = ds._plan._datastream_uuid
+    plan_uuid = ds._plan._dataset_uuid
 
     serialized_ds = ds.serialize_lineage()
     # Confirm that the original Dataset was properly copied before clearing/mutating.
@@ -84,7 +84,7 @@ def test_dataset_lineage_serialization(shutdown_only):
     # Check Dataset state.
     assert ds._get_epoch() == epoch
     assert ds._get_uuid() == uuid
-    assert ds._plan._datastream_uuid == plan_uuid
+    assert ds._plan._dataset_uuid == plan_uuid
     # Check Dataset content.
     assert ds.count() == 10
     assert sorted(extract_values("id", ds.take())) == list(range(2, 12))
@@ -172,7 +172,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ds.materialize()
     assert (
         str(ds)
-        == "MaterializedDatastream(num_blocks=1, num_rows=0, schema=Unknown schema)"
+        == "MaterializedDataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
     )
 
     # Test map on empty dataset.
@@ -208,10 +208,10 @@ def test_cache_dataset(ray_start_regular_shared):
     ds = ray.data.range(1)
     ds = ds.map(inc)
     assert not ds.is_fully_executed()
-    assert not isinstance(ds, MaterializedDatastream)
+    assert not isinstance(ds, MaterializedDataset)
     ds2 = ds.materialize()
     assert ds2.is_fully_executed()
-    assert isinstance(ds2, MaterializedDatastream)
+    assert isinstance(ds2, MaterializedDataset)
     assert not ds.is_fully_executed()
 
     for _ in range(10):
@@ -226,13 +226,12 @@ def test_schema(ray_start_regular_shared):
     ds3 = ds3.materialize()
     ds4 = ds3.map(lambda x: {"a": "hi", "b": 1.0}).limit(5).repartition(1)
     ds4 = ds4.materialize()
-    assert str(ds2) == "Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
+    assert str(ds2) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
     assert (
-        str(ds3)
-        == "MaterializedDatastream(num_blocks=5, num_rows=10, schema={id: int64})"
+        str(ds3) == "MaterializedDataset(num_blocks=5, num_rows=10, schema={id: int64})"
     )
     assert (
-        str(ds4) == "MaterializedDatastream(num_blocks=1, num_rows=5, "
+        str(ds4) == "MaterializedDataset(num_blocks=1, num_rows=5, "
         "schema={a: string, b: double})"
     )
 
@@ -248,6 +247,38 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan._in_blocks._num_computed() == 0
     # Fetching the schema should not trigger execution of extra read tasks.
     assert ds._plan.execute()._num_computed() == 0
+
+
+def test_columns(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    assert ds.columns() == ds.schema().names
+    assert ds.columns() == ["id"]
+
+    ds = ds.map(lambda x: x)
+    assert ds.columns(fetch_if_missing=False) is None
+
+
+def test_schema_repr(ray_start_regular_shared):
+    ds = ray.data.from_items([{"text": "spam", "number": 0}])
+    # fmt: off
+    expected_repr = (
+        "Column  Type\n"
+        "------  ----\n"
+        "text    string\n"
+        "number  int64"
+    )
+    # fmt:on
+    assert repr(ds.schema()) == expected_repr
+
+    ds = ray.data.from_items([{"long_column_name": "spam"}])
+    # fmt: off
+    expected_repr = (
+        "Column            Type\n"
+        "------            ----\n"
+        "long_column_name  string"
+    )
+    # fmt: on
+    assert repr(ds.schema()) == expected_repr
 
 
 def test_count_lazy(ray_start_regular_shared):
@@ -286,49 +317,48 @@ def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
 
 def test_dataset_repr(ray_start_regular_shared):
     ds = ray.data.range(10, parallelism=10)
-    assert repr(ds) == "Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
+    assert repr(ds) == "Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
         "MapBatches(<lambda>)\n"
-        "+- Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
+        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
     )
     ds = ds.filter(lambda x: x["id"] > 0)
     assert repr(ds) == (
         "Filter\n"
         "+- MapBatches(<lambda>)\n"
-        "   +- Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
+        "   +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
     )
     ds = ds.random_shuffle()
     assert repr(ds) == (
         "RandomShuffle\n"
         "+- Filter\n"
         "   +- MapBatches(<lambda>)\n"
-        "      +- Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
+        "      +- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
     )
     ds = ds.materialize()
     assert (
-        repr(ds)
-        == "MaterializedDatastream(num_blocks=10, num_rows=9, schema={id: int64})"
+        repr(ds) == "MaterializedDataset(num_blocks=10, num_rows=9, schema={id: int64})"
     )
     ds = ds.map_batches(lambda x: x)
     assert repr(ds) == (
         "MapBatches(<lambda>)\n"
-        "+- Datastream(num_blocks=10, num_rows=9, schema={id: int64})"
+        "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
     )
     ds1, ds2 = ds.split(2)
     assert (
-        repr(ds1) == f"MaterializedDatastream(num_blocks=5, num_rows={ds1.count()}, "
+        repr(ds1) == f"MaterializedDataset(num_blocks=5, num_rows={ds1.count()}, "
         "schema={id: int64})"
     )
     assert (
-        repr(ds2) == f"MaterializedDatastream(num_blocks=5, num_rows={ds2.count()}, "
+        repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
         "schema={id: int64})"
     )
     ds3 = ds1.union(ds2)
-    assert repr(ds3) == "Datastream(num_blocks=10, num_rows=9, schema={id: int64})"
+    assert repr(ds3) == "Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
     ds = ds.zip(ds3)
     assert repr(ds) == (
-        "Zip\n" "+- Datastream(num_blocks=10, num_rows=9, schema={id: int64})"
+        "Zip\n" "+- Dataset(num_blocks=10, num_rows=9, schema={id: int64})"
     )
 
     def my_dummy_fn(x):
@@ -338,7 +368,7 @@ def test_dataset_repr(ray_start_regular_shared):
     ds = ds.map_batches(my_dummy_fn)
     assert repr(ds) == (
         "MapBatches(my_dummy_fn)\n"
-        "+- Datastream(num_blocks=10, num_rows=10, schema={id: int64})"
+        "+- Dataset(num_blocks=10, num_rows=10, schema={id: int64})"
     )
 
 
@@ -1296,11 +1326,8 @@ def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
     expected_str = (
-        "MaterializedDatastream(\n"
-        "   num_blocks=1,\n"
-        "   num_rows=10,\n"
-        "   schema={1: float64, a: float64}\n"
-        ")"
+        "MaterializedDataset(num_blocks=1, num_rows=10, "
+        "schema={1: float64, a: float64})"
     )
     assert str(ds) == expected_str, str(ds)
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
@@ -1552,7 +1579,7 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
     path1 = os.path.join(local_path, "test1.csv")
     df1.to_csv(path1, index=False, storage_options={})
     ds1 = ray.data.read_datasource(FlakyCSVDatasource(), parallelism=1, paths=path1)
-    ds1.write_datasource(FlakyCSVDatasource(), path=local_path, datastream_uuid="data")
+    ds1.write_datasource(FlakyCSVDatasource(), path=local_path, dataset_uuid="data")
     assert df1.equals(
         pd.read_csv(os.path.join(local_path, "data_000000.csv"), storage_options={})
     )
@@ -1669,8 +1696,8 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet")
-    assert ds._plan.get_plan_as_string("Datastream") == (
-        "Datastream(\n"
+    assert ds._plan.get_plan_as_string("Dataset") == (
+        "Dataset(\n"
         "   num_blocks=1,\n"
         "   num_rows=150,\n"
         "   schema={\n"
@@ -1684,13 +1711,13 @@ def test_dataset_plan_as_string(ray_start_cluster):
     )
     for _ in range(5):
         ds = ds.map_batches(lambda x: x)
-    assert ds._plan.get_plan_as_string("Datastream") == (
+    assert ds._plan.get_plan_as_string("Dataset") == (
         "MapBatches(<lambda>)\n"
         "+- MapBatches(<lambda>)\n"
         "   +- MapBatches(<lambda>)\n"
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
-        "            +- Datastream(\n"
+        "            +- Dataset(\n"
         "                  num_blocks=1,\n"
         "                  num_rows=150,\n"
         "                  schema={\n"
@@ -1721,7 +1748,7 @@ def test_warning_execute_with_no_cpu(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
 
-    logger = DatastreamLogger("ray.data._internal.plan").get_logger()
+    logger = DatasetLogger("ray.data._internal.plan").get_logger()
     with patch.object(
         logger,
         "warning",
@@ -1752,7 +1779,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     # Create one node with CPUs to avoid triggering the Dataset warning
     ray.init(ray_start_cluster.address)
 
-    logger = DatastreamLogger("ray.data._internal.plan").get_logger()
+    logger = DatasetLogger("ray.data._internal.plan").get_logger()
     with patch.object(
         logger,
         "warning",

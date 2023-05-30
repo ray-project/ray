@@ -22,7 +22,15 @@ manually destroyed.
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
+
+            import ray
+
+            @ray.remote
+            class Actor:
+                pass
+
+            actor_handle = Actor.remote()
 
             ray.kill(actor_handle)
             # This will not go through the normal Python sys.exit
@@ -69,9 +77,15 @@ This will kill the actor process and release resources associated/assigned to th
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
-            ray.actor.exit_actor()
+            @ray.remote
+            class Actor:
+                def exit(self):
+                    ray.actor.exit_actor()
+
+            actor = Actor.remote()
+            actor.exit.remote()
 
         This approach should generally not be necessary as actors are automatically garbage
         collected. The ``ObjectRef`` resulting from the task can be waited on to wait

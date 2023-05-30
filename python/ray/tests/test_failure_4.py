@@ -7,7 +7,7 @@ import numpy as np
 import psutil
 import pytest
 from grpc._channel import _InactiveRpcError
-from ray.experimental.state.api import list_tasks
+from ray.util.state import list_tasks
 from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
