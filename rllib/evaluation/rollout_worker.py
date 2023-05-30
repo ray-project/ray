@@ -162,7 +162,7 @@ def _update_env_seed_if_necessary(
 
 
 @DeveloperAPI
-class RolloutWorker(EnvRunner, ParallelIteratorWorker):
+class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -287,8 +287,8 @@ class RolloutWorker(EnvRunner, ParallelIteratorWorker):
             while True:
                 yield self.sample()
 
-        EnvRunner.__init__(self, config=config)
         ParallelIteratorWorker.__init__(self, gen_rollouts, False)
+        EnvRunner.__init__(self, config=config)
 
         self.num_workers = (
             num_workers if num_workers is not None else self.config.num_rollout_workers
