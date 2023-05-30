@@ -721,6 +721,7 @@ class TaskState(StateSchema):
     )
     #: The task logs info, e.g. offset into the worker log file when the task
     #: starts/finishes.
+    #: None if the task is from a concurrent actor (e.g. async actor or threaded actor)
     task_log_info: Optional[dict] = state_column(detail=True, filterable=False)
     #: Task error detail info.
     error_message: Optional[str] = state_column(detail=True, filterable=False)

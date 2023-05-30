@@ -559,16 +559,14 @@ class Learner:
 
     @abc.abstractmethod
     def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
-        """Converts a MultiAgentBatch to a NestedDict of Tensors.
-
-        This should convert the input batch from a MultiAgentBatch format to framework
-        specific tensor format located on the correct device.
+        """Converts a MultiAgentBatch to a NestedDict of Tensors on the correct device.
 
         Args:
-            batch: A MultiAgentBatch.
+            batch: The MultiAgentBatch object to convert.
 
         Returns:
-            A NestedDict.
+            The resulting NestedDict with framework-specific tensor values placed
+            on the correct device.
         """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -588,8 +586,6 @@ class Learner:
             loss_per_module: A dict mapping module IDs (including ALL_MODULES) to the
                 individual loss tensors as returned by calls to
                 `compute_loss_for_module(module_id=...)`.
-            postprocessed_gradients: The postprocessed gradients dict, (flat) mapping
-                gradient tensor refs to the already postprocessed gradient tensors.
             metrics_per_module: The collected metrics defaultdict mapping ModuleIDs to
                 metrics dicts. These metrics are collected during loss- and
                 gradient computation, gradient postprocessing, and gradient application.

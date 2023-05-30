@@ -1001,7 +1001,7 @@ class WorkerSet:
 
     @Deprecated(new="WorkerSet.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func):
-        return self.foreach_policy_to_train(func)
+        pass
 
     @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
     def trainable_policies(self):
