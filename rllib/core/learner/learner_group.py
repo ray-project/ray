@@ -1,4 +1,4 @@
-from collections import deque
+from collections import defaultdict, deque
 from functools import partial
 import pathlib
 from typing import (
@@ -12,6 +12,7 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
+import uuid
 
 import ray
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
@@ -74,9 +75,8 @@ class LearnerGroup:
                             by this LearnerGroup.
     Args:
         learner_spec: The specification for constructing Learners.
-        max_queue_len: The maximum number of batches to queue up if doing non-blocking
-            updates (e.g. `self.update(batch, block=False)`). If the queue is full it
-            will evict the oldest batch first.
+        max_queue_len: The maximum number of batches to queue up if doing async_update
+            If the queue is full itwill evict the oldest batch first.
     """
 
     def __init__(
@@ -136,6 +136,10 @@ class LearnerGroup:
                 #  an async algo, remove this restriction entirely.
                 max_remote_requests_in_flight_per_actor=3,
             )
+            # This is a list of the tags for asynchronous update requests that are
+            # inflight, and is used for grouping together the results of requests
+            # that were sent to the workers at the same time.
+            self._inflight_request_tags: Set[str] = set()
             self._in_queue = deque(maxlen=max_queue_len)
 
     def get_in_queue_stats(self) -> Mapping[str, Any]:
@@ -158,7 +162,6 @@ class LearnerGroup:
         reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
             _reduce_mean_results
         ),
-        block: bool = True,
     ) -> Union[Mapping[str, Any], List[Mapping[str, Any]]]:
         """Do one or more gradient based updates to the Learner(s) based on given data.
 
@@ -174,10 +177,10 @@ class LearnerGroup:
                 results (for example for metrics) or be more selective about you want to
                 report back to the algorithm's training_step. If None is passed, the
                 results will not get reduced.
-            block: Whether to block until the update is complete.
 
         Returns:
-            A list of dictionaries of results from the updates from the Learner(s)
+            A dictionary with the reduced results of the updates from the Learner(s) or
+            a list of dictionaries of results from the updates from the Learner(s).
         """
 
         # Construct a multi-agent batch with only the trainable modules.
@@ -188,11 +191,6 @@ class LearnerGroup:
         train_batch = MultiAgentBatch(train_batch, batch.count)
 
         if self.is_local:
-            if not block:
-                raise ValueError(
-                    "Cannot run update in non-blocking mode when running in local "
-                    "mode with num_workers=0."
-                )
             results = [
                 self._learner.update(
                     train_batch,
@@ -202,64 +200,15 @@ class LearnerGroup:
                 )
             ]
         else:
-            results = self._distributed_update(
-                train_batch,
-                minibatch_size=minibatch_size,
-                num_iters=num_iters,
-                reduce_fn=reduce_fn,
-                block=block,
-            )
 
-        # No reduce function -> Return results as is: (possibly empty) list of mappings.
-        if reduce_fn is None:
-            return results
-        # If results are empty, don't run them through reduce_fn, but return empty dict.
-        elif not results:
-            return {}
-        # Run results (list of result dicts from our n learner actors) through
-        # reduction function and return single mapping.
-        # TODO (Kourosh): Maybe we should use LearnerInfoBuilder() here?
-        return reduce_fn(results)
+            def _learner_update(learner, minibatch):
+                return learner.update(
+                    minibatch,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    reduce_fn=reduce_fn,
+                )
 
-    def _distributed_update(
-        self,
-        batch: MultiAgentBatch,
-        *,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        reduce_fn: Callable[[List[Mapping[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
-        block: bool = True,
-    ) -> List[Mapping[str, Any]]:
-        """Do a gradient based update to the Learners using DDP training.
-
-        Note: this function is used if the num_gpus this LearnerGroup is configured
-            with is > 0. If _fake_gpus is True then this function will still be used
-            for distributed training, but the workers will be configured to use a
-            different backend than the cuda backend.
-
-        Args:
-            See `.update()` docstring.
-
-        Returns:
-            A list of dictionaries of results from the updates from the individual
-            Learner(s)
-        """
-        # Make sure minibatch size is reduced to the correct number of shards as well
-        # (just like we split each batch into the number of learner workers).
-        if minibatch_size is not None:
-            minibatch_size //= len(self._workers)
-
-        def _learner_update(learner, minibatch):
-            return learner.update(
-                minibatch,
-                minibatch_size=minibatch_size,
-                num_iters=num_iters,
-                reduce_fn=reduce_fn,
-            )
-
-        if block:
             results = self._get_results(
                 self._worker_manager.foreach_actor(
                     [
@@ -268,7 +217,62 @@ class LearnerGroup:
                     ]
                 )
             )
+
+        # TODO(sven): Move reduce_fn to the training_step
+        if reduce_fn is None:
+            return results
         else:
+            return reduce_fn(results)
+
+    def async_update(
+        self,
+        batch: MultiAgentBatch,
+        *,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = 1,
+        reduce_fn: Optional[Callable[[List[Mapping[str, Any]]], ResultDict]] = (
+            _reduce_mean_results
+        ),
+    ) -> Union[List[Mapping[str, Any]], List[List[Mapping[str, Any]]]]:
+        """Asnychronously do gradient based updates to the Learner(s) with `batch`.
+
+        Args:
+            batch: The data batch to use for the update.
+            minibatch_size: The minibatch size to use for the update.
+            num_iters: The number of complete passes over all the sub-batches in the
+                input multi-agent batch.
+            reduce_fn: An optional callable to reduce the results from a list of the
+                Learner actors into a single result. This can be any arbitrary function
+                that takes a list of dictionaries and returns a single dictionary. For
+                example you can either take an average (default) or concatenate the
+                results (for example for metrics) or be more selective about you want to
+                report back to the algorithm's training_step. If None is passed, the
+                results will not get reduced.
+
+        Returns:
+            A list of list of dictionaries of results, where the outer list
+            corresponds to separate calls to `async_update`, and the inner
+            list corresponds to the results from each Learner(s). Or if the results
+            are reduced, a list of dictionaries of the reduced results from each
+            call to async_update that is ready.
+        """
+        if self.is_local:
+            raise ValueError(
+                "Cannot call `async_update` when running in local mode with "
+                "num_workers=0."
+            )
+        else:
+            if minibatch_size is not None:
+                minibatch_size //= len(self._workers)
+
+            def _learner_update(learner, minibatch):
+                return learner.update(
+                    minibatch,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    reduce_fn=reduce_fn,
+                )
+
             # Queue the new batches.
             # If queue is full, kick out the oldest item (and thus add its
             # length to the "dropped ts" counter).
@@ -278,7 +282,9 @@ class LearnerGroup:
             self._in_queue.append(batch)
 
             # Retrieve all ready results (kicked off by prior calls to this method).
-            results = self._worker_manager.fetch_ready_async_reqs()
+            results = self._worker_manager.fetch_ready_async_reqs(
+                tags=list(self._inflight_request_tags)
+            )
             # Only if there are no more requests in-flight on any of the learners,
             # we can send in one new batch for sharding and parallel learning.
             if self._worker_manager_ready():
@@ -290,6 +296,8 @@ class LearnerGroup:
                 while len(self._in_queue) > 0 and count < 3:
                     # Pull a single batch from the queue (from the left side, meaning:
                     # use the oldest one first).
+                    update_tag = str(uuid.uuid4())
+                    self._inflight_request_tags.add(update_tag)
                     batch = self._in_queue.popleft()
                     self._worker_manager.foreach_actor_async(
                         [
@@ -297,13 +305,24 @@ class LearnerGroup:
                             for minibatch in ShardBatchIterator(
                                 batch, len(self._workers)
                             )
-                        ]
+                        ],
+                        tag=update_tag,
                     )
                     count += 1
 
-            results = self._get_results(results)
+            # NOTE: There is a strong assumption here that the requests launched to
+            # learner workers will return at the same time, since they are have a
+            # barrier inside of themselves for gradient aggregation. Therefore results
+            # should be a list of lists where each inner list should be the length of
+            # the number of learner workers, if results from an  non-blocking update are
+            # ready.
+            results = self._get_async_results(results)
 
-        return results
+            # TODO(sven): Move reduce_fn to the training_step
+            if reduce_fn is None:
+                return results
+            else:
+                return [reduce_fn(r) for r in results]
 
     def _worker_manager_ready(self):
         # TODO (sven): This probably works even without any restriction (allowing for
@@ -324,6 +343,29 @@ class LearnerGroup:
             else:
                 raise result_or_error
         return processed_results
+
+    def _get_async_results(self, results):
+        """Get results from the worker manager and group them by tag.
+
+        Returns:
+            A list of lists of results, where each inner list contains all results
+            for same tags.
+
+        """
+        unprocessed_results = defaultdict(list)
+        for result in results:
+            result_or_error = result.get()
+            if result.ok:
+                assert (
+                    result.tag
+                ), "Cannot call _get_async_results on untagged async requests."
+                unprocessed_results[result.tag].append(result_or_error)
+            else:
+                raise result_or_error
+
+        for tag in unprocessed_results.keys():
+            self._inflight_request_tags.remove(tag)
+        return list(unprocessed_results.values())
 
     def additional_update(
         self,
@@ -355,6 +397,7 @@ class LearnerGroup:
             results = self._get_results(results)
             if reduce_fn is None:
                 return results
+            # TODO(sven): Move reduce_fn to the training_step
             return reduce_fn(results)
 
     def add_module(
