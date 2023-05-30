@@ -36,14 +36,14 @@ def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
             pass
 
         def get_id(self):
-            return ray._private.worker.global_worker.worker_id
+            return ray.get_runtime_context().get_worker_id()
 
     a = Actor.remote()
     actor_id = ray.get(a.get_id.remote())
 
     @ray.remote
     def f():
-        return ray._private.worker.global_worker.worker_id
+        return ray.get_runtime_context().get_worker_id()
 
     resulting_ids = ray.get([f.remote() for _ in range(100)])
     assert actor_id not in resulting_ids

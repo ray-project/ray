@@ -108,6 +108,17 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
+    def get_worker_id(self) -> str:
+        """Get current worker ID for this worker or driver process.
+
+        Returns:
+            A worker id in hex format for this worker or driver process.
+        """
+        assert ray.is_initialized(), (
+            "Worker ID is not available because " "Ray has not been initialized."
+        )
+        return self.worker.worker_id.hex()
+
     @property
     @Deprecated(message="Use get_task_id() instead", warning=True)
     def task_id(self):
