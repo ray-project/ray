@@ -1,7 +1,7 @@
 .. _saving-data:
 
 ===========
-Saving Data
+Saving data
 ===========
 
 Save data to local files or files in cloud storage.
@@ -15,7 +15,12 @@ Writing data to files
 Writing data to local storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Call a method such as :meth:`~ray.data.write_csv` and specify a local directory.
+Call a method such as :meth:`~ray.data.write_csv` and specify a local directory with the
+`local://` scheme.
+
+.. warning::
+
+    If you don't `local://`, TK.
 
 .. testcode::
 
@@ -23,14 +28,15 @@ Call a method such as :meth:`~ray.data.write_csv` and specify a local directory.
 
     ds = ray.data.read_csv("example://iris.csv")
 
-    ds.write_csv("/tmp/iris/")
+    ds.write_csv("local:///tmp/iris/")
 
 To write data to formats other than CSV, read the :ref:`Input/Output reference <input-output>`.
 
 Writing data to cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data supports writing data to S3, GCP, and Azure.
+Ray Data supports writing data to Amazon S3, Google Cloud Storage, and Azure Blob
+Storage.
 
 .. tab-set::
 
@@ -51,6 +57,21 @@ Ray Data supports writing data to S3, GCP, and Azure.
 
         ham
 
+
+To write data to formats other than CSV, read the :ref:`Input/Output reference <input-output>`.
+
+Writing data to NFS
+~~~~~~~~~~~~~~~~~~~
+
+Call a method such as :meth:`~ray.data.write_csv` and specify a mounted directory.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_csv("example://iris.csv")
+
+    ds.write_csv("/mnt/cluster_storage/iris")
 
 To write data to formats other than CSV, read the :ref:`Input/Output reference <input-output>`.
 

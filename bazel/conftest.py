@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pytest
 
 import ray
@@ -7,3 +9,7 @@ import ray
 def shutdown_ray():
     ray.shutdown()
     yield
+
+@pytest.fixture(autouse=True, scope="session")
+def import_ray(doctest_namespace):
+    doctest_namespace["ray"] = ray

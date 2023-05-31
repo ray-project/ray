@@ -1,7 +1,7 @@
 .. _loading-data:
 
 ============
-Loading Data
+Loading data
 ============
 
 Reading files
@@ -10,6 +10,17 @@ Reading files
 Reading files from local storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_images("s3://anonymous@air-example-data/AnimalDetection")
+
+.. warning::
+
+    If you're running Ray on a multi-node cluster and you downloaded your data to the head
+    node, specify the `local://` scheme.
+
 Reading files from cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -17,21 +28,70 @@ Reading files from cloud storage
 
     .. tab-item:: AWS
 
-        spam
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_images("s3://anonymous@air-example-data/AnimalDetection")
 
     .. tab-item:: GCP
 
-        ham
+        .. code-block:: python
+
+            import gcsfs
+
+            # Create a tabular Dataset by reading a Parquet file from GCS, passing the configured
+            # GCSFileSystem.
+            # NOTE: This example is not runnable as-is; you need to point it at your GCS bucket
+            # and configure your GCP project and credentials.
+            path = "gs://path/to/file.parquet"
+            filesystem = gcsfs.GCSFileSystem(project="my-google-project")
+            ds = ray.data.read_parquet(path, filesystem=filesystem)
 
     .. tab-item:: Azure
 
-        ham
+        .. code-block:: python
+
+            import adlfs
+
+            # Create a tabular Dataset by reading a Parquet file from Azure Blob Storage, passing
+            # the configured AzureBlobFileSystem.
+            path = (
+                "az://nyctlc/yellow/puYear=2009/puMonth=1/"
+                "part-00019-tid-8898858832658823408-a1de80bd-eed3-4d11-b9d4-fa74bfbd47bc-426333-4"
+                ".c000.snappy.parquet"
+            )
+            ds = ray.data.read_parquet(
+                path,
+                filesystem=adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
+            )
 
 Reading files from HDFS
 ~~~~~~~~~~~~~~~~~~~~~~~
 
+.. testcode::
+
+    import pyarrow as pa
+
+    # Create a tabular Dataset by reading a Parquet file from HDFS, manually specifying a
+    # configured HDFS connection via a Pyarrow HDFSFileSystem instance.
+    # NOTE: This example is not runnable as-is; you'll need to point it at your HDFS
+    # cluster/data.
+    ds = ray.data.read_parquet(
+        "hdfs://path/to/file.parquet",
+        filesystem=pa.fs.HDFSFileSystem(host="localhost", port=9000, user="bob"),
+    )
+
 Handling compressed files
 ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. testcode::
+
+    # Read a gzip-compressed CSV file from S3.
+    ds = ray.data.read_csv(
+        "s3://anonymous@air-example-data/gzip_compressed.csv",
+        arrow_open_stream_args={"compression": "gzip"},
+    )
 
 Loading in-memory data
 ======================
@@ -43,11 +103,24 @@ Common libraries
 
     .. tab-item:: Python objects
 
-        spam
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.from_items([
+                {"food": "spam", "number": 0},
+                {"food": "ham", "number": 1},
+                {"food": "eggs", "number": 2}
+            ])
+            print(ds)
+
+        .. testoutput::
+
+            TODO
 
     .. tab-item:: NumPy
 
-        ham
+
 
     .. tab-item:: pandas
 
@@ -85,6 +158,12 @@ ML-related libraries
 
     .. tab-item:: HuggingFace
 
+        You can convert 🤗 Datasets into Ray Datasets by using from_huggingface. This
+        function accesses the underlying Arrow table and converts it into a Ray Dataset
+        directly.
+
+
+
         ham
 
     .. tab-item:: TensorFlow
@@ -118,7 +197,7 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
             pip install mysql-connector-python
 
-        Then, define your connection login and query the database.
+        Then, define your connection logic and query the database.
 
         .. code-block:: python
 
@@ -290,14 +369,41 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
                 "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
 
-Reading NoSQL databases
-~~~~~~~~~~~~~~~~~~~~~~~
+Reading MongoDB
+~~~~~~~~~~~~~~~
 
-.. tab-set::
+A Dataset can also be created from MongoDB with read_mongo. This interacts with MongoDB
+similar to external filesystems, except here you will need to specify the MongoDB source
+by its uri, database and collection, and specify a pipeline to run against the
+collection. The execution results are then used to create a Dataset.
 
-    .. tab-item:: MongoDB
+.. code-block:: python
 
-        spam
+    import ray
+
+    # Read a local MongoDB.
+    ds = ray.data.read_mongo(
+        uri="mongodb://localhost:27017",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
+    # Reading a remote MongoDB is the same.
+    ds = ray.data.read_mongo(
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
+
+    # Write back to MongoDB.
+    ds.write_mongo(
+        MongoDatasource(),
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+    )
 
 Loading unsupported data
 ========================

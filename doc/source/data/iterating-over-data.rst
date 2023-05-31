@@ -39,12 +39,12 @@ Iterating over batches
 
             for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
                 print(batch)
-                break
 
         .. testoutput::
 
             {'image': array([[[[...]]]], dtype=uint8)}
-
+            ...
+            {'image': array([[[[...]]]], dtype=uint8)}
 
     .. tab-item:: pandas
         :sync: pandas
@@ -57,7 +57,6 @@ Iterating over batches
 
             for batch in ds.iter_batches(batch_size=2, batch_format="pandas"):
                 print(batch)
-                break
 
         .. testoutput::
             :options:+NORMALIZE_WHITESPACE
@@ -65,11 +64,13 @@ Iterating over batches
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
             0                5.1               3.5                1.4               0.2       0
             1                4.9               3.0                1.4               0.2       0
+            ...
+               sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
+            0                5.1               3.5                1.4               0.2       0
+            1                4.9               3.0                1.4               0.2       0
 
     .. tab-item:: Torch
         :sync: Torch
-
-You will something.
 
         .. testcode::
 
@@ -79,16 +80,36 @@ You will something.
 
             for batch in ds.iter_torch_batches(batch_size=2):
                 print(batch)
-                break
 
         .. testoutput::
 
+            {'image': tensor([[[[...]]]], dtype=torch.uint8)}
+            ...
             {'image': tensor([[[[...]]]], dtype=torch.uint8)}
 
     .. tab-item:: TensorFlow
         :sync: TensorFlow
 
-        TODO
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+
+            tf_dataset = ds.to_tf(
+                feature_columns="sepal length (cm)",
+                label_columns="target",
+                batch_size=2
+            )
+            for features, labels in tf_dataset:
+                print(features, labels)
+
+        .. testoutput:
+
+            tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
+            ...
+            tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
+
 
 .. _iterating-over-batches-with-shuffling:
 
@@ -110,16 +131,15 @@ Iterating over batches with shuffling
                 batch_size=2,
                 batch_format="numpy",
                 local_shuffle_buffer_size=250,
-                local_shuffle_seed=42,
             ):
                 print(batch)
-                break
 
 
         .. testoutput::
 
             {'image': array([[[[...]]]], dtype=uint8)}
-
+            ...
+            {'image': array([[[[...]]]], dtype=uint8)}
 
     .. tab-item:: pandas
         :sync: pandas
@@ -134,18 +154,19 @@ Iterating over batches with shuffling
                 batch_size=2,
                 batch_format="pandas",
                 local_shuffle_buffer_size=250,
-                local_shuffle_seed=42,
             ):
                 print(batch)
-                break
 
         .. testoutput::
-            :options:+NORMALIZE_WHITESPACE
+            :options: +NORMALIZE_WHITESPACE
 
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
             0                6.1               2.9                4.7               1.4       1
             1                6.3               2.8                5.1               1.5       2
-
+            ...
+               sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
+            0                6.1               2.9                4.7               1.4       1
+            1                6.3               2.8                5.1               1.5       2
     .. tab-item:: Torch
         :sync: Torch
 
@@ -157,16 +178,35 @@ Iterating over batches with shuffling
             for batch in ds.iter_torch_batches(
                 batch_size=2,
                 local_shuffle_buffer_size=250,
-                local_shuffle_seed=42,
             ):
                 print(batch)
-                break
 
         .. testoutput::
 
+            {'image': tensor([[[[...]]]], dtype=torch.uint8)}
+            ...
             {'image': tensor([[[[...]]]], dtype=torch.uint8)}
 
     .. tab-item:: TensorFlow
         :sync: TensorFlow
 
-        TODO
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+
+            tf_dataset = ds.to_tf(
+                feature_columns="sepal length (cm)",
+                label_columns="target",
+                batch_size=2,
+                local_shuffle_buffer_size=250,
+            )
+            for features, labels in tf_dataset:
+                print(features, labels)
+
+        .. testoutput::
+
+            tf.Tensor([6.1 6.3], shape=(2,), dtype=float64) tf.Tensor([1 2], shape=(2,), dtype=int64)
+            ...
+            tf.Tensor([6.1 6.3], shape=(2,), dtype=float64) tf.Tensor([1 2], shape=(2,), dtype=int64)

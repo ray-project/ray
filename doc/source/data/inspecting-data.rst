@@ -4,8 +4,8 @@
 Inspecting data
 ===============
 
-Summarizing datasets
-====================
+Describing datasets
+===================
 
 .. testcode::
 
@@ -56,8 +56,8 @@ Inspecting rows
     import ray
 
     ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-    rows = ds.take(1)
 
+    rows = ds.take(1)
     print(rows)
 
 .. testoutput::
@@ -76,8 +76,8 @@ Inspecting batches
             import ray
 
             ds = ray.data.read_images("example://image-datasets/simple")
-            batch = ds.take_batch(batch_size=2, batch_format="numpy")
 
+            batch = ds.take_batch(batch_size=2, batch_format="numpy")
             print(batch)
 
         .. testoutput::
@@ -91,8 +91,8 @@ Inspecting batches
             import ray
 
             ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-            batch = ds.take_batch(batch_size=2, batch_format="pandas")
 
+            batch = ds.take_batch(batch_size=2, batch_format="pandas")
             print(batch)
 
         .. testoutput::
@@ -101,7 +101,3 @@ Inspecting batches
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
             0                5.1               3.5                1.4               0.2       0
             1                4.9               3.0                1.4               0.2       0
-
-
-
-:ref:`iterating-over-batches-with-shuffling`
