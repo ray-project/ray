@@ -361,9 +361,9 @@ class APPO(Impala):
         return dict(
             last_update=self._counters[LAST_TARGET_UPDATE_TS],
             mean_kl_loss_per_module={
-                mid: r[LEARNER_RESULTS_KL_KEY]
-                for mid, r in train_results.items()
-                if mid != ALL_MODULES
+                module_id: r[LEARNER_RESULTS_KL_KEY]
+                for module_id, r in train_results.items()
+                if module_id != ALL_MODULES
             },
         )
 
