@@ -57,21 +57,6 @@ def _configure_system():
         )
         sys.path.insert(0, pickle5_path)
 
-    # Check that grpc can actually be imported on Apple Silicon. Some package
-    # managers (such as `pip`) can't properly install the grpcio library yet,
-    # so provide a proactive error message if that's the case.
-    if platform.system() == "Darwin" and platform.machine() == "arm64":
-        try:
-            import grpc  # noqa: F401
-        except ImportError:
-            raise ImportError(
-                "Failed to import grpc on Apple Silicon. On Apple"
-                " Silicon machines, try `pip uninstall grpcio; conda "
-                "install grpcio`. Check out "
-                "https://docs.ray.io/en/master/ray-overview/installation.html"
-                "#m1-mac-apple-silicon-support for more details."
-            )
-
     # Importing psutil & setproctitle. Must be before ray._raylet is
     # initialized.
     thirdparty_files = os.path.join(
