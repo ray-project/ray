@@ -407,33 +407,6 @@ class TestAlgorithmConfig(unittest.TestCase):
         self._assertEqualMARLSpecs(spec, expected)
 
         ########################################
-        # This is the case where we pass in a multi-agent RLModuleSpec that asks the
-        # algorithm to assign a specific type of RLModule class to certain module_ids
-        # AND change one of the RLModule's hyperparameters.
-        config = (
-            SingleAgentAlgoConfig()
-            .rl_module(
-                _enable_rl_module_api=True,
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "p1": SingleAgentRLModuleSpec(
-                            module_class=CustomRLModule1,
-                            algorithm_config_overrides=(
-                                SingleAgentAlgoConfig.overrides(lr=0.002)
-                            ),
-                        ),
-                        "p2": SingleAgentRLModuleSpec(module_class=CustomRLModule1),
-                    },
-                ),
-            )
-            .training(_enable_learner_api=True, lr=0.001)
-        )
-        config.validate()
-
-        spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
-        self._assertEqualMARLSpecs(spec, expected)
-
-        ########################################
         # This is the case where we ask the algorithm to assign a specific type of
         # RLModule class to ALL module_ids.
         config = (
@@ -558,102 +531,6 @@ class TestAlgorithmConfig(unittest.TestCase):
             expected_marl_module_class=CustomMARLModule1,
         )
         self._assertEqualMARLSpecs(spec, expected)
-
-    def _assertEqualMARLSpecs(self, spec1, spec2):
-        self.assertEqual(spec1.marl_module_class, spec2.marl_module_class)
-
-        self.assertEqual(set(spec1.module_specs.keys()), set(spec2.module_specs.keys()))
-        for k, module_spec1 in spec1.module_specs.items():
-            module_spec2 = spec2.module_specs[k]
-
-            self.assertEqual(module_spec1.module_class, module_spec2.module_class)
-            self.assertEqual(
-                module_spec1.observation_space, module_spec2.observation_space
-            )
-            self.assertEqual(module_spec1.action_space, module_spec2.action_space)
-            self.assertEqual(
-                module_spec1.algorithm_config_overrides,
-                module_spec2.algorithm_config_overrides,
-            )
-            self.assertEqual(
-                module_spec1.model_config_dict, module_spec2.model_config_dict
-            )
-
-    def _get_expected_marl_spec(
-        self,
-        config: AlgorithmConfig,
-        expected_module_class: Type[RLModule],
-        passed_module_class: Type[RLModule] = None,
-        expected_marl_module_class: Type[MultiAgentRLModule] = None,
-    ):
-        """This is a utility function that retrieves the expected marl specs.
-
-        Args:
-            config: The algorithm config.
-            expected_module_class: This is the expected RLModule class that is going to
-                be reference in the SingleAgentRLModuleSpec parts of the
-                MultiAgentRLModuleSpec.
-            passed_module_class: This is the RLModule class that is passed into the
-                module_spec argument of get_marl_module_spec. The function is
-                designed so that it will use the passed in module_spec for the
-                SingleAgentRLModuleSpec parts of the MultiAgentRLModuleSpec.
-            expected_marl_module_class: This is the expected MultiAgentRLModule class
-                that is going to be reference in the MultiAgentRLModuleSpec.
-
-        Returns:
-            Tuple of the returned MultiAgentRLModuleSpec from config.
-            get_marl_module_spec() and the expected MultiAgentRLModuleSpec.
-        """
-        from ray.rllib.policy.policy import PolicySpec
-
-        if expected_marl_module_class is None:
-            expected_marl_module_class = MultiAgentRLModule
-
-        env = gym.make("CartPole-v1")
-
-        marl_spec = config.get_marl_module_spec(
-            policy_dict={
-                "p1": PolicySpec(
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
-                    config=AlgorithmConfig(),
-                ),
-                "p2": PolicySpec(
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
-                    config=AlgorithmConfig(),
-                ),
-            },
-            module_spec=SingleAgentRLModuleSpec(module_class=passed_module_class)
-            if passed_module_class
-            else None,
-        )
-
-        expected_marl_spec = MultiAgentRLModuleSpec(
-            marl_module_class=expected_marl_module_class,
-            module_specs={
-                "p1": SingleAgentRLModuleSpec(
-                    module_class=expected_module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
-                    algorithm_config_overrides=(
-                        marl_spec.module_specs["p1"].algorithm_config_overrides
-                    ),
-                    model_config_dict=AlgorithmConfig().model,
-                ),
-                "p2": SingleAgentRLModuleSpec(
-                    module_class=expected_module_class,
-                    observation_space=env.observation_space,
-                    action_space=env.action_space,
-                    algorithm_config_overrides=(
-                        marl_spec.module_specs["p2"].algorithm_config_overrides
-                    ),
-                    model_config_dict=AlgorithmConfig().model,
-                ),
-            },
-        )
-
-        return marl_spec, expected_marl_spec
 
 
 if __name__ == "__main__":

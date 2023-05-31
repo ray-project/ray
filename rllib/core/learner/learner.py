@@ -35,7 +35,6 @@ from ray.rllib.core.rl_module.rl_module import (
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
 from ray.rllib.utils.annotations import (
-    is_overridden,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
@@ -487,8 +486,8 @@ class Learner:
         Returns:
             The gradients in the same (flat) format as self._params. Note that all
             top-level structures, such as module IDs, will not be present anymore in
-            the returned dict. It will merely map gradient tensor references to gradient
-            tensors.
+            the returned dict. It will merely map parameter tensor references to their
+            respective gradient tensors.
         """
 
     @OverrideToImplementCustomLogic
@@ -1439,21 +1438,6 @@ class Learner:
 
     def apply(self, func, *_args, **_kwargs):
         return func(self, *_args, **_kwargs)
-
-    def _pair_optim_with_lr_scheduler(self, hps, name, optim):
-        # Only manage optimizer's learning rate if user has NOT overridden
-        # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
-        # to handle lr-updates entirely in user's hands.
-        if not self._user_configured_optimizers:
-            # Build learning rate scheduling tools (one Schedule per optimizer).
-            self._optimizer_lr_schedules[optim] = Scheduler(
-                fixed_value_or_schedule=hps.learning_rate,
-                framework=self.framework,
-                device=self._device,
-            )
-            # Set the optimizer to the current (first) learning rate.
-            lr = self._optimizer_lr_schedules[optim].get_current_value()
-            self._set_optimizer_lr(optimizer=optim, lr=lr)
 
     @abc.abstractmethod
     def _get_tensor_variable(

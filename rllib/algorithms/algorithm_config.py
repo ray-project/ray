@@ -333,7 +333,6 @@ class AlgorithmConfig(_Config):
 
         # `self.training()`
         self.gamma = 0.99
-        self.optimizer_type = "adam"
         self.lr = 0.001
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
@@ -1740,8 +1739,6 @@ class AlgorithmConfig(_Config):
         """
         if gamma is not NotProvided:
             self.gamma = gamma
-        if optimizer_type is not NotProvided:
-            self.optimizer_type = optimizer_type
         if lr is not NotProvided:
             self.lr = lr
         if grad_clip is not NotProvided:

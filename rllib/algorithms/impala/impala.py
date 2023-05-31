@@ -20,7 +20,6 @@ from ray.rllib.algorithms.impala.impala_learner import (
     _reduce_impala_results,
 )
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.learner.learner_group_config import ModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -429,10 +428,8 @@ class ImpalaConfig(AlgorithmConfig):
                 )
 
     @override(AlgorithmConfig)
-    def get_learner_hyperparameters(
-        self, module_spec: Optional[ModuleSpec] = None
-    ) -> ImpalaLearnerHyperparameters:
-        base_hps = super().get_learner_hyperparameters(module_spec=module_spec)
+    def get_learner_hyperparameters(self) -> ImpalaLearnerHyperparameters:
+        base_hps = super().get_learner_hyperparameters()
         learner_hps = ImpalaLearnerHyperparameters(
             rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
             discount_factor=self.gamma,

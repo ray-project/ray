@@ -56,7 +56,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
 
         return output
 
-    @override(RLModule)
+    @override(TfRLModule)
     def _forward_train(self, batch: NestedDict):
         output = {}
 

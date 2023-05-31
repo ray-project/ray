@@ -292,10 +292,6 @@ class TestLearner(unittest.TestCase):
         # state.
         method = "get_config" if framework == "tf2" else "state_dict"
 
-        # Method to call on the localk optimizer object to get the optimizer's
-        # state.
-        method = "get_config" if framework == "tf2" else "state_dict"
-
         # check all internal optimizer state dictionaries have been updated
         learner_1_optims_serialized = {
             name: getattr(optim, method)()

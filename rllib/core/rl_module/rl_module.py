@@ -59,10 +59,6 @@ class SingleAgentRLModuleSpec:
             observation space of an environment, would usually correspond to a
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
-        algorithm_config_overrides: An optional AlgorithmConfig override dict that
-            applies certain settings, e.g. the learning rate, from the main
-            AlgorithmConfig only to this particular module
-            (within a MultiAgentRLModule).
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
         load_state_path: The path to the module state to load from. NOTE: This must be
@@ -72,7 +68,6 @@ class SingleAgentRLModuleSpec:
     module_class: Optional[Type["RLModule"]] = None
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
-    algorithm_config_overrides: Optional[Dict[str, Any]] = None
     model_config_dict: Optional[Dict[str, Any]] = None
     catalog_class: Optional[Type["Catalog"]] = None
     load_state_path: Optional[str] = None
@@ -82,7 +77,6 @@ class SingleAgentRLModuleSpec:
         return RLModuleConfig(
             observation_space=self.observation_space,
             action_space=self.action_space,
-            algorithm_config_overrides=self.algorithm_config_overrides,
             model_config_dict=self.model_config_dict,
             catalog_class=self.catalog_class,
         )
@@ -115,7 +109,6 @@ class SingleAgentRLModuleSpec:
             module_class=type(module),
             observation_space=module.config.observation_space,
             action_space=module.config.action_space,
-            algorithm_config_overrides=module.config.algorithm_config_overrides,
             model_config_dict=module.config.model_config_dict,
             catalog_class=module.config.catalog_class,
         )
@@ -136,7 +129,6 @@ class SingleAgentRLModuleSpec:
         module_config = RLModuleConfig.from_dict(d["module_config"])
         observation_space = module_config.observation_space
         action_space = module_config.action_space
-        algorithm_config_overrides = module_config.algorithm_config_overrides
         model_config_dict = module_config.model_config_dict
         catalog_class = module_config.catalog_class
 
@@ -144,7 +136,6 @@ class SingleAgentRLModuleSpec:
             module_class=module_class,
             observation_space=observation_space,
             action_space=action_space,
-            algorithm_config_overrides=algorithm_config_overrides,
             model_config_dict=model_config_dict,
             catalog_class=catalog_class,
         )
@@ -160,9 +151,6 @@ class SingleAgentRLModuleSpec:
         self.module_class = other.module_class or self.module_class
         self.observation_space = other.observation_space or self.observation_space
         self.action_space = other.action_space or self.action_space
-        self.algorithm_config_overrides = (
-            other.algorithm_config_overrides or self.algorithm_config_overrides
-        )
         self.model_config_dict = other.model_config_dict or self.model_config_dict
         self.catalog_class = other.catalog_class or self.catalog_class
         self.load_state_path = other.load_state_path or self.load_state_path
@@ -171,7 +159,7 @@ class SingleAgentRLModuleSpec:
 @ExperimentalAPI
 @dataclass
 class RLModuleConfig:
-    """A utility config class to make constructing RLModules easier.
+    """A utility config class to make it constructing RLModules easier.
 
     Args:
         observation_space: The observation space of the RLModule. This may differ
@@ -179,17 +167,12 @@ class RLModuleConfig:
             observation space of an environment, would usually correspond to a
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
-        algorithm_config_overrides: An optional AlgorithmConfig override dict that
-            applies certain settings, e.g. the learning rate, from the main
-            AlgorithmConfig only to this particular module
-            (within a MultiAgentRLModule).
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
     """
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    algorithm_config_overrides: Dict[str, Any] = None
     model_config_dict: Dict[str, Any] = None
     catalog_class: Type["Catalog"] = None
 
@@ -214,7 +197,6 @@ class RLModuleConfig:
         return {
             "observation_space": gym_space_to_dict(self.observation_space),
             "action_space": gym_space_to_dict(self.action_space),
-            "algorithm_config_overrides": self.algorithm_config_overrides,
             "model_config_dict": self.model_config_dict,
             "catalog_class_path": catalog_class_path,
         }
@@ -230,7 +212,6 @@ class RLModuleConfig:
         return cls(
             observation_space=gym_space_from_dict(d["observation_space"]),
             action_space=gym_space_from_dict(d["action_space"]),
-            algorithm_config_overrides=d["algorithm_config_overrides"],
             model_config_dict=d["model_config_dict"],
             catalog_class=catalog_class,
         )
