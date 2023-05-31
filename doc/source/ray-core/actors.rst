@@ -91,9 +91,10 @@ that specific worker and can access and mutate the state of that worker.
 
 
 
-Use `ray list actors`` from :ref:`State API <state-api-overview-ref>` to see actors states:
+Use `ray list actors` from :ref:`State API <state-api-overview-ref>` to see actors states:
 
 .. code-block:: bash
+
   # This API is only available when you install Ray with `pip install "ray[default]"`.
   ray list actors
 

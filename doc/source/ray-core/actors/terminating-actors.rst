@@ -69,6 +69,7 @@ an actor handle destroys the actor and allow the name to be reused.
 Use `ray list actors --detail` from :ref:`State API <state-api-overview-ref>` to see the death cause of dead actors:
 
 .. code-block:: bash
+
   # This API is only available when you download Ray via `pip install "ray[default]"`
   ray list actors --detail
 
@@ -153,9 +154,10 @@ tasks finish executing and then exits the process gracefully with sys.exit.
 
 
     
-You could see the actor is dead as a result of the user's exit_actor() call:
+You could see the actor is dead as a result of the user's `exit_actor()` call:
 
 .. code-block:: bash
+
   # This API is only available when you download Ray via `pip install "ray[default]"`
   ray list actors --detail
 

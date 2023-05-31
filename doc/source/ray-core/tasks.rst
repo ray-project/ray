@@ -84,6 +84,7 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
 Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see running and finished tasks and count:
 
 .. code-block:: bash
+
   # This API is only available when you download Ray via `pip install "ray[default]"`
   ray summary tasks
 
