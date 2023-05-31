@@ -44,6 +44,9 @@ class ReorderRandomizeBlocksRule(Rule):
                     # RandomizeBlocks operator.
                     current_seed = upstream_ops[i]._seed
                     if not operators or current_seed or operators[-1]._seed:
+                        # We need to make a copy of the operator.
+                        # Because the operator instance may be shared by multiple
+                        # Datasets. We shouldn't modify it in place.
                         operators.append(copy.copy(upstream_ops[i]))
 
                     # Remove RandomizeBlocks operator from the dag and wire in new input

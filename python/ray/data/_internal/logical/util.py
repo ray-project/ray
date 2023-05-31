@@ -93,6 +93,8 @@ def _collect_operators_to_dict(op: LogicalOperator, ops_dict: Dict[str, int]):
         if op_name not in _op_name_white_list:
             op_name = "WriteCustom"
     elif isinstance(op, AbstractUDFMap):
+        # Remove the function name from the map operator name.
+        # E.g., Map(<lambda>) -> Map
         op_name = re.sub("\\(.*\\)$", "", op_name)
 
     # Anonymize any operator name if not in white list.
