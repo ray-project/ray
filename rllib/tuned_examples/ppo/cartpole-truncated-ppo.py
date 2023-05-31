@@ -18,7 +18,6 @@ config = (
         evaluation_interval=1,
         evaluation_num_workers=1,
     )
-    # This speeds up this test for tf2 a lot.
     .framework(eager_tracing=True)
 )
 
