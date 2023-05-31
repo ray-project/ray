@@ -47,6 +47,7 @@ class ApexDDPGConfig(DDPGConfig):
                 param_space=config.to_dict(),
             ).fit()
     """
+
     def __init__(self, algo_class=None):
         """Initializes an ApexDDPGConfig instance."""
         super().__init__(algo_class=algo_class or ApexDDPG)

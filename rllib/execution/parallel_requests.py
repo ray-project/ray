@@ -47,7 +47,7 @@ class AsyncRequestsManager:
         ...                fn_kwargs={"a": 1, "b": 2}) # doctest: +SKIP
         >>> time.sleep(2) # Wait for the tasks to finish. # doctest: +SKIP
         >>> print(manager.get_ready()) # doctest: +SKIP
-    """ # noqa: E501
+    """  # noqa: E501
 
     def __init__(
         self,
