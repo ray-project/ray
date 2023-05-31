@@ -19,7 +19,7 @@ There are a number of open source log processing tools available within the Kube
 Other popular tools include [Vector][Vector], [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
 
 ## Log collection strategies
-Here lists two strategies for collecting logs written to a pod's filesystem,
+Collect logs written to a pod's filesystem using one of two logging strategies:
 **sidecar containers** or **daemonsets**. Read more about these logging
 patterns in the [Kubernetes documentation][KubDoc].
 
@@ -71,7 +71,7 @@ A few notes on the above config:
   in the Fluent Bit container's stdout sooner.
 
 
-### Adding logging sidecars to your RayCluster CR
+### Adding logging sidecars to your RayCluster Custom Resource (CR)
 
 #### Adding log and config volumes
 For each pod template in our RayCluster CR, we

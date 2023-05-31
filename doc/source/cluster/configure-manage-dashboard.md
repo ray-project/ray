@@ -54,13 +54,15 @@ The dashboard is now visible at ``http://localhost:8265``.
 
 :::{tab-item} KubeRay
 
-The KubeRay operator makes the dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access the
-dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
+The KubeRay operator makes Dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access
+Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``. 
 
-**Setting up ingress**
+There are two ways to expose Dashboard outside the Cluster:
+
+**1. Setting up ingress** <br/>
 Follow the [instructions](https://github.com/ray-project/kuberay/blob/master/docs/guidance/ingress.md) to set up ingress to access Ray Dashboard.
 
-**Port forwarding** <br/>
+**2. Port forwarding** <br/>
 You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
 
 ```{admonition} Note
