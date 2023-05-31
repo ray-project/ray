@@ -79,6 +79,41 @@ doctest(
             "env/remote_vector_env.py",
             # Missing imports
             "algorithms/dreamerv3/**"
+            # FIXME: These modules contain broken examples that weren't previously
+            # tested.
+            "algorithms/algorithm_config.py"
+            "algorithms/alpha_star/alpha_star.py"
+            "algorithms/r2d2/r2d2.py"
+            "algorithms/sac/rnnsac.py"
+            "algorithms/simple_q/simple_q.py"
+            "core/models/base.py"
+            "core/models/specs/checker.py"
+            "core/models/specs/specs_base.py"
+            "core/models/specs/specs_dict.py"
+            "env/wrappers/pettingzoo_env.py"
+            "evaluation/collectors/sample_collector.py"
+            "evaluation/episode.py"
+            "evaluation/metrics.py"
+            "evaluation/observation_function.py"
+            "evaluation/postprocessing.py"
+            "execution/buffers/mixin_replay_buffer.py"
+            "models/base_model.py"
+            "models/catalog.py"
+            "models/distributions.py"
+            "models/preprocessors.py"
+            "models/repeated_values.py"
+            "models/tf/tf_distributions.py"
+            "models/torch/model.py"
+            "models/torch/torch_distributions.py"
+            "policy/rnn_sequencing.py"
+            "utils/actor_manager.py"
+            "utils/filter.py"
+            "utils/from_config.py"
+            "utils/metrics/window_stat.py"
+            "utils/nested_dict.py"
+            "utils/pre_checks/env.py"
+            "utils/replay_buffers/multi_agent_mixin_replay_buffer.py"
+            "utils/spaces/space_utils.py"
         ]
     ),
     tags = ["team:rllib"]
