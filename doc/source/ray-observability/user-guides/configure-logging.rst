@@ -104,7 +104,7 @@ Coloring Actor log prefixes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 By default, Ray prints Actor logs prefixes in light blue:
 Users may instead activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``.
-This indexesvinto an array of colors modulo the PID of each process.
+This indexes into an array of colors modulo the PID of each process.
 
 .. image:: ../images/coloring-actor-log-prefixes.png
     :align: center

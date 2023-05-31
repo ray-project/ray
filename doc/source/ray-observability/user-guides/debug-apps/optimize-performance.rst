@@ -120,13 +120,9 @@ not have root permissions, the Dashboard prompts with instructions on how to set
 
     Alternatively, you can start Ray with passwordless sudo / root permissions.
 
-<<<<<<< HEAD
-Profiling using Python's cProfile
-=======
 .. _dashboard-cprofile:
 
-Profiling Using Python's CProfile
->>>>>>> master
+Profiling using Python's cProfile
 ---------------------------------
 
 You can use Python's native cProfile `profiling module`_ to profile the performance of your Ray application. Rather than tracking

@@ -74,7 +74,7 @@ Creating a new Task or submitting an Actor task generates an object reference. W
 the API raises an exception if anything goes wrong with a related Task, Actor or Object. For example,
 
 - :class:`RayTaskError <ray.exceptions.RayTaskError>` is raised when an error from user code throws an exception.
-- :class:`RayActorError <ray.exceptions.RayActorError>` is raised when an Actor is dead (by a system failure such as node failure or user-level failure such as an exception from ``__init__`` method).
+- :class:`RayActorError <ray.exceptions.RayActorError>` is raised when an Actor is dead (by a system failure, such as a node failure, or a user-level failure, such as an exception from ``__init__`` method).
 - :class:`RuntimeEnvSetupError <ray.exceptions.RuntimeEnvSetupError>` is raised when the Actor or Task can't be started because :ref:`a runtime environment <runtime-environments>` failed to be created.
 
 See :ref:`Exceptions Reference <ray-core-exceptions>` for more details.
@@ -93,9 +93,9 @@ See :ref:`Ray Debugger <ray-debugger>` for more details.
 
 Profiling
 ---------
-Ray is compatible with Python profiling tools such as ``CProfile``. It also supports its built-in profiling tool such as :ref:`ray timeline <ray-timeline-doc>`.
+Ray is compatible with Python profiling tools, such as ``CProfile``. It also supports its built-in profiling tool, such as :ref:`ray timeline <ray-timeline-doc>`.
 
-See :ref:`Profiling <dashboard-cprofile>` for more details.
+See :ref:`Profiling <dashboard-profiling>` for more details.
 
 Tracing
 -------
