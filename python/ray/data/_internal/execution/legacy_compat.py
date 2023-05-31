@@ -3,7 +3,6 @@
 It should be deleted once we fully move to the new executor backend.
 """
 
-import ray.cloudpickle as cloudpickle
 from typing import Iterator, Tuple, Any
 
 import ray
@@ -195,22 +194,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         remote_args = blocks._remote_args
         assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
 
-        # Defensively compute the size of the block as the max size reported by the
-        # datasource and the actual read task size. This is to guard against issues
-        # with bad metadata reporting.
-        def cleaned_metadata(read_task):
-            block_meta = read_task.get_metadata()
-            task_size = len(cloudpickle.dumps(read_task))
-            if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
-                if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
-                    print(
-                        f"WARNING: the read task size ({task_size} bytes) is larger "
-                        "than the reported output size of the task "
-                        f"({block_meta.size_bytes} bytes). This may be a size "
-                        "reporting bug in the datasource being read from."
-                    )
-                block_meta.size_bytes = task_size
-            return block_meta
+        from ray.data._internal.planner.plan_read_op import cleaned_metadata
 
         inputs = InputDataBuffer(
             [
