@@ -5,12 +5,14 @@ from unittest.mock import patch
 import pytest
 import shutil
 import tempfile
+import urllib.parse
 
 from ray.air._internal.remote_storage import (
     upload_to_uri,
     download_from_uri,
     get_fs_and_path,
     _is_network_mount,
+    _translate_s3_options,
 )
 from ray.tune.utils.file_transfer import _get_recursive_files_and_stats
 
@@ -233,6 +235,42 @@ def test_is_network_mount(tmp_path, monkeypatch):
     assert not _is_network_mount(str(tmp_path / "ray_results"))
     assert not _is_network_mount("~/ray_results")
     assert not _is_network_mount("")  # cwd
+
+
+def test_resolve_aws_kwargs():
+    def _uri_to_opt(uri: str):
+        parsed = urllib.parse.urlparse(uri)
+        return urllib.parse.parse_qs(parsed.query)
+
+    # client_kwargs
+    assert (
+        _translate_s3_options(_uri_to_opt("s3://some/where?endpoint_override=EP"))[
+            "client_kwargs"
+        ]["endpoint_url"]
+        == "EP"
+    )
+
+    # config_kwargs
+    assert (
+        _translate_s3_options(_uri_to_opt("s3://some/where?signature_version=abc"))[
+            "config_kwargs"
+        ]["signature_version"]
+        == "abc"
+    )
+
+    # s3_additional_kwargs
+    assert (
+        _translate_s3_options(_uri_to_opt("s3://some/where?SSEKMSKeyId=abc"))[
+            "s3_additional_kwargs"
+        ]["SSEKMSKeyId"]
+        == "abc"
+    )
+
+    # no kwargs
+    assert (
+        _translate_s3_options(_uri_to_opt("s3://some/where"))["s3_additional_kwargs"]
+        == {}
+    )
 
 
 if __name__ == "__main__":

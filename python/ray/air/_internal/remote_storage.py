@@ -133,10 +133,6 @@ def is_non_local_path_uri(uri: str) -> bool:
     return False
 
 
-# Cache fs objects
-_cached_fs = {}
-
-
 def _get_network_mounts() -> List[str]:
     """Get mounted network filesystems on the current node.
 
@@ -182,6 +178,18 @@ def _is_local_windows_path(path: str) -> bool:
     return False
 
 
+def _translate_options(
+    option_map: Dict[str, str], options: Dict[str, List[str]]
+) -> Dict[str, str]:
+    """Given mapping of old_name -> new_name in option_map, rename keys."""
+    translated = {}
+    for opt, target in option_map.items():
+        if opt in options:
+            translated[target] = options[opt][0]
+
+    return translated
+
+
 def _translate_s3_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
     """Translate pyarrow s3 query options into s3fs ``storage_kwargs``.
 
@@ -199,22 +207,38 @@ def _translate_s3_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
 
     """
     # Map from s3 query keys --> botocore client arguments
+    # client_kwargs
     option_map = {
         "endpoint_override": "endpoint_url",
         "region": "region_name",
         "access_key": "aws_access_key_id",
         "secret_key": "aws_secret_access_key",
     }
+    client_kwargs = _translate_options(option_map, options)
 
-    client_kwargs = {}
-    for opt, target in option_map.items():
-        if opt in options:
-            client_kwargs[target] = options[opt][0]
+    # config_kwargs
+    option_map = {
+        "signature_version": "signature_version",
+    }
+    config_kwargs = _translate_options(option_map, options)
+
+    # s3_additional_kwargs
+    option_map = {
+        "ServerSideEncryption": "ServerSideEncryption",
+        "SSEKMSKeyId": "SSEKMSKeyId",
+        "GrantFullControl": "GrantFullControl",
+    }
+    s3_additional_kwargs = _translate_options(option_map, options)
 
     # s3fs directory cache does not work correctly, so we pass
     # `use_listings_cache` to disable it. See https://github.com/fsspec/s3fs/issues/657
     # We should keep this for s3fs versions <= 2023.4.0.
-    return {"client_kwargs": client_kwargs, "use_listings_cache": False}
+    return {
+        "use_listings_cache": False,
+        "client_kwargs": client_kwargs,
+        "config_kwargs": config_kwargs,
+        "s3_additional_kwargs": s3_additional_kwargs,
+    }
 
 
 def _translate_gcs_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
@@ -234,10 +258,7 @@ def _translate_gcs_options(options: Dict[str, List[str]]) -> Dict[str, Any]:
         "endpoint_override": "endpoint_url",
     }
 
-    storage_kwargs = {}
-    for opt, target in option_map.items():
-        if opt in options:
-            storage_kwargs[target] = options[opt][0]
+    storage_kwargs = _translate_options(option_map, options)
 
     return storage_kwargs
 
@@ -281,9 +302,9 @@ def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
     parsed = urllib.parse.urlparse(uri)
 
     storage_kwargs = {}
-    if parsed.scheme in ["s3", "s3a"] and parsed.query:
+    if parsed.scheme in ["s3", "s3a"]:
         storage_kwargs = _translate_s3_options(urllib.parse.parse_qs(parsed.query))
-    elif parsed.scheme in ["gs", "gcs"] and parsed.query:
+    elif parsed.scheme in ["gs", "gcs"]:
         if not _has_compatible_gcsfs_version():
             # If gcsfs is incompatible, fallback to pyarrow.fs.
             return None
@@ -329,17 +350,10 @@ def get_fs_and_path(
     else:
         path = parsed.netloc + parsed.path
 
-    cache_key = (parsed.scheme, parsed.netloc)
-
-    if cache_key in _cached_fs:
-        fs = _cached_fs[cache_key]
-        return fs, path
-
     # Prefer fsspec over native pyarrow.
     if fsspec:
         fs = _get_fsspec_fs_and_path(uri)
         if fs:
-            _cached_fs[cache_key] = fs
             return fs, path
 
     # In case of hdfs filesystem, if uri does not have the netloc part below, it will
@@ -355,7 +369,6 @@ def get_fs_and_path(
     # If no fsspec filesystem was found, use pyarrow native filesystem.
     try:
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
-        _cached_fs[cache_key] = fs
         return fs, path
     except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
