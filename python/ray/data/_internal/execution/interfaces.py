@@ -233,6 +233,15 @@ class TaskContext:
     # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
     sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
 
+    # NOTE(hchen): `upstream_map_transform_fn` and `upstream_map_ray_remote_args`
+    # are only used for `RandomShuffle`. DO NOT use them for other operators.
+    # Ideally, they should be handled by the optimizer, and should be transparent
+    # to the specific operators.
+    # But for `RandomShuffle`, the AllToAllOperator doesn't do the shuffle itself.
+    # It uses `ExchangeTaskScheduler` to launch new tasks to do the shuffle.
+    # That's why we need to pass them to `ExchangeTaskScheduler`.
+    # TODO(hchen): Use a physical operator to do the shuffle directly.
+
     # The underlying function called in a MapOperator; this is used when fusing
     # an AllToAllOperator with an upstream MapOperator.
     upstream_map_transform_fn: Optional["MapTransformFn"] = None
