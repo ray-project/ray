@@ -56,7 +56,7 @@ class ActorPool:
         # next work depending when actors free
         self._pending_submits = []
 
-    def map(self, fn: Callable[[Any], Any], values: List[Any]):
+    def map(self, fn: Callable[[ray.actor.ActorHandle, V], Any], values: List[V]):
         """Apply the given function in parallel over the actors and values.
 
         This returns an ordered iterator that will return results of the map
