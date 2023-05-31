@@ -856,16 +856,6 @@ class Checkpoint:
             f"`{serialized_cls.__name__}` isn't compatible with `{cls.__name__}`."
         )
 
-    @property
-    def id(self) -> int:
-        """Return the 0-based id of the checkpoint."""
-        return getattr(self, CHECKPOINT_ID_ATTR)
-
-    @property
-    def iteration(self) -> int:
-        """Return the 1-based iteration number of the checkpoint."""
-        return getattr(self, CHECKPOINT_ID_ATTR) + 1
-
 
 def _get_local_path(path: Optional[str]) -> Optional[str]:
     """Check if path is a local path. Otherwise return None."""

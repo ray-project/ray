@@ -168,16 +168,21 @@ class Result:
                 Checkpoint.from_directory(ckpt_dir) for ckpt_dir in ckpt_dirs
             ]
 
+            checkpoint_ids = [
+                int(ckpt_dir.split("_")[-1]) for ckpt_dir in ckpt_dirs
+            ]
+
             checkpoint_metrics = [
-                metrics_df[metrics_df[TRAINING_ITERATION] == ckpt.iteration].to_dict(
+                metrics_df[metrics_df[TRAINING_ITERATION] == ckpt_id + 1].to_dict(
                     "records"
                 )[0]
-                for ckpt in checkpoints
+                for ckpt_id in checkpoint_ids
             ]
 
             # TODO(air-team): make metrics a property of Checkpoint
             best_checkpoints = list(zip(checkpoints, checkpoint_metrics))
-            latest_checkpoint = max(checkpoints, key=lambda ckpt: ckpt.id)
+            latest_checkpoint_index = checkpoint_ids.index(max(checkpoint_ids))
+            latest_checkpoint = checkpoints[latest_checkpoint_index]
         else:
             best_checkpoints = latest_checkpoint = None
 
