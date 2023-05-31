@@ -19,6 +19,5 @@ show you how achieve several tasks.
     saving-data
     batch_inference
     working-with-tensors
-    custom-datasource
     data-internals
     performance-tips
