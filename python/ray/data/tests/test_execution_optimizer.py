@@ -1359,6 +1359,42 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     _check_usage_record(["FromItems"])
 
 
+def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
+    ds = ray.data.range(100, parallelism=100).map(lambda x: x).limit(1).materialize()
+    assert (
+        str(ds._plan._logical_plan.dag)
+        == "Read[Read] -> Limit[Limit] -> MapRows[MapRows]"
+    )
+    assert len(ds.take_all()) == 1
+
+    ds2 = ray.data.range(100).limit(5).map(lambda x: x).limit(100).materialize()
+    assert (
+        str(ds2._plan._logical_plan.dag)
+        == "Read[Read] -> Limit[Limit] -> Limit[Limit] -> MapRows[MapRows]"
+    )
+    assert len(ds2.take_all()) == 5
+
+    ds3 = ray.data.range(100).limit(100).map(lambda x: x).limit(5).materialize()
+    assert (
+        str(ds3._plan._logical_plan.dag)
+        == "Read[Read] -> Limit[Limit] -> Limit[Limit] -> MapRows[MapRows]"
+    )
+    assert len(ds3.take_all()) == 5
+
+    ds4 = ray.data.range(100).sort("id").limit(5).materialize()
+    assert (
+        str(ds4._plan._logical_plan.dag) == "Read[Read] -> Sort[Sort] -> Limit[Limit]"
+    )
+    assert ds4.take_all() == [{"id": i} for i in range(5)]
+
+    ds5 = ray.data.range(100).sort("id").map(lambda x: x).limit(5).materialize()
+    assert (
+        str(ds5._plan._logical_plan.dag)
+        == "Read[Read] -> Sort[Sort] -> Limit[Limit] -> MapRows[MapRows]"
+    )
+    assert ds5.take_all() == [{"id": i} for i in range(5)]
+
+
 def test_blocks_to_input_buffer_op_name(
     ray_start_regular_shared,
     enable_streaming_executor,

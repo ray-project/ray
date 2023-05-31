@@ -38,6 +38,9 @@ class OperatorFusionRule(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
+        # TODO(Scott): fuse back to back Limit operators together, i.e.
+        # Limit(l1) -> Limit(l2) into Limit(min(l1, l2))
+
         return PhysicalPlan(fused_dag, self._op_map)
 
     def _fuse_map_operators_in_dag(self, dag: PhysicalOperator) -> MapOperator:
