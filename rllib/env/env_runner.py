@@ -19,57 +19,11 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     - Clients of EnvRunner can use the `sample()` method to collect data for training
     from the environment(s).
     - EnvRunner offers parallelism via creating n remote Ray Actors based on this class.
-    Use the `as_remote()` method to create the corresponding Ray remote class. Then
-    instantiate n Actors using the Ray `[ctor].remote(...)` syntax.
+    Use `ray.remote([resources])(EnvRunner)` method to create the corresponding Ray
+    remote class. Then instantiate n Actors using the Ray `[ctor].remote(...)` syntax.
     - EnvRunner clients can get information about the server/node on which the
     individual Actors are running.
     """
-
-    @classmethod
-    def as_remote(
-        cls,
-        num_cpus: Optional[int] = None,
-        num_gpus: Optional[Union[int, float]] = None,
-        memory: Optional[int] = None,
-        resources: Optional[dict] = None,
-        max_num_worker_restarts: int = 0,
-    ) -> type:
-        """Returns the EnvRunner class as a `@ray.remote` using given options.
-
-        The returned class can then be used to instantiate ray actors.
-
-        Examples:
-        .. testcode::
-
-            from ray.rllib.env.env_runner import EnvRunner
-            remote_cls = EnvRunner.as_remote(num_cpus=1, num_gpus=0)
-            array = [remote_cls.remote({"key": "value"}) for _ in range(10)]
-            results = [env_runner.sample.remote() for env_runner in array]
-
-        Args:
-            num_cpus: The number of CPUs to allocate for the remote actor.
-            num_gpus: The number of GPUs to allocate for the remote actor.
-                This could be a fraction as well.
-            memory: The heap memory request in bytes for this task/actor,
-                rounded down to the nearest integer.
-            resources: The default custom resources to allocate for the remote
-                actor.
-            max_num_worker_restarts: The maximum number of restarts a failed EnvRunner
-                will undergo. Note that this setting is only effective if the EnvRunner
-                is a) a Ray Actor and b) managed by a fault-tolerant
-                ray.rllib.utils.actor_manager::FaultTolerantActorManager.
-
-        Returns:
-            The `@ray.remote` decorated EnvRunner class.
-        """
-        return ray.remote(
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            memory=memory,
-            resources=resources,
-            # Automatically restart failed EnvRunners.
-            max_restarts=max_num_worker_restarts,
-        )(cls)
 
     def __init__(self, *, config, **kwargs):
         """Initializes an EnvRunner instance.

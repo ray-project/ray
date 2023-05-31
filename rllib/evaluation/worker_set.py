@@ -16,6 +16,7 @@ from typing import (
     Union,
 )
 
+import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.core.learner import LearnerGroup
@@ -152,7 +153,7 @@ class WorkerSet:
         self.env_runner_cls = (
             RolloutWorker if config.env_runner_cls is None else config.env_runner_cls
         )
-        self._cls = self.env_runner_cls.as_remote(**self._remote_args).remote
+        self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
         self._ignore_worker_failures = config["ignore_worker_failures"]

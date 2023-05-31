@@ -804,3 +804,8 @@ class FaultTolerantActorManager:
         )
 
         return [result.actor_id for result in remote_results if result.ok]
+
+    def actors(self):
+        # TODO(jungong) : remove this API once WorkerSet.remote_workers()
+        #  and WorkerSet._remote_workers() are removed.
+        return self.__actors
