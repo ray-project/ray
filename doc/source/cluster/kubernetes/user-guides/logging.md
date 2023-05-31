@@ -20,7 +20,7 @@ Other popular tools include [Vector][Vector], [Fluentd][Fluentd], [Filebeat][Fil
 
 ## Log collection strategies
 Here lists two strategies for collecting logs written to a pod's filesystem,
-**sidecar containers** and **daemonsets**. You can read more about these logging
+**sidecar containers** or **daemonsets**. Read more about these logging
 patterns in the [Kubernetes documentation][KubDoc].
 
 ### Sidecar containers

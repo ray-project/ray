@@ -53,7 +53,7 @@ Use Ray State APIs to access the current state (snapshot) of Ray through a CLI o
 
 .. note::
 
-    This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature also requires the dashboard component to be available. The dashboard component needs to be included when starting the Ray cluster, which is the default behavior for ``ray start`` and ``ray.init()``.
+    This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature also requires that the dashboard component is available. The dashboard component needs to be included when starting the Ray Cluster, which is the default behavior for ``ray start`` and ``ray.init()``.
 
 .. note::
 
@@ -61,9 +61,9 @@ Use Ray State APIs to access the current state (snapshot) of Ray through a CLI o
 
 
 Get started
-~~~~~~~~~~~~~
+~~~~~~~~~~~
 
-In this example, you will use the following script that runs 2 tasks and creates 2 actors.
+This example uses the following script that runs two Tasks and creates two Actors.
 
 .. testcode::
     :hide:
@@ -237,25 +237,25 @@ Access logs through the ``ray logs`` API.
 
 Key Concepts
 ~~~~~~~~~~~~~
-Ray state APIs allow you to access **states** of **resources** through **summary**, **list**, and **get** APIs. It also supports **logs** API to access logs.
+Ray State APIs allow you to access **states** of **resources** through **summary**, **list**, and **get** APIs. It also supports **logs** API to access logs.
 
-- **states**: The state of the Cluster of corresponding resources. States consist of immutable metadata (e.g., actor's name) and mutable states (e.g., actor's scheduling state or pid).
-- **resources**: Resources created by Ray. For example, Actors, Tasks, Objects, Placement Groups, etc.
+- **states**: The state of the cluster of corresponding resources. States consist of immutable metadata (e.g., Actor's name) and mutable states (e.g., Actor's scheduling state or pid).
+- **resources**: Resources created by Ray. E.g., actors, tasks, objects, placement groups, and etc.
 - **summary**: API to return the summarized view of resources.
 - **list**: API to return every individual entity of resources.
 - **get**: API to return a single entity of resources in detail.
-- **logs**: API to access the log of Actors, Tasks, workers, or system log files.
+- **logs**: API to access the log of Actors, Tasks, Workers, or system log files.
 
 
 
 User guides
 ~~~~~~~~~~~~~
 
-Get a summary of the states of all entities of a certain type
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Return the summarized information of the given Ray entity (objects, actors, tasks).
+Getting a summary of states of entities by type
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Return the summarized information of the given Ray entity (Objects, Actors, Tasks).
 It is recommended to start monitoring states through summary APIs first. When you find anomalies
-(e.g., actors running for a long time, tasks that are not scheduled for a long time),
+(e.g., Actors running for a long time, Tasks that are not scheduled for a long time),
 you can use ``list`` or ``get`` APIs to get more details for an individual abnormal entity.
 
 **Summarize all actors**
@@ -331,7 +331,7 @@ See :ref:`state CLI refrence<state-api-cli-ref>`` for more details about ``ray s
 
 
 List the states of all entities of certain type
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Get a list of resources. Possible resources include:
 
@@ -662,9 +662,9 @@ See :ref:`state CLI refrence<state-api-cli-ref>`` for more details about ``ray l
 Failure Semantics
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The state APIs don't guarantee to return a consistent or complete snapshot of the Cluster all the time. By default,
-all Python SDKs raise an exception when there's a missing output from the API. And the CLI returns a partial result
-and provides warning messages. These cases may not generate output from the API.
+The State APIs don't guarantee to return a consistent or complete snapshot of the cluster all the time. By default,
+all Python SDKs raise an exception when output is missing from the API. The CLI returns a partial result
+and provides warning messages. Here are cases where there can be missing output from the API.
 
 **Query Failures**
 
@@ -675,8 +675,8 @@ All warnings are printed through Python's ``warnings`` library, and they can be 
 
 **Data Truncation**
 
-When the returned number of entities (number of rows) is too large (> 100K), state APIs truncate the output data to ensure system stability.
-(When this happens, there's no way to choose truncated data.) When truncation happens it is communicated through Python's
+When the returned number of entities (number of rows) is too large (> 100K), state APIs truncate the output data to ensure system stability
+(when this happens, there's no way to choose truncated data). When truncation happens it is informed through Python's
 ``warnings`` module.
 
 **Garbage Collected Resources**
@@ -686,9 +686,9 @@ through the APIs because they are already garbage collected.
 
 .. note::
 
-    It is recommended not to rely on this API to obtain correct information on finished resources.
-    For example, Ray periodically garbage collects DEAD state actor data to reduce memory usage.
-    Or it cleans up the FINISHED state of tasks when its lineage goes out of scope.
+    Do not to rely on this API to obtain correct information on finished resources.
+    For example, Ray periodically garbage collects DEAD state Actor data to reduce memory usage.
+    Or it cleans up the FINISHED state of Tasks when its lineage goes out of scope.
 
 API Reference
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -708,7 +708,7 @@ below.
 
 .. tab-set::
 
-    .. tab-item:: If using the VM cluster launcher
+    .. tab-item:: VM cluster launcher
 
         Execute a command on the cluster using ``ray exec``:
 
@@ -716,7 +716,7 @@ below.
 
             $ ray exec <cluster config file> "ray status"
 
-    .. tab-item:: If using Kubernetes
+    .. tab-item:: Kubernetes
 
         Execute a command on the cluster using ``kubectl exec`` and the configured
         RayCluster name. We will use the Service targeting the Ray head pod to
