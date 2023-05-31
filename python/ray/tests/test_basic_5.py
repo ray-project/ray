@@ -364,7 +364,7 @@ def test_preload_workers(ray_start_cluster, preload):
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="only server mode")
-def test_gcs_port_env():
+def test_gcs_port_env(shutdown_only):
     try:
         with unittest.mock.patch.dict(os.environ):
             os.environ["RAY_GCS_SERVER_PORT"] = "12345"
