@@ -444,28 +444,28 @@ class LearnerGroup:
 
     def set_weights(self, weights) -> None:
         # TODO (Kourosh) Set / get weight has to be thoroughly
-        # tested across actors and multi-gpus
+        #  tested across actors and multi-gpus
         if self.is_local:
-            self._learner.set_weights(weights)
+            self._learner.set_module_state(weights)
         else:
             results_or_errors = self._worker_manager.foreach_actor(
-                lambda w: w.set_weights(weights)
+                lambda w: w.set_module_state(weights)
             )
             # raise errors if any
             self._get_results(results_or_errors)
 
     def get_weights(self, module_ids: Optional[Set[str]] = None) -> Mapping[str, Any]:
         if self.is_local:
-            weights = self._learner.get_weights(module_ids)
+            state = self._learner.get_module_state(module_ids)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            weights = self._worker_manager.foreach_actor(
-                lambda w: w.get_weights(module_ids), remote_actor_ids=[worker]
+            state = self._worker_manager.foreach_actor(
+                lambda w: w.get_module_state(module_ids), remote_actor_ids=[worker]
             )
-            weights = self._get_results(weights)[0]
+            state = self._get_results(state)[0]
 
-        return convert_to_numpy(weights)
+        return convert_to_numpy(state)
 
     def get_state(self) -> Mapping[ModuleID, Mapping[str, Any]]:
         """Get the states of the first Learners.
@@ -672,10 +672,8 @@ class LearnerGroup:
             # also in the RLModule checkpoints.
             if modules_to_load:
                 if any(
-                    [
-                        module_id in modules_to_load
-                        for module_id in rl_module_ckpt_dirs.keys()
-                    ]
+                    module_id in modules_to_load
+                    for module_id in rl_module_ckpt_dirs.keys()
                 ):
                     raise ValueError(
                         f"module_id {module_id} was specified in both "
