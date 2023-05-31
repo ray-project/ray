@@ -79,8 +79,31 @@ Ray enables arbitrary functions to be executed asynchronously on separate Python
           for(int i = 0; i < 4; i++) {
             // This doesn't block.
             ray::Task(SlowFunction).Remote();
-          }
+          a
 
+Use `ray summary tasks` from :ref:`State API <state-api-overview-ref>`  to see running and finished tasks and count:
+
+.. code-block:: bash
+
+  # This API is only available when you download Ray via `pip install "ray[default]"`
+  ray summary tasks
+
+
+.. code-block:: bash
+
+  ======== Tasks Summary: 2023-05-26 11:09:32.092546 ========
+  Stats:
+  ------------------------------------
+  total_actor_scheduled: 0
+  total_actor_tasks: 0
+  total_tasks: 5
+  
+  
+  Table (group by func_name):
+  ------------------------------------
+      FUNC_OR_CLASS_NAME    STATE_COUNTS    TYPE
+  0   slow_function         RUNNING: 4      NORMAL_TASK
+  1   my_function           FINISHED: 1     NORMAL_TASK
 
 Specifying required resources
 -----------------------------
