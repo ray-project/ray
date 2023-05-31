@@ -6,7 +6,6 @@ import numpy as np
 import ray
 from ray.air import session
 from ray.air.config import ScalingConfig
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data.preprocessors import Concatenator
 from ray.train.tensorflow import TensorflowTrainer
 
@@ -185,19 +184,6 @@ class TestToTF:
         ds = ray.data.from_items([{"spam": 0, "ham": 0}])
         with pytest.raises(ValueError):
             ds.to_tf(feature_columns="foo", label_columns="bar")
-
-    def test_simple_dataset_raises_error(self):
-        # `range` returns a simple dataset.
-        ds = ray.data.range(1)
-        with pytest.raises(NotImplementedError):
-            ds.to_tf(feature_columns="spam", label_columns="ham")
-
-    def test_tensor_dataset_raises_error(self):
-        ds = ray.data.range_tensor(1)
-        with pytest.raises(NotImplementedError):
-            ds.to_tf(
-                feature_columns=TENSOR_COLUMN_NAME, label_columns=TENSOR_COLUMN_NAME
-            )
 
 
 if __name__ == "__main__":

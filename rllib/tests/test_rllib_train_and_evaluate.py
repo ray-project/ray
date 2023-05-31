@@ -96,12 +96,23 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
         print("Saving results to {}".format(tmp_dir))
 
         rllib_dir = str(Path(__file__).parent.parent.absolute())
+
+        # This is only supported without RLModule API. See AlgorithmConfig for
+        # more info. We need to prefetch the default config that will be used when we
+        # call rllib train here to see if the RLModule API is enabled.
+        algo_cls = get_trainable_cls(algo)
+        config = algo_cls.get_default_config()
+        if config._enable_rl_module_api:
+            eval_ = ', \\"evaluation_config\\": {}'
+        else:
+            eval_ = ', \\"evaluation_config\\": {\\"explore\\": false}'
+
         print("RLlib dir = {}\nexists={}".format(rllib_dir, os.path.exists(rllib_dir)))
         os.system(
             "python {}/train.py --local-dir={} --run={} "
             "--checkpoint-freq=1 --checkpoint-at-end ".format(rllib_dir, tmp_dir, algo)
-            + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1, '
-            '\\"evaluation_config\\": {\\"explore\\": false}'
+            + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1'
+            + eval_
             + fw_
             + '}" '
             + '--stop="{\\"episode_reward_mean\\": 100.0}"'
@@ -182,7 +193,8 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
                 policy_mapping_fn=policy_fn,
             )
             .resources(num_gpus=0)
-            .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
+            .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=True))
+            .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=True))
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs={

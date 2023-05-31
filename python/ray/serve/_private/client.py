@@ -13,6 +13,7 @@ from ray.serve._private.common import (
     StatusOverview,
     ApplicationStatus,
     DeploymentStatusInfo,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
@@ -102,7 +103,6 @@ class ServeControllerClient:
 
         # Shut down handles
         for k in list(self.handle_cache):
-            self.handle_cache[k].stop_metrics_pusher()
             del self.handle_cache[k]
 
         if ray.is_initialized() and not self._shutdown:
@@ -275,6 +275,7 @@ class ServeControllerClient:
                     route_prefix=deployment["route_prefix"],
                     is_driver_deployment=deployment["is_driver_deployment"],
                     docs_path=deployment["docs_path"],
+                    app_name=name,
                 )
             )
 
@@ -439,6 +440,7 @@ class ServeControllerClient:
         missing_ok: Optional[bool] = False,
         sync: bool = True,
         _internal_pickled_http_request: bool = False,
+        _stream: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
@@ -449,6 +451,10 @@ class ServeControllerClient:
             sync: If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.
+            _internal_pickled_http_request: Indicates that this handle will be used
+                to send HTTP requests from the proxy to ingress deployment replicas.
+            _stream: Indicates that this handle should use
+                `num_returns="streaming"`.
 
         Returns:
             RayServeHandle
@@ -456,7 +462,7 @@ class ServeControllerClient:
         cache_key = (deployment_name, missing_ok, sync)
         if cache_key in self.handle_cache:
             cached_handle = self.handle_cache[cache_key]
-            if cached_handle.is_polling and cached_handle.is_same_loop:
+            if cached_handle._is_polling and cached_handle._is_same_loop:
                 return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
@@ -468,12 +474,14 @@ class ServeControllerClient:
                 self._controller,
                 deployment_name,
                 _internal_pickled_http_request=_internal_pickled_http_request,
+                _stream=_stream,
             )
         else:
             handle = RayServeHandle(
                 self._controller,
                 deployment_name,
                 _internal_pickled_http_request=_internal_pickled_http_request,
+                _stream=_stream,
             )
 
         self.handle_cache[cache_key] = handle
@@ -526,3 +534,13 @@ class ServeControllerClient:
             f"Deployment '{name}{':'+version if version else ''}' is ready"
             f"{url_part}. {tag}"
         )
+
+    @_ensure_connected
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """Record multiplexed replica information for replica.
+
+        Args:
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
+        """
+        self._controller.record_multiplexed_replica_info.remote(info)

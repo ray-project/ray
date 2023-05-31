@@ -1,5 +1,7 @@
 from ray.includes.common cimport (
-    CGcsClientOptions
+    CGcsClientOptions,
+    CGcsNodeState,
+    PythonGetResourcesTotal
 )
 
 from ray.includes.unique_ids cimport (
@@ -51,10 +53,38 @@ cdef class GlobalStateAccessor:
         return cjob_id.ToInt()
 
     def get_node_table(self):
-        cdef c_vector[c_string] result
+        cdef:
+            c_vector[c_string] items
+            c_string item
+            CGcsNodeInfo c_node_info
+            unordered_map[c_string, double] c_resources
         with nogil:
-            result = self.inner.get().GetAllNodeInfo()
-        return result
+            items = self.inner.get().GetAllNodeInfo()
+        results = []
+        for item in items:
+            c_node_info.ParseFromString(item)
+            node_info = {
+                "NodeID": ray._private.utils.binary_to_hex(c_node_info.node_id()),
+                "Alive": c_node_info.state() == CGcsNodeState.ALIVE,
+                "NodeManagerAddress": c_node_info.node_manager_address().decode(),
+                "NodeManagerHostname": c_node_info.node_manager_hostname().decode(),
+                "NodeManagerPort": c_node_info.node_manager_port(),
+                "ObjectManagerPort": c_node_info.object_manager_port(),
+                "ObjectStoreSocketName":
+                    c_node_info.object_store_socket_name().decode(),
+                "RayletSocketName": c_node_info.raylet_socket_name().decode(),
+                "MetricsExportPort": c_node_info.metrics_export_port(),
+                "NodeName": c_node_info.node_name().decode(),
+            }
+            node_info["alive"] = node_info["Alive"]
+            c_resources = PythonGetResourcesTotal(c_node_info)
+            node_info["Resources"] = (
+                {key.decode(): value for key, value in c_resources}
+                if node_info["Alive"]
+                else {}
+            )
+            results.append(node_info)
+        return results
 
     def get_all_available_resources(self):
         cdef c_vector[c_string] result
@@ -149,9 +179,15 @@ cdef class GlobalStateAccessor:
         cdef CRayStatus status
         cdef c_string cnode_ip_address = node_ip_address
         cdef c_string cnode_to_connect
+        cdef CGcsNodeInfo c_node_info
         with nogil:
             status = self.inner.get().GetNodeToConnectForDriver(
                 cnode_ip_address, &cnode_to_connect)
         if not status.ok():
             raise RuntimeError(status.message())
-        return cnode_to_connect
+        c_node_info.ParseFromString(cnode_to_connect)
+        return {
+            "object_store_socket_name": c_node_info.object_store_socket_name().decode(),
+            "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
+            "node_manager_port": c_node_info.node_manager_port(),
+        }

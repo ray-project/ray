@@ -11,6 +11,7 @@ from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 
 
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):
@@ -19,18 +20,21 @@ def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     xs = list(range(num_items))
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
-    assert ds.sort().take(num_items) == list(range(num_items))
+    assert extract_values("item", ds.sort("item").take(num_items)) == list(
+        range(num_items)
+    )
     # Make sure we have rows in each block.
-    assert len([n for n in ds.sort()._block_num_rows() if n > 0]) == parallelism
-    assert ds.sort(descending=True).take(num_items) == list(reversed(range(num_items)))
-    assert ds.sort(key=lambda x: -x).take(num_items) == list(reversed(range(num_items)))
+    assert len([n for n in ds.sort("item")._block_num_rows() if n > 0]) == parallelism
+    assert extract_values(
+        "item", ds.sort("item", descending=True).take(num_items)
+    ) == list(reversed(range(num_items)))
 
     # Test empty dataset.
     ds = ray.data.from_items([])
-    s1 = ds.sort()
+    s1 = ds.sort("item")
     assert s1.count() == 0
     assert s1.take() == ds.take()
-    ds = ray.data.range(10).filter(lambda r: r > 10).sort()
+    ds = ray.data.range(10).filter(lambda r: r["id"] > 10).sort("id")
     assert ds.count() == 0
 
 
@@ -40,7 +44,7 @@ def test_sort_partition_same_key_to_same_block(
     num_items = 100
     xs = [1] * num_items
     ds = ray.data.from_items(xs)
-    sorted_ds = ds.repartition(num_items).sort()
+    sorted_ds = ds.repartition(num_items).sort("item")
 
     # We still have 100 blocks
     assert len(sorted_ds._block_num_rows()) == num_items
@@ -130,21 +134,19 @@ def test_sort_arrow_with_empty_blocks(
             [{"A": (x % 3), "B": x} for x in range(3)], parallelism=3
         )
         ds = ds.filter(lambda r: r["A"] == 0)
-        assert [row.as_pydict() for row in ds.sort("A").iter_rows()] == [
-            {"A": 0, "B": 0}
-        ]
+        assert list(ds.sort("A").iter_rows()) == [{"A": 0, "B": 0}]
 
         # Test empty dataset.
-        ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
+        ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
         assert (
             len(
                 ray.data._internal.sort.sample_boundaries(
-                    ds._plan.execute().get_blocks(), "value", 3
+                    ds._plan.execute().get_blocks(), "id", 3
                 )
             )
             == 2
         )
-        assert ds.sort("value").count() == 0
+        assert ds.sort("id").count() == 0
     finally:
         ctx.use_polars = original_use_polars
 
@@ -200,19 +202,19 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
 
     ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in range(3)], parallelism=3)
     ds = ds.filter(lambda r: r["A"] == 0)
-    assert [row.as_pydict() for row in ds.sort("A").iter_rows()] == [{"A": 0, "B": 0}]
+    assert list(ds.sort("A").iter_rows()) == [{"A": 0, "B": 0}]
 
     # Test empty dataset.
-    ds = ray.data.range_table(10).filter(lambda r: r["value"] > 10)
+    ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
     assert (
         len(
             ray.data._internal.sort.sample_boundaries(
-                ds._plan.execute().get_blocks(), "value", 3
+                ds._plan.execute().get_blocks(), "id", 3
             )
         )
         == 2
     )
-    assert ds.sort("value").count() == 0
+    assert ds.sort("id").count() == 0
 
 
 def test_push_based_shuffle_schedule():
@@ -341,9 +343,9 @@ def test_sort_multinode(ray_start_cluster, use_push_based_shuffle):
     ray.init(cluster.address)
 
     parallelism = 100
-    ds = ray.data.range(1000, parallelism=parallelism).random_shuffle().sort()
+    ds = ray.data.range(1000, parallelism=parallelism).random_shuffle().sort("id")
     for i, row in enumerate(ds.iter_rows()):
-        assert row == i
+        assert row["id"] == i
 
 
 def patch_ray_remote(condition, callback):
@@ -452,12 +454,12 @@ def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline)
         assert task_context["num_instances_below_parallelism"] <= 1
         task_context["num_instances_below_parallelism"] = 0
 
-        ds = ds.sort()
+        ds = ds.sort("id")
         # Only the last round should have fewer tasks in flight.
         assert task_context["num_instances_below_parallelism"] <= 1
         task_context["num_instances_below_parallelism"] = 0
         for i, row in enumerate(ds.iter_rows()):
-            assert row == i
+            assert row["id"] == i
 
     finally:
         ctx.use_push_based_shuffle = original

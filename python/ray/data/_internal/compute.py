@@ -10,14 +10,13 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
-    BatchUDF,
+    UserDefinedFunction,
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
     CallableClass,
-    RowUDF,
     StrictModeError,
 )
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
@@ -37,14 +36,11 @@ BlockTransform = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
-    # Callable[[Block, BatchUDF, ...], Iterable[Block]],
+    # Callable[[Block, UserDefinedFunction, ...], Iterable[Block]],
     Callable[[Iterable[Block], TaskContext], Iterable[Block]],
-    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, UserDefinedFunction], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
-
-# UDF on a batch or row.
-UDF = Union[BatchUDF, RowUDF]
 
 
 @DeveloperAPI
@@ -69,7 +65,7 @@ class TaskPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -84,7 +80,7 @@ class TaskPoolStrategy(ComputeStrategy):
 
         context = DataContext.get_current()
 
-        # Handle empty datastreams.
+        # Handle empty datasets.
         if block_list.initial_num_blocks() == 0:
             return block_list
 
@@ -183,10 +179,10 @@ class TaskPoolStrategy(ComputeStrategy):
 
 @PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
-    """Specify the compute strategy for a Datastream transform.
+    """Specify the compute strategy for a Dataset transform.
 
     ActorPoolStrategy specifies that an autoscaling pool of actors should be used
-    for a given Datastream transform. This is useful for stateful setup of callable
+    for a given Dataset transform. This is useful for stateful setup of callable
     classes.
 
     For a fixed-sized pool of size ``n``, specify ``compute=ActorPoolStrategy(size=n)``.
@@ -210,7 +206,7 @@ class ActorPoolStrategy(ComputeStrategy):
         max_size: Optional[int] = None,
         max_tasks_in_flight_per_actor: Optional[int] = None,
     ):
-        """Construct ActorPoolStrategy for a Datastream transform.
+        """Construct ActorPoolStrategy for a Dataset transform.
 
         Args:
             size: Specify a fixed size actor pool of this size. It is an error to
@@ -227,7 +223,7 @@ class ActorPoolStrategy(ComputeStrategy):
         if legacy_min_size is not None or legacy_max_size is not None:
             if ctx.strict_mode:
                 raise StrictModeError(
-                    "In strict mode, ActorPoolStrategy requires min_size and "
+                    "In Ray 2.5, ActorPoolStrategy requires min_size and "
                     "max_size to be explicit kwargs."
                 )
             else:
@@ -277,13 +273,13 @@ class ActorPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> BlockList:
-        """Note: this is not part of the Datastream public API."""
+        """Note: this is not part of the Dataset public API."""
         assert not DataContext.get_current().new_execution_backend, "Legacy backend off"
         if fn_args is None:
             fn_args = tuple()
@@ -507,7 +503,7 @@ def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
         compute_spec, (TaskPoolStrategy, ActorPoolStrategy)
     ):
         raise StrictModeError(
-            "In strict mode, the compute spec must be either "
+            "In Ray 2.5, the compute spec must be either "
             f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
         )
     elif not compute_spec or compute_spec == "tasks":
@@ -531,7 +527,7 @@ def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
 def _map_block_split(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
@@ -559,7 +555,7 @@ def _map_block_split(
 def _map_block_nosplit(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,

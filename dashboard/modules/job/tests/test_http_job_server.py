@@ -610,7 +610,6 @@ def test_version_endpoint(job_sdk_client):
 
 def test_request_headers(job_sdk_client):
     client = job_sdk_client
-
     with patch("requests.request") as mock_request:
         _ = client._do_request(
             "POST",
@@ -624,6 +623,7 @@ def test_request_headers(job_sdk_client):
             data=None,
             json={"entrypoint": "ls"},
             headers={"Connection": "keep-alive", "Authorization": "TOK:<MY_TOKEN>"},
+            verify=True,
         )
 
 

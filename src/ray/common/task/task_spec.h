@@ -262,6 +262,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool ReturnsDynamic() const;
 
+  bool IsStreamingGenerator() const;
+
   std::vector<ObjectID> DynamicReturnIds() const;
 
   void AddDynamicReturnId(const ObjectID &dynamic_return_id);
@@ -412,6 +414,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// \return true if the task or actor is retriable.
   bool IsRetriable() const;
+
+  void EmitTaskMetrics() const;
 
  private:
   void ComputeResources();

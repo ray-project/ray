@@ -6,6 +6,7 @@ from starlette.requests import Request
 
 import ray
 from ray import serve
+from ray.serve.handle import RayServeHandle
 
 from transformers import pipeline
 
@@ -28,7 +29,7 @@ class Translator:
 
 @serve.deployment
 class Summarizer:
-    def __init__(self, translator):
+    def __init__(self, translator: RayServeHandle):
         # Load model
         self.model = pipeline("summarization", model="t5-small")
         self.translator = translator
@@ -52,13 +53,13 @@ class Summarizer:
         return translation
 
 
-deployment_graph = Summarizer.bind(Translator.bind())
+app = Summarizer.bind(Translator.bind())
 # __end_graph__
 
-serve.run(deployment_graph)
+serve.run(app)
 
 # __start_client__
-# File name: graph_client.py
+# File name: composed_client.py
 import requests
 
 english_text = (

@@ -90,6 +90,7 @@ class CoreWorkerDirectActorTaskSubmitter
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
+  /// \param[in] execute_out_of_order Whether to execute tasks out of order.
   /// \param[in] fail_if_actor_unreachable Whether to fail newly submitted tasks
   /// immediately when the actor is unreachable.
   void AddActorQueueIfNotExists(const ActorID &actor_id,
@@ -151,11 +152,30 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Whether the corresponding client queue is full or not.
   bool PendingTasksFull(const ActorID &actor_id) const;
 
+  /// Get the number of pending tasks in the queue.
+  ///
+  /// \param[in] actor_id Actor id.
+  /// \return The number of pending tasks in the queue.
+  size_t NumPendingTasks(const ActorID &actor_id) const;
+
+  /// Check whether the actor exists
+  ///
+  /// \param[in] actor_id Actor id.
+  ///
+  /// \return Return true if the actor exists.
+  bool CheckActorExists(const ActorID &actor_id) const;
+
   /// Returns debug string for class.
   ///
   /// \param[in] actor_id The actor whose debug string to return.
   /// \return string.
   std::string DebugString(const ActorID &actor_id) const;
+
+  /// Whether the specified actor is alive.
+  ///
+  /// \param[in] actor_id The actor ID.
+  /// \return Whether this actor is alive.
+  bool IsActorAlive(const ActorID &actor_id) const;
 
  private:
   /// A helper function to get task finisher without holding mu_
@@ -279,12 +299,6 @@ class CoreWorkerDirectActorTaskSubmitter
   void FailInflightTasks(
       const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
           &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
-
-  /// Whether the specified actor is alive.
-  ///
-  /// \param[in] actor_id The actor ID.
-  /// \return Whether this actor is alive.
-  bool IsActorAlive(const ActorID &actor_id) const;
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;

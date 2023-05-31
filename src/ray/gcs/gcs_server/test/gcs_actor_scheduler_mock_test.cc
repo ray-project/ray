@@ -45,6 +45,7 @@ class GcsActorSchedulerMockTest : public Test {
         [this](const rpc::Address &) { return raylet_client; });
     local_node_id = NodeID::FromRandom();
     auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
+        io_context,
         scheduling::NodeID(local_node_id.Binary()),
         NodeResources(),
         /*is_node_available_fn=*/

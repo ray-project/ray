@@ -200,5 +200,5 @@ try-import %workspace%/.llvm-local.bazelrc
 # It picks up the system headers when someone has protobuf installed via Homebrew.
 # Work around for https://github.com/bazelbuild/bazel/issues/8053
 build:macos --sandbox_block_path=/usr/local/
-#This option controls whether javac checks for missing direct dependencies.
-build --strict_java_deps=off
+# This option controls whether javac checks for missing direct dependencies.
+build --experimental_strict_java_deps=off

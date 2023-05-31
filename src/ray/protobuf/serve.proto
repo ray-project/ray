@@ -150,7 +150,8 @@ message ActorNameList {
 
 message DeploymentVersion {
   string code_version = 1;
-  bytes user_config = 2;
+  DeploymentConfig deployment_config = 2;
+  string ray_actor_options = 3;
 }
 
 message ReplicaConfig {
@@ -169,6 +170,7 @@ message DeploymentInfo {
   string actor_name = 5;
   string version = 6;
   int64 end_time_ms = 7;
+  string app_name = 8;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
@@ -185,9 +187,9 @@ message DeploymentRouteList {
 enum DeploymentStatus {
   // Keep frontend code of ServeDeploymentStatus in dashboard/client/src/type/serve.ts
   // in sync with this enum
-  UPDATING = 0;
-  HEALTHY = 1;
-  UNHEALTHY = 2;
+  DEPLOYMENT_STATUS_UPDATING = 0;
+  DEPLOYMENT_STATUS_HEALTHY = 1;
+  DEPLOYMENT_STATUS_UNHEALTHY = 2;
 }
 
 message DeploymentStatusInfo {
@@ -204,11 +206,11 @@ message DeploymentStatusInfoList {
 enum ApplicationStatus {
   // Keep frontend code of ServeApplicationStatus in dashboard/client/src/type/serve.ts
   // in sync with this enum
-  DEPLOYING = 0;
-  RUNNING = 1;
-  DEPLOY_FAILED = 2;
-  DELETING = 3;
-  NOT_STARTED = 5;
+  APPLICATION_STATUS_DEPLOYING = 0;
+  APPLICATION_STATUS_RUNNING = 1;
+  APPLICATION_STATUS_DEPLOY_FAILED = 2;
+  APPLICATION_STATUS_DELETING = 3;
+  APPLICATION_STATUS_NOT_STARTED = 5;
 }
 
 message ApplicationStatusInfo {

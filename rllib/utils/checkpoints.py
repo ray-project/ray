@@ -29,7 +29,11 @@ logger = logging.getLogger(__name__)
 
 # 1.1: Same as 1.0, but has a new "format" field in the rllib_checkpoint.json file
 # indicating, whether the checkpoint is `cloudpickle` (default) or `msgpack`.
+
+# 1.2: Introduces the checkpoint for the new Learner API if the Learner api is enabled.
+
 CHECKPOINT_VERSION = version.Version("1.1")
+CHECKPOINT_VERSION_LEARNER = version.Version("1.2")
 
 
 @PublicAPI(stability="alpha")
@@ -102,15 +106,15 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
                     rllib_checkpoint_info["checkpoint_version"]
                 )
             info.update(rllib_checkpoint_info)
-
-        # No rllib_checkpoint.json file present: Warn and continue trying to figure out
-        # checkpoint info ourselves.
-        if log_once("no_rllib_checkpoint_json_file"):
-            logger.warning(
-                "No `rllib_checkpoint.json` file found in checkpoint directory "
-                f"{checkpoint}! Trying to extract checkpoint info from other files "
-                f"found in that dir."
-            )
+        else:
+            # No rllib_checkpoint.json file present: Warn and continue trying to figure
+            # out checkpoint info ourselves.
+            if log_once("no_rllib_checkpoint_json_file"):
+                logger.warning(
+                    "No `rllib_checkpoint.json` file found in checkpoint directory "
+                    f"{checkpoint}! Trying to extract checkpoint info from other files "
+                    f"found in that dir."
+                )
 
         # Policy checkpoint file found.
         for extension in ["pkl", "msgpck"]:
@@ -222,7 +226,10 @@ def convert_to_msgpack_checkpoint(
     state["worker"]["is_policy_to_train"] = NOT_SERIALIZABLE
 
     # Add RLlib checkpoint version (as string).
-    state["checkpoint_version"] = str(CHECKPOINT_VERSION)
+    if state["config"]["_enable_learner_api"]:
+        state["checkpoint_version"] = str(CHECKPOINT_VERSION_LEARNER)
+    else:
+        state["checkpoint_version"] = str(CHECKPOINT_VERSION)
 
     # Write state (w/o policies) to disk.
     state_file = os.path.join(msgpack_checkpoint_dir, "algorithm_state.msgpck")

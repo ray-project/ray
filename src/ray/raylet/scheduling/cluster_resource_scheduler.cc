@@ -24,6 +24,7 @@ namespace ray {
 using namespace ::ray::raylet_scheduling_policy;
 
 ClusterResourceScheduler::ClusterResourceScheduler(
+    instrumented_io_context &io_service,
     scheduling::NodeID local_node_id,
     const NodeResources &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
@@ -31,12 +32,14 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     : local_node_id_(local_node_id),
       is_node_available_fn_(is_node_available_fn),
       is_local_node_with_raylet_(is_local_node_with_raylet) {
-  Init(local_node_resources,
+  Init(io_service,
+       local_node_resources,
        /*get_used_object_store_memory=*/nullptr,
        /*get_pull_manager_at_capacity=*/nullptr);
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
+    instrumented_io_context &io_service,
     scheduling::NodeID local_node_id,
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     std::function<bool(scheduling::NodeID)> is_node_available_fn,
@@ -45,14 +48,18 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     : local_node_id_(local_node_id), is_node_available_fn_(is_node_available_fn) {
   NodeResources node_resources =
       ResourceMapToNodeResources(local_node_resources, local_node_resources);
-  Init(node_resources, get_used_object_store_memory, get_pull_manager_at_capacity);
+  Init(io_service,
+       node_resources,
+       get_used_object_store_memory,
+       get_pull_manager_at_capacity);
 }
 
 void ClusterResourceScheduler::Init(
+    instrumented_io_context &io_service,
     const NodeResources &local_node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity) {
-  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>();
+  cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service);
   local_resource_manager_ = std::make_unique<LocalResourceManager>(
       local_node_id_,
       local_node_resources,

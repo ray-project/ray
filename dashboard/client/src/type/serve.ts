@@ -14,7 +14,7 @@ export type ServeApplication = {
   status: ServeApplicationStatus;
   message: string;
   last_deployed_time_s: number;
-  deployed_app_config: Record<string, any>;
+  deployed_app_config: Record<string, any> | null; // It could be null if user did not provide deployed_app_config
   deployments: {
     [name: string]: ServeDeployment;
   };
@@ -74,6 +74,7 @@ export type ServeReplica = {
   node_id: string | null;
   node_ip: string | null;
   start_time_s: number;
+  log_file_path: string | null;
 };
 
 // Keep in sync with DeploymentMode in python/ray/serve/config.py
@@ -84,12 +85,38 @@ export enum ServeDeploymentMode {
   FixedNumber = "FixedNumber",
 }
 
+// Keep in sync with HTTPProxyStatus in python/ray/serve/_private/common.py
+export enum ServeSystemActorStatus {
+  STARTING = "STARTING",
+  HEALTHY = "HEALTHY",
+  UNHEALTHY = "UNHEALTHY",
+}
+
+export type ServeSystemActor = {
+  node_id: string | null;
+  node_ip: string | null;
+  actor_id: string | null;
+  actor_name: string | null;
+  worker_id: string | null;
+  log_file_path: string | null;
+};
+
+export type ServeHttpProxy = {
+  status: ServeSystemActorStatus;
+} & ServeSystemActor;
+
 export type ServeApplicationsRsp = {
-  http_options: {
-    host: string;
-    port: number;
-  };
+  http_options:
+    | {
+        host: string;
+        port: number;
+      }
+    | undefined;
   proxy_location: ServeDeploymentMode;
+  controller_info: ServeSystemActor;
+  http_proxies: {
+    [name: string]: ServeHttpProxy;
+  } | null;
   applications: {
     [name: string]: ServeApplication;
   };

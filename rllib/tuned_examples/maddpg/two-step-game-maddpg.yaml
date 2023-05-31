@@ -2,7 +2,7 @@ two-step-game-maddpg:
     env: ray.rllib.examples.env.two_step_game.TwoStepGame
     run: MADDPG
     stop:
-        episode_reward_mean: 7.2
+        sampler_results/episode_reward_mean: 7.2
         timesteps_total: 20000
     config:
         # MADDPG only supports tf for now.

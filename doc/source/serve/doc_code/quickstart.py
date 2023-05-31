@@ -5,7 +5,7 @@ from typing import Dict
 from ray import serve
 
 
-# 1: Define a Ray Serve deployment.
+# 1: Define a Ray Serve application.
 @serve.deployment(route_prefix="/")
 class MyModelDeployment:
     def __init__(self, msg: str):
@@ -16,9 +16,11 @@ class MyModelDeployment:
         return {"result": self._msg}
 
 
-# 2: Deploy the model.
-serve.run(MyModelDeployment.bind(msg="Hello world!"))
+app = MyModelDeployment.bind(msg="Hello world!")
 
-# 3: Query the deployment and print the result.
+# 2: Deploy the application locally.
+serve.run(app)
+
+# 3: Query the application and print the result.
 print(requests.get("http://localhost:8000/").json())
 # {'result': 'Hello world!'}

@@ -2,7 +2,7 @@ import itertools
 import os
 import shutil
 from functools import partial
-from distutils.version import LooseVersion
+from packaging.version import Version
 
 import pandas as pd
 import pyarrow as pa
@@ -895,7 +895,7 @@ def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
 
 
 @pytest.mark.skipif(
-    LooseVersion(pa.__version__) < LooseVersion("7.0.0"),
+    Version(pa.__version__) < Version("7.0.0"),
     reason="invalid_row_handler was added in pyarrow 7.0.0",
 )
 def test_csv_invalid_file_handler(shutdown_only, tmp_path):

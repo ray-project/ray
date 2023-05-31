@@ -1,7 +1,7 @@
+from functools import partial
 import os
-from typing import Optional, Union
-
 import pandas as pd
+from typing import Optional, Union
 
 from ray.air.result import Result
 from ray.cloudpickle import cloudpickle
@@ -9,6 +9,7 @@ from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
+from ray.tune.trainable.util import TrainableUtil
 from ray.util import PublicAPI
 
 
@@ -22,27 +23,37 @@ class ResultGrid:
     ``Tuner.fit()``.
 
     Example:
-         >>> import random
-         >>> from ray import air, tune
-         >>> def random_error_trainable(config):
-         ...     if random.random() < 0.5:
-         ...         return {"loss": 0.0}
-         ...     else:
-         ...         raise ValueError("This is an error")
-         >>> tuner = tune.Tuner(
-         ...     random_error_trainable,
-         ...     run_config=air.RunConfig(name="example-experiment"),
-         ...     tune_config=tune.TuneConfig(num_samples=10),
-         ... )
-         >>> result_grid = tuner.fit()  # doctest: +SKIP
-         >>> for i in range(len(result_grid)): # doctest: +SKIP
-         ...     result = result_grid[i]
-         ...     if not result.error:
-         ...             print(f"Trial finishes successfully with metrics"
-         ...                f"{result.metrics}.")
-         ...     else:
-         ...             print(f"Trial failed with error {result.error}.")
+    .. testcode::
 
+        import random
+        from ray import air, tune
+        def random_error_trainable(config):
+            if random.random() < 0.5:
+                return {"loss": 0.0}
+            else:
+                raise ValueError("This is an error")
+        tuner = tune.Tuner(
+            random_error_trainable,
+            run_config=air.RunConfig(name="example-experiment"),
+            tune_config=tune.TuneConfig(num_samples=10),
+        )
+        try:
+            result_grid = tuner.fit()
+        except ValueError:
+            pass
+        for i in range(len(result_grid)):
+            result = result_grid[i]
+            if not result.error:
+                    print(f"Trial finishes successfully with metrics"
+                       f"{result.metrics}.")
+            else:
+                    print(f"Trial failed with error {result.error}.")
+
+    .. testoutput::
+        :hide:
+        :options: +ELLIPSIS
+
+        ...
 
     You can also use ``result_grid`` for more advanced analysis.
 
@@ -177,9 +188,19 @@ class ResultGrid:
 
         Example:
 
-            .. code-block:: python
+            .. testcode::
 
-                result_grid = Tuner.fit(...)
+                from ray.air import session
+                from ray.air.config import RunConfig
+                from ray.tune import Tuner
+
+                def training_loop_per_worker(config):
+                    session.report({"accuracy": 0.8})
+
+                result_grid = Tuner(
+                    trainable=training_loop_per_worker,
+                    run_config=RunConfig(name="my_tune_run")
+                ).fit()
 
                 # Get last reported results per trial
                 df = result_grid.get_dataframe()
@@ -188,6 +209,12 @@ class ResultGrid:
                 df = result_grid.get_dataframe(
                     filter_metric="accuracy", filter_mode="max"
                 )
+
+            .. testoutput::
+                :hide:
+                :options: +ELLIPSIS
+
+                ...
 
         Args:
             filter_metric: Metric to filter best result for.
@@ -243,9 +270,23 @@ class ResultGrid:
         return None
 
     def _trial_to_result(self, trial: Trial) -> Result:
-        checkpoint = trial.checkpoint.to_air_checkpoint()
+        local_to_remote_path_fn = (
+            partial(
+                TrainableUtil.get_remote_storage_path,
+                local_path_prefix=trial.local_path,
+                remote_path_prefix=trial.remote_path,
+            )
+            if trial.uses_cloud_checkpointing
+            else None
+        )
+        checkpoint = trial.checkpoint.to_air_checkpoint(
+            local_to_remote_path_fn,
+        )
         best_checkpoints = [
-            (checkpoint.to_air_checkpoint(), checkpoint.metrics)
+            (
+                checkpoint.to_air_checkpoint(local_to_remote_path_fn),
+                checkpoint.metrics,
+            )
             for checkpoint in trial.get_trial_checkpoints()
         ]
 

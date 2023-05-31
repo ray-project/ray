@@ -8,7 +8,7 @@ import ray
 import logging
 
 from collections import defaultdict
-from ray.experimental.state.api import list_nodes
+from ray.util.state import list_nodes
 from ray._private.test_utils import fetch_prometheus_metrics
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel

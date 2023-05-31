@@ -181,6 +181,13 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # backward compatibility to old configs. This yields different models than past
     # versions of RLlib.
     "encoder_latent_dim": None,
+    # Whether to always check the inputs and outputs of RLlib's default models for
+    # their specifications. Input specifications are checked on failed forward passes
+    # of the models regardless of this flag. If this flag is set to `True`, inputs and
+    # outputs are checked on every call. This leads to a slow-down and should only be
+    # used for debugging. Note that this flag is only relevant for instances of
+    # RLlib's Model class. These are commonly generated from ModelConfigs in RLModules.
+    "always_check_shapes": False,
 
     # Deprecated keys:
     # Use `lstm_use_prev_action` or `lstm_use_prev_reward` instead.

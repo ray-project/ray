@@ -49,10 +49,12 @@ from ray.data._internal.logical.util import (
     _op_name_white_list,
 )
 from ray.data._internal.planner.planner import Planner
+from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
 
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values, named_values, column_udf
 from ray.tests.conftest import *  # noqa
 
 
@@ -95,7 +97,7 @@ def test_from_items_operator(ray_start_regular_shared, enable_optimizer):
 def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
     data = ["Hello", "World"]
     ds = ray.data.from_items(data)
-    assert ds.take_all() == data, ds
+    assert ds.take_all() == named_values("item", data), ds
 
     # Check that metadata fetch is included in stats.
     assert "FromItems" in ds.stats()
@@ -121,8 +123,8 @@ def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
 
 def test_map_batches_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
-    ds = ds.map_batches(lambda x: x)
-    assert ds.take_all() == list(range(5)), ds
+    ds = ds.map_batches(column_udf("id", lambda x: x))
+    assert extract_values("id", ds.take_all()) == list(range(5)), ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
@@ -144,8 +146,8 @@ def test_map_rows_operator(ray_start_regular_shared, enable_optimizer):
 
 def test_map_rows_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
-    ds = ds.map(lambda x: x + 1)
-    assert ds.take_all() == [1, 2, 3, 4, 5], ds
+    ds = ds.map(column_udf("id", lambda x: x + 1))
+    assert extract_values("id", ds.take_all()) == [1, 2, 3, 4, 5], ds
     _check_usage_record(["ReadRange", "MapRows"])
 
 
@@ -167,8 +169,8 @@ def test_filter_operator(ray_start_regular_shared, enable_optimizer):
 
 def test_filter_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
-    ds = ds.filter(fn=lambda x: x % 2 == 0)
-    assert ds.take_all() == [0, 2, 4], ds
+    ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
+    assert extract_values("id", ds.take_all()) == [0, 2, 4], ds
     _check_usage_record(["ReadRange", "Filter"])
 
 
@@ -190,15 +192,15 @@ def test_flat_map(ray_start_regular_shared, enable_optimizer):
 
 def test_flat_map_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(2)
-    ds = ds.flat_map(fn=lambda x: [x, x])
-    assert ds.take_all() == [0, 0, 1, 1], ds
+    ds = ds.flat_map(fn=lambda x: [{"id": x["id"]}, {"id": x["id"]}])
+    assert extract_values("id", ds.take_all()) == [0, 0, 1, 1], ds
     _check_usage_record(["ReadRange", "FlatMap"])
 
 
 def test_column_ops_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(2)
     ds = ds.add_column(fn=lambda df: df.iloc[:, 0], col="new_col")
-    assert ds.take_all() == [{"value": 0, "new_col": 0}, {"value": 1, "new_col": 1}], ds
+    assert ds.take_all() == [{"id": 0, "new_col": 0}, {"id": 1, "new_col": 1}], ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
     select_ds = ds.select_columns(cols=["new_col"])
@@ -206,7 +208,7 @@ def test_column_ops_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["ReadRange", "MapBatches"])
 
     ds = ds.drop_columns(cols=["new_col"])
-    assert ds.take_all() == [{"value": 0}, {"value": 1}], ds
+    assert ds.take_all() == [{"id": 0}, {"id": 1}], ds
     _check_usage_record(["ReadRange", "MapBatches"])
 
 
@@ -222,7 +224,7 @@ def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(10, parallelism=2)
     ensure_sample_size_close(ds)
 
-    ds = ray.data.range_table(10, parallelism=2)
+    ds = ray.data.range(10, parallelism=2)
     ensure_sample_size_close(ds)
 
     ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
@@ -251,18 +253,22 @@ def test_random_shuffle_e2e(
     ray_start_regular_shared, enable_optimizer, use_push_based_shuffle
 ):
     ds = ray.data.range(12, parallelism=4)
-    r1 = ds.random_shuffle(seed=0).take_all()
-    r2 = ds.random_shuffle(seed=1024).take_all()
+    r1 = extract_values("id", ds.random_shuffle(seed=0).take_all())
+    r2 = extract_values("id", ds.random_shuffle(seed=1024).take_all())
     assert r1 != r2, (r1, r2)
     assert sorted(r1) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r1
     assert sorted(r2) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], r2
     _check_usage_record(["ReadRange", "RandomShuffle"])
 
 
-def test_repartition_operator(ray_start_regular_shared, enable_optimizer):
+@pytest.mark.parametrize(
+    "shuffle",
+    [True, False],
+)
+def test_repartition_operator(ray_start_regular_shared, enable_optimizer, shuffle):
     planner = Planner()
     read_op = Read(ParquetDatasource())
-    op = Repartition(read_op, num_outputs=5, shuffle=True)
+    op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
@@ -271,25 +277,57 @@ def test_repartition_operator(ray_start_regular_shared, enable_optimizer):
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
-    # Check error is thrown for non-shuffle repartition.
-    op = Repartition(read_op, num_outputs=5, shuffle=False)
-    plan = LogicalPlan(op)
-    with pytest.raises(AssertionError):
-        planner.plan(plan)
 
-
+@pytest.mark.parametrize(
+    "shuffle",
+    [True, False],
+)
 def test_repartition_e2e(
-    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle
+    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle, shuffle
 ):
-    ds = ray.data.range(10000, parallelism=10)
-    ds1 = ds.repartition(20, shuffle=True)
-    assert ds1._block_num_rows() == [500] * 20, ds
+    def _check_repartition_usage_and_stats(ds):
+        _check_usage_record(["ReadRange", "Repartition"])
+        ds_stats: DatasetStats = ds._plan.stats()
+        if shuffle:
+            assert ds_stats.base_name == "DoRead->Repartition"
+            assert "DoRead->RepartitionMap" in ds_stats.stages
+        else:
+            assert ds_stats.base_name == "Repartition"
+            assert "RepartitionSplit" in ds_stats.stages
+        assert "RepartitionReduce" in ds_stats.stages
 
-    # Check error is thrown for non-shuffle repartition.
-    with pytest.raises(AssertionError):
-        ds.repartition(20, shuffle=False).take_all()
+    ds = ray.data.range(10000, parallelism=10).repartition(20, shuffle=shuffle)
+    assert ds.num_blocks() == 20, ds.num_blocks()
+    assert ds.sum() == sum(range(10000))
+    assert ds._block_num_rows() == [500] * 20, ds._block_num_rows()
+    _check_repartition_usage_and_stats(ds)
 
-    _check_usage_record(["ReadRange", "Repartition"])
+    # Test num_output_blocks > num_rows to trigger empty block handling.
+    ds = ray.data.range(20, parallelism=10).repartition(40, shuffle=shuffle)
+    assert ds.num_blocks() == 40, ds.num_blocks()
+    assert ds.sum() == sum(range(20))
+    if shuffle:
+        assert ds._block_num_rows() == [10] * 2 + [0] * (40 - 2), ds._block_num_rows()
+    else:
+        assert ds._block_num_rows() == [1] * 20 + [0] * 20, ds._block_num_rows()
+    _check_repartition_usage_and_stats(ds)
+
+    # Test case where number of rows does not divide equally into num_output_blocks.
+    ds = ray.data.range(22).repartition(4, shuffle=shuffle)
+    assert ds.num_blocks() == 4, ds.num_blocks()
+    assert ds.sum() == sum(range(22))
+    if shuffle:
+        assert ds._block_num_rows() == [6, 6, 6, 4], ds._block_num_rows()
+    else:
+        assert ds._block_num_rows() == [5, 6, 5, 6], ds._block_num_rows()
+    _check_repartition_usage_and_stats(ds)
+
+    # Test case where we do not split on repartitioning.
+    ds = ray.data.range(10, parallelism=1).repartition(1, shuffle=shuffle)
+    assert ds.num_blocks() == 1, ds.num_blocks()
+    assert ds.sum() == sum(range(10))
+    assert ds._block_num_rows() == [10], ds._block_num_rows()
+    _check_repartition_usage_and_stats(ds)
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
@@ -386,8 +424,8 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     # the former comes before the latter.
     planner = Planner()
     read_op = Read(ParquetDatasource())
-    op = MapBatches(read_op, lambda x: x, compute="tasks")
-    op = MapBatches(op, lambda x: x, compute="actors")
+    op = MapBatches(read_op, lambda x: x)
+    op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -406,7 +444,7 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
     # Test that reads fuse into an actor-based map operator.
     planner = Planner()
     read_op = Read(ParquetDatasource())
-    op = MapBatches(read_op, lambda x: x, compute="actors")
+    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -425,8 +463,8 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = Planner()
     read_op = Read(ParquetDatasource())
-    op = MapBatches(read_op, lambda x: x, compute="actors")
-    op = MapBatches(op, lambda x: x, compute="tasks")
+    op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
+    op = MapBatches(op, lambda x: x)
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -478,8 +516,8 @@ def test_read_map_batches_operator_fusion_callable_classes(
         def __call__(self, x):
             return x
 
-    op = MapBatches(read_op, UDF, compute="actors")
-    op = MapBatches(op, UDF, compute="actors")
+    op = MapBatches(read_op, UDF, compute=ray.data.ActorPoolStrategy())
+    op = MapBatches(op, UDF, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -507,8 +545,8 @@ def test_read_map_batches_operator_fusion_incompatible_callable_classes(
         def __call__(self, x):
             return x + 1
 
-    op = MapBatches(read_op, UDF, compute="actors")
-    op = MapBatches(op, UDF2, compute="actors")
+    op = MapBatches(read_op, UDF, compute=ray.data.ActorPoolStrategy())
+    op = MapBatches(op, UDF2, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -539,10 +577,18 @@ def test_read_map_batches_operator_fusion_incompatible_constructor_args(
         def __call__(self, x):
             return x + self._a
 
-    op = MapBatches(read_op, UDF, compute="actors", fn_constructor_args=(1,))
-    op = MapBatches(op, UDF, compute="actors", fn_constructor_args=(2,))
-    op = MapBatches(op, UDF, compute="actors", fn_constructor_kwargs={"a": 1})
-    op = MapBatches(op, UDF, compute="actors", fn_constructor_kwargs={"a": 2})
+    op = MapBatches(
+        read_op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_args=(1,)
+    )
+    op = MapBatches(
+        op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_args=(2,)
+    )
+    op = MapBatches(
+        op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_kwargs={"a": 1}
+    )
+    op = MapBatches(
+        op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_kwargs={"a": 2}
+    )
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
@@ -562,13 +608,169 @@ def test_read_map_batches_operator_fusion_incompatible_constructor_args(
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
 
+def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
+    ray_start_regular_shared, enable_optimizer
+):
+    # Note: We currently do not fuse MapBatches->RandomizeBlocks.
+    # This test is to ensure that we don't accidentally fuse them.
+    # There is also an additional optimization rule, under ReorderRandomizeBlocksRule,
+    # which collapses RandomizeBlocks operators, so we should not be fusing them
+    # to begin with.
+    def fn(batch):
+        return {"id": [x + 1 for x in batch["id"]]}
+
+    n = 10
+    ds = ray.data.range(n)
+    ds = ds.randomize_block_order()
+    ds = ds.map_batches(fn, batch_size=None)
+    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
+    assert "RandomizeBlocks" not in ds.stats()
+    assert "DoRead->MapBatches->RandomizeBlocks" not in ds.stats()
+    assert "DoRead->MapBatches" in ds.stats()
+    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlocks"])
+
+
+def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
+    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle
+):
+    # Note: we currently only support fusing MapOperator->AllToAllOperator.
+    def fn(batch):
+        return {"id": [x + 1 for x in batch["id"]]}
+
+    n = 10
+    ds = ray.data.range(n)
+    ds = ds.map_batches(fn, batch_size=None)
+    ds = ds.random_shuffle()
+    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
+    assert "DoRead->MapBatches->RandomShuffle" in ds.stats()
+    _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
+
+    ds = ray.data.range(n)
+    ds = ds.random_shuffle()
+    ds = ds.map_batches(fn, batch_size=None)
+    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
+    # TODO(Scott): Update below assertion after supporting fusion in
+    # the other direction (AllToAllOperator->MapOperator)
+    assert "DoRead->RandomShuffle->MapBatches" not in ds.stats()
+    assert all(op in ds.stats() for op in ("DoRead", "RandomShuffle", "MapBatches"))
+    _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
+
+    # Test fusing multiple `map_batches` with multiple `random_shuffle` operations.
+    ds = ray.data.range(n)
+    for _ in range(5):
+        ds = ds.map_batches(fn, batch_size=None)
+    ds = ds.random_shuffle()
+    assert set(extract_values("id", ds.take_all())) == set(range(5, n + 5))
+    assert f"DoRead->{'MapBatches->' * 5}RandomShuffle" in ds.stats()
+
+    # For interweaved map_batches and random_shuffle operations, we expect to fuse the
+    # two pairs of MapBatches->RandomShuffle, but not the resulting
+    # RandomShuffle operators.
+    ds = ray.data.range(n)
+    ds = ds.map_batches(fn, batch_size=None)
+    ds = ds.random_shuffle()
+    ds = ds.map_batches(fn, batch_size=None)
+    ds = ds.random_shuffle()
+    assert set(extract_values("id", ds.take_all())) == set(range(2, n + 2))
+    assert "Stage 1 DoRead->MapBatches->RandomShuffle" in ds.stats()
+    assert "Stage 2 MapBatches->RandomShuffle"
+    _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
+
+
+@pytest.mark.parametrize("shuffle", (True, False))
+def test_read_map_batches_operator_fusion_with_repartition_operator(
+    ray_start_regular_shared, enable_optimizer, shuffle, use_push_based_shuffle
+):
+    def fn(batch):
+        return {"id": [x + 1 for x in batch["id"]]}
+
+    n = 10
+    ds = ray.data.range(n)
+    ds = ds.map_batches(fn, batch_size=None)
+    ds = ds.repartition(2, shuffle=shuffle)
+    assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
+
+    # Operator fusion is only supported for shuffle repartition.
+    if shuffle:
+        assert "DoRead->MapBatches->Repartition" in ds.stats()
+    else:
+        assert "DoRead->MapBatches->Repartition" not in ds.stats()
+        assert "DoRead->MapBatches" in ds.stats()
+        assert "Repartition" in ds.stats()
+    _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
+
+
+def test_read_map_batches_operator_fusion_with_sort_operator(
+    ray_start_regular_shared, enable_optimizer
+):
+    # Note: We currently do not fuse MapBatches->Sort.
+    # This test is to ensure that we don't accidentally fuse them, until
+    # we implement it later.
+    def fn(batch):
+        return {"id": [x + 1 for x in batch["id"]]}
+
+    n = 10
+    ds = ray.data.range(n)
+    ds = ds.map_batches(fn, batch_size=None)
+    ds = ds.sort("id")
+    assert extract_values("id", ds.take_all()) == list(range(1, n + 1))
+    # TODO(Scott): update the below assertions after we support fusion.
+    assert "DoRead->MapBatches->Sort" not in ds.stats()
+    assert "DoRead->MapBatches" in ds.stats()
+    assert "Sort" in ds.stats()
+    _check_usage_record(["ReadRange", "MapBatches", "Sort"])
+
+
+def test_read_map_batches_operator_fusion_with_aggregate_operator(
+    ray_start_regular_shared, enable_optimizer
+):
+    from ray.data.aggregate import AggregateFn
+
+    # Note: We currently do not fuse MapBatches->Aggregate.
+    # This test is to ensure that we don't accidentally fuse them, until
+    # we implement it later.
+    def fn(batch):
+        return {"id": [x % 2 for x in batch["id"]]}
+
+    n = 100
+    grouped_ds = ray.data.range(n).map_batches(fn, batch_size=None).groupby("id")
+    agg_ds = grouped_ds.aggregate(
+        AggregateFn(
+            init=lambda k: [0, 0],
+            accumulate_row=lambda a, r: [a[0] + r["id"], a[1] + 1],
+            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+            finalize=lambda a: a[0] / a[1],
+            name="foo",
+        ),
+    )
+    agg_ds.take_all() == [{"id": 0, "foo": 0.0}, {"id": 1, "foo": 1.0}]
+    # TODO(Scott): update the below assertions after we support fusion.
+    assert "DoRead->MapBatches->Aggregate" not in agg_ds.stats()
+    assert "DoRead->MapBatches" in agg_ds.stats()
+    assert "Aggregate" in agg_ds.stats()
+    _check_usage_record(["ReadRange", "MapBatches", "Aggregate"])
+
+
 def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(10, parallelism=2)
-    ds = ds.filter(lambda x: x % 2 == 0)
-    ds = ds.map(lambda x: x + 1)
-    ds = ds.map_batches(lambda batch: [2 * x for x in batch], batch_size=None)
-    ds = ds.flat_map(lambda x: [-x, x])
-    assert ds.take_all() == [-2, 2, -6, 6, -10, 10, -14, 14, -18, 18]
+    ds = ds.filter(lambda x: x["id"] % 2 == 0)
+    ds = ds.map(column_udf("id", lambda x: x + 1))
+    ds = ds.map_batches(
+        lambda batch: {"id": [2 * x for x in batch["id"]]}, batch_size=None
+    )
+    ds = ds.flat_map(lambda x: [{"id": -x["id"]}, {"id": x["id"]}])
+    assert extract_values("id", ds.take_all()) == [
+        -2,
+        2,
+        -6,
+        6,
+        -10,
+        10,
+        -14,
+        14,
+        -18,
+        18,
+    ]
     name = "DoRead->Filter->MapRows->MapBatches->FlatMap:"
     assert name in ds.stats()
     _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
@@ -620,8 +822,8 @@ def test_sort_e2e(
 ):
     ds = ray.data.range(100, parallelism=4)
     ds = ds.random_shuffle()
-    ds = ds.sort()
-    assert ds.take_all() == list(range(100))
+    ds = ds.sort("id")
+    assert extract_values("id", ds.take_all()) == list(range(100))
     _check_usage_record(["ReadRange", "RandomShuffle", "Sort"])
 
     # TODO: write_XXX and from_XXX are not supported yet in new execution plan.
@@ -648,13 +850,11 @@ def test_sort_validate_keys(
     enable_optimizer,
 ):
     ds = ray.data.range(10)
-    assert ds.sort().take_all() == list(range(10))
+    assert extract_values("id", ds.sort("id").take_all()) == list(range(10))
 
     invalid_col_name = "invalid_column"
     with pytest.raises(
-        ValueError,
-        match=f"String key '{invalid_col_name}' requires datastream format to be "
-        "'arrow' or 'pandas', was 'simple'",
+        ValueError, match=f"The column '{invalid_col_name}' does not exist"
     ):
         ds.sort(invalid_col_name).take_all()
 
@@ -679,16 +879,6 @@ def test_sort_validate_keys(
     ):
         ds_named.sort(invalid_col_name).take_all()
 
-    def dummy_sort_fn(x):
-        return x
-
-    with pytest.raises(
-        ValueError,
-        match=f"Callable key '{dummy_sort_fn}' requires datastream format to be "
-        "'simple'",
-    ):
-        ds_named.sort(dummy_sort_fn).take_all()
-
 
 def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
@@ -712,11 +902,11 @@ def test_aggregate_e2e(
     enable_optimizer,
     use_push_based_shuffle,
 ):
-    ds = ray.data.range_table(100, parallelism=4)
-    ds = ds.groupby("value").count()
+    ds = ray.data.range(100, parallelism=4)
+    ds = ds.groupby("id").count()
     assert ds.count() == 100
-    for idx, row in enumerate(ds.sort("value").iter_rows()):
-        assert row.as_pydict() == {"value": idx, "count()": 1}
+    for idx, row in enumerate(ds.sort("id").iter_rows()):
+        assert row == {"id": idx, "count()": 1}
     _check_usage_record(["ReadRange", "Aggregate"])
 
 
@@ -725,14 +915,9 @@ def test_aggregate_validate_keys(
     enable_optimizer,
 ):
     ds = ray.data.range(10)
-    # Test case with key=None, i.e. grouped into a single group.
-    assert ds.groupby(key=None).count().take_all() == [(10,)]
-
     invalid_col_name = "invalid_column"
     with pytest.raises(
-        ValueError,
-        match=f"String key '{invalid_col_name}' requires datastream format to be "
-        "'arrow' or 'pandas', was 'simple'",
+        ValueError, match=f"The column '{invalid_col_name}' does not exist"
     ):
         ds.groupby(invalid_col_name).count()
 
@@ -764,16 +949,6 @@ def test_aggregate_validate_keys(
     ):
         ds_named.groupby(invalid_col_name).count()
 
-    def dummy_sort_fn(x):
-        return x
-
-    with pytest.raises(
-        ValueError,
-        match=f"Callable key '{dummy_sort_fn}' requires datastream format to be "
-        "'simple'",
-    ):
-        ds_named.groupby(dummy_sort_fn).count()
-
 
 def test_zip_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
@@ -797,9 +972,11 @@ def test_zip_operator(ray_start_regular_shared, enable_optimizer):
 def test_zip_e2e(ray_start_regular_shared, enable_optimizer, num_blocks1, num_blocks2):
     n = 12
     ds1 = ray.data.range(n, parallelism=num_blocks1)
-    ds2 = ray.data.range(n, parallelism=num_blocks2).map(lambda x: x + 1)
+    ds2 = ray.data.range(n, parallelism=num_blocks2).map(
+        column_udf("id", lambda x: x + 1)
+    )
     ds = ds1.zip(ds2)
-    assert ds.take() == list(zip(range(n), range(1, n + 1)))
+    assert ds.take() == named_values(["id", "id_1"], zip(range(n), range(1, n + 1)))
     _check_usage_record(["ReadRange", "Zip"])
 
 
@@ -978,7 +1155,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     arr2 = np.expand_dims(np.arange(4, 8), axis=1)
 
     ds = ray.data.from_numpy_refs([ray.put(arr1), ray.put(arr2)])
-    values = np.stack(ds.take(8))
+    values = np.stack(extract_values("data", ds.take(8)))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     # Check that conversion task is included in stats.
     assert "FromNumpyRefs" in ds.stats()
@@ -987,7 +1164,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
 
     # Test chaining multiple operations
     ds2 = ds.map_batches(lambda x: x)
-    values = np.stack(ds2.take(8))
+    values = np.stack(extract_values("data", ds2.take(8)))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     assert "MapBatches" in ds2.stats()
     assert "FromNumpyRefs" in ds2.stats()
@@ -996,7 +1173,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
 
     # Test from single NumPy ndarray.
     ds = ray.data.from_numpy_refs(ray.put(arr1))
-    values = np.stack(ds.take(4))
+    values = np.stack(extract_values("data", ds.take(4)))
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
     assert "FromNumpyRefs" in ds.stats()
@@ -1084,7 +1261,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
     assert isinstance(ray_datasets, dict)
 
     for ds_key, ds in ray_datasets.items():
-        assert isinstance(ds, ray.data.Datastream)
+        assert isinstance(ds, ray.data.Dataset)
         # `ds.take_all()` triggers execution with new backend, which is
         # needed for checking operator usage below.
         assert len(ds.take_all()) > 0
@@ -1099,7 +1276,7 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         _check_usage_record(["FromHuggingFace"])
 
     ray_dataset = ray.data.from_huggingface(data["train"])
-    assert isinstance(ray_dataset, ray.data.Datastream)
+    assert isinstance(ray_dataset, ray.data.Dataset)
     assert len(ray_dataset.take_all()) > 0
     assert "FromArrowRefs" in ray_dataset.stats()
     assert ray_dataset._plan._logical_plan.dag.name == "FromHuggingFace"
@@ -1132,7 +1309,7 @@ def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
 
     ray_dataset = ray.data.from_tf(tf_dataset)
 
-    actual_data = ray_dataset.take_all()
+    actual_data = extract_values("item", ray_dataset.take_all())
     expected_data = list(tf_dataset)
     assert len(actual_data) == len(expected_data)
     for (expected_features, expected_label), (actual_features, actual_label) in zip(
@@ -1172,7 +1349,7 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
 
     expected_data = list(torch_dataset)
     actual_data = list(ray_dataset.take_all())
-    assert actual_data == expected_data
+    assert extract_values("item", actual_data) == expected_data
 
     # Check that metadata fetch is included in stats.
     assert "FromItems" in ray_dataset.stats()
@@ -1185,7 +1362,7 @@ def test_blocks_to_input_buffer_op_name(
     ray_start_regular_shared,
     enable_streaming_executor,
 ):
-    ds: ray.data.Datastream = ray.data.range(10)
+    ds: ray.data.Dataset = ray.data.range(10)
     blocks, _, _ = ds._plan._optimize()
     assert hasattr(blocks, "_tasks"), blocks
     physical_op = _blocks_to_input_buffer(blocks, owns_blocks=False)
@@ -1202,7 +1379,7 @@ def test_execute_to_legacy_block_list(
     assert ds._plan._snapshot_stats is None
 
     for i, row in enumerate(ds.iter_rows()):
-        assert row == i
+        assert row["id"] == i
 
     assert ds._plan._snapshot_stats is not None
     assert "DoRead" in ds._plan._snapshot_stats.stages
@@ -1231,12 +1408,13 @@ def test_streaming_executor(
 ):
     ds = ray.data.range(100, parallelism=4)
     ds = ds.map_batches(lambda x: x)
-    ds = ds.filter(lambda x: x > 0)
+    ds = ds.filter(lambda x: x["id"] > 0)
     ds = ds.random_shuffle()
     ds = ds.map_batches(lambda x: x)
 
     result = []
     for batch in ds.iter_batches(batch_size=3):
+        batch = batch["id"]
         assert len(batch) == 3, batch
         result.extend(batch)
     assert sorted(result) == list(range(1, 100)), result

@@ -5,7 +5,7 @@ import time
 import unittest
 
 import ray
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.a3c import A3CConfig
 from ray.rllib.algorithms.apex_dqn import ApexDQNConfig

@@ -1,9 +1,9 @@
 import pytest
 import sys
 
-import time
 from freezegun import freeze_time
 
+from ray import tune
 from ray.tune.experimental.output import (
     _get_time_str,
     _get_trials_by_state,
@@ -13,6 +13,8 @@ from ray.tune.experimental.output import (
     _current_best_trial,
     _best_trial_str,
     _get_trial_table_data,
+    _get_dict_as_table_data,
+    _infer_params,
 )
 from ray.tune.experiment.trial import Trial
 
@@ -54,8 +56,28 @@ LAST_RESULT = {
 
 @freeze_time("Mar 27th, 2023", auto_tick_seconds=15)
 def test_get_time_str():
-    result = _get_time_str(time.time(), time.time())
-    assert result == ("2023-03-27 00:00:15", "00:00:15.00")
+    base = 1679875200  # 2023-03-27 00:00:00
+
+    assert _get_time_str(base, base) == ("2023-03-27 00:00:00", "0s")
+    assert _get_time_str(base, base + 15) == ("2023-03-27 00:00:15", "15s")
+    assert _get_time_str(base, base + 60) == ("2023-03-27 00:01:00", "1min 0s")
+    assert _get_time_str(base, base + 65) == ("2023-03-27 00:01:05", "1min 5s")
+    assert _get_time_str(base, base + 3600) == (
+        "2023-03-27 01:00:00",
+        "1hr 0min 0s",
+    )
+    assert _get_time_str(base, base + 3605) == (
+        "2023-03-27 01:00:05",
+        "1hr 0min 5s",
+    )
+    assert _get_time_str(base, base + 3660) == (
+        "2023-03-27 01:01:00",
+        "1hr 1min 0s",
+    )
+    assert _get_time_str(base, base + 86400) == (
+        "2023-03-28 00:00:00",
+        "1d 0hr 0min 0s",
+    )
 
 
 def test_get_trials_by_state():
@@ -115,7 +137,8 @@ def test_get_trial_info():
     t.last_result = LAST_RESULT
     assert _get_trial_info(
         t,
-        [
+        param_keys=[],
+        metric_keys=[
             "episode_reward_mean",
             "episode_reward_max",
             "episode_reward_min",
@@ -132,10 +155,11 @@ def test_get_trial_table_data_less_than_20():
         t.trial_id = str(i)
         t.set_status(Trial.RUNNING)
         t.last_result = {"episode_reward_mean": 100 + i}
+        t.config = {"param": i}
         trials.append(t)
-    table_data = _get_trial_table_data(trials, ["episode_reward_mean"])
+    table_data = _get_trial_table_data(trials, ["param"], ["episode_reward_mean"])
     header = table_data.header
-    assert header == ["Trial name", "status", "reward"]
+    assert header == ["Trial name", "status", "param", "reward"]
     table_data = table_data.data
     assert len(table_data) == 1  # only the running category
     assert len(table_data[0].trial_infos) == 20
@@ -151,17 +175,87 @@ def test_get_trial_table_data_more_than_20():
             t.trial_id = str(i)
             t.set_status(status)
             t.last_result = {"episode_reward_mean": 100 + i}
+            t.config = {"param": i}
             trials.append(t)
-    table_data = _get_trial_table_data(trials, ["episode_reward_mean"])
+    table_data = _get_trial_table_data(trials, ["param"], ["episode_reward_mean"])
     header = table_data.header
-    assert header == ["Trial name", "status", "reward"]
+    assert header == ["Trial name", "status", "param", "reward"]
     table_data = table_data.data
     assert len(table_data) == 3  # only the running category
     for i in range(3):
         assert len(table_data[i].trial_infos) == 5
-    assert table_data[0].more_info == "... and 5 more RUNNING ..."
-    assert table_data[1].more_info == "... and 5 more TERMINATED ..."
-    assert table_data[2].more_info == "... and 5 more PENDING ..."
+    assert table_data[0].more_info == "5 more RUNNING"
+    assert table_data[1].more_info == "5 more TERMINATED"
+    assert table_data[2].more_info == "5 more PENDING"
+
+
+def test_infer_params():
+    assert _infer_params({}) == []
+    assert _infer_params({"some": "val"}) == []
+    assert _infer_params({"some": "val", "param": tune.uniform(0, 1)}) == ["param"]
+    assert _infer_params({"some": "val", "param": tune.grid_search([0, 1])}) == [
+        "param"
+    ]
+    assert sorted(
+        _infer_params(
+            {
+                "some": "val",
+                "param": tune.grid_search([0, 1]),
+                "other": tune.choice([0, 1]),
+            }
+        )
+    ) == ["other", "param"]
+
+
+def test_result_table_no_divison():
+    data = _get_dict_as_table_data(
+        {
+            "b": 6,
+            "a": 8,
+            "x": 19.123123123,
+            "c": 5,
+            "ignore": 9,
+            "y": 20,
+            "z": {"m": 4, "n": {"o": "p"}},
+        },
+        exclude={"ignore"},
+    )
+
+    assert data == [
+        ["a", 8],
+        ["b", 6],
+        ["c", 5],
+        ["x", "19.12312"],
+        ["y", 20],
+        ["z/m", 4],
+        ["z/n/o", "p"],
+    ]
+
+
+def test_result_table_divison():
+    data = _get_dict_as_table_data(
+        {
+            "b": 6,
+            "a": 8,
+            "x": 19.123123123,
+            "c": 5,
+            "ignore": 9,
+            "y": 20,
+            "z": {"m": 4, "n": {"o": "p"}},
+        },
+        exclude={"ignore"},
+        upper_keys={"x", "y", "z", "z/m", "z/n/o"},
+    )
+
+    assert data == [
+        ["x", "19.12312"],
+        ["y", 20],
+        ["z/m", 4],
+        ["z/n/o", "p"],
+        ["a", 8],
+        ["b", 6],
+        ["c", 5],
+    ]
 
 
 if __name__ == "__main__":
