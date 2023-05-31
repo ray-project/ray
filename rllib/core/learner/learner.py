@@ -22,6 +22,7 @@ from typing import (
 )
 
 import ray
+from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
 from ray.rllib.core.rl_module.marl_module import (
@@ -117,6 +118,7 @@ class LearnerHyperparameters:
     # lr: float = None
 
     lr_schedule: Optional[List[List[Union[int, float]]]] = None
+    seed: int = None
 
 
 class Learner:
@@ -241,6 +243,11 @@ class Learner:
         learner_hyperparameters: Optional[LearnerHyperparameters] = None,
         framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
     ):
+        if learner_hyperparameters and learner_hyperparameters.seed is not None:
+            update_global_seed_if_necessary(
+                self.framework, learner_hyperparameters.seed
+            )
+
         # TODO (Kourosh): convert optimizer configs to dataclasses
         if module_spec is not None and module is not None:
             raise ValueError(
