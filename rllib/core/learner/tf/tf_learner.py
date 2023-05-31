@@ -3,6 +3,7 @@ import logging
 import pathlib
 from typing import (
     Any,
+    Callable,
     Hashable,
     Mapping,
     Optional,
@@ -14,11 +15,7 @@ from typing import (
 from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
-    LEARNER_RESULTS_CURR_LR_KEY,
-    ParamOptimizerPair,
-    NamedParamOptimizerPairs,
-    Param,
-    ParamDict,
+    LearnerHyperparameters,
 )
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
@@ -31,14 +28,12 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_utils import clip_gradients
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
 
 
 tf1, tf, tfv = try_import_tf()
@@ -83,20 +78,28 @@ class TfLearner(Learner):
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID
-    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
+        self, module_id: ModuleID, hps: LearnerHyperparameters
+    ) -> None:
         module = self._module[module_id]
-        lr = self.lr_scheduler.get_current_value(module_id)
-        optim = tf.keras.optimizers.Adam(learning_rate=lr)
-        pair: ParamOptimizerPair = (
-            self.get_parameters(module),
-            optim,
-        )
+
+        # For this default implementation, the learning rate is handled by the
+        # attached lr Scheduler (controlled by self.hps.learning_rate, which can be a
+        # fixed value of a schedule setting).
+        optimizer = tf.keras.optimizers.Adam()
+        params = self.get_parameters(module)
+
         # This isn't strictly necessary, but makes it so that if a checkpoint is
         # computed before training actually starts, then it will be the same in
         # shape / size as a checkpoint after training starts.
-        optim.build(module.trainable_variables)
-        return pair
+        optimizer.build(module.trainable_variables)
+
+        # Register the created optimizer (under the default optimizer name).
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer=optimizer,
+            params=params,
+            lr_or_lr_schedule=hps.learning_rate,
+        )
 
     @override(Learner)
     def compute_gradients(
@@ -109,28 +112,12 @@ class TfLearner(Learner):
         return grads
 
     @override(Learner)
-    def postprocess_gradients(
-        self,
-        gradients_dict: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        """Postprocesses gradients depending on the optimizer config."""
-
-        # Perform gradient clipping, if necessary.
-        clip_gradients(
-            gradients_dict,
-            grad_clip=self._optimizer_config.get("grad_clip"),
-            grad_clip_by=self._optimizer_config.get("grad_clip_by"),
-        )
-
-        return gradients_dict
-
-    @override(Learner)
-    def apply_gradients(self, gradients: ParamDict) -> None:
+    def apply_gradients(self, gradients: ParamDict):
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
         #  parameters in the optim_to_param_dictionary.
-        for optim, param_ref_seq in self._optimizer_parameters.items():
+        for optimizer, param_ref_seq in self._optimizer_parameters.items():
             variable_list = [
                 self._params[param_ref]
                 for param_ref in param_ref_seq
@@ -141,7 +128,7 @@ class TfLearner(Learner):
                 for param_ref in param_ref_seq
                 if gradients[param_ref] is not None
             ]
-            optim.apply_gradients(zip(gradient_list, variable_list))
+            optimizer.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
     def load_state(
@@ -277,27 +264,27 @@ class TfLearner(Learner):
             self._load_optimizer_state(path, new_optim, name)
 
     @override(Learner)
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
-        self._module.set_state(weights)
+    def set_module_state(self, state: Mapping[str, Any]) -> None:
+        self._module.set_state(state)
 
     @override(Learner)
-    def get_optimizer_weights(self) -> Mapping[str, Any]:
-        optim_weights = {}
+    def get_optimizer_state(self) -> Mapping[str, Any]:
+        optim_state = {}
         with tf.init_scope():
             for name, optim in self._named_optimizers.items():
-                optim_weights[name] = [var.numpy() for var in optim.variables()]
-        return optim_weights
+                optim_state[name] = [var.numpy() for var in optim.variables()]
+        return optim_state
 
     @override(Learner)
-    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
-        for name, weight_array in weights.items():
+    def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
+        for name, state_array in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(
                     f"Optimizer {name} in weights is not known."
                     f"Known optimizers are {self._named_optimizers.keys()}"
                 )
             optim = self._named_optimizers[name]
-            optim.set_weights(weight_array)
+            optim.set_weights(state_array)
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:
@@ -311,21 +298,22 @@ class TfLearner(Learner):
         return isinstance(module, TfRLModule)
 
     @override(Learner)
-    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
-        super()._check_structure_param_optim_pair(param_optim_pair)
-        params, optim = param_optim_pair
-        if not isinstance(optim, tf.keras.optimizers.Optimizer):
+    def _check_registered_optimizer(
+        self,
+        optimizer: Optimizer,
+        params: Sequence[Param],
+    ) -> None:
+        super()._check_registered_optimizer(optimizer, params)
+        if not isinstance(optimizer, tf.keras.optimizers.Optimizer):
             raise ValueError(
-                f"The optimizer in {param_optim_pair} is not a tf keras optimizer. "
-                "Please use a tf.keras.optimizers.Optimizer for TfLearner."
+                f"The optimizer ({optimizer}) is not a tf keras optimizer! "
+                "Only use tf.keras.optimizers.Optimizer subclasses for TfLearner."
             )
         for param in params:
             if not isinstance(param, tf.Variable):
                 raise ValueError(
-                    f"One of the parameters {param} in this ParamOptimizerPair "
-                    f"{param_optim_pair} is not a tf.Variable. Please use a "
-                    "tf.Variable for TfLearner. You can retrieve the param with a call "
-                    "to learner.get_param_ref(tensor)."
+                    f"One of the parameters ({param}) in the registered optimizer "
+                    "is not a tf.Variable!"
                 )
 
     @override(Learner)
@@ -454,31 +442,6 @@ class TfLearner(Learner):
 
         return self._strategy.run(helper, args=(batch,))
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    @override(Learner)
-    def additional_update_for_module(
-        self, *, module_id: ModuleID, timestep: int, **kwargs
-    ) -> Mapping[str, Any]:
-
-        results = super().additional_update_for_module(
-            module_id=module_id, timestep=timestep
-        )
-
-        # Handle lr scheduling updates and apply new learning rates to the optimizers.
-        new_lr = self.lr_scheduler.update(module_id=module_id, timestep=timestep)
-
-        # Not sure why we need to do this here besides setting the original
-        # tf Variable `self.curr_lr_per_module[module_id]`. But when tf creates the
-        # optimizer, it seems to detach its lr value from the given variable.
-        # Updating this variable is NOT sufficient to update the actual optimizer's
-        # learning rate, so we have to explicitly set it here.
-        if self.hps.lr_schedule is not None:
-            self._named_optimizers[module_id].lr = new_lr
-
-        results.update({LEARNER_RESULTS_CURR_LR_KEY: new_lr})
-
-        return results
-
     @override(Learner)
     def _get_tensor_variable(self, value, dtype=None, trainable=False) -> "tf.Tensor":
         return tf.Variable(
@@ -495,3 +458,20 @@ class TfLearner(Learner):
                 )
             ),
         )
+
+    @staticmethod
+    @override(Learner)
+    def _set_optimizer_lr(optimizer: "tf.Optimizer", lr: float) -> None:
+        # When tf creates the optimizer, it seems to detach the optimizer's lr value
+        # from the given tf variable.
+        # Thus, updating this variable is NOT sufficient to update the actual
+        # optimizer's learning rate, so we have to explicitly set it here inside the
+        # optimizer object.
+        optimizer.lr = lr
+
+    @staticmethod
+    @override(Learner)
+    def _get_clip_function() -> Callable:
+        from ray.rllib.utils.tf_utils import clip_gradients
+
+        return clip_gradients

@@ -91,6 +91,7 @@ from ray.util.debug import log_once
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
+from ray.widgets.util import repr_with_fallback
 
 SCRIPT_MODE = 0
 WORKER_MODE = 1
@@ -451,7 +452,9 @@ class Worker:
         self.ray_debugger_external = False
         self._load_code_from_local = False
         # Opened file descriptor to stdout/stderr for this python worker.
-        self._enable_record_task_log = ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING
+        self._enable_record_actor_task_log = (
+            ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING
+        )
         self._out_file = None
         self._err_file = None
         # Create the lock here because the serializer will use it before
@@ -541,14 +544,11 @@ class Worker:
     def record_task_log_start(self):
         """Record the task log info when task starts executing for
         non concurrent actor tasks."""
-        if self.core_worker.current_actor_max_concurrency() != 1:
-            # This is a concurrent actor task, we will not record the start.
-            # We are skipping concurrent actor tasks because high contention
-            # and slow IO on concurrent actors would result in perf regression.
+        if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
+            # We are not recording actor task log if not enabled explicitly.
+            # Recording actor task log is expensive and should be enabled only
+            # when needed.
             # https://github.com/ray-project/ray/issues/35598
-            return
-
-        if not self._enable_record_task_log:
             return
 
         self.core_worker.record_task_log_start(
@@ -561,14 +561,11 @@ class Worker:
     def record_task_log_end(self):
         """Record the task log info when task finishes executing for
         non concurrent actor tasks."""
-        if self.core_worker.current_actor_max_concurrency() != 1:
-            # This is a concurrent actor task, we will not record the end.
-            # We are skipping concurrent actor tasks because high contention
-            # and slow IO on concurrent actors would result in perf regression.
+        if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
+            # We are not recording actor task log if not enabled explicitly.
+            # Recording actor task log is expensive and should be enabled only
+            # when needed.
             # https://github.com/ray-project/ray/issues/35598
-            return
-
-        if not self._enable_record_task_log:
             return
 
         self.core_worker.record_task_log_end(
@@ -862,11 +859,9 @@ class Worker:
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
-        import grpc
-
         subscriber = self.gcs_log_subscriber
         subscriber.subscribe()
-        exception_type = grpc.RpcError
+        exception_type = ray.exceptions.RpcError
         localhost = services.get_node_ip_address()
         try:
             # Number of messages received from the last polling. When the batch
@@ -1030,6 +1025,10 @@ class BaseContext(metaclass=ABCMeta):
     Base class for RayContext and ClientContext
     """
 
+    dashboard_url: Optional[str]
+    python_version: str
+    ray_version: str
+
     @abstractmethod
     def disconnect(self):
         """
@@ -1047,6 +1046,73 @@ class BaseContext(metaclass=ABCMeta):
     def __exit__(self):
         pass
 
+    def _context_table_template(self):
+        if self.dashboard_url:
+            dashboard_row = Template("context_dashrow.html.j2").render(
+                dashboard_url="http://" + self.dashboard_url
+            )
+        else:
+            dashboard_row = None
+
+        return Template("context_table.html.j2").render(
+            python_version=self.python_version,
+            ray_version=self.ray_version,
+            dashboard_row=dashboard_row,
+        )
+
+    def _repr_html_(self):
+        return Template("context.html.j2").render(
+            context_logo=Template("context_logo.html.j2").render(),
+            context_table=self._context_table_template(),
+        )
+
+    @repr_with_fallback(["ipywidgets", "8"])
+    def _get_widget_bundle(self, **kwargs) -> Dict[str, Any]:
+        """Get the mimebundle for the widget representation of the context.
+
+        Args:
+            **kwargs: Passed to the _repr_mimebundle_() function for the widget
+
+        Returns:
+            Dictionary ("mimebundle") of the widget representation of the context.
+        """
+        import ipywidgets
+
+        disconnect_button = ipywidgets.Button(
+            description="Disconnect",
+            disabled=False,
+            button_style="",
+            tooltip="Disconnect from the Ray cluster",
+            layout=ipywidgets.Layout(margin="auto 0px 0px 0px"),
+        )
+
+        def disconnect_callback(button):
+            button.disabled = True
+            button.description = "Disconnecting..."
+            self.disconnect()
+            button.description = "Disconnected"
+
+        disconnect_button.on_click(disconnect_callback)
+        left_content = ipywidgets.VBox(
+            [
+                ipywidgets.HTML(Template("context_logo.html.j2").render()),
+                disconnect_button,
+            ],
+            layout=ipywidgets.Layout(),
+        )
+        right_content = ipywidgets.HTML(self._context_table_template())
+        widget = ipywidgets.HBox(
+            [left_content, right_content], layout=ipywidgets.Layout(width="100%")
+        )
+        return widget._repr_mimebundle_(**kwargs)
+
+    def _repr_mimebundle_(self, **kwargs):
+        bundle = self._get_widget_bundle(**kwargs)
+
+        # Overwrite the widget html repr and default repr with those of the BaseContext
+        bundle.update({"text/html": self._repr_html_(), "text/plain": repr(self)})
+        return bundle
+
 
 @dataclass
 class RayContext(BaseContext, Mapping):
@@ -1058,10 +1124,10 @@ class RayContext(BaseContext, Mapping):
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version = Optional[str]
-    address_info: Dict[str, Optional[str]]
+    protocol_version: Optional[str]
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
+        super().__init__()
         self.dashboard_url = get_dashboard_url()
         self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
@@ -1102,20 +1168,6 @@ class RayContext(BaseContext, Mapping):
     def disconnect(self):
         # Include disconnect() to stay consistent with ClientContext
         ray.shutdown()
-
-    def _repr_html_(self):
-        if self.dashboard_url:
-            dashboard_row = Template("context_dashrow.html.j2").render(
-                dashboard_url="http://" + self.dashboard_url
-            )
-        else:
-            dashboard_row = None
-
-        return Template("context.html.j2").render(
-            python_version=self.python_version,
-            ray_version=self.ray_version,
-            dashboard_row=dashboard_row,
-        )
 
 
 global_worker = Worker()
@@ -2007,14 +2059,14 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data.job_id not in [
+            if error_data["job_id"] not in [
                 worker.current_job_id.binary(),
                 JobID.nil().binary(),
             ]:
                 continue
 
-            error_message = error_data.error_message
-            if error_data.type == ray_constants.TASK_PUSH_ERROR:
+            error_message = error_data["error_message"]
+            if error_data["type"] == ray_constants.TASK_PUSH_ERROR:
                 # TODO(ekl) remove task push errors entirely now that we have
                 # the separate unhandled exception handler.
                 pass
@@ -2249,23 +2301,17 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
     )
-    # The following will be fixed with https://github.com/ray-project/ray/pull/35094
-    from ray._private.gcs_pubsub import (
-        GcsErrorSubscriber,
-        GcsFunctionKeySubscriber,
-        GcsLogSubscriber,
-    )
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
     worker_id = worker.worker_id
-    worker.gcs_error_subscriber = GcsErrorSubscriber(
+    worker.gcs_error_subscriber = ray._raylet.GcsErrorSubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
-    worker.gcs_log_subscriber = GcsLogSubscriber(
+    worker.gcs_log_subscriber = ray._raylet.GcsLogSubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
-    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+    worker.gcs_function_key_subscriber = ray._raylet.GcsFunctionKeySubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
 

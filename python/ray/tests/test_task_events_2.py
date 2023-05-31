@@ -739,7 +739,7 @@ def check_file(type, task_name, expected_log, expect_no_end=False):
 
 
 @pytest.mark.skipif(
-    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING or sys.platform == "win32",
+    not ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING or sys.platform == "win32",
     reason=(
         "Skipping if not recording task logs offsets, "
         "and windows has logging race issues."
@@ -801,7 +801,7 @@ def test_task_logs_info_basic(shutdown_only):
 
 
 @pytest.mark.skipif(
-    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    not ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING,
     reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_disabled(shutdown_only, monkeypatch):
@@ -830,7 +830,7 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
 
 
 @pytest.mark.skipif(
-    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    not ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING,
     reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_running_task(shutdown_only):

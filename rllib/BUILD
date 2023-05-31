@@ -2014,14 +2014,6 @@ py_test(
     srcs = ["core/learner/tests/test_learner.py"]
 )
 
-# TODO (Kourosh): to be removed in favor of test_learner.py
-py_test(
-    name = "test_torch_learner",
-    tags = ["team:rllib", "core", "ray_data"],
-    size = "medium",
-    srcs = ["core/learner/torch/tests/test_torch_learner.py"]
-)
-
 py_test(
     name ="tests/test_algorithm_save_load_checkpoint_learner",
     tags = ["team:rllib", "core"],
@@ -2471,7 +2463,7 @@ py_test(
 
 py_test(
     name = "tests/backward_compat/test_gym_env_apis",
-    tags = ["team:rllib", "env", "exclusive"],
+    tags = ["team:rllib", "env"],
     size = "medium",
     srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
@@ -2774,7 +2766,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_appo",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
+     tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesAPPO"]
@@ -2783,7 +2775,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_impala",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
+     tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesIMPALA"]
@@ -2792,7 +2784,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_a3c",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
+     tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesA3C"]
@@ -2828,7 +2820,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces_off_policy",
     main = "tests/test_supported_spaces.py",
-    tags = ["team:rllib", "tests_dir", "exclusive"],
+    tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
@@ -4163,7 +4155,7 @@ py_test(
 py_test(
     name = "examples/learner/ppo_tuner_local_gpu_tf2",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    tags = ["team:rllib", "examples", "gpu"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
     args = ["--framework=tf2", "--config=local-gpu"]
