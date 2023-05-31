@@ -62,13 +62,24 @@ topNavContentLeft.append(getStartedLink)
 // topNavContentLeft.append(blogLink)
 
 //-- The Use Cases link
-useCasesLink = document.createElement("a")
+let useCasesLink = document.createElement("a")
 useCasesLink.innerText = "Use cases"
 useCasesLink.setAttribute("href", getNavURL("ray-overview/use-cases.html"))
 if (is_use_cases) {
     useCasesLink.style.borderBottom = "2px solid #007bff"
 }
 topNavContentLeft.append(useCasesLink)
+
+//-- Example gallery link
+const examples_url = "ray-overview/examples.html"
+const is_examples = window.location.href.endsWith(examples_url)
+let examplesLink = document.createElement("a")
+examplesLink.innerText = "Examples"
+examplesLink.setAttribute("href", getNavURL(examples_url))
+if (is_examples) {
+    examplesLink.style.borderBottom = "2px solid #007bff"
+}
+topNavContentLeft.append(examplesLink)
 
 //-- The Libraries menu
 librariesMenu = document.createElement("div")
