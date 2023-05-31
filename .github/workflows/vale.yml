@@ -10,7 +10,5 @@ jobs:
         with:
           files: docs/source/data/
           fail_on_error: true
-          # Report level for reviewdog [info,warning,error].
-          level: info
           # Error on introduced changes only.
           filter_mode: added
