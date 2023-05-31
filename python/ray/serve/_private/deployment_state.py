@@ -488,7 +488,8 @@ class ActorReplicaWrapper:
         # Re-fetch initialization proof
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-            deployment_info.deployment_config.to_proto_bytes()
+            deployment_info.deployment_config,
+            self._allocated_obj_ref,
         )
 
         # Running actor handle already has all info needed, thus successful
