@@ -225,7 +225,7 @@ globally shuffle the order of data records.
     >>> dataset.random_shuffle().take_batch()  # doctest: +SKIP
     {'id': array([7, 0, 9, 3, 5, 1, 4, 2, 8, 6])}
 
-For reduced overhead during training ingest, use local shuffles. Read 
+For reduced overhead during training ingest, use local shuffles. Read
 :ref:`Shuffling Data <air-shuffle>` in the AIR user guide to learn more.
 
 .. _data-groupbys:
