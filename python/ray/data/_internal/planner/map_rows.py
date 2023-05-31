@@ -8,9 +8,9 @@ from ray.data.block import Block, BlockAccessor, UserDefinedFunction, StrictMode
 from ray.data.context import DataContext
 
 
-def generate_map_rows_fn() -> Callable[
-    [Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]
-]:
+def generate_map_rows_fn() -> (
+    Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]
+):
     """Generate function to apply the UDF to each record of blocks."""
 
     context = DataContext.get_current()
