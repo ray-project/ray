@@ -69,6 +69,7 @@ doctest(
         exclude=[
             "**/examples/**",
             "**/tests/**",
+            "**/test_*.py",
             # Deprecated modules
             "utils/window_stat.py",
             "utils/timer.py",
