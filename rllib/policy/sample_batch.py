@@ -848,6 +848,9 @@ class SampleBatch(dict):
         # Special key DONES -> Translate to `TERMINATEDS | TRUNCATEDS` to reflect
         # the old meaning of DONES.
         if key == SampleBatch.DONES:
+            import ipdb
+
+            ipdb.set_trace()
             return self[SampleBatch.TERMINATEDS]
         # Backward compatibility for when "input-dicts" were used.
         elif key == "is_training":
