@@ -63,27 +63,26 @@
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:python.bzl", "doctest")
 
-# TODO(@bveeramani): Enable doctests.
-# doctest(
-#     files = glob(
-#         ["**/*.py"],
-#         exclude=[
-#             "**/examples/**",
-#             "**/tests/**",
-#             # Deprecations
-#             "utils/window_stat.py",
-#             "utils/timer.py",
-#             "utils/memory.py",
-#             "offline/off_policy_estimator.py",
-#             "offline/estimators/feature_importance.py",
-#             "env/wrappers/recsim_wrapper.py",
-#             "env/remote_vector_env.py",
-#             # Missing imports
-#             "algorithms/dreamerv3/**"
-#         ]
-#     ),
-#     tags = ["team:rllib"]
-# )
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "**/examples/**",
+            "**/tests/**",
+            # Deprecated modules
+            "utils/window_stat.py",
+            "utils/timer.py",
+            "utils/memory.py",
+            "offline/off_policy_estimator.py",
+            "offline/estimators/feature_importance.py",
+            "env/wrappers/recsim_wrapper.py",
+            "env/remote_vector_env.py",
+            # Missing imports
+            "algorithms/dreamerv3/**"
+        ]
+    ),
+    tags = ["team:rllib"]
+)
 
 # --------------------------------------------------------------------
 # Algorithms learning regression tests.
