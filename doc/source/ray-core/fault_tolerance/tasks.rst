@@ -86,7 +86,7 @@ exception, or pass a list of retryable exceptions. An example is shown below.
   :end-before: __tasks_fault_tolerance_retries_exception_end__
 
 
-Use `ray list tasks -f task_id=<task_id>` from :ref:`State API CLI <state-api-overview-ref>` to see task attempts failures and retries:
+Use `ray list tasks -f task_id=\<task_id\>` from :ref:`State API CLI <state-api-overview-ref>` to see task attempts failures and retries:
 
 .. code-block:: bash
 
