@@ -315,12 +315,8 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        # Tracking issue: https://github.com/ray-project/ray/issues/30984
-        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa:E501
-        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa:E501
-        # Original issue: https://github.com/ray-project/ray/issues/33833
-        "grpcio >= 1.32.0, <= 1.51.3; python_version < '3.10' and sys_platform != 'darwin'",  # noqa:E501
-        "grpcio >= 1.42.0, <= 1.51.3; python_version >= '3.10' and sys_platform != 'darwin'",  # noqa:E501
+        "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+        "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
