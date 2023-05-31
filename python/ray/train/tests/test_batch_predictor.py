@@ -116,7 +116,9 @@ def test_separate_gpu_stage(shutdown_only):
         allow_gpu=True,
     ).materialize()
     stats = ds.stats()
-    assert "Stage 1 ReadRange->MapBatches(DummyPreprocessor._transform_pandas):" in stats, stats
+    assert (
+        "Stage 1 ReadRange->MapBatches(DummyPreprocessor._transform_pandas):" in stats
+    ), stats
     assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
     assert ds.max("id") == 36.0, ds
 
