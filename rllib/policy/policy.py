@@ -969,7 +969,7 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def get_state(self, deepcopy=False) -> PolicyState:
+    def get_state(self) -> PolicyState:
         """Returns the entire current state of this Policy.
 
         Note: Not to be confused with an RNN model's internal state.
@@ -977,9 +977,8 @@ class Policy(metaclass=ABCMeta):
         the exploration component's state, as well as global variables, such
         as sampling timesteps.
 
-        Args:
-            deepcopy (bool): Whether to return a deep copy of the state.
-                If false, the state may contain references to the original variables.
+        Note that the state may contain references to the original variables.
+        This means that you may need to deepcopy() the state before mutating it.
 
         Returns:
             Serialized local state.
@@ -1012,8 +1011,6 @@ class Policy(metaclass=ABCMeta):
                 connector_configs["action"] = self.action_connectors.to_state()
             state["connector_configs"] = connector_configs
 
-        if deepcopy:
-            state = copy.deepcopy(state)
         return state
 
     @PublicAPI(stability="alpha")
