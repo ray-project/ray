@@ -1,4 +1,3 @@
-import re
 import os
 from typing import Optional, List
 
@@ -59,10 +58,10 @@ class Test(dict):
         ray_version = commit[:6]
         branch = os.environ.get("BUILDKITE_BRANCH", "")
         assert branch == "master" or branch.startswith(
-            "releases"
+            "releases/"
         ), f"Invalid branch name {branch}"
-        if branch.startswith("releases"):
-            release_name = re.search("[0-9]+\.[0-9]+\.[0-9].*", branch).group(0)
+        if branch.startswith("releases/"):
+            release_name = branch[len("releases/") :]
             ray_version = f"{release_name}.{ray_version}"
         image_suffix = "-gpu" if self.get_byod_type() == "gpu" else ""
         python_version = f"py{self.get_python_version().replace('.',   '')}"
