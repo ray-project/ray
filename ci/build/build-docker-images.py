@@ -6,7 +6,6 @@ import glob
 import itertools
 import os
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -599,7 +598,7 @@ def push_and_tag_images(
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = _get_commit_sha()
     if _release_build():
-        release_name = _get_branch()[len("releases/"):]
+        release_name = _get_branch()[len("releases/") :]
         date_tag = release_name + "." + date_tag
         sha_tag = release_name + "." + sha_tag
 
