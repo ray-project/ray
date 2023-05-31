@@ -1,6 +1,5 @@
 import logging
 import threading
-import time
 from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
 from collections import deque
 from contextlib import nullcontext
