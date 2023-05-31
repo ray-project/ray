@@ -11,7 +11,6 @@ from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import concat_aligned
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     PolicyID,
@@ -1532,18 +1531,23 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     for k in concated_samples[0].keys():
         try:
             if k == "infos":
-                concatd_data[k] = concat_aligned(
-                    [s[k] for s in concated_samples], time_major=time_major
+                concatd_data[k] = _concat_values(
+                    *[s[k] for s in concated_samples], time_major=time_major
                 )
             else:
                 concatd_data[k] = tree.map_structure(
-                    _concat_key, *[c[k] for c in concated_samples]
+                    _concat_values, *[c[k] for c in concated_samples]
                 )
-        except Exception:
+        except RuntimeError as e:
+            # This should catch torch errors that occur when concatenating
+            # tensors from different devices.
+            raise e
+        except Exception as e:
+            # Other errors are likely due to mismatching sub-structures.
             raise ValueError(
                 f"Cannot concat data under key '{k}', b/c "
                 "sub-structures under that key don't match. "
-                f"`samples`={samples}"
+                f"`samples`={samples}\n Original error: \n {e}"
             )
 
     # Return a new (concat'd) SampleBatch.
@@ -1619,8 +1623,15 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     return MultiAgentBatch(out, env_steps)
 
 
-def _concat_key(*values, time_major=None):
-    return concat_aligned(list(values), time_major)
+def _concat_values(*values, time_major=None) -> TensorType:
+    """Concatenates a list of values.
+
+    Args:
+        values: The values to concatenate.
+        time_major: Whether to concatenate along the first axis
+            (time_major=False) or the second axis (time_major=True).
+    """
+    return np.concatenate(list(values), axis=1 if time_major else 0)
 
 
 @DeveloperAPI

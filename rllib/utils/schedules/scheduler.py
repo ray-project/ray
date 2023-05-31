@@ -1,8 +1,8 @@
-from typing import List, Optional, Union
+from typing import Optional
 
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import LearningRateOrSchedule, TensorType
 
 
 _, tf, _ = try_import_tf()
@@ -18,7 +18,7 @@ class Scheduler:
     def __init__(
         self,
         *,
-        fixed_value_or_schedule: Union[float, List[List[Union[int, float]]]],
+        fixed_value_or_schedule: LearningRateOrSchedule,
         framework: str = "torch",
         device: Optional[str] = None,
     ):
@@ -59,9 +59,10 @@ class Scheduler:
 
     @staticmethod
     def validate(
-        fixed_value_or_schedule: Union[float, List[List[Union[int, float]]]],
-        schedule_name: str,
-        value_name: str,
+        *,
+        fixed_value_or_schedule: LearningRateOrSchedule,
+        setting_name: str,
+        description: str,
     ) -> None:
         """Performs checking of a certain schedule configuration.
 
@@ -75,8 +76,9 @@ class Scheduler:
                 Intermediary timesteps will be assigned to linerarly interpolated
                 values. A schedule config's first entry must
                 start with timestep 0, i.e.: [[0, initial_value], [...]].
-            schedule_name: The name of the schedule, e.g. `lr` or `entropy_coeff`.
-            value_name: A full text description of the variable that's being scheduled,
+            setting_name: The property name of the schedule setting (within a config),
+                e.g. `lr` or `entropy_coeff`.
+            description: A full text description of the property that's being scheduled,
                 e.g. `learning rate`.
 
         Raises:
@@ -92,21 +94,24 @@ class Scheduler:
             len(fixed_value_or_schedule) < 2
         ):
             raise ValueError(
-                f"Invalid `{schedule_name}` ({fixed_value_or_schedule}) specified! "
+                f"Invalid `{setting_name}` ({fixed_value_or_schedule}) specified! "
                 f"Must be a list of at least 2 tuples, each of the form "
-                f"(`timestep`, `{value_name} to reach`), e.g. "
+                f"(`timestep`, `{description} to reach`), e.g. "
                 "`[(0, 0.001), (1e6, 0.0001), (2e6, 0.00005)]`."
             )
         elif fixed_value_or_schedule[0][0] != 0:
             raise ValueError(
-                f"When providing a `{schedule_name}`, the first timestep must be 0 "
-                f"and the corresponding lr value is the initial {value_name}! You "
-                f"provided ts={fixed_value_or_schedule[0][0]} {value_name}="
+                f"When providing a `{setting_name}`, the first timestep must be 0 "
+                f"and the corresponding lr value is the initial {description}! You "
+                f"provided ts={fixed_value_or_schedule[0][0]} {description}="
                 f"{fixed_value_or_schedule[0][1]}."
             )
 
     def get_current_value(self) -> TensorType:
         """Returns the current value (as a tensor variable).
+
+        This method should be used in loss functions of other (in-graph) places
+        where the current value is needed.
 
         Returns:
             The tensor variable (holding the current value to be used).
@@ -116,8 +121,11 @@ class Scheduler:
     def update(self, timestep: int) -> float:
         """Updates the underlying (framework specific) tensor variable.
 
+        In case of a fixed value, this method does nothing and only returns the fixed
+        value as-is.
+
         Args:
-            timestep: The current timestep.
+            timestep: The current timestep that the update might depend on.
 
         Returns:
             The current value of the tensor variable as a python float.

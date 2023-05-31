@@ -255,8 +255,9 @@ class RolloutWorker(EnvRunner):
         if tf_session_creator != DEPRECATED_VALUE:
             deprecation_warning(
                 old="RolloutWorker(.., tf_session_creator=.., ..)",
-                new="RolloutWorker(.., policy_config={tf_session_options=..}, ..)",
-                error=True,
+                new="config.framework(tf_session_args={..}); "
+                "RolloutWorker(config=config, ..)",
+                error=False,
             )
 
         self._original_kwargs: dict = locals().copy()
@@ -287,9 +288,7 @@ class RolloutWorker(EnvRunner):
 
         EnvRunner.__init__(self, config=config)
 
-        # TODO: Remove this backward compatibility.
-        #  This property (old-style python config dict) should no longer be used!
-        self.policy_config = config.to_dict()
+        self.config = config
 
         self.num_workers = (
             num_workers if num_workers is not None else self.config.num_rollout_workers

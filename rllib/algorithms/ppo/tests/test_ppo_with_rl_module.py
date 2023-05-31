@@ -67,7 +67,7 @@ class MyCallbacks(DefaultCallbacks):
             0.0000075 if algorithm.iteration == 1 else 0.000005,
         )
         # Compare reported curr lr vs the actual lr found in the optimizer object.
-        optim = algorithm.learner_group._learner._named_optimizers[DEFAULT_POLICY_ID]
+        optim = algorithm.learner_group._learner.get_optimizer()
         actual_optimizer_lr = (
             optim.param_groups[0]["lr"]
             if algorithm.config.framework_str == "torch"
@@ -128,9 +128,7 @@ class TestPPO(unittest.TestCase):
                     # TODO: Maybe add an API to get the Learner(s) instances within
                     #  a learner group, remote or not.
                     learner = algo.learner_group._learner
-                    optim = algo.learner_group._learner._named_optimizers[
-                        DEFAULT_POLICY_ID
-                    ]
+                    optim = learner.get_optimizer()
                     # Check initial LR directly set in optimizer vs the first (ts=0)
                     # value from the schedule.
                     lr = optim.param_groups[0]["lr"] if fw == "torch" else optim.lr

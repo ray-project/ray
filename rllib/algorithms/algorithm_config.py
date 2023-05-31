@@ -26,7 +26,7 @@ from ray.rllib.core.learner.learner_group_config import (
     ModuleSpec,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
@@ -66,6 +66,7 @@ from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     EnvConfigDict,
     EnvType,
+    LearningRateOrSchedule,
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
@@ -354,6 +355,7 @@ class AlgorithmConfig(_Config):
 
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
+        self.algorithm_config_overrides_per_module = {}
         self.policy_map_capacity = 100
         self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
@@ -913,7 +915,11 @@ class AlgorithmConfig(_Config):
 
         # LR-schedule checking.
         if self._enable_learner_api:
-            Scheduler.validate(self.lr, "lr", "learning rate")
+            Scheduler.validate(
+                fixed_value_or_schedule=self.lr,
+                setting_name="lr",
+                description="learning rate",
+            )
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -1659,10 +1665,9 @@ class AlgorithmConfig(_Config):
         self,
         *,
         gamma: Optional[float] = NotProvided,
-        optimizer_type: Optional[Union[str, Dict[str, str]]] = NotProvided,
-        lr: Optional[Union[float, Dict[str, float]]] = NotProvided,
-        grad_clip: Optional[Union[float, Dict[str, float]]] = NotProvided,
-        grad_clip_by: Optional[Union[str, Dict[str, str]]] = NotProvided,
+        lr: Optional[LearningRateOrSchedule] = NotProvided,
+        grad_clip: Optional[float] = NotProvided,
+        grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
@@ -1674,61 +1679,46 @@ class AlgorithmConfig(_Config):
 
         Args:
             gamma: Float specifying the discount factor of the Markov Decision process.
-            optimizer_type: The type of the optimizer to use. RLlib will try to
-                translate this string into a matching tf or torch optimizer class, e.g.
-                "adam" -> `torch.optim.Adam` or `tf.keras.optimizers.Adam`.
-                Alternatively, provide a dict here, mapping optimizer names (str) to
-                individual optimizer_type settings (str). In this
-                case, it is expected that your Learner subclass returns these exact
-                names and optimizers from the
-                `Learner.configure_optimizers_for_module()` method.
             lr: The learning rate (float) or learning rate schedule in the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
                 In case of a schedule, intermediary timesteps will be assigned to
-                interpolated learning rate values. A schedule config's first entry must
-                start with timestep 0, i.e.: [[0, initial_value], [...]].
-                Alternatively, provide a dict here, mapping optimizer names (str) to
-                individual learning rates (float) or learning rate schedules (see
-                above). In this case, it is expected that your Learner subclass returns
-                these exact names and optimizers from the
-                `Learner.configure_optimizers_for_module()` method.
-            grad_clip: The value (float) to use for gradient clipping. Depending on the
-                `grad_clip_by` setting, gradients will either be clipped by value,
-                norm, or global_norm (see docstring on `grad_clip_by` below for more
-                details). If `grad_clip` is None, gradients will be left unclipped.
-                Alternatively, provide a dict here, mapping optimizer names (str) to
-                individual `grad_clip` (float) settings, in which case, it is expected
-                that your Learner subclass returns these exact names and optimizers
-                from the `Learner.configure_optimizers_for_module()` method.
-            grad_clip_by: If "value": Will clip all computed gradients individually
-                inside the interval [-grad_clip, +grad_clip].
-                If "norm", will compute the L2-norm of each weight/bias
-                gradient tensor and then clip all gradients such that this L2-norm does
-                not exceed `grad_clip`. The L2-norm of a tensor is computed via:
-                `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of the
-                tensor (no matter what the shape of this tensor is).
-                If "global_norm", will compute the square of the L2-norm of each
-                weight/bias gradient tensor, sum up all these squared L2-norms across
-                all given gradient tensors (e.g. the entire module to
+                linearly interpolated learning rate values. A schedule config's first
+                entry must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+            grad_clip: If None, no gradient clipping will be applied. Otherwise,
+                depending on the setting of `grad_clip_by`, the (float) value of
+                `grad_clip` will have the following effect:
+                If `grad_clip_by=value`: Will clip all computed gradients individually
+                inside the interval [-`grad_clip`, +`grad_clip`].
+                If `grad_clip_by=norm`, will compute the L2-norm of each weight/bias
+                gradient tensor individually and then clip all gradients such that these
+                L2-norms do not exceed `grad_clip`. The L2-norm of a tensor is computed
+                via: `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of
+                the tensor (no matter what the shape of this tensor is).
+                If `grad_clip_by=global_norm`, will compute the square of the L2-norm of
+                each weight/bias gradient tensor individually, sum up all these squared
+                L2-norms across all given gradient tensors (e.g. the entire module to
                 be updated), square root that overall sum, and then clip all gradients
-                such that this "global" L2-norm does not exceed the given value.
+                such that this global L2-norm does not exceed the given value.
                 The global L2-norm over a list of tensors (e.g. W and V) is computed
                 via:
                 `sqrt[SUM(w0^2, w1^2, ..., wn^2) + SUM(v0^2, v1^2, ..., vm^2)]`, where
                 w[i] and v[j] are the elements of the tensors W and V (no matter what
                 the shapes of these tensors are).
-                Note that if `grad_clip` is None, the `grad_clip_by` setting has no
-                effect.
-                Alternatively, provide a dict here, mapping optimizer names (str) to
-                individual `grad_clip_by` (str) settings, in which case, it is expected
-                that your Learner subclass returns these exact names and optimizers
-                from the `Learner.configure_optimizers_for_module()` method.
+            grad_clip_by: See `grad_clip` for the effect of this setting on gradient
+                clipping. Allowed values are `value`, `norm`, and `global_norm`.
             train_batch_size: Training batch size, if applicable.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
-            optimizer: Arguments to pass to the policy optimizer. Not used when
-                _enable_learner_api=True.
+            optimizer: Arguments to pass to the policy optimizer. This setting is not
+                used when `_enable_learner_api=True`.
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the FaultTolerantActorManager class for
                 more details.
@@ -2131,6 +2121,9 @@ class AlgorithmConfig(_Config):
         self,
         *,
         policies=NotProvided,
+        algorithm_config_overrides_per_module: Optional[
+            Dict[ModuleID, PartialAlgorithmConfigDict]
+        ] = NotProvided,
         policy_map_capacity: Optional[int] = NotProvided,
         policy_mapping_fn: Optional[
             Callable[[AgentID, "Episode"], PolicyID]
@@ -2158,6 +2151,18 @@ class AlgorithmConfig(_Config):
                 4-tuples of (policy_cls, obs_space, act_space, config) or PolicySpecs.
                 These tuples or PolicySpecs define the class of the policy, the
                 observation- and action spaces of the policies, and any extra config.
+            algorithm_config_overrides_per_module: Only used if both
+                `_enable_learner_api` and `_enable_rl_module_api` are True.
+                A mapping from ModuleIDs to
+                per-module AlgorithmConfig override dicts, which apply certain settings,
+                e.g. the learning rate, from the main AlgorithmConfig only to this
+                particular module (within a MultiAgentRLModule).
+                You can create override dicts by using the `AlgorithmConfig.overrides`
+                utility. For example, to override your learning rate and (PPO) lambda
+                setting just for a single RLModule with your MultiAgentRLModule, do:
+                config.multi_agent(algorithm_config_overrides_per_module={
+                    "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
+                })
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
@@ -2225,6 +2230,11 @@ class AlgorithmConfig(_Config):
                             f"AlgorithmConfig object, but got {type(spec.config)}!"
                         )
             self.policies = policies
+
+        if algorithm_config_overrides_per_module is not NotProvided:
+            self.algorithm_config_overrides_per_module = (
+                algorithm_config_overrides_per_module
+            )
 
         if policy_map_capacity is not NotProvided:
             self.policy_map_capacity = policy_map_capacity
@@ -2540,12 +2550,13 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
 
-        if _enable_rl_module_api is not NotProvided:
-            self._enable_rl_module_api = _enable_rl_module_api
+        if _enable_rl_module_api is not NotProvided or self._enable_rl_module_api:
+            if not self._enable_rl_module_api:
+                self._enable_rl_module_api = _enable_rl_module_api
             if _enable_rl_module_api is True and self.exploration_config:
                 logger.warning(
                     "Setting `exploration_config={}` because you set "
-                    "`_enable_rl_modules=True`. When RLModule API are "
+                    "`_enable_rl_module_api=True`. When RLModule API are "
                     "enabled, exploration_config can not be "
                     "set. If you want to implement custom exploration behaviour, "
                     "please modify the `forward_exploration` method of the "
@@ -2558,13 +2569,13 @@ class AlgorithmConfig(_Config):
             elif _enable_rl_module_api is False and not self.exploration_config:
                 if self.__prior_exploration_config is not None:
                     logger.warning(
-                        f"Setting `exploration_config="
+                        "Setting `exploration_config="
                         f"{self.__prior_exploration_config}` because you set "
-                        f"`_enable_rl_modules=False`. This exploration config was "
-                        f"restored from a prior exploration config that was overriden "
-                        f"when setting `_enable_rl_modules=True`. This occurs because "
-                        f"when RLModule API are enabled, exploration_config can not "
-                        f"be set."
+                        "`_enable_rl_module_api=False`. This exploration config was "
+                        "restored from a prior exploration config that was overriden "
+                        "when setting `_enable_rl_module_api=True`. This occurs "
+                        "because when RLModule API are enabled, exploration_config "
+                        "can not be set."
                     )
                     self.exploration_config = self.__prior_exploration_config
                     self.__prior_exploration_config = None
@@ -3169,6 +3180,8 @@ class AlgorithmConfig(_Config):
                 marl_module_spec = cur_marl_module_spec.__class__(
                     marl_module_class=cur_marl_module_spec.marl_module_class,
                     module_specs=module_specs,
+                    modules_to_load=cur_marl_module_spec.modules_to_load,
+                    load_state_path=cur_marl_module_spec.load_state_path,
                 )
             else:
                 # Default is multi-agent and user wants to override it. In this case,
@@ -3196,6 +3209,8 @@ class AlgorithmConfig(_Config):
                     module_specs={
                         k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                     },
+                    modules_to_load=cur_marl_module_spec.modules_to_load,
+                    load_state_path=cur_marl_module_spec.load_state_path,
                 )
 
         # Make sure that policy_dict and marl_module_spec have similar keys
@@ -3276,7 +3291,7 @@ class AlgorithmConfig(_Config):
             .module(module_spec)
             .learner(
                 learner_class=self.learner_class,
-                learner_hyperparameters=self.get_learner_hyperparameters(module_spec),
+                learner_hyperparameters=self.get_learner_hyperparameters(),
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
@@ -3297,9 +3312,7 @@ class AlgorithmConfig(_Config):
 
         return config
 
-    def get_learner_hyperparameters(
-        self, module_spec: Optional[ModuleSpec] = None
-    ) -> LearnerHyperparameters:
+    def get_learner_hyperparameters(self) -> LearnerHyperparameters:
         """Returns a new LearnerHyperparameters instance for the respective Learner.
 
         The LearnerHyperparameters is a dataclass containing only those config settings
@@ -3311,39 +3324,33 @@ class AlgorithmConfig(_Config):
         Note that LearnerHyperparameters should always be derived directly from a
         AlgorithmConfig object's own settings and considered frozen/read-only.
 
-        Args:
-            module_spec: The SingleAgent- or MultiAgentRLModuleSpec to use to derive
-                per-module AlgorithmConfig overrides. If a `SingleAgentModuleSpec`, this
-                is ignored. If a `MultiAgentRLModuleSpec`, will check the individual
-                module's algorithm_config_override settings and create
-                sub-LearnerHyperparameter objects from these.
-
         Returns:
              A LearnerHyperparameters instance for the respective Learner.
         """
         # Compile the per-module learner hyperparameter instances (if applicable).
-        per_module_overrides = {}
-        if isinstance(module_spec, MultiAgentRLModuleSpec) and isinstance(
-            module_spec.module_specs, dict
-        ):
-            for module_id, sa_spec in module_spec.module_specs.items():
+        per_module_learner_hp_overrides = {}
+        if self.algorithm_config_overrides_per_module:
+            for (
+                module_id,
+                overrides,
+            ) in self.algorithm_config_overrides_per_module.items():
                 # Copy this AlgorithmConfig object (unfreeze copy), update copy from
-                # the single-agent RLModule provided config override (dict), then
+                # the provided override dict for this module_id, then
                 # create a new LearnerHyperparameter object from this altered
                 # AlgorithmConfig.
-                if sa_spec.algorithm_config_overrides:
-                    per_module_overrides[module_id] = (
-                        self.copy(copy_frozen=False)
-                        .update_from_dict(sa_spec.algorithm_config_overrides or {})
-                        .get_learner_hyperparameters()
-                    )
+                config_for_module = self.copy(copy_frozen=False).update_from_dict(
+                    overrides
+                )
+                config_for_module.algorithm_config_overrides_per_module = None
+                per_module_learner_hp_overrides[
+                    module_id
+                ] = config_for_module.get_learner_hyperparameters()
 
         return LearnerHyperparameters(
-            optimizer_type=self.optimizer_type,
             learning_rate=self.lr,
             grad_clip=self.grad_clip,
             grad_clip_by=self.grad_clip_by,
-            _per_module_overrides=per_module_overrides,
+            _per_module_overrides=per_module_learner_hp_overrides,
         )
 
     def __setattr__(self, key, value):

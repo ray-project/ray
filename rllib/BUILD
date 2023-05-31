@@ -61,6 +61,29 @@
 # these tests in n different jobs.
 
 load("//bazel:python.bzl", "py_test_module_list")
+load("//bazel:python.bzl", "doctest")
+
+# TODO(@bveeramani): Enable doctests.
+# doctest(
+#     files = glob(
+#         ["**/*.py"],
+#         exclude=[
+#             "**/examples/**",
+#             "**/tests/**",
+#             # Deprecations
+#             "utils/window_stat.py",
+#             "utils/timer.py",
+#             "utils/memory.py",
+#             "offline/off_policy_estimator.py",
+#             "offline/estimators/feature_importance.py",
+#             "env/wrappers/recsim_wrapper.py",
+#             "env/remote_vector_env.py",
+#             # Missing imports
+#             "algorithms/dreamerv3/**"
+#         ]
+#     ),
+#     tags = ["team:rllib"]
+# )
 
 # --------------------------------------------------------------------
 # Algorithms learning regression tests.
@@ -2010,6 +2033,13 @@ py_test(
 )
 
 py_test(
+    name="test_algorithm_rl_module_restore",
+    tags=["team:rllib", "core"],
+    size="large",
+    srcs=["tests/test_algorithm_rl_module_restore.py"]
+)
+
+py_test(
     name = "test_bc_algorithm",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -2444,7 +2474,7 @@ py_test(
 
 py_test(
     name = "tests/backward_compat/test_gym_env_apis",
-    tags = ["team:rllib", "env", "exclusive"],
+    tags = ["team:rllib", "env"],
     size = "medium",
     srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
@@ -2747,7 +2777,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_appo",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
+     tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesAPPO"]
@@ -2756,7 +2786,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_impala",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
+     tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesIMPALA"]
@@ -2765,7 +2795,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_a3c",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
+     tags = ["team:rllib", "tests_dir"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesA3C"]
@@ -2801,7 +2831,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces_off_policy",
     main = "tests/test_supported_spaces.py",
-    tags = ["team:rllib", "tests_dir", "exclusive"],
+    tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
@@ -4071,8 +4101,8 @@ py_test(
 # --------------------------------------------------------------------
 # examples/learner directory
 #
-# 
-# Description: These are RLlib tests for the new multi-gpu enabled 
+#
+# Description: These are RLlib tests for the new multi-gpu enabled
 # training stack via Learners.
 #
 # NOTE: Add tests alphabetically to this list.
@@ -4136,7 +4166,7 @@ py_test(
 py_test(
     name = "examples/learner/ppo_tuner_local_gpu_tf2",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    tags = ["team:rllib", "examples", "gpu"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
     args = ["--framework=tf2", "--config=local-gpu"]

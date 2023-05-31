@@ -3,16 +3,15 @@ from typing import Any, Callable
 
 
 class LambdaDefaultDict(defaultdict):
-    """A defaultdict subclass that takes a lambda function as a default_factory.
+    """A defaultdict that creates default values based on the associated key.
 
-    The lambda function is expected to accept a single argument: the missing key.
-
-    If a missing key is accessed, the provided lambda function is called with the
-    missing key as its argument. The returned value is stored in the dictionary
-    under that key and returned.
-
-    If no lambda function is provided and a missing key is accessed, a KeyError is
-    raised.
+    Note that the standard defaultdict can only produce default values (via its factory)
+    that are independent of the key under which they are stored.
+    As opposed to that, the lambda functions used as factories for this
+    `LambdaDefaultDict` class do accept a single argument: The missing key.
+    If a missing key is accessed by the user, the provided lambda function is called
+    with this missing key as its argument. The returned value is stored in the
+    dictionary under that key and returned.
 
     Example:
 

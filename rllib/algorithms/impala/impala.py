@@ -380,11 +380,11 @@ class ImpalaConfig(AlgorithmConfig):
                     "`entropy_coeff` setting to setup a schedule."
                 )
             Scheduler.validate(
-                self.entropy_coeff,
-                "entropy_coeff_schedule",
-                "entropy coefficient",
+                fixed_value_or_schedule=self.entropy_coeff,
+                setting_name="entropy_coeff",
+                description="entropy coefficient",
             )
-        if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
+        elif isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
         # Check whether worker to aggregation-worker ratio makes sense.
@@ -967,21 +967,30 @@ class Impala(Algorithm):
             blocking = self.config.num_learner_workers == 0
             results = []
             for batch in batches:
-                result = self.learner_group.update(
-                    batch,
-                    reduce_fn=_reduce_impala_results,
-                    block=blocking,
-                    num_iters=self.config.num_sgd_iter,
-                    minibatch_size=self.config.minibatch_size,
-                )
-                if result:
-                    self._counters[NUM_ENV_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                if blocking:
+                    result = self.learner_group.update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
+                    results = [result]
+                else:
+                    results = self.learner_group.async_update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
+
+                for r in results:
+                    self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
                         NUM_ENV_STEPS_TRAINED
                     )
-                    self._counters[NUM_AGENT_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                    self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
                         NUM_AGENT_STEPS_TRAINED
                     )
-                    results.append(result)
+
             self._counters.update(self.learner_group.get_in_queue_stats())
             # If there are results, reduce-mean over each individual value and return.
             if results:

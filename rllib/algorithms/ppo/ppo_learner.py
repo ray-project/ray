@@ -56,7 +56,8 @@ class PPOLearner(Learner):
 
         # Set up KL coefficient variables (per module).
         # Note that the KL coeff is not controlled by a Scheduler, but seeks
-        # to stay close to a given kl_target value.
+        # to stay close to a given kl_target value in our implementation of
+        # `self.additional_update_for_module()`.
         self.curr_kl_coeffs_per_module: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
                 self.hps.get_hps_for_module(module_id).kl_coeff

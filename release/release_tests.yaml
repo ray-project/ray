@@ -1801,6 +1801,30 @@
 
   alert: tune_tests
 
+- name: tune_cloud_durable_upload_rllib_str_byod
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+  python: "3.8"
+  stable: false
+
+  frequency: manual
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config_ml.yaml
+    cluster_compute: tpl_aws_4x2.yaml
+
+  run:
+    timeout: 600
+
+    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
+      --bucket s3://tune-cloud-tests/durable_upload_rllib_str
+
+    wait_for_nodes:
+      num_nodes: 4
+
 - name: tune_cloud_durable_upload_rllib_str
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -3300,28 +3324,6 @@
 # Train tests
 ########################
 
-- name: train_horovod_multi_node_test_byod
-  group: Train tests
-  working_dir: train_tests/horovod
-
-  frequency: manual
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_tpl_aws.yaml
-
-  run:
-    timeout: 3000
-    script: python train_horovod_multi_node_test.py
-
-    wait_for_nodes:
-      num_nodes: 2
-
-  alert: default 
-
 - name: train_horovod_multi_node_test
   group: Train tests
   working_dir: train_tests/horovod
@@ -3458,6 +3460,34 @@
         cluster_env: app_config.yaml
         cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
 
+- name: rllib_learner_e2e_module_loading
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: multi_node_checkpointing_compute_config.yaml
+
+  run:
+    timeout: 3600
+    script: pytest checkpointing_tests/test_e2e_rl_module_restore.py
+
+    wait_for_nodes:
+      num_nodes: 3
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
 
 - name: rllib_multi_node_e2e_training_smoke_test
   group: RLlib tests
@@ -3487,8 +3517,6 @@
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
-
-
 
 - name: rllib_learning_tests_a2c_tf
   group: RLlib tests
@@ -3632,11 +3660,67 @@
 
   cluster:
     cluster_env: app_config.yaml
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf2
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+- name: rllib_learning_tests_appo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+# TODO (sven): Remove this test once we are on new stack by default for APPO.
+- name: rllib_learning_tests_appo_old_stack_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=tf2
 
   alert: default
 
@@ -3649,7 +3733,8 @@
         cluster_env: app_config.yaml
         cluster_compute: 2gpus_32cpus_gce.yaml
 
-- name: rllib_learning_tests_appo_torch
+# TODO (sven): Remove this test once we are on new stack by default for APPO.
+- name: rllib_learning_tests_appo_old_stack_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -3665,7 +3750,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=torch
 
   alert: default
 
@@ -4066,11 +4151,67 @@
 
   cluster:
     cluster_env: app_config.yaml
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf2
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+- name: rllib_learning_tests_ppo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  # Marking as unstable since it's currently expected to fail.
+  stable: false
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 18000
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+# TODO (sven): Remove this test once we are on new stack by default for APPO.
+- name: rllib_learning_tests_ppo_old_stack_tf
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  frequency: nightly
+  team: rllib
+
+  cluster:
+    cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/tf --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf
 
   alert: default
 
@@ -4083,7 +4224,8 @@
         cluster_env: app_config.yaml
         cluster_compute: 2gpus_32cpus_gce.yaml
 
-- name: rllib_learning_tests_ppo_torch
+# TODO (sven): Remove this test once we are on new stack by default for APPO.
+- name: rllib_learning_tests_ppo_old_stack_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -4099,7 +4241,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo/torch --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/old_stack --framework=torch
 
   alert: default
 
@@ -4497,8 +4639,7 @@
   team: core
   frequency: manual
   working_dir: microbenchmark
-
-  python: "3.7"
+  python: "3.8"
 
   cluster:
     byod: 

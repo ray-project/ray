@@ -4,8 +4,8 @@ import tempfile
 import unittest
 
 import ray
-from ray.rllib.algorithms.appo.appo import APPOConfig
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.testing.testing_learner import BaseTestingLearnerHyperparameters
 from ray.rllib.core.testing.utils import get_learner, get_module_spec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -84,32 +84,20 @@ class TestLearner(unittest.TestCase):
     def test_postprocess_gradients(self):
         """Tests the base grad clipping logic in `postprocess_gradients()`."""
 
-        for fw in ["torch", "tf2"]:
-            config = (
-                APPOConfig()
-                .environment("CartPole-v1")
-                .framework(fw, eager_tracing=True)
-                .rollouts(rollout_fragment_length=50)
-                # Clip by value only.
-                .training(
-                    grad_clip=0.75,
-                    grad_clip_by="value",
-                )
+        for fw in framework_iterator(frameworks=("torch", "tf2")):
+            # Clip by value only.
+            hps = BaseTestingLearnerHyperparameters(
+                learning_rate=0.0003,
+                grad_clip=0.75,
+                grad_clip_by="value",
             )
 
-            module_spec = config.get_default_rl_module_spec()
-            module_spec.model_config_dict = {"fcnet_hiddens": [10]}
-            module_spec.observation_space = self.ENV.observation_space
-            module_spec.action_space = self.ENV.action_space
-
-            # Freeze to be able to get the LearnerGroup config.
-            config.freeze()
-            learner_group = (
-                config.get_learner_group_config(module_spec=module_spec)
-                .learner(learner_class=config.get_default_learner_class())
-                .build()
+            learner = get_learner(
+                framework=fw,
+                eager_tracing=True,
+                env=self.ENV,
+                learner_hps=hps,
             )
-            learner = learner_group._learner
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
                 learner.get_param_ref(v): v + 1.0
@@ -121,24 +109,20 @@ class TestLearner(unittest.TestCase):
             # No single gradient must be larger than 0.1 or smaller than -0.1:
             self.assertTrue(
                 all(
-                    np.max(grad) <= 0.75 and np.min(grad) >= -0.75
+                    np.max(grad) <= hps.grad_clip and np.min(grad) >= -hps.grad_clip
                     for grad in convert_to_numpy(processed_grads)
                 )
             )
 
             # Clip by norm.
-            config = config.copy(copy_frozen=False).training(
-                grad_clip=1.0,
-                grad_clip_by="norm",
+            hps.grad_clip = 1.0
+            hps.grad_clip_by = "norm"
+            learner = get_learner(
+                framework=fw,
+                eager_tracing=True,
+                env=self.ENV,
+                learner_hps=hps,
             )
-            # Freeze to be able to get the LearnerGroup config.
-            config.freeze()
-            learner_group = (
-                config.get_learner_group_config(module_spec=module_spec)
-                .learner(learner_class=config.get_default_learner_class())
-                .build()
-            )
-            learner = learner_group._learner
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
                 learner.get_param_ref(v): v + 1.0
@@ -152,22 +136,18 @@ class TestLearner(unittest.TestCase):
                 convert_to_numpy(list(grads.values())),
             ):
                 l2_norm = np.sqrt(np.sum(grad**2.0))
-                if l2_norm > config.grad_clip:
-                    check(proc_grad, grad * (config.grad_clip / l2_norm))
+                if l2_norm > hps.grad_clip:
+                    check(proc_grad, grad * (hps.grad_clip / l2_norm))
 
             # Clip by global norm.
-            config = config.copy(copy_frozen=False).training(
-                grad_clip=5.0,
-                grad_clip_by="global_norm",
+            hps.grad_clip = 5.0
+            hps.grad_clip_by = "global_norm"
+            learner = get_learner(
+                framework=fw,
+                eager_tracing=True,
+                env=self.ENV,
+                learner_hps=hps,
             )
-            # Freeze to be able to get the LearnerGroup config.
-            config.freeze()
-            learner_group = (
-                config.get_learner_group_config(module_spec=module_spec)
-                .learner(learner_class=config.get_default_learner_class())
-                .build()
-            )
-            learner = learner_group._learner
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
                 learner.get_param_ref(v): v + 1.0
@@ -182,12 +162,12 @@ class TestLearner(unittest.TestCase):
                     for grad in convert_to_numpy(list(grads.values()))
                 )
             )
-            if global_norm > config.grad_clip:
+            if global_norm > hps.grad_clip:
                 for proc_grad, grad in zip(
                     convert_to_numpy(processed_grads),
                     grads.values(),
                 ):
-                    check(proc_grad, grad * (config.grad_clip / global_norm))
+                    check(proc_grad, grad * (hps.grad_clip / global_norm))
 
     def test_apply_gradients(self):
         """Tests the apply_gradients correctness.
@@ -200,6 +180,7 @@ class TestLearner(unittest.TestCase):
             learner = get_learner(
                 framework=fw,
                 env=self.ENV,
+                learner_hps=BaseTestingLearnerHyperparameters(learning_rate=0.0003),
             )
 
             # calculated the expected new params based on gradients of all ones.
@@ -208,7 +189,7 @@ class TestLearner(unittest.TestCase):
             expected = [
                 (
                     convert_to_numpy(param)
-                    - n_steps * learner._optimizer_config["lr"] * np.ones(param.shape)
+                    - n_steps * learner.hps.learning_rate * np.ones(param.shape)
                 )
                 for param in params
             ]
@@ -233,7 +214,11 @@ class TestLearner(unittest.TestCase):
         all variables the updated parameters follow the SGD update rule.
         """
         for fw in framework_iterator(frameworks=("torch", "tf2")):
-            learner = get_learner(framework=fw, env=self.ENV)
+            learner = get_learner(
+                framework=fw,
+                env=self.ENV,
+                learner_hps=BaseTestingLearnerHyperparameters(learning_rate=0.0003),
+            )
 
             learner.add_module(
                 module_id="test",
@@ -250,7 +235,7 @@ class TestLearner(unittest.TestCase):
             n_steps = 100
             expected = [
                 convert_to_numpy(param)
-                - n_steps * learner._optimizer_config["lr"] * np.ones(param.shape)
+                - n_steps * learner.hps.learning_rate * np.ones(param.shape)
                 for param in params
             ]
             for _ in range(n_steps):
@@ -274,7 +259,7 @@ class TestLearner(unittest.TestCase):
     def test_save_load_state(self):
         """Tests, whether a Learner's state is properly saved and restored."""
         for fw in framework_iterator(frameworks=("torch", "tf2")):
-            #
+            # Get a Learner instance for the framework and env.
             learner1 = get_learner(framework=fw, env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.save_state(tmpdir)
@@ -283,7 +268,7 @@ class TestLearner(unittest.TestCase):
                 learner2.load_state(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
-            # add a module then save/load and check states
+            # Add a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.add_module(
                     module_id="test",
@@ -293,7 +278,7 @@ class TestLearner(unittest.TestCase):
                 learner2.load_state(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
-            # remove a module then save/load and check states
+            # Remove a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.remove_module(module_id=DEFAULT_POLICY_ID)
                 learner1.save_state(tmpdir)
@@ -301,7 +286,11 @@ class TestLearner(unittest.TestCase):
                 self._check_learner_states(fw, learner1, learner2)
 
     def _check_learner_states(self, framework, learner1, learner2):
-        check(learner1.get_weights(), learner2.get_weights())
+        check(learner1.get_module_state(), learner2.get_module_state())
+
+        # Method to call on the local optimizer object to get the optimizer's
+        # state.
+        method = "get_config" if framework == "tf2" else "state_dict"
 
         # Method to call on the localk optimizer object to get the optimizer's
         # state.

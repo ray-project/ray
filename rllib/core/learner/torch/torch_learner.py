@@ -14,10 +14,6 @@ from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
     LearnerHyperparameters,
-    ParamOptimizerPair,
-    NamedParamOptimizerPairs,
-    ParamDict,
-    Param,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import (
@@ -41,7 +37,7 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
 
 torch, nn = try_import_torch()
 
@@ -75,30 +71,22 @@ class TorchLearner(Learner):
     @override(Learner)
     def configure_optimizers_for_module(
         self, module_id: ModuleID, hps: LearnerHyperparameters
-    ) -> Union[ParamOptimizerPair, NamedParamOptimizerPairs]:
+    ) -> None:
         module = self._module[module_id]
 
-        optimizers = {
-            "sgd": torch.optim.SGD,
-            "adam": torch.optim.Adam,
-            "adamw": torch.optim.AdamW,
-            "sparseadam": torch.optim.SparseAdam,
-            "adamax": torch.optim.Adamax,
-            "asgd": torch.optim.ASGD,
-            "lbfgs": torch.optim.LBFGS,
-            "rmsprop": torch.optim.RMSprop,
-            "rprop": torch.optim.Rprop,
-            "adagrad": torch.optim.Adagrad,
-            "adadelta": torch.optim.Adadelta,
-        }
+        # For this default implementation, the learning rate is handled by the
+        # attached lr Scheduler (controlled by self.hps.learning_rate, which can be a
+        # fixed value of a schedule setting).
+        optimizer = torch.optim.Adam(self.get_parameters(module))
+        params = self.get_parameters(module)
 
-        # Use keras' convenience method to get the proper optimizer class, no
-        # matter upper/lower case.
-        optim_class = optimizers.get(hps.optimizer_type)
-        parameters = self.get_parameters(module)
-        optim = optim_class(parameters)
-        pair: ParamOptimizerPair = (parameters, optim)
-        return pair
+        # Register the created optimizer (under the default optimizer name).
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer=optimizer,
+            params=params,
+            lr_or_lr_schedule=hps.learning_rate,
+        )
 
     @override(Learner)
     def _update(
@@ -128,13 +116,13 @@ class TorchLearner(Learner):
         return grads
 
     @override(Learner)
-    def apply_gradients(self, gradients_dict: ParamDict) -> None:
+    def apply_gradients(self, gradients: ParamDict) -> None:
         # Make sure the parameters do not carry gradients on their own.
         for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
 
         # Set the gradient of the parameters.
-        for pid, grad in gradients_dict.items():
+        for pid, grad in gradients.items():
             self._params[pid].grad = grad
 
         # For each optimizer call its step function.
@@ -142,51 +130,51 @@ class TorchLearner(Learner):
             optim.step()
 
     @override(Learner)
-    def set_weights(self, weights: Mapping[str, Any]) -> None:
+    def set_module_state(self, state: Mapping[str, Any]) -> None:
         """Sets the weights of the underlying MultiAgentRLModule"""
-        weights = convert_to_torch_tensor(weights, device=self._device)
-        return self._module.set_state(weights)
+        state = convert_to_torch_tensor(state, device=self._device)
+        return self._module.set_state(state)
 
     @override(Learner)
     def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        optim_weights = self.get_optimizer_weights()
-        for name, weights in optim_weights.items():
-            torch.save(weights, path / f"{name}.pt")
+        optim_state = self.get_optimizer_state()
+        for name, state in optim_state.items():
+            torch.save(state, path / f"{name}.pt")
 
     @override(Learner)
     def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
         if not path.exists():
             raise ValueError(f"Directory {path} does not exist.")
-        weights = {}
+        state = {}
         for name in self._named_optimizers.keys():
-            weights[name] = torch.load(path / f"{name}.pt")
-        self.set_optimizer_weights(weights)
+            state[name] = torch.load(path / f"{name}.pt")
+        self.set_optimizer_state(state)
 
     @override(Learner)
-    def get_optimizer_weights(self) -> Mapping[str, Any]:
-        optimizer_name_weights = {}
+    def get_optimizer_state(self) -> Mapping[str, Any]:
+        optimizer_name_state = {}
         for name, optim in self._named_optimizers.items():
             optim_state_dict = optim.state_dict()
             optim_state_dict_cpu = copy_torch_tensors(optim_state_dict, device="cpu")
-            optimizer_name_weights[name] = optim_state_dict_cpu
-        return optimizer_name_weights
+            optimizer_name_state[name] = optim_state_dict_cpu
+        return optimizer_name_state
 
     @override(Learner)
-    def set_optimizer_weights(self, weights: Mapping[str, Any]) -> None:
-        for name, weight_dict in weights.items():
+    def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
+        for name, state_dict in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(
-                    f"Optimizer {name} in weights is not known."
+                    f"Optimizer {name} in `state` is not known."
                     f"Known optimizers are {self._named_optimizers.keys()}"
                 )
             optim = self._named_optimizers[name]
-            weight_dict_correct_device = copy_torch_tensors(
-                weight_dict, device=self._device
+            state_dict_correct_device = copy_torch_tensors(
+                state_dict, device=self._device
             )
-            optim.load_state_dict(weight_dict_correct_device)
+            optim.load_state_dict(state_dict_correct_device)
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:
@@ -296,20 +284,22 @@ class TorchLearner(Learner):
         return isinstance(module, nn.Module)
 
     @override(Learner)
-    def _check_structure_param_optim_pair(self, param_optim_pair: Any) -> None:
-        super()._check_structure_param_optim_pair(param_optim_pair)
-        params, optim = param_optim_pair
-        if not isinstance(optim, torch.optim.Optimizer):
+    def _check_registered_optimizer(
+        self,
+        optimizer: Optimizer,
+        params: Sequence[Param],
+    ) -> None:
+        super()._check_registered_optimizer(optimizer, params)
+        if not isinstance(optimizer, torch.optim.Optimizer):
             raise ValueError(
-                f"The optimizer in {param_optim_pair} is not a torch.optim.Optimizer. "
-                "Please use a torch.optim.Optimizer for TorchLearner."
+                f"The optimizer ({optimizer}) is not a torch.optim.Optimizer! "
+                "Only use torch.optim.Optimizer subclasses for TorchLearner."
             )
         for param in params:
             if not isinstance(param, torch.Tensor):
                 raise ValueError(
-                    f"One of the parameters {param} in this ParamOptimizerPair "
-                    f"{param_optim_pair} is not a torch.Tensor. Please use a "
-                    "torch.Tensor for TorchLearner."
+                    f"One of the parameters ({param}) in the registered optimizer "
+                    "is not a torch.Tensor!"
                 )
 
     @override(Learner)

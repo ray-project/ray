@@ -347,9 +347,9 @@ class PPOConfig(PGConfig):
                     "`entropy_coeff` setting to setup a schedule."
                 )
             Scheduler.validate(
-                self.entropy_coeff,
-                "entropy_coeff_schedule",
-                "entropy coefficient",
+                fixed_value_or_schedule=self.entropy_coeff,
+                setting_name="entropy_coeff",
+                description="entropy coefficient",
             )
         if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
