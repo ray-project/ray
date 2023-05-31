@@ -158,12 +158,13 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
     assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
-    # Here we keep the same behavior as the legacy execution backend.
-    # If the input blocks is a LazyBlockList, return an empty stats.
-    # Otherwise, use `plan._in_stats`.
-    # See `_get_source_blocks_and_stages` and `_rewrite_read_stages` in `plan.py`.
-    # TODO(hchen): After removing LazyBlockList, we should pass the empty stats
-    # as the initial stats in the first place.
+    # For Datasets created from "read_xxx", `plan._in_blocks` is a LazyBlockList,
+    # and `plan._in_stats` contains useless data.
+    # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
+    # the initial stats. Because the `FromXxx` logical operators will be translated to
+    # "InputDataBuffer" physical operators, which will be ignored when generating
+    # stats, see `StreamingExecutor._generate_stats`.
+    # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
     if isinstance(plan._in_blocks, LazyBlockList):
         return DatasetStats(stages={}, parent=None)
     else:
