@@ -319,5 +319,6 @@ doctest(
             "source/rllib/rllib-sample-collection.rst",
         ]
     ),
-    size="large"
+    size = "large",
+    tags = ["team:none"]
 )
