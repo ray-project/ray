@@ -236,11 +236,11 @@ class Trainable:
         This can be overridden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
-        .. code-block:: python
+        .. testcode::
 
             @classmethod
             def default_resource_request(cls, config):
-                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}]])
+                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}])
 
 
         Args:
@@ -1172,9 +1172,11 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. code-block:: python
+        .. testcode::
 
-            name = self.trial_name
+            from ray.tune import Trainable
+
+            name = Trainable().trial_name
         """
         if self._trial_info:
             return self._trial_info.trial_name
@@ -1187,9 +1189,11 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. code-block:: python
+        .. testcode::
 
-            trial_id = self.trial_id
+            from ray.tune import Trainable
+
+            trial_id = Trainable().trial_id
         """
         if self._trial_info:
             return self._trial_info.trial_id
@@ -1202,9 +1206,11 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. code-block:: python
+        .. testcode::
 
-            trial_resources = self.trial_resources
+            from ray.tune import Trainable
+
+            trial_resources = Trainable().trial_resources
         """
         if self._trial_info:
             return self._trial_info.trial_resources
