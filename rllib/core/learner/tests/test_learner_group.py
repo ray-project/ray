@@ -312,6 +312,14 @@ class TestLearnerGroup(unittest.TestCase):
             learner_group.shutdown()
             self.assertLess(min_loss, 0.57)
 
+
+class TestLearnerGroupStates(unittest.TestCase):
+    def setUp(self) -> None:
+        ray.init()
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
     def test_save_load_state(self):
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
@@ -512,4 +520,7 @@ if __name__ == "__main__":
     import pytest
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    # One can specify the specific TestCase class to run.
+    # None for all unittest.TestCase classes in this file.
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(pytest.main(["-v", __file__ + ("" if class_ is None else "::" + class_)]))

@@ -1997,7 +1997,16 @@ py_test(
     name = "test_learner_group",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
-    srcs = ["core/learner/tests/test_learner_group.py"]
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroup"]
+)
+
+py_test(
+    name = "test_learner_group_states",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupStates"]
 )
 
 py_test(
