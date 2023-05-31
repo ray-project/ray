@@ -39,9 +39,12 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         The returned class can then be used to instantiate ray actors.
 
         Examples:
-            >>> remote_cls = EnvRunner.as_remote(num_cpus=1, num_gpus=0)
-            >>> array = [remote_cls.remote({"key": "value"}) for _ in range(10)]
-            >>> results = [env_runner.sample.remote() for env_runner in array]
+        .. testcode::
+
+            from ray.rllib.env.env_runner import EnvRunner
+            remote_cls = EnvRunner.as_remote(num_cpus=1, num_gpus=0)
+            array = [remote_cls.remote({"key": "value"}) for _ in range(10)]
+            results = [env_runner.sample.remote() for env_runner in array]
 
         Args:
             num_cpus: The number of CPUs to allocate for the remote actor.
@@ -118,12 +121,11 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             state: The state dict to restore the state from.
 
         Examples:
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> # Create a RolloutWorker.
-            >>> worker = ... # doctest: +SKIP
-            >>> state = worker.get_state() # doctest: +SKIP
-            >>> new_worker = RolloutWorker(...) # doctest: +SKIP
-            >>> new_worker.set_state(state) # doctest: +SKIP
+            >>> from ray.rllib.env.env_runner import EnvRunner
+            >>> env_runner = ... # doctest: +SKIP
+            >>> state = env_runner.get_state() # doctest: +SKIP
+            >>> new_runner = EnvRunner(...) # doctest: +SKIP
+            >>> new_runner.set_state(state) # doctest: +SKIP
         """
         pass
 
