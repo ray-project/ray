@@ -609,7 +609,7 @@ py_test(
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/cartpole-truncated-ppo.py"],
-    args = ["--dir=tuned_examples/ppo --framework torch"] # TODO(Artur): remove torch once tf2 is up to speed
+    args = ["--dir=tuned_examples/ppo"]
 )
 
 py_test(
@@ -639,7 +639,7 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
-    args = ["--dir=tuned_examples/ppo --framework torch"] # TODO(Artur): remove torch once tf2 is up to speed
+    args = ["--dir=tuned_examples/ppo"]
 )
 
 py_test(
@@ -2012,14 +2012,6 @@ py_test(
     tags = ["team:rllib", "core", "ray_data"],
     size = "medium",
     srcs = ["core/learner/tests/test_learner.py"]
-)
-
-# TODO (Kourosh): to be removed in favor of test_learner.py
-py_test(
-    name = "test_torch_learner",
-    tags = ["team:rllib", "core", "ray_data"],
-    size = "medium",
-    srcs = ["core/learner/torch/tests/test_torch_learner.py"]
 )
 
 py_test(
