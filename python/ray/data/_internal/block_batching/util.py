@@ -295,16 +295,19 @@ class WaitBlockPrefetcher(BlockPrefetcher):
 
     def _run(self):
         while True:
-            blocks_to_wait = []
-            with self._condition:
-                if len(self._blocks) > 0:
-                    blocks_to_wait, self._blocks = self._blocks[:], []
+            try:
+                blocks_to_wait = []
+                with self._condition:
+                    if len(self._blocks) > 0:
+                        blocks_to_wait, self._blocks = self._blocks[:], []
+                    else:
+                        blocks_to_wait = []
+                if len(blocks_to_wait) > 0:
+                    ray.wait(blocks_to_wait, num_returns=1, fetch_local=True)
                 else:
-                    blocks_to_wait = []
-            if len(blocks_to_wait) > 0:
-                ray.wait(blocks_to_wait, num_returns=1, fetch_local=True)
-            else:
-                self._condition.wait()
+                    self._condition.wait()
+            except Exception:
+                logger.exception("Error in prefetcher thread.")
 
     def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         with self._condition:
