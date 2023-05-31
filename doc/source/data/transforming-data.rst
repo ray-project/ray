@@ -18,7 +18,7 @@ There are two main types of supported transforms:
 
 * One-to-one: each input block will contribute to only one output
   block, such as :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`.
-* All-to-all: input blocks will contribute to multiple output blocks,
+* All-to-all: input blocks can contribute to multiple output blocks,
   such as :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`.
 
 .. list-table:: Common Ray Data transforms.
