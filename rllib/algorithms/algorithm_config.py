@@ -3320,6 +3320,7 @@ class AlgorithmConfig(_Config):
             grad_clip=self.grad_clip,
             grad_clip_by=self.grad_clip_by,
             _per_module_overrides=per_module_learner_hp_overrides,
+            seed=self.seed,
         )
 
     def __setattr__(self, key, value):
