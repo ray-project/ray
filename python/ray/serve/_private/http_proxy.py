@@ -150,25 +150,26 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
     while retries < HTTP_REQUEST_MAX_RETRIES + 1:
-        assignment_task: asyncio.Task = handle.remote(request)
-        done, _ = await asyncio.wait(
-            [assignment_task, client_disconnection_task],
-            return_when=FIRST_COMPLETED,
-        )
-        if client_disconnection_task in done:
-            message = await client_disconnection_task
-            assert message["type"] == "http.disconnect", (
-                "Received additional request payload that's not disconnect. "
-                "This is an invalid HTTP state."
-            )
-            logger.warning(
-                f"Client from {scope['client']} disconnected, cancelling the "
-                "request.",
-                extra={"log_to_stderr": False},
-            )
-            # This will make the .result() to raise cancelled error.
-            assignment_task.cancel()
         try:
+            assignment_task: asyncio.Task = handle.remote(request)
+            done, _ = await asyncio.wait(
+                [assignment_task, client_disconnection_task],
+                return_when=FIRST_COMPLETED,
+            )
+            if client_disconnection_task in done:
+                message = await client_disconnection_task
+                assert message["type"] == "http.disconnect", (
+                    "Received additional request payload that's not disconnect. "
+                    "This is an invalid HTTP state."
+                )
+                logger.warning(
+                    f"Client from {scope['client']} disconnected, cancelling the "
+                    "request.",
+                    extra={"log_to_stderr": False},
+                )
+                # This will make the .result() to raise cancelled error.
+                assignment_task.cancel()
+
             object_ref = await assignment_task
 
             if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
