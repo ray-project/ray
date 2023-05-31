@@ -402,6 +402,9 @@ def gcs_actor_scheduling_enabled():
 
 DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 
+# The system resource that head node has.
+HEAD_NODE_RESOURCE_NAME = "__RAY_PRIVATE_head_node__"
+
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
