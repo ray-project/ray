@@ -1,10 +1,8 @@
-from collections import defaultdict
-from typing import List, Optional, Tuple
+from typing import Optional
 
-from ray.rllib.core.rl_module.rl_module import ModuleID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.schedules.piecewise_schedule import PiecewiseSchedule
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import LearningRateOrSchedule, TensorType
 
 
 _, tf, _ = try_import_tf()
@@ -20,116 +18,126 @@ class Scheduler:
     def __init__(
         self,
         *,
-        fixed_value: Optional[float] = None,
-        schedule: Optional[List[Tuple[int, float]]] = None,
+        fixed_value_or_schedule: LearningRateOrSchedule,
         framework: str = "torch",
         device: Optional[str] = None,
     ):
         """Initializes a Scheduler instance.
 
         Args:
-            fixed_value: A fixed, constant value (in case no schedule should be used).
-                Set `schedule` to None to always just use this fixed value.
-                If `fixed_value` is None, `schedule` must be provided.
-            schedule: The schedule configuration to use. In the format of
+            fixed_value_or_schedule: A fixed, constant value (in case no schedule should
+                be used) or a schedule configuration in the format of
                 [[timestep, value], [timestep, value], ...]
-                Intermediary timesteps will be assigned to interpolated values (linear
-                interpolation will be used). A schedule config's first entry must
+                Intermediary timesteps will be assigned to linerarly interpolated
+                values. A schedule config's first entry must
                 start with timestep 0, i.e.: [[0, initial_value], [...]].
             framework: The framework string, for which to create the tensor variable
                 that hold the current value. This is the variable that can be used in
                 the graph, e.g. in a loss function.
             device: Optional device (for torch) to place the tensor variable on.
         """
-        self.use_schedule = schedule is not None
         self.framework = framework
         self.device = device
+        self.use_schedule = isinstance(fixed_value_or_schedule, (list, tuple))
 
         if self.use_schedule:
             # Custom schedule, based on list of
             # ([ts], [value to be reached by ts])-tuples.
-            self.schedule_per_module = defaultdict(
-                lambda: PiecewiseSchedule(
-                    schedule,
-                    outside_value=schedule[-1][-1],
-                    framework=None,
-                )
+            self._schedule = PiecewiseSchedule(
+                fixed_value_or_schedule,
+                outside_value=fixed_value_or_schedule[-1][-1],
+                framework=None,
             )
             # As initial tensor valie, use the first timestep's (must be 0) value.
-            self.curr_value_per_module = defaultdict(
-                lambda: self._create_tensor_variable(initial_value=schedule[0][1])
+            self._curr_value = self._create_tensor_variable(
+                initial_value=fixed_value_or_schedule[0][1]
             )
+
         # If no schedule, pin (fix) given value.
         else:
-            self.curr_value_per_module = defaultdict(lambda: fixed_value)
+            self._curr_value = fixed_value_or_schedule
 
     @staticmethod
     def validate(
-        schedule: Optional[List[Tuple[int, float]]],
-        schedule_name: str,
-        value_name: str,
+        *,
+        fixed_value_or_schedule: LearningRateOrSchedule,
+        setting_name: str,
+        description: str,
     ) -> None:
         """Performs checking of a certain schedule configuration.
 
-        The first entry in `schedule` must have a timestep of 0.
+        The first entry in `value_or_schedule` (if it's not a fixed value) must have a
+        timestep of 0.
 
         Args:
-            schedule: The schedule configuration to check. In the format of
+            fixed_value_or_schedule: A fixed, constant value (in case no schedule should
+                be used) or a schedule configuration in the format of
                 [[timestep, value], [timestep, value], ...]
-                Intermediary timesteps will be assigned to interpolated values (linear
-                interpolation will be used). A schedule config's first entry must
+                Intermediary timesteps will be assigned to linerarly interpolated
+                values. A schedule config's first entry must
                 start with timestep 0, i.e.: [[0, initial_value], [...]].
-            schedule_name: The name of the schedule, e.g. `lr_schedule`.
-            value_name: A full text description of the variable that's being scheduled,
+            setting_name: The property name of the schedule setting (within a config),
+                e.g. `lr` or `entropy_coeff`.
+            description: A full text description of the property that's being scheduled,
                 e.g. `learning rate`.
 
         Raises:
             ValueError: In case, errors are found in the schedule's format.
         """
-        if schedule is not None:
-            if not isinstance(schedule, (list, tuple)) or (len(schedule) < 2):
-                raise ValueError(
-                    f"Invalid `{schedule_name}` ({schedule}) specified! Must be a "
-                    "list of at least 2 tuples, each of the form "
-                    f"(`timestep`, `{value_name} to reach`), e.g. "
-                    "`[(0, 0.001), (1e6, 0.0001), (2e6, 0.00005)]`."
-                )
-            elif schedule[0][0] != 0:
-                raise ValueError(
-                    f"When providing a `{schedule_name}`, the first timestep must be 0 "
-                    f"and the corresponding lr value is the initial {value_name}! You "
-                    f"provided ts={schedule[0][0]} {value_name}={schedule[0][1]}."
-                )
+        if (
+            isinstance(fixed_value_or_schedule, (int, float))
+            or fixed_value_or_schedule is None
+        ):
+            return
 
-    def get_current_value(self, module_id: ModuleID) -> TensorType:
-        """Returns the current value (as a tensor variable), given a ModuleID.
+        if not isinstance(fixed_value_or_schedule, (list, tuple)) or (
+            len(fixed_value_or_schedule) < 2
+        ):
+            raise ValueError(
+                f"Invalid `{setting_name}` ({fixed_value_or_schedule}) specified! "
+                f"Must be a list of at least 2 tuples, each of the form "
+                f"(`timestep`, `{description} to reach`), e.g. "
+                "`[(0, 0.001), (1e6, 0.0001), (2e6, 0.00005)]`."
+            )
+        elif fixed_value_or_schedule[0][0] != 0:
+            raise ValueError(
+                f"When providing a `{setting_name}`, the first timestep must be 0 "
+                f"and the corresponding lr value is the initial {description}! You "
+                f"provided ts={fixed_value_or_schedule[0][0]} {description}="
+                f"{fixed_value_or_schedule[0][1]}."
+            )
 
-        Args:
-            module_id: The module ID, for which to retrueve the current tensor value.
+    def get_current_value(self) -> TensorType:
+        """Returns the current value (as a tensor variable).
+
+        This method should be used in loss functions of other (in-graph) places
+        where the current value is needed.
 
         Returns:
             The tensor variable (holding the current value to be used).
         """
-        return self.curr_value_per_module[module_id]
+        return self._curr_value
 
-    def update(self, module_id: ModuleID, timestep: int) -> float:
+    def update(self, timestep: int) -> float:
         """Updates the underlying (framework specific) tensor variable.
 
+        In case of a fixed value, this method does nothing and only returns the fixed
+        value as-is.
+
         Args:
-            module_id: The module ID, for which to update the tensor variable.
-            timestep: The current timestep.
+            timestep: The current timestep that the update might depend on.
 
         Returns:
             The current value of the tensor variable as a python float.
         """
         if self.use_schedule:
-            python_value = self.schedule_per_module[module_id].value(t=timestep)
+            python_value = self._schedule.value(t=timestep)
             if self.framework == "torch":
-                self.curr_value_per_module[module_id].data = torch.tensor(python_value)
+                self._curr_value.data = torch.tensor(python_value)
             else:
-                self.curr_value_per_module[module_id].assign(python_value)
+                self._curr_value.assign(python_value)
         else:
-            python_value = self.curr_value_per_module[module_id]
+            python_value = self._curr_value
 
         return python_value
 

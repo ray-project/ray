@@ -16,7 +16,7 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
     DreamerV3LearnerHyperparameters,
 )
 from ray.rllib.core.rl_module.marl_module import ModuleID
-from ray.rllib.core.learner.learner import NamedParamOptimizerPairs, ParamDict
+from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -42,10 +42,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
     @override(TfLearner)
     def configure_optimizer_for_module(
         self, module_id: ModuleID, hps: DreamerV3LearnerHyperparameters
-    ) -> NamedParamOptimizerPairs:
-
+    ):
         """Create the 3 optimizers for Dreamer learning: world_model, actor, critic."""
-        named_param_optimizer_pairs: NamedParamOptimizerPairs = {}
 
         dreamerv3_module = self._module[module_id]
 
@@ -54,17 +52,23 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             learning_rate=hps.world_model_lr, epsilon=1e-8
         )
         optim_world_model.build(dreamerv3_module.world_model.trainable_variables)
-        named_param_optimizer_pairs["world_model"] = (
-            self.get_parameters(dreamerv3_module.world_model),
-            optim_world_model,
+        params_world_model = self.get_parameters(dreamerv3_module.world_model)
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer_name="world_model",
+            optimizer=optim_world_model,
+            params=params_world_model,
         )
 
         # Actor optimizer.
         optim_actor = tf.keras.optimizers.Adam(learning_rate=hps.actor_lr, epsilon=1e-5)
         optim_actor.build(dreamerv3_module.actor.trainable_variables)
-        named_param_optimizer_pairs["actor"] = (
-            self.get_parameters(dreamerv3_module.actor),
-            optim_actor,
+        params_actor = self.get_parameters(dreamerv3_module.actor)
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer_name="actor",
+            optimizer=optim_actor,
+            params=params_actor,
         )
 
         # Critic optimizer.
@@ -72,12 +76,13 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             learning_rate=hps.critic_lr, epsilon=1e-5
         )
         optim_critic.build(dreamerv3_module.critic.trainable_variables)
-        named_param_optimizer_pairs["critic"] = (
-            self.get_parameters(dreamerv3_module.critic),
-            optim_critic,
+        params_critic = self.get_parameters(dreamerv3_module.critic)
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer_name="critic",
+            optimizer=optim_critic,
+            params=params_critic,
         )
-
-        return named_param_optimizer_pairs
 
     @override(TfLearner)
     def postprocess_gradients_for_module(
@@ -95,7 +100,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         for optimizer_name, optimizer in self.get_optimizers_for_module(
             module_id=module_id
         ):
-            grads_sub_dict = self.compile_param_dict_for_optimizer(
+            grads_sub_dict = self.filter_param_dict_for_optimizer(
                 module_gradients_dict, optimizer
             )
             # Figure out, which grad clip setting to use.

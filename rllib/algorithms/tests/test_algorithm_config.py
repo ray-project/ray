@@ -1,4 +1,5 @@
 import gym
+from typing import Type
 import unittest
 
 import ray
@@ -7,11 +8,12 @@ from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec, RLModule
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
     MultiAgentRLModule,
 )
+from ray.rllib.utils.test_utils import check
 
 
 class TestAlgorithmConfig(unittest.TestCase):
@@ -192,6 +194,49 @@ class TestAlgorithmConfig(unittest.TestCase):
         config.validate()
         self.assertEqual(config.rl_module_spec.module_class, A)
 
+    def test_learner_hyperparameters_per_module(self):
+        """Tests, whether per-module config overrides (multi-agent) work as expected."""
+
+        # Compile PPO HPs from a config object.
+        hps = (
+            PPOConfig()
+            .training(kl_coeff=0.5)
+            .multi_agent(
+                policies={"module_1", "module_2", "module_3"},
+                # Override config settings fro `module_1` and `module_2`.
+                algorithm_config_overrides_per_module={
+                    "module_1": PPOConfig.overrides(lr=0.01, kl_coeff=0.1),
+                    "module_2": PPOConfig.overrides(grad_clip=100.0),
+                },
+            )
+            .get_learner_hyperparameters()
+        )
+
+        # Check default HPs.
+        check(hps.learning_rate, 0.00005)
+        check(hps.grad_clip, None)
+        check(hps.grad_clip_by, "global_norm")
+        check(hps.kl_coeff, 0.5)
+
+        # `module_1` overrides.
+        hps_1 = hps.get_hps_for_module("module_1")
+        check(hps_1.learning_rate, 0.01)
+        check(hps_1.grad_clip, None)
+        check(hps_1.grad_clip_by, "global_norm")
+        check(hps_1.kl_coeff, 0.1)
+
+        # `module_2` overrides.
+        hps_2 = hps.get_hps_for_module("module_2")
+        check(hps_2.learning_rate, 0.00005)
+        check(hps_2.grad_clip, 100.0)
+        check(hps_2.grad_clip_by, "global_norm")
+        check(hps_2.kl_coeff, 0.5)
+
+        # No `module_3` overrides (b/c module_3 uses the top-level HP object directly).
+        self.assertTrue("module_3" not in hps._per_module_overrides)
+        hps_3 = hps.get_hps_for_module("module_3")
+        self.assertTrue(hps_3 is hps)
+
     def test_learner_api(self):
         config = (
             PPOConfig()
@@ -224,9 +269,9 @@ class TestAlgorithmConfig(unittest.TestCase):
     def _get_expected_marl_spec(
         self,
         config: AlgorithmConfig,
-        expected_module_class: type,
-        passed_module_class: type = None,
-        expected_marl_module_class: type = None,
+        expected_module_class: Type[RLModule],
+        passed_module_class: Type[RLModule] = None,
+        expected_marl_module_class: Type[MultiAgentRLModule] = None,
     ):
         """This is a utility function that retrieves the expected marl specs.
 

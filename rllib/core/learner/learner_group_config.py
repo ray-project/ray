@@ -1,4 +1,4 @@
-from typing import Type, Optional, TYPE_CHECKING, Union, Dict
+from typing import Optional, Type, TYPE_CHECKING, Union
 
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
@@ -40,8 +40,6 @@ class LearnerGroupConfig:
 
         # `self.learner()`
         self.learner_class = None
-        # TODO (Kourosh): Change the optimizer config to a dataclass object.
-        self.optimizer_config = {"lr": 3e-4}
         self.learner_hyperparameters = LearnerHyperparameters()
 
         # `self.resources()`
@@ -92,7 +90,6 @@ class LearnerGroupConfig:
         learner_spec = LearnerSpec(
             learner_class=self.learner_class,
             module_spec=self.module_spec,
-            optimizer_config=self.optimizer_config,
             learner_group_scaling_config=scaling_config,
             learner_hyperparameters=self.learner_hyperparameters,
             framework_hyperparameters=framework_hps,
@@ -148,14 +145,11 @@ class LearnerGroupConfig:
         self,
         *,
         learner_class: Optional[Type["Learner"]] = NotProvided,
-        optimizer_config: Optional[Dict] = NotProvided,
         learner_hyperparameters: Optional[LearnerHyperparameters] = NotProvided,
     ) -> "LearnerGroupConfig":
 
         if learner_class is not NotProvided:
             self.learner_class = learner_class
-        if optimizer_config is not NotProvided:
-            self.optimizer_config.update(optimizer_config)
         if learner_hyperparameters is not NotProvided:
             self.learner_hyperparameters = learner_hyperparameters
 
