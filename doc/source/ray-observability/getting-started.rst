@@ -110,8 +110,7 @@ Tasks and Actors are grouped and nested using the following criteria:
 
 .. note::
 
-  Job detail page can only display or retrieve up to 10K tasks per job. If there are more than 10K tasks from your job,
-  they are unaccounted. The number of unaccounted tasks is available from the task breakdown.
+  Job detail page can only display or retrieve up to 10K tasks per job. For Jobs with more than 10K Tasks, the portion of Tasks that exceed the 10K limit are unaccounted. The number of unaccounted tasks is available from the task breakdown.
 
 Task timeline
 ~~~~~~~~~~~~~

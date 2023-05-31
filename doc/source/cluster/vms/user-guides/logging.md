@@ -29,4 +29,4 @@ After choosing a log processing tool based on your needs, you may need to perfor
 
 
 ## Redirecting Ray logs to stderr
-By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. It may not be ideal if the log processing tool needs log to be written to stderr in order for them to be captured. View {ref}`configuring logging <redirect-to-stderr>` for details on how to redirect all the logs to stderr of the host nodes instead.
+By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. If you prefer to capture logs from stderr, view {ref}`configuring logging <redirect-to-stderr>` for details on how to redirect all the logs to stderr of the host nodes instead.
