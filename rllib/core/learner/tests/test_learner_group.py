@@ -63,7 +63,7 @@ class RemoteTrainingHelper:
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
         learner_group = get_learner_group(fw, env, scaling_config, eager_tracing=True)
-        local_learner = get_learner(fw, env)
+        local_learner = get_learner(framework=fw, env=env)
         local_learner.build()
 
         # make the state of the learner and the local learner_group identical
@@ -319,7 +319,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
     def test_load_module_state(self):
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["local-cpu", "multi-cpu-ddp", "multi-gpu-ddp"]
+        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
 
         test_iterator = itertools.product(fws, scaling_modes)
         for fw, scaling_mode in test_iterator:
