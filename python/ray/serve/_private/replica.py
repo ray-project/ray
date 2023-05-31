@@ -260,8 +260,7 @@ def create_replica_wrapper(name: str):
                 )
             )
 
-            done = []
-            while handle_request_task not in done:
+            while True:
                 wait_for_message_task = self._event_loop.create_task(
                     asgi_queue_sender.wait_for_message()
                 )
@@ -274,6 +273,15 @@ def create_replica_wrapper(name: str):
                 # we use vanilla pickle because it's faster than cloudpickle and we
                 # know it's safe for these messages containing primitive types.
                 yield pickle.dumps(asgi_queue_sender.get_messages_nowait())
+
+                # Exit once `handle_request` has finished. In this case, all messages
+                # must have already been sent.
+                # Cancel the `wait_for_message_task` to avoid innocuous error messages.
+                if handle_request_task in done:
+                    if not wait_for_message_task.done():
+                        wait_for_message_task.cancel()
+
+                    break
 
             e = handle_request_task.exception()
             if e is not None:
