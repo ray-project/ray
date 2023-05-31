@@ -7,7 +7,7 @@ from functools import wraps
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from starlette.requests import Request
-from starlette.types import ASGIApp, Send
+from starlette.types import ASGIApp, Receive, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
@@ -239,7 +239,10 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                     await self._serve_asgi_lifespan.startup()
 
             async def __call__(
-                self, request: Request, asgi_sender: Optional[Send] = None
+                self,
+                request: Request,
+                asgi_sender: Optional[Send] = None,
+                asgi_receive: Optional[Receive] = None,
             ) -> Optional[ASGIApp]:
                 """Calls into the wrapped ASGI app.
 
@@ -253,9 +256,18 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                     asgi_sender = ASGIHTTPSender()
                     build_and_return_response = True
 
+                if asgi_receive is None:
+                    print("USING request.receive")
+                    asgi_receive = request.receive
+
+                if asgi_sender is None:
+                    scope = request.scope
+                else:
+                    scope = request
+
                 await self._serve_app(
-                    request.scope,
-                    request.receive,
+                    scope,
+                    asgi_receive,
                     asgi_sender,
                 )
 

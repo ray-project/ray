@@ -170,7 +170,9 @@ class ASGIHTTPQueueSender(Send):
         self._new_message_event = asyncio.Event()
 
     async def __call__(self, message: Dict[str, Any]):
-        assert message["type"] in ("http.response.start", "http.response.body")
+        # assert message["type"] in ("http.response.start", "http.response.body")
+        if "websocket" in message["type"]:
+            print("PUT WEBSOCKET MESSAGE", message)
         await self._message_queue.put(message)
         self._new_message_event.set()
 

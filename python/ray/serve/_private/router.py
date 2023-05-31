@@ -116,7 +116,12 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
 
         return replica.actor_handle.handle_request_streaming.options(
             num_returns="streaming"
-        ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
+        ).remote(
+            ray.get_runtime_context().current_actor,
+            pickle.dumps(query.metadata),
+            *query.args,
+            **query.kwargs,
+        )
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         random.shuffle(running_replicas)
