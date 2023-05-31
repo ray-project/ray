@@ -4,6 +4,7 @@ import torch
 from ray.air import Checkpoint, session
 
 from ray.air.config import ScalingConfig
+from ray.air.constants import TRAINING_ITERATION
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,
 )
@@ -20,7 +21,6 @@ from ray.train.tests.test_tune import (
 )
 from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
-from ray.tune.result import TRAINING_ITERATION
 
 
 def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):

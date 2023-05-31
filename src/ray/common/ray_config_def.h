@@ -215,7 +215,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
-RAY_CONFIG(int64_t, max_grpc_message_size, 500 * 1024 * 1024)
+RAY_CONFIG(int64_t, max_grpc_message_size, 512 * 1024 * 1024)
 
 // Retry timeout for trying to create a gRPC server. Only applies if the number
 // of retries is non zero.
@@ -310,6 +310,15 @@ RAY_CONFIG(int, worker_niceness, 15)
 /// Allow up to 60 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 600)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
+
+/// Number of retries for a redis request failure.
+RAY_CONFIG(size_t, num_redis_request_retries, 5)
+
+/// Exponential backoff setup. By default:
+/// 100ms, 200ms, 400ms, 800ms, 1s, 1s,...
+RAY_CONFIG(int64_t, redis_retry_base_ms, 100)
+RAY_CONFIG(int64_t, redis_retry_multiplier, 2)
+RAY_CONFIG(int64_t, redis_retry_max_ms, 1000)
 
 /// The object manager's global timer interval in milliseconds.
 RAY_CONFIG(int, object_manager_timer_freq_ms, 100)
@@ -441,7 +450,7 @@ RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024
 RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Feature flag to use the ray syncer for resource synchronization
-RAY_CONFIG(bool, use_ray_syncer, false)
+RAY_CONFIG(bool, use_ray_syncer, true)
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
@@ -800,7 +809,7 @@ RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 RAY_CONFIG(std::vector<std::string>, preload_python_modules, {})
 
 // By default, raylet send a self liveness check to GCS every 60s
-RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 60000)
+RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
 
 // Instruct the CoreWorker to kill its child processes while
 // it exits. This prevents certain classes of resource leaks

@@ -1,3 +1,10 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(["**/*.py"], exclude=glob(["examples/**/*", "tests/**/*"])),
+    tags = ["team:data"],
+    size = "large"
+)
 # --------------------------------------------------------------------
 # Tests from the python/ray/data/tests directory.
 # Covers all tests starting with `test_`.
@@ -38,6 +45,14 @@ py_test(
     name = "test_strict_mode",
     size = "small",
     srcs = ["tests/test_strict_mode.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_numpy_support",
+    size = "small",
+    srcs = ["tests/test_numpy_support.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

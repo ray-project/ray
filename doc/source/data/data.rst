@@ -2,24 +2,24 @@
 
 .. _data:
 
-======================================
-Ray Data: Distributed ML Preprocessing
-======================================
+==================================
+Ray Data: Scalable Datasets for ML
+==================================
 
 .. _data-intro:
 
-Ray Data is the standard way to load and exchange data in Ray libraries and applications.
-It provides streaming distributed transformations such as maps
-(:meth:`map_batches <ray.data.Datastream.map_batches>`),
+Ray Data scales common ML data processing patterns in batch inference
+and distributed training applications. Ray Data does this by providing
+streaming distributed transformations
+such as maps (:meth:`map_batches <ray.data.Dataset.map_batches>`),
 global and grouped aggregations (:class:`GroupedData <ray.data.grouped_data.GroupedData>`), and
-shuffling operations (:meth:`random_shuffle <ray.data.Datastream.random_shuffle>`,
-:meth:`sort <ray.data.Datastream.sort>`,
-:meth:`repartition <ray.data.Datastream.repartition>`),
-and is compatible with a variety of file formats, data sources, and distributed frameworks.
+shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,
+:meth:`sort <ray.data.Dataset.sort>`,
+:meth:`repartition <ray.data.Dataset.repartition>`).
 
 Read on for an overview of the main use cases and operations supported by Ray Data.
 
-.. image:: images/datastream.svg
+.. image:: images/dataset.svg
 
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
@@ -29,9 +29,9 @@ Streaming Batch Inference
 -------------------------
 
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
-powerful :ref:`Datastream <datastream_concept>` primitive. Datastreams enable workloads such as 
-:ref:`GPU batch inference <ref-use-cases-batch-infer>` to run efficiently on large datasets,
-maximizing resource utilization by keeping the working data fitting into Ray object store memory.
+powerful streaming :ref:`Dataset <dataset_concept>` primitive. Datasets enable workloads such as
+:doc:`GPU batch inference <batch_inference>` to run efficiently on large datasets,
+maximizing resource utilization by streaming the working data through Ray object store memory.
 
 .. image:: images/stream-example.png
    :width: 650px
@@ -44,7 +44,7 @@ As part of the Ray ecosystem, Ray Data can leverage the full functionality of Ra
 e.g., using actors for optimizing setup time and GPU scheduling, and supports data throughputs of
 100GiB/s or more for common inference workloads.
 
-To learn more about the features Ray Data supports, read the 
+To learn more about the features Ray Data supports, read the
 :ref:`Data User Guide <data_user_guide>`.
 
 ---------------------------------------
@@ -52,11 +52,11 @@ Streaming Preprocessing for ML Training
 ---------------------------------------
 
 Use Ray Data to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>` in a streaming fashion.
-Ray Data is intended to serve as a last-mile bridge from storage or ETL pipeline outputs to distributed 
-applications and libraries in Ray. Don't use it as a replacement for more general data 
+Ray Data serves as a last-mile bridge from storage or ETL pipeline outputs to distributed
+applications and libraries in Ray. Don't use it as a replacement for more general data
 processing systems.
 
-.. image:: images/datastream-loading-1.png
+.. image:: images/dataset-loading-1.png
    :width: 650px
    :align: center
 
@@ -98,7 +98,7 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
         ^^^
 
         Understand the key concepts behind Ray Data.
-        Learn what :ref:`Datastreams <datastream_concept>` are and how they are executed in Ray
+        Learn what :ref:`Datasets <dataset_concept>` are and how they are executed in Ray
         Data.
 
         +++
@@ -117,7 +117,7 @@ Advanced users can refer directly to the Ray Data :ref:`API reference <data-api>
         Learn how to :ref:`load data <loading_data>`, :ref:`save
         data <saving_data>`, :ref:`transform data <transforming_data>`,
         :ref:`access and exchange data <consuming_data>`, or
-        :ref:`work with tensor data <data_tensor_support>`.
+        :ref:`work with tensor data <working_with_tensors>`.
 
         +++
         .. button-ref:: data_user_guide
@@ -202,6 +202,14 @@ If your use case isn't supported, reach out on `Discourse <https://discuss.ray.i
 request on the `Ray GitHub repo <https://github.com/ray-project/ray>`__, and check out
 our :ref:`guide for implementing a custom datasource <data_custom_datasource>`
 if you're interested in rolling your own integration!
+
+----------
+Learn More
+----------
+
+- `[Blog] Streaming distributed execution across CPUs and GPUs <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__
+- `[Blog] Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`__
+- `[Blog] Using Ray Data to parallelize LangChain inference <https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding>`__
 
 ----------
 Contribute

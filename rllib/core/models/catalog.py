@@ -314,6 +314,9 @@ class Catalog:
         activation = model_config_dict["fcnet_activation"]
         output_activation = model_config_dict["fcnet_activation"]
         fcnet_hiddens = model_config_dict["fcnet_hiddens"]
+        # TODO (sven): Move to a new ModelConfig object (dataclass) asap, instead of
+        #  "linking" into the old ModelConfig (dict)! This just causes confusion as to
+        #  which old keys now mean what for the new RLModules-based default models.
         encoder_latent_dim = (
             model_config_dict["encoder_latent_dim"] or fcnet_hiddens[-1]
         )
@@ -364,12 +367,18 @@ class Catalog:
                 encoder_config = CNNEncoderConfig(
                     input_dims=observation_space.shape,
                     cnn_filter_specifiers=model_config_dict["conv_filters"],
-                    cnn_activation=activation,
+                    cnn_activation=model_config_dict["conv_activation"],
                     cnn_use_layernorm=model_config_dict.get(
                         "conv_use_layernorm", False
                     ),
                     output_dims=[encoder_latent_dim],
-                    output_activation=output_activation,
+                    # TODO (sven): Setting this to None here helps with the existing
+                    #  APPO Pong benchmark (actually, leaving this at default=tanh does
+                    #  NOT learn at all!).
+                    #  We need to remove the last Dense layer from CNNEncoder in general
+                    #  AND establish proper ModelConfig objects (instead of hacking
+                    #  everything with the old default model config dict).
+                    output_activation=None,
                 )
             # input_space is a 2D Box
             elif (

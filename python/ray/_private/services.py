@@ -1084,7 +1084,9 @@ def start_api_server(
             no redirection should happen, then this should be None.
 
     Returns:
-        ProcessInfo for the process that was started.
+        A tuple of :
+            - Dashboard URL if dashboard enabled and started.
+            - ProcessInfo for the process that was started.
     """
     try:
         # Make sure port is available.

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI
-class AggregateFn(object):
+class AggregateFn:
     def __init__(
         self,
         init: Callable[[KeyType], AggType],
@@ -58,7 +58,7 @@ class AggregateFn(object):
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
             name: The name of the aggregation. This will be used as the output
-                column name in the case of Arrow datastream.
+                column name in the case of Arrow dataset.
         """
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None

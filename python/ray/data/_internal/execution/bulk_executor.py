@@ -9,12 +9,12 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     PhysicalOperator,
 )
-from ray.data._internal.datastream_logger import DatastreamLogger
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatastreamStats
+from ray.data._internal.stats import DatasetStats
 
-logger = DatastreamLogger(__name__)
+logger = DatasetLogger(__name__)
 
 
 class BulkExecutor(Executor):
@@ -28,11 +28,11 @@ class BulkExecutor(Executor):
         # Bulk executor always preserves order.
         options.preserve_order = True
         super().__init__(options)
-        self._stats: Optional[DatastreamStats] = DatastreamStats(stages={}, parent=None)
+        self._stats: Optional[DatasetStats] = DatasetStats(stages={}, parent=None)
         self._executed = False
 
     def execute(
-        self, dag: PhysicalOperator, initial_stats: Optional[DatastreamStats] = None
+        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
     ) -> Iterator[RefBundle]:
         """Synchronously executes the DAG via bottom-up recursive traversal."""
 
@@ -84,7 +84,7 @@ class BulkExecutor(Executor):
 
         return OutputIterator(execute_recursive(dag))
 
-    def get_stats(self) -> DatastreamStats:
+    def get_stats(self) -> DatasetStats:
         return self._stats
 
 

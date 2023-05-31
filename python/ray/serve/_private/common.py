@@ -325,6 +325,7 @@ class RunningReplicaInfo:
     actor_handle: ActorHandle
     max_concurrent_queries: int
     is_cross_language: bool = False
+    multiplexed_model_ids: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -341,6 +342,7 @@ class RunningReplicaInfo:
                     str(self.actor_handle._actor_id),
                     str(self.max_concurrent_queries),
                     str(self.is_cross_language),
+                    str(self.multiplexed_model_ids),
                 ]
             )
         )
@@ -365,3 +367,22 @@ class ServeDeployMode(str, Enum):
     UNSET = "UNSET"
     SINGLE_APP = "SINGLE_APP"
     MULTI_APP = "MULTI_APP"
+
+
+# Keep in sync with ServeHTTPProxyStatus in
+# python/ray/dashboard/client/src/type/serve.ts
+class HTTPProxyStatus(str, Enum):
+    STARTING = "STARTING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
+
+
+class ServeComponentType(str, Enum):
+    DEPLOYMENT = "deployment"
+
+
+@dataclass
+class MultiplexedReplicaInfo:
+    deployment_name: str
+    replica_tag: str
+    model_ids: List[str]

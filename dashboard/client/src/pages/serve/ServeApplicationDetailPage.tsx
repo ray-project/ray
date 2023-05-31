@@ -36,6 +36,10 @@ const useStyles = makeStyles((theme) =>
     helpInfo: {
       marginLeft: theme.spacing(1),
     },
+    statusMessage: {
+      display: "inline-flex",
+      maxWidth: "100%",
+    },
   }),
 );
 
@@ -91,7 +95,19 @@ export const ServeApplicationDetailPage = () => {
           {
             label: "Status",
             content: (
-              <StatusChip type="serveApplication" status={application.status} />
+              <React.Fragment>
+                <StatusChip
+                  type="serveApplication"
+                  status={application.status}
+                />{" "}
+                {application.message && (
+                  <CodeDialogButton
+                    title="Status details"
+                    code={application.message}
+                    buttonText="View details"
+                  />
+                )}
+              </React.Fragment>
             ),
           },
           {
@@ -111,7 +127,7 @@ export const ServeApplicationDetailPage = () => {
           },
           {
             label: "Application config",
-            content: (
+            content: application.deployed_app_config ? (
               <CodeDialogButton
                 title={
                   application.name
@@ -120,6 +136,8 @@ export const ServeApplicationDetailPage = () => {
                 }
                 code={application.deployed_app_config}
               />
+            ) : (
+              <Typography>-</Typography>
             ),
           },
           {
@@ -137,6 +155,12 @@ export const ServeApplicationDetailPage = () => {
                 startTime={application.last_deployed_time_s * 1000}
               />
             ),
+          },
+          {
+            label: "Import path",
+            content: {
+              value: application?.deployed_app_config?.import_path || "-",
+            },
           },
         ]}
       />

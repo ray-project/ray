@@ -1,4 +1,4 @@
-.. _writing-code-snippets:
+.. _writing-code-snippets_ref:
 
 ==========================
 How to write code snippets
@@ -132,9 +132,11 @@ want to print intermediate objects, use *doctest-style*. ::
         >>> import ray
         >>> ds = ray.data.range(100)
         >>> ds.schema()
-        <class 'int'>
+        Column  Type
+        ------  ----
+        id      int64
         >>> ds.take(5)
-        [0, 1, 2, 3, 4]
+        [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
 When to use *code-block-style*
 ==============================
@@ -219,41 +221,72 @@ If your Python code is non-deterministic, or if your output is excessively long,
 Ignoring *doctest-style* outputs
 ================================
 
-To ignore parts of a *doctest-style* output, append `# doctest: +ELLIPSIS` to your Python code and replace problematic sections with ellipsis. ::
+To ignore parts of a *doctest-style* output, add `:options: +ELLIPSIS` to
+the `doctest` directive and replace problematic sections with ellipsis. ::
 
     .. doctest::
+        :options: +ELLIPSIS
 
         >>> import ray
-        >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")  # doctest: +ELLIPSIS
-        Datastream(
-            num_blocks=...,
-            num_rows=...,
-            schema={image: numpy.ndarray(shape=..., dtype=uint8)}
+        >>> ray.data.read_images("example://image-datasets/simple")
+        Dataset(
+           num_blocks=...,
+           num_rows=...,
+           schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
         )
+
+If you omit the `doctest` directive, append `# doctest: +ELLIPSIS` to your code instead.
+
+    >>> import ray
+    >>> ray.data.read_images("example://image-datasets/simple")  # doctest: +ELLIPSIS
+    Dataset(
+       num_blocks=...,
+       num_rows=...,
+       schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
+    )
 
 To ignore an output altogether, write a *code-block-style* snippet. Don't use `# doctest: +SKIP`.
 
 Ignoring *code-block-style* outputs
 ===================================
 
-To ignore parts of a *code-block-style* output, add `:options: +ELLIPSIS` to the `testoutput` block and replace problematic sections with ellipsis. ::
+If parts of your output are long or non-deterministic, add `:options: +ELLIPSIS` to
+the `testoutput` directive and replace problematic sections with ellipsis. ::
 
     .. testcode::
 
         import ray
-        ds = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+        ds = ray.data.read_images("example://image-datasets/simple")
         print(ds)
 
     .. testoutput::
         :options: +ELLIPSIS
 
-        Datastream(
-            num_blocks=...,
-            num_rows=...,
-            schema={image: numpy.ndarray(shape=..., dtype=uint8)}
+        Dataset(
+           num_blocks=...,
+           num_rows=...,
+           schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
         )
 
-To ignore an output altogether, replace the output with a single elipsis. ::
+If your output is nondeterministic and you want to display a sample output, add
+`:options: +SKIP`. ::
+
+    .. testcode::
+
+        import random
+        print(random.random())
+
+    .. testoutput::
+        :options: +SKIP
+
+        0.969461416250246
+
+If your output is hard to test and you don't want to display a sample output, add
+`:options: +ELLIPSIS` and `:hide:`. ::
+
+    .. testcode::
+
+        print("This output is hidden and untested")
 
     .. testoutput::
         :hide:

@@ -6,7 +6,8 @@ import warnings
 from packaging import version
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
     Domain,

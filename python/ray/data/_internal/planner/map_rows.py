@@ -30,7 +30,7 @@ def generate_map_rows_fn() -> Callable[
                     raise StrictModeError(
                         f"Error validating {_truncated_repr(item)}: "
                         "Standalone Python objects are not "
-                        "allowed in strict mode. To return Python objects from map(), "
+                        "allowed in Ray 2.5. To return Python objects from map(), "
                         "wrap them in a dict, e.g., "
                         "return `{'item': item}` instead of just `item`."
                     )

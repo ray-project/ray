@@ -35,27 +35,18 @@ from typing import (
     List,
 )
 
-import grpc
-
 # Import psutil after ray so the packaged version is used.
 import psutil
 from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
-from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
-
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
 
 
 pwd = None
@@ -79,6 +70,7 @@ _PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
+_CALLED_FREQ_LOCK = threading.Lock()
 
 
 def get_user_temp_dir():
@@ -182,27 +174,6 @@ def push_error_to_driver(
     worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
-def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct an ErrorTableData object.
-
-    Args:
-        job_id: The ID of the job that the error should go to. If this is
-            nil, then the error will go to all drivers.
-        error_type: The type of the error.
-        message: The error message.
-        timestamp: The time of the error.
-
-    Returns:
-        The ErrorTableData object.
-    """
-    data = ErrorTableData()
-    data.job_id = job_id.binary()
-    data.type = error_type
-    data.error_message = message
-    data.timestamp = timestamp
-    return data
-
-
 def publish_error_to_driver(
     error_type: str,
     message: str,
@@ -228,11 +199,12 @@ def publish_error_to_driver(
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    error_data = construct_error_message(job_id, error_type, message, time.time())
     try:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data, num_retries)
+        gcs_publisher.publish_error(
+            job_id.hex().encode(), error_type, message, job_id, num_retries
+        )
     except Exception:
-        logger.exception(f"Failed to publish error {error_data}")
+        logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 
 
 def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
@@ -1322,6 +1294,15 @@ def init_grpc_channel(
     options: Optional[Sequence[Tuple[str, Any]]] = None,
     asynchronous: bool = False,
 ):
+    import grpc
+
+    try:
+        from grpc import aio as aiogrpc
+    except ImportError:
+        from grpc.experimental import aio as aiogrpc
+
+    from ray._private.tls_utils import load_certs_from_env
+
     grpc_module = aiogrpc if asynchronous else grpc
 
     options = options or []
@@ -1376,8 +1357,8 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
             result = gcs_client.internal_kv_keys(prefix, namespace)
         except Exception as e:
             if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
-                grpc.StatusCode.UNAVAILABLE.value[0],
-                grpc.StatusCode.UNKNOWN.value[0],
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1410,8 +1391,8 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
             result = gcs_client.internal_kv_get(key, namespace)
         except Exception as e:
             if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
-                grpc.StatusCode.UNAVAILABLE.value[0],
-                grpc.StatusCode.UNKNOWN.value[0],
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1468,8 +1449,8 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
             )
         except ray.exceptions.RpcError as e:
             if e.rpc_code in (
-                grpc.StatusCode.UNAVAILABLE.value[0],
-                grpc.StatusCode.UNKNOWN.value[0],
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1635,7 +1616,7 @@ def split_address(address: str) -> Tuple[str, str]:
 
     Examples:
         >>> split_address("ray://my_cluster")
-        ("ray", "my_cluster")
+        ('ray', 'my_cluster')
     """
     if "://" not in address:
         raise ValueError("Address must contain '://'")

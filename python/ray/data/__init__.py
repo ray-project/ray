@@ -1,12 +1,11 @@
 # Short term workaround for https://github.com/ray-project/ray/issues/32435
-# Datastream has a hard dependency on pandas, so it doesn't need to be delayed.
+# Dataset has a hard dependency on pandas, so it doesn't need to be delayed.
 import pandas  # noqa
 
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
-from ray.data.dataset import Dataset
-from ray.data.datastream import Datastream, Schema
+from ray.data.dataset import Dataset, Schema
 from ray.data.context import DatasetContext, DataContext
 from ray.data.iterator import DatasetIterator, DataIterator
 from ray.data.dataset_pipeline import DatasetPipeline
@@ -28,7 +27,6 @@ from ray.data.read_api import (  # noqa: F401
     from_tf,
     from_torch,
     range,
-    range_arrow,
     range_table,
     range_tensor,
     read_binary_files,
@@ -54,8 +52,7 @@ _cached_cls = None
 
 __all__ = [
     "ActorPoolStrategy",
-    "Datastream",
-    "Dataset",  # Backwards compatibility alias.
+    "Dataset",
     "DataContext",
     "DatasetContext",  # Backwards compatibility alias.
     "DataIterator",

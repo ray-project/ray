@@ -41,7 +41,7 @@ ModuleID = str
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
 RLMODULE_METADATA_SPEC_CLASS_KEY = "module_spec_class"
 RLMODULE_METADATA_SPEC_KEY = "module_spec_dict"
-RLMODULE_STATE_DIR_NAME = "module_state_path"
+RLMODULE_STATE_DIR_NAME = "module_state_dir"
 RLMODULE_METADATA_RAY_VERSION_KEY = "ray_version"
 RLMODULE_METADATA_RAY_COMMIT_HASH_KEY = "ray_commit_hash"
 RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
@@ -50,7 +50,7 @@ RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
 @ExperimentalAPI
 @dataclass
 class SingleAgentRLModuleSpec:
-    """A utility spec class to make it constructing RLModules (in single-agent case) easier.
+    """Utility spec class to make constructing RLModules (in single-agent case) easier.
 
     Args:
         module_class: The RLModule class to use.
@@ -61,6 +61,8 @@ class SingleAgentRLModuleSpec:
         action_space: The action space of the RLModule.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
+        load_state_path: The path to the module state to load from. NOTE: This must be
+            an absolute path.
     """
 
     module_class: Optional[Type["RLModule"]] = None
@@ -68,6 +70,7 @@ class SingleAgentRLModuleSpec:
     action_space: Optional[gym.Space] = None
     model_config_dict: Optional[Mapping[str, Any]] = None
     catalog_class: Optional[Type["Catalog"]] = None
+    load_state_path: Optional[str] = None
 
     def get_rl_module_config(self) -> "RLModuleConfig":
         """Returns the RLModule config for this spec."""
@@ -90,7 +93,8 @@ class SingleAgentRLModuleSpec:
             raise ValueError("Model config is not set.")
 
         module_config = self.get_rl_module_config()
-        return self.module_class(module_config)
+        module = self.module_class(module_config)
+        return module
 
     @classmethod
     def from_module(cls, module: "RLModule") -> "SingleAgentRLModuleSpec":
@@ -128,13 +132,14 @@ class SingleAgentRLModuleSpec:
         model_config_dict = module_config.model_config_dict
         catalog_class = module_config.catalog_class
 
-        return SingleAgentRLModuleSpec(
+        spec = SingleAgentRLModuleSpec(
             module_class=module_class,
             observation_space=observation_space,
             action_space=action_space,
             model_config_dict=model_config_dict,
             catalog_class=catalog_class,
         )
+        return spec
 
     def update(self, other) -> None:
         """Updates this spec with the given other spec. Works like dict.update()."""
@@ -148,6 +153,7 @@ class SingleAgentRLModuleSpec:
         self.action_space = other.action_space or self.action_space
         self.model_config_dict = other.model_config_dict or self.model_config_dict
         self.catalog_class = other.catalog_class or self.catalog_class
+        self.load_state_path = other.load_state_path or self.load_state_path
 
 
 @ExperimentalAPI
@@ -328,6 +334,49 @@ class RLModule(abc.ABC):
         therefore, the subclass should call super.__init__() in its constructor. This
         abstraction can be used to create any component that your RLModule needs.
         """
+        pass
+
+    def get_train_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for training.
+
+        This class is used to create action distributions from outputs of the
+        forward_train method. If the case that no action distribution class is needed,
+        this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more detail.
+        """
+        raise NotImplementedError
+
+    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for exploration.
+
+        This class is used to create action distributions from outputs of the
+        forward_exploration method. If the case that no action distribution class is
+        needed, this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more detail.
+        """
+        raise NotImplementedError
+
+    def get_inference_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for inference.
+
+        This class is used to create action distributions from outputs of the forward
+        inference method. If the case that no action distribution class is needed,
+        this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation for `Distribution`
+        for more detail.
+        """
+        raise NotImplementedError
 
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
@@ -381,8 +430,10 @@ class RLModule(abc.ABC):
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
-        """Forward-pass during evaluation, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_inference method.
+        """Forward-pass during evaluation, called from the sampler.
+
+        This method should not be overriden to implement a custom forward inference
+        method. Instead, override the _forward_inference method.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -404,8 +455,10 @@ class RLModule(abc.ABC):
     def forward_exploration(
         self, batch: SampleBatchType, **kwargs
     ) -> Mapping[str, Any]:
-        """Forward-pass during exploration, called from the sampler. This method should
-        not be overriden. Instead, override the _forward_exploration method.
+        """Forward-pass during exploration, called from the sampler.
+
+        This method should not be overriden to implement a custom forward exploration
+        method. Instead, override the _forward_exploration method.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -451,20 +504,20 @@ class RLModule(abc.ABC):
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
 
-    def save_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Saves the weights of this RLModule to path.
+    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
+        """Saves the weights of this RLModule to the directory dir.
 
         Args:
-            path: The file path to save the checkpoint to.
+            dir: The directory to save the checkpoint to.
 
         """
         raise NotImplementedError
 
-    def load_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Loads the weights of an RLModule from path.
+    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
+        """Loads the weights of an RLModule from the directory dir.
 
         Args:
-            path: The directory to load the checkpoint from.
+            dir: The directory to load the checkpoint from.
         """
         raise NotImplementedError
 
@@ -574,7 +627,7 @@ class RLModule(abc.ABC):
         path.mkdir(parents=True, exist_ok=True)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
         module_state_dir.mkdir(parents=True, exist_ok=True)
-        self.save_state(module_state_dir / self._module_state_file_name())
+        self.save_state(module_state_dir)
         self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @classmethod
@@ -598,8 +651,7 @@ class RLModule(abc.ABC):
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         module = cls._from_metadata_file(metadata_path)
         module_state_dir = path / RLMODULE_STATE_DIR_NAME
-        state_path = module_state_dir / module._module_state_file_name()
-        module.load_state(state_path)
+        module.load_state(module_state_dir)
         return module
 
     def as_multi_agent(self) -> "MultiAgentRLModule":

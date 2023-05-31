@@ -100,6 +100,12 @@ message StreamLogRequest {
   // if keep_alive is true, this indicates how frequently to poll the
   // log file for new lines
   optional float interval = 4;
+  // Start offset to stream from in the log. None indicates to start
+  // from the beginning of the file or depending on the value of lines
+  // to tail (`lines`) if it is not -1.
+  optional int32 start_offset = 5;
+  // End offset to stream from in the log. None indicates end of file.
+  optional int32 end_offset = 6;
 }
 
 message StreamLogReply {

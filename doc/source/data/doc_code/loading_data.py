@@ -1,9 +1,9 @@
 # flake8: noqa
 
 # fmt: off
-# __creating_datastreams_import_begin__
+# __creating_datasets_import_begin__
 import ray
-# __creating_datastreams_import_end__
+# __creating_datasets_import_end__
 # fmt: on
 
 # For tfrecords
@@ -11,9 +11,9 @@ ray.init(runtime_env={"pip": ["tensorflow_metadata"]})
 
 # fmt: off
 # __gen_synth_tabular_range_begin__
-# Create a Datastream of integers.
+# Create a Dataset of integers.
 ds = ray.data.range(10000)
-# -> Datastream(num_blocks=200, num_rows=10000, schema={id: int64})
+# -> Dataset(num_blocks=200, num_rows=10000, schema={id: int64})
 
 ds.take_batch(5)
 # -> {'id': array([0, 1, 2, 3, 4])}
@@ -21,40 +21,10 @@ ds.take_batch(5)
 # fmt: on
 
 # fmt: off
-# __gen_synth_tensor_range_begin__
-# Create a Datastream of tensors.
-ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
-# -> Datastream(
-#       num_blocks=200,
-#       num_rows=409600,
-#       schema={data: numpy.ndarray(shape=(64, 64), dtype=int64)}
-#    )
-
-ds.take_batch(5)
-# -> {'data': array(
-#       [[[0, 0, 0, ..., 0, 0, 0],
-#         [0, 0, 0, ..., 0, 0, 0],
-#         [0, 0, 0, ..., 0, 0, 0],
-#         ...,
-#         [0, 0, 0, ..., 0, 0, 0],
-#         [0, 0, 0, ..., 0, 0, 0],
-#         [0, 0, 0, ..., 0, 0, 0]],
-#        ...
-#        [[4, 4, 4, ..., 4, 4, 4],
-#         [4, 4, 4, ..., 4, 4, 4],
-#         [4, 4, 4, ..., 4, 4, 4],
-#         ...,
-#         [4, 4, 4, ..., 4, 4, 4],
-#         [4, 4, 4, ..., 4, 4, 4],
-#         [4, 4, 4, ..., 4, 4, 4]]])}
-# __gen_synth_tensor_range_end__
-# fmt: on
-
-# fmt: off
 # __from_items_begin__
-# Create a Datastream from python dicts.
+# Create a Dataset from python dicts.
 ds = ray.data.from_items([{"col1": i, "col2": str(i)} for i in range(10000)])
-# -> MaterializedDatastream(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
+# -> MaterializedDataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -67,10 +37,10 @@ ds.show(3)
 # __from_pandas_begin__
 import pandas as pd
 
-# Create a Datastream from a Pandas DataFrame.
+# Create a Dataset from a Pandas DataFrame.
 df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 ds = ray.data.from_pandas(df)
-# -> MaterializedDatastream(num_blocks=1, num_rows=10000, schema={col1: int64, col2: object})
+# -> MaterializedDataset(num_blocks=1, num_rows=10000, schema={col1: int64, col2: object})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -91,9 +61,9 @@ dfs = [
     pd.DataFrame({"col1": list(chunk), "col2": list(map(str, chunk))})
     for chunk in chunks
 ]
-# Create a Datastream from multiple Pandas DataFrames.
+# Create a Dataset from multiple Pandas DataFrames.
 ds = ray.data.from_pandas(dfs)
-# -> MaterializedDatastream(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
+# -> MaterializedDataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -106,11 +76,11 @@ ds.show(3)
 # __from_numpy_begin__
 import numpy as np
 
-# Create a Datastream from a 3D NumPy ndarray.
+# Create a Dataset from a 3D NumPy ndarray.
 arr = np.ones((3, 4, 4))
 # The outer dimension is treated as the row dimension.
 ds = ray.data.from_numpy(arr)
-# -> MaterializedDatastream(
+# -> MaterializedDataset(
 #        num_blocks=1,
 #        num_rows=3,
 #        schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}
@@ -131,7 +101,7 @@ ds.show(2)
 # fmt: off
 # __read_images_begin__
 ds = ray.data.read_images("example://image-datasets/simple")
-# -> Datastream(num_blocks=3, num_rows=3, 
+# -> Dataset(num_blocks=3, num_rows=3,
 #            schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
 
 ds.take(1)
@@ -143,11 +113,11 @@ ds.take(1)
 # __from_numpy_mult_begin__
 import numpy as np
 
-# Create a Datastream from multiple 3D NumPy ndarray.
+# Create a Dataset from multiple 3D NumPy ndarray.
 arrs = [np.random.rand(2, 4, 4) for _ in range(4)]
 # The outer dimension is treated as the row dimension.
 ds = ray.data.from_numpy(arrs)
-# -> MaterializedDatastream(
+# -> MaterializedDataset(
 #        num_blocks=4,
 #        num_rows=8,
 #        schema={data: numpy.ndarray(shape=(4, 4), dtype=double)}
@@ -169,10 +139,10 @@ ds.show(2)
 # __from_arrow_begin__
 import pyarrow as pa
 
-# Create a Datastream from an Arrow Table.
+# Create a Dataset from an Arrow Table.
 t = pa.table({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 ds = ray.data.from_arrow(t)
-# -> MaterializedDatastream(num_blocks=1, num_rows=10000, schema={col1: int64, col2: string})
+# -> MaterializedDataset(num_blocks=1, num_rows=10000, schema={col1: int64, col2: string})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -193,9 +163,9 @@ ts = [
     pa.table({"col1": list(chunk), "col2": list(map(str, chunk))})
     for chunk in chunks
 ]
-# Create a Datastream from multiple Arrow Tables.
+# Create a Dataset from multiple Arrow Tables.
 ds = ray.data.from_arrow(ts)
-# -> MaterializedDatastream(num_blocks=10, num_rows=10000, schema={col1: int64, col2: string})
+# -> MaterializedDataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: string})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -211,9 +181,9 @@ import dask.dataframe as dd
 
 df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 ddf = dd.from_pandas(df, npartitions=4)
-# Create a Datastream from a Dask DataFrame.
+# Create a Dataset from a Dask DataFrame.
 ds = ray.data.from_dask(ddf)
-# -> MaterializedDatastream(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
+# -> MaterializedDataset(num_blocks=10, num_rows=10000, schema={col1: int64, col2: object})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -228,9 +198,9 @@ import modin.pandas as md
 
 df = pd.DataFrame({"col1": list(range(10000)), "col2": list(map(str, range(10000)))})
 mdf = md.DataFrame(df)
-# Create a Datastream from a Modin DataFrame.
+# Create a Dataset from a Modin DataFrame.
 ds = ray.data.from_modin(mdf)
-# -> MaterializedDatastream(num_blocks=8, num_rows=10000, schema={col1: int64, col2: object})
+# -> MaterializedDataset(num_blocks=8, num_rows=10000, schema={col1: int64, col2: object})
 
 ds.show(3)
 # -> {'col1': 0, 'col2': '0'}
@@ -241,9 +211,9 @@ ds.show(3)
 
 # fmt: off
 # __read_parquet_begin__
-# Create a Datastream by reading a Parquet file.
+# Create a Dataset by reading a Parquet file.
 ds = ray.data.read_parquet("example://iris.parquet")
-# -> Datastream(
+# -> Dataset(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -277,14 +247,14 @@ ds.show(2)
 # __read_parquet_pushdown_begin__
 import pyarrow as pa
 
-# Create a Datastream by reading a Parquet file, pushing column selection and row
+# Create a Dataset by reading a Parquet file, pushing column selection and row
 # filtering down to the file scan.
 ds = ray.data.read_parquet(
     "example://iris.parquet",
     columns=["sepal.length", "variety"],
     filter=pa.dataset.field("sepal.length") > 5.0,
 ).materialize()  # Force a full read of the file.
-# -> Datastream(num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string})
+# -> Dataset(num_blocks=1, num_rows=118, schema={sepal.length: double, variety: string})
 
 ds.show(2)
 # -> {'sepal.length': 5.1, 'variety': 'Setosa'}
@@ -294,9 +264,9 @@ ds.show(2)
 
 # fmt: off
 # __read_csv_begin__
-# Create a Datastream by reading a CSV file.
+# Create a Dataset by reading a CSV file.
 ds = ray.data.read_csv("example://iris.csv")
-# -> Datastream(
+# -> Dataset(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -328,9 +298,9 @@ ds.show(2)
 
 # fmt: off
 # __read_json_begin__
-# Create a Datastream by reading a JSON file.
+# Create a Dataset by reading a JSON file.
 ds = ray.data.read_json("example://iris.json")
-# -> Datastream(
+# -> Dataset(
 #        num_blocks=1,
 #        num_rows=150,
 #        schema={
@@ -362,9 +332,9 @@ ds.show(2)
 
 # fmt: off
 # __read_numpy_begin__
-# Create a Datastream by reading a NumPy file.
+# Create a Dataset by reading a NumPy file.
 ds = ray.data.read_numpy("example://mnist_subset.npy")
-# -> Datastream(
+# -> Dataset(
 #       num_blocks=1,
 #       num_rows=3,
 #       schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)}
@@ -378,9 +348,9 @@ ds.show(2)
 
 # fmt: off
 # __read_text_begin__
-# Create a Datastream by reading a text file.
+# Create a Dataset by reading a text file.
 ds = ray.data.read_text("example://sms_spam_collection_subset.txt")
-# -> Datastream(num_blocks=1, num_rows=10, schema={text: string})
+# -> Dataset(num_blocks=1, num_rows=10, schema={text: string})
 
 ds.show(2)
 # -> {'text': 'ham\tGo until jurong point, crazy.. Available only in bugis n great world la e buffet... Cine there got amore wat...'}
@@ -393,12 +363,12 @@ ds.show(2)
 from io import BytesIO
 import PIL.Image
 
-# Create a Datastream by reading a binary file.
+# Create a Dataset by reading a binary file.
 ds = ray.data.read_binary_files("example://mnist_subset_partitioned/0/1.png")
-# -> Datastream(num_blocks=1, num_rows=1, schema={bytes: string})
+# -> Dataset(num_blocks=1, num_rows=1, schema={bytes: string})
 
 ds = ds.map(lambda row: {"image": np.asarray(PIL.Image.open(BytesIO(row["bytes"])).convert("L"))})
-# -> Datastream(
+# -> Dataset(
 #        num_blocks=1,
 #        num_rows=1,
 #        schema={image: numpy.ndarray(shape=(28, 28), dtype=uint8)}
@@ -411,9 +381,9 @@ ds.take(1)
 
 # fmt: off
 # __read_parquet_s3_begin__
-# Create a Datastream by reading a Parquet file from S3.
+# Create a Dataset by reading a Parquet file from S3.
 ds = ray.data.read_parquet("s3://anonymous@air-example-data/ursa-labs-taxi-data/by_year/2019/01/data.parquet")
-# -> Datastream(
+# -> Dataset(
 #        num_blocks=1,
 #        num_rows=7667792,
 #        schema={
@@ -436,7 +406,7 @@ ds.show(2)
 #        'passenger_count': 1,
 #        'trip_distance': 1.5,
 #        'rate_code_id': '1',
-#        'store_and_fwd_flag': 'N', 
+#        'store_and_fwd_flag': 'N',
 #        ...,
 #    }
 #    {
@@ -446,7 +416,7 @@ ds.show(2)
 #        'passenger_count': 1,
 #        'trip_distance': 2.5999999046325684,
 #        'rate_code_id': '1',
-#        'store_and_fwd_flag': 'N', 
+#        'store_and_fwd_flag': 'N',
 #        ...,
 #    }
 # __read_parquet_s3_end__
@@ -464,9 +434,9 @@ ds = ray.data.read_csv(
 
 # fmt: off
 # __read_tfrecords_begin__
-# Create a Datastream by reading a TFRecord file.
+# Create a Dataset by reading a TFRecord file.
 ds = ray.data.read_tfrecords("example://iris.tfrecords")
-# Datastream(
+# Dataset(
 #     num_blocks=1,
 #     num_rows=150,
 #     schema={

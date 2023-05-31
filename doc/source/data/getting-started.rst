@@ -3,16 +3,10 @@
 Getting Started
 ===============
 
-Ray Data's main abstraction is a :class:`Datastream <ray.data.Datastream>`, which
-is a distributed data transformation pipeline. Datastream provides APIs for loading
+Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which
+is a distributed data transformation pipeline. Dataset provides APIs for loading
 external data into Ray in *blocks*, and it exposes APIs for streaming
 processing of these data blocks in the cluster.
-
-.. tip::
-
-    Ray Data is for processing of *finite* datasets for ML training and
-    batch inference. This is in contrast to frameworks such as Apache Flink that
-    process infinite data streams.
 
 Install Ray Data
 ----------------
@@ -26,10 +20,10 @@ To install Ray Data, run:
 To learn more about installing Ray and its libraries, read
 :ref:`Installing Ray <installation>`.
 
-Create a datastream
+Create a dataset
 -------------------
 
-Create datastreams from on-disk files, Python objects, and cloud storage services like S3.
+Create datasets from on-disk files, Python objects, and cloud storage services like S3.
 Ray Data can read from any `filesystem supported by Arrow
 <http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__.
 
@@ -45,14 +39,14 @@ Ray Data can read from any `filesystem supported by Arrow
     {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 
 
-To learn more about creating datastreams, read
+To learn more about creating datasets, read
 :ref:`Loading data <loading_data>`.
 
-Transform the datastream
+Transform the dataset
 ------------------------
 
-Apply :ref:`user-defined functions <transform_datastreams_writing_udfs>` (UDFs) to
-transform datastreams. Ray executes transformations in parallel for performance.
+Apply :ref:`user-defined functions <transform_datasets_writing_udfs>` (UDFs) to
+transform datasets. Ray executes transformations in parallel for performance.
 
 .. testcode::
 
@@ -71,7 +65,7 @@ transform datastreams. Ray executes transformations in parallel for performance.
 
 .. testoutput::
 
-    MaterializedDatastream(
+    MaterializedDataset(
        num_blocks=1,
        num_rows=150,
        schema={
@@ -84,14 +78,14 @@ transform datastreams. Ray executes transformations in parallel for performance.
        }
     )
 
-To learn more about transforming datastreams, read
+To learn more about transforming datasets, read
 :ref:`Transforming data <transforming_data>`.
 
-Consume the datastream
+Consume the dataset
 ----------------------
 
-Pass datastreams to Ray tasks or actors, and access records with methods like
-:meth:`~ray.data.Datastream.take_batch` and :meth:`~ray.data.Datastream.iter_batches`.
+Pass datasets to Ray tasks or actors, and access records with methods like
+:meth:`~ray.data.Dataset.take_batch` and :meth:`~ray.data.Dataset.iter_batches`.
 
 .. tab-set::
 
@@ -116,7 +110,7 @@ Pass datastreams to Ray tasks or actors, and access records with methods like
        .. testcode::
 
             @ray.remote
-            def consume(ds: ray.data.Datastream) -> int:
+            def consume(ds: ray.data.Dataset) -> int:
                 num_batches = 0
                 for batch in ds.iter_batches(batch_size=8):
                     num_batches += 1
@@ -140,13 +134,13 @@ Pass datastreams to Ray tasks or actors, and access records with methods like
             ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 
 
-To learn more about consuming datastreams, read
+To learn more about consuming datasets, read
 :ref:`Consuming data <consuming_data>`.
 
-Save the datastream
+Save the dataset
 -------------------
 
-Call methods like :meth:`~ray.data.Datastream.write_parquet` to save datastream contents to local
+Call methods like :meth:`~ray.data.Dataset.write_parquet` to save dataset contents to local
 or remote filesystems.
 
 .. testcode::
@@ -163,9 +157,4 @@ or remote filesystems.
     ['..._000000.parquet']
 
 
-To learn more about saving datastream contents, read :ref:`Saving data <saving_data>`.
-
-Next Steps
-----------
-
-* To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`. 
+To learn more about saving dataset contents, read :ref:`Saving data <saving_data>`.

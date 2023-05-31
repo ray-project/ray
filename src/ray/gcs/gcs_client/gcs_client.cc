@@ -128,8 +128,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
 
-  RAY_LOG(INFO) << "GcsClient connected " << options_.gcs_address_ << ":"
-                << options_.gcs_port_;
+  RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
+                 << options_.gcs_port_;
   return Status::OK();
 }
 
@@ -146,11 +146,8 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
 Status PythonGcsClient::Connect() {
-  grpc::ChannelArguments arguments;
-  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
-  channel_ = rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
+  channel_ =
+      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);

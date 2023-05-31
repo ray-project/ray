@@ -16,8 +16,6 @@ show you how achieve several tasks.
     transforming-data
     consuming-data
     batch_inference
-    data-tensor-support
-    custom-datasource
+    working-with-tensors
     data-internals
     performance-tips
-    pipelining-compute

@@ -2,15 +2,51 @@
 # isort: skip_file
 # fmt: off
 
+# __hf_super_quick_start__
+import ray
+import numpy as np
+from typing import Dict
+
+ds = ray.data.from_numpy(np.asarray(["Complete this", "for me"]))
+
+class HuggingFacePredictor:
+    def __init__(self):
+        from transformers import pipeline
+        self.model = pipeline("text-generation", model="gpt2")
+
+    def __call__(self, batch: Dict[str, np.ndarray]):
+        predictions = self.model(list(batch["data"]), max_length=20, num_return_sequences=1)
+        # `predictions` is a list of length-one lists. For example:
+        # [[{'generated_text': '...'}], ..., [{'generated_text': "..."}]]
+        batch["output"] = [sequences[0]["generated_text"] for sequences in predictions]
+        return batch
+
+scale = ray.data.ActorPoolStrategy(size=2)
+predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
+predictions.show(limit=1)
+# __hf_super_quick_end__
+
+# __hf_no_ray_start__
+import numpy as np
+from typing import Dict
+from transformers import pipeline
+
+batches = {"data": np.asarray(["Complete this", "for me"])}
+
+model = pipeline("text-generation", model="gpt2")
+
+def transform(batch: Dict[str, np.ndarray]):
+    return model(list(batch["data"]), max_length=20)
+
+results = transform(batches)
+# __hf_no_ray_end__
+
 # __hf_quickstart_load_start__
 import ray
 import numpy as np
-import pandas as pd
 from typing import Dict
 
-
-prompts = pd.DataFrame(["Complete these sentences", "for me"], columns=["text"])
-ds = ray.data.from_pandas(prompts)
+ds = ray.data.from_numpy(np.asarray(["Complete this", "for me"]))
 # __hf_quickstart_load_end__
 
 
@@ -21,16 +57,22 @@ class HuggingFacePredictor:
         self.model = pipeline("text-generation", model="gpt2")
 
     def __call__(self, batch: Dict[str, np.ndarray]):  # <2>
-        model_out = self.model(list(batch["text"]), max_length=20)
-        return pd.DataFrame({"output": model_out})
+        predictions = self.model(list(batch["data"]), max_length=20, num_return_sequences=1)
+        # `predictions` is a list of length-one lists. For example:
+        # [[{'generated_text': '...'}], ..., [{'generated_text': "..."}]]
+        batch["output"] = [sequences[0]["generated_text"] for sequences in predictions]
+        return batch
 # __hf_quickstart_model_end__
 
 
-# __hf_quickstart_prediction_start__
+# __hf_quickstart_prediction_test_start__
 hfp = HuggingFacePredictor()
 batch = ds.take_batch(10)
 test = hfp(batch)
+# __hf_quickstart_prediction_test_end__
 
+
+# __hf_quickstart_prediction_start__
 scale = ray.data.ActorPoolStrategy(size=2)
 predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
 

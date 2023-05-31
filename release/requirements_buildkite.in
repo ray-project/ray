@@ -1,6 +1,7 @@
 # Requirements to run release tests from buildkite (client dependencies will be installed separately)
 # Copy anyscale pin to requirements.txt and util.py
 anyscale
+bazel-runfiles
 boto3
 click
 freezegun

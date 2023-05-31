@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import ray
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy
-from ray.data.datastream import Dataset, MaterializedDatastream
+from ray.data.dataset import Dataset, MaterializedDataset
 
 from benchmark import Benchmark
 
@@ -22,7 +22,7 @@ def map_batches(
     is_eager_executed: Optional[bool] = False,
 ) -> Dataset:
 
-    assert isinstance(input_ds, MaterializedDatastream)
+    assert isinstance(input_ds, MaterializedDataset)
     ds = input_ds
 
     for _ in range(num_calls):
@@ -130,8 +130,13 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     ).materialize()
 
     for batch_format in batch_formats:
-        for compute in ["tasks", "actors"]:
-            test_name = f"map-batches-{batch_format}-{compute}-multi-files"
+        for compute in [None, ActorPoolStrategy(min_size=1, max_size=float("inf"))]:
+            if compute is None:
+                compute_strategy = "tasks"
+            else:
+                compute_strategy = "actors"
+            test_name = f"map-batches-{batch_format}-{compute_strategy}-multi-files"
+
             benchmark.run(
                 test_name,
                 map_batches,

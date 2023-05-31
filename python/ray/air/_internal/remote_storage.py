@@ -5,6 +5,7 @@ import sys
 import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
+import psutil
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -134,6 +135,28 @@ def is_non_local_path_uri(uri: str) -> bool:
 
 # Cache fs objects
 _cached_fs = {}
+
+
+def _get_network_mounts() -> List[str]:
+    """Get mounted network filesystems on the current node.
+
+    Network file system (NFS), server message block (SMB) and
+    common internet file system (CIFS) are all file access storage protocols,
+    used to access files on remote servers and storage servers (such as NAS storage)
+    as if they were local files.
+    """
+    partitions = psutil.disk_partitions(all=True)
+    network_fstypes = ("nfs", "smbfs", "cifs")
+    return [p.mountpoint for p in partitions if p.fstype in network_fstypes]
+
+
+def _is_network_mount(path: str) -> bool:
+    """Checks if a path is within a mounted network filesystem."""
+    resolved_path = Path(path).expanduser().resolve()
+    network_mounts = {Path(mount) for mount in _get_network_mounts()}
+
+    # Check if any of the network mounts are one of the path's parents.
+    return bool(set(resolved_path.parents).intersection(network_mounts))
 
 
 def is_local_path(path: str) -> bool:

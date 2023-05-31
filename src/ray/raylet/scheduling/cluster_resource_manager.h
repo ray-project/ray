@@ -124,6 +124,11 @@ class ClusterResourceManager {
   bool UpdateNodeNormalTaskResources(scheduling::NodeID node_id,
                                      const rpc::ResourcesData &resource_data);
 
+  /// Return if the node is tracked.
+  bool HasNode(const scheduling::NodeID &node_id) const {
+    return nodes_.count(node_id) > 0;
+  }
+
   void DebugString(std::stringstream &buffer) const;
 
   BundleLocationIndex &GetBundleLocationIndex();

@@ -7,7 +7,7 @@ import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
@@ -768,8 +768,9 @@ def test_actor_creation_task_crash(ray_start_regular):
 
     # Verify an exception is thrown.
     a = Actor.remote()
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RayActorError) as excinfo:
         ray.get(a.f.remote())
+    assert excinfo.value.actor_id == a._actor_id.hex()
 
     # Test an actor can be restarted successfully
     # afte it dies in its constructor.
@@ -1302,7 +1303,7 @@ def test_actor_gc(monkeypatch, shutdown_only):
 
         driver = """
 import ray
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 ray.init("auto")
 
 @ray.remote
