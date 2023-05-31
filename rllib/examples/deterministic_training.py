@@ -87,8 +87,14 @@ if __name__ == "__main__":
         check(results1["hist_stats"], results2["hist_stats"])
         # As well as training behavior (minibatch sequence during SGD
         # iterations).
-        check(
-            results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-            results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-        )
+        if config._enable_learner_api:
+            check(
+                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+            )
+        else:
+            check(
+                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+            )
     ray.shutdown()
