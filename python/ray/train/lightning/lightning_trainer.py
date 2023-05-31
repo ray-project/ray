@@ -238,7 +238,7 @@ class LightningTrainer(TorchTrainer):
     run ``pytorch_lightning.Trainer.fit``.
 
     Example:
-        .. testcode::
+        .. code-block:: python
 
             import torch
             import torch.nn.functional as F
@@ -325,12 +325,6 @@ class LightningTrainer(TorchTrainer):
             )
             result = trainer.fit()
             result
-
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
-
-        ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.

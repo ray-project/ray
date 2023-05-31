@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 @PublicAPI
-class AggregateFn(object):
+class AggregateFn:
     def __init__(
         self,
         init: Callable[[KeyType], AggType],
