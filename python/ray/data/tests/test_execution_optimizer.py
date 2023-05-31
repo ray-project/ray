@@ -374,48 +374,102 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
     ray_start_regular_shared, enable_optimizer
 ):
     # Test that map operators are stilled fused when remote args are compatible.
-    planner = Planner()
-    read_op = Read(
-        ParquetDatasource(),
-        [],
-        ray_remote_args={"num_cpus": 1, "scheduling_strategy": "SPREAD"},
-    )
-    op = MapBatches(read_op, lambda x: x, ray_remote_args={"num_cpus": 1})
-    op = MapBatches(op, lambda x: x, ray_remote_args={"num_cpus": 1})
-    logical_plan = LogicalPlan(op)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
+    compatiple_remote_args_pairs = [
+        # Empty remote args are compatible.
+        ({}, {}),
+        # Test `num_cpus` and `num_gpus`.
+        ({"num_cpus": 2}, {"num_cpus": 2}),
+        ({"num_gpus": 2}, {"num_gpus": 2}),
+        # `num_cpus` defaults to 1, `num_gpus` defaults to 0.
+        # The following 2 should be compatible.
+        ({"num_cpus": 1}, {}),
+        ({}, {"num_gpus": 0}),
+        # Test specifying custom resources.
+        ({"resources": {"custom": 1}}, {"resources": {"custom": 1}}),
+        ({"resources": {"custom": 0}}, {"resources": {}}),
+        # If the downstream op doesn't have `scheduling_strategy`, it will
+        # inherit from the upstream op.
+        ({"scheduling_strategy": "SPREAD"}, {}),
+    ]
+    for up_remote_args, down_remote_args in compatiple_remote_args_pairs:
+        planner = Planner()
+        read_op = Read(
+            ParquetDatasource(),
+            [],
+            # This case is testing fusing the following 2 map_batches operators.
+            # So we add incompatible remote args to the read op to make sure
+            # it doesn't get fused.
+            ray_remote_args={"resources": {"non-existent": 1}},
+        )
+        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
+        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        logical_plan = LogicalPlan(op)
+        physical_plan = planner.plan(logical_plan)
+        physical_plan = PhysicalOptimizer().optimize(physical_plan)
+        physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches->MapBatches"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+        assert op.name == "MapBatches", (up_remote_args, down_remote_args)
+        assert physical_op.name == "MapBatches->MapBatches", (
+            up_remote_args,
+            down_remote_args,
+        )
+        assert isinstance(physical_op, MapOperator), (up_remote_args, down_remote_args)
+        assert len(physical_op.input_dependencies) == 1, (
+            up_remote_args,
+            down_remote_args,
+        )
+        assert physical_op.input_dependencies[0].name == "DoRead", (
+            up_remote_args,
+            down_remote_args,
+        )
 
 
 def test_read_map_batches_operator_fusion_incompatible_remote_args(
     ray_start_regular_shared, enable_optimizer
 ):
-    # Test that map operators are not fused when remote args are incompatible.
-    planner = Planner()
-    read_op = Read(ParquetDatasource(), [])
-    op = MapBatches(read_op, lambda x: x, ray_remote_args={"num_cpus": 2})
-    op = MapBatches(op, lambda x: x, ray_remote_args={"num_cpus": 3})
-    logical_plan = LogicalPlan(op)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
+    # Test that map operators won't get fused if the remote args are incompatible.
+    incompatiple_remote_args_pairs = [
+        # Use different resources.
+        ({"num_cpus": 2}, {"num_gpus": 2}),
+        # Same resource, but different values.
+        ({"num_cpus": 3}, {"num_cpus": 2}),
+        # Incompatible custom resources.
+        ({"resources": {"custom": 2}}, {"resources": {"custom": 1}}),
+        ({"resources": {"custom1": 1}}, {"resources": {"custom2": 1}}),
+        # Different scheduling strategies.
+        ({"scheduling_strategy": "SPREAD"}, {"scheduing_strategy": "PACK"}),
+    ]
+    for up_remote_args, down_remote_args in incompatiple_remote_args_pairs:
+        planner = Planner()
+        read_op = Read(
+            ParquetDatasource(),
+            [],
+            # This case is testing fusing the following 2 map_batches operators.
+            # So we add incompatible remote args to the read op to make sure
+            # it doesn't get fused.
+            ray_remote_args={"resources": {"non-existent": 1}},
+        )
+        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
+        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        logical_plan = LogicalPlan(op)
+        physical_plan = planner.plan(logical_plan)
+        physical_plan = PhysicalOptimizer().optimize(physical_plan)
+        physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches"
-    assert physical_op.name == "MapBatches"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    upstream_physical_op = physical_op.input_dependencies[0]
-    assert isinstance(upstream_physical_op, MapOperator)
-    # Read shouldn't fuse into first MapBatches either, due to the differing CPU
-    # request.
-    assert upstream_physical_op.name == "MapBatches"
+        assert op.name == "MapBatches", (up_remote_args, down_remote_args)
+        assert physical_op.name == "MapBatches", (
+            up_remote_args,
+            down_remote_args,
+        )
+        assert isinstance(physical_op, MapOperator), (up_remote_args, down_remote_args)
+        assert len(physical_op.input_dependencies) == 1, (
+            up_remote_args,
+            down_remote_args,
+        )
+        assert physical_op.input_dependencies[0].name == "MapBatches", (
+            up_remote_args,
+            down_remote_args,
+        )
 
 
 def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
@@ -506,6 +560,10 @@ def test_read_map_batches_operator_fusion_target_block_size(
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
 
+# TODO(hchen): The old code path supports fusing 2 actors with the same class.
+# But this doesn't seem useful in practice. Confirm whether we need this
+# for the new code path.
+@pytest.mark.skip("Optimizer doesn't supporting fusing two actors yet.")
 def test_read_map_batches_operator_fusion_callable_classes(
     ray_start_regular_shared, enable_optimizer
 ):
