@@ -99,6 +99,9 @@ class AirVerbosity(IntEnum):
     DEFAULT = 1
     VERBOSE = 2
 
+    def __repr__(self):
+        return str(self.value)
+
 
 IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
@@ -106,7 +109,7 @@ IS_NOTEBOOK = ray.widgets.util.in_notebook()
 def get_air_verbosity(
     verbose: Union[int, AirVerbosity, Verbosity]
 ) -> Optional[AirVerbosity]:
-    if os.environ.get("RAY_AIR_NEW_OUTPUT", "0") == "0":
+    if os.environ.get("RAY_AIR_NEW_OUTPUT", "1") == "0":
         return None
 
     if isinstance(verbose, AirVerbosity):
@@ -482,7 +485,7 @@ def _get_dict_as_table_data(
         return upper + lower
 
 
-if sys.stdout.encoding.startswith("utf"):
+if sys.stdout and sys.stdout.encoding and sys.stdout.encoding.startswith("utf"):
     # Copied/adjusted from tabulate
     AIR_TABULATE_TABLEFMT = TableFormat(
         lineabove=Line("╭", "─", "─", "╮"),
