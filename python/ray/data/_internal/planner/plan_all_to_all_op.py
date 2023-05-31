@@ -27,7 +27,7 @@ def _plan_all_to_all_op(
     if isinstance(op, RandomizeBlocks):
         fn = generate_randomize_blocks_fn(op._seed)
     elif isinstance(op, RandomShuffle):
-        fn = generate_random_shuffle_fn(op._seed, op._num_outputs)
+        fn = generate_random_shuffle_fn(op._seed, op._num_outputs, op._ray_remote_args)
     elif isinstance(op, Repartition):
         fn = generate_repartition_fn(op._num_outputs, op._shuffle)
     elif isinstance(op, Sort):

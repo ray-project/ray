@@ -94,6 +94,9 @@ class ActorPoolMapOperator(MapOperator):
         self._inputs_done = False
         self._next_task_idx = 0
 
+    def get_init_fn(self) -> Callable[[], None]:
+        return self._init_fn
+
     def internal_queue_size(self) -> int:
         return len(self._bundle_queue)
 

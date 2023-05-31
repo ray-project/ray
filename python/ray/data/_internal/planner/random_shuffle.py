@@ -35,8 +35,12 @@ def generate_random_shuffle_fn(
         # is applied to each block before shuffling.
         map_transform_fn: Optional[MapTransformFn] = ctx.upstream_map_transform_fn
         upstream_map_fn = None
+        nonlocal ray_remote_args
         if map_transform_fn:
             upstream_map_fn = lambda block: map_transform_fn(block, ctx)  # noqa: E731
+            # If there is a fused upstream operator,
+            # also use the ray_remote_args from the fused upstream operator.
+            ray_remote_args = ctx.upstream_map_ray_remote_args
 
         shuffle_spec = ShuffleTaskSpec(
             random_shuffle=True,

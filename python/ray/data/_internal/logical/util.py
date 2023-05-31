@@ -56,6 +56,7 @@ _op_name_white_list = [
     "Aggregate",
     # N-ary
     "Zip",
+    "Union",
 ]
 
 
