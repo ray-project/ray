@@ -526,6 +526,11 @@ def run(
     for deployment in deployments:
         # Overwrite route prefix
         if route_prefix is not DEFAULT.VALUE and deployment._route_prefix is not None:
+            if route_prefix is not None and not route_prefix.startswith("/"):
+                raise ValueError(
+                    "The route_prefix must start with a forward slash ('/')"
+                )
+
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,

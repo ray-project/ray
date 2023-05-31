@@ -830,6 +830,23 @@ class TestAppBuilder:
             )
 
 
+def test_no_slash_route_prefix(serve_instance):
+    """Test serve run with no slash route_prefix.
+
+    This test ensure when serve runs with no prefix slash in route_prefix, it will throw
+    good error message.
+    """
+
+    @serve.deployment
+    def f():
+        pass
+
+    with pytest.raises(
+        ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
+    ):
+        serve.run(f.bind(), route_prefix="no_slash")
+
+
 if __name__ == "__main__":
     import sys
 
