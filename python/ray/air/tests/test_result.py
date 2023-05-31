@@ -1,11 +1,14 @@
+import os
 import torch
+import tempfile
 import pytest
 
 import ray
 from ray.air import CheckpointConfig, RunConfig, ScalingConfig, session
 from ray.air.result import Result
 from ray.train.torch import TorchCheckpoint, TorchTrainer
-from ray.train.trainer import TrainingFailedError
+from ray.train.base_trainer import TrainingFailedError
+from ray.tune import TuneConfig, Tuner
 
 
 @pytest.fixture
@@ -16,16 +19,12 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def test_result_restore(ray_start_4_cpus):
-    NUM_CHECKPOINTS = 3
-    NUM_ITERATIONS = 5
-
+def build_dummy_trainer(configs):
     def worker_loop():
-        model = torch.nn.Linear(2, 3)
-        for i in range(NUM_ITERATIONS):
+        for i in range(configs["NUM_ITERATIONS"]):
             session.report(
                 metrics={"metric_a": i, "metric_b": -i},
-                checkpoint=TorchCheckpoint.from_model(model),
+                checkpoint=TorchCheckpoint.from_dict({"iter": i}),
             )
         raise RuntimeError()
 
@@ -33,22 +32,55 @@ def test_result_restore(ray_start_4_cpus):
         train_loop_per_worker=worker_loop,
         scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
         run_config=RunConfig(
+            name=configs["EXP_NAME"],
+            storage_path=configs["STORAGE_PATH"],
             checkpoint_config=CheckpointConfig(
-                num_to_keep=NUM_CHECKPOINTS,
+                num_to_keep=configs["NUM_CHECKPOINTS"],
                 checkpoint_score_attribute="metric_a",
                 checkpoint_score_order="max",
-            )
+            ),
         ),
     )
+    return trainer
 
-    with pytest.raises(TrainingFailedError) as exc_info:
-        result = trainer.fit()
-    assert isinstance(exc_info.value.__cause__, RuntimeError)
-    local_path = result.path
 
-    # Delete the in-memory result object, then restore it
-    del result
-    result = Result.from_path(local_path)
+def build_dummy_tuner(configs):
+    return Tuner(
+        trainable=build_dummy_trainer(configs), tune_config=TuneConfig(num_samples=1)
+    )
+
+
+@pytest.mark.parametrize("mode", ["trainer", "tuner"])
+def test_result_restore(ray_start_4_cpus, tmpdir, mode):
+    NUM_ITERATIONS = 5
+    NUM_CHECKPOINTS = 3
+    storage_path = tmpdir
+    exp_name = "test_result_restore"
+
+    configs = {
+        "EXP_NAME": exp_name,
+        "STORAGE_PATH": storage_path,
+        "NUM_ITERATIONS": NUM_ITERATIONS,
+        "NUM_CHECKPOINTS": NUM_CHECKPOINTS,
+    }
+
+    if mode == "trainer":
+        trainer = build_dummy_trainer(configs)
+        with pytest.raises(TrainingFailedError):
+            trainer.fit()
+    elif mode == "tuner":
+        tuner = build_dummy_tuner(configs)
+        tuner.fit()
+
+    # Find the trial directory to restore
+    exp_dir = os.path.join(storage_path, exp_name)
+    for dirname in os.listdir(exp_dir):
+        if dirname.startswith("TorchTrainer"):
+            trial_dir = os.path.join(exp_dir, dirname)
+            break
+
+    # Restore from local path
+    result = Result.from_path(trial_dir)
 
     # Check if we restored all checkpoints
     assert result.checkpoint
@@ -56,12 +88,10 @@ def test_result_restore(ray_start_4_cpus):
 
     # Check if the checkpoints bounded with correct metrics
     best_ckpt_a = result.get_best_checkpoint(metric="metric_a", mode="max")
-    assert best_ckpt_a.id == NUM_ITERATIONS - 1
-    assert best_ckpt_a.iteration == NUM_ITERATIONS
+    assert best_ckpt_a.to_dict()["iter"] == NUM_ITERATIONS - 1
 
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
-    assert best_ckpt_b.id == NUM_ITERATIONS - NUM_CHECKPOINTS
-    assert best_ckpt_b.iteration == NUM_ITERATIONS - NUM_CHECKPOINTS + 1
+    assert best_ckpt_b.to_dict()["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
 
     # Check if we properly restored errors
     assert isinstance(result.error, RuntimeError)
