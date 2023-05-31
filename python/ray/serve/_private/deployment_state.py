@@ -474,7 +474,7 @@ class ActorReplicaWrapper:
         self._version = version
         return updating
 
-    def recover(self):
+    def recover(self, deployment_info: DeploymentInfo):
         """
         Recover states in DeploymentReplica instance by fetching running actor
         status
@@ -487,6 +487,9 @@ class ActorReplicaWrapper:
 
         # Re-fetch initialization proof
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+        self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+            deployment_info.deployment_config.to_proto_bytes()
+        )
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
@@ -829,12 +832,12 @@ class DeploymentReplica(VersionedReplica):
         """
         return self._actor.reconfigure(version)
 
-    def recover(self):
+    def recover(self, deployment_info: DeploymentInfo):
         """
         Recover states in DeploymentReplica instance by fetching running actor
         status
         """
-        self._actor.recover()
+        self._actor.recover(deployment_info)
         self._start_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
 
@@ -1167,7 +1170,7 @@ class DeploymentState:
                 replica_name.deployment_tag,
                 None,
             )
-            new_deployment_replica.recover()
+            new_deployment_replica.recover(self._target_state.info)
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
             logger.debug(
                 f"RECOVERING replica: {new_deployment_replica.replica_tag}, "

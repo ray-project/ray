@@ -311,7 +311,8 @@ def create_replica_wrapper(name: str):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             try:
-                await self._initialize_replica()
+                if not self._init_finish_event.is_set():
+                    await self._initialize_replica()
                 metadata = await self.reconfigure(deployment_config)
 
                 # A new replica should not be considered healthy until it passes an
