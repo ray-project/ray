@@ -40,10 +40,15 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
     """
 
     @override(TfLearner)
-    def configure_optimizer_for_module(
+    def configure_optimizers_for_module(
         self, module_id: ModuleID, hps: DreamerV3LearnerHyperparameters
     ):
-        """Create the 3 optimizers for Dreamer learning: world_model, actor, critic."""
+        """Create the 3 optimizers for Dreamer learning: world_model, actor, critic.
+
+        The learning rates used are described in [1] and the epsilon values used here
+        - albeit probably not that important - are used by the author's own
+        implementation.
+        """
 
         dreamerv3_module = self._module[module_id]
 
@@ -95,7 +100,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         """Performs gradient clipping on the 3 module components' computed grads.
 
         Note that different grad global-norm clip values are used for the 3
-        module components (world model, actor, and critic).
+        module components: world model, actor, and critic.
         """
         for optimizer_name, optimizer in self.get_optimizers_for_module(
             module_id=module_id

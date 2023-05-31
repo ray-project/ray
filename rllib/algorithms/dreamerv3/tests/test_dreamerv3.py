@@ -21,6 +21,7 @@ class TestDreamerV3(unittest.TestCase):
         config = (
             dreamerv3.DreamerV3Config()
             .training(
+                model_dimension="nano",  # Use a tiny model for testing.
                 # TODO (sven): Fix having to provide this.
                 #  Should be compiled by AlgorithmConfig?
                 model={

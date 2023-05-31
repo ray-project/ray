@@ -716,8 +716,6 @@ class Algorithm(Trainable):
             self.learner_group = learner_group_config.build()
 
             # check if there are modules to load from the module_spec
-            marl_module_ckpt_dir = None
-            modules_to_load = None
             rl_module_ckpt_dirs = {}
             marl_module_ckpt_dir = module_spec.load_state_path
             modules_to_load = module_spec.modules_to_load
@@ -732,7 +730,7 @@ class Algorithm(Trainable):
                 )
             # sync the weights from the learner group to the rollout workers
             weights = self.learner_group.get_weights()
-            local_worker.set_weights(weights)
+            self.workers.local_worker().set_weights(weights)
             self.workers.sync_weights()
 
         # Run `on_algorithm_init` callback after initialization is done.
