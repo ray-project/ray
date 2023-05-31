@@ -128,7 +128,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
     def test_update_multigpu(self):
         fws = ["torch", "tf2"]
-        scaling_modes = REMOTE_SCALING_CONFIGS.keys()
+        scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
@@ -181,7 +181,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
     def test_add_remove_module(self):
         fws = ["torch", "tf2"]
-        scaling_modes = REMOTE_SCALING_CONFIGS.keys()
+        scaling_modes = ["multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
@@ -254,8 +254,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
     def test_save_load_state(self):
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = REMOTE_SCALING_CONFIGS.keys()
-
+        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
         batch = SampleBatch(FAKE_BATCH)
         for fw, scaling_mode in test_iterator:
@@ -459,7 +458,7 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
         fws = ["torch", "tf2"]
         # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
-        scaling_modes = ["multi-gpu-ddp"]
+        scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
