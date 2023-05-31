@@ -276,7 +276,7 @@ class WorkerSet:
             A dict mapping from policy ids to spaces.
         """
         # Get ID of the first remote worker.
-        worker_id = next(iter(self.__worker_manager.actors().keys()))
+        worker_id = self.__worker_manager.actor_ids()[0]
 
         # Try to figure out spaces from the first remote worker.
         remote_spaces = self.foreach_worker(
@@ -726,7 +726,7 @@ class WorkerSet:
             local_result = [func(0, self.local_worker())]
 
         if not remote_worker_ids:
-            remote_worker_ids = list(self.__worker_manager.actors().keys())
+            remote_worker_ids = self.__worker_manager.actor_ids()
 
         funcs = [functools.partial(func, i) for i in remote_worker_ids]
 
@@ -977,12 +977,9 @@ class WorkerSet:
     @property
     @Deprecated(
         old="_remote_workers",
-        help=(
-            "Accessing remote workers directly through "
-            "_remote_workers is strongly discouraged. "
-            "Please try to use one of the foreach accessors "
-            "that is fault tolerant. "
-        ),
+        new="Use either the `foreach_worker()`, `foreach_worker_with_id()`, or "
+            "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
+            "tolerance.",
         error=False,
     )
     def _remote_workers(self) -> List[ActorHandle]:
@@ -990,12 +987,9 @@ class WorkerSet:
 
     @Deprecated(
         old="remote_workers()",
-        help=(
-            "Accessing the list of remote workers directly through "
-            "remote_workers() is strongly discouraged. "
-            "Please try to use one of the foreach accessors "
-            "that is fault tolerant. "
-        ),
+        new="Use either the `foreach_worker()`, `foreach_worker_with_id()`, or "
+            "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
+            "tolerance.",
         error=False,
     )
     def remote_workers(self) -> List[ActorHandle]:
