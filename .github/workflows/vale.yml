@@ -12,3 +12,4 @@ jobs:
           fail_on_error: true
           # Error on introduced changes only.
           filter_mode: added
+          level: warning

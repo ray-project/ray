@@ -18,7 +18,7 @@ There are two main types of supported transforms:
 
 * One-to-one: each input block will contribute to only one output
   block, such as :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`.
-* All-to-all: input blocks can contribute to multiple output blocks,
+* All-to-all: input blocks will contribute to multiple output blocks,
   such as :meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>`.
 
 .. list-table:: Common Ray Data transforms.
@@ -225,7 +225,7 @@ globally shuffle the order of data records.
     >>> dataset.random_shuffle().take_batch()  # doctest: +SKIP
     {'id': array([7, 0, 9, 3, 5, 1, 4, 2, 8, 6])}
 
-For reduced overhead during training ingest, use local shuffles. Read 
+For reduced overhead during training ingest, use local shuffles. Read
 :ref:`Shuffling Data <air-shuffle>` in the AIR user guide to learn more.
 
 .. _data-groupbys:
