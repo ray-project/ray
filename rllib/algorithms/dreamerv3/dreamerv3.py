@@ -25,12 +25,9 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
-    summarize_actor_train_results,
-    summarize_critic_train_results,
     summarize_dreamed_trajectory,
     summarize_forward_train_outs_vs_samples,
     summarize_sampling_and_replay_buffer,
-    summarize_world_model_train_results,
 )
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -126,9 +123,11 @@ class DreamerV3Config(AlgorithmConfig):
         self.actor_grad_clip_by_global_norm = 100.0
         self.disagree_grad_clip_by_global_norm = 100.0
 
+        # Reporting.
         self.summary_frequency_train_steps = 20
-        self.summary_include_histograms = False
-        self.summary_include_images = False
+        self.summarize_individual_batch_item_stats = False
+        self.summarize_dream_data = False
+        self.summarize_images_and_videos = False
         self.gc_frequency_train_steps = 100
 
         # Override some of AlgorithmConfig's default values with DreamerV3-specific
@@ -187,8 +186,6 @@ class DreamerV3Config(AlgorithmConfig):
                 summary data (e.g. TensorBoard or WandB)? Note that this only affects
                 the more debug-relevant information and basic stats, such as total loss,
                 etc.. are logged at each training step.
-            summary_include_histograms: Whether to summarize histograms data as well.
-            summary_include_images: Whether to summarize image/video data as well.
             gc_frequency_train_steps: Every how many training steps do we collect
                 garbage?
             batch_size_B: The batch size (B) interpreted as number of rows (each of
@@ -283,6 +280,44 @@ class DreamerV3Config(AlgorithmConfig):
         return self
 
     @override(AlgorithmConfig)
+    def reporting(
+        self,
+        *,
+        summarize_individual_batch_item_stats: Optional[bool] = NotProvided,
+        summarize_dream_data: Optional[bool] = NotProvided,
+        summarize_images_and_videos: Optional[bool] = NotProvided,
+        **kwargs,
+    ):
+        """Sets the reporting related configuration.
+
+        Args:
+            summarize_individual_batch_item_stats: Whether to summarize also individual
+                batch items' loss and other stats. If True, will not only provide the
+                mean values, e.g. CRITIC_L_total, but also the individual values on
+                both batch and time axes, e.g. CRITIC_L_total_B_T.
+            summarize_dream_data:  Whether to summarize the dreamed trajectory data.
+                If True, will still slice the entire dream data down to the shape
+                (H, B, t=0, ...), where H is the horizon and B is the batch size. The
+                original time axis will only be represented by the first timestep
+                to not make this data too large to handle.
+            summarize_images_and_videos: Whether to summarize any image/video data.
+            **kwargs:
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        super().reporting(**kwargs)
+
+        if summarize_individual_batch_item_stats is not NotProvided:
+            self.summarize_individual_batch_item_stats = summarize_individual_batch_item_stats
+        if summarize_dream_data is not NotProvided:
+            self.summarize_dream_data = summarize_dream_data
+        if summarize_images_and_videos is not NotProvided:
+            self.summarize_images_and_videos = summarize_images_and_videos
+
+        return self
+
+    @override(AlgorithmConfig)
     def validate(self) -> None:
         # Call the super class' validation method first.
         super().validate()
@@ -336,6 +371,11 @@ class DreamerV3Config(AlgorithmConfig):
             ),
             actor_grad_clip_by_global_norm=self.actor_grad_clip_by_global_norm,
             critic_grad_clip_by_global_norm=self.critic_grad_clip_by_global_norm,
+            summarize_individual_batch_item_stats=(
+                self.summarize_individual_batch_item_stats
+            ),
+            summarize_dream_data=self.summarize_dream_data,
+            summarize_images_and_videos=self.summarize_images_and_videos,
             **dataclasses.asdict(base_hps),
         )
 
@@ -375,6 +415,10 @@ class DreamerV3(Algorithm):
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
+
+        # Summarize RLModule once here.
+        if self.config.framework_str == "tf2":
+            self.learner_group._learner.module.summary(expand_nested=True)  # TODO: use local worker instead of learner group's local Learner
 
         # The vectorized gymnasium EnvRunner to collect samples of shape (B, T, ...).
         # self.env_runner = EnvRunner(model=None, config=self.config)
@@ -429,20 +473,13 @@ class DreamerV3(Algorithm):
 
             ts_in_buffer = self.replay_buffer.get_num_timesteps()
             if (
-                # Got to have more timesteps than warm up setting.
-                # ts_in_buffer > warm_up_timesteps
                 # More timesteps than BxT.
-                # and
                 ts_in_buffer >= self.config.batch_size_B * self.config.batch_length_T
                 # And enough timesteps for the next train batch to not exceed
                 # the training_ratio.
                 and self._counters[NUM_ENV_STEPS_TRAINED]
                 / self._counters[NUM_ENV_STEPS_SAMPLED]
                 < self.config.training_ratio
-                ## But also at least as many episodes as the batch size B.
-                ## Actually: This is not useful for longer episode envs, such as Atari.
-                ## Too much initial data goes into the buffer, then.
-                # and episodes_in_buffer >= batch_size_B
             ):
                 # Summarize environment interaction and buffer data.
                 summarize_sampling_and_replay_buffer(
@@ -484,7 +521,7 @@ class DreamerV3(Algorithm):
             # TODO (sven): DreamerV3 is single-agent only.
             train_results = self.learner_group.update(
                 SampleBatch(sample).as_multi_agent(),
-                #reduce_fn=_reduce_dreamerv3_results,
+                reduce_fn=None,#_reduce_dreamerv3_results,
             )
             train_results = train_results[DEFAULT_POLICY_ID]["learner_stats"]
 
@@ -503,32 +540,9 @@ class DreamerV3(Algorithm):
                         env_runner.env.single_observation_space,
                         self.config.model.get("symlog_obs", "auto"),
                     ),
-                    include_images=self.config.summary_include_images,
+                    include_images=self.config.summarize_images_and_videos,
                 )
-                summarize_world_model_train_results(
-                    results=results,
-                    train_results=train_results,
-                    include_histograms=self.config.summary_include_histograms,
-                )
-                # Summarize actor-critic loss stats.
-                if self.config.train_critic:
-                    summarize_critic_train_results(
-                        results=results,
-                        train_results=train_results,
-                        include_histograms=self.config.summary_include_histograms,
-                    )
-                if self.config.train_actor:
-                    summarize_actor_train_results(
-                        results=results,
-                        train_results=train_results,
-                        include_histograms=self.config.summary_include_histograms,
-                    )
-                # if self.config.use_curiosity:
-                #    summarize_disagree_train_results(
-                #        results=results,
-                #        train_results=train_results,
-                #        include_histograms=self.config.summary_include_histograms,
-                #    )
+
                 # TODO: Make this work with any renderable env.
                 if env_runner.config.env in [
                     "CartPoleDebug-v0",
@@ -542,7 +556,7 @@ class DreamerV3(Algorithm):
                         dreamer_model=env_runner.model.dreamer_model,
                         obs_dims_shape=sample[SampleBatch.OBS].shape[2:],
                         desc="for_actor_critic_learning",
-                        include_images=self.config.summary_include_images,
+                        include_images=self.config.summarize_images_and_videos,
                     )
 
             logger.info(

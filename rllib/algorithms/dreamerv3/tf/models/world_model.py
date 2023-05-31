@@ -276,7 +276,7 @@ class WorldModel(tf.keras.Model):
         # Make actions and `is_first` time-major.
         actions = tf.transpose(
             actions,
-            perm=[1, 0] + list(range(2, len(actions.shape))),  # .as_list() TODO
+            perm=[1, 0] + list(range(2, tf.shape(actions).shape.as_list()[0])),
         )
         is_first = tf.transpose(is_first, perm=[1, 0])
 

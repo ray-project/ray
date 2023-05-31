@@ -84,8 +84,8 @@ class MultiAgentRLModule(RLModule):
                 )
 
     def keys(self) -> Iterator[ModuleID]:
-        """Returns an iteratable of module ids."""
-        return self._rl_modules.keys()
+        """Returns an iterable over the module IDs in this MultiAgentRLModule."""
+        return iter(self._rl_modules.keys())
 
     @override(RLModule)
     def as_multi_agent(self) -> "MultiAgentRLModule":

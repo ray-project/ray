@@ -20,15 +20,15 @@ class TestDreamerV3(unittest.TestCase):
         # Build a DreamerV3Config object.
         config = (
             dreamerv3.DreamerV3Config()
+            .framework(eager_tracing=True)
             .training(
-                model_dimension="nano",  # Use a tiny model for testing.
                 # TODO (sven): Fix having to provide this.
                 #  Should be compiled by AlgorithmConfig?
                 model={
                     "batch_size_B": 16,
                     "batch_length_T": 64,
                     "horizon_H": 15,
-                    "model_dimension": "XS",
+                    "model_dimension": "nano",  # Use a tiny model for testing.
                     "gamma": 0.997,
                     "training_ratio": 512,
                     "symlog_obs": True,
@@ -46,9 +46,7 @@ class TestDreamerV3(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(
-            config, frameworks="tf2"
-        ):  # , with_eager_tracing=True):
+        for _ in framework_iterator(config, frameworks="tf2"):
             for env in ["FrozenLake-v1", "CartPole-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 config.environment(env)

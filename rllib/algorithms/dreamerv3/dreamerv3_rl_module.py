@@ -94,8 +94,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             horizon_H=horizon_H,
             gamma=gamma,
         )
-        # This should work now.
-        self.dreamer_model.summary(expand_nested=True)
 
         # Initialize the critic EMA net:
         self.critic.init_ema()

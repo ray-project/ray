@@ -389,17 +389,17 @@ class DreamerModel(tf.keras.Model):
         )
 
         ret = {
-            "h_states_t0_to_H_B": h_states_H_B,
-            "z_states_prior_t0_to_H_B": z_states_prior_H_B,
-            "rewards_dreamed_t0_to_H_B": r_dreamed_H_B,
-            "continues_dreamed_t0_to_H_B": c_dreamed_H_B,
-            "actions_dreamed_t0_to_H_B": a_dreamed_H_B,
-            "actions_dreamed_distributions_t0_to_H_B": a_dreamed_distributions_t0_to_H,
-            "values_dreamed_t0_to_H_B": v_dreamed_H_B,
-            "values_symlog_dreamed_logits_t0_to_HxB": v_symlog_dreamed_logits_HxB,
-            "v_symlog_dreamed_ema_t0_to_H_B": v_symlog_dreamed_ema_H_B,
+            "h_states_t0_to_H_BxT": h_states_H_B,
+            "z_states_prior_t0_to_H_BxT": z_states_prior_H_B,
+            "rewards_dreamed_t0_to_H_BxT": r_dreamed_H_B,
+            "continues_dreamed_t0_to_H_BxT": c_dreamed_H_B,
+            "actions_dreamed_t0_to_H_BxT": a_dreamed_H_B,
+            "actions_dreamed_distributions_t0_to_H_BxT": a_dreamed_distributions_t0_to_H,
+            "values_dreamed_t0_to_H_BxT": v_dreamed_H_B,
+            "values_symlog_dreamed_logits_t0_to_HxBxT": v_symlog_dreamed_logits_HxB,
+            "v_symlog_dreamed_ema_t0_to_H_BxT": v_symlog_dreamed_ema_H_B,
             # Loss weights for critic- and actor losses.
-            "dream_loss_weights_t0_to_H_B": dream_loss_weights_H_B,
+            "dream_loss_weights_t0_to_H_BxT": dream_loss_weights_H_B,
         }
 
         if self.use_curiosity:
@@ -537,20 +537,20 @@ class DreamerModel(tf.keras.Model):
         # an original time dimension from the real env, from all of which we then branch
         # out our dream trajectories).
         ret = {
-            "h_states_t0_to_H_B": h_states_t0_to_H_B,
-            "z_states_prior_t0_to_H_B": z_states_prior_t0_to_H_B,
+            "h_states_t0_to_H_BxT": h_states_t0_to_H_B,
+            "z_states_prior_t0_to_H_BxT": z_states_prior_t0_to_H_B,
             # Unfold time-ranks in predictions.
-            "rewards_dreamed_t0_to_H_B": tf.reshape(r_dreamed_t0_to_HxB, (-1, B)),
-            "continues_dreamed_t0_to_H_B": tf.reshape(c_dreamed_t0_to_HxB, (-1, B)),
+            "rewards_dreamed_t0_to_H_BxT": tf.reshape(r_dreamed_t0_to_HxB, (-1, B)),
+            "continues_dreamed_t0_to_H_BxT": tf.reshape(c_dreamed_t0_to_HxB, (-1, B)),
         }
 
         # Figure out action key (random, sampled from env, dreamed?).
         if use_sampled_actions_in_dream:
-            key = "actions_sampled_t0_to_H_B"
+            key = "actions_sampled_t0_to_H_BxT"
         elif use_random_actions_in_dream:
-            key = "actions_random_t0_to_H_B"
+            key = "actions_random_t0_to_H_BxT"
         else:
-            key = "actions_dreamed_t0_to_H_B"
+            key = "actions_dreamed_t0_to_H_BxT"
         ret[key] = a_t0_to_H_B
 
         # Also provide int-actions, if discrete action space.

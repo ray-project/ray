@@ -44,6 +44,10 @@ class DreamerV3LearnerHyperparameters(LearnerHyperparameters):
     world_model_grad_clip_by_global_norm: float = None
     actor_grad_clip_by_global_norm: float = None
     critic_grad_clip_by_global_norm: float = None
+    # Reporting settings.
+    summarize_individual_batch_item_stats: bool = None
+    summarize_dream_data: bool = None
+    summarize_images_and_videos: bool = None
 
 
 class DreamerV3Learner(Learner):

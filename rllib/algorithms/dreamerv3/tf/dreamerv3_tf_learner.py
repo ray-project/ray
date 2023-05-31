@@ -191,28 +191,36 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 ),
                 # Prediction losses.
                 # Decoder (obs) loss.
-                "WORLD_MODEL_L_decoder_B_T": prediction_losses["L_decoder_B_T"],
                 "WORLD_MODEL_L_decoder": prediction_losses["L_decoder"],
                 # Reward loss.
-                "WORLD_MODEL_L_reward_B_T": prediction_losses["L_reward_B_T"],
                 "WORLD_MODEL_L_reward": prediction_losses["L_reward"],
                 # Continue loss.
-                "WORLD_MODEL_L_continue_B_T": prediction_losses["L_continue_B_T"],
                 "WORLD_MODEL_L_continue": prediction_losses["L_continue"],
                 # Total.
-                "WORLD_MODEL_L_prediction_B_T": prediction_losses["L_prediction_B_T"],
                 "WORLD_MODEL_L_prediction": prediction_losses["L_prediction"],
                 # Dynamics loss.
-                "WORLD_MODEL_L_dynamics_B_T": L_dyn_B_T,
                 "WORLD_MODEL_L_dynamics": L_dyn,
                 # Representation loss.
-                "WORLD_MODEL_L_representation_B_T": L_rep_B_T,
                 "WORLD_MODEL_L_representation": L_rep,
                 # Total loss.
-                "WORLD_MODEL_L_total_B_T": L_world_model_total_B_T,
                 "WORLD_MODEL_L_total": L_world_model_total,
             },
         )
+        if hps.summarize_individual_batch_item_stats:
+            self.register_metrics(
+                module_id=module_id,
+                metrics_dict={
+                    "WORLD_MODEL_L_decoder_B_T": prediction_losses["L_decoder_B_T"],
+                    "WORLD_MODEL_L_reward_B_T": prediction_losses["L_reward_B_T"],
+                    "WORLD_MODEL_L_continue_B_T": prediction_losses["L_continue_B_T"],
+                    "WORLD_MODEL_L_prediction_B_T": (
+                        prediction_losses["L_prediction_B_T"]
+                    ),
+                    "WORLD_MODEL_L_dynamics_B_T": L_dyn_B_T,
+                    "WORLD_MODEL_L_representation_B_T": L_rep_B_T,
+                    "WORLD_MODEL_L_total_B_T": L_world_model_total_B_T,
+                },
+            )
 
         # Dream trajectories starting in all internal states (h + z_posterior) that were
         # computed during world model training.
@@ -228,17 +236,29 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             timesteps_H=hps.horizon_H,
             gamma=hps.gamma,
         )
-        self.register_metrics(module_id, {"dream_data": dream_data})
+        if hps.summarize_dream_data:
+            # To reduce this massive mount of data a little, slice out a T=1 piece
+            # from each stats that has the shape (H, BxT), meaning convert e.g.
+            # `rewards_dreamed_t0_to_H_BxT` into `rewards_dreamed_t0_to_H_Bx1`.
+            # This will reduce the amount of data to be transferred and reported
+            # by the factor of `batch_length_T`.
+            self.register_metrics(
+                module_id,
+                {
+                    "DREAM_DATA_" + key[:-1] + "1": value[:, hps.batch_size_B]
+                    for key, value in dream_data.items() if key.endsin("H_BxT")
+                },
+            )
 
         value_targets_t0_to_Hm1_BxT = self._compute_value_targets(
             hps=hps,
             # Learn critic in symlog'd space.
-            rewards_t0_to_H_BxT=dream_data["rewards_dreamed_t0_to_H_B"],
+            rewards_t0_to_H_BxT=dream_data["rewards_dreamed_t0_to_H_BxT"],
             intrinsic_rewards_t1_to_H_BxT=(
                 dream_data["rewards_intrinsic_t1_to_H_B"] if hps.use_curiosity else None
             ),
-            continues_t0_to_H_BxT=dream_data["continues_dreamed_t0_to_H_B"],
-            value_predictions_t0_to_H_BxT=dream_data["values_dreamed_t0_to_H_B"],
+            continues_t0_to_H_BxT=dream_data["continues_dreamed_t0_to_H_BxT"],
+            value_predictions_t0_to_H_BxT=dream_data["values_dreamed_t0_to_H_BxT"],
         )
         self.register_metric(
             module_id, "VALUE_TARGETS_H_BxT", value_targets_t0_to_Hm1_BxT
@@ -246,6 +266,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         CRITIC_L_total = self._compute_critic_loss(
             module_id=module_id,
+            hps=hps,
             dream_data=dream_data,
             value_targets_t0_to_Hm1_BxT=value_targets_t0_to_Hm1_BxT,
         )
@@ -470,13 +491,13 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             module_id=module_id,
             hps=hps,
             value_targets_t0_to_Hm1_BxT=value_targets_t0_to_Hm1_BxT,
-            value_predictions_t0_to_Hm1_BxT=dream_data["values_dreamed_t0_to_H_B"][:-1],
+            value_predictions_t0_to_Hm1_BxT=dream_data["values_dreamed_t0_to_H_BxT"][:-1],
         )
 
         # Actions actually taken in the dream.
-        actions_dreamed = tf.stop_gradient(dream_data["actions_dreamed_t0_to_H_B"])[:-1]
+        actions_dreamed = tf.stop_gradient(dream_data["actions_dreamed_t0_to_H_BxT"])[:-1]
         dist_actions_t0_to_Hm1_B = dream_data[
-            "actions_dreamed_distributions_t0_to_H_B"
+            "actions_dreamed_distributions_t0_to_H_BxT"
         ][:-1]
 
         # Compute log(p)s of all possible actions in the dream.
@@ -517,7 +538,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         entropy_H_B = tf.stack(
             [
                 dist.entropy()
-                for dist in dream_data["actions_dreamed_distributions_t0_to_H_B"][:-1]
+                for dist in dream_data["actions_dreamed_distributions_t0_to_H_BxT"][:-1]
             ],
             axis=0,
         )
@@ -529,31 +550,38 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         L_actor_H_B = L_actor_reinforce_term_H_B + L_actor_action_entropy_term_H_B
         # Mask out everything that goes beyond a predicted continue=False boundary.
-        L_actor_H_B *= tf.stop_gradient(dream_data["dream_loss_weights_t0_to_H_B"])[:-1]
+        L_actor_H_B *= tf.stop_gradient(dream_data["dream_loss_weights_t0_to_H_BxT"])[:-1]
         L_actor = tf.reduce_mean(L_actor_H_B)
 
         self.register_metrics(
             module_id,
             metrics_dict={
-                "ACTOR_L_total_H_B": L_actor_H_B,
                 "ACTOR_L_total": L_actor,
-                "ACTOR_logp_actions_dreamed_H_B": logp_actions_dreamed_t0_to_Hm1_B,
-                "ACTOR_scaled_value_targets_H_B": scaled_value_targets_t0_to_Hm1_B,
                 "ACTOR_value_targets_pct95_ema": actor.ema_value_target_pct95,
                 "ACTOR_value_targets_pct5_ema": actor.ema_value_target_pct5,
-                "ACTOR_action_entropy_H_B": entropy_H_B,
                 "ACTOR_action_entropy": entropy,
                 # Individual loss terms.
-                "ACTOR_L_neglogp_reinforce_term_H_B": L_actor_reinforce_term_H_B,
                 "ACTOR_L_neglogp_reinforce_term": tf.reduce_mean(
                     L_actor_reinforce_term_H_B
                 ),
-                "ACTOR_L_neg_entropy_term_H_B": L_actor_action_entropy_term_H_B,
                 "ACTOR_L_neg_entropy_term": tf.reduce_mean(
                     L_actor_action_entropy_term_H_B
                 ),
             },
         )
+        if hps.summarize_individual_batch_item_stats:
+            self.register_metrics(
+                module_id,
+                metrics_dict={
+                    "ACTOR_L_total_H_BxT": L_actor_H_B,
+                    "ACTOR_logp_actions_dreamed_H_BxT": logp_actions_dreamed_t0_to_Hm1_B,
+                    "ACTOR_scaled_value_targets_H_BxT": scaled_value_targets_t0_to_Hm1_B,
+                    "ACTOR_action_entropy_H_BxT": entropy_H_B,
+                    # Individual loss terms.
+                    "ACTOR_L_neglogp_reinforce_term_H_BxT": L_actor_reinforce_term_H_B,
+                    "ACTOR_L_neg_entropy_term_H_BxT": L_actor_action_entropy_term_H_B,
+                },
+            )
 
         return L_actor
 
@@ -561,6 +589,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         self,
         *,
         module_id: ModuleID,
+        hps: DreamerV3LearnerHyperparameters,
         dream_data: Dict[str, TensorType],
         value_targets_t0_to_Hm1_BxT: TensorType,
     ) -> TensorType:
@@ -568,6 +597,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         Args:
             module_id: The ModuleID for which to compute the critic loss.
+            hps: The DreamerV3LearnerHyperparameters to use.
             dream_data: The data generated by dreaming for H steps (horizon) starting
                 from any BxT state (sampled from the buffer for the train batch).
             value_targets_t0_to_Hm1_BxT: The computed value function targets of the
@@ -576,7 +606,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         Returns:
             The total critic loss tensor.
         """
-        H, B = dream_data["rewards_dreamed_t0_to_H_B"].shape[:2]
+        # B=BxT
+        H, B = dream_data["rewards_dreamed_t0_to_H_BxT"].shape[:2]
         Hm1 = H - 1
 
         # Note that value targets are NOT symlog'd and go from t0 to H-1, not H, like
@@ -595,7 +626,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         )
 
         # Get (B x T x probs) tensor from return distributions.
-        value_symlog_logits_HxB = dream_data["values_symlog_dreamed_logits_t0_to_HxB"]
+        value_symlog_logits_HxB = dream_data["values_symlog_dreamed_logits_t0_to_HxBxT"]
         # Unfold time rank and cut last time index to match value targets.
         value_symlog_logits_t0_to_Hm1_B = tf.reshape(
             value_symlog_logits_HxB,
@@ -617,7 +648,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # Expected values (dreamed) from the EMA (slow critic) net.
         # Note: Slow critic (EMA) outputs are already stop_gradient'd.
         value_symlog_ema_t0_to_Hm1_B = tf.stop_gradient(
-            dream_data["v_symlog_dreamed_ema_t0_to_H_B"]
+            dream_data["v_symlog_dreamed_ema_t0_to_H_BxT"]
         )[:-1]
         # Fold time rank (for two_hot'ing).
         value_symlog_ema_HxB = tf.reshape(value_symlog_ema_t0_to_Hm1_B, (-1,))
@@ -643,7 +674,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         L_critic_H_B = value_loss_two_hot_H_B + ema_regularization_loss_H_B
 
         # Mask out everything that goes beyond a predicted continue=False boundary.
-        L_critic_H_B *= tf.stop_gradient(dream_data["dream_loss_weights_t0_to_H_B"])[
+        L_critic_H_B *= tf.stop_gradient(dream_data["dream_loss_weights_t0_to_H_BxT"])[
             :-1
         ]
 
@@ -653,21 +684,29 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         self.register_metrics(
             module_id=module_id,
             metrics_dict={
-                # Symlog'd value targets. Critic learns to predict symlog'd values.
-                "VALUE_TARGETS_symlog_H_B": value_symlog_targets_t0_to_Hm1_B,
-                # Critic loss terms.
                 "CRITIC_L_total": L_critic,
-                "CRITIC_L_total_H_B": L_critic_H_B,
-                "CRITIC_L_neg_logp_of_value_targets_H_B": value_loss_two_hot_H_B,
                 "CRITIC_L_neg_logp_of_value_targets": tf.reduce_mean(
                     value_loss_two_hot_H_B
                 ),
-                "CRITIC_L_slow_critic_regularization_H_B": ema_regularization_loss_H_B,
                 "CRITIC_L_slow_critic_regularization": tf.reduce_mean(
                     ema_regularization_loss_H_B
                 ),
             },
         )
+        if hps.summarize_individual_batch_item_stats:
+            self.register_metrics(
+                module_id=module_id,
+                metrics_dict={
+                    # Symlog'd value targets. Critic learns to predict symlog'd values.
+                    "VALUE_TARGETS_symlog_H_BxT": value_symlog_targets_t0_to_Hm1_B,
+                    # Critic loss terms.
+                    "CRITIC_L_total_H_BxT": L_critic_H_B,
+                    "CRITIC_L_neg_logp_of_value_targets_H_BxT": value_loss_two_hot_H_B,
+                    "CRITIC_L_slow_critic_regularization_H_BxT": (
+                        ema_regularization_loss_H_B
+                    ),
+                },
+            )
 
         return L_critic
 

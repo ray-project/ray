@@ -58,8 +58,8 @@ def summarize_dreamed_trajectory(
 
     dream_data = train_results["dream_data"]
     dreamed_obs_H_B = reconstruct_obs_from_h_and_z(
-        h_t0_to_H=dream_data["h_states_t0_to_H_B"],
-        z_t0_to_H=dream_data["z_states_prior_t0_to_H_B"],
+        h_t0_to_H=dream_data["h_states_t0_to_H_BxT"],
+        z_t0_to_H=dream_data["z_states_prior_t0_to_H_BxT"],
         dreamer_model=dreamer_model,
         obs_dims_shape=obs_dims_shape,
     )
@@ -75,19 +75,19 @@ def summarize_dreamed_trajectory(
             images.append(
                 func(
                     dreamed_obs=dreamed_obs_H_B[t][b],
-                    dreamed_V=dream_data["values_dreamed_t0_to_H_B"][t][b],
-                    dreamed_a=(dream_data["actions_ints_dreamed_t0_to_H_B"][t][b]),
-                    dreamed_r_tp1=(dream_data["rewards_dreamed_t0_to_H_B"][t + 1][b]),
+                    dreamed_V=dream_data["values_dreamed_t0_to_H_BxT"][t][b],
+                    dreamed_a=(dream_data["actions_ints_dreamed_t0_to_H_BxT"][t][b]),
+                    dreamed_r_tp1=(dream_data["rewards_dreamed_t0_to_H_BxT"][t + 1][b]),
                     # `DISAGREE_intrinsic_rewards_H_B` are shifted by 1 already
                     # (from t1 to H, not t0 to H like all other data here).
                     dreamed_ri_tp1=(
-                        train_results["DISAGREE_intrinsic_rewards_H_B"][t][b]
-                        if "DISAGREE_intrinsic_rewards_H_B" in train_results
+                        train_results["DISAGREE_intrinsic_rewards_H_BxT"][t][b]
+                        if "DISAGREE_intrinsic_rewards_H_BxT" in train_results
                         else None
                     ),
-                    dreamed_c_tp1=(dream_data["continues_dreamed_t0_to_H_B"][t + 1][b]),
-                    value_target=train_results["VALUE_TARGETS_H_B"][t][b],
-                    initial_h=dream_data["h_states_t0_to_H_B"][t][b],
+                    dreamed_c_tp1=(dream_data["continues_dreamed_t0_to_H_BxT"][t + 1][b]),
+                    value_target=train_results["VALUE_TARGETS_H_BxT"][t][b],
+                    initial_h=dream_data["h_states_t0_to_H_BxT"][t][b],
                     as_tensor=True,
                 ).numpy()
             )
@@ -177,89 +177,6 @@ def summarize_forward_train_outs_vs_samples(
     )
 
 
-def summarize_actor_train_results(
-    *,
-    results,
-    train_results,
-    include_histograms=False,
-):
-    keys_to_log = [
-        # Loss terms.
-        "ACTOR_L_total",
-        "ACTOR_L_neglogp_reinforce_term",
-        "ACTOR_L_neg_entropy_term",
-        # Action entropy.
-        "ACTOR_action_entropy",
-        # Terms related to scaling the value targets.
-        #"ACTOR_scaled_value_targets_H_B",
-        "ACTOR_value_targets_pct95_ema",
-        "ACTOR_value_targets_pct5_ema",
-        # TODO: Gradients.
-        #"ACTOR_gradients_maxabs",
-        #"ACTOR_gradients_clipped_by_glob_norm_maxabs",
-    ]
-
-    _summarize(
-        results=results,
-        data_to_summarize=train_results,
-        keys_to_log=keys_to_log,
-        include_histograms=include_histograms,
-    )
-
-
-def summarize_critic_train_results(
-    *,
-    results,
-    train_results,
-    include_histograms=False,
-):
-    keys_to_log = [
-        # TODO: Move this to generic function as value targets are also important for
-        #  actor loss.
-        #"VALUE_TARGETS_H_B",
-        "VALUE_TARGETS_symlog_H_B",
-        # Loss terms.
-        "CRITIC_L_total",
-        "CRITIC_L_neg_logp_of_value_targets",
-        "CRITIC_L_slow_critic_regularization",
-        # TODO: Gradients.
-        #"CRITIC_gradients_maxabs",
-        #"CRITIC_gradients_clipped_by_glob_norm_maxabs",
-    ]
-
-    _summarize(
-        results=results,
-        data_to_summarize=train_results,
-        keys_to_log=keys_to_log,
-        include_histograms=include_histograms,
-    )
-
-
-def summarize_disagree_train_results(
-    *,
-    results,
-    train_results,
-    include_histograms=False,
-):
-    keys_to_log = [
-        # Loss terms.
-        "DISAGREE_L_total",
-        # Intrinsic rewards.
-        "DISAGREE_intrinsic_rewards_H_B",
-        "DISAGREE_intrinsic_rewards",
-        # Gradients.
-        "DISAGREE_gradients_maxabs",
-        "DISAGREE_gradients_clipped_by_glob_norm_maxabs",
-    ]
-
-    _summarize(
-        results=results,
-        data_to_summarize=train_results,
-        keys_to_log=keys_to_log,
-        include_histograms=include_histograms,
-    )
-
-
 def summarize_dreamed_eval_trajectory_vs_samples(
     *,
     results,
@@ -273,8 +190,8 @@ def summarize_dreamed_eval_trajectory_vs_samples(
 ):
     # Obs MSE.
     dreamed_obs_T_B = reconstruct_obs_from_h_and_z(
-        h_t0_to_H=dream_data["h_states_t0_to_H_B"],
-        z_t0_to_H=dream_data["z_states_prior_t0_to_H_B"],
+        h_t0_to_H=dream_data["h_states_t0_to_H_BxT"],
+        z_t0_to_H=dream_data["z_states_prior_t0_to_H_BxT"],
         dreamer_model=dreamer_model,
         obs_dims_shape=sample[SampleBatch.OBS].shape[2:],
     )
@@ -298,7 +215,7 @@ def summarize_dreamed_eval_trajectory_vs_samples(
     # Reward MSE.
     _summarize_rewards(
         results=results,
-        computed_rewards=dream_data["rewards_dreamed_t0_to_H_B"],
+        computed_rewards=dream_data["rewards_dreamed_t0_to_H_BxT"],
         sampled_rewards=sample[SampleBatch.REWARDS][:, t0 : tH + 1],
         descr_prefix="EVALUATION",
         descr_reward=f"dreamed_prior_H{dreamed_T}",
@@ -307,7 +224,7 @@ def summarize_dreamed_eval_trajectory_vs_samples(
     # Continues MSE.
     _summarize_continues(
         results=results,
-        computed_continues=dream_data["continues_dreamed_t0_to_H_B"],
+        computed_continues=dream_data["continues_dreamed_t0_to_H_BxT"],
         sampled_continues=(1.0 - sample["is_terminated"])[:, t0 : tH + 1],
         descr_prefix="EVALUATION",
         descr_cont=f"dreamed_prior_H{dreamed_T}",
@@ -331,50 +248,6 @@ def summarize_sampling_and_replay_buffer(
             "BUFFER_size_num_episodes": episodes_in_buffer,
             "BUFFER_size_timesteps": ts_in_buffer,
         }
-    )
-
-
-def summarize_world_model_train_results(
-    *,
-    results,
-    train_results,
-    include_histograms=False,
-):
-    keys_to_log = [
-        # Learned initial state.
-        #"WORLD_MODEL_learned_initial_h",
-        "WORLD_MODEL_learned_initial_h_sum_abs",
-        # Loss terms.
-        # Prediction loss.
-        #"WORLD_MODEL_L_prediction_B_T",
-        "WORLD_MODEL_L_prediction",
-        # ----
-        #"WORLD_MODEL_L_decoder_B_T",
-        "WORLD_MODEL_L_decoder",
-        #"WORLD_MODEL_L_reward_B_T",
-        "WORLD_MODEL_L_reward",
-        #"WORLD_MODEL_L_continue_B_T",
-        "WORLD_MODEL_L_continue",
-        # ----
-        # Dynamics loss.
-        #"WORLD_MODEL_L_dynamics_B_T",
-        "WORLD_MODEL_L_dynamics",
-        # Representation loss.
-        #"WORLD_MODEL_L_representation_B_T",
-        "WORLD_MODEL_L_representation",
-        # TOTAL loss.
-        #"WORLD_MODEL_L_total_B_T",
-        "WORLD_MODEL_L_total",
-        # TODO: Gradients.
-        #"WORLD_MODEL_gradients_maxabs",
-        #"WORLD_MODEL_gradients_clipped_by_glob_norm_maxabs",
-    ]
-
-    _summarize(
-        results=results,
-        data_to_summarize=train_results,
-        keys_to_log=keys_to_log,
-        include_histograms=include_histograms,
     )
 
 

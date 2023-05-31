@@ -29,20 +29,6 @@ from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Epi
 from ray.rllib.utils.numpy import one_hot
 
 
-class CountEnv(gym.ObservationWrapper):
-    def reset(self, **kwargs):
-        self.__counter = 0
-        return super().reset(**kwargs)
-
-    def observation(self, observation):
-        # For gray-scaled observations.
-        # observation[0][0] = self.__counter
-        # For 3-color observations.
-        observation[0][0][0] = self.__counter__
-        self.__counter += 1
-        return observation
-
-
 class NormalizedImageEnv(gym.ObservationWrapper):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -100,8 +86,6 @@ class DreamerV3EnvRunner(EnvRunner):
     def __init__(
         self,
         config: AlgorithmConfig,
-        *,
-        _debug_count_env=False,
         **kwargs,
     ):
         """Initializes a DreamerV3EnvRunner instance.
@@ -133,8 +117,6 @@ class DreamerV3EnvRunner(EnvRunner):
                 NoopResetEnv,
                 MaxAndSkipEnv,
             ]
-            if _debug_count_env:
-                wrappers.append(CountEnv)
 
             self.env = gym.vector.make(
                 "GymV26Environment-v0",
@@ -179,11 +161,9 @@ class DreamerV3EnvRunner(EnvRunner):
         assert self.num_envs == self.config.num_envs_per_worker
 
         # Create our RLModule to compute actions with.
+        policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
         module_spec = self.config.get_marl_module_spec(
-            policy_dict=self.config.get_multi_agent_setup(
-                env=self.env  # TODO(sven): remove this hack
-            )[0],
-            module_spec=None,
+            policy_dict=policy_dict, module_spec=None
         )
         # TODO (sven): DreamerV3 is currently single-agent only.
         self.rl_module = module_spec.build()[DEFAULT_POLICY_ID]
@@ -201,18 +181,40 @@ class DreamerV3EnvRunner(EnvRunner):
         self._ts_since_last_metrics = 0
 
     @override(EnvRunner)
-    def sample(self, explore: bool = True, random_actions: bool = False):
-        if self.config.batch_mode == "complete_episodes":
-            raise NotImplementedError
-        else:
-            return self.sample_timesteps(
-                num_timesteps=(self.config.rollout_fragment_length * self.num_envs),
+    def sample(
+        self,
+        *,
+        num_timesteps: int = None,
+        num_episodes: int = None,
+        explore: bool = True,
+        random_actions: bool = False,
+        with_render_data: bool = False,
+    ):
+        # If no execution details are provided, use self.config.
+        if num_timesteps is None and num_episodes is None:
+            if self.config.batch_mode == "truncate_episodes":
+                num_timesteps = self.config.rollout_fragment_length * self.num_envs
+            else:
+                num_episodes = self.num_envs
+
+        # Sample n timesteps.
+        if num_timesteps is not None:
+            return self._sample_timesteps(
+                num_timesteps=num_timesteps,
                 explore=explore,
                 random_actions=random_actions,
                 force_reset=False,
             )
+        # Sample n episodes.
+        else:
+            return self._sample_episodes(
+                num_episodes=num_episodes,
+                explore=explore,
+                random_actions=random_actions,
+                with_render_data=with_render_data,
+            )
 
-    def sample_timesteps(
+    def _sample_timesteps(
         self,
         num_timesteps: int,
         explore: bool = True,
@@ -228,6 +230,8 @@ class DreamerV3EnvRunner(EnvRunner):
         Args:
             num_timesteps: The number of timesteps to sample from the environment(s).
             explore: Indicates whether to utilize exploration when picking actions.
+            random_actions: Whether to only use random actions. If True, the value of
+                `explore` is ignored.
             force_reset: Whether to reset the environment(s) before starting to sample.
                 If False, will still reset the environment(s) if they were left in
                 a terminated or truncated state during previous sample calls.
@@ -237,7 +241,7 @@ class DreamerV3EnvRunner(EnvRunner):
         """
         done_episodes_to_return = []
 
-        # Get initial states for all `batch_size_B` rows.
+        # Get initial states for all `batch_size_B` rows in the forward batch.
         initial_states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
             self.rl_module.get_initial_state(),
@@ -249,9 +253,11 @@ class DreamerV3EnvRunner(EnvRunner):
 
             self._episodes = [Episode() for _ in range(self.num_envs)]
             states = initial_states
+            # Set is_first to True for all rows (all sub-envs just got reset).
             is_first = np.ones((self.num_envs,), dtype=np.float32)
             self._needs_initial_reset = False
 
+            # Set initial obs and states in the episodes.
             for i, o in enumerate(self._split_by_env(obs)):
                 self._episodes[i].add_initial_observation(
                     initial_observation=o,
@@ -259,7 +265,10 @@ class DreamerV3EnvRunner(EnvRunner):
                 )
         # Don't reset existing envs; continue in already started episodes.
         else:
+            # Pick up stored observations and states from previous timesteps.
             obs = np.stack([eps.observations[-1] for eps in self._episodes])
+            # Compile the initial state for each batch row: If episode just started, use
+            # model's initial state, if not, use state stored last in Episode.
             states = {
                 k: np.stack(
                     [
@@ -269,13 +278,20 @@ class DreamerV3EnvRunner(EnvRunner):
                 )
                 for k in initial_states.keys()
             }
+            # If a batch row is at the beginning of an episode, set its `is_first` flag
+            # to 1.0, otherwise 0.0.
             is_first = np.zeros((self.num_envs,), dtype=np.float32)
+            for i, eps in enumerate(self._episodes):
+                if eps.states is None:
+                    is_first[i] = 1.0
 
+        # Loop through env for n timesteps.
         ts = 0
-
-        while True:
+        while ts < num_timesteps:
+            # Act randomly.
             if random_actions:
                 actions = self.env.action_space.sample()
+            # Compute an action using our RLModule.
             else:
                 batch = {
                     STATE_IN: tree.map_structure(
@@ -284,12 +300,14 @@ class DreamerV3EnvRunner(EnvRunner):
                     SampleBatch.OBS: tf.convert_to_tensor(obs),
                     "is_first": tf.convert_to_tensor(is_first),
                 }
-
+                # Explore or not.
                 if explore:
                     outs = self.rl_module.forward_exploration(batch)
                 else:
                     outs = self.rl_module.forward_inference(batch)
 
+                # Model outputs one-hot actions (if discrete). Convert to int actions
+                # as well.
                 actions = outs[SampleBatch.ACTIONS].numpy()
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
@@ -338,9 +356,6 @@ class DreamerV3EnvRunner(EnvRunner):
                     )
                     is_first[i] = False
 
-            if ts >= num_timesteps:
-                break
-
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks. Also, make sure, we return
@@ -362,7 +377,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         return done_episodes_to_return, ongoing_episodes
 
-    def sample_episodes(
+    def _sample_episodes(
         self,
         num_episodes: int,
         explore: bool = True,
@@ -489,7 +504,6 @@ class DreamerV3EnvRunner(EnvRunner):
         return done_episodes_to_return
 
     def get_metrics(self) -> List[RolloutMetrics]:
-
         # Compute per-episode metrics (only on already completed episodes).
         metrics = []
         for eps in self._done_episodes_for_metrics:
@@ -513,6 +527,9 @@ class DreamerV3EnvRunner(EnvRunner):
         self._ts_since_last_metrics = 0
 
         return metrics
+
+    def set_weights(self, weights):
+        self.rl_module.set_state(weights[DEFAULT_POLICY_ID])
 
     @override(EnvRunner)
     def assert_healthy(self):
