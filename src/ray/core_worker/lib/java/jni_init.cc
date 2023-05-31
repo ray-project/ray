@@ -97,6 +97,8 @@ jfieldID java_base_task_options_resources;
 
 jclass java_call_options_class;
 jfieldID java_call_options_name;
+jfieldID java_call_options_ignore_return;
+jfieldID java_call_options_max_retries;
 jfieldID java_task_creation_options_group;
 jfieldID java_task_creation_options_bundle_index;
 jfieldID java_call_options_concurrency_group_name;
@@ -312,6 +314,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_call_options_class = LoadClass(env, "io/ray/api/options/CallOptions");
   java_call_options_name =
       env->GetFieldID(java_call_options_class, "name", "Ljava/lang/String;");
+  java_call_options_max_retries =
+      env->GetFieldID(java_call_options_class, "maxRetries", "I");
   java_task_creation_options_group = env->GetFieldID(
       java_call_options_class, "group", "Lio/ray/api/placementgroup/PlacementGroup;");
   java_task_creation_options_bundle_index =

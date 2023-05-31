@@ -76,6 +76,18 @@ public class BaseTaskCaller<T extends BaseTaskCaller<T>> {
     return setPlacementGroup(group, -1);
   }
 
+  /** 
+   * Set the number of retries for this task.
+   * 
+   * @param maxRetries The retries of the task.
+   * @return self
+   * @see CallOptions.Builder#setMaxRetries(int)
+   */
+  public T setMaxRetries(int maxRetries) {
+    builder.setMaxRetries(maxRetries);
+    return self();
+  }
+
   /**
    * Set the runtime env for this task to run the task in a specific environment.
    *

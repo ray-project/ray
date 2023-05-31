@@ -11,6 +11,7 @@ public class CallOptions extends BaseTaskOptions {
   public final String name;
   public final PlacementGroup group;
   public final int bundleIndex;
+  public final int maxRetries;
   public final String concurrencyGroupName;
   private final String serializedRuntimeEnvInfo;
 
@@ -19,12 +20,14 @@ public class CallOptions extends BaseTaskOptions {
       Map<String, Double> resources,
       PlacementGroup group,
       int bundleIndex,
+      int maxRetries,
       String concurrencyGroupName,
       RuntimeEnv runtimeEnv) {
     super(resources);
     this.name = name;
     this.group = group;
     this.bundleIndex = bundleIndex;
+    this.maxRetries = maxRetries;
     this.concurrencyGroupName = concurrencyGroupName;
     this.serializedRuntimeEnvInfo =
         runtimeEnv == null ? "" : runtimeEnv.serializeToRuntimeEnvInfo();
@@ -37,6 +40,7 @@ public class CallOptions extends BaseTaskOptions {
     private Map<String, Double> resources = new HashMap<>();
     private PlacementGroup group;
     private int bundleIndex;
+    private int maxRetries = 0;
     private String concurrencyGroupName = "";
     private RuntimeEnv runtimeEnv = null;
 
@@ -89,6 +93,11 @@ public class CallOptions extends BaseTaskOptions {
       return this;
     }
 
+    public Builder setMaxRetries(int maxRetries) {
+      this.maxRetries = maxRetries;
+      return this;
+    }
+
     public Builder setConcurrencyGroupName(String concurrencyGroupName) {
       this.concurrencyGroupName = concurrencyGroupName;
       return this;
@@ -100,7 +109,7 @@ public class CallOptions extends BaseTaskOptions {
     }
 
     public CallOptions build() {
-      return new CallOptions(name, resources, group, bundleIndex, concurrencyGroupName, runtimeEnv);
+      return new CallOptions(name, resources, group, bundleIndex, maxRetries, concurrencyGroupName, runtimeEnv);
     }
   }
 }

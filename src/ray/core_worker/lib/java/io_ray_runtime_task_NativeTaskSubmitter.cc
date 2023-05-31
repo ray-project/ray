@@ -363,7 +363,9 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(JNIEnv *env,
   auto task_args = ToTaskArgs(env, args);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
   auto placement_group_options = ToPlacementGroupOptions(env, callOptions);
+  int64_t max_retries = 0;
 
+  max_retries = env->GetIntField(callOptions, java_call_options_max_retries);
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
   if (!placement_group_options.first.IsNil()) {
@@ -375,12 +377,12 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(JNIEnv *env,
         placement_group_options.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
+
   auto return_refs =
       CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function,
                                                     task_args,
                                                     task_options,
-                                                    /*max_retries=*/0,
+                                                    max_retries,
                                                     /*retry_exceptions=*/false,
                                                     /*scheduling_strategy=*/
                                                     scheduling_strategy,

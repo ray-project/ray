@@ -172,6 +172,8 @@ extern jfieldID java_base_task_options_resources;
 extern jclass java_call_options_class;
 /// name field of CallOptions class
 extern jfieldID java_call_options_name;
+/// maxRetries field of CallOptions class
+extern jfieldID java_call_options_max_retries;
 /// group field of CallOptions class
 extern jfieldID java_task_creation_options_group;
 /// bundleIndex field of CallOptions class
