@@ -1994,10 +1994,28 @@ py_test(
 
 # Learner
 py_test(
-    name = "test_learner_group",
+    name = "test_learner_group1",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
-    srcs = ["core/learner/tests/test_learner_group.py"]
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroup1"]
+)
+
+py_test(
+    name = "test_learner_group2",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroup2"]
+)
+
+
+py_test(
+    name = "test_learner_group3",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroup3"]
 )
 
 py_test(

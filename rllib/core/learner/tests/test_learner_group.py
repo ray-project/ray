@@ -109,7 +109,7 @@ class RemoteTrainingHelper:
         check(local_learner.get_state(), learner_group.get_state())
 
 
-class TestLearnerGroup(unittest.TestCase):
+class TestLearnerGroup1(unittest.TestCase):
     def setUp(self) -> None:
         ray.init()
 
@@ -246,60 +246,13 @@ class TestLearnerGroup(unittest.TestCase):
             learner_group.shutdown()
             del learner_group
 
-    def test_async_update(self):
-        """Test that async style updates converge to the same result as sync."""
-        fws = ["torch", "tf2"]
-        # block=True only needs to be tested for the most complex case.
-        # so we'll only test it for multi-gpu-ddp.
-        scaling_modes = ["multi-gpu-ddp"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
-            env = gym.make("CartPole-v1")
-            scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            learner_group = get_learner_group(fw, env, scaling_config)
-            reader = get_cartpole_dataset_reader(batch_size=512)
-            min_loss = float("inf")
-            batch = reader.next()
-            timer_sync = _Timer()
-            timer_async = _Timer()
-            with timer_sync:
-                learner_group.update(batch.as_multi_agent(), block=True, reduce_fn=None)
-            with timer_async:
-                result_async = learner_group.update(
-                    batch.as_multi_agent(), block=False, reduce_fn=None
-                )
-            # ideally the the first async update will return nothing, and an easy
-            # way to check that is if the time for an async update call is faster
-            # than the time for a sync update call.
-            self.assertLess(timer_async.mean, timer_sync.mean)
-            self.assertIsInstance(result_async, list)
-            self.assertEqual(len(result_async), 0)
-            for iter_i in range(1000):
-                batch = reader.next()
-                results = learner_group.update(
-                    batch.as_multi_agent(), block=False, reduce_fn=None
-                )
-                if not results:
-                    continue
-                loss = np.mean(
-                    [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
-                )
-                min_loss = min(loss, min_loss)
-                print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
-                # The loss is initially around 0.69 (ln2). When it gets to around
-                # 0.57 the return of the policy gets to around 100.
-                if min_loss < 0.57:
-                    break
+class TestLearnerGroup2(unittest.TestCase):
+    def setUp(self) -> None:
+        ray.init()
 
-                for res1, res2 in zip(results, results[1:]):
-                    self.assertEqual(
-                        res1[DEFAULT_POLICY_ID]["mean_weight"],
-                        res2[DEFAULT_POLICY_ID]["mean_weight"],
-                    )
-            learner_group.shutdown()
-            self.assertLess(min_loss, 0.57)
+    def tearDown(self) -> None:
+        ray.shutdown()
 
     def test_save_load_state(self):
         fws = ["torch", "tf2"]
@@ -495,6 +448,69 @@ class TestLearnerGroup(unittest.TestCase):
                             },
                         )
             del learner_group
+
+
+class TestLearnerGroup3(unittest.TestCase):
+    def setUp(self) -> None:
+        ray.init()
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_async_update(self):
+        """Test that async style updates converge to the same result as sync."""
+        fws = ["torch", "tf2"]
+        # block=True only needs to be tested for the most complex case.
+        # so we'll only test it for multi-gpu-ddp.
+        scaling_modes = ["multi-gpu-ddp"]
+        test_iterator = itertools.product(fws, scaling_modes)
+
+        for fw, scaling_mode in test_iterator:
+            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+            env = gym.make("CartPole-v1")
+            scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
+            learner_group = get_learner_group(fw, env, scaling_config)
+            reader = get_cartpole_dataset_reader(batch_size=512)
+            min_loss = float("inf")
+            batch = reader.next()
+            timer_sync = _Timer()
+            timer_async = _Timer()
+            with timer_sync:
+                learner_group.update(batch.as_multi_agent(), block=True, reduce_fn=None)
+            with timer_async:
+                result_async = learner_group.update(
+                    batch.as_multi_agent(), block=False, reduce_fn=None
+                )
+            # ideally the the first async update will return nothing, and an easy
+            # way to check that is if the time for an async update call is faster
+            # than the time for a sync update call.
+            self.assertLess(timer_async.mean, timer_sync.mean)
+            self.assertIsInstance(result_async, list)
+            self.assertEqual(len(result_async), 0)
+            for iter_i in range(1000):
+                batch = reader.next()
+                results = learner_group.update(
+                    batch.as_multi_agent(), block=False, reduce_fn=None
+                )
+                if not results:
+                    continue
+                loss = np.mean(
+                    [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
+                )
+                min_loss = min(loss, min_loss)
+                print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
+                # The loss is initially around 0.69 (ln2). When it gets to around
+                # 0.57 the return of the policy gets to around 100.
+                if min_loss < 0.57:
+                    break
+
+                for res1, res2 in zip(results, results[1:]):
+                    self.assertEqual(
+                        res1[DEFAULT_POLICY_ID]["mean_weight"],
+                        res2[DEFAULT_POLICY_ID]["mean_weight"],
+                    )
+            learner_group.shutdown()
+            self.assertLess(min_loss, 0.57)
 
 
 if __name__ == "__main__":
