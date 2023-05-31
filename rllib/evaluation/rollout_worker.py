@@ -662,7 +662,26 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         )
 
     @override(EnvRunner)
-    def sample(self) -> SampleBatchType:
+    def sample(self, **kwargs) -> SampleBatchType:
+        """Returns a batch of experience sampled from this worker.
+
+        This method must be implemented by subclasses.
+
+        Returns:
+            A columnar batch of experiences (e.g., tensors) or a MultiAgentBatch.
+
+        Examples:
+            >>> import gymnasium as gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
+            ...   default_policy_class=PGTF1Policy, # doctest: +SKIP
+            ...   config=AlgorithmConfig(), # doctest: +SKIP
+            ... )
+            >>> print(worker.sample()) # doctest: +SKIP
+            SampleBatch({"obs": [...], "action": [...], ...})
+        """
         if self.config.fake_sampler and self.last_batch is not None:
             return self.last_batch
         elif self.input_reader is None:
@@ -1634,6 +1653,23 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def creation_args(self) -> dict:
         """Returns the kwargs dict used to create this worker."""
         return self._original_kwargs
+
+    @DeveloperAPI
+    def get_host(self) -> str:
+        """Returns the hostname of the process running this evaluator."""
+        return platform.node()
+
+    @DeveloperAPI
+    def get_node_ip(self) -> str:
+        """Returns the IP address of the node that this worker runs on."""
+        return ray.util.get_node_ip_address()
+
+    @DeveloperAPI
+    def find_free_port(self) -> int:
+        """Finds a free port on the node that this worker runs on."""
+        from ray.air._internal.util import find_free_port
+
+        return find_free_port()
 
     def _update_policy_map(
         self,

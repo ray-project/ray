@@ -90,41 +90,17 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def sample(
-        self,
-        *,
-        num_timesteps: Optional[int] = None,
-        num_episodes: Optional[int] = None,
-        explore: bool = True,
-        random_actions: bool = False,
-        force_reset: bool = False,
-        **kwargs,
-    ) -> Any:
-        """Returns a batch of experience sampled from this EnvRunner.
+    def sample(self, **kwargs) -> Any:
+        """Returns experiences (of any form) sampled from this EnvRunner.
 
-        The exact nature and size of collected batches are defined via the EnvRunner's
-        config and the given arguments.
+        The exact nature and size of collected data are defined via the EnvRunner's
+        config and may be overridden by the given arguments.
 
         Args:
-            num_timesteps: If provided, will step exactly this number of timesteps
-                through the environment. Note that only one or none of `num_timesteps`
-                and `num_episodes` may be provided, but never both. If both
-                `num_timesteps` and `num_episodes` are None, will determine how to
-                sample via `self.config`.
-            num_episodes: If provided, will step through the env(s) until exactly this
-                many episodes have been completed. Note that only one or none of
-                `num_timesteps` and `num_episodes` may be provided, but never both.
-                If both `num_timesteps` and `num_episodes` are None, will determine how
-                to sample via `self.config`.
-            explore: Whether to use some exploration strategy to determine the actions
-                to send to the env. Only has an effect if `random_actions` is False.
-            random_actions: Whether to act completely randomly in the env. If True, the
-                value of `explore` has no effect.
-            force_reset: If True, will force-reset the env at the very beginning and
-                thus begin sampling from freshly started episodes.
+            **kwargs: Forward compatibility kwargs.
 
         Returns:
-            A batch of data of any form.
+            The collected experience in any form.
         """
 
     def get_state(self) -> Dict[str, Any]:
@@ -158,17 +134,3 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     def __del__(self) -> None:
         """If this Actor is deleted, clears all resources used by it."""
         pass
-
-    def get_host(self) -> str:
-        """Returns the hostname of the process running this Actor."""
-        return platform.node()
-
-    def get_node_ip(self) -> str:
-        """Returns the IP address of the node that this Actor runs on."""
-        return ray.util.get_node_ip_address()
-
-    def find_free_port(self) -> int:
-        """Finds a free port on the node that this Actor runs on."""
-        from ray.air._internal.util import find_free_port
-
-        return find_free_port()
