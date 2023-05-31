@@ -1553,7 +1553,7 @@ class _TrialExecutorWrapper:
         self._whitelist_attr = whitelist_attr or set()
 
         for attr in self._whitelist_attr:
-            assert hasattr(self, attr)
+            assert hasattr(self._trial_executor, attr)
 
     def __getattr__(self, attr):
         if attr not in self._whitelist_attr:
