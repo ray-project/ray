@@ -289,7 +289,7 @@ class WaitBlockPrefetcher(BlockPrefetcher):
         self._blocks = []
         self._condition = threading.Condition()
         self._thread = threading.Thread(
-            target=self._run, args=(self,), name="Prefetcher"
+            target=self._run, name="Prefetcher"
         )
         self._thread.start()
 
