@@ -287,9 +287,7 @@ class WaitBlockPrefetcher(BlockPrefetcher):
     def __init__(self):
         self._blocks = []
         self._condition = threading.Condition()
-        self._thread = threading.Thread(
-            target=self._run, name="Prefetcher"
-        )
+        self._thread = threading.Thread(target=self._run, name="Prefetcher")
         self._thread.start()
 
     def _run(self):
