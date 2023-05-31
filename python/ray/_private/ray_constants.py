@@ -429,7 +429,7 @@ RAY_ALLOWED_CACHED_PORTS = {
     "gcs_server_port",  # the `port` option for gcs port.
 }
 
-# Turn this one if actor task log's offsets are expected to be recorded. 
+# Turn this on if actor task log's offsets are expected to be recorded.
 # With this enabled, actor tasks' log could be queried with task id.
 RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
     "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
