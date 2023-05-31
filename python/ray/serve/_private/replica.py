@@ -275,9 +275,6 @@ def create_replica_wrapper(name: str):
                 # know it's safe for these messages containing primitive types.
                 yield pickle.dumps(asgi_queue_sender.get_messages_nowait())
 
-                if not wait_for_message_task.done():
-                    wait_for_message_task.cancel()
-
             e = handle_request_task.exception()
             if e is not None:
                 raise e from None
