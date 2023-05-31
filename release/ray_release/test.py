@@ -123,17 +123,16 @@ class Test(dict):
         """
         return f"{DATAPLANE_ECR}/{self.get_byod_repo()}:{self.get_byod_image_tag()}"
 
-    def add_test_result(self, result: Result) -> None:
-        """
-        Add test result to test object
-        """
-        self.get_test_results().insert(0, TestResult.from_result(result))
-
-    def get_test_results(self, limit: int = 10) -> List[TestResult]:
+    def get_test_results(
+        self, limit: int = 10, refresh: bool = False
+    ) -> List[TestResult]:
         """
         Get test result from test object, or s3
+
+        :param limit: limit of test results to return
+        :param refresh: whether to refresh the test results from s3
         """
-        if self.test_results is not None:
+        if self.test_results is not None and not refresh:
             return self.test_results
 
         s3_client = boto3.client("s3")
