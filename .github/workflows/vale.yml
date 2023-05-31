@@ -1,0 +1,16 @@
+name: reviewdog
+on: [pull_request]
+
+jobs:
+  vale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: errata-ai/vale-action@reviewdog
+        with:
+          files: docs/source/data/
+          fail_on_error: true
+          # Report level for reviewdog [info,warning,error].
+          level: info
+          # Error on introduced changes only.
+          filter_mode: added

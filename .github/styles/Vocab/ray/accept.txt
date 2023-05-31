@@ -1,21 +1,4 @@
-[aA]utoscaling
-[cC]onfig
-Anyscale
+Data's
 APIs
-Autoscaler
-Conda
-Databricks
-Datadog
-Dockerfile
-Github
-Grafana
-hostname
-Metaflow
-MLflow
-plaintext
-RLlib
-VSCode
-cron
-MLOps
-Readonly
-Webterminal
+UDFs
+Ray Data

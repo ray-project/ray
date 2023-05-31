@@ -1,6 +1,6 @@
 .. _data_getting_started:
 
-Getting Started
+Getting started
 ===============
 
 Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which
@@ -21,7 +21,7 @@ To learn more about installing Ray and its libraries, read
 :ref:`Installing Ray <installation>`.
 
 Create a dataset
--------------------
+----------------
 
 Create datasets from on-disk files, Python objects, and cloud storage services like S3.
 Ray Data can read from any `filesystem supported by Arrow
@@ -43,7 +43,7 @@ To learn more about creating datasets, read
 :ref:`Loading data <loading_data>`.
 
 Transform the dataset
-------------------------
+---------------------
 
 Apply :ref:`user-defined functions <transform_datasets_writing_udfs>` (UDFs) to
 transform datasets. Ray executes transformations in parallel for performance.
@@ -82,7 +82,7 @@ To learn more about transforming datasets, read
 :ref:`Transforming data <transforming_data>`.
 
 Consume the dataset
-----------------------
+-------------------
 
 Pass datasets to Ray tasks or actors, and access records with methods like
 :meth:`~ray.data.Dataset.take_batch` and :meth:`~ray.data.Dataset.iter_batches`.
@@ -138,7 +138,7 @@ To learn more about consuming datasets, read
 :ref:`Consuming data <consuming_data>`.
 
 Save the dataset
--------------------
+----------------
 
 Call methods like :meth:`~ray.data.Dataset.write_parquet` to save dataset contents to local
 or remote filesystems.
