@@ -3,6 +3,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Hashable,
     List,
     Optional,
     Tuple,
@@ -131,7 +132,15 @@ ViewRequirementsDict = Dict[str, "ViewRequirement"]
 ResultDict = dict
 
 # A tf or torch local optimizer object.
-LocalOptimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
+LocalOptimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
+Optimizer = LocalOptimizer
+Param = Union["torch.Tensor", "tf.Variable"]
+ParamRef = Hashable
+ParamDict = Dict[ParamRef, Param]
+
+# A single learning rate or a learning rate schedule (list of sub-lists, each of
+# the format: [ts (int), lr_to_reach_by_ts (float)]).
+LearningRateOrSchedule = Union[float, List[List[Union[int, float]]]]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,
