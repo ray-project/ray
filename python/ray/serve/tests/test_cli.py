@@ -1286,13 +1286,36 @@ class TestRayReinitialization:
         process_output, _ = p.communicate()
         logs = process_output.decode("utf-8").strip()
         expected_warning_message = (
-            "Existing ray instance has address: 127.0.0.1:6379 which is different from "
-            "the address passed from the command: ray://123.45.67.89:50005. \nPlease "
-            "double check the address to ensure you are using the intended ray "
-            "instance. \nServe does not automatically create a new ray instance from "
-            "the given address. \nExisting ray instance is used to serve the app."
+            "An address was passed to `serve run` but the imported module also "
+            "connected to Ray at a different address: '127.0.0.1:6379'. You do not "
+            "need to call `ray.init` in your code when using `serve run`."
         )
         assert expected_warning_message in logs
+
+    def test_run_with_auto_address(self, import_file_name, ray_start_stop):
+        """Test serve run with ray already initialized and run with "auto" address
+        argument.
+
+        When the imported file already initialized a ray instance and serve runs with
+        address argument same as the ray instance, then serve does not reinitialize
+        another ray instance and cause error.
+        """
+        p = subprocess.Popen(
+            ["serve", "run", "--address=auto", import_file_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+        process_output, _ = p.communicate()
+        logs = process_output.decode("utf-8").strip()
+        expected_warning_message = (
+            "An address was passed to `serve run` but the imported module also "
+            "connected to Ray at a different address: '127.0.0.1:6379'. You do not "
+            "need to call `ray.init` in your code when using `serve run`."
+        )
+        assert expected_warning_message not in logs
 
 
 if __name__ == "__main__":
