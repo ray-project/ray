@@ -73,6 +73,10 @@ def test_complex():
         "worker_nodes1", "initialization_commands"
     ) == ["echo init"]
 
+    assert config.get_node_resources("worker_nodes1") == {"CPU": 2}
+
+    assert config.get_node_resources("worker_nodes") == {}
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

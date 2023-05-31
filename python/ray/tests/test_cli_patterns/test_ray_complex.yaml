@@ -24,7 +24,8 @@ available_node_types:
         initialization_commands:
             - echo what
     worker_nodes1:
-        resources: {}
+        resources:
+            CPU: 2
         max_workers: 2
         min_workers: 1
         node_config:
