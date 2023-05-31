@@ -91,7 +91,7 @@ if not ray._raylet.Config.use_ray_syncer():
 _AUTOSCALER_METRICS = [
     "autoscaler_config_validation_exceptions",
     "autoscaler_node_launch_exceptions",
-    "ray_cluster_pending_nodes",
+    "autoscaler_pending_nodes",
     "autoscaler_reset_exceptions",
     "autoscaler_running_workers",
     "autoscaler_started_nodes",
@@ -108,8 +108,8 @@ _AUTOSCALER_METRICS = [
     "autoscaler_failed_recoveries",
     "autoscaler_drain_node_exceptions",
     "autoscaler_update_time",
-    "ray_cluster_resources",
-    "ray_pending_resources",
+    "autoscaler_cluster_resources",
+    "autoscaler_pending_resources",
 ]
 
 

@@ -13,10 +13,10 @@ Queries for autoscaler resources.
 # But MAX + PENDING data is coming from the autoscaler. That said, MAX + PENDING can be
 # more outdated. it is harmless because the actual MAX will catch up with MAX + PENDING
 # eventually.
-MAX_CPUS = 'sum(ray_cluster_resources{{resource="CPU",{global_filters}}})'
-PENDING_CPUS = 'sum(ray_pending_resources{{resource="CPU",{global_filters}}})'
-MAX_GPUS = 'sum(ray_cluster_resources{{resource="GPU",{global_filters}}})'
-PENDING_GPUS = 'sum(ray_pending_resources{{resource="GPU",{global_filters}}})'
+MAX_CPUS = 'sum(autoscaler_cluster_resources{{resource="CPU",{global_filters}}})'
+PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})'
+MAX_GPUS = 'sum(autoscaler_cluster_resources{{resource="GPU",{global_filters}}})'
+PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
 
 
 def max_plus_pending(max_resource, pending_resource):
@@ -353,7 +353,7 @@ DEFAULT_GRAFANA_PANELS = [
             ),
             # GPU
             Target(
-                expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(ray_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
+                expr="sum(ray_node_gpus_utilization{{{global_filters}}}) / on() (sum(autoscaler_cluster_resources{{resource='GPU',{global_filters}}}) or vector(0))",
                 legend="GPU (physical)",
             ),
             # Memory

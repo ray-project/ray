@@ -94,24 +94,24 @@ def test_metrics(shutdown_only):
         zero_reported_condition = get_metric_check_condition(
             [
                 MetricSamplePattern(
-                    name="ray_cluster_resources",
+                    name="autoscaler_cluster_resources",
                     value=0,
                     partial_label_match={"resource": "CPU"},
                 ),
-                MetricSamplePattern(name="ray_pending_resources", value=0),
-                MetricSamplePattern(name="ray_cluster_pending_nodes", value=0),
+                MetricSamplePattern(name="autoscaler_pending_resources", value=0),
+                MetricSamplePattern(name="autoscaler_pending_nodes", value=0),
                 MetricSamplePattern(
-                    name="ray_cluster_active_nodes",
+                    name="autoscaler_active_nodes",
                     value=0,
                     partial_label_match={"NodeType": "type-i"},
                 ),
                 MetricSamplePattern(
-                    name="ray_cluster_active_nodes",
+                    name="autoscaler_active_nodes",
                     value=0,
                     partial_label_match={"NodeType": "type-ii"},
                 ),
                 MetricSamplePattern(
-                    name="ray_cluster_active_nodes",
+                    name="autoscaler_active_nodes",
                     value=1,
                     partial_label_match={"NodeType": "ray.head.default"},
                 ),
@@ -126,32 +126,32 @@ def test_metrics(shutdown_only):
         two_cpu_no_pending_condition = get_metric_check_condition(
             [
                 MetricSamplePattern(
-                    name="ray_cluster_resources",
+                    name="autoscaler_cluster_resources",
                     value=2,
                     partial_label_match={"resource": "CPU"},
                 ),
                 MetricSamplePattern(
-                    name="ray_cluster_pending_nodes",
+                    name="autoscaler_pending_nodes",
                     value=0,
                     partial_label_match={"NodeType": "type-i"},
                 ),
                 MetricSamplePattern(
-                    name="ray_cluster_pending_nodes",
+                    name="autoscaler_pending_nodes",
                     value=0,
                     partial_label_match={"NodeType": "type-ii"},
                 ),
                 MetricSamplePattern(
-                    name="ray_cluster_active_nodes",
+                    name="autoscaler_active_nodes",
                     value=1,
                     partial_label_match={"NodeType": "type-i"},
                 ),
                 MetricSamplePattern(
-                    name="ray_cluster_active_nodes",
+                    name="autoscaler_active_nodes",
                     value=1,
                     partial_label_match={"NodeType": "type-ii"},
                 ),
                 MetricSamplePattern(
-                    name="ray_cluster_active_nodes",
+                    name="autoscaler_active_nodes",
                     value=1,
                     partial_label_match={"NodeType": "ray.head.default"},
                 ),

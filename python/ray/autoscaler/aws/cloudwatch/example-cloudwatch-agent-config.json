@@ -63,6 +63,7 @@
               "process_cpu_seconds_total": "Seconds",
               "autoscaler_config_validation_exceptions": "Count",
               "autoscaler_node_launch_exceptions": "Count",
+              "autoscaler_pending_nodes": "Count",
               "autoscaler_reset_exceptions": "Count",
               "autoscaler_running_workers": "Count",
               "autoscaler_started_nodes": "Count",
