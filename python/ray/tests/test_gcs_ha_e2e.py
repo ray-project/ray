@@ -277,6 +277,55 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
     wait_for_condition(check_alive, timeout=30, n=2)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_serve_controller_head_node(docker_cluster):
+    """Make sure the serve controller always runs on the head node
+    even when the head node restarts
+    """
+
+    get_nodes_script = """
+import ray
+ray.init("auto")
+print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
+"""
+    head, worker = docker_cluster
+
+    def check_alive(n):
+        output = worker.exec_run(cmd=f"python -c '{get_nodes_script}'")
+        assert output.exit_code == 0
+        text = output.output.decode().strip().split("\n")[-1]
+        print("Alive nodes: ", text)
+        return n == int(text)
+
+    wait_for_condition(check_alive, n=2)
+    # Run serve application
+    output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
+    assert output.exit_code == 0
+
+    head.kill()
+    sleep(2)
+    head.restart()
+    sleep(2)
+    wait_for_condition(check_alive, timeout=30, n=2)
+
+    check_controller_head_node_script = """
+import ray
+import requests
+from ray.serve.schema import ServeInstanceDetails
+ray.init("auto")
+head_node_id = None
+for node in ray.nodes():
+    if ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME in node["Resources"]:
+        head_node_id = node["NodeID"]
+        break
+serve_details = ServeInstanceDetails(
+    **requests.get("http://localhost:52365/api/serve/applications/").json())
+assert serve_details.controller_info.node_id == head_node_id
+"""
+    output = worker.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
+    assert output.exit_code == 0
+
+
 if __name__ == "__main__":
     import os
 

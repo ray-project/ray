@@ -461,7 +461,7 @@ class Node:
                 if ray_constants.HEAD_NODE_RESOURCE_NAME in resources:
                     raise ValueError(
                         f"{ray_constants.HEAD_NODE_RESOURCE_NAME}"
-                        " is a reserved resource name, use other names instead"
+                        " is a reserved resource name, use another name instead."
                     )
                 resources[ray_constants.HEAD_NODE_RESOURCE_NAME] = 1
 
