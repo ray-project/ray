@@ -325,7 +325,7 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 
 
 class ASGIAppReplicaWrapper:
-    """TODO."""
+    """Provides a common wrapper for replicas running an ASGI app."""
 
     async def __init__(self, app: ASGIApp):
         self._asgi_app = app
