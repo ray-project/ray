@@ -112,9 +112,8 @@ for a single-pod RayCluster will a log-processing sidecar.
 (kuberay-logging-tldr)=
 ### Deploying a RayCluster with logging CR
 
-Now, we will see how to deploy the configuration described above.
 
-Deploy the KubeRay Operator if you haven't yet.
+To deploy the configuration described above, deploy the KubeRay Operator if you haven't yet:
 Refer to the {ref}`Getting Started guide <kuberay-operator-deploy>`
 for instructions on this step.
 
