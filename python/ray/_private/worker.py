@@ -452,7 +452,9 @@ class Worker:
         self.ray_debugger_external = False
         self._load_code_from_local = False
         # Opened file descriptor to stdout/stderr for this python worker.
-        self._enable_record_task_log = ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING
+        self._enable_record_actor_task_log = (
+            ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING
+        )
         self._out_file = None
         self._err_file = None
         # Create the lock here because the serializer will use it before
@@ -542,14 +544,11 @@ class Worker:
     def record_task_log_start(self):
         """Record the task log info when task starts executing for
         non concurrent actor tasks."""
-        if self.core_worker.current_actor_max_concurrency() != 1:
-            # This is a concurrent actor task, we will not record the start.
-            # We are skipping concurrent actor tasks because high contention
-            # and slow IO on concurrent actors would result in perf regression.
+        if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
+            # We are not recording actor task log if not enabled explicitly.
+            # Recording actor task log is expensive and should be enabled only
+            # when needed.
             # https://github.com/ray-project/ray/issues/35598
-            return
-
-        if not self._enable_record_task_log:
             return
 
         self.core_worker.record_task_log_start(
@@ -562,14 +561,11 @@ class Worker:
     def record_task_log_end(self):
         """Record the task log info when task finishes executing for
         non concurrent actor tasks."""
-        if self.core_worker.current_actor_max_concurrency() != 1:
-            # This is a concurrent actor task, we will not record the end.
-            # We are skipping concurrent actor tasks because high contention
-            # and slow IO on concurrent actors would result in perf regression.
+        if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
+            # We are not recording actor task log if not enabled explicitly.
+            # Recording actor task log is expensive and should be enabled only
+            # when needed.
             # https://github.com/ray-project/ray/issues/35598
-            return
-
-        if not self._enable_record_task_log:
             return
 
         self.core_worker.record_task_log_end(

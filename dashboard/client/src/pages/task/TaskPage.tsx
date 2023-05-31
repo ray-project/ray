@@ -272,8 +272,10 @@ const TaskLogs = ({
           {
             title: "Logs",
             contents:
-              "Logs of async actor tasks or threaded actor tasks (concurency > 1) are only available " +
-              'as part of the actor logs. Please click "Other logs" link above to access the actor logs.',
+              "Logs of actor tasks are only available " +
+              "as part of the actor logs by default due to performance reason. " +
+              'Please click "Other logs" link above to access the actor logs. \n' +
+              "To record actor task log by default, you could set the runtime env of the actor or start the cluster with RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING=1 ",
           },
         ]
       : []),
