@@ -94,9 +94,6 @@ class TensorflowTrainer(DataParallelTrainer):
         from ray.air.config import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
 
-        # If using GPUs, set this to True.
-        use_gpu = False
-
         def build_model():
             # toy neural network : 1-layer
             return tf.keras.Sequential(
@@ -131,15 +128,15 @@ class TensorflowTrainer(DataParallelTrainer):
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=3, use_gpu=use_gpu),
+            scaling_config=ScalingConfig(num_workers=3, use_gpu=True),
             datasets={"train": train_dataset},
             train_loop_config={"num_epochs": 2},
         )
         result = trainer.fit()
 
     .. testoutput::
+        :options:+ELLIPSIS
         :hide:
-        :options: +ELLIPSIS
 
         ...
 

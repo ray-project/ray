@@ -73,7 +73,7 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
 
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    op = Read(ParquetDatasource())
+    op = Read(ParquetDatasource(), [])
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
@@ -107,7 +107,7 @@ def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(
         read_op,
         lambda x: x,
@@ -130,7 +130,7 @@ def test_map_batches_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_map_rows_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapRows(
         read_op,
         lambda x: x,
@@ -153,7 +153,7 @@ def test_map_rows_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_filter_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = Filter(
         read_op,
         lambda x: x,
@@ -176,7 +176,7 @@ def test_filter_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_flat_map(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = FlatMap(
         read_op,
         lambda x: x,
@@ -235,7 +235,7 @@ def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = RandomShuffle(
         read_op,
         seed=0,
@@ -267,7 +267,7 @@ def test_random_shuffle_e2e(
 )
 def test_repartition_operator(ray_start_regular_shared, enable_optimizer, shuffle):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
@@ -333,7 +333,7 @@ def test_repartition_e2e(
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
     # Test that Read is fused with MapBatches.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(
         read_op,
         lambda x: x,
@@ -353,7 +353,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
 def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimizer):
     # Test that a chain of different map operators are fused.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapRows(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x)
     op = FlatMap(op, lambda x: x)
@@ -395,6 +395,7 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
         planner = Planner()
         read_op = Read(
             ParquetDatasource(),
+            [],
             # This case is testing fusing the following 2 map_batches operators.
             # So we add incompatible remote args to the read op to make sure
             # it doesn't get fused.
@@ -442,6 +443,7 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         planner = Planner()
         read_op = Read(
             ParquetDatasource(),
+            [],
             # This case is testing fusing the following 2 map_batches operators.
             # So we add incompatible remote args to the read op to make sure
             # it doesn't get fused.
@@ -476,7 +478,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     # Test that a task-based map operator is fused into an actor-based map operator when
     # the former comes before the latter.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
@@ -496,7 +498,7 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
 ):
     # Test that reads fuse into an actor-based map operator.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
@@ -515,7 +517,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
 ):
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     op = MapBatches(op, lambda x: x)
     logical_plan = LogicalPlan(op)
@@ -539,7 +541,7 @@ def test_read_map_batches_operator_fusion_target_block_size(
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(read_op, lambda x: x, target_block_size=2)
     op = MapBatches(op, lambda x: x, target_block_size=5)
     op = MapBatches(op, lambda x: x, target_block_size=3)
@@ -567,7 +569,7 @@ def test_read_map_batches_operator_fusion_callable_classes(
 ):
     # Test that callable classes can still be fused if they're the same function.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
 
     class UDF:
         def __call__(self, x):
@@ -592,7 +594,7 @@ def test_read_map_batches_operator_fusion_incompatible_callable_classes(
 ):
     # Test that map operators are not fused when different callable classes are used.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
 
     class UDF:
         def __call__(self, x):
@@ -625,7 +627,7 @@ def test_read_map_batches_operator_fusion_incompatible_constructor_args(
     # Test that map operators are not fused when callable classes have different
     # constructor args.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
 
     class UDF:
         def __init__(self, a):
@@ -843,7 +845,7 @@ def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
 def test_write_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     datasource = ParquetDatasource()
-    read_op = Read(datasource)
+    read_op = Read(datasource, [])
     op = Write(
         read_op,
         datasource,
@@ -859,7 +861,7 @@ def test_write_operator(ray_start_regular_shared, enable_optimizer):
 
 def test_sort_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = Sort(
         read_op,
         key="col1",
@@ -939,7 +941,7 @@ def test_sort_validate_keys(
 
 def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = Aggregate(
         read_op,
         key="col1",
@@ -1009,8 +1011,8 @@ def test_aggregate_validate_keys(
 
 def test_zip_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op1 = Read(ParquetDatasource())
-    read_op2 = Read(ParquetDatasource())
+    read_op1 = Read(ParquetDatasource(), [])
+    read_op2 = Read(ParquetDatasource(), [])
     op = Zip(read_op1, read_op2)
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag

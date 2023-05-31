@@ -34,6 +34,7 @@ from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     TaskEvents,
     TaskStateUpdate,
+    TaskLogInfo,
 )
 from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 from ray.dashboard.modules.log.log_agent import (
@@ -48,7 +49,7 @@ from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.state import get_log, list_logs, list_nodes, list_workers
 from ray.util.state.common import GetLogOptions
-from ray.util.state.exception import DataSourceUnavailable
+from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_manager import StateDataSourceClient
 
 if sys.version_info >= (3, 8, 0):
@@ -60,13 +61,33 @@ else:
 ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
 
 
-def generate_task_event(task_id, node_id, attempt_number, worker_id):
+def generate_task_event(
+    task_id,
+    node_id,
+    attempt_number,
+    worker_id,
+    stdout_file=None,
+    stderr_file=None,
+    stdout_start=None,
+    stderr_start=None,
+    stdout_end=None,
+    stderr_end=None,
+):
     task_event = TaskEvents(
         task_id=task_id.binary(),
         attempt_number=attempt_number,
         job_id=b"",
         state_updates=TaskStateUpdate(
-            node_id=node_id.binary(), worker_id=worker_id.binary()
+            node_id=node_id.binary(),
+            worker_id=worker_id.binary(),
+            task_log_info=TaskLogInfo(
+                stdout_file=stdout_file,
+                stderr_file=stderr_file,
+                stdout_start=stdout_start,
+                stderr_start=stderr_start,
+                stdout_end=stdout_end,
+                stderr_end=stderr_end,
+            ),
         ),
     )
 
@@ -477,8 +498,8 @@ async def test_logs_manager_resolve_file(logs_manager):
     logs_client.get_all_registered_agent_ids = MagicMock()
     logs_client.get_all_registered_agent_ids.return_value = [node_id.hex()]
     expected_filename = "filename"
-    log_file_name, n = await logs_manager.resolve_filename(
-        node_id=node_id,
+    res = await logs_manager.resolve_filename(
+        node_id=node_id.hex(),
         log_filename=expected_filename,
         actor_id=None,
         task_id=None,
@@ -486,8 +507,9 @@ async def test_logs_manager_resolve_file(logs_manager):
         get_actor_fn=lambda _: True,
         timeout=10,
     )
+    log_file_name, n = res.filename, res.node_id
     assert log_file_name == expected_filename
-    assert n == node_id
+    assert n == node_id.hex()
     """
     Test actor id is given.
     """
@@ -500,8 +522,8 @@ async def test_logs_manager_resolve_file(logs_manager):
                 return None
             assert False, "Not reachable."
 
-        log_file_name, n = await logs_manager.resolve_filename(
-            node_id=node_id,
+        await logs_manager.resolve_filename(
+            node_id=node_id.hex(),
             log_filename=None,
             actor_id=actor_id,
             task_id=None,
@@ -514,8 +536,8 @@ async def test_logs_manager_resolve_file(logs_manager):
     actor_id = ActorID(b"2" * 16)
 
     with pytest.raises(ValueError):
-        log_file_name, n = await logs_manager.resolve_filename(
-            node_id=node_id,
+        await logs_manager.resolve_filename(
+            node_id=node_id.hex(),
             log_filename=None,
             actor_id=actor_id,
             task_id=None,
@@ -532,7 +554,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         "worker_out": [f"worker-{worker_id.hex()}-123-123.out"],
         "worker_err": [],
     }
-    log_file_name, n = await logs_manager.resolve_filename(
+    res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=actor_id,
@@ -541,6 +563,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
         timeout=10,
     )
+    log_file_name, n = res.filename, res.node_id
     logs_manager.list_logs.assert_awaited_with(
         node_id.hex(), 10, glob_filter=f"*{worker_id.hex()}*out"
     )
@@ -555,16 +578,19 @@ async def test_logs_manager_resolve_file(logs_manager):
     logs_client.get_all_task_info = AsyncMock()
     logs_client.get_all_task_info.return_value = GetTaskEventsReply(
         events_by_task=[
-            generate_task_event(task_id, node_id, attempt_number=1, worker_id=worker_id)
+            generate_task_event(
+                task_id,
+                node_id,
+                attempt_number=1,
+                worker_id=worker_id,
+                stdout_file=f"worker-{worker_id.hex()}-123-123.out",
+            )
         ]
     )
-    logs_manager.list_logs.return_value = {
-        "worker_out": [f"worker-{worker_id.hex()}-123-123.out"],
-        "worker_err": [],
-    }
 
     # Expect resolved file.
-    filename, n = await logs_manager.resolve_filename(task_id=task_id, attempt_number=1)
+    res = await logs_manager.resolve_filename(task_id=task_id, attempt_number=1)
+    filename, n = res.filename, res.node_id
     # Default out file. See generate_task_event() for filename
     assert filename == f"worker-{worker_id.hex()}-123-123.out"
     assert n == node_id.hex()
@@ -590,7 +616,7 @@ async def test_logs_manager_resolve_file(logs_manager):
             "worker_out": ["worker-123-123-123.out"],
             "worker_err": [],
         }
-        log_file_name = await logs_manager.resolve_filename(
+        await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
             actor_id=None,
@@ -608,7 +634,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         "worker_out": [f"worker-123-123-{pid}.out"],
         "worker_err": [],
     }
-    log_file_name, n = await logs_manager.resolve_filename(
+    res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=None,
@@ -617,6 +643,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
         timeout=10,
     )
+    log_file_name, n = res.filename, res.node_id
     logs_manager.list_logs.assert_awaited_with(
         node_id.hex(), 10, glob_filter=f"*{pid}*out"
     )
@@ -626,7 +653,7 @@ async def test_logs_manager_resolve_file(logs_manager):
     Test nothing is given.
     """
     with pytest.raises(FileNotFoundError):
-        log_file_name = await logs_manager.resolve_filename(
+        await logs_manager.resolve_filename(
             node_id=node_id.hex(),
             log_filename=None,
             actor_id=None,
@@ -645,7 +672,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         "worker_out": [f"worker-123-123-{pid}.out"],
         "worker_err": [],
     }
-    log_file_name, n = await logs_manager.resolve_filename(
+    res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=None,
@@ -654,6 +681,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
         timeout=10,
     )
+    log_file_name, n = res.filename, res.node_id
     logs_manager.list_logs.assert_awaited_with(
         node_id.hex(), 10, glob_filter=f"*{pid}*out"
     )
@@ -663,7 +691,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         "worker_out": [],
         "worker_err": [f"worker-123-123-{pid}.err"],
     }
-    log_file_name, n = await logs_manager.resolve_filename(
+    res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
         log_filename=None,
         actor_id=None,
@@ -673,6 +701,7 @@ async def test_logs_manager_resolve_file(logs_manager):
         timeout=10,
         suffix="err",
     )
+    log_file_name, n = res.filename, res.node_id
     logs_manager.list_logs.assert_awaited_with(
         node_id.hex(), 10, glob_filter=f"*{pid}*err"
     )
@@ -711,8 +740,8 @@ async def test_logs_manager_stream_log(logs_manager):
         lines=10,
         interval=None,
         timeout=30,
-        task_id=None,
-        attempt_number=0,
+        start_offset=None,
+        end_offset=None,
     )
 
     # Test pid, media_type = "stream", node_ip
@@ -740,8 +769,8 @@ async def test_logs_manager_stream_log(logs_manager):
         lines=10,
         interval=0.5,
         timeout=None,
-        task_id=None,
-        attempt_number=0,
+        start_offset=None,
+        end_offset=None,
     )
 
     # Currently cannot test actor_id with AsyncMock.
@@ -784,8 +813,8 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
         lines=10,
         interval=None,
         timeout=None,
-        task_id=None,
-        attempt_number=0,
+        start_offset=None,
+        end_offset=None,
     )
 
 
@@ -1271,6 +1300,13 @@ def test_log_get(ray_start_cluster):
 
     wait_for_condition(verify)
 
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows has logging race from tasks."
+)
+def test_log_task(shutdown_only):
+    ray.init()
+
     # Test get log by multiple task id
     @ray.remote
     def task_log():
@@ -1300,28 +1336,53 @@ def test_log_get(ray_start_cluster):
 
     wait_for_condition(verify)
 
-    # Test actor task logs with interleaving logs.
+    # Test actor task logs
     @ray.remote
     class Actor:
-        async def print_log(self, x, out_msg):
+        def print_log(self, out_msg):
+            for _ in range(3):
+                print(out_msg, end="", file=sys.stdout)
+                print(out_msg, end="", file=sys.stderr)
+
+    a = Actor.remote()
+    out_msg = "This is a test log\n"
+    t = a.print_log.remote(out_msg)
+    ray.get(t)
+
+    def verify():
+        lines = get_log(task_id=t.task_id().hex())
+        assert out_msg * 3 == "".join(lines)
+
+        return True
+
+    wait_for_condition(verify)
+
+    # Test actor task logs with interleaving logs should raise
+    # errors to ask users to user actor log instead.
+    @ray.remote
+    class AsyncActor:
+        async def print_log(self, out_msg):
             for _ in range(3):
                 print(out_msg, end="", file=sys.stdout)
                 await asyncio.sleep(1)
 
-    actor = Actor.options(max_concurrency=2).remote()
+    actor = AsyncActor.options(max_concurrency=2).remote()
     out_msg = "[{name}]: This is a test log from stdout\n"
-    task_a = actor.print_log.remote("a", out_msg.format(name="a"))
-    task_b = actor.print_log.remote("b", out_msg.format(name="b"))
+    task_a = actor.print_log.remote(out_msg.format(name="a"))
+    task_b = actor.print_log.remote(out_msg.format(name="b"))
     ray.get([task_a, task_b])
 
     def verify():
-        lines = get_log(task_id=task_a.task_id().hex())
-        actual_output = "".join(lines)
-        assert actual_output.count(out_msg.format(name="a")) == 3
+        with pytest.raises(RayStateApiException) as e:
+            for log in get_log(task_id=task_a.task_id().hex()):
+                pass
 
-        lines = get_log(task_id=task_b.task_id().hex())
-        actual_output = "".join(lines)
-        assert actual_output.count(out_msg.format(name="b")) == 3
+        assert "For concurrent actor task, please query actor log" in str(e.value), str(
+            e.value
+        )
+        assert f"ray logs actor --id {actor._actor_id.hex()}" in str(e.value), str(
+            e.value
+        )
 
         return True
 
