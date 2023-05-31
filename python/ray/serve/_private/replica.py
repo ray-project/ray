@@ -36,6 +36,7 @@ from ray.serve._private.constants import (
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
     ASGIHTTPSender,
     ASGIHTTPQueueSender,
     RawASGIResponse,
@@ -527,7 +528,7 @@ class RayServeReplica:
 
         # Check if the callable is our ASGI wrapper (i.e., the user used
         # `@serve.ingress`).
-        callable_is_asgi_wrapper = hasattr(self.callable, "_is_serve_asgi_wrapper")
+        callable_is_asgi_wrapper = isinstance(self.callable, ASGIAppReplicaWrapper)
         if asgi_sender is not None and callable_is_asgi_wrapper:
             kwargs["asgi_sender"] = asgi_sender
 
