@@ -140,12 +140,22 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
         if "object_store_memory" in resource_usage[0]:
             del resource_usage[0]["object_store_memory"]
             visited_atleast_once[0].add("object_store_memory")
+        if ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME in resource_usage[0]:
+            del resource_usage[0][ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME]
+            visited_atleast_once[0].add(
+                ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME
+            )
         if "memory" in resource_usage[1]:
             del resource_usage[1]["memory"]
             visited_atleast_once[1].add("memory")
         if "object_store_memory" in resource_usage[1]:
             del resource_usage[1]["object_store_memory"]
             visited_atleast_once[1].add("object_store_memory")
+        if ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME in resource_usage[1]:
+            del resource_usage[1][ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME]
+            visited_atleast_once[1].add(
+                ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME
+            )
         for key in list(resource_usage[0].keys()):
             if key.startswith("node:"):
                 del resource_usage[0][key]
@@ -171,7 +181,12 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     # Sanity check we emitted a resize event.
     assert any("Resized to" in x for x in monitor.event_summarizer.summary())
 
-    assert visited_atleast_once[0] == {"memory", "object_store_memory", "node:"}
+    assert visited_atleast_once[0] == {
+        "memory",
+        "object_store_memory",
+        "node:",
+        ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME,
+    }
     assert visited_atleast_once[0] == visited_atleast_once[1]
 
     remove_placement_group(pg)
