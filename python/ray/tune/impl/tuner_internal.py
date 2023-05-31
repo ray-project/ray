@@ -603,10 +603,10 @@ class TunerInternal:
 
     def _get_tune_run_arguments(self, trainable: TrainableType) -> Dict[str, Any]:
         """Get tune.run arguments common for both new and resumed runs."""
-        checkpoint_freq = self._run_config.checkpoint_config.checkpoint_frequency
-        checkpoint_at_end = self._run_config.checkpoint_config.checkpoint_at_end
+        # Avoid overwriting the originally configured checkpoint config.
+        checkpoint_config = copy.deepcopy(self._run_config.checkpoint_config)
 
-        if checkpoint_freq:
+        if checkpoint_config.checkpoint_frequency:
             # Function trainables (and thus most of our trainers) usually don't handle
             # this argument.
             handle_checkpoint_freq = getattr(
@@ -616,7 +616,8 @@ class TunerInternal:
                 # If we specifically know this trainable doesn't support the
                 # argument, raise an error
                 raise ValueError(
-                    f"You passed `checkpoint_frequency={checkpoint_freq}` to your "
+                    "You passed `checkpoint_frequency="
+                    f"{checkpoint_config.checkpoint_frequency}` to your "
                     "CheckpointConfig, but this trainer does not support "
                     "this argument. If you passed in an AIR trainer that takes in a "
                     "custom training loop, you will need to "
@@ -628,18 +629,19 @@ class TunerInternal:
             elif handle_checkpoint_freq is True:
                 # If we specifically support it, it's handled in the training loop,
                 # so we disable tune's bookkeeping.
-                checkpoint_freq = 0
+                checkpoint_config.checkpoint_frequency = 0
             # Otherwise, the trainable is not an AIR trainer and we just keep the
             # user-supplied value.
             # Function trainables will raise a runtime error later if set > 0
-        if checkpoint_at_end is not None:
+        if checkpoint_config.checkpoint_at_end is not None:
             # Again, function trainables usually don't handle this argument.
             handle_cp_at_end = getattr(trainable, "_handles_checkpoint_at_end", None)
             if handle_cp_at_end is False:
                 # If we specifically know we don't support it, raise an error.
                 raise ValueError(
-                    f"You passed `checkpoint_at_end={checkpoint_at_end}` to your "
-                    "CheckpointConfig, but this trainer does not support "
+                    "You passed `checkpoint_at_end="
+                    f"{checkpoint_config.checkpoint_at_end}` "
+                    "to your CheckpointConfig, but this trainer does not support "
                     "this argument. If you passed in an AIR trainer that takes in a "
                     "custom training loop, you should include one last call to "
                     "`ray.air.session.report(metrics=..., checkpoint=...)` "
@@ -648,15 +650,15 @@ class TunerInternal:
             elif handle_cp_at_end is True:
                 # If we specifically support it, it's handled in the training loop,
                 # so we disable tune's internal bookkeeping.
-                checkpoint_at_end = False
+                checkpoint_config.checkpoint_at_end = False
             # If this is a user-defined trainable, just keep the value
             # Function trainables will raise a runtime error later if set to True
         else:
             # Set default to False for function trainables and True for everything else
             if is_function_trainable(trainable):
-                checkpoint_at_end = False
+                checkpoint_config.checkpoint_at_end = False
             else:
-                checkpoint_at_end = True
+                checkpoint_config.checkpoint_at_end = True
 
         return dict(
             storage_path=self._run_config.storage_path,
@@ -666,18 +668,7 @@ class TunerInternal:
             sync_config=self._run_config.sync_config,
             stop=self._run_config.stop,
             max_failures=self._run_config.failure_config.max_failures,
-            keep_checkpoints_num=self._run_config.checkpoint_config.num_to_keep,
-            checkpoint_score_attr=(
-                self._run_config.checkpoint_config._tune_legacy_checkpoint_score_attr
-            ),
-            checkpoint_freq=checkpoint_freq,
-            checkpoint_at_end=checkpoint_at_end,
-            checkpoint_keep_all_ranks=(
-                self._run_config.checkpoint_config._checkpoint_keep_all_ranks
-            ),
-            checkpoint_upload_from_workers=(
-                self._run_config.checkpoint_config._checkpoint_upload_from_workers
-            ),
+            checkpoint_config=checkpoint_config,
             _experiment_checkpoint_dir=self._experiment_checkpoint_dir,
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),

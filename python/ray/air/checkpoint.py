@@ -577,6 +577,9 @@ class Checkpoint:
                     else:
                         _copy_dir_ignore_conflicts(local_path_pathlib, path_pathlib)
             elif external_path:
+                logger.info(
+                    f"Downloading checkpoint from {external_path} to {path} ..."
+                )
                 # If this exists on external storage (e.g. cloud), download
                 download_from_uri(uri=external_path, local_path=path, filelock=False)
             else:

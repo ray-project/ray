@@ -615,11 +615,11 @@ class CheckpointConfig:
 
     num_to_keep: Optional[int] = None
     checkpoint_score_attribute: Optional[str] = None
-    checkpoint_score_order: str = MAX
-    checkpoint_frequency: int = 0
+    checkpoint_score_order: Optional[str] = MAX
+    checkpoint_frequency: Optional[int] = 0
     checkpoint_at_end: Optional[bool] = None
-    _checkpoint_keep_all_ranks: bool = False
-    _checkpoint_upload_from_workers: bool = False
+    _checkpoint_keep_all_ranks: Optional[bool] = False
+    _checkpoint_upload_from_workers: Optional[bool] = False
 
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep <= 0:

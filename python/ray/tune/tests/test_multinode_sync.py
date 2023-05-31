@@ -7,6 +7,7 @@ from typing import List
 
 import ray
 from ray import tune
+from ray.air.config import CheckpointConfig
 from ray.air.util.node import _force_on_node
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
@@ -261,6 +262,7 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         # Run our test
         with self.assertRaises(RuntimeError):
+            checkpoint_config = CheckpointConfig(num_to_keep=2)
             tune.run(
                 train,
                 name="checkpoint_test",
@@ -270,7 +272,7 @@ class MultiNodeSyncTest(unittest.TestCase):
                 storage_path="/cluster/node",
                 trial_name_creator=lambda trial: trial.trial_id,
                 trial_dirname_creator=lambda trial: trial.trial_id,
-                keep_checkpoints_num=2,
+                checkpoint_config=checkpoint_config,
                 callbacks=[FailOnIndicator("/cluster/shared", num_indicators=3)],
                 verbose=2,
             )
@@ -320,12 +322,13 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         # Continue running the experiment in a new run. Note we
         # don't invoke any failure callback here.
+        checkpoint_config = CheckpointConfig(num_to_keep=2)
         analysis = tune.run(
             train,
             name="checkpoint_test",
             resources_per_trial={"cpu": 4},
             storage_path="/cluster/node",
-            keep_checkpoints_num=2,
+            checkpoint_config=checkpoint_config,
             resume="AUTO",
             verbose=2,
         )

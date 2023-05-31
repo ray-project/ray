@@ -363,8 +363,7 @@ def test_accuracy(net, device="cpu"):
 #         config=config,
 #         num_samples=num_samples,
 #         scheduler=scheduler,
-#         progress_reporter=reporter,
-#         checkpoint_at_end=True)
+#         progress_reporter=reporter)
 #
 # You can specify the number of CPUs, which are then available e.g.
 # to increase the ``num_workers`` of the PyTorch ``DataLoader`` instances. The selected

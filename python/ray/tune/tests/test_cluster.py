@@ -408,13 +408,13 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
     exp2_args = dict(
         base_dict.items(),
         local_dir=dirpath,
-        checkpoint_config=dict(checkpoint_frequency=1),
+        checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     )
     exp3_args = dict(base_dict.items(), config=dict(mock_error=True))
     exp4_args = dict(
         base_dict.items(),
         config=dict(mock_error=True),
-        checkpoint_config=dict(checkpoint_frequency=1),
+        checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     )
 
     all_experiments = {
@@ -452,6 +452,8 @@ def test_cluster_rllib_restore(start_connected_cluster, tmpdir):
 import time
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
+
 
 ray.init(address="{address}")
 
@@ -462,7 +464,7 @@ tune.run(
     config=dict(env="CartPole-v1", framework="tf"),
     stop=dict(training_iteration=10),
     local_dir="{checkpoint_dir}",
-    checkpoint_freq=1,
+    checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     max_failures=1,
     dict(experiment=kwargs),
     raise_on_failed_trial=False)
@@ -548,6 +550,7 @@ import os
 import time
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 
 os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
@@ -560,7 +563,7 @@ tune.run(
     name="experiment",
     stop=dict(training_iteration=5),
     local_dir="{checkpoint_dir}",
-    checkpoint_freq=1,
+    checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     max_failures=1,
     raise_on_failed_trial=False)
 """.format(
