@@ -301,11 +301,11 @@ How to test examples
 Testing specific examples
 =========================
 
-To test specific examples, install `pytest-sphinx`.
+To test specific examples, install the Ray fork of `pytest-sphinx`.
 
 .. code-block:: bash
 
-    pip install pytest-sphinx
+    pip install git+https://github.com/ray-project/pytest-sphinx
 
 Then, run pytest on a module, docstring, or user guide.
 
