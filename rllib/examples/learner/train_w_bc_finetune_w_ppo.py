@@ -9,7 +9,7 @@ from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.learner.learner_group_config import LearnerGroupScalingConfig
 from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.examples.datasets.dataset_utils import convert_json_sample_batch_to_df
 from ray.train.torch import TorchTrainer
 
@@ -38,9 +38,9 @@ def train_func(config):
             batch_dict = {}
             for key in batch.columns:
                 batch_dict[key] = np.array(batch[key].tolist())
-            batch = SampleBatch(batch_dict).as_multi_agent()
-            stats = learner.update(batch=batch)
-            num_steps_trained += batch.count
+            sample_batch: MultiAgentBatch = SampleBatch(batch_dict).as_multi_agent()
+            stats = learner.update(batch=sample_batch)
+            num_steps_trained += sample_batch.count
         ckpt_dir = tempfile.mkdtemp()
         learner.save_state(ckpt_dir)
         session.report(
