@@ -22,6 +22,8 @@ config = (
         model={"fcnet_activation": "relu"},
         vf_clip_param=10.0,
     )
+    # This speeds up this test for tf2 a lot.
+    .framework(eager_tracing=True)
 )
 
 stop = {
