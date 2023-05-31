@@ -113,7 +113,7 @@ def test_map_operator_udf_name(ray_start_regular_shared, enable_optimizer):
     def normal_function(x):
         return x
 
-    lambda_function = lambda x: x
+    lambda_function = lambda x: x  # noqa: E731
 
     class CallableClass:
         def __call__(self, x):
@@ -412,8 +412,8 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimiz
 
     assert op.name == "Filter(<lambda>)"
     assert (
-        physical_op.name
-        == "ReadParquet->Map(<lambda>)->MapBatches(<lambda>)->FlatMap(<lambda>)->Filter(<lambda>)"
+        physical_op.name == "ReadParquet->Map(<lambda>)->MapBatches(<lambda>)"
+        "->FlatMap(<lambda>)->Filter(<lambda>)"
     )
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
@@ -603,8 +603,8 @@ def test_read_map_batches_operator_fusion_target_block_size(
     assert op.name == "MapBatches(<lambda>)"
     # Ops are still fused.
     assert (
-        physical_op.name
-        == "ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)->MapBatches(<lambda>)"
+        physical_op.name == "ReadParquet->MapBatches(<lambda>)->"
+        "MapBatches(<lambda>)->MapBatches(<lambda>)"
     )
     assert isinstance(physical_op, MapOperator)
     # Target block size is set to max.
@@ -775,7 +775,10 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
         -18,
         18,
     ]
-    name = "ReadRange->Filter(<lambda>)->Map(wraps)->MapBatches(<lambda>)->FlatMap(<lambda>):"
+    name = (
+        "ReadRange->Filter(<lambda>)->Map(wraps)"
+        "->MapBatches(<lambda>)->FlatMap(<lambda>):"
+    )
     assert name in ds.stats()
     _check_usage_record(["ReadRange", "Filter", "Map", "MapBatches", "FlatMap"])
 
