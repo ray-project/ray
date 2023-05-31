@@ -4,7 +4,9 @@
 import asyncio
 
 import pyarrow as pa
+
 import ray
+
 
 @ray.remote
 def py_return_input(v):
@@ -195,7 +197,7 @@ def py_func_call_java_overloaded_method():
 def py_put_into_object_store():
     column_values = [0, 1, 2, 3, 4]
     column_array = pa.array(column_values)
-    table = pa.Table.from_arrays([column_array], names=['ArrowBigIntVector'])
+    table = pa.Table.from_arrays([column_array], names=["ArrowBigIntVector"])
     return table
 
 
@@ -203,7 +205,7 @@ def py_put_into_object_store():
 def py_object_store_get_and_check(table):
     column_values = [0, 1, 2, 3, 4]
     column_array = pa.array(column_values)
-    expected_table = pa.Table.from_arrays([column_array], names=['ArrowBigIntVector'])
+    expected_table = pa.Table.from_arrays([column_array], names=["ArrowBigIntVector"])
 
     for column_name in table.column_names:
         column1 = table[column_name]

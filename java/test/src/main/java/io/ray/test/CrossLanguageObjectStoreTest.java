@@ -18,6 +18,7 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+@Test(groups = {"cluster"})
 public class CrossLanguageObjectStoreTest extends BaseTest {
 
   private static final String PYTHON_MODULE = "test_cross_language_invocation";

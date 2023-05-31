@@ -277,7 +277,9 @@ class SerializationContext:
                     return b""
                 return data.to_pybytes()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ARROW:
-                assert pa is not None, "pyarrow should be imported while deserializing arrow objects"
+                assert (
+                    pa is not None
+                ), "pyarrow should be imported while deserializing arrow objects"
                 reader = pa.BufferReader(data)
                 return pa.ipc.open_stream(reader).read_all()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
@@ -474,7 +476,9 @@ class SerializationContext:
 
         # Check whether arrow is installed. If so, use Arrow IPC format
         # to serialize this object, then it can also be read by Java.
-        if pa is not None and (isinstance(value, pa.Table) or isinstance(value, pa.RecordBatch)):
+        if pa is not None and (
+            isinstance(value, pa.Table) or isinstance(value, pa.RecordBatch)
+        ):
             return ArrowSerializedObject(value)
 
         return self._serialize_to_msgpack(value)
