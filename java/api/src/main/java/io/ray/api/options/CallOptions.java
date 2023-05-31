@@ -109,7 +109,8 @@ public class CallOptions extends BaseTaskOptions {
     }
 
     public CallOptions build() {
-      return new CallOptions(name, resources, group, bundleIndex, maxRetries, concurrencyGroupName, runtimeEnv);
+      return new CallOptions(
+          name, resources, group, bundleIndex, maxRetries, concurrencyGroupName, runtimeEnv);
     }
   }
 }

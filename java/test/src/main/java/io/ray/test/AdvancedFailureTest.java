@@ -4,7 +4,6 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.exception.RayException;
-import io.ray.runtime.util.SystemUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -78,5 +77,4 @@ public class AdvancedFailureTest extends BaseTest {
       Assert.assertTrue(e instanceof RayException);
     }
   }
-
 }
