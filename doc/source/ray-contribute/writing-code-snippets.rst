@@ -226,9 +226,9 @@ To ignore parts of a *doctest-style* output, replace problematic sections with e
     >>> import ray
     >>> ray.data.read_images("example://image-datasets/simple")
     Dataset(
-        num_blocks=...,
-        num_rows=...,
-        schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
+       num_blocks=...,
+       num_rows=...,
+       schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
     )
 
 To ignore an output altogether, write a *code-block-style* snippet. Don't use `# doctest: +SKIP`.
