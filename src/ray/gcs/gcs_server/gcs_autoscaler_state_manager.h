@@ -91,10 +91,13 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
+  // We currently provide two guarantees for this version:
+  //    1. It will increase monotonically.
+  //    2. If a state is updated, the version will be higher.
+  // Ideally we would want to have a guarantee where consecutive versions will always
+  // be different, but it's currently hard to do.
   // TODO(rickyx): https://github.com/ray-project/ray/issues/35873
-  // We will
-  // 1. need to make the version correct when GCS fails over.
-  // 2. need to make the version updated when states are updated
+  // We will need to make the version correct when GCS fails over.
   int64_t last_cluster_resource_state_version_ = 0;
 
   /// The last seen autoscaler state version. Use 0 as the default value to indicate

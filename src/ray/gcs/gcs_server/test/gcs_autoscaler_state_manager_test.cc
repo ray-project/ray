@@ -204,13 +204,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
                                                    /* nun_infeasible */ 1,
                                                    /* num_backlog */ 0),
                          Mocker::GenResourceDemand({{"CPU", 4}, {"GPU", 2}},
-                                                   /* num_ready_queued */ 1,
+                                                   /* num_ready_queued */ 0,
                                                    /* num_infeasible */ 1,
                                                    /* num_backlog */ 1)});
 
     auto reply = GetClusterResourceStateSync();
     // Expect each pending resources shape to be num_infeasible + num_backlog.
-    CheckPendingRequests(reply, {{"CPU:1", 1}, {"CPU:4,GPU:2", 1 + 1}});
+    CheckPendingRequests(reply, {{"CPU:1", 1 + 1}, {"CPU:4,GPU:2", 1 + 1}});
   }
 
   // Remove node should clear it.

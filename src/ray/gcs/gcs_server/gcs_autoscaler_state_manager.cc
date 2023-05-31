@@ -77,7 +77,8 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
   // from gcs_resource_manager_.
   auto aggregate_load = gcs_resource_manager_.GetAggregatedResourceLoad();
   for (const auto &[shape, demand] : aggregate_load) {
-    auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size();
+    auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
+                       demand.num_ready_requests_queued();
     if (num_pending > 0) {
       auto pending_req = reply->add_pending_resource_requests();
       pending_req->set_count(num_pending);
