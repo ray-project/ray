@@ -128,6 +128,10 @@ class SingleAgentGymEnvRunner(EnvRunner):
                 )
             ):
                 # Episode is done (terminated or truncated).
+                # Note that gym.vector.Env reset done sub-environments automatically
+                # (and start a new episode). The step-returned observation is then
+                # the new episode's reset observation and the final observation of
+                # the old episode can be found in the info dict.
                 if term or trunc:
                     # Finish the episode object with the actual terminal observation
                     # stored in the info dict (`o` is already the reset obs of the new
@@ -187,10 +191,15 @@ class SingleAgentGymEnvRunner(EnvRunner):
                     self._split_by_env(truncateds),
                 )
             ):
-                # The last entry in self.observations[i] is already the reset
-                # obs of the new episode.
+                # Episode is done (terminated or truncated).
+                # Note that gym.vector.Env reset done sub-environments automatically
+                # (and start a new episode). The step-returned observation is then
+                # the new episode's reset observation and the final observation of
+                # the old episode can be found in the info dict.
                 if term or trunc:
                     eps += 1
+                    # Finish the episode object with the actual terminal observation
+                    # stored in the info dict.
                     episodes[i].add_timestep(
                         infos["final_observation"][i],
                         a,
@@ -198,7 +207,9 @@ class SingleAgentGymEnvRunner(EnvRunner):
                         is_terminated=term,
                         is_truncated=trunc,
                     )
+                    # Add this finished episode to the list of completed ones.
                     done_episodes_to_return.append(episodes[i])
+                    # Start a new episode and set its initial observation to `o`.
                     episodes[i] = Episode(observations=[o])
                 else:
                     episodes[i].add_timestep(o, a, r)
