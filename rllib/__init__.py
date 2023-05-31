@@ -15,7 +15,6 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.tune.registry import register_trainable
 
-# spam
 
 def _setup_logger():
     logger = logging.getLogger("ray.rllib")
