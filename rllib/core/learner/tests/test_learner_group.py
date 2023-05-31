@@ -261,7 +261,9 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
-            scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
+            scaling_config = REMOTE_SCALING_CONFIGS.get(
+                scaling_mode
+            ) or LOCAL_SCALING_CONFIGS.get(scaling_mode)
             initial_learner_group = get_learner_group(
                 fw, env, scaling_config, eager_tracing=True
             )
