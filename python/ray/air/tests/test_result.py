@@ -1,6 +1,4 @@
 import os
-import torch
-import tempfile
 import pytest
 
 import ray
@@ -54,7 +52,7 @@ def build_dummy_tuner(configs):
 def test_result_restore(ray_start_4_cpus, tmpdir, mode):
     NUM_ITERATIONS = 5
     NUM_CHECKPOINTS = 3
-    storage_path = tmpdir
+    storage_path = str(tmpdir)
     exp_name = "test_result_restore"
 
     configs = {

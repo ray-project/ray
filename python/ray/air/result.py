@@ -1,6 +1,5 @@
 import os
 import json
-import pickle
 import pandas as pd
 import warnings
 from dataclasses import dataclass
@@ -8,6 +7,7 @@ from os.path import join
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     EXPR_RESULT_FILE,
@@ -165,7 +165,9 @@ class Result:
         ]
 
         ckpt_metadata_dicts = [
-            pickle.load(open(join(ckpt_dir, CHECKPOINT_TUNE_METADATA_FILE), "rb"))
+            ray.cloudpickle.load(
+                open(join(ckpt_dir, CHECKPOINT_TUNE_METADATA_FILE), "rb")
+            )
             for ckpt_dir in ckpt_dirs
         ]
 
@@ -193,7 +195,7 @@ class Result:
         error = None
         error_file_path = Path(local_path) / EXPR_ERROR_PICKLE_FILE
         if error_file_path.exists():
-            error = pickle.load(open(error_file_path, "rb"))
+            error = ray.cloudpickle.load(open(error_file_path, "rb"))
 
         return Result(
             metrics=latest_metrics,
