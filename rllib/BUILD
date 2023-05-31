@@ -1994,28 +1994,30 @@ py_test(
 
 # Learner
 py_test(
-    name = "test_learner_group1",
+    name = "TestLearnerGroupSyncUpdate",
+    main = "core/learner/tests/test_learner_group.py",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
-    args = ["TestLearnerGroup1"]
+    args = ["TestLearnerGroupSyncUpdate"]
 )
 
 py_test(
-    name = "test_learner_group2",
+    name = "TestLearnerGroupCheckpointRestore",
+    main = "core/learner/tests/test_learner_group.py",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
-    args = ["TestLearnerGroup2"]
+    args = ["TestLearnerGroupCheckpointRestore"]
 )
 
-
 py_test(
-    name = "test_learner_group3",
+    name = "TestLearnerGroupAsyncUpdate",
+    main = "core/learner/tests/test_learner_group.py",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
-    args = ["TestLearnerGroup3"]
+    args = ["TestLearnerGroupAsyncUpdate"]
 )
 
 py_test(

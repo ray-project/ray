@@ -522,7 +522,8 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+    import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    class_ = sys.argv[1] if len(sys.argv) > 1 else None
+    sys.exit(pytest.main(["-v", __file__ + ("" if class_ is None else "::" + class_)]))
