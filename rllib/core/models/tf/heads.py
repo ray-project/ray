@@ -9,7 +9,7 @@ from ray.rllib.core.models.configs import (
     MLPHeadConfig,
 )
 from ray.rllib.core.models.specs.specs_base import Spec
-from ray.rllib.core.models.specs.specs_tf import TfTensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfCNNTranspose, TfMLP
 from ray.rllib.utils import try_import_tf
@@ -34,11 +34,11 @@ class TfMLPHead(TfModel):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return TfTensorSpec("b, d", d=self.config.input_dims[0])
+        return TensorSpec("b, d", d=self.config.input_dims[0], framework="tf2")
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return TfTensorSpec("b, d", d=self.config.output_dims[0])
+        return TensorSpec("b, d", d=self.config.output_dims[0], framework="tf2")
 
     @override(Model)
     def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
@@ -73,11 +73,11 @@ class TfFreeLogStdMLPHead(TfModel):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return TfTensorSpec("b, d", d=self.config.input_dims[0])
+        return TensorSpec("b, d", d=self.config.input_dims[0], framework="tf2")
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return TfTensorSpec("b, d", d=self.config.output_dims[0])
+        return TensorSpec("b, d", d=self.config.output_dims[0], framework="tf2")
 
     @override(Model)
     def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
@@ -112,15 +112,16 @@ class TfCNNTransposeHead(TfModel):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return TfTensorSpec("b, d", d=self.config.input_dims[0])
+        return TensorSpec("b, d", d=self.config.input_dims[0], framework="tf2")
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return TfTensorSpec(
+        return TensorSpec(
             "b, w, h, c",
             w=self.config.output_dims[0],
             h=self.config.output_dims[1],
             c=self.config.output_dims[2],
+            framework="tf2",
         )
 
     @override(Model)

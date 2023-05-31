@@ -82,30 +82,32 @@ Ensure that the Ray Client port on the head node is reachable from your local ma
 This means opening that port up by configuring security groups or other access controls (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_)
 or proxying from your local machine to the cluster (on `K8s <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_).
 
-.. tabbed:: AWS
+.. tab-set::
 
-    With the Ray cluster launcher, you can configure the security group
-    to allow inbound access by defining :ref:`cluster-configuration-security-group`
-    in your `cluster.yaml`.
+    .. tab-item:: AWS
 
-    .. code-block:: yaml
+        With the Ray cluster launcher, you can configure the security group
+        to allow inbound access by defining :ref:`cluster-configuration-security-group`
+        in your `cluster.yaml`.
 
-        # An unique identifier for the head node and workers of this cluster.
-        cluster_name: minimal_security_group
+        .. code-block:: yaml
 
-        # Cloud-provider specific configuration.
-        provider:
-            type: aws
-            region: us-west-2
-            security_group:
-                GroupName: ray_client_security_group
-                IpPermissions:
-                      - FromPort: 10001
-                        ToPort: 10001
-                        IpProtocol: TCP
-                        IpRanges:
-                            # This will enable inbound access from ALL IPv4 addresses.
-                            - CidrIp: 0.0.0.0/0
+            # An unique identifier for the head node and workers of this cluster.
+            cluster_name: minimal_security_group
+
+            # Cloud-provider specific configuration.
+            provider:
+                type: aws
+                region: us-west-2
+                security_group:
+                    GroupName: ray_client_security_group
+                    IpPermissions:
+                          - FromPort: 10001
+                            ToPort: 10001
+                            IpProtocol: TCP
+                            IpRanges:
+                                # This will enable inbound access from ALL IPv4 addresses.
+                                - CidrIp: 0.0.0.0/0
 
 Step 3: Run Ray code
 ~~~~~~~~~~~~~~~~~~~~

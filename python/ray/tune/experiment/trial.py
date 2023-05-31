@@ -19,6 +19,12 @@ import ray
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.constants import (
+    EXPR_ERROR_PICKLE_FILE,
+    EXPR_ERROR_FILE,
+    TRAINING_ITERATION,
+)
+
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
@@ -34,7 +40,6 @@ from ray.tune.result import (
     DONE,
     NODE_IP,
     PID,
-    TRAINING_ITERATION,
     TRIAL_ID,
     DEBUG_METRICS,
     TRIAL_INFO,
@@ -626,6 +631,7 @@ class Trial:
     @last_result.setter
     def last_result(self, val: dict):
         self._last_result = val
+        self.invalidate_json_state()
 
     def get_runner_ip(self) -> Optional[str]:
         if self.location.hostname:
@@ -922,10 +928,10 @@ class Trial:
             self.num_failures += 1
 
         if self.local_path:
-            self.error_filename = "error.txt"
+            self.error_filename = EXPR_ERROR_FILE
             if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
-                self.pickled_error_filename = "error.pkl"
+                self.pickled_error_filename = EXPR_ERROR_PICKLE_FILE
                 with open(self.pickled_error_file, "wb") as f:
                     cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
@@ -988,6 +994,7 @@ class Trial:
         """Handles restoration completion."""
         assert self.is_restoring
         self.last_result = self.restoring_from.metrics
+        self.last_result.setdefault("config", self.config)
         self.restoring_from = None
         self.num_restore_failures = 0
         self.invalidate_json_state()
@@ -1058,7 +1065,8 @@ class Trial:
                         self.metric_analysis[metric][key] = sum(
                             self.metric_n_steps[metric][str(n)]
                         ) / len(self.metric_n_steps[metric][str(n)])
-        self.invalidate_json_state()
+
+        # json state is invalidated in last_result.setter
 
     def get_trainable_cls(self):
         if self.stub:

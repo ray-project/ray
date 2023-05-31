@@ -224,13 +224,13 @@ Ray Data Integration
 --------------------
 
 RLlib has experimental support for reading/writing training samples from/to large offline datasets using
-`Ray Data <https://docs.ray.io/en/latest/data/data.html>`__.
+:ref:`Ray Data <data>`.
 We support JSON and Parquet files today. Other file formats supported by Ray Data can also be easily added.
 
 Unlike JSON input, a single dataset can be automatically sharded and replayed by multiple rollout workers
 by simply specifying the desired num_workers config.
 
-To load sample data using Datastream, specify input and input_config keys like the following:
+To load sample data using Dataset, specify input and input_config keys like the following:
 
 .. code-block:: python
 
@@ -243,14 +243,14 @@ To load sample data using Datastream, specify input and input_config keys like t
             "path": "/path/to/json_dir/",
 	    # Num of tasks reading dataset in parallel, default is num_workers.
             "parallelism": 3,
-	    # Datastream allocates 0.5 CPU for each reader by default.
+	    # Dataset allocates 0.5 CPU for each reader by default.
 	    # Adjust this value based on the size of your offline dataset.
             "num_cpus_per_read_task": 0.5,
         }
 	...
     }
 
-To write sample data to JSON or Parquet files using Datastream, specify output and output_config keys like the following:
+To write sample data to JSON or Parquet files using Dataset, specify output and output_config keys like the following:
 
 .. code-block:: python
 
@@ -276,7 +276,7 @@ ensures that the ``infos`` dictionary, as returned by the RL environment, is inc
 
 .. note:: This setting is only relevant for the TensorFlow based agents, for PyTorch agents the ``infos`` data is always stored.
 
-To write the ``infos`` data to JSON or Parquet files using Datastream, specify output and output_config keys like the following:
+To write the ``infos`` data to JSON or Parquet files using Dataset, specify output and output_config keys like the following:
 
 .. code-block:: python
 

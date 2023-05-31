@@ -6,7 +6,7 @@ This section covers what to consider or change in your application when migratin
 
 ## What has been changed?
 
-In Ray Serve 2.0, we released a [new deployment API](converting-to-ray-serve-deployment). The 1.x deployment API can still be used, but it will be deprecated in the future version.
+In Ray Serve 2.0, we released a [new deployment API](converting-to-ray-serve-application). The 1.x deployment API can still be used, but it will be deprecated in the future version.
 
 
 ## Migrating the 1.x Deployment

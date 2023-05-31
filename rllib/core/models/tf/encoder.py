@@ -20,7 +20,7 @@ from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfMLP, TfCNN
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_tf import TfTensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -47,7 +47,10 @@ class TfCNNEncoder(TfModel, Encoder):
         TfModel.__init__(self, config)
         Encoder.__init__(self, config)
 
-        layers = []
+        # Add an input layer for the Sequential, created below. This is really
+        # important to be able to derive the model's trainable_variables early on
+        # (inside our Learners).
+        layers = [tf.keras.layers.Input(shape=config.input_dims)]
         # The bare-bones CNN (no flatten, no succeeding dense).
         cnn = TfCNN(
             input_dims=config.input_dims,
@@ -75,14 +78,13 @@ class TfCNNEncoder(TfModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TfTensorSpec(
+                SampleBatch.OBS: TensorSpec(
                     "b, w, h, c",
                     w=self.config.input_dims[0],
                     h=self.config.input_dims[1],
                     c=self.config.input_dims[2],
+                    framework="tf2",
                 ),
-                STATE_IN: None,
-                SampleBatch.SEQ_LENS: None,
             }
         )
 
@@ -90,19 +92,15 @@ class TfCNNEncoder(TfModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
-                STATE_OUT: None,
+                ENCODER_OUT: TensorSpec(
+                    "b, d", d=self.config.output_dims[0], framework="tf2"
+                ),
             }
         )
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return NestedDict(
-            {
-                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: inputs[STATE_IN],
-            }
-        )
+    def _forward(self, inputs: dict, **kwargs) -> dict:
+        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TfMLPEncoder(Encoder, TfModel):
@@ -125,9 +123,9 @@ class TfMLPEncoder(Encoder, TfModel):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TfTensorSpec("b, d", d=self.config.input_dims[0]),
-                # STATE_IN: None,
-                # SampleBatch.SEQ_LENS: None,
+                SampleBatch.OBS: TensorSpec(
+                    "b, d", d=self.config.input_dims[0], framework="tf2"
+                ),
             }
         )
 
@@ -135,19 +133,15 @@ class TfMLPEncoder(Encoder, TfModel):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TfTensorSpec("b, d", d=self.config.output_dims[0]),
-                STATE_OUT: None,
+                ENCODER_OUT: TensorSpec(
+                    "b, d", d=self.config.output_dims[0], framework="tf2"
+                ),
             }
         )
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return NestedDict(
-            {
-                ENCODER_OUT: self.net(inputs[SampleBatch.OBS]),
-                STATE_OUT: None,  # inputs[STATE_IN],
-            }
-        )
+        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
 
 class TfGRUEncoder(TfModel, Encoder):
@@ -180,10 +174,15 @@ class TfGRUEncoder(TfModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TfTensorSpec("b, t, d", d=self.config.input_dims[0]),
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d", d=self.config.input_dims[0], framework="tf2"
+                ),
                 STATE_IN: {
-                    "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
@@ -193,10 +192,15 @@ class TfGRUEncoder(TfModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TfTensorSpec("b, t, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, t, d", d=self.config.output_dims[0], framework="tf2"
+                ),
                 STATE_OUT: {
-                    "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
@@ -210,6 +214,9 @@ class TfGRUEncoder(TfModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        outputs = {}
+
+        # Calculate the output and state of the GRU.
         out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
@@ -225,11 +232,10 @@ class TfGRUEncoder(TfModel, Encoder):
 
         out = self.linear(out)
 
-        return {
-            ENCODER_OUT: out,
-            # Make state_out batch-first.
-            STATE_OUT: {"h": tf.stack(states_out, 1)},
-        }
+        # Insert them into the output dict.
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = {"h": tf.stack(states_out, 1)}
+        return outputs
 
 
 class TfLSTMEncoder(TfModel, Encoder):
@@ -262,13 +268,21 @@ class TfLSTMEncoder(TfModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TfTensorSpec("b, t, d", d=self.config.input_dims[0]),
+                SampleBatch.OBS: TensorSpec(
+                    "b, t, d", d=self.config.input_dims[0], framework="tf2"
+                ),
                 STATE_IN: {
-                    "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
-                    "c": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "c": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
@@ -278,13 +292,21 @@ class TfLSTMEncoder(TfModel, Encoder):
     def get_output_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                ENCODER_OUT: TfTensorSpec("b, t, d", d=self.config.output_dims[0]),
+                ENCODER_OUT: TensorSpec(
+                    "b, t, d", d=self.config.output_dims[0], framework="tf2"
+                ),
                 STATE_OUT: {
-                    "h": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "h": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
-                    "c": TfTensorSpec(
-                        "b, l, h", h=self.config.hidden_dim, l=self.config.num_layers
+                    "c": TensorSpec(
+                        "b, l, h",
+                        h=self.config.hidden_dim,
+                        l=self.config.num_layers,
+                        framework="tf2",
                     ),
                 },
             }
@@ -299,6 +321,9 @@ class TfLSTMEncoder(TfModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+        outputs = {}
+
+        # Calculate the output and state of the LSTM.
         out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
@@ -316,8 +341,10 @@ class TfLSTMEncoder(TfModel, Encoder):
 
         out = self.linear(out)
 
-        return {
-            ENCODER_OUT: out,
-            # Make state_out batch-first.
-            STATE_OUT: {"h": tf.stack(states_out_h, 1), "c": tf.stack(states_out_c, 1)},
+        # Insert them into the output dict.
+        outputs[ENCODER_OUT] = out
+        outputs[STATE_OUT] = {
+            "h": tf.stack(states_out_h, 1),
+            "c": tf.stack(states_out_c, 1),
         }
+        return outputs

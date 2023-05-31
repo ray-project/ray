@@ -1,13 +1,14 @@
+import tempfile
+import unittest
+from typing import Mapping
+
 import gymnasium as gym
 import tensorflow as tf
-import tensorflow_probability as tfp
-import tempfile
-from typing import Mapping
-import unittest
 
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
 
 
@@ -46,11 +47,13 @@ class TestRLModule(unittest.TestCase):
         )
         with tf.GradientTape() as tape:
             output = module.forward_train({"obs": obs})
-            loss = -tf.math.reduce_mean(output["action_dist"].log_prob(actions))
+            action_dist_class = module.get_train_action_dist_cls()
+            action_dist = action_dist_class.from_logits(
+                output[SampleBatch.ACTION_DIST_INPUTS]
+            )
+            loss = -tf.math.reduce_mean(action_dist.logp(actions))
 
         self.assertIsInstance(output, Mapping)
-        self.assertIn("action_dist", output)
-        self.assertIsInstance(output["action_dist"], tfp.distributions.Categorical)
 
         grads = tape.gradient(loss, module.trainable_variables)
 

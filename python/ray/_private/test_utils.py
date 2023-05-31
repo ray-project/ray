@@ -51,6 +51,7 @@ from ray.core.generated import (
     gcs_service_pb2_grpc,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 logger = logging.getLogger(__name__)
@@ -1457,11 +1458,12 @@ def get_and_run_node_killer(
                     alive_nodes += 1
             return alive_nodes
 
-    head_node_ip = ray._private.worker.global_worker.node_ip_address
-    head_node_id = ray._private.worker.global_worker.current_node_id.hex()
+    head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(
-        resources={f"node:{head_node_ip}": 0.001},
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            node_id=head_node_id, soft=False
+        ),
         namespace=namespace,
         name="node_killer",
         lifetime=lifetime,
@@ -1861,3 +1863,62 @@ def get_current_unused_port():
     port = sock.getsockname()[1]
     sock.close()
     return port
+
+
+def search_words(string: str, words: str):
+    """Check whether each word is in the given string.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return [word in string for word in words.split(" ")]
+
+
+def has_all_words(string: str, words: str):
+    """Check that string has all of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return all(search_words(string, words))
+
+
+def has_no_words(string, words):
+    """Check that string has none of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return not any(search_words(string, words))
+
+
+def find_available_port(start, end, port_num=1):
+    ports = []
+    for _ in range(port_num):
+        random_port = 0
+        with socket.socket() as s:
+            s.bind(("", 0))
+            random_port = s.getsockname()[1]
+        if random_port >= start and random_port <= end and random_port not in ports:
+            ports.append(random_port)
+            continue
+
+        for port in range(start, end + 1):
+            if port in ports:
+                continue
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(("", port))
+                ports.append(port)
+                break
+            except OSError:
+                pass
+
+    if len(ports) != port_num:
+        raise RuntimeError(
+            f"Can't find {port_num} available port from {start} to {end}."
+        )
+    return ports

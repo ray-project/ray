@@ -154,7 +154,8 @@ class ResourceRequest:
 
     def __eq__(self, other: "ResourceRequest"):
         return (
-            self._bound == other._bound
+            isinstance(other, ResourceRequest)
+            and self._bound == other._bound
             and self.head_bundle_is_empty == other.head_bundle_is_empty
         )
 

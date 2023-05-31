@@ -231,6 +231,9 @@ class RAY_EXPORT PythonGcsClient {
   std::shared_ptr<grpc::Channel> channel_;
 };
 
+std::unordered_map<std::string, double> PythonGetResourcesTotal(
+    const rpc::GcsNodeInfo &node_info);
+
 }  // namespace gcs
 
 }  // namespace ray

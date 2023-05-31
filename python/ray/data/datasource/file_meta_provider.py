@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class FileMetadataProvider:
-    """Abstract callable that provides metadata for the files of a single datastream block.
+    """Abstract callable that provides metadata for the files of a single dataset block.
 
     Current subclasses:
         BaseFileMetadataProvider
@@ -40,10 +40,10 @@ class FileMetadataProvider:
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files in the given paths.
 
-        All file paths provided should belong to a single datastream block.
+        All file paths provided should belong to a single dataset block.
 
         Args:
-            paths: The file paths for a single datastream block.
+            paths: The file paths for a single dataset block.
             schema: The user-provided or inferred schema for the given paths,
                 if any.
 
@@ -80,10 +80,10 @@ class BaseFileMetadataProvider(FileMetadataProvider):
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
     ) -> BlockMetadata:
-        """Resolves and returns block metadata for files of a single datastream block.
+        """Resolves and returns block metadata for files of a single dataset block.
 
         Args:
-            paths: The file paths for a single datastream block. These
+            paths: The file paths for a single dataset block. These
                 paths will always be a subset of those previously returned from
                 `expand_paths()`.
             schema: The user-provided or inferred schema for the given file
@@ -206,7 +206,7 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
 class ParquetMetadataProvider(FileMetadataProvider):
     """Abstract callable that provides block metadata for Arrow Parquet file fragments.
 
-    All file fragments should belong to a single datastream block.
+    All file fragments should belong to a single dataset block.
 
     Supports optional pre-fetching of ordered metadata for all file fragments in
     a single batch to help optimize metadata resolution.
@@ -223,10 +223,10 @@ class ParquetMetadataProvider(FileMetadataProvider):
         pieces: List["pyarrow.dataset.ParquetFileFragment"],
         prefetched_metadata: Optional[List[Any]],
     ) -> BlockMetadata:
-        """Resolves and returns block metadata for files of a single datastream block.
+        """Resolves and returns block metadata for files of a single dataset block.
 
         Args:
-            paths: The file paths for a single datastream block.
+            paths: The file paths for a single dataset block.
             schema: The user-provided or inferred schema for the given file
                 paths, if any.
             pieces: The Parquet file fragments derived from the input file paths.
@@ -269,7 +269,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
     """The default file metadata provider for ParquetDatasource.
 
     Aggregates total block bytes and number of rows using the Parquet file metadata
-    associated with a list of Arrow Parquet datastream file fragments.
+    associated with a list of Arrow Parquet dataset file fragments.
     """
 
     def _get_block_metadata(
@@ -362,7 +362,7 @@ def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
                 "You can also run AWS CLI command to get more detailed error message "
                 "(e.g., aws s3 ls <file-name>). "
                 "See https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html "  # noqa
-                "and https://docs.ray.io/en/latest/data/creating-datastreams.html#reading-from-remote-storage "  # noqa
+                "and https://docs.ray.io/en/latest/data/creating-datasets.html#reading-from-remote-storage "  # noqa
                 "for more information."
             )
         )

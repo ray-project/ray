@@ -142,7 +142,8 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
     gray = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
     dstruct = dict(a=[1], b=dict(c=2), d="hello")
-    ttensor = torch.tensor([1, 2, 3])
+    # Note: tensors are supported as numpy format only in strict mode.
+    ttensor = torch.tensor([1, 2, 3]).numpy()
 
     sample = {
         "__key__": "foo",
@@ -180,7 +181,7 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         assert sample["mp"]["b"]["c"] == 2
         assert isinstance(sample["json"], dict)
         assert sample["json"]["a"] == [1]
-        assert isinstance(sample["pt"], torch.Tensor)
+        assert isinstance(sample["pt"], np.ndarray)
         assert sample["pt"].tolist() == [1, 2, 3]
 
     # test the format argument to the default decoder and multiple decoders

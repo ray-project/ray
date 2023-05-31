@@ -1,7 +1,7 @@
 import logging
-import queue
 import threading
 from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
+from collections import deque
 from contextlib import nullcontext
 
 import ray
@@ -14,7 +14,7 @@ from ray.data._internal.block_batching.interfaces import (
     CollatedBatch,
     BlockPrefetcher,
 )
-from ray.data._internal.stats import DatasetPipelineStats, DatastreamStats
+from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 T = TypeVar("T")
@@ -39,7 +39,7 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
-    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Block]:
     """Resolves the block references for each logical batch.
 
@@ -71,7 +71,7 @@ def resolve_block_refs(
 
 def blocks_to_batches(
     block_iter: Iterator[Block],
-    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
     batch_size: Optional[int] = None,
     drop_last: bool = False,
     shuffle_buffer_min_size: Optional[int] = None,
@@ -86,7 +86,7 @@ def blocks_to_batches(
 
     Args:
         block_iter: An iterator over blocks.
-        stats: Datastream stats object used to store block batching time.
+        stats: Dataset stats object used to store block batching time.
         batch_size: Record batch size, or None to let the system pick.
         drop_last: Whether to drop the last batch if it's incomplete.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled
@@ -143,7 +143,7 @@ def blocks_to_batches(
 def format_batches(
     block_iter: Iterator[Batch],
     batch_format: Optional[str],
-    stats: Optional[Union[DatastreamStats, DatasetPipelineStats]] = None,
+    stats: Optional[Union[DatasetStats, DatasetPipelineStats]] = None,
 ) -> Iterator[Batch]:
     """Given an iterator of blocks, returns an iterator of formatted batches.
 
@@ -166,7 +166,7 @@ def format_batches(
 def collate(
     batch_iter: Iterator[Batch],
     collate_fn: Optional[Callable[[DataBatch], Any]],
-    stats: Optional[DatastreamStats] = None,
+    stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
     """Returns an iterator with the provided collate_fn applied to items of the batch
     iterator.
@@ -230,7 +230,7 @@ def make_async_gen(
         def __init__(self, thread_index: int):
             self.thread_index = thread_index
 
-    output_queue = queue.Queue(1)
+    output_queue = Queue(1)
 
     # Because pulling from the base iterator cannot happen concurrently,
     # we must execute the expensive computation in a separate step which
@@ -238,11 +238,14 @@ def make_async_gen(
     def execute_computation(thread_index: int):
         try:
             for item in fn(thread_safe_generator):
-                output_queue.put(item, block=True)
-            output_queue.put(Sentinel(thread_index), block=True)
+                if output_queue.put(item):
+                    # Return early when it's instructed to do so.
+                    return
+            output_queue.put(Sentinel(thread_index))
         except Exception as e:
-            output_queue.put(e, block=True)
+            output_queue.put(e)
 
+    # Use separate threads to produce output batches.
     threads = [
         threading.Thread(target=execute_computation, args=(i,), daemon=True)
         for i in range(num_workers)
@@ -251,25 +254,31 @@ def make_async_gen(
     for thread in threads:
         thread.start()
 
+    # Use main thread to consume output batches.
     num_threads_finished = 0
-    while True:
-        next_item = output_queue.get(block=True)
-        if isinstance(next_item, Exception):
-            output_queue.task_done()
-            raise next_item
-        if isinstance(next_item, Sentinel):
-            output_queue.task_done()
-            logger.debug(f"Thread {next_item.thread_index} finished.")
-            num_threads_finished += 1
-            threads[next_item.thread_index].join()
-        else:
-            yield next_item
-            output_queue.task_done()
-        if num_threads_finished >= num_workers:
-            break
+    try:
+        while True:
+            next_item = output_queue.get()
+            if isinstance(next_item, Exception):
+                raise next_item
+            if isinstance(next_item, Sentinel):
+                logger.debug(f"Thread {next_item.thread_index} finished.")
+                num_threads_finished += 1
+            else:
+                yield next_item
+            if num_threads_finished >= num_workers:
+                break
+    finally:
+        # Cooperatively exit all producer threads.
+        # This is to avoid these daemon threads hanging there with holding batches in
+        # memory, which can cause GRAM OOM easily. This can happen when caller breaks
+        # in the middle of iteration.
+        num_threads_alive = num_workers - num_threads_finished
+        if num_threads_alive > 0:
+            output_queue.release(num_threads_alive)
 
 
-PREFETCHER_ACTOR_NAMESPACE = "ray.datastream"
+PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 
 
 class WaitBlockPrefetcher(BlockPrefetcher):
@@ -291,7 +300,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
     @staticmethod
     def _get_or_create_actor_prefetcher() -> "ActorHandle":
         node_id = ray.get_runtime_context().get_node_id()
-        actor_name = f"datastream-block-prefetcher-{node_id}"
+        actor_name = f"dataset-block-prefetcher-{node_id}"
         return _BlockPretcher.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
             name=actor_name,
@@ -309,3 +318,66 @@ class _BlockPretcher:
 
     def prefetch(self, *blocks) -> None:
         pass
+
+
+class Queue:
+    """A thread-safe queue implementation for multiple producers and consumers.
+
+    Provide `release()` to exit producer threads cooperatively for resource release.
+    """
+
+    def __init__(self, queue_size: int):
+        # The queue shared across multiple producer threads.
+        self._queue = deque()
+        # The boolean varilable to indicate whether producer threads should exit.
+        self._threads_exit = False
+        # The semaphore for producer threads to put item into queue.
+        self._producer_semaphore = threading.Semaphore(queue_size)
+        # The semaphore for consumer threads to get item from queue.
+        self._consumer_semaphore = threading.Semaphore(0)
+        # The mutex lock to guard access of `self._queue` and `self._threads_exit`.
+        self._mutex = threading.Lock()
+
+    def put(self, item: Any) -> bool:
+        """Put an item into the queue.
+
+        Block if necessary until a free slot is available in queue.
+        This method is called by producer threads.
+
+        Returns:
+            True if the caller thread should exit immediately.
+        """
+        self._producer_semaphore.acquire()
+        with self._mutex:
+            if self._threads_exit:
+                return True
+            else:
+                self._queue.append(item)
+        self._consumer_semaphore.release()
+        return False
+
+    def get(self) -> Any:
+        """Remove and return an item from the queue.
+
+        Block if necessary until an item is available in queue.
+        This method is called by consumer threads.
+        """
+        self._consumer_semaphore.acquire()
+        with self._mutex:
+            next_item = self._queue.popleft()
+        self._producer_semaphore.release()
+        return next_item
+
+    def release(self, num_threads: int):
+        """Release `num_threads` of producers so they would exit cooperatively."""
+        with self._mutex:
+            self._threads_exit = True
+        for _ in range(num_threads):
+            # NOTE: After Python 3.9+, Semaphore.release(n) can be used to
+            # release all threads at once.
+            self._producer_semaphore.release()
+
+    def qsize(self):
+        """Return the size of the queue."""
+        with self._mutex:
+            return len(self._queue)

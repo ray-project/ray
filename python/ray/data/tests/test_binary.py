@@ -21,6 +21,7 @@ from ray.data.datasource import (
 
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -41,18 +42,12 @@ def test_read_binary_files_partitioning(ray_start_regular_shared, tmp_path):
     assert ds.take() == [{"bytes": b"foo", "path": path, "country": "us"}]
 
 
-@pytest.mark.parametrize("output_arrow_format", [False, True])
-def test_read_binary_files(ray_start_regular_shared, output_arrow_format):
+def test_read_binary_files(ray_start_regular_shared):
     with gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(
-            paths, parallelism=10, output_arrow_format=output_arrow_format
-        )
+        ds = ray.data.read_binary_files(paths, parallelism=10)
         for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
-            if output_arrow_format:
-                assert expected == item["bytes"]
-            else:
-                assert expected == item
+            assert expected == item["bytes"]
         # Test metadata ops.
         assert ds.count() == 10
         assert "bytes" in str(ds.schema()), ds
@@ -84,28 +79,20 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
         ds = ray.data.read_binary_files(paths, filesystem=fs, parallelism=10)
         for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
-            assert expected == item
+            assert expected == item["bytes"]
 
 
-@pytest.mark.parametrize("output_arrow_format", [False, True])
-def test_read_binary_files_with_paths(ray_start_regular_shared, output_arrow_format):
+def test_read_binary_files_with_paths(ray_start_regular_shared):
     with gen_bin_files(10) as (_, paths):
         ds = ray.data.read_binary_files(
             paths,
             include_paths=True,
             parallelism=10,
-            output_arrow_format=output_arrow_format,
         )
-        if output_arrow_format:
-            for i, item in enumerate(ds.iter_rows()):
-                assert paths[i] == item["path"]
-                expected = open(paths[i], "rb").read()
-                assert expected == item["bytes"]
-        else:
-            for i, (path, item) in enumerate(ds.iter_rows()):
-                assert path == paths[i]
-                expected = open(paths[i], "rb").read()
-                assert expected == item
+        for i, item in enumerate(ds.iter_rows()):
+            assert paths[i] == item["path"]
+            expected = open(paths[i], "rb").read()
+            assert expected == item["bytes"]
 
 
 # TODO(Clark): Hitting S3 in CI is currently broken due to some AWS
@@ -131,7 +118,7 @@ def test_read_binary_snappy(ray_start_regular_shared, tmp_path):
         path,
         arrow_open_stream_args=dict(compression="snappy"),
     )
-    assert sorted(ds.take()) == [byte_str]
+    assert sorted(extract_values("bytes", ds.take())) == [byte_str]
 
 
 def test_read_binary_snappy_inferred(ray_start_regular_shared, tmp_path):
@@ -142,7 +129,7 @@ def test_read_binary_snappy_inferred(ray_start_regular_shared, tmp_path):
         bytes = BytesIO(byte_str)
         snappy.stream_compress(bytes, f)
     ds = ray.data.read_binary_files(path)
-    assert sorted(ds.take()) == [byte_str]
+    assert sorted(extract_values("bytes", ds.take())) == [byte_str]
 
 
 def test_read_binary_meta_provider(
@@ -161,7 +148,7 @@ def test_read_binary_meta_provider(
         arrow_open_stream_args=dict(compression="snappy"),
         meta_provider=FastFileMetadataProvider(),
     )
-    assert sorted(ds.take()) == [byte_str]
+    assert sorted(extract_values("bytes", ds.take())) == [byte_str]
 
     with pytest.raises(NotImplementedError):
         ray.data.read_binary_files(
@@ -221,10 +208,10 @@ def test_read_binary_snappy_partitioned_with_filter(
             ds,
             count=2,
             num_rows=2,
-            schema="<class 'bytes'>",
+            schema="{bytes: binary}",
             num_computed=None,
             sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
-            ds_take_transform_fn=lambda t: t,
+            ds_take_transform_fn=lambda t: extract_values("bytes", t),
         )
         assert ray.get(kept_file_counter.get.remote()) == 2
         assert ray.get(skipped_file_counter.get.remote()) == 1

@@ -7,20 +7,26 @@ import json
 from tempfile import NamedTemporaryFile
 from typing import List
 
+import click
+from pydantic import BaseModel
 import pytest
 import requests
 import yaml
 
 import ray
 from ray import serve
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray._private.test_utils import wait_for_condition
 from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve.scripts import remove_ansi_escape_sequences
+from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -45,6 +51,20 @@ def assert_deployments_live(names: List[str]):
         else:
             all_deployments_live, nonliving_deployment = False, deployment_name
     assert all_deployments_live, f'"{nonliving_deployment}" deployment is not live.'
+
+
+def test_convert_args_to_dict():
+    assert convert_args_to_dict(tuple()) == {}
+
+    with pytest.raises(
+        click.ClickException, match="Invalid application argument 'bad_arg'"
+    ):
+        convert_args_to_dict(("bad_arg",))
+
+    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {
+        "key1": "val1",
+        "key2": "val2",
+    }
 
 
 def test_start_shutdown(ray_start_stop):
@@ -91,11 +111,11 @@ def test_deploy(ray_start_stop):
         print("Deployments are reachable over HTTP.")
 
         deployment_names = [
-            "DAGDriver",
-            "create_order",
-            "Router",
-            "Multiplier",
-            "Adder",
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}create_order",
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Multiplier",
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Adder",
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
@@ -119,7 +139,12 @@ def test_deploy(ray_start_stop):
         )
         print("Deployments are reachable over HTTP.")
 
-        deployment_names = ["DAGDriver", "Router", "Add", "Subtract"]
+        deployment_names = [
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Add",
+            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Subtract",
+        ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
 
@@ -356,6 +381,38 @@ def test_deploy_single_with_name(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_multi_app_builder_with_args(ray_start_stop):
+    """Deploys a config file containing multiple applications that take arguments."""
+    # Create absolute file names to YAML config file.
+    apps_with_args = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "apps_with_args.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", apps_with_args])
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/untyped_default").text
+        == "DEFAULT",
+        timeout=10,
+    )
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/untyped_hello").text == "hello",
+        timeout=10,
+    )
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/typed_default").text == "DEFAULT",
+        timeout=10,
+    )
+
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/typed_hello").text == "hello",
+        timeout=10,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_config(ray_start_stop):
     """Deploys config and checks that `serve config` returns correct response."""
 
@@ -431,11 +488,11 @@ def test_status(ray_start_stop):
     serve_status = yaml.safe_load(status_response)
 
     expected_deployments = {
-        "DAGDriver",
-        "Multiplier",
-        "Adder",
-        "Router",
-        "create_order",
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Multiplier",
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Adder",
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}create_order",
     }
     for status in serve_status["deployment_statuses"]:
         expected_deployments.remove(status["name"])
@@ -460,22 +517,20 @@ def test_status_error_msg_format(ray_start_stop):
 
     subprocess.check_output(["serve", "deploy", config_file_name])
 
-    status_response = subprocess.check_output(
-        ["serve", "status", "-a", "http://localhost:52365/"]
-    )
-    serve_status = yaml.safe_load(status_response)
-    print("serve_status", serve_status)
-
     def check_for_failed_deployment():
+        serve_status = yaml.safe_load(
+            subprocess.check_output(
+                ["serve", "status", "-a", "http://localhost:52365/"]
+            )
+        )
         app_status = ServeSubmissionClient("http://localhost:52365").get_status()
         return (
-            len(serve_status["deployment_statuses"]) == 0
-            and serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            serve_status["app_status"]["status"] == "DEPLOY_FAILED"
             and remove_ansi_escape_sequences(app_status["app_status"]["message"])
             in serve_status["app_status"]["message"]
         )
 
-    wait_for_condition(check_for_failed_deployment, timeout=2)
+    wait_for_condition(check_for_failed_deployment)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -520,6 +575,56 @@ def test_status_syntax_error(ray_start_stop):
         )
 
     wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_constructor_error(ray_start_stop):
+    """Deploys Serve deployment that errors out in constructor, checks that the
+    traceback is surfaced.
+    """
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "deployment_fail.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        status_response = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        serve_status = yaml.safe_load(status_response)
+        return (
+            serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "ZeroDivisionError" in serve_status["deployment_statuses"][0]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_package_unavailable_in_controller(ray_start_stop):
+    """Test that exceptions raised from packages that are installed on deployment actors
+    but not on controller is serialized and surfaced properly.
+    """
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "sqlalchemy.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        status_response = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        serve_status = yaml.safe_load(status_response)
+        return (
+            serve_status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "some_wrong_url" in serve_status["deployment_statuses"][0]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment, timeout=15)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -754,6 +859,72 @@ def test_run_deployment_node(ray_start_stop):
 
 
 @serve.deployment
+class Echo:
+    def __init__(self, message: str):
+        print("Echo message:", message)
+        self._message = message
+
+    def __call__(self, *args):
+        return self._message
+
+
+def build_echo_app(args):
+    return Echo.bind(args.get("message", "DEFAULT"))
+
+
+class TypedArgs(BaseModel):
+    message: str = "DEFAULT"
+
+
+def build_echo_app_typed(args: TypedArgs):
+    return Echo.bind(args.message)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.parametrize(
+    "import_path",
+    [
+        "ray.serve.tests.test_cli.build_echo_app",
+        "ray.serve.tests.test_cli.build_echo_app_typed",
+    ],
+)
+def test_run_builder_with_args(ray_start_stop, import_path: str):
+    """Test `serve run` with args passed into a builder function.
+
+    Tests both the untyped and typed args cases.
+    """
+    # First deploy without any arguments, should get default response.
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            import_path,
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("") == "DEFAULT", timeout=10)
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
+
+    # Now deploy passing a message as an argument, should get passed message.
+    p = subprocess.Popen(
+        [
+            "serve",
+            "run",
+            "--address=auto",
+            import_path,
+            "message=hello world",
+        ]
+    )
+    wait_for_condition(lambda: ping_endpoint("") == "hello world", timeout=10)
+
+    p.send_signal(signal.SIGINT)
+    p.wait()
+    assert ping_endpoint("") == CONNECTION_ERROR_MSG
+
+
+@serve.deployment
 class MetalDetector:
     def __call__(self, *args):
         return os.environ.get("buried_item", "no dice")
@@ -913,7 +1084,6 @@ TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 @pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
 def test_build(ray_start_stop, node):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-
         print(f'Building node "{node}".')
         # Build an app
         subprocess.check_output(
@@ -945,7 +1115,6 @@ TestApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_build_multi_app(ray_start_stop):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
-
         print('Building nodes "TestApp1Node" and "TestApp2Node".')
         # Build an app
         subprocess.check_output(

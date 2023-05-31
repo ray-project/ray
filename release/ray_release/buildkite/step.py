@@ -4,11 +4,13 @@ from typing import Any, Dict, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
+from ray_release.test import (
+    Test,
+    DEFAULT_PYTHON_VERSION,
+)
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
     DEFAULT_CLOUD_ID,
-    DEFAULT_PYTHON_VERSION,
-    Test,
     as_smoke_test,
     parse_python_version,
 )
@@ -121,13 +123,16 @@ def get_step(
     if test.get("run", {}).get("type") == "client":
         step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
-    # If a test is not stable, allow to soft fail
+    # If a test is jailed or not stable, allow to soft fail
     stable = test.get("stable", True)
-    if not stable:
+    jailed = test.get("jailed", False)
+    full_label = ""
+    if jailed or not stable:
         step["soft_fail"] = True
-        full_label = "[unstable] "
-    else:
-        full_label = ""
+    if not stable:
+        full_label += "[unstable]"
+    if jailed:
+        full_label += "[jailed]"
 
     full_label += test["name"]
     if smoke_test:

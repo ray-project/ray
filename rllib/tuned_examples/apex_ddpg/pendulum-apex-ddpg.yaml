@@ -3,7 +3,7 @@ pendulum-apex-ddpg:
     env: Pendulum-v1
     run: APEX_DDPG
     stop:
-        episode_reward_mean: -160
+        sampler_results/episode_reward_mean: -160
     config:
         # Works for both torch and tf.
         framework: torch

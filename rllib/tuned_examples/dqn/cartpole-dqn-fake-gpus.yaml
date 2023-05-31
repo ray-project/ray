@@ -2,7 +2,7 @@ cartpole-dqn-fake-gpus:
     env: CartPole-v1
     run: DQN
     stop:
-        episode_reward_mean: 150
+        sampler_results/episode_reward_mean: 150
         training_iteration: 400
     config:
         # Works for both torch and tf.

@@ -9,7 +9,7 @@ from ray.rllib.core.models.configs import (
     MLPHeadConfig,
 )
 from ray.rllib.core.models.specs.specs_base import Spec
-from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchCNNTranspose, TorchMLP
 from ray.rllib.utils.annotations import override
@@ -34,11 +34,11 @@ class TorchMLPHead(TorchModel):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return TorchTensorSpec("b, d", d=self.config.input_dims[0])
+        return TensorSpec("b, d", d=self.config.input_dims[0], framework="torch")
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return TorchTensorSpec("b, d", d=self.config.output_dims[0])
+        return TensorSpec("b, d", d=self.config.output_dims[0], framework="torch")
 
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
@@ -70,11 +70,11 @@ class TorchFreeLogStdMLPHead(TorchModel):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return TorchTensorSpec("b, d", d=self.config.input_dims[0])
+        return TensorSpec("b, d", d=self.config.input_dims[0], framework="torch")
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return TorchTensorSpec("b, d", d=self.config.output_dims[0])
+        return TensorSpec("b, d", d=self.config.output_dims[0], framework="torch")
 
     @override(Model)
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
@@ -110,15 +110,16 @@ class TorchCNNTransposeHead(TorchModel):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return TorchTensorSpec("b, d", d=self.config.input_dims[0])
+        return TensorSpec("b, d", d=self.config.input_dims[0], framework="torch")
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return TorchTensorSpec(
+        return TensorSpec(
             "b, w, h, c",
             w=self.config.output_dims[0],
             h=self.config.output_dims[1],
             c=self.config.output_dims[2],
+            framework="torch",
         )
 
     @override(Model)

@@ -157,6 +157,7 @@ class DirectMethod(OffPolicyEstimator):
         updated_ds = dataset.map_batches(
             compute_q_and_v_values,
             batch_size=batch_size,
+            batch_format="pandas",
             fn_kwargs={
                 "model_class": self.model.__class__,
                 "model_state": self.model.get_state(),

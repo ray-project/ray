@@ -8,9 +8,9 @@ from torchvision import transforms, datasets
 
 from ray.air import session
 from ray.air.config import ScalingConfig
+from ray.air.constants import TRAINING_ITERATION
 import ray.train as train
 from ray.train.trainer import TrainingFailedError
-from ray.tune.result import TRAINING_ITERATION
 
 
 scaling_config = ScalingConfig(num_workers=2, use_gpu=False)

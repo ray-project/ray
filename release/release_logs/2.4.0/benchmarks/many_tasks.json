@@ -1,38 +1,38 @@
 {
-  "_dashboard_memory_usage_mb": 659.90656,
-  "_dashboard_test_success": true,
-  "_peak_memory": 4.44,
-  "_peak_process_memory": "PID\tMEM\tCOMMAND\n165\t1.99GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n2232\t0.87GiB\tpython distributed/test_many_tasks.py --num-tasks=10000\n353\t0.74GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/dashboa\n2457\t0.1GiB\tray::DashboardTester.run\n41\t0.09GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session web_terminal_server --deploy\n670\t0.09GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/agen\n38\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --ServerApp.token=agh0_CkYwRAIgH_\n2520\t0.07GiB\tray::StateAPIGeneratorActor.start\n2370\t0.07GiB\tray::MemoryMonitorActor.run\n280\t0.04GiB\t/home/ray/anaconda3/bin/python -m ray.util.client.server --address=172.31.96.232:9031 --host=0.0.0.0",
-  "num_tasks": 10000,
-  "perf_metrics": [
-      {
-          "perf_metric_name": "tasks_per_second",
-          "perf_metric_type": "THROUGHPUT",
-          "perf_metric_value": 324.3236630929032
-      },
-      {
-          "perf_metric_name": "used_cpus_by_deadline",
-          "perf_metric_type": "THROUGHPUT",
-          "perf_metric_value": 2500.0
-      },
-      {
-          "perf_metric_name": "dashboard_p50_latency_ms",
-          "perf_metric_type": "LATENCY",
-          "perf_metric_value": 5.019
-      },
-      {
-          "perf_metric_name": "dashboard_p95_latency_ms",
-          "perf_metric_type": "LATENCY",
-          "perf_metric_value": 2788.74
-      },
-      {
-          "perf_metric_name": "dashboard_p99_latency_ms",
-          "perf_metric_type": "LATENCY",
-          "perf_metric_value": 3431.297
-      }
-  ],
-  "success": "1",
-  "tasks_per_second": 324.3236630929032,
-  "time": 330.83339619636536,
-  "used_cpus": 2500.0
+    "_dashboard_memory_usage_mb": 611.98336,
+    "_dashboard_test_success": true,
+    "_peak_memory": 4.61,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n165\t2.19GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n2582\t0.86GiB\tpython distributed/test_many_tasks.py --num-tasks=10000\n338\t0.71GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/dashboa\n2807\t0.1GiB\tray::DashboardTester.run\n43\t0.09GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session web_terminal_server --deploy\n639\t0.09GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/agen\n40\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --ServerApp.token= --allow-root -\n2870\t0.07GiB\tray::StateAPIGeneratorActor.start\n2720\t0.07GiB\tray::MemoryMonitorActor.run\n265\t0.04GiB\t/home/ray/anaconda3/bin/python -m ray.util.client.server --address=172.31.106.119:9031 --host=0.0.0.",
+    "num_tasks": 10000,
+    "perf_metrics": [
+        {
+            "perf_metric_name": "tasks_per_second",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 296.54971037133174
+        },
+        {
+            "perf_metric_name": "used_cpus_by_deadline",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 2500.0
+        },
+        {
+            "perf_metric_name": "dashboard_p50_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 5.024
+        },
+        {
+            "perf_metric_name": "dashboard_p95_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 2713.875
+        },
+        {
+            "perf_metric_name": "dashboard_p99_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 3772.233
+        }
+    ],
+    "success": "1",
+    "tasks_per_second": 296.54971037133174,
+    "time": 333.7211592197418,
+    "used_cpus": 2500.0
 }

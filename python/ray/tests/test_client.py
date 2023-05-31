@@ -65,11 +65,11 @@ def test_client_context_manager(call_ray_start_shared, connect_to_client):
             call_ray_start_shared
         ), enable_client_mode():
             # Client mode is on.
-            assert client_mode_should_convert(auto_init=True)
+            assert client_mode_should_convert()
             # We're connected to Ray client.
             assert ray.util.client.ray.is_connected()
     else:
-        assert not client_mode_should_convert(auto_init=True)
+        assert not client_mode_should_convert()
         assert not ray.util.client.ray.is_connected()
 
 
@@ -108,20 +108,20 @@ def test_client_thread_safe(call_ray_start_shared):
 def test_client_mode_hook_thread_safe(call_ray_start_shared):
     with ray_start_client_server_for_address(call_ray_start_shared):
         with enable_client_mode():
-            assert client_mode_should_convert(auto_init=True)
+            assert client_mode_should_convert()
             lock = threading.Lock()
             lock.acquire()
             q = queue.Queue()
 
             def disable():
                 with disable_client_hook():
-                    q.put(client_mode_should_convert(auto_init=True))
+                    q.put(client_mode_should_convert())
                     lock.acquire()
-                q.put(client_mode_should_convert(auto_init=True))
+                q.put(client_mode_should_convert())
 
             t = threading.Thread(target=disable)
             t.start()
-            assert client_mode_should_convert(auto_init=True)
+            assert client_mode_should_convert()
             lock.release()
             t.join()
             assert q.get() is False, "Threaded disable_client_hook failed  to disable"

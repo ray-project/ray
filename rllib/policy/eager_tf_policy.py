@@ -175,22 +175,39 @@ def _traced_eager_policy(eager_policy_cls):
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
 
-            # NOTE: In the new RLModule stack the sampling side is not traced with this
-            # justification that in order to speed up sampling we need to use more
-            # actors.
             # Create a traced version of `self._compute_actions_helper`.
-            if (
-                not self.config.get("_enable_rl_module_api", False)
-                and self._traced_compute_actions_helper is False
-                and not self._no_tracing
-            ):
-                self._compute_actions_helper = _convert_eager_inputs(
-                    tf.function(
-                        super(TracedEagerPolicy, self)._compute_actions_helper,
-                        autograph=False,
-                        reduce_retracing=True,
+            if self._traced_compute_actions_helper is False and not self._no_tracing:
+                if self.config.get("_enable_rl_module_api"):
+                    self._compute_actions_helper_rl_module_explore = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_explore,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
                     )
-                )
+                    self._compute_actions_helper_rl_module_inference = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_inference,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
+                    )
+                else:
+                    self._compute_actions_helper = _convert_eager_inputs(
+                        tf.function(
+                            super(TracedEagerPolicy, self)._compute_actions_helper,
+                            autograph=False,
+                            reduce_retracing=True,
+                        )
+                    )
                 self._traced_compute_actions_helper = True
 
             # Now that the helper method is traced, call super's

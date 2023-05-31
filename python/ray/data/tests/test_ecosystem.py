@@ -80,7 +80,7 @@ def test_to_dask_tensor_column_cast_pandas(ray_start_regular_shared):
         ctx.enable_tensor_extension_casting = True
         in_df = pd.DataFrame({"a": TensorArray(data)})
         ds = ray.data.from_pandas(in_df)
-        dtypes = ds.schema().types
+        dtypes = ds.schema().base_schema.types
         assert len(dtypes) == 1
         assert isinstance(dtypes[0], TensorDtype)
         out_df = ds.to_dask().compute()
@@ -101,7 +101,7 @@ def test_to_dask_tensor_column_cast_arrow(ray_start_regular_shared):
         ctx.enable_tensor_extension_casting = True
         in_table = pa.table({"a": ArrowTensorArray.from_numpy(data)})
         ds = ray.data.from_arrow(in_table)
-        dtype = ds.schema().field(0).type
+        dtype = ds.schema().base_schema.field(0).type
         assert isinstance(dtype, ArrowTensorType)
         out_df = ds.to_dask().compute()
         assert out_df["a"].dtype.type is np.object_
