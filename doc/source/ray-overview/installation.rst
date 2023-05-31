@@ -311,7 +311,7 @@ Ray-specific, the rest are true anywhere Windows is used):
 * Multi-node Ray clusters are untested.
 
 * Filenames are tricky on Windows and there still may be a few places where Ray
-  assumes unix filenames rather than windows ones. This can be true in downstream
+  assumes UNIX filenames rather than Windows ones. This can be true in downstream
   packages as well.
 
 * Performance on Windows is known to be slower since opening files on Windows
