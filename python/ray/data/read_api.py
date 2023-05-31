@@ -1778,7 +1778,6 @@ def from_huggingface(
     Example:
 
     .. doctest::
-        :options: +ELLIPSIS
 
         >>> import ray
         >>> import datasets

@@ -221,28 +221,14 @@ If your Python code is non-deterministic, or if your output is excessively long,
 Ignoring *doctest-style* outputs
 ================================
 
-To ignore parts of a *doctest-style* output, add `:options: +ELLIPSIS` to
-the `doctest` directive and replace problematic sections with ellipsis. ::
-
-    .. doctest::
-        :options: +ELLIPSIS
-
-        >>> import ray
-        >>> ray.data.read_images("example://image-datasets/simple")
-        Dataset(
-           num_blocks=...,
-           num_rows=...,
-           schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
-        )
-
-If you omit the `doctest` directive, append `# doctest: +ELLIPSIS` to your code instead.
+To ignore parts of a *doctest-style* output, replace problematic sections with ellipsis. ::
 
     >>> import ray
-    >>> ray.data.read_images("example://image-datasets/simple")  # doctest: +ELLIPSIS
+    >>> ray.data.read_images("example://image-datasets/simple")
     Dataset(
-       num_blocks=...,
-       num_rows=...,
-       schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
+        num_blocks=...,
+        num_rows=...,
+        schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
     )
 
 To ignore an output altogether, write a *code-block-style* snippet. Don't use `# doctest: +SKIP`.
@@ -250,8 +236,8 @@ To ignore an output altogether, write a *code-block-style* snippet. Don't use `#
 Ignoring *code-block-style* outputs
 ===================================
 
-If parts of your output are long or non-deterministic, add `:options: +ELLIPSIS` to
-the `testoutput` directive and replace problematic sections with ellipsis. ::
+If parts of your output are long or non-deterministic, replace problematic sections
+with ellipsis. ::
 
     .. testcode::
 
@@ -260,7 +246,6 @@ the `testoutput` directive and replace problematic sections with ellipsis. ::
         print(ds)
 
     .. testoutput::
-        :options: +ELLIPSIS
 
         Dataset(
            num_blocks=...,
@@ -281,8 +266,8 @@ If your output is nondeterministic and you want to display a sample output, add
 
         0.969461416250246
 
-If your output is hard to test and you don't want to display a sample output, add
-`:options: +ELLIPSIS` and `:hide:`. ::
+If your output is hard to test and you don't want to display a sample output, use
+ellipsis and `:hide:`. ::
 
     .. testcode::
 
@@ -290,7 +275,6 @@ If your output is hard to test and you don't want to display a sample output, ad
 
     .. testoutput::
         :hide:
-        :options: +ELLIPSIS
 
         ...
 
