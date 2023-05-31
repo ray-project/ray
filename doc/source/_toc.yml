@@ -9,6 +9,8 @@ parts:
         title: "Getting Started"
       - file: ray-overview/installation
         title: "Installation"
+      - file: ray-overview/examples
+        title: "Example Gallery"
       - file: ray-overview/use-cases
         title: "Use Cases"
       - file: ray-overview/ray-libraries
