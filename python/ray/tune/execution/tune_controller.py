@@ -166,7 +166,7 @@ class TuneController(_TuneControllerBase):
                 "has_resources_for_trial",
                 "pause_trial",
                 "save",
-                "resource_updater",
+                "_resource_updater",
             },
         )
 

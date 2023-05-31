@@ -1322,7 +1322,12 @@ class TrialRunner(_TuneControllerBase):
                 "pause_trial",
                 "stop_trial",
             },
-            executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
+            executor_whitelist_attr={
+                "has_resources_for_trial",
+                "pause_trial",
+                "save",
+                "_resource_updater",
+            },
         )
 
     def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):
