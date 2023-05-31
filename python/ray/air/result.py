@@ -4,6 +4,7 @@ import pickle
 import pandas as pd
 import warnings
 from dataclasses import dataclass
+from os.path import join
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -11,7 +12,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     EXPR_RESULT_FILE,
     EXPR_ERROR_PICKLE_FILE,
-    TRAINING_ITERATION,
+    CHECKPOINT_TUNE_METADATA_FILE,
 )
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
@@ -158,9 +159,14 @@ class Result:
 
         # Restore all checkpoints from the checkpoint folders
         ckpt_dirs = [
-            os.path.join(local_path, entry)
+            join(local_path, entry)
             for entry in os.listdir(local_path)
             if entry.startswith("checkpoint_")
+        ]
+
+        ckpt_metadata_dicts = [
+            pickle.load(open(join(ckpt_dir, CHECKPOINT_TUNE_METADATA_FILE), "rb"))
+            for ckpt_dir in ckpt_dirs
         ]
 
         if ckpt_dirs:
@@ -169,14 +175,11 @@ class Result:
             ]
 
             checkpoint_ids = [
-                int(ckpt_dir.split("_")[-1]) for ckpt_dir in ckpt_dirs
+                metadata["iteration"] - 1 for metadata in ckpt_metadata_dicts
             ]
 
             checkpoint_metrics = [
-                metrics_df[metrics_df[TRAINING_ITERATION] == ckpt_id + 1].to_dict(
-                    "records"
-                )[0]
-                for ckpt_id in checkpoint_ids
+                metadata["last_result"] for metadata in ckpt_metadata_dicts
             ]
 
             # TODO(air-team): make metrics a property of Checkpoint
