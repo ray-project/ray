@@ -186,7 +186,7 @@ def test_detached_warning(shutdown_only):
     ).remote()
     errors = get_error_message(error_pubsub, 1, None)
     error = errors.pop()
-    assert error.type == ray_constants.DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR
+    assert error["type"] == ray_constants.DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR
 
 
 def test_namespace_client():
