@@ -274,7 +274,9 @@ def prefetch_batches_locally(
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
                 sliding_window.append(next(block_ref_iter))
-                prefetcher.prefetch_blocks([sliding_window[-1][0]])
+                prefetcher.prefetch_blocks(
+                    [block_ref for block_ref, _ in list(sliding_window)]
+                )
             except StopIteration:
                 pass
         yield block_ref
