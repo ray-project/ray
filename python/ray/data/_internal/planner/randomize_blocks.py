@@ -1,11 +1,11 @@
 from typing import List, Tuple
 
-from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
 from ray.data._internal.stats import StatsDict
 
 

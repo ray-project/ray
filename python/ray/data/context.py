@@ -1,6 +1,6 @@
 import os
 import threading
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ray._private.ray_constants import env_integer
 from ray.util.annotations import DeveloperAPI

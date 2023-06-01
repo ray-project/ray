@@ -1,32 +1,29 @@
 from typing import Iterator, List, Tuple
 
-from ray.data._internal.logical.operators.all_to_all_operator import Repartition
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
-from ray.data._internal.execution.operators.task_pool_map_operator import (
-    TaskPoolMapOperator,
-)
-from ray.data._internal.logical.operators.all_to_all_operator import (
-    AbstractAllToAll,
-    RandomShuffle,
-)
-from ray.data._internal.stats import StatsDict
-
-from ray.data.block import Block
-
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
-from ray.data._internal.compute import is_task_compute, CallableClass, get_compute
+from ray.data._internal.compute import CallableClass, get_compute, is_task_compute
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.logical.interfaces import Rule, PhysicalPlan
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    AbstractAllToAll,
+    RandomShuffle,
+    Repartition,
+)
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
-
+from ray.data._internal.stats import StatsDict
+from ray.data.block import Block
 
 # Scheduling strategy can be inherited from upstream operator if not specified.
 INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
@@ -109,8 +106,10 @@ class OperatorFusionRule(Rule):
               the same class AND constructor args are the same for both.
             * They have compatible remote arguments.
         """
-        from ray.data._internal.logical.operators.map_operator import AbstractMap
-        from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+        from ray.data._internal.logical.operators.map_operator import (
+            AbstractMap,
+            AbstractUDFMap,
+        )
 
         # We currently only support fusing for the following cases:
         # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator

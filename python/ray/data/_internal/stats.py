@@ -1,8 +1,8 @@
 import collections
-from dataclasses import dataclass
 import time
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Set, Tuple, Union, Any
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 

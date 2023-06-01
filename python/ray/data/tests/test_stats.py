@@ -1,19 +1,18 @@
-from collections import Counter
 import re
-import numpy as np
+from collections import Counter
+from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.stats import _StatsActor, DatasetStats
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.stats import DatasetStats, _StatsActor
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
-from ray._private.test_utils import wait_for_condition
-
-from unittest.mock import patch
 
 
 def canonicalize(stats: str) -> str:

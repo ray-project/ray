@@ -3,9 +3,9 @@ from typing import Any
 import numpy as np
 
 import ray
+from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import _truncated_repr
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 
 logger = DatasetLogger(__name__)
 

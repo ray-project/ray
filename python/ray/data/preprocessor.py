@@ -2,16 +2,17 @@ import abc
 import collections
 import warnings
 from enum import Enum
-from typing import TYPE_CHECKING, Optional, Union, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.data import Dataset, DatasetPipeline
-    import pandas as pd
     import numpy as np
+    import pandas as pd
+
     from ray.air.data_batch_type import DataBatchType
+    from ray.data import Dataset, DatasetPipeline
 
 
 @PublicAPI(stability="beta")
@@ -279,11 +280,12 @@ class Preprocessor(abc.ABC):
 
     def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
         # For minimal install to locally import air modules
-        import pandas as pd
         import numpy as np
+        import pandas as pd
+
         from ray.air.util.data_batch_conversion import (
-            _convert_batch_type_to_pandas,
             _convert_batch_type_to_numpy,
+            _convert_batch_type_to_pandas,
         )
 
         try:

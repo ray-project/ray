@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
-from ray.types import ObjectRef
 from ray.data.block import Block, DataBatch
+from ray.types import ObjectRef
 
 
 @dataclass

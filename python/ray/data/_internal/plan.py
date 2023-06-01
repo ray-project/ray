@@ -16,18 +16,14 @@ from typing import (
 )
 
 import ray
-from ray.data._internal.util import unify_block_metadata_schema
-from ray.data.block import BlockMetadata
-from ray.data._internal.util import capitalize
-from ray.types import ObjectRef
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
-    UserDefinedFunction,
     ActorPoolStrategy,
-    TaskPoolStrategy,
     BlockTransform,
     CallableClass,
     ComputeStrategy,
+    TaskPoolStrategy,
+    UserDefinedFunction,
     get_compute,
     is_task_compute,
 )
@@ -36,12 +32,15 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data.block import Block
+from ray.data._internal.util import capitalize, unify_block_metadata_schema
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data._internal.execution.interfaces import Executor
 
 
@@ -500,10 +499,10 @@ class ExecutionPlan:
                 None,
             )
 
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_block_iterator,
         )
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
         block_iter = execute_to_legacy_block_iterator(
@@ -556,11 +555,11 @@ class ExecutionPlan:
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
+                )
+                from ray.data._internal.execution.streaming_executor import (
+                    StreamingExecutor,
                 )
 
                 if context.use_streaming_executor:

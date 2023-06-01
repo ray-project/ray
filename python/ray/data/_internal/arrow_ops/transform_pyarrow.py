@@ -27,8 +27,8 @@ def take_table(
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
     from ray.air.util.transform_pyarrow import (
-        _is_column_extension_type,
         _concatenate_extension_column,
+        _is_column_extension_type,
     )
 
     if any(_is_column_extension_type(col) for col in table.columns):
@@ -50,11 +50,12 @@ def unify_schemas(
 ) -> "pyarrow.Schema":
     """Version of `pyarrow.unify_schemas()` which also handles checks for
     variable-shaped tensors in the given schemas."""
+    import pyarrow as pa
+
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )
-    import pyarrow as pa
 
     schemas_to_unify = []
     schema_field_overrides = {}
@@ -124,10 +125,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
     """
     Concatenate provided chunked arrays into a single chunked array.
     """
-    from ray.data.extensions import (
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
-    )
+    from ray.data.extensions import ArrowTensorType, ArrowVariableShapedTensorType
 
     # Single flat list of chunks across all chunked arrays.
     chunks = []
@@ -152,12 +150,13 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     """Concatenate provided Arrow Tables into a single Arrow Table. This has special
     handling for extension types that pyarrow.concat_tables does not yet support.
     """
+    import pyarrow as pa
+
     from ray.data.extensions import (
         ArrowTensorArray,
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )
-    import pyarrow as pa
 
     if not blocks:
         # Short-circuit on empty list of blocks.

@@ -1,4 +1,4 @@
-from typing import List, Optional, Callable
+from typing import Callable, List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator

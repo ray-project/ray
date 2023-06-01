@@ -1,7 +1,7 @@
+import collections
 import os
 import sys
 import time
-import collections
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -16,8 +16,8 @@ from typing import (
     Union,
 )
 
-import numpy as np
 import colorama
+import numpy as np
 
 import ray
 from ray import ObjectRefGenerator
@@ -429,8 +429,9 @@ class BlockAccessor:
 
             return ArrowBlockAccessor.numpy_to_block(batch)
         elif isinstance(batch, collections.abc.Mapping):
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
             import pyarrow as pa
+
+            from ray.data._internal.arrow_block import ArrowBlockAccessor
 
             try:
                 return ArrowBlockAccessor.numpy_to_block(batch)

@@ -1,4 +1,4 @@
-from typing import Dict, Iterator, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Iterator, List
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator

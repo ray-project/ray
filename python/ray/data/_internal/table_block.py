@@ -1,16 +1,16 @@
 import collections
-from typing import Dict, Iterator, List, Union, Any, TypeVar, Mapping, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Mapping, TypeVar, Union
 
 import numpy as np
 
 import ray
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.data.block import Block, BlockAccessor
-from ray.data.row import TableRow
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.numpy_support import is_array_like, convert_udf_returns_to_numpy
+from ray.data._internal.numpy_support import convert_udf_returns_to_numpy, is_array_like
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import _is_tensor_schema
+from ray.data.block import Block, BlockAccessor
+from ray.data.row import TableRow
 
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT

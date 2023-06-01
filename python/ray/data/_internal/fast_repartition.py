@@ -1,14 +1,14 @@
 from typing import Optional
-import ray
-from ray.data._internal.execution.interfaces import TaskContext
 
-from ray.data.block import BlockAccessor
+import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import _ShufflePartitionOp
 from ray.data._internal.stats import DatasetStats
+from ray.data.block import BlockAccessor
 
 
 def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
@@ -75,12 +75,14 @@ def fast_repartition(blocks, num_blocks, ctx: Optional[TaskContext] = None):
 
     # Handle empty blocks.
     if len(new_blocks) < num_blocks:
-        from ray.data._internal.arrow_block import ArrowBlockBuilder
-        from ray.data._internal.pandas_block import PandasBlockBuilder
-        from ray.data._internal.simple_block import SimpleBlockBuilder
-
         import pyarrow as pa
-        from ray.data._internal.pandas_block import PandasBlockSchema
+
+        from ray.data._internal.arrow_block import ArrowBlockBuilder
+        from ray.data._internal.pandas_block import (
+            PandasBlockBuilder,
+            PandasBlockSchema,
+        )
+        from ray.data._internal.simple_block import SimpleBlockBuilder
 
         num_empties = num_blocks - len(new_blocks)
 

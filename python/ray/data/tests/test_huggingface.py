@@ -1,6 +1,7 @@
-import pytest
-import ray
 import datasets
+import pytest
+
+import ray
 from ray.tests.conftest import *  # noqa
 
 

@@ -1,10 +1,10 @@
 import random
-from typing import Optional, List
+from typing import List, Optional
 
-from ray.data.block import Block, BlockAccessor
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data.block import Block, BlockAccessor
 
 # pyarrow.Table.slice is slow when the table has many chunks
 # so we combine chunks into a single one to make slice faster

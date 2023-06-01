@@ -2,6 +2,7 @@ import itertools
 import logging
 import sys
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -13,7 +14,6 @@ from typing import (
     Optional,
     Union,
 )
-import warnings
 
 import numpy as np
 
@@ -22,31 +22,29 @@ from ray.air.util.data_batch_conversion import BlockFormat
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.iterator.pipelined_iterator import PipelinedDataIterator
 from ray.data._internal.pipeline_executor import (
     PipelineExecutor,
     PipelineSplitExecutorCoordinator,
 )
-from ray.data._internal.iterator.pipelined_iterator import (
-    PipelinedDataIterator,
-)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
 from ray.data.block import (
-    UserDefinedFunction,
     Block,
     DataBatch,
+    UserDefinedFunction,
     _apply_strict_mode_batch_format,
 )
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
-from ray.data.iterator import DataIterator
 from ray.data.datasource import Datasource
 from ray.data.datasource.file_based_datasource import (
     BlockWritePathProvider,
     DefaultBlockWritePathProvider,
 )
+from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, Deprecated
+from ray.util.annotations import Deprecated, DeveloperAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if sys.version_info >= (3, 8):
@@ -59,6 +57,7 @@ if TYPE_CHECKING:
     import pyarrow
     import tensorflow as tf
     import torch
+
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
 
 

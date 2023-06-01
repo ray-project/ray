@@ -1,12 +1,13 @@
 import os
 import shutil
+from typing import Any
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-from typing import Any
+import pytest
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray.data.block import BlockAccessor
@@ -14,23 +15,18 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
 )
+from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
-    _ParquetDatasourceReader,
     ParquetDatasource,
-)
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
-from ray.data.datasource.parquet_datasource import (
-    _SerializedPiece,
     _deserialize_pieces_with_retry,
+    _ParquetDatasourceReader,
+    _SerializedPiece,
 )
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-from pytest_lazyfixture import lazy_fixture
 
 
 def check_num_computed(ds, expected, streaming_expected) -> None:

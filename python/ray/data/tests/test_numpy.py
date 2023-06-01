@@ -4,23 +4,20 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.data.tests.util import Counter
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
+    Partitioning,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
-    Partitioning,
 )
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
-from ray.data.tests.util import extract_values
+from ray.data.tests.util import Counter, extract_values
 from ray.tests.conftest import *  # noqa
 
 

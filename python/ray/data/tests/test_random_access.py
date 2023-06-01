@@ -1,8 +1,7 @@
-import pytest
 import pyarrow
+import pytest
 
 import ray
-
 from ray.tests.conftest import *  # noqa
 
 

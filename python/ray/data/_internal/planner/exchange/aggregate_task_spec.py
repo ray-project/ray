@@ -2,14 +2,8 @@ from typing import List, Optional, Tuple, Union
 
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.aggregate import _AggregateOnKeyBase, AggregateFn, Count
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockExecStats,
-    BlockMetadata,
-    KeyType,
-)
+from ray.data.aggregate import AggregateFn, Count, _AggregateOnKeyBase
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata, KeyType
 
 
 class SortAggregateTaskSpec(ExchangeTaskSpec):

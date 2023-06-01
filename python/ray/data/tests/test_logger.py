@@ -1,14 +1,13 @@
-import pytest
-from ray.tests.conftest import *  # noqa
-
+import logging
 import os
 import re
-import logging
-
 from datetime import datetime
+
+import pytest
 
 import ray
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.tests.conftest import *  # noqa
 
 
 def test_dataset_logger(shutdown_only):

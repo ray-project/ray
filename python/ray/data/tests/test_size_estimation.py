@@ -1,11 +1,12 @@
-import pytest
 import os
 import uuid
 
+import pytest
+
 import ray
-from ray.tests.conftest import *  # noqa
-from ray.data._internal.simple_block import SimpleBlockBuilder
 from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.simple_block import SimpleBlockBuilder
+from ray.tests.conftest import *  # noqa
 
 SMALL_VALUE = "a" * 100
 LARGE_VALUE = "a" * 10000

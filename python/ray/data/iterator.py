@@ -1,31 +1,33 @@
 import abc
-import numpy as np
 import time
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Dict,
+    Iterator,
     List,
     Optional,
     Tuple,
     Union,
-    Iterator,
 )
 
-from ray.types import ObjectRef
-from ray.data.block import BlockAccessor, Block, BlockMetadata, DataBatch
-from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI
+import numpy as np
+
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.stats import DatasetStats
+from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch
+from ray.data.context import DataContext
+from ray.types import ObjectRef
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import tensorflow as tf
     import torch
+
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from ray.data.dataset import TensorFlowTensorBatchType, Schema
+    from ray.data.dataset import Schema, TensorFlowTensorBatchType
 
 
 @PublicAPI(stability="beta")
@@ -710,8 +712,8 @@ class DataIterator(abc.ABC):
         """  # noqa: E501
 
         from ray.air._internal.tensorflow_utils import (
-            get_type_spec,
             convert_ndarray_to_tf_tensor,
+            get_type_spec,
         )
 
         try:

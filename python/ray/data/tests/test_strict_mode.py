@@ -1,5 +1,6 @@
-import numpy as np
 from collections import UserDict
+
+import numpy as np
 import pytest
 
 import ray
@@ -184,8 +185,9 @@ def test_strict_compute(ray_start_regular_shared, enable_strict_mode):
 
 def test_strict_schema(ray_start_regular_shared, enable_strict_mode):
     import pyarrow as pa
-    from ray.data.extensions.tensor_extension import ArrowTensorType
+
     from ray.data._internal.pandas_block import PandasBlockSchema
+    from ray.data.extensions.tensor_extension import ArrowTensorType
 
     ds = ray.data.from_items([{"x": 2}])
     schema = ds.schema()

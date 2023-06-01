@@ -1,7 +1,7 @@
-from typing import Dict
 import json
 import re
 import threading
+from typing import Dict
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator

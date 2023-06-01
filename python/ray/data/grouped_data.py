@@ -1,5 +1,6 @@
-from typing import List, Tuple, Union, Optional
+from typing import List, Optional, Tuple, Union
 
+from ._internal.table_block import TableBlockAccessor
 from ray.data._internal import sort
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -7,11 +8,9 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data._internal.plan import AllToAllStage
-from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
-from ._internal.table_block import TableBlockAccessor
+from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
 from ray.data.aggregate import (
-    _AggregateOnKeyBase,
     AggregateFn,
     Count,
     Max,
@@ -19,6 +18,7 @@ from ray.data.aggregate import (
     Min,
     Std,
     Sum,
+    _AggregateOnKeyBase,
 )
 from ray.data.block import (
     Block,

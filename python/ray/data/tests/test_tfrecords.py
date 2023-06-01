@@ -3,11 +3,10 @@ import os
 from typing import TYPE_CHECKING
 
 import numpy as np
-from pandas.api.types import is_int64_dtype, is_float_dtype, is_object_dtype
 import pytest
+from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
-
 from ray.tests.conftest import *  # noqa
 
 if TYPE_CHECKING:
@@ -278,8 +277,8 @@ def test_read_tfrecords(
     ray_start_regular_shared,
     tmp_path,
 ):
-    import tensorflow as tf
     import pandas as pd
+    import tensorflow as tf
 
     example = tf_records_empty()[0]
 

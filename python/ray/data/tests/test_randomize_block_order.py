@@ -1,20 +1,19 @@
 import pytest
 
 import ray
-from ray.data.datasource import ParquetDatasource
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     Repartition,
 )
-from ray.data._internal.logical.operators.map_operator import MapBatches
-from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
-from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.map_operator import AbstractUDFMap, MapBatches
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.logical.rules.randomize_blocks import ReorderRandomizeBlocksRule
 from ray.data._internal.planner.planner import Planner
+from ray.data.datasource import ParquetDatasource
 from ray.data.tests.util import extract_values
 
 

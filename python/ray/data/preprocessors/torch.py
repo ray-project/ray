@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, Dict, List, Union, Optional, Mapping
+from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Union
 
 import numpy as np
 
@@ -108,6 +108,7 @@ class TorchVisionPreprocessor(Preprocessor):
         self, data_batch: Dict[str, "np.ndarray"]
     ) -> Dict[str, "np.ndarray"]:
         import torch
+
         from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
 
         def apply_torchvision_transform(array: np.ndarray) -> np.ndarray:

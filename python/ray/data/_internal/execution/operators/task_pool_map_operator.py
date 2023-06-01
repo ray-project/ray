@@ -1,21 +1,21 @@
-from typing import List, Optional, Callable, Iterator, Dict, Any
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import ray
-from ray.data.block import Block
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
     ExecutionResources,
     PhysicalOperator,
+    RefBundle,
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
-    _TaskState,
     _map_task,
+    _TaskState,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data.block import Block
 from ray.types import ObjectRef
-from ray._raylet import ObjectRefGenerator
 
 
 class TaskPoolMapOperator(MapOperator):

@@ -1,30 +1,30 @@
-import random
 import heapq
-from typing import Union, Callable, Iterator, List, Tuple, Any, Optional, TYPE_CHECKING
+import random
+from typing import TYPE_CHECKING, Any, Callable, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
 from ray import cloudpickle
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.size_estimator import SizeEstimator
+from ray.data.aggregate import AggregateFn
+from ray.data.block import (
+    AggType,
+    Block,
+    BlockAccessor,
+    BlockExecStats,
+    BlockMetadata,
+    KeyType,
+    T,
+    U,
+)
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
-    from ray.data._internal.sort import SortKeyT
 
-from ray.data.aggregate import AggregateFn
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-    T,
-    U,
-    KeyType,
-    AggType,
-    BlockExecStats,
-)
-from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.size_estimator import SizeEstimator
+    from ray.data._internal.sort import SortKeyT
 
 
 class SimpleBlockBuilder(BlockBuilder):

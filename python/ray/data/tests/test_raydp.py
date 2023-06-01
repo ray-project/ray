@@ -1,10 +1,11 @@
-import pytest
-import ray
-from ray.data.tests.test_execution_optimizer import _check_usage_record
-import torch
-from ray.data.tests.conftest import *  # noqa
 import pandas
+import pytest
 import raydp
+import torch
+
+import ray
+from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_execution_optimizer import _check_usage_record
 
 
 # RayDP tests require Ray Java. Make sure ray jar is built before running this test.

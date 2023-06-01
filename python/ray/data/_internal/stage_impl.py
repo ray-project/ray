@@ -1,31 +1,28 @@
 import itertools
-from typing import Any, Dict, Tuple, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.fast_repartition import fast_repartition
 from ray.data._internal.plan import AllToAllStage
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.shuffle_and_partition import (
     PushBasedShufflePartitionOp,
     SimpleShufflePartitionOp,
 )
-from ray.data._internal.split import (
-    _split_at_index,
-    _split_at_indices,
-)
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.sort import sort_impl
-from ray.data.context import DataContext
+from ray.data._internal.split import _split_at_index, _split_at_indices
 from ray.data.block import (
-    _validate_key_fn,
     Block,
-    BlockPartition,
-    BlockMetadata,
     BlockAccessor,
     BlockExecStats,
+    BlockMetadata,
+    BlockPartition,
+    _validate_key_fn,
 )
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from ray.data import Dataset
