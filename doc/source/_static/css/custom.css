@@ -641,7 +641,6 @@ padding: 20px;
 
 .searchDiv {
     width: 100%;
-    margin: 15px;
     position: relative;
     display: block;
 }
@@ -667,11 +666,21 @@ padding: 20px;
 }
 
 /*Resize the wrap to see the search bar change!*/
-.searchWrap{
+.searchWrap {
     width: 100%;
     position: relative;
+    margin: 15px;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -10%);
     text-align: center;
+}
+
+.sd-card {
+    border: none !important;
+}
+
+.tag {
+    margin-bottom: 5px;
+    font-size: small;
 }

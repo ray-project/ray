@@ -16,45 +16,37 @@ Ray Example Gallery
     </div>
 
 
-.. grid:: 1 2 3 4
+.. grid:: 1 2 2 2
     :gutter: 1
     :class-container: gallery-container container pb-3
 
-    .. grid-item-card::
-        :class-item: gallery-item sd-shadow-md sd-animate-grow50
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    .. grid-item-card:: :bdg-primary:`Blog`
+        :class-item: gallery-item pytorch training
 
         .. button-link:: https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure
 
-            [Blog] How Ray solves common production challenges for generative AI infrastructure
+            How Ray solves common production challenges for generative AI infrastructure
 
-    .. grid-item-card::
-        :class-item: gallery-item sd-shadow-md sd-animate-grow50
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    .. grid-item-card:: :bdg-primary:`Blog`
+        :class-item: gallery-item training
 
         .. button-link:: https://www.anyscale.com/blog/training-175b-parameter-language-models-at-1000-gpu-scale-with-alpa-and-ray
 
-            [Blog] Training 175B Parameter Language Models at 1000 GPU scale with Alpa and Ray
+            Training 175B Parameter Language Models at 1000 GPU scale with Alpa and Ray
 
-    .. grid-item-card::
-        :class-item: gallery-item sd-shadow-md sd-animate-grow50
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    .. grid-item-card:: :bdg-primary:`Blog`
+        :class-item: gallery-item
 
         .. button-link:: https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air
 
-            [Blog] Faster stable diffusion fine-tuning with Ray AIR
+            Faster stable diffusion fine-tuning with Ray AIR
 
-    .. grid-item-card::
-        :class-item: gallery-item sd-shadow-md sd-animate-grow50
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+    .. grid-item-card:: :bdg-primary:`Blog`
+        :class-item: gallery-item
 
         .. button-link:: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms-simply-quickly-and-cost-effectively-using
 
-            [Blog] How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
+            How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
 
     .. grid-item-card::
         :class-item: gallery-item sd-shadow-md sd-animate-grow50
