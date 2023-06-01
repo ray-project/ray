@@ -17,7 +17,6 @@ from ray._private.ray_constants import (
     RAY_DEDUP_LOGS_ALLOW_REGEX,
     RAY_DEDUP_LOGS_SKIP_REGEX,
 )
-from ray._private.utils import binary_to_hex
 from ray.util.debug import log_once
 
 
@@ -212,10 +211,7 @@ def get_worker_log_file_name(worker_type, job_id=None):
     # Make sure these values are set already.
     assert ray._private.worker._global_node is not None
     assert ray._private.worker.global_worker is not None
-    filename = (
-        f"{worker_name}-"
-        f"{binary_to_hex(ray._private.worker.global_worker.worker_id)}-"
-    )
+    filename = f"{worker_name}-{ray.get_runtime_context().get_worker_id()}-"
     if job_id:
         filename += f"{job_id}-"
     filename += f"{os.getpid()}"

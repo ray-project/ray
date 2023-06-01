@@ -605,7 +605,7 @@ class HTTPProxyActor:
             # of cross-language scenarios. Java can't deserialize a Python tuple.
             return json.dumps(
                 [
-                    ray._private.worker.global_worker.worker_id.hex(),
+                    ray.get_runtime_context().get_worker_id(),
                     get_component_logger_file_path(),
                 ]
             )
