@@ -434,14 +434,15 @@ class CNNTransposeHeadConfig(ModelConfig):
 @ExperimentalAPI
 @dataclass
 class CNNEncoderConfig(ModelConfig):
-    """Configuration for a convolutional network.
+    """Configuration for a convolutional (encoder) network.
 
     The configured CNN encodes 3D-observations into a latent space.
     The stack of layers is composed of a sequence of convolutional layers.
     `input_dims` describes the shape of the input tensor. Beyond that, each layer
     specified by `filter_specifiers` is followed by an activation function according
-    to `filter_activation`. `output_dims` is reached by flattening a final
-    convolutional layer and applying a linear layer with `output_activation`.
+    to `filter_activation`. `output_dims` is reached by flattening the final
+    convolutional layer and must not be provided by the user (it's inferred
+    automatically from the other settings).
     See ModelConfig for usage details.
 
     Example:
@@ -456,8 +457,6 @@ class CNNEncoderConfig(ModelConfig):
             ],
             cnn_activation="relu",
             cnn_use_layernorm=False,
-            output_dims=[256],  # must be 1D tensor
-            output_activation="linear",
             use_bias=True,
         )
         model = config.build(framework="torch")
@@ -478,7 +477,6 @@ class CNNEncoderConfig(ModelConfig):
         #   kernel_size=[1, 1], stride=[1, 1], bias=True,
         # )
         # Flatten()
-        # Linear(121, 256)
 
     Attributes:
         input_dims: The input dimension of the network. These must be given in the
@@ -492,7 +490,6 @@ class CNNEncoderConfig(ModelConfig):
         cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's output and its activation. Note that
             the output layer
-        output_activation: The activation function to use for the dense output layer.
         use_bias: Whether to use bias on all Conv2D layers.
     """
 
@@ -502,8 +499,6 @@ class CNNEncoderConfig(ModelConfig):
     )
     cnn_activation: str = "relu"
     cnn_use_layernorm: bool = False
-    output_dims: Union[List[int], Tuple[int]] = None
-    output_activation: str = "linear"
     use_bias: bool = True
 
     def _validate(self, framework: str = "torch"):
@@ -512,12 +507,6 @@ class CNNEncoderConfig(ModelConfig):
                 f"`input_dims` ({self.input_dims}) of CNNEncoderConfig must be a 3D "
                 "tensor (image) with the dimensions meaning: width x height x "
                 "channels, e.g. `[64, 64, 3]`!"
-            )
-        if self.output_dims is None or len(self.output_dims) != 1:
-            raise ValueError(
-                f"`output_dims` ({self.output_dims}) of CNNEncoderConfig must be "
-                "a 1D tensor describing the (after flattening) output dimension of "
-                "the CNN, e.g. `[256]`!"
             )
 
     @_framework_implemented()
