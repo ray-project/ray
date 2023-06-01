@@ -3,8 +3,8 @@ from ray.data._internal.execution.operators.all_to_all_operator import AllToAllO
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
     Aggregate,
-    RandomShuffle,
     RandomizeBlocks,
+    RandomShuffle,
     Repartition,
     Sort,
 )

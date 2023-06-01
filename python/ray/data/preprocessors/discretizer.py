@@ -1,7 +1,7 @@
-from typing import Iterable, List, Dict, Optional, Type, Union
+from typing import Dict, Iterable, List, Optional, Type, Union
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from ray.data import Dataset
 from ray.data.aggregate import Max, Min

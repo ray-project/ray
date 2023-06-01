@@ -1,9 +1,8 @@
-from dataclasses import dataclass, field
 import os
-from typing import Any, Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.util.annotations import DeveloperAPI
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
@@ -12,6 +11,7 @@ from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
 
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
 NodeIdStr = str
