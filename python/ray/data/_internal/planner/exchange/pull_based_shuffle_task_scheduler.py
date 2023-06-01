@@ -1,8 +1,10 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
-from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.planner.exchange.interfaces import (
+    ExchangeTaskScheduler,
+    ExchangeTaskSpec,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 
@@ -49,14 +51,9 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
 
         sub_progress_bar_dict = ctx.sub_progress_bar_dict
-        should_close_bar = True
-        bar_name = "Shuffle Map"
-        if sub_progress_bar_dict is not None:
-            assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
-            map_bar = sub_progress_bar_dict[bar_name]
-            should_close_bar = False
-        else:
-            map_bar = ProgressBar(bar_name, position=0, total=input_num_blocks)
+        bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
+        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        map_bar = sub_progress_bar_dict[bar_name]
 
         shuffle_map_out = [
             shuffle_map.options(
@@ -73,17 +70,10 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             shuffle_map_out[i] = refs[:-1]
 
         shuffle_map_metadata = map_bar.fetch_until_complete(shuffle_map_metadata)
-        if should_close_bar:
-            map_bar.close()
 
-        should_close_bar = True
-        bar_name = "Shuffle Reduce"
-        if sub_progress_bar_dict is not None:
-            assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
-            reduce_bar = sub_progress_bar_dict[bar_name]
-            should_close_bar = False
-        else:
-            reduce_bar = ProgressBar(bar_name, total=output_num_blocks)
+        bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
+        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        reduce_bar = sub_progress_bar_dict[bar_name]
 
         shuffle_reduce_out = [
             shuffle_reduce.options(**reduce_ray_remote_args, num_returns=2).remote(
@@ -97,8 +87,6 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         if shuffle_reduce_out:
             new_blocks, new_metadata = zip(*shuffle_reduce_out)
         new_metadata = reduce_bar.fetch_until_complete(list(new_metadata))
-        if should_close_bar:
-            reduce_bar.close()
 
         output = []
         for block, meta in zip(new_blocks, new_metadata):

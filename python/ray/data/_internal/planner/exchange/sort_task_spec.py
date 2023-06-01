@@ -40,6 +40,8 @@ class SortTaskSpec(ExchangeTaskSpec):
     sorted block and becomes part of the new, sorted block.
     """
 
+    SORT_SAMPLE_SUB_PROGRESS_BAR_NAME = "Sort Sample"
+
     def __init__(
         self,
         boundaries: List[T],
@@ -99,7 +101,9 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_results = [
             sample_block.remote(block, n_samples, key) for block in blocks
         ]
-        sample_bar = ProgressBar("Sort Sample", len(sample_results))
+        sample_bar = ProgressBar(
+            SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME, len(sample_results)
+        )
         samples = sample_bar.fetch_until_complete(sample_results)
         sample_bar.close()
         del sample_results

@@ -1,6 +1,9 @@
 from typing import Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
+from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
 from ray.data.aggregate import AggregateFn
 
 
@@ -63,7 +66,10 @@ class RandomShuffle(AbstractAllToAll):
             name,
             input_op,
             num_outputs=num_outputs,
-            sub_progress_bar_names=["Shuffle Map", "Shuffle Reduce"],
+            sub_progress_bar_names=[
+                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+            ],
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
@@ -79,9 +85,14 @@ class Repartition(AbstractAllToAll):
         shuffle: bool,
     ):
         if shuffle:
-            sub_progress_bar_names = ["Shuffle Map", "Shuffle Reduce"]
+            sub_progress_bar_names = [
+                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+            ]
         else:
-            sub_progress_bar_names = ["Split Repartition"]
+            sub_progress_bar_names = [
+                ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
+            ]
         super().__init__(
             "Repartition",
             input_op,
@@ -103,7 +114,11 @@ class Sort(AbstractAllToAll):
         super().__init__(
             "Sort",
             input_op,
-            sub_progress_bar_names=["Sort Sample", "Shuffle Map", "Shuffle Reduce"],
+            sub_progress_bar_names=[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+            ],
         )
         self._key = key
         self._descending = descending
@@ -121,6 +136,10 @@ class Aggregate(AbstractAllToAll):
         super().__init__(
             "Aggregate",
             input_op,
+            sub_progress_bar_names=[
+                ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
+                ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
+            ],
         )
         self._key = key
         self._aggs = aggs

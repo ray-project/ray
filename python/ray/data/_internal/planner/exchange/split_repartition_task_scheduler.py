@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import ray
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
-from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
@@ -74,14 +74,10 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             split_metadata.extend(m)
 
         sub_progress_bar_dict = ctx.sub_progress_bar_dict
-        should_close_bar = True
-        bar_name = "Split Repartition"
-        if sub_progress_bar_dict is not None:
-            assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
-            reduce_bar = sub_progress_bar_dict[bar_name]
-            should_close_bar = False
-        else:
-            reduce_bar = ProgressBar(bar_name, total=output_num_blocks)
+        bar_name = ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME
+        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        reduce_bar = sub_progress_bar_dict[bar_name]
+
         reduce_task = cached_remote_fn(self._exchange_spec.reduce)
         reduce_return = [
             reduce_task.options(**reduce_ray_remote_args, num_returns=2).remote(
@@ -98,8 +94,6 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
         reduce_block_refs, reduce_metadata = list(reduce_block_refs), list(
             reduce_metadata
         )
-        if should_close_bar:
-            reduce_bar.close()
 
         # Handle empty blocks.
         if len(reduce_block_refs) < output_num_blocks:

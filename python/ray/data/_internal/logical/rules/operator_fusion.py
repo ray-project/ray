@@ -334,6 +334,10 @@ class OperatorFusionRule(Rule):
         op = AllToAllOperator(
             fused_all_to_all_transform_fn,
             input_op,
+            num_outputs=down_op._num_outputs,
+            # Transfer over the existing sub-progress bars from
+            # the AllToAllOperator (if any) into the fused operator.
+            sub_progress_bar_names=down_op._sub_progress_bar_names,
             name=name,
         )
         # Bottom out at the source logical op (e.g. Read()).
