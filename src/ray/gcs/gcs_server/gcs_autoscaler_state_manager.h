@@ -67,8 +67,16 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// \brief Get the gang resource requests (e.g. from placement group) state.
   /// \param reply The reply to be filled.
   ///
+  /// This method fills up the `pending_gang_resource_requests` field.
+  /// The `pending_gang_resource_requests` field is a list of resource requests from
+  /// placement groups, which should be fulfilled atomically (either all fulfilled or all
+  /// failed).
+  ///
+  /// If a pending/rescheduling placement group is STRICT_SPREAD, then its resources
+  /// requests should also have anti-affinity constraint attached to it.
+  ///
   /// See rpc::autoscaler::GetClusterResourceStateReply::pending_gang_resource_requests
-  /// for more
+  /// for more details.
   void GetPendingGangResourceRequests(
       rpc::autoscaler::GetClusterResourceStateReply *reply);
 

@@ -43,7 +43,7 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
 
   GetNodeStates(reply);
   GetPendingResourceRequests(reply);
-  // GetPendingGangResourceRequests(reply);
+  GetPendingGangResourceRequests(reply);
   // GetClusterResourceConstraints(reply);
 
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
@@ -61,7 +61,53 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::GetClusterResourceStateReply *reply) {
-  throw std::runtime_error("Unimplemented");
+  // Get the gang resource requests from the placement group load.
+  auto placement_group_load = gcs_resource_manager_.GetPlacementGroupLoad();
+  if (!placement_group_load) {
+    return;
+  }
+
+  // Iterate through each placement group load.
+  for (const auto &pg_data : placement_group_load->placement_group_data()) {
+    auto gang_resource_req = reply->add_pending_gang_resource_requests();
+    // For each placement group, if it's not pending/rescheduling, skip it since.
+    // it's not part of the load.
+    if (!(pg_data.state() == rpc::PlacementGroupTableData::PENDING ||
+          pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING)) {
+      continue;
+    }
+
+    // Default no anti-affinity for PG.
+    absl::optional<rpc::PlacementConstraint> anti_affinity_constraint = absl::nullopt;
+
+    // But if it's a strict spread pg. We will add the anti-affinity constraint.
+    // which has a special name placeholder key and the pg id. This way,
+    // bundles that should be strictly spread will not be placed on the same node
+    // due to the same anti-affinity constraint.
+    if (pg_data.strategy() == rpc::PlacementStrategy::STRICT_SPREAD) {
+      anti_affinity_constraint = rpc::PlacementConstraint();
+      anti_affinity_constraint->mutable_anti_affinity()->set_label_name(
+          kPlacementGroupAntiAffinityLabelName);
+      anti_affinity_constraint->mutable_anti_affinity()->set_label_value(
+          pg_data.placement_group_id());
+    }
+
+    // Copy the PG's bundles to the request.
+    for (const auto &bundle : pg_data.bundles()) {
+      // Add the resources.
+      auto resource_req = gang_resource_req->add_requests();
+      resource_req->mutable_resources_bundle()->insert(bundle.unit_resources().begin(),
+                                                       bundle.unit_resources().end());
+
+      // Add the placement constraint if there's any.
+      if (anti_affinity_constraint.has_value()) {
+        resource_req->add_placement_constraints()->CopyFrom(
+            anti_affinity_constraint.value());
+      }
+    }
+  }
+
+  return;
 }
 
 void GcsAutoscalerStateManager::GetClusterResourceConstraints(

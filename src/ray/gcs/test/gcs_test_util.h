@@ -322,6 +322,28 @@ struct Mocker {
     data.set_resource_load_changed(resource_load_changed);
     data.set_node_id(node_id);
   }
+
+  static rpc::PlacementGroupTableData GenPlacementGroupTableData(
+      const PlacementGroupID &placement_group_id,
+      const JobID &job_id,
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      rpc::PlacementStrategy strategy,
+      const rpc::PlacementGroupTableData::PlacementGroupState state,
+      const std::string &name = "",
+      const ActorID &actor_id = ActorID::Nil()) {
+    rpc::PlacementGroupTableData placement_group_table_data;
+    placement_group_table_data.set_placement_group_id(placement_group_id.Binary());
+    placement_group_table_data.set_state(state);
+    placement_group_table_data.set_name(name);
+    placement_group_table_data.set_strategy(strategy);
+    for (auto &bundle : bundles) {
+      auto bundle_spec = placement_group_table_data.add_bundles();
+      for (auto &resource : bundle) {
+        (*bundle_spec->mutable_unit_resources())[resource.first] = resource.second;
+      }
+    }
+    return placement_group_table_data;
+  }
 };
 
 }  // namespace ray

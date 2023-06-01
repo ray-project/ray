@@ -31,6 +31,8 @@ namespace ray {
 namespace gcs {
 using ::testing::_;
 
+using ResourceBundleMap = std::unordered_map<std::string, double>;
+
 // Test suite for AutoscalerState related functionality.
 class GcsAutoscalerStateManagerTest : public ::testing::Test {
  public:
@@ -140,6 +142,89 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
           << "Request: " << req.first;
     }
   }
+
+  void UpdatePlacementGroupLoad(const std::vector<rpc::PlacementGroupTableData> &data) {
+    std::shared_ptr<rpc::PlacementGroupLoad> load =
+        std::make_shared<rpc::PlacementGroupLoad>();
+    for (auto &d : data) {
+      load->add_placement_group_data()->CopyFrom(d);
+    }
+
+    gcs_resource_manager_->UpdatePlacementGroupLoad(load);
+  }
+
+  void CheckGangResourceRequests(
+      const rpc::autoscaler::GetClusterResourceStateReply &reply,
+      const std::unordered_map<std::string, std::vector<ResourceBundleMap>>
+          &expected_data) {
+    auto pending_reqs = reply.pending_gang_resource_requests();
+    std::unordered_map<std::string, std::vector<ResourceBundleMap>> actual_data;
+    // Parse the data.
+    for (const auto &pending_pg_req : pending_reqs) {
+      for (const auto &req : pending_pg_req.requests()) {
+        ResourceBundleMap resource_map;
+        for (const auto &resource : req.resources_bundle()) {
+          resource_map[resource.first] = resource.second;
+        }
+
+        // Parse the affinity to PG.
+        if (req.placement_constraints_size() == 0) {
+          actual_data["no-pg-affinity"].push_back(resource_map);
+          continue;
+        }
+        for (const auto &constraint : req.placement_constraints()) {
+          if (constraint.anti_affinity().label_name() ==
+              kPlacementGroupAntiAffinityLabelName) {
+            auto pg_id = constraint.anti_affinity().label_value();
+
+            actual_data[pg_id].push_back(resource_map);
+          } else {
+            actual_data["no-pg-affinity"].push_back(resource_map);
+          }
+        }
+      }
+    }
+
+    for (const auto &[pg, resource_lists] : expected_data) {
+      ASSERT_EQ(actual_data[pg].size(), resource_lists.size());
+      std::vector<std::string> actual_resource_map_str;
+      std::vector<std::string> expected_resource_map_str;
+
+      std::transform(actual_data[pg].begin(),
+                     actual_data[pg].end(),
+                     std::back_inserter(actual_resource_map_str),
+                     [this](const ResourceBundleMap &resource_map) {
+                       return ShapeToString(resource_map);
+                     });
+      std::transform(resource_lists.begin(),
+                     resource_lists.end(),
+                     std::back_inserter(expected_resource_map_str),
+                     [this](const ResourceBundleMap &resource_map) {
+                       return ShapeToString(resource_map);
+                     });
+      // Sort and compare.
+      std::sort(actual_resource_map_str.begin(), actual_resource_map_str.end());
+      std::sort(expected_resource_map_str.begin(), expected_resource_map_str.end());
+      for (size_t i = 0; i < actual_resource_map_str.size(); i++) {
+        ASSERT_EQ(actual_resource_map_str[i], expected_resource_map_str[i]);
+      }
+    }
+  }
+
+  std::string ShapeToString(const ResourceBundleMap &resource_map) {
+    std::stringstream ss;
+    std::map<std::string, double> sorted_m;
+    for (const auto &resource : resource_map) {
+      sorted_m[resource.first] = resource.second;
+    }
+
+    for (const auto &resource : sorted_m) {
+      ss << resource.first << ":" << resource.second << ",";
+    }
+    auto s = ss.str();
+    // Remove last ","
+    return s.empty() ? "" : s.substr(0, s.size() - 1);
+  }
 };
 
 TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
@@ -218,6 +303,73 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
     RemoveNode(NodeID::FromBinary(node->node_id()));
     auto reply = GetClusterResourceStateSync();
     ASSERT_EQ(reply.pending_resource_requests_size(), 0);
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequests) {
+  auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->mutable_resources_total()->insert({"GPU", 1});
+  node->set_instance_id("instance_1");
+  // Adding a node.
+  AddNode(node);
+
+  // Get empty requests
+  {
+    auto reply = GetClusterResourceStateSync();
+    ASSERT_EQ(reply.pending_gang_resource_requests_size(), 0);
+  }
+
+  JobID job_id = JobID::FromInt(0);
+  // A strict spread pending pg should generate pending gang resource requests.
+  {
+    auto pg = PlacementGroupID::Of(job_id);
+    UpdatePlacementGroupLoad(
+        {Mocker::GenPlacementGroupTableData(pg,
+                                            job_id,
+                                            {{{"CPU", 1}}, {{"GPU", 1}}},
+                                            rpc::PlacementStrategy::STRICT_SPREAD,
+                                            rpc::PlacementGroupTableData::PENDING)});
+
+    auto reply = GetClusterResourceStateSync();
+    CheckGangResourceRequests(reply, {{pg.Binary(), {{{"CPU", 1}}, {{"GPU", 1}}}}});
+  }
+
+  // A strict spread non-pending pg should not generate gang resource requests.
+  {
+    auto pg = PlacementGroupID::Of(job_id);
+    UpdatePlacementGroupLoad(
+        {Mocker::GenPlacementGroupTableData(pg,
+                                            job_id,
+                                            {{{"CPU", 2}}, {{"GPU", 2}}},
+                                            rpc::PlacementStrategy::STRICT_SPREAD,
+                                            rpc::PlacementGroupTableData::CREATED)});
+
+    auto reply = GetClusterResourceStateSync();
+    CheckGangResourceRequests(reply, {});
+  }
+
+  // A non strict spreading pending pg should not generate gang resource requests without
+  // affinity.
+  {
+    auto pg = PlacementGroupID::Of(job_id);
+    UpdatePlacementGroupLoad(
+        {Mocker::GenPlacementGroupTableData(pg,
+                                            job_id,
+                                            {{{"CPU", 1}, {"GPU", 2}}},
+                                            rpc::PlacementStrategy::PACK,
+                                            rpc::PlacementGroupTableData::PENDING),
+         Mocker::GenPlacementGroupTableData(pg,
+                                            job_id,
+                                            {{{"TPU", 1}}},
+                                            rpc::PlacementStrategy::STRICT_PACK,
+                                            rpc::PlacementGroupTableData::RESCHEDULING)});
+
+    auto reply = GetClusterResourceStateSync();
+    CheckGangResourceRequests(
+        reply,
+        {{"no-pg-affinity",
+          {/* from first */ {{"CPU", 1}, {"GPU", 2}}, /* from second */ {{"TPU", 1}}}}});
   }
 }
 
