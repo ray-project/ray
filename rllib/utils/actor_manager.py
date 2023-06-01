@@ -268,16 +268,9 @@ class FaultTolerantActorManager:
         self._num_actor_restarts = 0
 
     @DeveloperAPI
-    def actors(self):
-        """Access the underlying actors being managed.
-
-        Warning (jungong): This API should almost never be used.
-        It is only exposed for testing and backward compatibility reasons.
-        Remote actors managed by this class should never be accessed directly.
-        """
-        # TODO(jungong) : remove this API once WorkerSet.remote_workers()
-        # and WorkerSet._remote_workers() are removed.
-        return self.__actors
+    def actor_ids(self) -> List[int]:
+        """Returns a list of all worker IDs (healthy or not)."""
+        return list(self.__actors.keys())
 
     @DeveloperAPI
     def healthy_actor_ids(self) -> List[int]:
@@ -414,7 +407,7 @@ class FaultTolerantActorManager:
             ), "Funcs must have the same number of callables as actor indices."
 
         if remote_actor_ids is None:
-            remote_actor_ids = list(self.__actors.keys())
+            remote_actor_ids = self.actor_ids()
 
         if isinstance(func, list):
             calls = [
@@ -585,7 +578,7 @@ class FaultTolerantActorManager:
             actual data returned or exceptions raised during the remote call in the
             format of RemoteCallResults.
         """
-        remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
+        remote_actor_ids = remote_actor_ids or self.actor_ids()
         if healthy_only:
             func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
                 func, remote_actor_ids
@@ -631,14 +624,15 @@ class FaultTolerantActorManager:
             The number of async requests that are actually fired.
         """
         # TODO(avnishn, jungong): so thinking about this a bit more, it would be the
-        # best if we can attach multiple tags to an async all, like basically this
-        # parameter should be tags:
-        # for sync alls, tags would be ()
-        # for async call users, they can attached multiple tags for a single call, like
-        # ("rollout_worker", "sync_weight")
-        # for async fetch result, we can also specify a single, or list of tags. for
-        # example, ("eval", "sample") will fetch all the sample() calls on eval workers.
-        remote_actor_ids = remote_actor_ids or list(self.__actors.keys())
+        #  best if we can attach multiple tags to an async all, like basically this
+        #  parameter should be tags:
+        #  For sync calls, tags would be ().
+        #  For async call users, they can attached multiple tags for a single call, like
+        #  ("rollout_worker", "sync_weight").
+        #  For async fetch result, we can also specify a single, or list of tags. For
+        #  example, ("eval", "sample") will fetch all the sample() calls on eval
+        #  workers.
+        remote_actor_ids = remote_actor_ids or self.actor_ids()
 
         if healthy_only:
             func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
@@ -794,7 +788,7 @@ class FaultTolerantActorManager:
         """
         unhealthy_actor_ids = [
             actor_id
-            for actor_id in self.actors().keys()
+            for actor_id in self.actor_ids()
             if not self.is_actor_healthy(actor_id)
         ]
         if not unhealthy_actor_ids:
@@ -810,3 +804,8 @@ class FaultTolerantActorManager:
         )
 
         return [result.actor_id for result in remote_results if result.ok]
+
+    def actors(self):
+        # TODO(jungong) : remove this API once WorkerSet.remote_workers()
+        #  and WorkerSet._remote_workers() are removed.
+        return self.__actors

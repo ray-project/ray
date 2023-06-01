@@ -1,25 +1,28 @@
 import importlib
 import logging
 import os
-from typing import Any, List, Union, Optional, TYPE_CHECKING
-from types import ModuleType
+import pathlib
 import sys
+import urllib.parse
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 import numpy as np
 
 import ray
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data.context import DataContext
-from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
-    from ray.data.datasource import Reader
-    from ray.util.placement_group import PlacementGroup
-    import pyarrow
     import pandas
+    import pyarrow
+
     from ray.data._internal.compute import ComputeStrategy
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
+    from ray.data.datasource import Reader
+    from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
 
@@ -209,9 +212,6 @@ def _resolve_custom_scheme(path: str) -> str:
 
     The supported custom schemes are: "local", "example".
     """
-    import pathlib
-    import urllib.parse
-
     parsed_uri = urllib.parse.urlparse(path)
     if parsed_uri.scheme == _LOCAL_SCHEME:
         path = parsed_uri.netloc + parsed_uri.path
@@ -227,9 +227,6 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     Note: The paths must be in same scheme, i.e. it's invalid and
     will raise error if paths are mixed with different schemes.
     """
-    import pathlib
-    import urllib.parse
-
     if isinstance(paths, str):
         paths = [paths]
     if isinstance(paths, pathlib.Path):

@@ -36,7 +36,7 @@ class LearnerThread(threading.Thread):
 
     def run(self):
         # Switch on eager mode if configured.
-        if self.local_worker.policy_config.get("framework") == "tf2":
+        if self.local_worker.config.framework_str == "tf2":
             tf1.enable_eager_execution()
         while not self.stopped:
             self.step()

@@ -2,24 +2,23 @@ import copy
 import os
 import posixpath
 
-import pytest
-import pyarrow as pa
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pytest
 
 import ray
-
-from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.tests.mock_server import *  # noqa
-from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray._private.utils import _get_pyarrow_version
+from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.tests.conftest import _ray_start
-from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture(scope="module")
@@ -129,8 +128,9 @@ def s3_fs_with_anonymous_crendential(
 
 
 def _s3_fs(aws_credentials, s3_server, s3_path):
-    from pkg_resources._vendor.packaging.version import parse as parse_version
     import urllib.parse
+
+    from pkg_resources._vendor.packaging.version import parse as parse_version
 
     kwargs = aws_credentials.copy()
 

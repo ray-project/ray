@@ -1,8 +1,10 @@
 # isort: skip_file
+from ray._private import log  # isort: skip # noqa: F401
 import logging
 import os
 import sys
 
+log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 
@@ -234,6 +236,7 @@ AUTO_INIT_APIS = {
     "kill",
     "put",
     "wait",
+    "get_runtime_context",
 }
 
 # Public APIs that should not automatically trigger ray.init().
@@ -250,7 +253,6 @@ NON_AUTO_INIT_APIS = {
     "client",
     "cluster_resources",
     "cpp_function",
-    "get_runtime_context",
     "init",
     "is_initialized",
     "java_actor_class",

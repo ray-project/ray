@@ -108,6 +108,17 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
+    def get_worker_id(self) -> str:
+        """Get current worker ID for this worker or driver process.
+
+        Returns:
+            A worker id in hex format for this worker or driver process.
+        """
+        assert (
+            ray.is_initialized()
+        ), "Worker ID is not available because Ray has not been initialized."
+        return self.worker.worker_id.hex()
+
     @property
     @Deprecated(message="Use get_task_id() instead", warning=True)
     def task_id(self):
@@ -118,22 +129,26 @@ class RuntimeContext(object):
 
         Example:
 
-            >>> import ray
-            >>> @ray.remote
-            ... class Actor:
-            ...     def ready(self):
-            ...         return True
-            >>>
-            >>> @ray.remote # doctest: +SKIP
-            ... def f():
-            ...     return True
-            >>> # All the below code will generate different task ids.
-            >>> # Task ids are available for actor creation.
-            >>> a = Actor.remote() # doctest: +SKIP
-            >>> # Task ids are available for actor tasks.
-            >>> a.ready.remote() # doctest: +SKIP
-            >>> # Task ids are available for normal tasks.
-            >>> f.remote() # doctest: +SKIP
+            .. testcode::
+
+                import ray
+
+                @ray.remote
+                class Actor:
+                    def ready(self):
+                        return True
+
+                @ray.remote
+                def f():
+                    return True
+
+                # All the below code generates different task ids.
+                # Task ids are available for actor creation.
+                a = Actor.remote()
+                # Task ids are available for actor tasks.
+                a.ready.remote()
+                # Task ids are available for normal tasks.
+                f.remote()
 
         Returns:
             The current worker's task id. None if there's no task id.
@@ -154,22 +169,31 @@ class RuntimeContext(object):
 
         Example:
 
-            >>> import ray
-            >>> @ray.remote
-            ... class Actor:
-            ...     def ready(self):
-            ...         return True
-            >>>
-            >>> @ray.remote # doctest: +SKIP
-            ... def f():
-            ...     return True
-            >>> # All the below code will generate different task ids.
-            >>> # Task ids are available for actor creation.
-            >>> a = Actor.remote() # doctest: +SKIP
-            >>> # Task ids are available for actor tasks.
-            >>> a.ready.remote() # doctest: +SKIP
-            >>> # Task ids are available for normal tasks.
-            >>> f.remote() # doctest: +SKIP
+            .. testcode::
+
+                import ray
+
+                @ray.remote
+                class Actor:
+                    def get_task_id(self):
+                        return ray.get_runtime_context().get_task_id()
+
+                @ray.remote
+                def get_task_id():
+                    return ray.get_runtime_context().get_task_id()
+
+                # All the below code generates different task ids.
+                a = Actor.remote()
+                # Task ids are available for actor tasks.
+                print(ray.get(a.get_task_id.remote()))
+                # Task ids are available for normal tasks.
+                print(ray.get(get_task_id.remote()))
+
+            .. testoutput::
+                :options: +MOCK
+
+                16310a0f0a45af5c2746a0e6efb235c0962896a201000000
+                c2668a65bda616c1ffffffffffffffffffffffff01000000
 
         Returns:
             The current worker's task id in hex. None if there's no task id.

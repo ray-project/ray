@@ -58,6 +58,7 @@ struct Mocker {
                               owner_address,
                               1,
                               false,
+                              false,
                               required_resources,
                               required_placement_resources,
                               "",
@@ -200,6 +201,7 @@ struct Mocker {
     node->set_node_manager_port(port);
     node->set_node_manager_address(address);
     node->set_node_name(node_name);
+    node->set_instance_id("instance_x");
     return node;
   }
 
@@ -266,17 +268,59 @@ struct Mocker {
       auto new_events = data.add_events_by_task();
       new_events->CopyFrom(events);
     }
+    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
+    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
 
-    for (int i = 0; i < num_status_task_events_dropped; ++i) {
-      rpc::TaskAttempt rpc_task_attempt;
-      rpc_task_attempt.set_task_id(RandomTaskId().Binary());
-      rpc_task_attempt.set_attempt_number(0);
-      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
-    }
-
-    data.set_num_profile_events_dropped(num_profile_task_events_dropped);
-    data.set_job_id(JobID::FromInt(0).Binary());
     return data;
+  }
+
+  static rpc::ResourceDemand GenResourceDemand(
+      const absl::flat_hash_map<std::string, double> &resource_demands,
+      int64_t num_ready_queued,
+      int64_t num_infeasible,
+      int64_t num_backlog) {
+    rpc::ResourceDemand resource_demand;
+    for (const auto &resource : resource_demands) {
+      (*resource_demand.mutable_shape())[resource.first] = resource.second;
+    }
+    resource_demand.set_num_ready_requests_queued(num_ready_queued);
+    resource_demand.set_num_infeasible_requests_queued(num_infeasible);
+    resource_demand.set_backlog_size(num_backlog);
+    return resource_demand;
+  }
+
+  static void FillResourcesData(
+      rpc::ResourcesData &resources_data,
+      const NodeID &node_id,
+      const absl::flat_hash_map<std::string, double> &available_resources,
+      const absl::flat_hash_map<std::string, double> &total_resources,
+      bool available_resources_changed) {
+    resources_data.set_node_id(node_id.Binary());
+    for (const auto &resource : available_resources) {
+      (*resources_data.mutable_resources_available())[resource.first] = resource.second;
+    }
+    for (const auto &resource : total_resources) {
+      (*resources_data.mutable_resources_total())[resource.first] = resource.second;
+    }
+    resources_data.set_resources_available_changed(available_resources_changed);
+  }
+
+  static void FillResourcesData(rpc::ResourcesData &data,
+                                const std::string &node_id,
+                                std::vector<rpc::ResourceDemand> demands,
+                                bool resource_load_changed = true) {
+    auto load_by_shape = data.mutable_resource_load_by_shape();
+    auto agg_load = data.mutable_resource_load();
+    for (const auto &demand : demands) {
+      load_by_shape->add_resource_demands()->CopyFrom(demand);
+      for (const auto &resource : demand.shape()) {
+        (*agg_load)[resource.first] +=
+            (resource.second * (demand.num_ready_requests_queued() +
+                                demand.num_infeasible_requests_queued()));
+      }
+    }
+    data.set_resource_load_changed(resource_load_changed);
+    data.set_node_id(node_id);
   }
 };
 

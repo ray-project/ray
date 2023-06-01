@@ -154,8 +154,20 @@ class TuneController(_TuneControllerBase):
         return TrialRunnerWrapper(
             self,
             trial_executor=_FakeRayTrialExecutor(self),
-            runner_whitelist_attr={"search_alg", "get_trials", "_set_trial_status"},
-            executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
+            runner_whitelist_attr={
+                "search_alg",
+                "get_trials",
+                "get_live_trials",
+                "_set_trial_status",
+                "pause_trial",
+                "stop_trial",
+            },
+            executor_whitelist_attr={
+                "has_resources_for_trial",
+                "pause_trial",
+                "save",
+                "_resource_updater",
+            },
         )
 
     def _used_resources_string(self) -> str:
@@ -203,8 +215,11 @@ class TuneController(_TuneControllerBase):
         # This is a bit costly, so we want to avoid running it too often
         times = deque(
             sorted(
-                (timestamp, tracked_actor)
-                for tracked_actor, timestamp in self._stopping_actors.items()
+                [
+                    (timestamp, tracked_actor)
+                    for tracked_actor, timestamp in self._stopping_actors.items()
+                ],
+                key=lambda item: item[0],
             )
         )
 

@@ -422,6 +422,18 @@ message TaskSpec {
   // This will be the actor creation task's task id for concurrent actors. Or
   // the main thread's task id for other cases.
   bytes submitter_task_id = 33;
+  // True if the task is a streaming generator. When it is true,
+  // returns_dynamic has to be true as well. This is a temporary flag
+  // until we migrate the generator implementatino to streaming.
+  // TODO(sang): Remove it once migrating to the streaming generator
+  // by default.
+  bool streaming_generator = 34;
+  // Some timestamps of the task's lifetime, useful for metrics.
+  // The time the task's dependencies have been resolved.
+  int64 dependency_resolution_timestamp_ms = 35;
+  // The time that the task is given a lease, and sent to the executing core
+  // worker.
+  int64 lease_grant_timestamp_ms = 36;
 }
 
 message TaskInfoEntry {
@@ -537,6 +549,22 @@ message TaskArg {
   bytes metadata = 3;
   // ObjectIDs that were nested in the inlined arguments of the data field.
   repeated ObjectReference nested_inlined_refs = 4;
+}
+
+message ReturnObject {
+  // Object ID.
+  bytes object_id = 1;
+  // If set, indicates the data is in plasma instead of inline. This
+  // means that data and metadata will be empty.
+  bool in_plasma = 2;
+  // Data of the object.
+  bytes data = 3;
+  // Metadata of the object.
+  bytes metadata = 4;
+  // ObjectIDs that were nested in data. This is only set for inlined objects.
+  repeated ObjectReference nested_inlined_refs = 5;
+  // Size of this object.
+  int64 size = 6;
 }
 
 // Task spec of an actor creation task.

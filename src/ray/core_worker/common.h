@@ -21,6 +21,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/util/util.h"
+#include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
 namespace core {
@@ -36,6 +37,10 @@ std::string LanguageString(Language language);
 // Return a string representation of the named actor to cache, in format of
 // `namespace-[job_id-]actor_name`
 std::string GenerateCachedActorName(const std::string &ns, const std::string &actor_name);
+
+void SerializeReturnObject(const ObjectID &object_id,
+                           const std::shared_ptr<RayObject> &return_object,
+                           rpc::ReturnObject *return_object_proto);
 
 /// Information about a remote function.
 class RayFunction {

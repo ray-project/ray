@@ -75,7 +75,7 @@ Every time you want to update your local version you can pull the changes from t
 Prepare the Python environment
 ------------------------------
 
-You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``. 
+You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``.
 
 .. tab-set::
 
@@ -343,9 +343,9 @@ You can tweak the build with the following environment variables (when running `
   python packages
 - ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
   other value will be ignored
-- ``BAZEL_LIMIT_CPUS``: If set, it must be an integers. This will be fed to the
-  ``--local_cpu_resources`` argument for the call to Bazel, which will limit the
-  number of CPUs used during Bazel steps.
+- ``BAZEL_ARGS``: If set, pass a space-separated set of arguments to Bazel. This can be useful
+  for restricting resource usage during builds, for example. See https://bazel.build/docs/user-manual
+  for more information about valid arguments.
 - ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
 - ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
   ``None`` which is ``cwd()``
@@ -382,7 +382,7 @@ run the following (via ``-c`` ``fastbuild``/``dbg``/``opt``, respectively):
  bazel build -c fastbuild //:ray_pkg
 
 This will rebuild Ray with the appropriate options (which may take a while).
-If you need to build all targets, you can use ``"//:*"`` instead of
+If you need to build all targets, you can use ``"//:all"`` instead of
 ``//:ray_pkg``.
 
 To make this change permanent, you can add an option such as the following

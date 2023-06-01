@@ -1,20 +1,20 @@
 import logging
 import threading
-from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
 from collections import deque
 from contextlib import nullcontext
+from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
 
 import ray
-from ray.types import ObjectRef
 from ray.actor import ActorHandle
-from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
     Batch,
-    CollatedBatch,
     BlockPrefetcher,
+    CollatedBatch,
 )
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
+from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 T = TypeVar("T")
