@@ -211,9 +211,9 @@ class LightningTrainer(TorchTrainer):
 
     This Trainer runs the ``pytorch_lightning.Trainer.fit()`` method on multiple
     Ray Actors. The training is carried out in a distributed fashion through PyTorch
-    DDP. These actors already have the necessary Torch process group configured for
-    distributed data parallel training. We will support more distributed training
-    strategies in the future.
+    DDP and FSDP. These actors already have the necessary Torch process group
+    configured for distributed data parallel training. We will support more
+    distributed training strategies in the future.
 
     The training function ran on every Actor will first initialize an instance
     of the user-provided ``lightning_module`` class, which is a subclass of
@@ -222,7 +222,8 @@ class LightningTrainer(TorchTrainer):
 
     For data ingestion, the LightningTrainer will then either convert the Dataset
     shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
-    datamodule or dataloaders if provided by users.
+    datamodule or dataloaders if provided by users in
+    ``LightningConfigBuilder.fit_params()``.
 
     The trainer also creates a ModelCheckpoint callback based on the configuration
     provided in ``LightningConfigBuilder.checkpointing()``. In addition to
@@ -237,7 +238,11 @@ class LightningTrainer(TorchTrainer):
     using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
     run ``pytorch_lightning.Trainer.fit``.
 
-    LightningTrainer requires ``pytorch_lightning>=1.6.5`` package, and it is tested 
+    For more flexible and fine-grained control over `LightningModule` and `pl.Trainer`,
+    you can specify one or more customized PyTorch Lightning Callbacks
+    in `LightningConfigBuilder.trainer(callbacks=)`.
+
+    LightningTrainer requires ``pytorch_lightning>=1.6.5`` package, and it is tested
     with ``pytorch_lightning==1.6.5`` and ``pytorch_lightning==2.0.0``.
 
     Example:
