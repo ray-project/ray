@@ -2,7 +2,6 @@ import logging
 from typing import Callable
 
 from ray.util.annotations import PublicAPI
-from ray._private.utils import get_or_create_event_loop
 
 from ray import serve
 from ray.serve._private.http_util import (

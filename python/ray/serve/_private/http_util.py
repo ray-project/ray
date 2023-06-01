@@ -4,11 +4,11 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type, Union
 
 from fastapi.encoders import jsonable_encoder
 from starlette.requests import Request
-from starlette.types import Send, ASGIApp
+from starlette.types import ASGIApp, Receive, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
@@ -348,7 +348,10 @@ class ASGIAppReplicaWrapper:
             await self._serve_asgi_lifespan.startup()
 
     async def __call__(
-        self, request: Request, asgi_sender: Optional[Send] = None
+        self,
+        request: Union[Request, dict],
+        asgi_sender: Optional[Send] = None,
+        asgi_receive: Optional[Receive] = None,
     ) -> Optional[ASGIApp]:
         """Calls into the wrapped ASGI app.
 
@@ -359,12 +362,20 @@ class ASGIAppReplicaWrapper:
         """
         build_and_return_response = False
         if asgi_sender is None:
+            assert asgi_receive is None
+            assert isinstance(request, Request)
+            scope = request.scope
             asgi_sender = ASGIHTTPSender()
+            asgi_receive = request.receive
             build_and_return_response = True
+        else:
+            assert asgi_receive is not None
+            assert isinstance(request, dict)
+            scope = request
 
         await self._asgi_app(
-            request.scope,
-            request.receive,
+            scope,
+            asgi_receive,
             asgi_sender,
         )
 
