@@ -17,16 +17,16 @@ from ray_release.test_automation.state_machine import TestStateMachine
 def test_move():
     test = Test()
     test.test_results = [
-        TestResult.from_result(Result(status=ResultStatus.SUCCESS)),
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
     ]
     assert test.get_state() == TestState.PASSING
     test.test_results.insert(
         0,
-        TestResult.from_result(Result(status=ResultStatus.ERROR)),
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
     test.test_results.insert(
         0,
-        TestResult.from_result(Result(status=ResultStatus.ERROR)),
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
     )
     sm = TestStateMachine(test)
     sm.move()
