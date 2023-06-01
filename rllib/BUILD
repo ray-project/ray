@@ -1660,6 +1660,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "env/tests/test_single_agent_gym_env_runner",
+    tags = ["team:rllib", "env"],
+    size = "small",
+    srcs = ["env/tests/test_single_agent_gym_env_runner.py"]
+)
+
+py_test(
     name = "env/tests/test_env_with_subprocess",
     tags = ["team:rllib", "env"],
     size = "medium",

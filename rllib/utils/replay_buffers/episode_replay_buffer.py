@@ -382,7 +382,7 @@ class _Episode:
 
     def concat_episode(self, episode_chunk: "_Episode"):
         assert episode_chunk.id_ == self.id_
-        assert not self.is_done()
+        assert not self.is_done
 
         episode_chunk.validate()
 
@@ -416,7 +416,7 @@ class _Episode:
         is_truncated=False,
         render_image=None,
     ):
-        assert not self.is_done()
+        assert not self.is_done
 
         self.observations.append(observation)
         self.actions.append(action)
@@ -431,7 +431,7 @@ class _Episode:
     def add_initial_observation(
         self, *, initial_observation, initial_state=None, initial_render_image=None
     ):
-        assert not self.is_done()
+        assert not self.is_done
         assert len(self.observations) == 0
 
         self.observations.append(initial_observation)
@@ -446,12 +446,13 @@ class _Episode:
         assert len(self.observations) == len(self.rewards) + 1 == len(self.actions) + 1
 
         # Convert all lists to numpy arrays, if we are terminated.
-        if self.is_done():
+        if self.is_done:
             self.observations = np.array(self.observations)
             self.actions = np.array(self.actions)
             self.rewards = np.array(self.rewards)
             self.render_images = np.array(self.render_images, dtype=np.uint8)
 
+    @property
     def is_done(self):
         return self.is_terminated or self.is_truncated
 
