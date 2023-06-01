@@ -56,6 +56,23 @@ class DreamerV3Learner(Learner):
     Only implements the `additional_update_for_module()` method to define the logic
     for updating the critic EMA-copy after each training step.
     """
+    @override(Learner)
+    def compile_results(
+        self,
+        *,
+        batch: MultiAgentBatch,
+        fwd_out: Mapping[str, Any],
+        loss_per_module: Mapping[str, TensorType],
+        metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
+    ) -> Mapping[str, Any]:
+        results = super().compile_results(
+            batch=batch,
+            fwd_out=fwd_out,
+            loss_per_module=loss_per_module,
+            metrics_per_module=metrics_per_module,
+        )
+
+        results["fwd_out"] = fwd_out
 
     @override(Learner)
     def additional_update_for_module(

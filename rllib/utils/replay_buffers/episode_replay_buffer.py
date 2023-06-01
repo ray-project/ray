@@ -356,8 +356,9 @@ class _Episode:
         actions=None,
         rewards=None,
         states=None,
-        is_terminated=False,
-        is_truncated=False,
+        t: int = 0,
+        is_terminated: bool = False,
+        is_truncated: bool = False,
         render_images=None,
     ):
         self.id_ = id_ or uuid.uuid4().hex
@@ -370,6 +371,9 @@ class _Episode:
         # h-states: t0 (in case this episode is a continuation chunk, we need to know
         # about the initial h) to T.
         self.states = states
+        # The global last timestep of the episode and the timesteps when this chunk
+        # started.
+        self.t = self.t_started = t
         # obs[-1] is the final observation in the episode.
         self.is_terminated = is_terminated
         # obs[-1] is the last obs in a truncated-by-the-env episode (there will no more
@@ -381,8 +385,11 @@ class _Episode:
         self.render_images = [] if render_images is None else render_images
 
     def concat_episode(self, episode_chunk: "_Episode"):
+        """Adds the given `episode_chunk` to the right side of self."""
         assert episode_chunk.id_ == self.id_
-        assert not self.is_done()
+        assert not self.done
+        # Make sure the timesteps match.
+        assert self.t == episode_chunk.t_started
 
         episode_chunk.validate()
 
@@ -416,12 +423,14 @@ class _Episode:
         is_truncated=False,
         render_image=None,
     ):
-        assert not self.is_done()
+        # Cannot add data to an already done episode.
+        assert not self.done
 
         self.observations.append(observation)
         self.actions.append(action)
         self.rewards.append(reward)
         self.states = state
+        self.t += 1
         if render_image is not None:
             self.render_images.append(render_image)
         self.is_terminated = is_terminated
@@ -431,8 +440,11 @@ class _Episode:
     def add_initial_observation(
         self, *, initial_observation, initial_state=None, initial_render_image=None
     ):
-        assert not self.is_done()
+        assert not self.done
         assert len(self.observations) == 0
+        # Assume that this episode is completely empty and has not stepped yet.
+        # Leave self.t at 0.
+        assert self.t == self.t_started == 0
 
         self.observations.append(initial_observation)
         self.states = initial_state
@@ -444,16 +456,45 @@ class _Episode:
         # Make sure we always have one more obs stored than rewards (and actions)
         # due to the reset and last-obs logic of an MDP.
         assert len(self.observations) == len(self.rewards) + 1 == len(self.actions) + 1
+        assert len(self.rewards) == (self.t - self.t_started)
 
         # Convert all lists to numpy arrays, if we are terminated.
-        if self.is_done():
+        if self.done:
             self.observations = np.array(self.observations)
             self.actions = np.array(self.actions)
             self.rewards = np.array(self.rewards)
             self.render_images = np.array(self.render_images, dtype=np.uint8)
 
-    def is_done(self):
+    @property
+    def done(self):
         return self.is_terminated or self.is_truncated
+
+    def create_successor(self) -> "_Episode":
+        """Returns a successor episode chunk continuing with this one.
+
+        The successor will have the same ID and state as self and its only observation
+        will be the last observation in self.
+
+        This method is useful if you would like to discontinue building this episode
+        chunk (b/c you have to return it from somewhere), but would like to have a new
+        instance to continue building the actual env episode at a later time.
+
+        Returns:
+            The successor Episode chunk of this one with the same ID and state and the
+            only observation being the last observation in self.
+        """
+        assert not self.done
+
+        return _Episode(
+            # Same ID.
+            id_=self.id_,
+            # First (and only) observation of successor is this episode's last obs.
+            observations=[self.observations[-1]],
+            # Same state.
+            states=self.states,
+            # Continue with our last timestep.
+            t=self.t,
+        )
 
     def to_sample_batch(self):
         return SampleBatch(
@@ -496,6 +537,8 @@ class _Episode:
                 "actions": self.actions,
                 "rewards": self.rewards,
                 "states": self.states,
+                "t_started": self.t_started,
+                "t": self.t,
                 "is_terminated": self.is_terminated,
                 "is_truncated": self.is_truncated,
             }.items()
@@ -508,14 +551,16 @@ class _Episode:
         eps.actions = state[2][1]
         eps.rewards = state[3][1]
         eps.states = state[4][1]
-        eps.is_terminated = state[5][1]
-        eps.is_truncated = state[6][1]
+        eps.t_started = state[5][1]
+        eps.t = state[6][1]
+        eps.is_terminated = state[7][1]
+        eps.is_truncated = state[8][1]
         return eps
 
     def __len__(self):
         assert len(self.observations) > 0, (
             "ERROR: Cannot determine length of episode that hasn't started yet! "
-            "Call `_Episode.add_initial_obs(initial_observation=...)` first "
+            "Call `_Episode.add_initial_observation(initial_observation=...)` first "
             "(after which `len(_Episode)` will be 0)."
         )
         return len(self.observations) - 1

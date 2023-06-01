@@ -13,7 +13,7 @@ from typing import List, Tuple
 
 import gymnasium as gym
 import numpy as np
-from supersuit.generic_wrappers import resize_v1, color_reduction_v0
+from supersuit.generic_wrappers import resize_v1
 import tensorflow as tf
 import tree  # pip install dm_tree
 
@@ -27,57 +27,6 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.numpy import one_hot
-
-
-class NormalizedImageEnv(gym.ObservationWrapper):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.observation_space = gym.spaces.Box(
-            -1.0,
-            1.0,
-            shape=self.observation_space.shape,
-            dtype=np.float32,
-        )
-
-    # Divide by scale and center around 0.0, such that observations are in the range
-    # of -1.0 and 1.0.
-    def observation(self, observation):
-        return (observation.astype(np.float32) / 128.0) - 1.0
-
-
-class OneHot(gym.ObservationWrapper):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.observation_space = gym.spaces.Box(
-            0.0, 1.0, shape=(self.observation_space.n,), dtype=np.float32
-        )
-
-    def reset(self, **kwargs):
-        ret = self.env.reset(**kwargs)
-        return self._get_obs(ret[0]), ret[1]
-
-    def step(self, action):
-        ret = self.env.step(action)
-        return self._get_obs(ret[0]), ret[1], ret[2], ret[3], ret[4]
-
-    def _get_obs(self, obs):
-        return one_hot(obs, depth=self.observation_space.shape[0])
-
-
-class ActionClip(gym.ActionWrapper):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._low = -1.0
-        self._high = 1.0
-        self.action_space = gym.spaces.Box(
-            self._low,
-            self._high,
-            self.action_space.shape,
-            self.action_space.dtype,
-        )
-
-    def action(self, action):
-        return np.clip(action, self._low, self._high)
 
 
 class DreamerV3EnvRunner(EnvRunner):
@@ -111,7 +60,6 @@ class DreamerV3EnvRunner(EnvRunner):
             # full action space=False,
             wrappers = [
                 partial(gym.wrappers.TimeLimit, max_episode_steps=108000),
-                # color_reduction_v0,  # grayscale
                 partial(resize_v1, x_size=64, y_size=64),  # resize to 64x64
                 NormalizedImageEnv,
                 NoopResetEnv,
@@ -336,7 +284,8 @@ class DreamerV3EnvRunner(EnvRunner):
                         a,
                         r,
                         state=s,
-                        is_terminated=True,
+                        is_terminated=term,
+                        is_truncated=trunc,
                     )
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
@@ -344,16 +293,10 @@ class DreamerV3EnvRunner(EnvRunner):
                         states[k][i] = v.numpy()
                     is_first[i] = True
                     done_episodes_to_return.append(self._episodes[i])
-
+                    # Create a new episode object.
                     self._episodes[i] = Episode(observations=[o], states=s)
                 else:
-                    self._episodes[i].add_timestep(
-                        o,
-                        a,
-                        r,
-                        state=s,
-                        is_terminated=False,
-                    )
+                    self._episodes[i].add_timestep(o, a, r, state=s)
                     is_first[i] = False
 
         # Return done episodes ...
@@ -362,14 +305,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # a copy and start new chunks so that callers of this function
         # don't alter our ongoing and returned Episode objects.
         ongoing_episodes = self._episodes
-        self._episodes = [
-            Episode(
-                id_=eps.id_,
-                observations=[eps.observations[-1]],
-                states=eps.states,
-            )
-            for eps in self._episodes
-        ]
+        self._episodes = [eps.create_successor() for eps in self._episodes]
         for eps in ongoing_episodes:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
@@ -396,12 +332,11 @@ class DreamerV3EnvRunner(EnvRunner):
             force_reset: Whether to reset the environment(s) before starting to sample.
                 If False, will still reset the environment(s) if they were left in
                 a terminated or truncated state during previous sample calls.
+            with_render_data:
         """
-
         done_episodes_to_return = []
 
         obs, _ = self.env.reset()
-
         episodes = [Episode() for _ in range(self.num_envs)]
 
         # Multiply states n times according to our vector env batch size (num_envs).
@@ -423,8 +358,7 @@ class DreamerV3EnvRunner(EnvRunner):
             )
 
         eps = 0
-
-        while True:
+        while eps < num_episodes:
             if random_actions:
                 actions = self.env.action_space.sample()
             else:
@@ -495,11 +429,12 @@ class DreamerV3EnvRunner(EnvRunner):
                     )
                     is_first[i] = False
 
-            if eps >= num_episodes:
-                break
-
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
+
+        # If user calls sample(num_timesteps=..) after this, we must reset again
+        # at the beginning.
+        self._needs_initial_reset = True
 
         return done_episodes_to_return
 
@@ -507,7 +442,6 @@ class DreamerV3EnvRunner(EnvRunner):
         # Compute per-episode metrics (only on already completed episodes).
         metrics = []
         for eps in self._done_episodes_for_metrics:
-            #metric = RolloutMetrics()
             episode_length = len(eps)
             episode_reward = eps.get_return()
             # Don't forget about the already returned chunks of this episode.
@@ -515,7 +449,6 @@ class DreamerV3EnvRunner(EnvRunner):
                 for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
                     episode_length += len(eps2)
                     episode_reward += eps2.get_return()
-                    #actions.extend(list(eps2.actions))
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
             metrics.append(RolloutMetrics(
@@ -529,6 +462,7 @@ class DreamerV3EnvRunner(EnvRunner):
         return metrics
 
     def set_weights(self, weights):
+        """Writes the weights of our (single-agent) RLModule."""
         self.rl_module.set_state(weights[DEFAULT_POLICY_ID])
 
     @override(EnvRunner)
@@ -541,10 +475,57 @@ class DreamerV3EnvRunner(EnvRunner):
         # Close our env object via gymnasium's API.
         self.env.close()
 
-    @override(EnvRunner)
-    def __del__(self):
-        # TODO
-        pass
-
     def _split_by_env(self, inputs):
         return [inputs[i] for i in range(self.num_envs)]
+
+
+class NormalizedImageEnv(gym.ObservationWrapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.observation_space = gym.spaces.Box(
+            -1.0,
+            1.0,
+            shape=self.observation_space.shape,
+            dtype=np.float32,
+        )
+
+    # Divide by scale and center around 0.0, such that observations are in the range
+    # of -1.0 and 1.0.
+    def observation(self, observation):
+        return (observation.astype(np.float32) / 128.0) - 1.0
+
+
+class OneHot(gym.ObservationWrapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.observation_space = gym.spaces.Box(
+            0.0, 1.0, shape=(self.observation_space.n,), dtype=np.float32
+        )
+
+    def reset(self, **kwargs):
+        ret = self.env.reset(**kwargs)
+        return self._get_obs(ret[0]), ret[1]
+
+    def step(self, action):
+        ret = self.env.step(action)
+        return self._get_obs(ret[0]), ret[1], ret[2], ret[3], ret[4]
+
+    def _get_obs(self, obs):
+        return one_hot(obs, depth=self.observation_space.shape[0])
+
+
+class ActionClip(gym.ActionWrapper):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._low = -1.0
+        self._high = 1.0
+        self.action_space = gym.spaces.Box(
+            self._low,
+            self._high,
+            self.action_space.shape,
+            self.action_space.dtype,
+        )
+
+    def action(self, action):
+        return np.clip(action, self._low, self._high)
+
