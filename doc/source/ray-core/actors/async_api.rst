@@ -49,6 +49,14 @@ async frameworks like aiohttp, aioredis, etc.
         await actor.run_concurrent.remote()
     asyncio.run(async_get())
 
+.. testcode::
+    :hide:
+
+    # NOTE: The outputs from the previous code block can show up in subsequent tests.
+    # To prevent flakiness, we wait for the async calls finish.
+    import time
+    time.sleep(3)
+
 .. testoutput::
     :options: +MOCK
 
