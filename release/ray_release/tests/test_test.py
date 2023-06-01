@@ -27,6 +27,7 @@ def test_get_python_version():
 
 
 def test_get_ray_image():
+    os.environ["BUILDKITE_BRANCH"] = "master"
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
     assert _stub_test({"python": "3.8"}).get_ray_image() == "rayproject/ray:123456-py38"
     assert (
@@ -42,9 +43,12 @@ def test_get_ray_image():
         ).get_ray_image()
         == "rayproject/ray-ml:123456-py38-gpu"
     )
+    os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
+    assert _stub_test({}).get_ray_image() == "rayproject/ray:1.0.0.123456-py37"
 
 
 def test_get_anyscale_byod_image():
+    os.environ["BUILDKITE_BRANCH"] = "master"
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
     assert (
         _stub_test({}).get_anyscale_byod_image()

@@ -56,6 +56,13 @@ class Test(dict):
             os.environ["BUILDKITE_COMMIT"],
         )
         ray_version = commit[:6]
+        branch = os.environ.get("BUILDKITE_BRANCH", "")
+        assert branch == "master" or branch.startswith(
+            "releases/"
+        ), f"Invalid branch name {branch}"
+        if branch.startswith("releases/"):
+            release_name = branch[len("releases/") :]
+            ray_version = f"{release_name}.{ray_version}"
         image_suffix = "-gpu" if self.get_byod_type() == "gpu" else ""
         python_version = f"py{self.get_python_version().replace('.',   '')}"
         return f"{ray_version}-{python_version}{image_suffix}"
