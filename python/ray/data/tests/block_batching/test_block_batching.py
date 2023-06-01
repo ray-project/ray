@@ -70,10 +70,7 @@ def test_prefetch_blocks(num_blocks_to_prefetch):
             assert len(prefetcher.windows) == block_count
 
     windows = prefetcher.windows
-    # The first window should have the number of blocks to prefetch.
-    # And the rest should have 1 block.
-    assert len(windows[0]) == num_blocks_to_prefetch
-    assert all(len(window) == 1 for window in windows[1:])
+    assert all(len(window) == num_blocks_to_prefetch for window in windows)
 
 
 if __name__ == "__main__":

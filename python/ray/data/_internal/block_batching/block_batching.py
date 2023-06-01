@@ -194,10 +194,9 @@ def _prefetch_blocks(
     while sliding_window:
         block_ref = sliding_window.popleft()
         try:
-            next_block = next(block_ref_iter)
-            sliding_window.append(next_block)
+            sliding_window.append(next(block_ref_iter))
             with stats.iter_wait_s.timer() if stats else nullcontext():
-                prefetcher.prefetch_blocks(sliding_window)
+                prefetcher.prefetch_blocks(list(sliding_window))
         except StopIteration:
             pass
         yield block_ref
