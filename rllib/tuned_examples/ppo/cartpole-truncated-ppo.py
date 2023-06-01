@@ -18,6 +18,7 @@ config = (
         evaluation_interval=1,
         evaluation_num_workers=1,
     )
+    .framework(eager_tracing=True)
 )
 
 stop = {
