@@ -6,7 +6,7 @@ Configuring Logging
 This guide helps you modify the default configuration of Ray's logging system.
 
 
-Internal Ray Logging Configuration
+Internal Ray logging configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 When ``import ray`` is executed, Ray's logger is initialized, generating a sensible configuration given in ``python/ray/_private/log.py``. The default logging level is ``logging.INFO``.
 
@@ -40,7 +40,7 @@ Similarly, to modify the logging configuration for any Ray subcomponent, specify
    # Here's how to add an aditional file handler for ray tune:
    ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 
-For more information about logging in workers, see :ref:`Customizing worker loggers`.
+For more information about logging in workers, see :ref:`Customizing worker loggers <customize-worker-loggers>`.
 
 Disabling logging to the driver
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -89,7 +89,7 @@ This feature is especially useful when importing libraries such as `tensorflow` 
 Customizing Actor logs prefixes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-It is often useful to distinguish between log messages from different actors. For example, suppose you have a large number of worker actors. In this case, you may want to be able to easily see the index of the actor that logged a particular message. This can be achieved by defining the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for an actor class. When defined, the actor repr will be used in place of the actor name. For example:
+It is often useful to distinguish between log messages from different Actors. For example, suppose you have a large number of worker Actors. In this case, you may want to be able to easily see the index of the Actor that logged a particular message. This can be achieved by defining the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for an Actor class. When defined, the Actor repr will be used in place of the Actor name. For example:
 
 .. literalinclude:: /ray-core/doc_code/actor-repr.py
 
@@ -102,30 +102,76 @@ This produces the following output:
 
 Coloring Actor log prefixes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-By default Ray prints Actor logs prefixes in light blue:
+By default, Ray prints Actor logs prefixes in light blue:
 Users may instead activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``.
-This will index into an array of colors modulo the PID of each process.
+This indexes into an array of colors modulo the PID of each process.
 
-.. image:: ./images/coloring-actor-log-prefixes.png
+.. image:: ../images/coloring-actor-log-prefixes.png
     :align: center
 
 Distributed progress bars (tqdm)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When using `tqdm <https://tqdm.github.io>`__ in Ray remote tasks or actors, you may notice that the progress bar output is corrupted. To avoid this problem, you can use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
+When using `tqdm <https://tqdm.github.io>`__ in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
 
 .. literalinclude:: /ray-core/doc_code/tqdm.py
 
 This tqdm implementation works as follows:
 
-1. The ``tqdm_ray`` module translates TQDM calls into special json log messages written to worker stdout.
+1. The ``tqdm_ray`` module translates TQDM calls into special JSON log messages written to worker stdout.
 2. The Ray log monitor, instead of copying these log messages directly to the driver stdout, routes these messages to a tqdm singleton.
-3. The tqdm singleton determines the positions of progress bars from various Ray tasks / actors, ensuring they don't collide or conflict with each other.
+3. The tqdm singleton determines the positions of progress bars from various Ray tasks or actors, ensuring they don't collide or conflict with each other.
 
 Limitations:
 
 - Only a subset of tqdm functionality is supported. Refer to the ray_tqdm `implementation <https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py>`__ for more details.
 - Performance may be poor if there are more than a couple thousand updates per second (updates are not batched).
 
-By default, the builtin print will also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
+By default, the built-in print is also patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
 This avoids progress bar corruption on driver print statements. To disable this, set `RAY_TQDM_PATCH_PRINT=0`.
+
+.. _customize-worker-loggers:
+
+Customizing worker loggers
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When using Ray, all tasks and actors are executed remotely in Ray's worker processes. 
+
+.. note::
+
+    To stream logs to a driver, they should be flushed to stdout and stderr.
+
+.. code-block:: python
+
+    import ray
+    import logging
+    # Initiate a driver.
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            # Basic config automatically configures logs to
+            # be streamed to stdout and stderr.
+            # Set the severity to INFO so that info logs are printed to stdout.
+            logging.basicConfig(level=logging.INFO)
+
+        def log(self, msg):
+            logger = logging.getLogger(__name__)
+            logger.info(msg)
+
+    actor = Actor.remote()
+    ray.get(actor.log.remote("A log message for an actor."))
+
+    @ray.remote
+    def f(msg):
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+        logger.info(msg)
+
+    ray.get(f.remote("A log message for a task."))
+
+.. code-block:: bash
+
+    (Actor pid=179641) INFO:__main__:A log message for an actor.
+    (f pid=177572) INFO:__main__:A log message for a task.

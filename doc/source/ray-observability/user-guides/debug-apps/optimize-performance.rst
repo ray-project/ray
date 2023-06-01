@@ -3,7 +3,7 @@
 Optimizing Performance
 ======================
 
-No Speedup
+No speedup
 ----------
 
 You just ran an application using Ray, but it wasn't as fast as you expected it
@@ -57,6 +57,7 @@ as well as some known problems. If you encounter other problems, please
 `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues
+
 .. _ray-core-timeline:
 
 Visualizing Tasks in the Ray Timeline
@@ -80,24 +81,24 @@ Then open `chrome://tracing`_ in the Chrome web browser, and load
 
 .. _dashboard-profiling:
 
-Python CPU Profiling in the Dashboard
+Python CPU profiling in the Dashboard
 -------------------------------------
 
-The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
+The :ref:`Ray dashboard <observability-getting-started>`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
 actions for active workers, actors, and jobs.
 
 .. image:: /images/profile.png
    :align: center
    :width: 80%
 
-Clicking "Stack Trace" will return the current stack trace sample using ``py-spy``. By default, only the Python stack
+Clicking "Stack Trace" returns the current stack trace sample using ``py-spy``. By default, only the Python stack
 trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux).
 
 .. image:: /images/stack.png
    :align: center
    :width: 60%
 
-Clicking "CPU Flame Graph" will take a number of stack trace samples and combine them into a flame graph visualization.
+Clicking "CPU Flame Graph" takes a number of stack trace samples and combine them into a flame graph visualization.
 This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration
 of the flame graph, you can change the ``duration`` parameter in the URL. Similarly, you can change the ``native``
 parameter to enable native profiling.
@@ -107,7 +108,7 @@ parameter to enable native profiling.
    :width: 80%
 
 The profiling feature requires ``py-spy`` to be installed. If it is not installed, or if the ``py-spy`` binary does
-not have root permissions, the dashboard will prompt with instructions on how to setup ``py-spy`` correctly:
+not have root permissions, the Dashboard prompts with instructions on how to setup ``py-spy`` correctly:
 
 .. code-block::
 
@@ -119,7 +120,9 @@ not have root permissions, the dashboard will prompt with instructions on how to
 
     Alternatively, you can start Ray with passwordless sudo / root permissions.
 
-Profiling Using Python's CProfile
+.. _dashboard-cprofile:
+
+Profiling using Python's cProfile
 ---------------------------------
 
 You can use Python's native cProfile `profiling module`_ to profile the performance of your Ray application. Rather than tracking

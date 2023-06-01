@@ -4,7 +4,9 @@ from typing import Optional, List
 DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
 )
-DOCKER_REPO = "029272617770.dkr.ecr.us-west-2.amazonaws.com/anyscale"
+DATAPLANE_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
+DATAPLANE_ECR_REPO = "anyscale/ray"
+DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 
 
 class Test(dict):
@@ -45,25 +47,41 @@ class Test(dict):
         """
         return self.get("python", ".".join(str(v) for v in DEFAULT_PYTHON_VERSION))
 
-    def get_ray_image(self) -> str:
+    def get_byod_image_tag(self) -> str:
         """
-        Returns the ray docker image to use for this test. If the commit hash is not
-        specified, use the nightly ray image.
+        Returns the byod image tag to use for this test.
         """
-        # TDOD(can): re-enable this test once we have a custom image
-        # ray_version = os.environ.get("BUILDKITE_COMMIT", "")[:6] or "nightly"
-        ray_version = "nightly"
-        ray_project = "ray-ml" if self.get_byod_type() == "gpu" else "ray"
+        commit = os.environ.get(
+            "COMMIT_TO_TEST",
+            os.environ["BUILDKITE_COMMIT"],
+        )
+        ray_version = commit[:6]
         image_suffix = "-gpu" if self.get_byod_type() == "gpu" else ""
         python_version = f"py{self.get_python_version().replace('.',   '')}"
-        return f"rayproject/{ray_project}:{ray_version}-{python_version}{image_suffix}"
+        return f"{ray_version}-{python_version}{image_suffix}"
+
+    def get_byod_repo(self) -> str:
+        """
+        Returns the byod repo to use for this test.
+        """
+        return (
+            DATAPLANE_ECR_ML_REPO
+            if self.get_byod_type() == "gpu"
+            else DATAPLANE_ECR_REPO
+        )
+
+    def get_ray_image(self) -> str:
+        """
+        Returns the ray docker image to use for this test.
+        """
+        ray_project = "ray-ml" if self.get_byod_type() == "gpu" else "ray"
+        return f"rayproject/{ray_project}:{self.get_byod_image_tag()}"
 
     def get_anyscale_byod_image(self) -> str:
         """
         Returns the anyscale byod image to use for this test.
         """
-        tag = self.get_ray_image().replace("rayproject/", "").replace(":", "-")
-        return f"{DOCKER_REPO}:{tag}"
+        return f"{DATAPLANE_ECR}/{self.get_byod_repo()}:{self.get_byod_image_tag()}"
 
 
 class TestDefinition(dict):

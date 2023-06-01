@@ -30,7 +30,7 @@ class MultiAgentRLModule(RLModule):
 
     This class holds a mapping from module_ids to the underlying RLModules. It provides
     a convenient way of accessing each individual module, as well as accessing all of
-    them with only one api call. Whether or not a given module is trainable is
+    them with only one API call. Whether or not a given module is trainable is
     determined by the caller of this class (not the instance of this class itself).
 
     The extension of this class can include any arbitrary neural networks as part of
@@ -46,14 +46,16 @@ class MultiAgentRLModule(RLModule):
     communication with one another. The behavior of modules with such advanced
     communication would be undefined by default. To share parameters or communication
     between the underlying RLModules, you should implement your own
-    `MultiAgentRLModule`.
+    `MultiAgentRLModule` subclass.
     """
 
-    def __init__(self, config: "MultiAgentRLModuleConfig" = None) -> None:
-        if config is None:
-            config = MultiAgentRLModuleConfig()
+    def __init__(self, config: Optional["MultiAgentRLModuleConfig"] = None) -> None:
+        """Initializes a MultiagentRLModule instance.
 
-        super().__init__(config)
+        Args:
+            config: The MultiAgentRLModuleConfig to use.
+        """
+        super().__init__(config or MultiAgentRLModuleConfig())
 
     def setup(self):
         """Sets up the underlying RLModules."""
@@ -319,10 +321,7 @@ class MultiAgentRLModule(RLModule):
                     f"Submodule {submodule_id}'s module state directory: "
                     f"{submodule_weights_dir} not found in checkpoint dir {path}."
                 )
-            submodule_weights_path = (
-                submodule_weights_dir / submodule._module_state_file_name()
-            )
-            submodule.load_state(submodule_weights_path)
+            submodule.load_state(submodule_weights_dir)
 
     @override(RLModule)
     def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
@@ -403,12 +402,24 @@ class MultiAgentRLModuleSpec:
         module_specs: The module specs for each individual module. It can be either a
             SingleAgentRLModuleSpec used for all module_ids or a dictionary mapping
             from module IDs to SingleAgentRLModuleSpecs for each individual module.
+        load_state_path: The path to the module state to load from. NOTE: This must be
+            an absolute path. NOTE: If the load_state_path of this spec is set, and
+            the load_state_path of one of the SingleAgentRLModuleSpecs' is also set,
+            the weights of that RL Module will be loaded from the path specified in
+            the SingleAgentRLModuleSpec. This is useful if you want to load the weights
+            of a MARL module and also manually load the weights of some of the RL
+            modules within that MARL module from other checkpoints.
+        modules_to_load: A set of module ids to load from the checkpoint. This is
+            only used if load_state_path is set. If this is None, all modules are
+            loaded.
     """
 
     marl_module_class: Type[MultiAgentRLModule] = MultiAgentRLModule
     module_specs: Union[
         SingleAgentRLModuleSpec, Dict[ModuleID, SingleAgentRLModuleSpec]
     ] = None
+    load_state_path: Optional[str] = None
+    modules_to_load: Optional[Set[ModuleID]] = None
 
     def __post_init__(self):
         if self.module_specs is None:
@@ -442,14 +453,14 @@ class MultiAgentRLModuleSpec:
         Returns:
             The built module. If module_id is None, it returns the multi-agent module.
         """
-
         self._check_before_build()
 
         if module_id:
             return self.module_specs[module_id].build()
 
         module_config = self.get_marl_config()
-        return self.marl_module_class(module_config)
+        module = self.marl_module_class(module_config)
+        return module
 
     def add_modules(
         self,
