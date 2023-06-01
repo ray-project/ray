@@ -132,8 +132,12 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
         .module(LinearModule, input_dim=32, output_dim=4)
         .trainer(max_epochs=max_epochs, accelerator="cpu")
         .fit_params(train_dataloaders=train_loader, val_dataloaders=val_loader)
+        .checkpointing(
+            dirpath="lightning/ckpts/dir", monitor="loss", save_top_k=2
+        )  # Test AIR restoration with relative ckpt dirpath
     )
 
+    # Manually create a ptl checkpoint
     if resume_from_ckpt_path:
         ckpt_dir = f"{tmpdir}/ckpts"
         callback = ModelCheckpoint(dirpath=ckpt_dir, save_last=True)
@@ -142,6 +146,8 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
         )
         pl_model = LinearModule(input_dim=32, output_dim=4)
         pl_trainer.fit(pl_model, train_dataloaders=train_loader)
+
+        # Start training with an existing lightning ckpt
         lightning_config.fit_params(ckpt_path=f"{ckpt_dir}/last.ckpt")
 
     scaling_config = ray.air.ScalingConfig(num_workers=2, use_gpu=False)

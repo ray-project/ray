@@ -237,6 +237,9 @@ class LightningTrainer(TorchTrainer):
     using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
     run ``pytorch_lightning.Trainer.fit``.
 
+    LightningTrainer requires ``pytorch_lightning>=1.6.5`` package, and it is tested 
+    with ``pytorch_lightning==1.6.5`` and ``pytorch_lightning==2.0.0``.
+
     Example:
         .. code-block:: python
 
@@ -526,6 +529,13 @@ def _lightning_train_loop_per_worker(config):
     # LightningTrainer always requires checkpointing
     trainer_config["enable_checkpointing"] = True
     model_checkpoint_config["save_last"] = True
+
+    # Convert dirpath to an absolute path under the trial directory
+    ckpt_dirpath = model_checkpoint_config.get("dirpath", None)
+    if ckpt_dirpath and not os.path.isabs(ckpt_dirpath):
+        model_checkpoint_config["dirpath"] = os.path.join(
+            session.get_trial_dir(), ckpt_dirpath
+        )
 
     trainer_config["callbacks"] = trainer_config.get("callbacks", []) + [
         RayModelCheckpoint(**model_checkpoint_config)

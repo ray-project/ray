@@ -71,11 +71,13 @@ def test_trainer_with_native_dataloader(
     batch_size = 8
     num_workers = 2
     dataset_size = 256
+    ckpt_dirpath = "lightning/ckpts/dir"
 
     config_builder = (
         LightningConfigBuilder()
         .module(LinearModule, input_dim=32, output_dim=4, strategy=strategy)
         .trainer(max_epochs=num_epochs, accelerator=accelerator)
+        .checkpointing(dirpath=ckpt_dirpath)
         .strategy(strategy)
     )
 
