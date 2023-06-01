@@ -56,7 +56,8 @@ class Test(dict):
             os.environ["BUILDKITE_COMMIT"],
         )
         ray_version = commit[:6]
-        #        branch = os.environ.get("BUILDKITE_BRANCH", "")
+        # TODO: for testing only, remove before committing
+        #        branch = os.environ.get("BUILDKITE_BRANCH", )
         branch = "master"
         assert branch == "master" or branch.startswith(
             "releases/"
