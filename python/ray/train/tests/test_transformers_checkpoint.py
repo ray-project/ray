@@ -13,6 +13,8 @@ from test_transformers_predictor import (
 
 
 def test_transformers_checkpoint(tmp_path):
+    """This tests that TransformersCheckpoint created using `from_model` can
+    be saved to a directory then loaded back with the same contents."""
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
