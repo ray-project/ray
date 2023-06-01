@@ -205,6 +205,9 @@ def create_replica_wrapper(name: str):
             self.replica = None
             self._initialize_replica = initialize_replica
 
+            # Used to make sure only one single init task happen.
+            self.init_lock = asyncio.Lock()
+
         @ray.method(num_returns=2)
         async def handle_request(
             self,
@@ -312,8 +315,9 @@ def create_replica_wrapper(name: str):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             try:
-                if not self._init_finish_event.is_set():
-                    await self._initialize_replica()
+                async with self.init_lock:
+                    if not self._init_finish_event.is_set():
+                        await self._initialize_replica()
                 metadata = await self.reconfigure(deployment_config)
 
                 # A new replica should not be considered healthy until it passes an
@@ -336,6 +340,11 @@ def create_replica_wrapper(name: str):
         async def get_metadata(
             self,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            if not self._init_finish_event.is_set():
+                raise RayServeException(
+                    "Failed to retrieve metadata information because the replica "
+                    f" {self._replica_tag} is not initilized"
+                )
             return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
