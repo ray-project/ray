@@ -10,7 +10,7 @@ By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` 
 
 ## Log processing tools
 
-A number of open source log processing tools are available. Some popular ones are listed below:
+A number of open source log processing tools are available, such as [Vector][Vector] and [FluentBit][FluentBit].
 Other popular tools include [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
 
 [Vector]: https://vector.dev/

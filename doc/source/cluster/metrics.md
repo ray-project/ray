@@ -123,7 +123,7 @@ scrape_configs:
 If you know the IP addresses of the nodes in your Ray Cluster, you can configure Prometheus to read metrics from a static list of endpoints.
 Set a fixed port that Ray should use to export metrics.  If you're using the VM Cluster Launcher, pass ``--metrics-export-port=<port>`` to ``ray start``.  If you're using KubeRay, specify ``rayStartParams.metrics-export-port`` in the RayCluster configuration file. You must specify the port on all nodes in the cluster.
 
-If you do not know the IP addresses of the nodes in your Ray cluster, you can also programmatically discover the endpoints by reading the Ray Cluster information. Here, we will use a Python script and the ``ray.nodes()`` API to find the metrics agents' URLs, by combining the ``NodeManagerAddress`` with the ``MetricsExportPort``. For example:
+If you do not know the IP addresses of the nodes in your Ray Cluster, you can also programmatically discover the endpoints by reading the Ray Cluster information. The following example uses a Python script and the {py:obj}`ray.nodes` API to find the metrics agents' URLs, by combining the ``NodeManagerAddress`` with the ``MetricsExportPort``.
 
 ```python
 # On a cluster node:
