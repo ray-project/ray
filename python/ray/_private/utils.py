@@ -1346,6 +1346,13 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
+connect_error = ("Unable to connect to GCS (ray head) at {}. "
+                    "Check that (1) Ray with matching version started "
+                    "successfully at the specified address, (2) this "
+                    "node can reach the specified address, and (3) there is "
+                    "no firewall setting preventing access.")
+
+
 def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
     result = None
     if isinstance(prefix, str):
@@ -1361,10 +1368,7 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
                 ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
                 logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
+                   connect_error.format(gcs_client.address) 
                 )
             else:
                 logger.exception("Internal KV List failed")
@@ -1395,10 +1399,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
                 ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
                 logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
+                   connect_error.format(gcs_client.address) 
                 )
             else:
                 logger.exception("Internal KV Get failed")
@@ -1453,10 +1454,7 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
                 ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
                 logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
+                   connect_error.format(gcs_client.address) 
                 )
             else:
                 logger.exception("Internal KV Put failed")
