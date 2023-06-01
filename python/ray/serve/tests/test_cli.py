@@ -1,11 +1,12 @@
 import os
+import re
 import signal
 import subprocess
 import sys
 import time
 import json
 from tempfile import NamedTemporaryFile
-from typing import List
+from typing import List, Pattern
 
 import click
 from pydantic import BaseModel
@@ -1232,6 +1233,107 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     )
     serve.shutdown()
     ray.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+class TestRayReinitialization:
+    @pytest.fixture
+    def import_file_name(self) -> str:
+        return "ray.serve.tests.test_config_files.ray_already_initialized:app"
+
+    @pytest.fixture
+    def pattern(self) -> Pattern:
+        return re.compile(
+            r"INFO ray._private.worker::Connecting to existing Ray cluster at "
+            r"address: (.*)\.\.\."
+        )
+
+    @pytest.fixture
+    def ansi_escape(self) -> Pattern:
+        return re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+    def test_run_without_address(self, import_file_name, ray_start_stop):
+        """Test serve run with ray already initialized and run without address argument.
+
+        When the imported file already initialized a ray instance and serve doesn't run
+        with address argument, then serve does not reinitialize another ray instance and
+        cause error.
+        """
+        p = subprocess.Popen(["serve", "run", import_file_name])
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+
+    def test_run_with_address_same_address(self, import_file_name, ray_start_stop):
+        """Test serve run with ray already initialized and run with address argument
+        that has the same address as existing ray instance.
+
+        When the imported file already initialized a ray instance and serve runs with
+        address argument same as the ray instance, then serve does not reinitialize
+        another ray instance and cause error.
+        """
+        p = subprocess.Popen(
+            ["serve", "run", "--address=127.0.0.1:6379", import_file_name]
+        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+
+    def test_run_with_address_different_address(
+        self, import_file_name, pattern, ansi_escape, ray_start_stop
+    ):
+        """Test serve run with ray already initialized and run with address argument
+        that has the different address as existing ray instance.
+
+        When the imported file already initialized a ray instance and serve runs with
+        address argument different as the ray instance, then serve does not reinitialize
+        another ray instance and cause error and logs warning to the user.
+        """
+        p = subprocess.Popen(
+            ["serve", "run", "--address=ray://123.45.67.89:50005", import_file_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+        process_output, _ = p.communicate()
+        logs = process_output.decode("utf-8").strip()
+        ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
+        expected_warning_message = (
+            "An address was passed to `serve run` but the imported module also "
+            f"connected to Ray at a different address: '{ray_address}'. You do not "
+            "need to call `ray.init` in your code when using `serve run`."
+        )
+        assert expected_warning_message in logs
+
+    def test_run_with_auto_address(
+        self, import_file_name, pattern, ansi_escape, ray_start_stop
+    ):
+        """Test serve run with ray already initialized and run with "auto" address
+        argument.
+
+        When the imported file already initialized a ray instance and serve runs with
+        address argument same as the ray instance, then serve does not reinitialize
+        another ray instance and cause error.
+        """
+        p = subprocess.Popen(
+            ["serve", "run", "--address=auto", import_file_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+        process_output, _ = p.communicate()
+        logs = process_output.decode("utf-8").strip()
+        ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
+        expected_warning_message = (
+            "An address was passed to `serve run` but the imported module also "
+            f"connected to Ray at a different address: '{ray_address}'. You do not "
+            "need to call `ray.init` in your code when using `serve run`."
+        )
+        assert expected_warning_message not in logs
 
 
 if __name__ == "__main__":

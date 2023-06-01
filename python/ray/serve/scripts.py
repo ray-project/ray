@@ -409,8 +409,26 @@ def run(
             import_attr(import_path), args_dict
         )
 
-    # Setting the runtime_env here will set defaults for the deployments.
-    ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
+    # Only initialize ray if it has not happened yet.
+    if not ray.is_initialized():
+        # Setting the runtime_env here will set defaults for the deployments.
+        ray.init(
+            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
+        )
+    elif (
+        address is not None
+        and address != "auto"
+        and address != ray.get_runtime_context().gcs_address
+    ):
+        # Warning users the address they passed is different from the existing ray
+        # instance.
+        ray_address = ray.get_runtime_context().gcs_address
+        cli_logger.warning(
+            "An address was passed to `serve run` but the imported module also "
+            f"connected to Ray at a different address: '{ray_address}'. You do not "
+            "need to call `ray.init` in your code when using `serve run`."
+        )
+
     client = _private_api.serve_start(
         detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
