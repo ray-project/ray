@@ -26,7 +26,6 @@ from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
-
 def test_avoid_placement_group_capture(shutdown_only):
     ray.init(num_cpus=2)
 

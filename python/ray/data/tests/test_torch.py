@@ -217,9 +217,7 @@ def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared):
         "Waiting for Torch to support unsqueezing and concatenating nested tensors."
     )
 )
-def test_tensors_in_tables_to_torch_variable_shaped(
-    ray_start_regular_shared
-):
+def test_tensors_in_tables_to_torch_variable_shaped(ray_start_regular_shared):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs1 = [
