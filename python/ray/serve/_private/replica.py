@@ -318,7 +318,9 @@ def create_replica_wrapper(name: str):
                 async with self.init_lock:
                     if not self._init_finish_event.is_set():
                         await self._initialize_replica()
-                metadata = await self.reconfigure(deployment_config)
+                if deployment_config:
+                    await self.reconfigure(deployment_config)
+                metadata = await self._get_metadata()
 
                 # A new replica should not be considered healthy until it passes an
                 # initial health check. If an initial health check fails, consider
