@@ -2070,6 +2070,9 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
 
+        # Only start import thread after job_config is initialized
+        ray._private.worker.start_import_thread()
+
         job_config_initialized = True
 
 
