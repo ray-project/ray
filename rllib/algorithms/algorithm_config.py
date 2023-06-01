@@ -2530,9 +2530,8 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
 
-        if _enable_rl_module_api is not NotProvided or self._enable_rl_module_api:
-            if not self._enable_rl_module_api:
-                self._enable_rl_module_api = _enable_rl_module_api
+        if _enable_rl_module_api is not NotProvided:
+            self._enable_rl_module_api = _enable_rl_module_api
             if _enable_rl_module_api is True and self.exploration_config:
                 logger.warning(
                     "Setting `exploration_config={}` because you set "
@@ -3317,6 +3316,7 @@ class AlgorithmConfig(_Config):
             grad_clip=self.grad_clip,
             grad_clip_by=self.grad_clip_by,
             _per_module_overrides=per_module_learner_hp_overrides,
+            seed=self.seed,
         )
 
     def __setattr__(self, key, value):

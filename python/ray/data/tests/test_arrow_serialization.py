@@ -61,8 +61,8 @@ def test_align_bit_offset_auto():
             )
 
 
-@mock.patch("ray.data._internal.arrow_serialization._copy_normal_buffer_if_needed")
-@mock.patch("ray.data._internal.arrow_serialization._copy_bitpacked_buffer_if_needed")
+@mock.patch("ray._private.arrow_serialization._copy_normal_buffer_if_needed")
+@mock.patch("ray._private.arrow_serialization._copy_bitpacked_buffer_if_needed")
 def test_copy_buffer_if_needed(mock_bitpacked, mock_normal):
     # Test that type-based buffer copy dispatch works as expected.
     bytes_ = b"abcd"
@@ -519,11 +519,11 @@ def test_arrow_scalar_conversion(ray_start_regular_shared):
     ds = ray.data.from_items([1])
 
     def fn(batch: list):
-        return np.array([1])
+        return {"id": np.array([1])}
 
     ds = ds.map_batches(fn)
     res = ds.take()
-    assert res == [1], res
+    assert res == [{"id": 1}], res
 
 
 def test_custom_arrow_data_serializer_parquet_roundtrip(
