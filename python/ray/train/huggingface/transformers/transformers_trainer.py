@@ -116,7 +116,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
     (segfault) may be thrown.
 
     This Trainer requires ``transformers>=4.19.0`` package.
-    It is tested with ``transformers==4.19.1``.
+    It is tested with ``transformers==4.29.0``.
 
     Example:
         .. code-block:: python
