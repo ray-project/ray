@@ -306,7 +306,7 @@ def create_replica_wrapper(name: str):
                 get_component_logger_file_path(),
             )
 
-        async def is_initialized_and_get_metadata(
+        async def initialized_and_get_metadata(
             self,
             deployment_config: DeploymentConfig = None,
             _after: Optional[Any] = None,
