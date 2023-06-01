@@ -162,7 +162,7 @@ class Test(dict):
 
     def persist_result_to_s3(self, result: Result) -> bool:
         """
-        Persist test object to s3
+        Persist test result object to s3
         """
         boto3.client("s3").put_object(
             Bucket=AWS_BUCKET,

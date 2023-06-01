@@ -7,6 +7,14 @@ from ray_release.logger import logger
 
 
 class RayTestDBReporter(Reporter):
+    """
+    Reporter that updates the test and test result object in s3 with the latest test run
+    information.
+    - test: Test object that contains the test information (name, oncall, state, etc.)
+    - result: Result object that contains the test result information of this particular
+    test run (status, start time, end time, etc.)
+    """
+
     def report_result(self, test: Test, result: Result) -> None:
         logger.info(
             f"Updating test object {test.get_name()} with result {result.status}"
