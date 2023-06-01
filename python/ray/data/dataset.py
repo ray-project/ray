@@ -36,6 +36,8 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.limit_operator import Limit
@@ -3978,6 +3980,26 @@ class Dataset:
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
         copy._plan.execute(force_read=True)
+
+        blocks = copy._plan._snapshot_blocks
+        blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
+        # TODO(hchen): Here we generate the same number of blocks as
+        # the original Dataset. Because the old code path does this, and
+        # some unit tests implicily depend on this behavior.
+        # After we remove the old code path, we should consider merging
+        # some blocks for better perf.
+        ref_bundles = [
+            RefBundle(
+                blocks=[block_with_metadata],
+                owns_blocks=False,
+            )
+            for block_with_metadata in blocks_with_metadata
+        ]
+
+        # Create a new logical plan whose input is the existing data
+        # from the the old Dataset.
+        copy._logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+
         return copy
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
