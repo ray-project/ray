@@ -113,17 +113,6 @@ ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 ## Structured logging
 Implement structured logging to enable downstream users and applications to consume the logs efficiently.
 
-### System logs
-Ray’s system or component logs are mostly structured following this format. <br />
-(placeholder for the format)
-
-Example <br />
-(placeholder for the example)
-
-:::{note}
-Some system component logs are not structured as suggested above as of 2.5. The migration of system logs to structured logs is ongoing.
-:::
-
 ### Application logs
 A Ray applications include both driver and worker processes. For Python applications, use Python loggers to format and structure your logs. 
 As a result, Python loggers need to be set up for both driver and worker processes.
@@ -146,6 +135,36 @@ If you are using Ray AIR or any of the Ray libraries, follow the instructions pr
 :::
 
 ::::
+
+### System logs
+Most of Ray’s system or component logs are structured by default. <br />
+
+Logging format for Python logs <br />
+```bash
+%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s
+```
+
+Example: <br />
+```
+2023-06-01 09:15:34,601	INFO job_manager.py:408 -- Submitting job with RAY_ADDRESS = 10.0.24.73:6379
+```
+
+
+Logging format for CPP logs <br />
+
+```bash
+[year-month-day, time, pid, thread_id] (component) [file]:[line] [message]
+```
+
+Example: <br />
+
+```bash
+[2023-06-01 08:47:47,457 I 31009 225171] (gcs_server) gcs_node_manager.cc:42: Registering node info, node id = 8cc65840f0a332f4f2d59c9814416db9c36f04ac1a29ac816ad8ca1e, address = 127.0.0.1, node name = 127.0.0.1
+```
+
+:::{note}
+Some system component logs are not structured as suggested above as of 2.5. The migration of system logs to structured logs is ongoing.
+:::
 
 ### Add metadata to structured logs
 If you need additional metadata to make logs more structured, fetch the metadata of Jobs, Tasks or Actors with Ray’s {py:obj}`ray.runtime_context.get_runtime_context` APIs. 

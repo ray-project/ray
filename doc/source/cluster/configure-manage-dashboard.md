@@ -22,7 +22,14 @@ Pass the keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 :::
 
 :::{tab-item} VM Cluster Launcher
-To be added
+Include the ``--dashboard-port`` argument in the `head_start_ray_commands` section of the Cluster Launcher YAML file.
+```yaml
+head_start_ray_commands: 
+  - ray stop 
+  # Replace ${YOUR_PORT} with the port number you need.
+  - ulimit -n 65536; ray start --head --dashboard-port=${YOUR_PORT} --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml 
+
+```
 :::
 
 :::{tab-item} KubeRay

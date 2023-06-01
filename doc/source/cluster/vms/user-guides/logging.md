@@ -26,7 +26,3 @@ After choosing a log processing tool based on your needs, you may need to perfor
 1. Ingest log files on each node of your Ray Cluster as sources.
 2. Parse and transform the logs. You may want to use {ref}`Ray's structured logging <structured-logging>` to simplify this step.
 3. Ship the transformed logs to log storage or management systems.
-
-
-## Redirecting Ray logs to stderr
-By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. If you prefer to capture logs from stderr, view {ref}`configuring logging <redirect-to-stderr>` for details on how to redirect all the logs to stderr of the host nodes instead.

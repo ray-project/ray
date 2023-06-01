@@ -71,7 +71,7 @@ A few notes on the above config:
   in the Fluent Bit container's stdout sooner.
 
 
-### Adding logging sidecars to your RayCluster Custom Resource (CR)
+### Adding logging sidecars to RayCluster Custom Resource (CR)
 
 #### Adding log and config volumes
 For each pod template in our RayCluster CR, we

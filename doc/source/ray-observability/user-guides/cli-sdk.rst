@@ -719,7 +719,7 @@ below.
     .. tab-item:: Kubernetes
 
         Execute a command on the cluster using ``kubectl exec`` and the configured
-        RayCluster name. We will use the Service targeting the Ray head pod to
+        RayCluster name. Ray uses the Service targeting the Ray head pod to
         execute a CLI command on the cluster.
 
         .. code-block:: shell
