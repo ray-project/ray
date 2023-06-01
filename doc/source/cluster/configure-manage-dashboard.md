@@ -196,11 +196,13 @@ Grafana is a tool that supports advanced visualizations of Prometheus metrics an
 
 ::::{tab-set}
 
-:::{tab-item} Single-node local cluster
+:::{tab-item} Creating a new Grafana server
 
 ```{admonition} Note
 :class: note
-The instructions below describe one way of setting up Grafana on your local machine. Refer to the Grafana documentation for more comprehensive information.
+The instructions below describe one way of starting a Grafana server on a macOS machine. Refer to the [Grafana documentation](https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/#start-the-grafana-server) for how to start Grafana servers in different systems. 
+
+For KubeRay users, follow [these instructions](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/) to set up Grafana.
 ```
 
 First, [download Grafana](https://grafana.com/grafana/download). Follow the instructions on the download page to download the right binary for your operating system.
@@ -223,8 +225,7 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 :::
 
-:::{tab-item} VM Cluster Launcher and KubeRay
-View Grafana documentation for the best strategy to set up your Grafana Server (e.g., whether to use a central Grafana instance).
+:::{tab-item} Using an existing Grafana server
 
 After your Grafana serve is running, find the Ray-provided default Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. [Import this dashboard](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
 

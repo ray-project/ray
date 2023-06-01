@@ -137,7 +137,7 @@ Set up the Python logger for driver and worker processes separately:
 
 ![Set up python loggers](../images/setup-logger-application.png)
 
-To control the logger for specific Actors or Tasks, view 
+If you want to control the logger for particular actors or tasks, view [customizing logger for individual worker process](#customizing-worker-process-loggers)
 
 :::
 
@@ -234,7 +234,7 @@ If you are using Ray AIR or any of the Ray libraries, follow the instructions pr
 ::::
 
 
-(log-redirction-to-driver)=
+(log-redirection-to-driver)=
 ## Logging to the driver
 By default, stdout and stderr for Tasks and Actors stream to the Ray driver (the entrypoint script that calls ``ray.init``). It helps users aggregate the logs for the distributed Ray application in a single place.
 

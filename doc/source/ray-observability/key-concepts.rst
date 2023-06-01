@@ -280,7 +280,7 @@ The Ray log directory structure follows. Note that files with the ``.out`` suffi
 >>>>>>> 0c57602348 (fixups)
 =======
 
-By default, all stdout and stderr of tasks and actors are redirected to the driver output. View :ref:`Configuring Logging <log-redirction-to-driverg>` for more details.
+By default, all stdout and stderr of tasks and actors are redirected to the driver output. View :ref:`Configuring Logging <log-redirection-to-driverg>` for more details.
 
 
 
