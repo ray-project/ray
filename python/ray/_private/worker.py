@@ -2131,6 +2131,10 @@ def connect(
             finshes launching. If the worker is not launched by raylet (e.g.,
             driver), this must be -1 (default value).
     """
+    # set launcher launch time
+    if mode == SCRIPT_MODE:
+        worker_launch_time_ms = int(time.time() * 1000)
+
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
@@ -2299,7 +2303,7 @@ def connect(
         session_name,
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
-        worker_launched_time_ms,
+        worker_launched_time_ms if mode != SCRIPT_MODE else int(time.time() * 1000),
     )
 
     # Notify raylet that the core worker is ready.
