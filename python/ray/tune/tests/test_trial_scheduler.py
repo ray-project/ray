@@ -2029,7 +2029,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             train,
             num_samples=3,
             scheduler=pbt,
-            checkpoint_freq=3,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             config=trial_hyperparams,
             stop={"training_iteration": 30},
         )
@@ -2068,7 +2068,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             train_dict,
             num_samples=3,
             scheduler=pbt,
-            checkpoint_freq=3,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             config=trial_hyperparams,
             stop={"training_iteration": 30},
         )

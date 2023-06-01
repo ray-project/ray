@@ -165,7 +165,7 @@ message ReportAutoscalingStateRequest {
   repeated Instance instances = 3;
   // infeasible resource requests.
   repeated ResourceRequest infeasible_resource_requests = 4;
-  repeated ClusterResourceConstraint infeasible_gange_resource_requests = 5;
+  repeated GangResourceRequest infeasible_gange_resource_requests = 5;
   repeated ClusterResourceConstraint infeasible_cluster_resource_constraints = 6;
 }
 
