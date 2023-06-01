@@ -13,8 +13,11 @@ from ray.air._internal.remote_storage import (
     get_fs_and_path,
     _is_network_mount,
     _translate_s3_options,
+    _CACHE_VALIDITY_S,
 )
 from ray.tune.utils.file_transfer import _get_recursive_files_and_stats
+
+from freezegun import freeze_time
 
 
 @pytest.fixture
@@ -271,6 +274,46 @@ def test_resolve_aws_kwargs():
         _translate_s3_options(_uri_to_opt("s3://some/where"))["s3_additional_kwargs"]
         == {}
     )
+
+
+def test_cache_time_eviction():
+    """We use a time-based cache for filesystem objects.
+
+    This tests asserts that the cache is evicted after _CACHE_VALIDITY_S
+    seconds.
+    """
+    with freeze_time() as frozen:
+        fs, path = get_fs_and_path("s3://some/where")
+        fs2, path = get_fs_and_path("s3://some/where")
+
+        assert id(fs) == id(fs2)
+
+        frozen.tick(_CACHE_VALIDITY_S - 10)
+
+        # Cache not expired yet
+        fs2, path = get_fs_and_path("s3://some/where")
+        assert id(fs) == id(fs2)
+
+        frozen.tick(10)
+
+        # Cache expired
+        fs2, path = get_fs_and_path("s3://some/where")
+        assert id(fs) != id(fs2)
+
+
+def test_cache_uri_query():
+    """We cache fs objects, but different query parameters should have different
+    cached objects."""
+    fs, path = get_fs_and_path("s3://some/where?only=we")
+    fs2, path = get_fs_and_path("s3://some/where?only=we")
+
+    # Same query parameters, so same object
+    assert id(fs) == id(fs2)
+
+    fs3, path = get_fs_and_path("s3://some/where?we=know")
+
+    # Different query parameters, so different object
+    assert id(fs) != id(fs3)
 
 
 if __name__ == "__main__":
