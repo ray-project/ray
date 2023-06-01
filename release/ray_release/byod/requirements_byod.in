@@ -1,8 +1,10 @@
 # Python requirements to run release tests from anyscale byod
-pytest
+ale-py
 awscli
 gsutil
 gym
 gcsfs
 pyarrow
+pytest
 tensorboardX
+tensorflow

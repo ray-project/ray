@@ -93,8 +93,7 @@
 				}
 			},
 			"required": [
-				"cluster_compute",
-				"cluster_env"
+				"cluster_compute"
 			],
 			"title": "Cluster"
 		},

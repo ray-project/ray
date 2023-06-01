@@ -15,7 +15,14 @@ sudo apt-get update -y \
     && sudo apt-get install -y --no-install-recommends $(cat requirements_debian_byod.txt) \
     && sudo apt-get autoclean
 
+rm -r wrk || true \
+    && git clone https://github.com/wg/wrk.git /tmp/wrk \
+    && cd /tmp/wrk \
+    && make -j \
+    && sudo cp wrk /usr/local/bin
+
 EOF
 
 COPY "$PIP_REQUIREMENTS" .
-RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir install -r requirements_byod.txt
+RUN "$HOME"/anaconda3/bin/pip install https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
+RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir -r requirements_byod.txt
