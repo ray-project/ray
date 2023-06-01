@@ -104,9 +104,14 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
+DEFAULT_READY_CHECK_TIMEOUT_S = 30
 
 # HTTP Proxy health check period
 PROXY_HEALTH_CHECK_PERIOD_S = 10
+
+#: Number of times in a row that a HTTP proxy must fail the health check before
+#: being marked unhealthy.
+PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
