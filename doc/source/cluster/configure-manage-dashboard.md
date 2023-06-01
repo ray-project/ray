@@ -156,7 +156,7 @@ in the `head_start_ray_commands` section of the [Cluster Launcher's YAML file](h
 
 ```{admonition} Warning
 :class: warning
-It's not recommended to disable Dashboard, several KubeRay features like `RayJob` and `RayService` depend on it.
+It's not recommended to disable Dashboard because several KubeRay features like `RayJob` and `RayService` depend on it.
 ```
 
 Set `spec.headGroupSpec.rayStartParams.include-dashboard` to `False`. Check out this [example YAML file](https://gist.github.com/kevin85421/0e6a8dd02c056704327d949b9ec96ef9).

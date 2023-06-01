@@ -148,7 +148,7 @@ If you are using Ray AIR or any of the Ray libraries, follow the instructions pr
 ::::
 
 ### Add metadata to structured logs
-If you need additional metadata to make logs more structured, fetch the metadata of Jobs, Tasks or Actors with Ray’s [`runtime_context APIs`](#). 
+If you need additional metadata to make logs more structured, fetch the metadata of Jobs, Tasks or Actors with Ray’s {py:obj}`ray.runtime_context.get_runtime_context` APIs. 
 ::::{tab-set}
 
 :::{tab-item} Ray Job
