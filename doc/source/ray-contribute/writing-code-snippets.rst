@@ -267,7 +267,7 @@ If your output is nondeterministic and you want to display a sample output, add
         0.969461416250246
 
 If your output is hard to test and you don't want to display a sample output, use
-ellipsis and `:hide:`. ::
+ellipses and `:hide:`. ::
 
     .. testcode::
 
