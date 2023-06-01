@@ -148,12 +148,19 @@ ray.init(include_dashboard=False)
 :::
 
 :::{tab-item} VM Cluster Launcher
-To disable Dashboard while using the {ref}`VM Cluster Launcher <vm-cluster-quick-start>`, include the `ray start --head --include-dashboard=False` argument
-in the `head_start_ray_commands` section of the [cluster launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
+Include the `ray start --head --include-dashboard=False` argument
+in the `head_start_ray_commands` section of the [Cluster Launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
 :::
 
-:::{tab-item} Kuberay
-To be added
+:::{tab-item} KubeRay
+
+```{admonition} Warning
+:class: warning
+It's not recommended to disable Dashboard, several KubeRay features like `RayJob` and `RayService` depend on it.
+```
+
+Set `spec.headGroupSpec.rayStartParams.include-dashboard` to `False`. Check out this [example YAML file](https://gist.github.com/kevin85421/0e6a8dd02c056704327d949b9ec96ef9).
+
 :::
 ::::
 
