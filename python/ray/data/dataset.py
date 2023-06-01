@@ -273,7 +273,7 @@ class Dataset:
         ds: "Dataset", _deep_copy: bool = False, _as: Optional[type] = None
     ) -> "Dataset":
         if not _as:
-            _as = Dataset
+            _as = type(ds)
         if _deep_copy:
             return _as(ds._plan.deep_copy(), ds._epoch, ds._lazy, ds._logical_plan)
         else:
