@@ -2,6 +2,7 @@ import fnmatch
 import os
 import pathlib
 import sys
+import time
 import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
@@ -27,6 +28,10 @@ except (ImportError, ModuleNotFoundError):
     pyarrow = None
 
 from ray import logger
+
+
+# Re-create fs objects after this amount of seconds
+_CACHE_VALIDITY_S = 300
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
@@ -131,6 +136,27 @@ def is_non_local_path_uri(uri: str) -> bool:
         return True
 
     return False
+
+
+# Cache fs objects. Map from cache_key --> timestamp, fs
+_cached_fs: Dict[str, Tuple[float, pyarrow.fs.FileSystem]] = {}
+
+
+def _get_cache(cache_key: str) -> Optional[pyarrow.fs.FileSystem]:
+    ts, fs = _cached_fs.get(cache_key, (0, None))
+    if not fs:
+        return None
+
+    now = time.monotonic()
+    if now - ts > _CACHE_VALIDITY_S:
+        return None
+
+    return fs
+
+
+def _put_cache(cache_key: str, fs: pyarrow.fs.FileSystem):
+    now = time.monotonic()
+    _cached_fs[cache_key] = (now, fs)
 
 
 def _get_network_mounts() -> List[str]:
@@ -350,10 +376,17 @@ def get_fs_and_path(
     else:
         path = parsed.netloc + parsed.path
 
+    cache_key = (parsed.scheme, parsed.netloc, parsed.query)
+
+    fs = _get_cache(cache_key)
+    if fs:
+        return fs, path
+
     # Prefer fsspec over native pyarrow.
     if fsspec:
         fs = _get_fsspec_fs_and_path(uri)
         if fs:
+            _put_cache(cache_key, fs)
             return fs, path
 
     # In case of hdfs filesystem, if uri does not have the netloc part below, it will
@@ -369,6 +402,7 @@ def get_fs_and_path(
     # If no fsspec filesystem was found, use pyarrow native filesystem.
     try:
         fs, path = pyarrow.fs.FileSystem.from_uri(uri)
+        _put_cache(cache_key, fs)
         return fs, path
     except (pyarrow.lib.ArrowInvalid, pyarrow.lib.ArrowNotImplementedError):
         # Raised when URI not recognized
