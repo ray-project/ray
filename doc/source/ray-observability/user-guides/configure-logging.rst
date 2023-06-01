@@ -89,7 +89,7 @@ This feature is especially useful when importing libraries such as `tensorflow` 
 Customizing Actor logs prefixes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-It is often useful to distinguish between log messages from different actors. For example, suppose you have a large number of worker actors. In this case, you may want to be able to easily see the index of the actor that logged a particular message. This can be achieved by defining the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for an actor class. When defined, the actor repr will be used in place of the actor name. For example:
+It is often useful to distinguish between log messages from different Actors. For example, suppose you have a large number of worker Actors. In this case, you may want to be able to easily see the index of the Actor that logged a particular message. This can be achieved by defining the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for an Actor class. When defined, the Actor repr will be used in place of the Actor name. For example:
 
 .. literalinclude:: /ray-core/doc_code/actor-repr.py
 
@@ -102,9 +102,9 @@ This produces the following output:
 
 Coloring Actor log prefixes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-By default Ray prints Actor logs prefixes in light blue:
+By default, Ray prints Actor logs prefixes in light blue:
 Users may instead activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``.
-This will index into an array of colors modulo the PID of each process.
+This indexes into an array of colors modulo the PID of each process.
 
 .. image:: ../images/coloring-actor-log-prefixes.png
     :align: center
@@ -112,22 +112,22 @@ This will index into an array of colors modulo the PID of each process.
 Distributed progress bars (tqdm)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When using `tqdm <https://tqdm.github.io>`__ in Ray remote tasks or actors, you may notice that the progress bar output is corrupted. To avoid this problem, you can use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
+When using `tqdm <https://tqdm.github.io>`__ in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
 
 .. literalinclude:: /ray-core/doc_code/tqdm.py
 
 This tqdm implementation works as follows:
 
-1. The ``tqdm_ray`` module translates TQDM calls into special json log messages written to worker stdout.
+1. The ``tqdm_ray`` module translates TQDM calls into special JSON log messages written to worker stdout.
 2. The Ray log monitor, instead of copying these log messages directly to the driver stdout, routes these messages to a tqdm singleton.
-3. The tqdm singleton determines the positions of progress bars from various Ray tasks / actors, ensuring they don't collide or conflict with each other.
+3. The tqdm singleton determines the positions of progress bars from various Ray tasks or actors, ensuring they don't collide or conflict with each other.
 
 Limitations:
 
 - Only a subset of tqdm functionality is supported. Refer to the ray_tqdm `implementation <https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py>`__ for more details.
 - Performance may be poor if there are more than a couple thousand updates per second (updates are not batched).
 
-By default, the builtin print will also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
+By default, the built-in print is also patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
 This avoids progress bar corruption on driver print statements. To disable this, set `RAY_TQDM_PATCH_PRINT=0`.
 
 .. _customize-worker-loggers:

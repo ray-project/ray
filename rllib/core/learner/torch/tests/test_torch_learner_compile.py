@@ -60,7 +60,6 @@ class TestLearner(unittest.TestCase):
             learner = BCTorchLearner(
                 module_spec=spec,
                 framework_hyperparameters=framework_hps,
-                optimizer_config={"lr": 0.0001},
             )
             learner.build()
 
@@ -101,7 +100,6 @@ class TestLearner(unittest.TestCase):
         learner = BCTorchLearner(
             module_spec=spec,
             framework_hyperparameters=framework_hps,
-            optimizer_config={"lr": 0.0001},
         )
         learner.build()
 

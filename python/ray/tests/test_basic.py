@@ -1051,7 +1051,7 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
         msgs = get_error_message(p, 2, ray._private.ray_constants.TASK_PUSH_ERROR)
         assert len(msgs) == 2
         for msg in msgs:
-            assert "Test function 1 intentionally failed." in msg.error_message
+            assert "Test function 1 intentionally failed." in msg["error_message"]
 
     x = throw_exception_fct2.remote()
     try:

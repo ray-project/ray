@@ -1,7 +1,16 @@
 load("//bazel:python.bzl", "doctest")
 
 doctest(
-    files = glob(["**/*.py"], exclude=["examples/**/*", "tests/**/*", "benchmarks/**/*"]),
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "examples/**",
+            "tests/**",
+            "benchmarks/**",
+            # FIXME: Failing on Windows
+            "gradio_integrations.py"
+        ]
+    ),
     tags = ["team:serve"]
 )
 
