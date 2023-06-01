@@ -34,7 +34,6 @@ from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -310,8 +309,6 @@ class AlgorithmConfig(_Config):
         self.auto_wrap_old_gym_envs = True
 
         # `self.rollouts()`
-        # TODO (sven): Clean up the configuration of fully customizable
-        #  env runner classes.
         self.env_runner_cls = None
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
@@ -1493,12 +1490,12 @@ class AlgorithmConfig(_Config):
                 divides the train batch into minibatches for multi-epoch SGD.
                 Set to "auto" to have RLlib compute an exact `rollout_fragment_length`
                 to match the given batch size.
-            batch_mode: How to build per-Sampler (RolloutWorker) batches, which are then
-                usually concat'd to form the train batch. Note that "steps" below can
-                mean different things (either env- or agent-steps) and depends on the
-                `count_steps_by` setting, adjustable via
-                `AlgorithmConfig.multi_agent(count_steps_by=..)`:
-                1) "truncate_episodes": Each call to sample() will return a
+            batch_mode: How to build individual batches with the EnvRunner(s). Batches
+                coming from distributed EnvRunners are usually concat'd to form the
+                train batch. Note that "steps" below can mean different things (either
+                env- or agent-steps) and depends on the `count_steps_by` setting,
+                adjustable via `AlgorithmConfig.multi_agent(count_steps_by=..)`:
+                1) "truncate_episodes": Each call to `EnvRunner.sample()` will return a
                 batch of at most `rollout_fragment_length * num_envs_per_worker` in
                 size. The batch will be exactly `rollout_fragment_length * num_envs`
                 in size if postprocessing does not change batch sizes. Episodes
@@ -1506,7 +1503,7 @@ class AlgorithmConfig(_Config):
                 This mode guarantees evenly sized batches, but increases
                 variance as the future return must now be estimated at truncation
                 boundaries.
-                2) "complete_episodes": Each call to sample() will return a
+                2) "complete_episodes": Each call to `EnvRunner.sample()` will return a
                 batch of at least `rollout_fragment_length * num_envs_per_worker` in
                 size. Episodes will not be truncated, but multiple episodes
                 may be packed within one batch to meet the (minimum) batch size.
@@ -2547,9 +2544,8 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self.rl_module_spec = rl_module_spec
 
-        if _enable_rl_module_api is not NotProvided or self._enable_rl_module_api:
-            if not self._enable_rl_module_api:
-                self._enable_rl_module_api = _enable_rl_module_api
+        if _enable_rl_module_api is not NotProvided:
+            self._enable_rl_module_api = _enable_rl_module_api
             if _enable_rl_module_api is True and self.exploration_config:
                 logger.warning(
                     "Setting `exploration_config={}` because you set "
@@ -2798,9 +2794,9 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                RolloutWorker. If not provided, will try to infer from
-                `env`. Otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be infered, will
+                EnvRunner (usually a RolloutWorker). If not provided, will try to infer
+                from `env`. Otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred, will
                 raise an error.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
@@ -3348,6 +3344,7 @@ class AlgorithmConfig(_Config):
             grad_clip=self.grad_clip,
             grad_clip_by=self.grad_clip_by,
             _per_module_overrides=per_module_learner_hp_overrides,
+            seed=self.seed,
         )
 
     def __setattr__(self, key, value):

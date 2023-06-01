@@ -5,6 +5,7 @@ import importlib.util
 import logging
 import numpy as np
 import os
+import platform
 import threading
 import tree  # pip install dm_tree
 from types import FunctionType
@@ -98,6 +99,7 @@ from ray.rllib.utils.typing import (
 )
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
+from ray.util.iter import ParallelIteratorWorker
 from ray.tune.registry import registry_contains_input, registry_get_input
 
 
@@ -161,7 +163,7 @@ def _update_env_seed_if_necessary(
 
 
 @DeveloperAPI
-class RolloutWorker(EnvRunner):
+class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -257,7 +259,7 @@ class RolloutWorker(EnvRunner):
                 old="RolloutWorker(.., tf_session_creator=.., ..)",
                 new="config.framework(tf_session_args={..}); "
                 "RolloutWorker(config=config, ..)",
-                error=False,
+                error=True,
             )
 
         self._original_kwargs: dict = locals().copy()
@@ -286,9 +288,8 @@ class RolloutWorker(EnvRunner):
             while True:
                 yield self.sample()
 
+        ParallelIteratorWorker.__init__(self, gen_rollouts, False)
         EnvRunner.__init__(self, config=config)
-
-        self.config = config
 
         self.num_workers = (
             num_workers if num_workers is not None else self.config.num_rollout_workers
@@ -662,7 +663,26 @@ class RolloutWorker(EnvRunner):
         )
 
     @override(EnvRunner)
-    def sample(self) -> SampleBatchType:
+    def sample(self, **kwargs) -> SampleBatchType:
+        """Returns a batch of experience sampled from this worker.
+
+        This method must be implemented by subclasses.
+
+        Returns:
+            A columnar batch of experiences (e.g., tensors) or a MultiAgentBatch.
+
+        Examples:
+            >>> import gymnasium as gym
+            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
+            >>> worker = RolloutWorker( # doctest: +SKIP
+            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
+            ...   default_policy_class=PGTF1Policy, # doctest: +SKIP
+            ...   config=AlgorithmConfig(), # doctest: +SKIP
+            ... )
+            >>> print(worker.sample()) # doctest: +SKIP
+            SampleBatch({"obs": [...], "action": [...], ...})
+        """
         if self.config.fake_sampler and self.last_batch is not None:
             return self.last_batch
         elif self.input_reader is None:
@@ -975,6 +995,11 @@ class RolloutWorker(EnvRunner):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
     def get_metrics(self) -> List[RolloutMetrics]:
+        """Returns the thus-far collected metrics from this worker's rollouts.
+
+        Returns:
+             List of RolloutMetrics collected thus-far.
+        """
         # Get metrics from sampler (if any).
         if self.sampler is not None:
             out = self.sampler.get_metrics()
@@ -1629,6 +1654,23 @@ class RolloutWorker(EnvRunner):
     def creation_args(self) -> dict:
         """Returns the kwargs dict used to create this worker."""
         return self._original_kwargs
+
+    @DeveloperAPI
+    def get_host(self) -> str:
+        """Returns the hostname of the process running this evaluator."""
+        return platform.node()
+
+    @DeveloperAPI
+    def get_node_ip(self) -> str:
+        """Returns the IP address of the node that this worker runs on."""
+        return ray.util.get_node_ip_address()
+
+    @DeveloperAPI
+    def find_free_port(self) -> int:
+        """Finds a free port on the node that this worker runs on."""
+        from ray.air._internal.util import find_free_port
+
+        return find_free_port()
 
     def _update_policy_map(
         self,

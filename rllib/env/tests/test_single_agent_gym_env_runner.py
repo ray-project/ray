@@ -22,30 +22,41 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
         )
         env_runner = SingleAgentGymEnvRunner(config=config)
 
-        # Sample 10 episodes 10 times.
+        # Expect error if both num_timesteps and num_episodes given.
+        self.assertRaises(
+            AssertionError, lambda: env_runner.sample(num_timesteps=10, num_episodes=10)
+        )
+
+        # Sample 10 episodes (5 per env) 10 times.
         for _ in range(10):
-            done_episodes, ongoing_episodes = env_runner.sample(
-                num_episodes=10, random_actions=True, with_render_data=True
-            )
+            done_episodes, ongoing_episodes = env_runner.sample(num_episodes=10)
+            self.assertTrue(len(done_episodes + ongoing_episodes) == 10)
             # Since we sampled complete episodes, there should be no ongoing episodes
             # being returned.
             assert len(ongoing_episodes) == 0
             # Check, whether all done_episodes returned are indeed terminated.
-            for eps in done_episodes:
-                assert eps.is_terminated
+            self.assertTrue(all(e.is_done for e in done_episodes))
+
+        # Sample 10 timesteps (5 per env) 10 times.
+        for _ in range(10):
+            done_episodes, ongoing_episodes = env_runner.sample(num_timesteps=10)
+            # Check, whether all done_episodes returned are indeed terminated.
+            self.assertTrue(all(e.is_done for e in done_episodes))
+            # Check, whether all done_episodes returned are indeed terminated.
+            self.assertTrue(not any(e.is_done for e in ongoing_episodes))
 
         # Sample (by default setting: rollout_fragment_length=64) 10 times.
         for _ in range(10):
-            done_episodes, ongoing_episodes = env_runner.sample(random_actions=True)
-            for eps in done_episodes:
-                assert eps.is_terminated
-            for eps in ongoing_episodes:
-                assert not eps.is_terminated
+            done_episodes, ongoing_episodes = env_runner.sample()
+            # Check, whether all done_episodes returned are indeed terminated.
+            self.assertTrue(all(e.is_done for e in done_episodes))
+            # Check, whether all done_episodes returned are indeed terminated.
+            self.assertTrue(not any(e.is_done for e in ongoing_episodes))
 
-    def test_distributed_simple_env_runner(self):
-        """Tests, whether SimpleEnvRunner can be distributed."""
+    def test_distributed_env_runner(self):
+        """Tests, whether SingleAgentGymEnvRunner can be distributed."""
 
-        remote_class = SingleAgentGymEnvRunner.as_remote(num_cpus=1, num_gpus=0)
+        remote_class = ray.remote(num_cpus=1, num_gpus=0)(SingleAgentGymEnvRunner)
 
         # Test with both parallelized sub-envs and w/o.
         remote_worker_envs = [False, True]
@@ -55,13 +66,17 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
                 AlgorithmConfig().environment("CartPole-v1")
                 # Vectorize x2 and by default, rollout 64 timesteps per individual env.
                 .rollouts(
-                    num_envs_per_worker=4,
+                    num_rollout_workers=5,
+                    num_envs_per_worker=5,
                     rollout_fragment_length=10,
                     remote_worker_envs=envs_parallel,
                 )
             )
 
-            array = [remote_class.remote(config=config) for _ in range(5)]
+            array = [
+                remote_class.remote(config=config)
+                for _ in range(config.num_rollout_workers)
+            ]
             # Sample in parallel.
             results = [a.sample.remote() for a in array]
             results = ray.get(results)
@@ -70,9 +85,18 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
                 # SingleAgentGymEnvRunners return tuples: (completed eps, ongoing eps).
                 completed, ongoing = result
                 # Make sure all completed Episodes are indeed done.
-                self.assertTrue(all(e.is_terminated for e in completed))
-                # Same for uncomplete ones (make sure they are not done).
-                self.assertTrue(not any(e.is_terminated for e in ongoing))
-                # Assert length of all fragments is 10 (our rollout_fragment_length).
-                # 4 (num_envs_per_worker) * 10 (rollout_fragment_length) = 40.
-                self.assertEqual(sum(len(e) for e in completed + ongoing), 40)
+                self.assertTrue(all(e.is_done for e in completed))
+                # Same for ongoing ones (make sure they are not done).
+                self.assertTrue(not any(e.is_done for e in ongoing))
+                # Assert length of all fragments is  `rollout_fragment_length`.
+                self.assertEqual(
+                    sum(len(e) for e in completed + ongoing),
+                    config.num_envs_per_worker * config.rollout_fragment_length,
+                )
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

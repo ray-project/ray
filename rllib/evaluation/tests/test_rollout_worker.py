@@ -573,7 +573,7 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
             ),
         )
-        remote_ev = RolloutWorker.as_remote().remote(
+        remote_ev = ray.remote(RolloutWorker).remote(
             env_creator=lambda _: MockEnv(episode_length=10),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig().rollouts(
