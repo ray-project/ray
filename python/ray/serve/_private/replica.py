@@ -158,7 +158,7 @@ def create_replica_wrapper(name: str):
             )
 
             # Indicates whether the replica has finished initializing.
-            self._replica_init_finish = False
+            self._initialized = False
 
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
@@ -196,7 +196,7 @@ def create_replica_wrapper(name: str):
                     controller_handle,
                     app_name,
                 )
-                self._init_finish = True
+                self._initialized = True
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
@@ -306,19 +306,19 @@ def create_replica_wrapper(name: str):
                 get_component_logger_file_path(),
             )
 
-        async def is_initialized(
+        async def is_initialized_and_get_metadata(
             self,
             deployment_config: DeploymentConfig = None,
             _after: Optional[Any] = None,
-        ):
+        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             try:
                 async with self._replica_init_lock:
-                    if not self._replica_init_finish:
+                    if not self._initialized:
                         await self._initialize_replica()
-                if deployment_config:
-                    await self.reconfigure(deployment_config)
+                    if deployment_config:
+                        await self.reconfigure(deployment_config)
                 metadata = await self._get_metadata()
 
                 # A new replica should not be considered healthy until it passes an

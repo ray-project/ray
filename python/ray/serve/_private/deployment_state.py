@@ -428,12 +428,14 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._actor_handle = JavaActorHandleProxy(self._actor_handle)
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-                deployment_config.to_proto_bytes()
+            self._ready_obj_ref = (
+                self._actor_handle.initialized_and_get_metadata.remote(
+                    deployment_config.to_proto_bytes()
+                )
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+            self._ready_obj_ref = self._actor_handle.initialized_and_get_metadata.remote(
                 deployment_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
@@ -493,7 +495,9 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote()
+            self._ready_obj_ref = (
+                self._actor_handle.initialized_and_get_metadata.remote()
+            )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
