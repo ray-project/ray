@@ -418,7 +418,7 @@ class CNNTransposeHeadConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
-        self._validate()
+        self._validate(framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.heads import TorchCNNTransposeHead
@@ -522,7 +522,7 @@ class CNNEncoderConfig(ModelConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Model:
-        self._validate()
+        self._validate(framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchCNNEncoder
@@ -595,7 +595,7 @@ class MLPEncoderConfig(_MLPConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> Encoder:
-        self._validate()
+        self._validate(framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
