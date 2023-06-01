@@ -1,6 +1,7 @@
 import click
 import json
 import ray
+from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME, LOG_PREFIX_JOB_ID
 from ray._private.state_api_test_utils import (
     STATE_LIST_LIMIT,
     StateAPIMetric,
@@ -13,6 +14,13 @@ import ray._private.test_utils as test_utils
 import tqdm
 import time
 import os
+
+from ray.util.placement_group import (
+    placement_group,
+    remove_placement_group,
+)
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
 
 from ray.util.state import (
     get_log,
@@ -160,7 +168,11 @@ def test_many_objects(num_objects, num_actors):
         print("Skipping test with no objects")
         return
 
-    @ray.remote(num_cpus=0.1)
+    pg = placement_group([{"CPU": 1}]* num_actors, strategy="SPREAD")
+    ray.get(pg.ready())
+
+    # We will try to put actors on multiple nodes.
+    @ray.remote
     class ObjectActor:
         def __init__(self):
             self.objs = []
@@ -174,11 +186,13 @@ def test_many_objects(num_objects, num_actors):
 
             return self.objs
 
-        def exit(self):
-            ray.actor.exit_actor()
-
     actors = [
-        ObjectActor.remote() for _ in tqdm.trange(num_actors, desc="Creating actors...")
+        ObjectActor.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg,
+            )
+        ).remote()
+        for _ in tqdm.trange(num_actors, desc="Creating actors...")
     ]
 
     # Splitting objects to multiple actors for creation,
@@ -214,9 +228,9 @@ def test_many_objects(num_objects, num_actors):
         limit=STATE_LIST_LIMIT,
     )
 
-    exiting_actors = [actor.exit.remote() for actor in actors]
-    for _ in tqdm.trange(len(actors), desc="Destroying actors..."):
-        _exitted, exiting_actors = ray.wait(exiting_actors)
+    del actors
+    remove_placement_group(pg)
+
 
 
 def test_large_log_file(log_file_size_byte: int):
@@ -233,6 +247,9 @@ def test_large_log_file(log_file_size_byte: int):
     class LogActor:
         def write_log(self, log_file_size_byte: int):
             ctx = hashlib.md5()
+            job_id = ray.get_runtime_context().get_job_id()
+            prefix = f"{LOG_PREFIX_JOB_ID}{job_id}\n{LOG_PREFIX_ACTOR_NAME}LogActor\n"
+            ctx.update(prefix.encode())
             while log_file_size_byte > 0:
                 n = min(log_file_size_byte, 4 * MiB)
                 chunk = "".join(random.choices(string.ascii_letters, k=n))
@@ -255,7 +272,7 @@ def test_large_log_file(log_file_size_byte: int):
 
     time_taken = 0
     t_start = time.perf_counter()
-    for s in get_log(task_id=task.task_id().hex(), tail=1000000000):
+    for s in get_log(actor_id=actor._actor_id.hex(), tail=1000000000):
         t_end = time.perf_counter()
         time_taken += t_end - t_start
         # Not including this time
@@ -342,10 +359,10 @@ def test(
     ray.init(address="auto", log_to_driver=False)
 
     if smoke_test:
-        num_tasks = "100"
-        num_actors = "10"
-        num_objects = "100"
-        log_file_size_byte = f"{16*MiB}"
+        num_tasks = "1,100"
+        num_actors = "1,10"
+        num_objects = "1,100"
+        log_file_size_byte = f"64,{16*MiB}"
 
     # Parse the input
     num_tasks_arr, num_actors_arr, num_objects_arr, log_file_size_arr = _parse_input(
