@@ -115,7 +115,7 @@ class RuntimeContext(object):
             A worker id in hex format for this worker or driver process.
         """
         assert ray.is_initialized(), (
-            "Worker ID is not available because " "Ray has not been initialized."
+            "Worker ID is not available because Ray has not been initialized."
         )
         return self.worker.worker_id.hex()
 
