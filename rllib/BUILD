@@ -2001,10 +2001,39 @@ py_test(
 
 # Learner
 py_test(
-    name = "test_learner_group",
+    name = "TestLearnerGroupSyncUpdate",
+    main = "core/learner/tests/test_learner_group.py",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
-    srcs = ["core/learner/tests/test_learner_group.py"]
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupSyncUpdate"]
+)
+
+py_test(
+    name = "TestLearnerGroupCheckpointRestore",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupCheckpointRestore"]
+)
+
+py_test(
+    name = "TestLearnerGroupAsyncUpdate",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupAsyncUpdate"]
+)
+
+py_test(
+    name = "TestLearnerGroupSaveLoadState",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupSaveLoadState"]
 )
 
 py_test(
