@@ -54,6 +54,7 @@ dataset_b = ray.data.read_csv("example://dow_jones.csv")
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={"a": dataset_a, "b": dataset_b},
     dataset_config=ray.train.DataConfig(
         datasets_to_split=["a"],
@@ -62,8 +63,8 @@ my_trainer = TorchTrainer(
 # __custom_split_end__
 
 
-def augment_data(_):
-    pass
+def augment_data(batch):
+    return batch
 
 
 # __materialized__
@@ -90,6 +91,7 @@ options.resource_limits.object_store_memory = 10e9
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
+    scaling_config=ScalingConfig(num_workers=2),
     dataset_config=ray.train.DataConfig(
         execution_options=options,
     ),
@@ -131,6 +133,7 @@ class MyCustomDataConfig(DataConfig):
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
+    scaling_config=ScalingConfig(num_workers=2),
     datasets={"train": train_ds},
     dataset_config=MyCustomDataConfig(),
 )
