@@ -99,7 +99,7 @@ def create_replica_wrapper(name: str):
                 component_name=deployment_name,
                 component_id=replica_tag,
             )
-
+            self.replica_tag = replica_tag
             self._event_loop = get_or_create_event_loop()
 
             deployment_def = cloudpickle.loads(serialized_deployment_def)
@@ -311,7 +311,9 @@ def create_replica_wrapper(name: str):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             try:
+                logger.info(f"{self.replica_tag} is_initialized called")
                 await self._initialize_replica()
+                logger.info(f"{self.replica_tag} is_initialized finish")
                 metadata = await self.reconfigure(deployment_config)
 
                 # A new replica should not be considered healthy until it passes an
@@ -335,7 +337,9 @@ def create_replica_wrapper(name: str):
             self,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Wait for replica initialization to finish
+            logger.info(f"{self.replica_tag} get_metadata called")
             await self._init_finish_event.wait()
+            logger.info(f"{self.replica_tag} get_metadata wait finish")
             return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):

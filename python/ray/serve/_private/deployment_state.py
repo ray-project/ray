@@ -485,15 +485,24 @@ class ActorReplicaWrapper:
         )
         self._actor_handle = self.actor_handle
 
+        logger.info(f"{self.replica_tag} recovering start to call is_allocated")
         # Re-fetch initialization proof
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
+        logger.info(f"{self.replica_tag} recovering call is_allocated finish")
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
+            logger.info(f"{self.replica_tag} recovering start to call get_metadata")
             self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+            logger.info(f"{self.replica_tag} recovering call get_metadata finish")
+
+        logger.info(
+            f"Recovering replica {self.replica_tag} finished for deployment "
+            f"{self.deployment_name}."
+        )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
