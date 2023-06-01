@@ -42,7 +42,6 @@ py_test_run_all_notebooks(
         "automl_with_ray_air.ipynb",  # Requires timeseries_libs
         "batch_forecasting.ipynb",  # Requires timeseries_libs
         "huggingface_text_classification.ipynb",
-        "pytorch_resnet_batch_prediction.ipynb", # Requires GPUs
         "feast_example.ipynb",  # REGRESSION
         "upload_to_comet_ml.ipynb",  # Needs credentials
         "upload_to_wandb.ipynb",  # Needs credentials
@@ -83,7 +82,6 @@ py_test_run_all_notebooks(
     size = "large",
     include = [
         "huggingface_text_classification.ipynb",
-        "pytorch_resnet_batch_prediction.ipynb",
         "torch_detection.ipynb",
         "gptj_batch_prediction.ipynb",
         "gptj_serving.ipynb",

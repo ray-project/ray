@@ -260,8 +260,7 @@ image datasets.
             :end-before: __torch_batch_predictor_stop__
             :dedent:
 
-        For more in-depth examples, read :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`
-        and :ref:`Using Predictors for Inference <air-predictors>`.
+        For more in-depth examples, read :ref:`Using Predictors for Inference <air-predictors>`.
 
     .. tab-item:: TensorFlow
 
