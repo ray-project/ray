@@ -69,28 +69,13 @@ serve.start(detached=True)
 
 @ray.remote(max_restarts=-1, max_task_retries=-1)
 class RandomKiller:
-
-    # The interval is to make sure controller will be able to broadcast routes
-    # and recover replicas.
-    CONTROLLER_KILL_INTERVAL = 20
-
     def __init__(self, kill_period_s=1):
         self.kill_period_s = kill_period_s
         self.sanctuary = set()
-        self.controller_killed_prev_time = time.time()
 
     async def run(self):
         while True:
             chosen = random.choice(self._get_serve_actors())
-            if "Controller" in str(chosen):
-                if (
-                    time.time() - self.controller_killed_prev_time
-                    < RandomKiller.CONTROLLER_KILL_INTERVAL
-                ):
-                    await asyncio.sleep(self.kill_period_s)
-                    continue
-                else:
-                    self.controller_killed_prev_time = time.time()
             print(f"Killing {chosen}")
             ray.kill(chosen, no_restart=False)
             await asyncio.sleep(self.kill_period_s)
