@@ -641,6 +641,7 @@ padding: 20px;
 
 .searchDiv {
     width: 100%;
+    margin: 15px;
     position: relative;
     display: block;
 }
