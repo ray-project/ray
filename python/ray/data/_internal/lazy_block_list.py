@@ -593,7 +593,10 @@ class LazyBlockList(BlockList):
             self._stats_actor = _get_or_create_stats_actor()
         stats_actor = self._stats_actor
         if not self._execution_started:
-            stats_actor.record_start.remote(self._stats_uuid)
+            # NOTE: We should wait for `record_start` to finish here.
+            # Otherwise, `record_task` may arrive before `record_start`, and
+            # the stats will be lost.
+            ray.get(stats_actor.record_start.remote(self._stats_uuid))
             self._execution_started = True
         task = self._tasks[task_idx]
         context = DataContext.get_current()

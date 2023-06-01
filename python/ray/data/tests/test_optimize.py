@@ -295,6 +295,10 @@ def _assert_has_stages(stages, stage_names):
         assert stage.name == name
 
 
+@pytest.mark.skipif(
+    ray.data.DatasetContext.get_current().optimizer_enabled,
+    reason="Deprecated with new optimizer path.",
+)
 def test_stage_linking(ray_start_regular_shared):
     # Test lazy dataset.
     ds = ray.data.range(10).lazy()
@@ -334,7 +338,7 @@ def test_optimize_reorder(ray_start_regular_shared):
     expect_stages(
         ds2,
         3,
-        ["ReadRange->RandomizeBlockOrder", "Repartition", "MapBatches(dummy_map)"],
+        ["ReadRange", "RandomizeBlockOrder", "Repartition", "MapBatches(dummy_map)"],
     )
 
 

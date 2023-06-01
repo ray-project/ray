@@ -1,9 +1,14 @@
 from typing import Any, Dict, Iterable, Optional, Union
 
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
+
+import inspect
+
+logger = DatasetLogger(__name__)
 
 
 class AbstractMap(LogicalOperator):
@@ -27,6 +32,25 @@ class AbstractMap(LogicalOperator):
         """
         super().__init__(name, [input_op] if input_op else [])
         self._ray_remote_args = ray_remote_args or {}
+
+
+def _get_udf_name(fn: UserDefinedFunction) -> str:
+    try:
+        if inspect.isclass(fn):
+            # callable class
+            return fn.__name__
+        elif inspect.ismethod(fn):
+            # class method
+            return f"{fn.__self__.__class__.__name__}.{fn.__name__}"
+        elif inspect.isfunction(fn):
+            # normal function or lambda function.
+            return fn.__name__
+        else:
+            # callable object.
+            return fn.__class__.__name__
+    except AttributeError as e:
+        logger.get_logger().error("Failed to get name of UDF %s: %s", fn, e)
+        return "<unknown>"
 
 
 class AbstractUDFMap(AbstractMap):
@@ -65,6 +89,7 @@ class AbstractUDFMap(AbstractMap):
                 tasks, or ``"actors"`` to use an autoscaling actor pool.
             ray_remote_args: Args to provide to ray.remote.
         """
+        name = f"{name}({_get_udf_name(fn)})"
         super().__init__(name, input_op, ray_remote_args)
         self._fn = fn
         self._fn_args = fn_args
@@ -121,7 +146,7 @@ class MapRows(AbstractUDFMap):
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            "MapRows",
+            "Map",
             input_op,
             fn,
             compute=compute,

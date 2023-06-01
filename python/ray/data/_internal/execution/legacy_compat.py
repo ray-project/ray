@@ -158,7 +158,17 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
     assert DataContext.get_current().optimizer_enabled
     if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
         return plan._snapshot_stats
-    return plan._in_stats
+    # For Datasets created from "read_xxx", `plan._in_blocks` is a LazyBlockList,
+    # and `plan._in_stats` contains useless data.
+    # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
+    # the initial stats. Because the `FromXxx` logical operators will be translated to
+    # "InputDataBuffer" physical operators, which will be ignored when generating
+    # stats, see `StreamingExecutor._generate_stats`.
+    # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
+    if isinstance(plan._in_blocks, LazyBlockList):
+        return DatasetStats(stages={}, parent=None)
+    else:
+        return plan._in_stats
 
 
 def _to_operator_dag(
@@ -227,7 +237,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
 
         # If the BlockList's read stage name is available, we assign it
         # as the operator's name, which is used as the task name.
-        task_name = "DoRead"
+        task_name = "Read"
         if isinstance(blocks, LazyBlockList):
             task_name = getattr(blocks, "_read_stage_name", task_name)
         return MapOperator.create(

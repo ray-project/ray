@@ -252,7 +252,10 @@ def test_stream_inf_window_cache_prep(ray_start_4_cpus):
         # applying the preprocessor on each epoch.
         assert results[0] == results[1], results
         stats = shard.stats()
-        assert "Stage 1 ReadRange->BatchMapper: 1/1 blocks executed " in stats, stats
+        assert (
+            "Stage 1 ReadRange->MapBatches(BatchMapper._transform_pandas): "
+            "1/1 blocks executed " in stats
+        ), stats
 
     def rand(x):
         x["id"] = x["id"].multiply(x["id"])

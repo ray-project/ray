@@ -99,7 +99,7 @@ DEFAULT_AUTO_LOG_STATS = False
 
 # Whether to enable optimizer.
 DEFAULT_OPTIMIZER_ENABLED = bool(
-    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "0"))
+    int(os.environ.get("RAY_DATA_NEW_EXECUTION_OPTIMIZER", "1"))
 )
 
 # Set this env var to enable distributed tqdm (experimental).
