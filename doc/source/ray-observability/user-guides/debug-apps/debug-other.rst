@@ -70,7 +70,6 @@ And I have this code:
 
 .. testoutput::
     :hide:
-    :options: +ELLIPSIS
 
     ...
 

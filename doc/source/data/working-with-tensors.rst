@@ -20,7 +20,6 @@ Ray Data represents tensors as
     print(ds)
 
 .. testoutput::
-    :options: +ELLIPSIS
 
     Dataset(
        num_blocks=...,

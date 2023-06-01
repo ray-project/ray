@@ -489,7 +489,6 @@ class WandbLoggerCallback(LoggerCallback):
 
         .. testoutput::
             :hide:
-            :options: +ELLIPSIS
 
             ...
 

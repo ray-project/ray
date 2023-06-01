@@ -51,7 +51,6 @@ class ResultGrid:
 
     .. testoutput::
         :hide:
-        :options: +ELLIPSIS
 
         ...
 
@@ -212,7 +211,6 @@ class ResultGrid:
 
             .. testoutput::
                 :hide:
-                :options: +ELLIPSIS
 
                 ...
 

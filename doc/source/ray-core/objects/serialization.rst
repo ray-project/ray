@@ -97,7 +97,6 @@ There are at least 3 ways to define your custom serialization process:
      print(copied.conn)
 
   .. testoutput::
-    :options: +ELLIPSIS
 
     <sqlite3.Connection object at ...>
     <sqlite3.Connection object at ...>
