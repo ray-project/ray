@@ -73,7 +73,7 @@ class TestDreamerV3(unittest.TestCase):
                 observation_space=gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32),
                 action_space=gym.spaces.Discrete(6),
             )
-            .framework("tf2", eager_tracing=True)
+            .framework("tf2", eager_tracing=False)
             .training(model={
                 "batch_size_B": 16,
                 "batch_length_T": 64,
