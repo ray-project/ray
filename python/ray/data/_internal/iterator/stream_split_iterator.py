@@ -62,17 +62,21 @@ class StreamSplitDataIterator(DataIterator):
             ),
         ).remote(ctx, base_dataset, n, equal, locality_hints)
 
-        return [StreamSplitDataIterator(base_dataset, coord_actor, i) for i in range(n)]
+        return [
+            StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
+        ]
 
     def __init__(
         self,
         base_dataset: "Dataset",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
+        world_size: int,
     ):
         self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
+        self._world_size = world_size
 
     def _to_block_iterator(
         self,
@@ -109,6 +113,10 @@ class StreamSplitDataIterator(DataIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DataIterator."""
         return self._base_dataset.schema()
+
+    def world_size(self) -> int:
+        """Returns the number of splits total."""
+        return self._world_size
 
 
 @ray.remote(num_cpus=0)
