@@ -487,17 +487,16 @@ class ActorReplicaWrapper:
 
         # Re-fetch initialization proof
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-        self._ready_obj_ref = self._actor_handle.is_initialized.remote(
-            deployment_info.deployment_config,
-            self._allocated_obj_ref,
-        )
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+                deployment_info.deployment_config,
+                self._allocated_obj_ref,
+            )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """

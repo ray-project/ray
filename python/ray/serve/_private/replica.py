@@ -100,6 +100,7 @@ def create_replica_wrapper(name: str):
                 component_id=replica_tag,
             )
 
+            self._replica_tag = replica_tag
             self._event_loop = get_or_create_event_loop()
 
             deployment_def = cloudpickle.loads(serialized_deployment_def)
@@ -335,8 +336,6 @@ def create_replica_wrapper(name: str):
         async def get_metadata(
             self,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            # Wait for replica initialization to finish
-            await self._init_finish_event.wait()
             return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
