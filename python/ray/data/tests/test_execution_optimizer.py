@@ -776,7 +776,7 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
         18,
     ]
     name = (
-        "ReadRange->Filter(<lambda>)->Map(wraps)"
+        "ReadRange->Filter(<lambda>)->Map(<lambda>)"
         "->MapBatches(<lambda>)->FlatMap(<lambda>):"
     )
     assert name in ds.stats()
