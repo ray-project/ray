@@ -222,11 +222,11 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
                 await ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
             async def __del__(self):
+                await ASGIAppReplicaWrapper.__del__(self)
+
                 # Call user-defined destructor if defined.
                 if hasattr(cls, "__del__"):
                     cls.__del__(self)
-
-                await ASGIAppReplicaWrapper.__del__(self)
 
         ASGIIngressWrapper.__name__ = cls.__name__
         if hasattr(frozen_app, "docs_url"):
