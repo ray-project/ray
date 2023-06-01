@@ -157,10 +157,26 @@ void GcsResourceManager::HandleReportResourceUsage(
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
+// TODO(rickyx): We could update the cluster resource manager when we update the load
+// so that we will no longer need node_resource_usages_.
+std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+GcsResourceManager::GetAggregatedResourceLoad() const {
+  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+      aggregate_load;
+  if (node_resource_usages_.empty()) {
+    return aggregate_load;
+  }
+  for (const auto &usage : node_resource_usages_) {
+    // Aggregate the load reported by each raylet.
+    FillAggregateLoad(usage.second, &aggregate_load);
+  }
+  return aggregate_load;
+}
+
 void GcsResourceManager::FillAggregateLoad(
     const rpc::ResourcesData &resources_data,
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-        *aggregate_load) {
+        *aggregate_load) const {
   auto load = resources_data.resource_load_by_shape();
   for (const auto &demand : load.resource_demands()) {
     auto &aggregate_demand = (*aggregate_load)[demand.shape()];
