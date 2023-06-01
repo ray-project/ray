@@ -221,7 +221,7 @@ If your Python code is non-deterministic, or if your output is excessively long,
 Ignoring *doctest-style* outputs
 ================================
 
-To ignore parts of a *doctest-style* output, replace problematic sections with ellipsis. ::
+To ignore parts of a *doctest-style* output, replace problematic sections with ellipses. ::
 
     >>> import ray
     >>> ray.data.read_images("example://image-datasets/simple")
