@@ -151,7 +151,6 @@ class TorchCheckpoint(Checkpoint):
 
             .. testoutput::
                 :hide:
-                :options: +ELLIPSIS
 
                 ...
         """
@@ -214,7 +213,6 @@ class TorchCheckpoint(Checkpoint):
 
             .. testoutput::
                 :hide:
-                :options: +ELLIPSIS
 
                 ...
         """

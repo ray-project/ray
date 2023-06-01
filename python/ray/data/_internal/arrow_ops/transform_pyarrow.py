@@ -278,7 +278,9 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
     cols = table.columns
     new_cols = []
     for col in cols:
-        if _is_column_extension_type(col):
+        if col.num_chunks == 0:
+            arr = pyarrow.chunked_array([], type=col.type)
+        elif _is_column_extension_type(col):
             # Extension arrays don't support concatenation.
             arr = _concatenate_extension_column(col)
         else:

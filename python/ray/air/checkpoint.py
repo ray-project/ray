@@ -481,10 +481,10 @@ class Checkpoint:
 
         Examples:
             >>> result = TorchTrainer.fit(...)  # doctest: +SKIP
-            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP # noqa: E501
+            >>> checkpoint = TorchCheckpoint.from_checkpoint(result.checkpoint)  # doctest: +SKIP
             >>> model = checkpoint.get_model()  # doctest: +SKIP
             Linear(in_features=1, out_features=1, bias=True)
-        """
+        """  # noqa: E501
         if type(other) is cls:
             return other
 
@@ -577,6 +577,9 @@ class Checkpoint:
                     else:
                         _copy_dir_ignore_conflicts(local_path_pathlib, path_pathlib)
             elif external_path:
+                logger.info(
+                    f"Downloading checkpoint from {external_path} to {path} ..."
+                )
                 # If this exists on external storage (e.g. cloud), download
                 download_from_uri(uri=external_path, local_path=path, filelock=False)
             else:

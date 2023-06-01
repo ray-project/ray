@@ -65,7 +65,10 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
     for op_name in op_names:
         assert op_name in _op_name_white_list
         with _recorded_operators_lock:
-            assert _recorded_operators.get(op_name, 0) > 0, _recorded_operators
+            assert _recorded_operators.get(op_name, 0) > 0, (
+                op_name,
+                _recorded_operators,
+            )
     if clear_after_check:
         with _recorded_operators_lock:
             _recorded_operators.clear()
@@ -73,11 +76,11 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
 
 def test_read_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    op = Read(ParquetDatasource())
+    op = Read(ParquetDatasource(), [])
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
-    assert op.name == "Read"
+    assert op.name == "ReadParquet"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -105,9 +108,53 @@ def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromItems"])
 
 
+def test_map_operator_udf_name(ray_start_regular_shared, enable_optimizer):
+    # Test the name of the Map operator with different types of UDF.
+    def normal_function(x):
+        return x
+
+    lambda_function = lambda x: x  # noqa: E731
+
+    class CallableClass:
+        def __call__(self, x):
+            return x
+
+    class NormalClass:
+        def method(self, x):
+            return x
+
+    udf_list = [
+        # A nomral function.
+        normal_function,
+        # A lambda function
+        lambda_function,
+        # A callable class.
+        CallableClass,
+        # An instance of a callable class.
+        CallableClass(),
+        # A normal class method.
+        NormalClass().method,
+    ]
+
+    expected_names = [
+        "normal_function",
+        "<lambda>",
+        "CallableClass",
+        "CallableClass",
+        "NormalClass.method",
+    ]
+
+    for udf, expected_name in zip(udf_list, expected_names):
+        op = MapRows(
+            Read(ParquetDatasource(), []),
+            udf,
+        )
+        assert op.name == f"Map({expected_name})"
+
+
 def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(
         read_op,
         lambda x: x,
@@ -115,7 +162,7 @@ def test_map_batches_operator(ray_start_regular_shared, enable_optimizer):
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
-    assert op.name == "MapBatches"
+    assert op.name == "MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
@@ -130,7 +177,7 @@ def test_map_batches_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_map_rows_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapRows(
         read_op,
         lambda x: x,
@@ -138,7 +185,7 @@ def test_map_rows_operator(ray_start_regular_shared, enable_optimizer):
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
-    assert op.name == "MapRows"
+    assert op.name == "Map(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
@@ -148,12 +195,12 @@ def test_map_rows_e2e(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(5)
     ds = ds.map(column_udf("id", lambda x: x + 1))
     assert extract_values("id", ds.take_all()) == [1, 2, 3, 4, 5], ds
-    _check_usage_record(["ReadRange", "MapRows"])
+    _check_usage_record(["ReadRange", "Map"])
 
 
 def test_filter_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = Filter(
         read_op,
         lambda x: x,
@@ -161,7 +208,7 @@ def test_filter_operator(ray_start_regular_shared, enable_optimizer):
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
-    assert op.name == "Filter"
+    assert op.name == "Filter(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
@@ -176,7 +223,7 @@ def test_filter_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_flat_map(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = FlatMap(
         read_op,
         lambda x: x,
@@ -184,7 +231,7 @@ def test_flat_map(ray_start_regular_shared, enable_optimizer):
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
 
-    assert op.name == "FlatMap"
+    assert op.name == "FlatMap(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
@@ -235,7 +282,7 @@ def test_random_sample_e2e(ray_start_regular_shared, enable_optimizer):
 
 def test_random_shuffle_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = RandomShuffle(
         read_op,
         seed=0,
@@ -267,7 +314,7 @@ def test_random_shuffle_e2e(
 )
 def test_repartition_operator(ray_start_regular_shared, enable_optimizer, shuffle):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
@@ -289,8 +336,8 @@ def test_repartition_e2e(
         _check_usage_record(["ReadRange", "Repartition"])
         ds_stats: DatasetStats = ds._plan.stats()
         if shuffle:
-            assert ds_stats.base_name == "DoRead->Repartition"
-            assert "DoRead->RepartitionMap" in ds_stats.stages
+            assert ds_stats.base_name == "ReadRange->Repartition"
+            assert "ReadRange->RepartitionMap" in ds_stats.stages
         else:
             assert ds_stats.base_name == "Repartition"
             assert "RepartitionSplit" in ds_stats.stages
@@ -333,7 +380,7 @@ def test_repartition_e2e(
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
     # Test that Read is fused with MapBatches.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(
         read_op,
         lambda x: x,
@@ -343,8 +390,8 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches"
+    assert op.name == "MapBatches(<lambda>)"
+    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -353,7 +400,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
 def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimizer):
     # Test that a chain of different map operators are fused.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapRows(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x)
     op = FlatMap(op, lambda x: x)
@@ -363,8 +410,11 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimiz
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
-    assert op.name == "Filter"
-    assert physical_op.name == "DoRead->MapRows->MapBatches->FlatMap->Filter"
+    assert op.name == "Filter(<lambda>)"
+    assert (
+        physical_op.name == "ReadParquet->Map(<lambda>)->MapBatches(<lambda>)"
+        "->FlatMap(<lambda>)->Filter(<lambda>)"
+    )
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -374,47 +424,102 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
     ray_start_regular_shared, enable_optimizer
 ):
     # Test that map operators are stilled fused when remote args are compatible.
-    planner = Planner()
-    read_op = Read(
-        ParquetDatasource(),
-        ray_remote_args={"num_cpus": 1, "scheduling_strategy": "SPREAD"},
-    )
-    op = MapBatches(read_op, lambda x: x, ray_remote_args={"num_cpus": 1})
-    op = MapBatches(op, lambda x: x, ray_remote_args={"num_cpus": 1})
-    logical_plan = LogicalPlan(op)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
+    compatiple_remote_args_pairs = [
+        # Empty remote args are compatible.
+        ({}, {}),
+        # Test `num_cpus` and `num_gpus`.
+        ({"num_cpus": 2}, {"num_cpus": 2}),
+        ({"num_gpus": 2}, {"num_gpus": 2}),
+        # `num_cpus` defaults to 1, `num_gpus` defaults to 0.
+        # The following 2 should be compatible.
+        ({"num_cpus": 1}, {}),
+        ({}, {"num_gpus": 0}),
+        # Test specifying custom resources.
+        ({"resources": {"custom": 1}}, {"resources": {"custom": 1}}),
+        ({"resources": {"custom": 0}}, {"resources": {}}),
+        # If the downstream op doesn't have `scheduling_strategy`, it will
+        # inherit from the upstream op.
+        ({"scheduling_strategy": "SPREAD"}, {}),
+    ]
+    for up_remote_args, down_remote_args in compatiple_remote_args_pairs:
+        planner = Planner()
+        read_op = Read(
+            ParquetDatasource(),
+            [],
+            # This case is testing fusing the following 2 map_batches operators.
+            # So we add incompatible remote args to the read op to make sure
+            # it doesn't get fused.
+            ray_remote_args={"resources": {"non-existent": 1}},
+        )
+        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
+        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        logical_plan = LogicalPlan(op)
+        physical_plan = planner.plan(logical_plan)
+        physical_plan = PhysicalOptimizer().optimize(physical_plan)
+        physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches->MapBatches"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+        assert op.name == "MapBatches(<lambda>)", (up_remote_args, down_remote_args)
+        assert physical_op.name == "MapBatches(<lambda>)->MapBatches(<lambda>)", (
+            up_remote_args,
+            down_remote_args,
+        )
+        assert isinstance(physical_op, MapOperator), (up_remote_args, down_remote_args)
+        assert len(physical_op.input_dependencies) == 1, (
+            up_remote_args,
+            down_remote_args,
+        )
+        assert physical_op.input_dependencies[0].name == "ReadParquet", (
+            up_remote_args,
+            down_remote_args,
+        )
 
 
 def test_read_map_batches_operator_fusion_incompatible_remote_args(
     ray_start_regular_shared, enable_optimizer
 ):
-    # Test that map operators are not fused when remote args are incompatible.
-    planner = Planner()
-    read_op = Read(ParquetDatasource())
-    op = MapBatches(read_op, lambda x: x, ray_remote_args={"num_cpus": 2})
-    op = MapBatches(op, lambda x: x, ray_remote_args={"num_cpus": 3})
-    logical_plan = LogicalPlan(op)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
+    # Test that map operators won't get fused if the remote args are incompatible.
+    incompatiple_remote_args_pairs = [
+        # Use different resources.
+        ({"num_cpus": 2}, {"num_gpus": 2}),
+        # Same resource, but different values.
+        ({"num_cpus": 3}, {"num_cpus": 2}),
+        # Incompatible custom resources.
+        ({"resources": {"custom": 2}}, {"resources": {"custom": 1}}),
+        ({"resources": {"custom1": 1}}, {"resources": {"custom2": 1}}),
+        # Different scheduling strategies.
+        ({"scheduling_strategy": "SPREAD"}, {"scheduing_strategy": "PACK"}),
+    ]
+    for up_remote_args, down_remote_args in incompatiple_remote_args_pairs:
+        planner = Planner()
+        read_op = Read(
+            ParquetDatasource(),
+            [],
+            # This case is testing fusing the following 2 map_batches operators.
+            # So we add incompatible remote args to the read op to make sure
+            # it doesn't get fused.
+            ray_remote_args={"resources": {"non-existent": 1}},
+        )
+        op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
+        op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
+        logical_plan = LogicalPlan(op)
+        physical_plan = planner.plan(logical_plan)
+        physical_plan = PhysicalOptimizer().optimize(physical_plan)
+        physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches"
-    assert physical_op.name == "MapBatches"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    upstream_physical_op = physical_op.input_dependencies[0]
-    assert isinstance(upstream_physical_op, MapOperator)
-    # Read shouldn't fuse into first MapBatches either, due to the differing CPU
-    # request.
-    assert upstream_physical_op.name == "MapBatches"
+        assert op.name == "MapBatches(<lambda>)", (up_remote_args, down_remote_args)
+        assert physical_op.name == "MapBatches(<lambda>)", (
+            up_remote_args,
+            down_remote_args,
+        )
+        assert isinstance(physical_op, MapOperator), (up_remote_args, down_remote_args)
+        assert len(physical_op.input_dependencies) == 1, (
+            up_remote_args,
+            down_remote_args,
+        )
+        assert physical_op.input_dependencies[0].name == "MapBatches(<lambda>)", (
+            up_remote_args,
+            down_remote_args,
+        )
 
 
 def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
@@ -423,7 +528,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     # Test that a task-based map operator is fused into an actor-based map operator when
     # the former comes before the latter.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
@@ -431,8 +536,8 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches->MapBatches"
+    assert op.name == "MapBatches(<lambda>)"
+    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)->MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -443,15 +548,15 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
 ):
     # Test that reads fuse into an actor-based map operator.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches"
+    assert op.name == "MapBatches(<lambda>)"
+    assert physical_op.name == "ReadParquet->MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
@@ -462,7 +567,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
 ):
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     op = MapBatches(op, lambda x: x)
     logical_plan = LogicalPlan(op)
@@ -470,14 +575,14 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches"
-    assert physical_op.name == "MapBatches"
+    assert op.name == "MapBatches(<lambda>)"
+    assert physical_op.name == "MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     upstream_physical_op = physical_op.input_dependencies[0]
     assert isinstance(upstream_physical_op, MapOperator)
     # Reads should fuse into actor compute.
-    assert upstream_physical_op.name == "DoRead->MapBatches"
+    assert upstream_physical_op.name == "ReadParquet->MapBatches(<lambda>)"
 
 
 def test_read_map_batches_operator_fusion_target_block_size(
@@ -486,7 +591,7 @@ def test_read_map_batches_operator_fusion_target_block_size(
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = MapBatches(read_op, lambda x: x, target_block_size=2)
     op = MapBatches(op, lambda x: x, target_block_size=5)
     op = MapBatches(op, lambda x: x, target_block_size=3)
@@ -495,115 +600,15 @@ def test_read_map_batches_operator_fusion_target_block_size(
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
-    assert op.name == "MapBatches"
+    assert op.name == "MapBatches(<lambda>)"
     # Ops are still fused.
-    assert physical_op.name == "DoRead->MapBatches->MapBatches->MapBatches"
+    assert (
+        physical_op.name == "ReadParquet->MapBatches(<lambda>)->"
+        "MapBatches(<lambda>)->MapBatches(<lambda>)"
+    )
     assert isinstance(physical_op, MapOperator)
     # Target block size is set to max.
     assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-
-
-def test_read_map_batches_operator_fusion_callable_classes(
-    ray_start_regular_shared, enable_optimizer
-):
-    # Test that callable classes can still be fused if they're the same function.
-    planner = Planner()
-    read_op = Read(ParquetDatasource())
-
-    class UDF:
-        def __call__(self, x):
-            return x
-
-    op = MapBatches(read_op, UDF, compute=ray.data.ActorPoolStrategy())
-    op = MapBatches(op, UDF, compute=ray.data.ActorPoolStrategy())
-    logical_plan = LogicalPlan(op)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches"
-    assert physical_op.name == "DoRead->MapBatches->MapBatches"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-
-
-def test_read_map_batches_operator_fusion_incompatible_callable_classes(
-    ray_start_regular_shared, enable_optimizer
-):
-    # Test that map operators are not fused when different callable classes are used.
-    planner = Planner()
-    read_op = Read(ParquetDatasource())
-
-    class UDF:
-        def __call__(self, x):
-            return x
-
-    class UDF2:
-        def __call__(self, x):
-            return x + 1
-
-    op = MapBatches(read_op, UDF, compute=ray.data.ActorPoolStrategy())
-    op = MapBatches(op, UDF2, compute=ray.data.ActorPoolStrategy())
-    logical_plan = LogicalPlan(op)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches"
-    assert physical_op.name == "MapBatches"
-    assert isinstance(physical_op, MapOperator)
-    assert len(physical_op.input_dependencies) == 1
-    upstream_physical_op = physical_op.input_dependencies[0]
-    assert isinstance(upstream_physical_op, MapOperator)
-    # Reads should still fuse with first map.
-    assert upstream_physical_op.name == "DoRead->MapBatches"
-
-
-def test_read_map_batches_operator_fusion_incompatible_constructor_args(
-    ray_start_regular_shared, enable_optimizer
-):
-    # Test that map operators are not fused when callable classes have different
-    # constructor args.
-    planner = Planner()
-    read_op = Read(ParquetDatasource())
-
-    class UDF:
-        def __init__(self, a):
-            self._a
-
-        def __call__(self, x):
-            return x + self._a
-
-    op = MapBatches(
-        read_op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_args=(1,)
-    )
-    op = MapBatches(
-        op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_args=(2,)
-    )
-    op = MapBatches(
-        op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_kwargs={"a": 1}
-    )
-    op = MapBatches(
-        op, UDF, compute=ray.data.ActorPoolStrategy(), fn_constructor_kwargs={"a": 2}
-    )
-    logical_plan = LogicalPlan(op)
-    physical_plan = planner.plan(logical_plan)
-    physical_plan = PhysicalOptimizer().optimize(physical_plan)
-    physical_op = physical_plan.dag
-
-    assert op.name == "MapBatches"
-    # Last 3 physical map operators are unfused.
-    for _ in range(3):
-        assert isinstance(physical_op, MapOperator)
-        assert physical_op.name == "MapBatches"
-        assert len(physical_op.input_dependencies) == 1
-        physical_op = physical_op.input_dependencies[0]
-    # First physical map operator is fused with read.
-    assert isinstance(physical_op, MapOperator)
-    assert physical_op.name == "DoRead->MapBatches"
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
@@ -624,10 +629,9 @@ def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
     ds = ds.randomize_block_order()
     ds = ds.map_batches(fn, batch_size=None)
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    assert "RandomizeBlocks" not in ds.stats()
-    assert "DoRead->MapBatches->RandomizeBlocks" not in ds.stats()
-    assert "DoRead->MapBatches" in ds.stats()
-    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlocks"])
+    assert "ReadRange->MapBatches(fn)->RandomizeBlockOrder" not in ds.stats()
+    assert "ReadRange->MapBatches(fn)" in ds.stats()
+    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
 
 
 def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
@@ -642,7 +646,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
-    assert "DoRead->MapBatches->RandomShuffle" in ds.stats()
+    assert "ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
 
     ds = ray.data.range(n)
@@ -651,8 +655,8 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
     # TODO(Scott): Update below assertion after supporting fusion in
     # the other direction (AllToAllOperator->MapOperator)
-    assert "DoRead->RandomShuffle->MapBatches" not in ds.stats()
-    assert all(op in ds.stats() for op in ("DoRead", "RandomShuffle", "MapBatches"))
+    assert "ReadRange->RandomShuffle->MapBatches(fn)" not in ds.stats()
+    assert all(op in ds.stats() for op in ("ReadRange", "RandomShuffle", "MapBatches"))
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
     # Test fusing multiple `map_batches` with multiple `random_shuffle` operations.
@@ -661,7 +665,7 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
         ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(5, n + 5))
-    assert f"DoRead->{'MapBatches->' * 5}RandomShuffle" in ds.stats()
+    assert f"ReadRange->{'MapBatches(fn)->' * 5}RandomShuffle" in ds.stats()
 
     # For interweaved map_batches and random_shuffle operations, we expect to fuse the
     # two pairs of MapBatches->RandomShuffle, but not the resulting
@@ -672,8 +676,8 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(2, n + 2))
-    assert "Stage 1 DoRead->MapBatches->RandomShuffle" in ds.stats()
-    assert "Stage 2 MapBatches->RandomShuffle"
+    assert "Stage 1 ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
+    assert "Stage 2 MapBatches(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
 
@@ -692,10 +696,10 @@ def test_read_map_batches_operator_fusion_with_repartition_operator(
 
     # Operator fusion is only supported for shuffle repartition.
     if shuffle:
-        assert "DoRead->MapBatches->Repartition" in ds.stats()
+        assert "ReadRange->MapBatches(fn)->Repartition" in ds.stats()
     else:
-        assert "DoRead->MapBatches->Repartition" not in ds.stats()
-        assert "DoRead->MapBatches" in ds.stats()
+        assert "ReadRange->MapBatches(fn)->Repartition" not in ds.stats()
+        assert "ReadRange->MapBatches(fn)" in ds.stats()
         assert "Repartition" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Repartition"])
 
@@ -715,8 +719,8 @@ def test_read_map_batches_operator_fusion_with_sort_operator(
     ds = ds.sort("id")
     assert extract_values("id", ds.take_all()) == list(range(1, n + 1))
     # TODO(Scott): update the below assertions after we support fusion.
-    assert "DoRead->MapBatches->Sort" not in ds.stats()
-    assert "DoRead->MapBatches" in ds.stats()
+    assert "ReadRange->MapBatches->Sort" not in ds.stats()
+    assert "ReadRange->MapBatches" in ds.stats()
     assert "Sort" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Sort"])
 
@@ -745,8 +749,8 @@ def test_read_map_batches_operator_fusion_with_aggregate_operator(
     )
     agg_ds.take_all() == [{"id": 0, "foo": 0.0}, {"id": 1, "foo": 1.0}]
     # TODO(Scott): update the below assertions after we support fusion.
-    assert "DoRead->MapBatches->Aggregate" not in agg_ds.stats()
-    assert "DoRead->MapBatches" in agg_ds.stats()
+    assert "ReadRange->MapBatches->Aggregate" not in agg_ds.stats()
+    assert "ReadRange->MapBatches" in agg_ds.stats()
     assert "Aggregate" in agg_ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "Aggregate"])
 
@@ -771,22 +775,25 @@ def test_read_map_chain_operator_fusion_e2e(ray_start_regular_shared, enable_opt
         -18,
         18,
     ]
-    name = "DoRead->Filter->MapRows->MapBatches->FlatMap:"
+    name = (
+        "ReadRange->Filter(<lambda>)->Map(<lambda>)"
+        "->MapBatches(<lambda>)->FlatMap(<lambda>):"
+    )
     assert name in ds.stats()
-    _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
+    _check_usage_record(["ReadRange", "Filter", "Map", "MapBatches", "FlatMap"])
 
 
 def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
     ds = ray.data.range(10, parallelism=2)
     ds.write_csv(tmp_path)
-    assert "DoRead->Write" in ds._write_ds.stats()
+    assert "ReadRange->Write" in ds._write_ds.stats()
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
 def test_write_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     datasource = ParquetDatasource()
-    read_op = Read(datasource)
+    read_op = Read(datasource, [])
     op = Write(
         read_op,
         datasource,
@@ -802,7 +809,7 @@ def test_write_operator(ray_start_regular_shared, enable_optimizer):
 
 def test_sort_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = Sort(
         read_op,
         key="col1",
@@ -882,7 +889,7 @@ def test_sort_validate_keys(
 
 def test_aggregate_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(ParquetDatasource())
+    read_op = Read(ParquetDatasource(), [])
     op = Aggregate(
         read_op,
         key="col1",
@@ -952,8 +959,8 @@ def test_aggregate_validate_keys(
 
 def test_zip_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op1 = Read(ParquetDatasource())
-    read_op2 = Read(ParquetDatasource())
+    read_op1 = Read(ParquetDatasource(), [])
+    read_op2 = Read(ParquetDatasource(), [])
     op = Zip(read_op1, read_op2)
     plan = LogicalPlan(op)
     physical_op = planner.plan(plan).dag
@@ -1114,7 +1121,7 @@ def test_from_pandas_refs_e2e(
         assert values == rows
         assert "MapBatches" in ds2.stats()
         assert "FromPandasRefs" in ds2.stats()
-        assert ds2._plan._logical_plan.dag.name == "MapBatches"
+        assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas_refs(ray.put(df1))
@@ -1168,7 +1175,7 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     assert "MapBatches" in ds2.stats()
     assert "FromNumpyRefs" in ds2.stats()
-    assert ds2._plan._logical_plan.dag.name == "MapBatches"
+    assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
     _check_usage_record(["FromNumpyRefs", "MapBatches"])
 
     # Test from single NumPy ndarray.
@@ -1382,7 +1389,7 @@ def test_execute_to_legacy_block_list(
         assert row["id"] == i
 
     assert ds._plan._snapshot_stats is not None
-    assert "DoRead" in ds._plan._snapshot_stats.stages
+    assert "ReadRange" in ds._plan._snapshot_stats.stages
     assert ds._plan._snapshot_stats.time_total_s > 0
 
 
@@ -1397,7 +1404,7 @@ def test_execute_to_legacy_block_iterator(
         assert batch is not None
 
     assert ds._plan._snapshot_stats is not None
-    assert "DoRead" in ds._plan._snapshot_stats.stages
+    assert "ReadRange" in ds._plan._snapshot_stats.stages
     assert ds._plan._snapshot_stats.time_total_s > 0
 
 

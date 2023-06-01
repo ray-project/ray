@@ -301,6 +301,8 @@ OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
 OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
 # A constant used as object metadata to indicate the object is raw bytes.
 OBJECT_METADATA_TYPE_RAW = b"RAW"
+# A constant used as object metadata to indicate the object is arrow data.
+OBJECT_METADATA_TYPE_ARROW = b"ARROW"
 
 # A constant used as object metadata to indicate the object is an actor handle.
 # This value should be synchronized with the Java definition in
@@ -429,7 +431,11 @@ RAY_ALLOWED_CACHED_PORTS = {
     "gcs_server_port",  # the `port` option for gcs port.
 }
 
-RAY_ENABLE_RECORD_TASK_LOGGING = env_bool("RAY_ENABLE_RECORD_TASK_LOGGING", False)
+# Turn this on if actor task log's offsets are expected to be recorded.
+# With this enabled, actor tasks' log could be queried with task id.
+RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
+    "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
+)
 
 WORKER_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_SETUP_HOOK_ENV_VAR"
 RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = "RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT"

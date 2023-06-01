@@ -1,5 +1,6 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
+load("//bazel:python.bzl", "doctest")
 
 exports_files(["test_myst_doc.py"])
 
@@ -252,55 +253,18 @@ py_test_run_all_subdirectory(
 )
 
 # --------------------------------------------------------------------
-# Test all Workspace template notebooks in doc/source/templates
-# as smoke tests.
+# Workspace templates tests
 # --------------------------------------------------------------------
-
-filegroup(
-    name = "workspace_templates",
-    srcs = glob([
-        "source/templates/tests/**/*.ipynb",
-        "source/templates/tests/**/requirements.txt"
-    ]),
-    visibility = ["//doc:__subpackages__"]
-)
 
 # Validate that all the paths and yamls within the templates.yaml file are valid.
 
 py_test(
     name = "templates_directory_validation",
     size = "small",
-    main = "source/templates/validate.py",
-    srcs = ["source/templates/validate.py"],
+    main = "source/templates/testing/validate.py",
+    srcs = ["source/templates/testing/validate.py"],
     data = glob(["source/templates/**/*"]),
     tags = ["exclusive", "team:ml"]
-)
-
-# Templates that only require CPU
-
-py_test_run_all_notebooks(
-    size = "large",
-    # TODO(justinvyu): Merge tests/ with the regular versions of the templates.
-    include = ["source/templates/tests/02_many_model_training/many_model_training.ipynb"],
-    exclude = [],
-    data = ["//doc:workspace_templates"],
-    tags = ["exclusive", "team:ml", "ray_air"],
-    env = {"SMOKE_TEST": "1"},
-)
-
-# Templates that require GPU
-
-py_test_run_all_notebooks(
-    size = "large",
-    include = [
-        # TODO(justinvyu): Merge tests/ with the regular versions of the templates.
-        "source/templates/tests/01_batch_inference/batch_inference.ipynb",
-        "source/templates/tests/03_serving_stable_diffusion/serving_stable_diffusion.ipynb"
-    ],
-    exclude = [],
-    data = ["//doc:workspace_templates"],
-    tags = ["exclusive", "team:ml", "ray_air", "gpu"],
-    env = {"SMOKE_TEST": "1"},
 )
 
 # --------------
@@ -335,4 +299,26 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml", "external"],
+)
+
+
+# --------------------------------------------------------------------
+# Tests code snippets in user guides.
+# --------------------------------------------------------------------
+
+doctest(
+    files = glob(
+        include=["source/**/*.rst"],
+        exclude=[
+            "source/ray-contribute/getting-involved.rst",
+            "source/ray-core/handling-dependencies.rst",
+            "source/ray-core/tasks/nested-tasks.rst",
+            "source/ray-observability/user-guides/ray-tracing.rst",
+            "source/ray-observability/user-guides/cli-sdk.rst",
+            "source/rllib/rllib-env.rst",
+            "source/rllib/rllib-sample-collection.rst",
+        ]
+    ),
+    size = "large",
+    tags = ["team:none"]
 )

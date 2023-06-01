@@ -29,13 +29,6 @@ from ray.types import ObjectRef
 from typing import Iterable
 
 
-def maybe_pipeline(ds, enabled):
-    if enabled:
-        return ds.window(blocks_per_window=1)
-    else:
-        return ds
-
-
 def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
 
@@ -159,27 +152,19 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_write_datasource(ray_start_regular_shared, pipelined):
+def test_write_datasource(ray_start_regular_shared):
     output = DummyOutputDatasource()
-    ds0 = ray.data.range(10, parallelism=2)
-    ds = maybe_pipeline(ds0, pipelined)
+    ds = ray.data.range(10, parallelism=2)
     ds.write_datasource(output)
-    if pipelined:
-        assert output.num_ok == 2
-    else:
-        assert output.num_ok == 1
+    assert output.num_ok == 1
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
     output.enabled = False
-    ds = maybe_pipeline(ray.data.range(10, parallelism=2), pipelined)
+    ds = ray.data.range(10, parallelism=2)
     with pytest.raises(ValueError):
         ds.write_datasource(output, ray_remote_args={"max_retries": 0})
-    if pipelined:
-        assert output.num_ok == 2
-    else:
-        assert output.num_ok == 1
+    assert output.num_ok == 1
     assert output.num_failed == 1
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
@@ -320,6 +305,8 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 
 
 def test_get_read_tasks(shutdown_only):
+    # Note: if you get TimeoutErrors here, try installing required dependencies
+    # with `pip install -U "ray[default]"`.
     ray.init()
 
     head_node_id = ray.get_runtime_context().get_node_id()
