@@ -159,7 +159,7 @@ def create_replica_wrapper(name: str):
             )
 
             # Indicates whether the replica has finished initializing.
-            self._init_finish_event = asyncio.Event()
+            self._replica_init_finish = False
 
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
@@ -197,7 +197,7 @@ def create_replica_wrapper(name: str):
                     controller_handle,
                     app_name,
                 )
-                self._init_finish_event.set()
+                self._init_finish = True
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
@@ -206,7 +206,7 @@ def create_replica_wrapper(name: str):
             self._initialize_replica = initialize_replica
 
             # Used to make sure only one single init task happen.
-            self.init_lock = asyncio.Lock()
+            self._replica_init_lock = asyncio.Lock()
 
         @ray.method(num_returns=2)
         async def handle_request(
@@ -315,8 +315,8 @@ def create_replica_wrapper(name: str):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             try:
-                async with self.init_lock:
-                    if not self._init_finish_event.is_set():
+                async with self._replica_init_lock:
+                    if not self._replica_init_finish:
                         await self._initialize_replica()
                 if deployment_config:
                     await self.reconfigure(deployment_config)
