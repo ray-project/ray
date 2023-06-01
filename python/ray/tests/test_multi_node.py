@@ -123,7 +123,7 @@ def test_error_isolation(call_ray_start):
 
     # Make sure we got the error.
     assert len(errors) == 1
-    assert error_string1 in errors[0].error_message
+    assert error_string1 in errors[0]["error_message"]
 
     # Start another driver and make sure that it does not receive this
     # error. Make the other driver throw an error, and make sure it
@@ -151,7 +151,7 @@ except Exception as e:
 errors = get_error_message(subscribers[1], 1)
 assert len(errors) == 1
 
-assert "{}" in errors[0].error_message
+assert "{}" in errors[0]["error_message"]
 
 print("success")
 """.format(
