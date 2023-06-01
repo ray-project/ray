@@ -237,7 +237,7 @@ Ignoring *code-block-style* outputs
 ===================================
 
 If parts of your output are long or non-deterministic, replace problematic sections
-with ellipsis. ::
+with ellipses. ::
 
     .. testcode::
 
