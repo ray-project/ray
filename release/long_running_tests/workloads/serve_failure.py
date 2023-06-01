@@ -89,6 +89,8 @@ class RandomKiller:
                 ):
                     await asyncio.sleep(self.kill_period_s)
                     continue
+                else:
+                    self.controller_killed_prev_time = time.time()
             print(f"Killing {chosen}")
             ray.kill(chosen, no_restart=False)
             await asyncio.sleep(self.kill_period_s)
