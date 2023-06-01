@@ -279,6 +279,7 @@ def prefetch_batches_locally(
                 pass
         yield block_ref
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+    prefetcher.stop()
 
 
 def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
