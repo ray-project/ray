@@ -1,6 +1,13 @@
 from typing import Iterator, List, Tuple
+
 from ray.data._internal.logical.operators.all_to_all_operator import Repartition
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
     RandomShuffle,
@@ -102,16 +109,22 @@ class OperatorFusionRule(Rule):
               the same class AND constructor args are the same for both.
             * They have compatible remote arguments.
         """
-        from ray.data._internal.execution.operators.map_operator import MapOperator
         from ray.data._internal.logical.operators.map_operator import AbstractMap
         from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 
         # We currently only support fusing for the following cases:
-        # - MapOperator -> MapOperator
-        # - MapOperator -> AllToAllOperator
+        # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
+        # - TaskPoolMapOperator -> AllToAllOperator
         # (only RandomShuffle and Repartition LogicalOperators are currently supported)
-        if not isinstance(down_op, (MapOperator, AllToAllOperator)) or not isinstance(
-            up_op, MapOperator
+        if not (
+            (
+                isinstance(up_op, TaskPoolMapOperator)
+                and isinstance(down_op, (TaskPoolMapOperator, ActorPoolMapOperator))
+            )
+            or (
+                isinstance(up_op, TaskPoolMapOperator)
+                and isinstance(down_op, AllToAllOperator)
+            )
         ):
             return False
 
@@ -195,7 +208,11 @@ class OperatorFusionRule(Rule):
         up_logical_op = self._op_map.pop(up_op)
 
         # Merge target block sizes.
-        down_target_block_size = down_logical_op._target_block_size
+        down_target_block_size = (
+            down_logical_op._target_block_size
+            if isinstance(down_logical_op, AbstractUDFMap)
+            else None
+        )
         up_target_block_size = (
             up_logical_op._target_block_size
             if isinstance(up_logical_op, AbstractUDFMap)
@@ -219,10 +236,17 @@ class OperatorFusionRule(Rule):
             # TODO(Scott): Add zero-copy batching between transform functions.
             return down_transform_fn(blocks, ctx)
 
+        # Fuse init funcitons.
+        fused_init_fn = (
+            down_op.get_init_fn() if isinstance(down_op, ActorPoolMapOperator) else None
+        )
+
         # We take the downstream op's compute in case we're fusing upstream tasks with a
         # downstream actor pool (e.g. read->map).
-        compute = get_compute(down_logical_op._compute)
-        ray_remote_args = down_logical_op._ray_remote_args
+        compute = None
+        if isinstance(down_logical_op, AbstractUDFMap):
+            compute = get_compute(down_logical_op._compute)
+        ray_remote_args = up_logical_op._ray_remote_args
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
@@ -233,6 +257,7 @@ class OperatorFusionRule(Rule):
             fused_map_transform_fn,
             input_op,
             name=name,
+            init_fn=fused_init_fn,
             compute_strategy=compute,
             min_rows_per_bundle=target_block_size,
             ray_remote_args=ray_remote_args,
@@ -287,6 +312,7 @@ class OperatorFusionRule(Rule):
         up_logical_op: AbstractUDFMap = self._op_map.pop(up_op)
 
         # Fuse transformation functions.
+        ray_remote_args = up_logical_op._ray_remote_args
         down_transform_fn = down_op.get_transformation_fn()
         up_transform_fn = up_op.get_transformation_fn()
 
@@ -297,9 +323,9 @@ class OperatorFusionRule(Rule):
             in the TaskContext so that it may be used by the downstream
             AllToAllOperator's transform function."""
             ctx.upstream_map_transform_fn = up_transform_fn
+            ctx.upstream_map_ray_remote_args = ray_remote_args
             return down_transform_fn(blocks, ctx)
 
-        ray_remote_args = down_logical_op._ray_remote_args
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
@@ -330,18 +356,29 @@ class OperatorFusionRule(Rule):
         return op
 
 
-def _are_remote_args_compatible(up_args, down_args):
+def _are_remote_args_compatible(prev_args, next_args):
     """Check if Ray remote arguments are compatible for merging."""
-    from ray.data._internal.execution.operators.map_operator import (
-        _canonicalize_ray_remote_args,
-    )
-
-    up_args = _canonicalize_ray_remote_args(up_args)
-    down_args = _canonicalize_ray_remote_args(down_args)
-    remote_args = down_args.copy()
+    prev_args = _canonicalize(prev_args)
+    next_args = _canonicalize(next_args)
+    remote_args = next_args.copy()
     for key in INHERITABLE_REMOTE_ARGS:
-        if key in up_args:
-            remote_args[key] = up_args[key]
-    if up_args != remote_args:
+        if key in prev_args:
+            remote_args[key] = prev_args[key]
+    if prev_args != remote_args:
         return False
     return True
+
+
+def _canonicalize(remote_args: dict) -> dict:
+    """Returns canonical form of given remote args."""
+    remote_args = remote_args.copy()
+    if "num_cpus" not in remote_args or remote_args["num_cpus"] is None:
+        remote_args["num_cpus"] = 1
+    if "num_gpus" not in remote_args or remote_args["num_gpus"] is None:
+        remote_args["num_gpus"] = 0
+    resources = remote_args.get("resources", {})
+    for k, v in list(resources.items()):
+        if v is None or v == 0.0:
+            del resources[k]
+    remote_args["resources"] = resources
+    return remote_args
