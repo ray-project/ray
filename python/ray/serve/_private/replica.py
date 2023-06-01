@@ -100,7 +100,6 @@ def create_replica_wrapper(name: str):
                 component_id=replica_tag,
             )
 
-            self._replica_tag = replica_tag
             self._event_loop = get_or_create_event_loop()
 
             deployment_def = cloudpickle.loads(serialized_deployment_def)
