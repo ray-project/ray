@@ -1104,7 +1104,7 @@ class Learner:
         """
         pass
 
-    def save_state(self, path: Union[str, pathlib.Path], save_optimizers=True) -> None:
+    def save_state(self, path: Union[str, pathlib.Path]) -> None:
         """Save the state of the learner to path
 
         NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
@@ -1123,15 +1123,13 @@ class Learner:
 
         Args:
             path: The path to the directory to save the state to.
-            save_optimizers: Whether to save the state of the optimizers.
 
         """
         self._check_is_built()
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
         self.module.save_to_checkpoint(path / "module_state")
-        if save_optimizers:
-            self._save_optimizers(path / "optimizer_state")
+        self._save_optimizers(path / "optimizer_state")
         with open(path / "learner_state.json", "w") as f:
             metadata = self._get_metadata()
             json.dump(metadata, f)

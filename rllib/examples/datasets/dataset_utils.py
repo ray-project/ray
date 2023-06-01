@@ -1,6 +1,8 @@
 import json
 import pandas as pd
 
+from ray.rllib.policy.sample_batch import SampleBatch
+
 
 def convert_json_sample_batch_to_df(path: str):
     """Converts JSONified sample batch(es) to a pandas DataFrame.
@@ -24,4 +26,8 @@ def convert_json_sample_batch_to_df(path: str):
     df = pd.DataFrame(sample_batches)
     df = df.explode(list(df.columns))
     df = df.reset_index(drop=True)
+    columns_to_drop = [
+        col for col in df.columns if col not in [SampleBatch.OBS, SampleBatch.ACTIONS]
+    ]
+    df = df.drop(columns=columns_to_drop)
     return df

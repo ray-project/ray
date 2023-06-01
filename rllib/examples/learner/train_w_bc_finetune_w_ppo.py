@@ -24,10 +24,11 @@ def train_ppo_module_with_bc_finetune(dataset: ray.data.Dataset) -> str:
 
     Args:
         dataset: The dataset to train on.
-    
+
     Returns:
         The path to the checkpoint of the trained module.
     """
+
     def train_func(config):
         module_spec = config["module_spec"]
         available_gpus = ray.get_gpu_ids()
@@ -58,11 +59,11 @@ def train_ppo_module_with_bc_finetune(dataset: ray.data.Dataset) -> str:
             ckpt = Checkpoint.from_directory(ckpt_dir)
             session.report(
                 metrics={
-                        "epoch": epoch,
-                        "num_steps_trained": num_steps_trained,
-                        "loss": stats["__all__"]["total_loss"],
-                    },
-                checkpoint=ckpt
+                    "epoch": epoch,
+                    "num_steps_trained": num_steps_trained,
+                    "loss": stats["__all__"]["total_loss"],
+                },
+                checkpoint=ckpt,
             )
 
     module_spec = SingleAgentRLModuleSpec(
@@ -96,16 +97,15 @@ def train_ppo_agent_from_checkpointed_module(ckpt_path: str):
         action_space=GYM_ENV.action_space,
         model_config_dict={"fcnet_hiddens": [64, 64]},
         catalog_class=PPOCatalog,
-        load_state_path=ckpt_path
+        load_state_path=ckpt_path,
     )
 
-    config = (  
-            PPOConfig()
-            .training(_enable_learner_api=True)
-            .rl_module(_enable_rl_module_api=True, 
-                       rl_module_spec=module_spec_from_ckpt)
-            .environment(GYM_ENV_NAME)
-        )
+    config = (
+        PPOConfig()
+        .training(_enable_learner_api=True)
+        .rl_module(_enable_rl_module_api=True, rl_module_spec=module_spec_from_ckpt)
+        .environment(GYM_ENV_NAME)
+    )
 
     tuner = tune.Tuner(
         "PPO",
@@ -113,7 +113,7 @@ def train_ppo_agent_from_checkpointed_module(ckpt_path: str):
         run_config=RunConfig(
             stop={"training_iteration": 10},
             failure_config=FailureConfig(fail_fast="raise"),
-            verbose=2
+            verbose=2,
         ),
     )
     tuner.fit()
