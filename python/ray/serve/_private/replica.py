@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -673,6 +674,8 @@ class RayServeReplica:
                 await asyncio.sleep(
                     self.deployment_config.graceful_shutdown_wait_loop_s
                 )
+            else:
+                await asyncio.sleep(DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S)
             method_stat = self._get_handle_request_stats()
             # The handle_request method wasn't even invoked.
             if method_stat is None:
