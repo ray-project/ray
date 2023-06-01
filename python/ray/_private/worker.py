@@ -452,7 +452,9 @@ class Worker:
         self.ray_debugger_external = False
         self._load_code_from_local = False
         # Opened file descriptor to stdout/stderr for this python worker.
-        self._enable_record_task_log = ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING
+        self._enable_record_actor_task_log = (
+            ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING
+        )
         self._out_file = None
         self._err_file = None
         # Create the lock here because the serializer will use it before
@@ -542,14 +544,11 @@ class Worker:
     def record_task_log_start(self):
         """Record the task log info when task starts executing for
         non concurrent actor tasks."""
-        if self.core_worker.current_actor_max_concurrency() != 1:
-            # This is a concurrent actor task, we will not record the start.
-            # We are skipping concurrent actor tasks because high contention
-            # and slow IO on concurrent actors would result in perf regression.
+        if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
+            # We are not recording actor task log if not enabled explicitly.
+            # Recording actor task log is expensive and should be enabled only
+            # when needed.
             # https://github.com/ray-project/ray/issues/35598
-            return
-
-        if not self._enable_record_task_log:
             return
 
         self.core_worker.record_task_log_start(
@@ -562,14 +561,11 @@ class Worker:
     def record_task_log_end(self):
         """Record the task log info when task finishes executing for
         non concurrent actor tasks."""
-        if self.core_worker.current_actor_max_concurrency() != 1:
-            # This is a concurrent actor task, we will not record the end.
-            # We are skipping concurrent actor tasks because high contention
-            # and slow IO on concurrent actors would result in perf regression.
+        if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
+            # We are not recording actor task log if not enabled explicitly.
+            # Recording actor task log is expensive and should be enabled only
+            # when needed.
             # https://github.com/ray-project/ray/issues/35598
-            return
-
-        if not self._enable_record_task_log:
             return
 
         self.core_worker.record_task_log_end(
@@ -863,11 +859,9 @@ class Worker:
 
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job."""
-        import grpc
-
         subscriber = self.gcs_log_subscriber
         subscriber.subscribe()
-        exception_type = grpc.RpcError
+        exception_type = ray.exceptions.RpcError
         localhost = services.get_node_ip_address()
         try:
             # Number of messages received from the last polling. When the batch
@@ -2065,14 +2059,14 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data.job_id not in [
+            if error_data["job_id"] not in [
                 worker.current_job_id.binary(),
                 JobID.nil().binary(),
             ]:
                 continue
 
-            error_message = error_data.error_message
-            if error_data.type == ray_constants.TASK_PUSH_ERROR:
+            error_message = error_data["error_message"]
+            if error_data["type"] == ray_constants.TASK_PUSH_ERROR:
                 # TODO(ekl) remove task push errors entirely now that we have
                 # the separate unhandled exception handler.
                 pass
@@ -2307,23 +2301,17 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
     )
-    # The following will be fixed with https://github.com/ray-project/ray/pull/35094
-    from ray._private.gcs_pubsub import (
-        GcsErrorSubscriber,
-        GcsFunctionKeySubscriber,
-        GcsLogSubscriber,
-    )
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
     worker_id = worker.worker_id
-    worker.gcs_error_subscriber = GcsErrorSubscriber(
+    worker.gcs_error_subscriber = ray._raylet.GcsErrorSubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
-    worker.gcs_log_subscriber = GcsLogSubscriber(
+    worker.gcs_log_subscriber = ray._raylet.GcsLogSubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
-    worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+    worker.gcs_function_key_subscriber = ray._raylet.GcsFunctionKeySubscriber(
         worker_id=worker_id, address=worker.gcs_client.address
     )
 
