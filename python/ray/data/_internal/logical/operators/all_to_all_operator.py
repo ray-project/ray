@@ -42,7 +42,7 @@ class RandomizeBlocks(AbstractAllToAll):
         seed: Optional[int] = None,
     ):
         super().__init__(
-            "RandomizeBlocks",
+            "RandomizeBlockOrder",
             input_op,
         )
         self._seed = seed

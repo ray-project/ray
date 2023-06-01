@@ -34,7 +34,6 @@ from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -310,6 +309,7 @@ class AlgorithmConfig(_Config):
         self.auto_wrap_old_gym_envs = True
 
         # `self.rollouts()`
+        self.env_runner_cls = None
         self.num_rollout_workers = 0
         self.num_envs_per_worker = 1
         self.sample_collector = SimpleListCollector
@@ -408,7 +408,6 @@ class AlgorithmConfig(_Config):
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
-        self.worker_cls = None
 
         # `self.fault_tolerance()`
         self.ignore_worker_failures = False
@@ -462,6 +461,7 @@ class AlgorithmConfig(_Config):
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
         self.input_evaluation = DEPRECATED_VALUE
         self.policy_map_cache = DEPRECATED_VALUE
+        self.worker_cls = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -861,7 +861,7 @@ class AlgorithmConfig(_Config):
             self.model["_disable_action_flattening"] = True
         if self.model.get("custom_preprocessor"):
             deprecation_warning(
-                old="model_config['custom_preprocessor']",
+                old="AlgorithmConfig.training(model={'custom_preprocessor': ...})",
                 help="Custom preprocessors are deprecated, "
                 "since they sometimes conflict with the built-in "
                 "preprocessors for handling complex observation spaces. "
@@ -1419,6 +1419,7 @@ class AlgorithmConfig(_Config):
     def rollouts(
         self,
         *,
+        env_runner_cls: Optional[type] = NotProvided,
         num_rollout_workers: Optional[int] = NotProvided,
         num_envs_per_worker: Optional[int] = NotProvided,
         create_env_on_local_worker: Optional[bool] = NotProvided,
@@ -1449,6 +1450,8 @@ class AlgorithmConfig(_Config):
         """Sets the rollout worker configuration.
 
         Args:
+            env_runner_cls: The EnvRunner class to use for environment rollouts (data
+                collection).
             num_rollout_workers: Number of rollout worker actors to create for
                 parallel sampling. Setting this to 0 will force rollouts to be done in
                 the local worker (driver process or the Algorithm's actor when using
@@ -1487,12 +1490,12 @@ class AlgorithmConfig(_Config):
                 divides the train batch into minibatches for multi-epoch SGD.
                 Set to "auto" to have RLlib compute an exact `rollout_fragment_length`
                 to match the given batch size.
-            batch_mode: How to build per-Sampler (RolloutWorker) batches, which are then
-                usually concat'd to form the train batch. Note that "steps" below can
-                mean different things (either env- or agent-steps) and depends on the
-                `count_steps_by` setting, adjustable via
-                `AlgorithmConfig.multi_agent(count_steps_by=..)`:
-                1) "truncate_episodes": Each call to sample() will return a
+            batch_mode: How to build individual batches with the EnvRunner(s). Batches
+                coming from distributed EnvRunners are usually concat'd to form the
+                train batch. Note that "steps" below can mean different things (either
+                env- or agent-steps) and depends on the `count_steps_by` setting,
+                adjustable via `AlgorithmConfig.multi_agent(count_steps_by=..)`:
+                1) "truncate_episodes": Each call to `EnvRunner.sample()` will return a
                 batch of at most `rollout_fragment_length * num_envs_per_worker` in
                 size. The batch will be exactly `rollout_fragment_length * num_envs`
                 in size if postprocessing does not change batch sizes. Episodes
@@ -1500,7 +1503,7 @@ class AlgorithmConfig(_Config):
                 This mode guarantees evenly sized batches, but increases
                 variance as the future return must now be estimated at truncation
                 boundaries.
-                2) "complete_episodes": Each call to sample() will return a
+                2) "complete_episodes": Each call to `EnvRunner.sample()` will return a
                 batch of at least `rollout_fragment_length * num_envs_per_worker` in
                 size. Episodes will not be truncated, but multiple episodes
                 may be packed within one batch to meet the (minimum) batch size.
@@ -1539,6 +1542,8 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if env_runner_cls is not NotProvided:
+            self.env_runner_cls = env_runner_cls
         if num_rollout_workers is not NotProvided:
             self.num_rollout_workers = num_rollout_workers
         if num_envs_per_worker is not NotProvided:
@@ -2402,7 +2407,8 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
-        worker_cls: Optional[Type[RolloutWorker]] = NotProvided,
+        # deprecated
+        worker_cls=None,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -2423,11 +2429,17 @@ class AlgorithmConfig(_Config):
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
                 identical results. This makes experiments reproducible.
-            worker_cls: Use a custom RolloutWorker type for unit testing purpose.
 
         Returns:
             This updated AlgorithmConfig object.
         """
+        if worker_cls is not None:
+            deprecation_warning(
+                old="AlgorithmConfig.debugging(worker_cls=..)",
+                new="AlgorithmConfig.rollouts(env_runner_cls=...)",
+                error=True,
+            )
+
         if logger_creator is not NotProvided:
             self.logger_creator = logger_creator
         if logger_config is not NotProvided:
@@ -2440,8 +2452,6 @@ class AlgorithmConfig(_Config):
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
-        if worker_cls is not NotProvided:
-            self.worker_cls = worker_cls
 
         return self
 
@@ -2520,7 +2530,7 @@ class AlgorithmConfig(_Config):
         Args:
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
-                observation_space, action_space, catalog_class, or the model_config is
+                observation_space, action_space, catalog_class, or the model config is
                 not specified it will be inferred from the env and other parts of the
                 algorithm config object.
             _enable_rl_module_api: Whether to enable the RLModule API for this config.
@@ -2784,9 +2794,9 @@ class AlgorithmConfig(_Config):
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                RolloutWorker. If not provided, will try to infer from
-                `env`. Otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be infered, will
+                EnvRunner (usually a RolloutWorker). If not provided, will try to infer
+                from `env`. Otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred, will
                 raise an error.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
@@ -2820,12 +2830,26 @@ class AlgorithmConfig(_Config):
         # Normal env (gym.Env or MultiAgentEnv): These should have the
         # `observation_space` and `action_space` properties.
         elif env is not None:
-            if hasattr(env, "observation_space") and isinstance(
+            # `env` is a gymnasium.vector.Env.
+            if hasattr(env, "single_observation_space") and isinstance(
+                env.single_observation_space, gym.Space
+            ):
+                env_obs_space = env.single_observation_space
+            # `env` is a gymnasium.Env.
+            elif hasattr(env, "observation_space") and isinstance(
                 env.observation_space, gym.Space
             ):
                 env_obs_space = env.observation_space
 
-            if hasattr(env, "action_space") and isinstance(env.action_space, gym.Space):
+            # `env` is a gymnasium.vector.Env.
+            if hasattr(env, "single_action_space") and isinstance(
+                env.single_action_space, gym.Space
+            ):
+                env_act_space = env.single_action_space
+            # `env` is a gymnasium.Env.
+            elif hasattr(env, "action_space") and isinstance(
+                env.action_space, gym.Space
+            ):
                 env_act_space = env.action_space
 
         # Last resort: Try getting the env's spaces from the spaces
