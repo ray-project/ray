@@ -20,10 +20,12 @@ def normalize_length(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     del batch["sepal.length"]
     return batch
 
-# Preprocess your data any way you want.
+
+# Preprocess your data any way you want. This will be re-run each epoch.
 # You can use Ray Data preprocessors here as well,
 # e.g., preprocessor.fit_transform(train_ds)
 train_ds = train_ds.map_batches(normalize_length)
+
 
 def train_loop_per_worker():
     # Get an iterator to the dataset we passed in below.
@@ -33,10 +35,10 @@ def train_loop_per_worker():
     # of 10k elements, and prefetch up to 10 batches of size 128 each.
     for _ in range(10):
         for batch in it.iter_batches(
-                 local_shuffle_buffer_size=10000,
-                 batch_size=128,
-                 prefetch_batches=10):
+            local_shuffle_buffer_size=10000, batch_size=128, prefetch_batches=10
+        ):
             print("Do some training on batch", batch)
+
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
@@ -45,3 +47,92 @@ my_trainer = TorchTrainer(
 )
 my_trainer.fit()
 # __basic_end__
+
+# __custom_split__
+dataset_a = ray.data.read_text("example://sms_spam_collection_subset.txt")
+dataset_b = ray.data.read_csv("example://dow_jones.csv")
+
+my_trainer = TorchTrainer(
+    train_loop_per_worker,
+    datasets={"a": dataset_a, "b": dataset_b},
+    dataset_config=ray.train.DataConfig(
+        datasets_to_split=["a"],
+    ),
+)
+# __custom_split_end__
+
+
+def augment_data(_):
+    pass
+
+
+# __materialized__
+# Load the data.
+train_ds = ray.data.read_parquet("example://iris.parquet")
+
+# Preprocess the data. Transformations that are made to the materialize call below
+# will only be run once.
+train_ds = train_ds.map_batches(normalize_length)
+
+# Materialize the dataset in object store memory.
+train_ds = train_ds.materialize()
+
+# Add per-epoch preprocessing. Transformations that you want to run per-epoch, such
+# as data augmentation, should go after the materialize call.
+train_ds = train_ds.map_batches(augment_data)
+# __materialized_end__
+
+# __options__
+from ray.train import DataConfig
+
+options = DataConfig.default_ingest_options()
+options.resource_limits.object_store_memory = 10e9
+
+my_trainer = TorchTrainer(
+    train_loop_per_worker,
+    dataset_config=ray.train.DataConfig(
+        execution_options=options,
+    ),
+)
+# __options_end__
+
+# __custom__
+# Note that this example class is doing the same thing as the basic DataConfig
+# impl included with Ray Train.
+from typing import Optional, Dict, List
+
+from ray.data import Dataset, DataIterator, NodeIdStr
+from ray.actor import ActorHandle
+
+
+class MyCustomDataConfig(DataConfig):
+    def configure(
+        self,
+        datasets: Dict[str, Dataset],
+        world_size: int,
+        worker_handles: Optional[List[ActorHandle]],
+        worker_node_ids: Optional[List[NodeIdStr]],
+        **kwargs,
+    ) -> List[Dict[str, DataIterator]]:
+        assert len(datasets) == 1, "This example only handles the simple case"
+
+        # Configure Ray Data for ingest.
+        ctx = ray.data.DataContext.get_current()
+        ctx.execution_options = DataConfig.default_ingest_options()
+
+        # Split the stream into shards.
+        iterator_shards = datasets["train"].streaming_split(
+            world_size, equal=True, locality_hints=worker_node_ids
+        )
+
+        # Return the assigned iterators for each worker.
+        return [{"train": it} for it in iterator_shards]
+
+
+my_trainer = TorchTrainer(
+    train_loop_per_worker,
+    datasets={"train": train_ds},
+    dataset_config=MyCustomDataConfig(),
+)
+my_trainer.fit()
+# __custom_end__
