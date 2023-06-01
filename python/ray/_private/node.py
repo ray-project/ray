@@ -456,7 +456,6 @@ class Node:
                 object_store_memory,
                 resources,
             ) = merge_resources(env_resources, self._ray_params.resources)
-
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,
