@@ -310,6 +310,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         description=(
             "Application name, the name should be unique within the serve instance"
         ),
+        min_length=1,
     )
     route_prefix: Optional[str] = Field(
         default="/",
@@ -567,13 +568,6 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
                 f"Found duplicate applications for {routes_str}. Please ensure each "
                 "application's route_prefix is unique."
             )
-        return v
-
-    @validator("applications")
-    def application_names_nonempty(cls, v):
-        for app in v:
-            if len(app.name) == 0:
-                raise ValueError("Application names must be nonempty.")
         return v
 
     @root_validator

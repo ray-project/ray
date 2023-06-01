@@ -539,6 +539,14 @@ class TestServeApplicationSchema:
         with pytest.raises(ValidationError):
             ServeApplicationSchema.parse_obj({"host": "127.0.0.1", "port": 8000})
 
+    def test_serve_application_empty_name(self):
+        """Application name cannot be empty."""
+
+        serve_application_schema = self.get_valid_serve_application_schema()
+        serve_application_schema["name"] = ""
+        with pytest.raises(ValidationError):
+            ServeApplicationSchema.parse_obj(serve_application_schema)
+
 
 class TestServeDeploySchema:
     def test_deploy_config_duplicate_apps(self):
