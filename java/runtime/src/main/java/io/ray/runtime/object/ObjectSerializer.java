@@ -14,7 +14,6 @@ import io.ray.runtime.actor.NativeActorHandle;
 import io.ray.runtime.generated.Common.ErrorType;
 import io.ray.runtime.serializer.RayExceptionSerializer;
 import io.ray.runtime.serializer.Serializer;
-import io.ray.runtime.util.ArrowUtil;
 import io.ray.runtime.util.IdUtil;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -22,7 +21,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.commons.lang3.tuple.Pair;
 
 /**
@@ -51,7 +49,6 @@ public class ObjectSerializer {
   private static final byte[] TASK_EXECUTION_EXCEPTION_META =
       String.valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
 
-  public static final byte[] OBJECT_METADATA_TYPE_ARROW = "ARROW".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_CROSS_LANGUAGE = "XLANG".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
@@ -83,9 +80,7 @@ public class ObjectSerializer {
 
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
-      if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
-        return ArrowUtil.deserialize(data);
-      } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0) {
+      if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0) {
         if (objectType == ByteBuffer.class) {
           return ByteBuffer.wrap(data);
         }
@@ -141,10 +136,6 @@ public class ObjectSerializer {
       // If the object is a byte array, skip serializing it and use a special metadata to
       // indicate it's raw binary. So that this object can also be read by Python.
       return new NativeRayObject((byte[]) object, OBJECT_METADATA_TYPE_RAW);
-    } else if (object instanceof VectorSchemaRoot) {
-      // serialize arrow data using IPC Stream format
-      byte[] bytes = ArrowUtil.serialize((VectorSchemaRoot) object);
-      return new NativeRayObject(bytes, OBJECT_METADATA_TYPE_ARROW);
     } else if (object instanceof ByteBuffer) {
       // Serialize ByteBuffer to raw bytes.
       ByteBuffer buffer = (ByteBuffer) object;
