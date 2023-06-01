@@ -251,73 +251,8 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
     def tearDown(self) -> None:
         ray.shutdown()
 
-    def test_save_load_state(self):
-        fws = ["torch", "tf2"]
-        # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
-        test_iterator = itertools.product(fws, scaling_modes)
-        batch = SampleBatch(FAKE_BATCH)
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
-            env = gym.make("CartPole-v1")
-
-            scaling_config = REMOTE_SCALING_CONFIGS.get(
-                scaling_mode
-            ) or LOCAL_SCALING_CONFIGS.get(scaling_mode)
-            initial_learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True
-            )
-
-            # checkpoint the initial learner state for later comparison
-            initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save_state(initial_learner_checkpoint_dir)
-            initial_learner_group_weights = initial_learner_group.get_weights()
-
-            # do a single update
-            initial_learner_group.update(batch.as_multi_agent(), reduce_fn=None)
-
-            # checkpoint the learner state after 1 update for later comparison
-            learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save_state(learner_after_1_update_checkpoint_dir)
-
-            # remove that learner, construct a new one, and load the state of the old
-            # learner into the new one
-            initial_learner_group.shutdown()
-            del initial_learner_group
-            new_learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True
-            )
-            new_learner_group.load_state(learner_after_1_update_checkpoint_dir)
-
-            # do another update
-            results_with_break = new_learner_group.update(
-                batch.as_multi_agent(), reduce_fn=None
-            )
-            weights_after_1_update_with_break = new_learner_group.get_weights()
-            new_learner_group.shutdown()
-            del new_learner_group
-
-            # construct a new learner group and load the initial state of the learner
-            learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True
-            )
-            learner_group.load_state(initial_learner_checkpoint_dir)
-            check(learner_group.get_weights(), initial_learner_group_weights)
-            learner_group.update(batch.as_multi_agent(), reduce_fn=None)
-            results_without_break = learner_group.update(
-                batch.as_multi_agent(), reduce_fn=None
-            )
-            weights_after_1_update_without_break = learner_group.get_weights()
-            learner_group.shutdown()
-            del learner_group
-
-            # compare the results of the two updates
-            check(results_with_break, results_without_break)
-            check(
-                weights_after_1_update_with_break, weights_after_1_update_without_break
-            )
-
     def test_load_module_state(self):
+        """Test that module state can be loaded from a checkpoint."""
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
@@ -446,6 +381,81 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                             },
                         )
             del learner_group
+
+
+class TestLearnerGroupSaveLoadState(unittest.TestCase):
+    def setUp(self) -> None:
+        ray.init()
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def test_save_load_state(self):
+        """Check that saving and loading learner group state works."""
+        fws = ["torch", "tf2"]
+        # this is expanded to more scaling modes on the release ci.
+        scaling_modes = ["multi-gpu-ddp", "local-cpu"]
+        test_iterator = itertools.product(fws, scaling_modes)
+        batch = SampleBatch(FAKE_BATCH)
+        for fw, scaling_mode in test_iterator:
+            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+            env = gym.make("CartPole-v1")
+
+            scaling_config = REMOTE_SCALING_CONFIGS.get(
+                scaling_mode
+            ) or LOCAL_SCALING_CONFIGS.get(scaling_mode)
+            initial_learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True
+            )
+
+            # checkpoint the initial learner state for later comparison
+            initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
+            initial_learner_group.save_state(initial_learner_checkpoint_dir)
+            initial_learner_group_weights = initial_learner_group.get_weights()
+
+            # do a single update
+            initial_learner_group.update(batch.as_multi_agent(), reduce_fn=None)
+
+            # checkpoint the learner state after 1 update for later comparison
+            learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
+            initial_learner_group.save_state(learner_after_1_update_checkpoint_dir)
+
+            # remove that learner, construct a new one, and load the state of the old
+            # learner into the new one
+            initial_learner_group.shutdown()
+            del initial_learner_group
+            new_learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True
+            )
+            new_learner_group.load_state(learner_after_1_update_checkpoint_dir)
+
+            # do another update
+            results_with_break = new_learner_group.update(
+                batch.as_multi_agent(), reduce_fn=None
+            )
+            weights_after_1_update_with_break = new_learner_group.get_weights()
+            new_learner_group.shutdown()
+            del new_learner_group
+
+            # construct a new learner group and load the initial state of the learner
+            learner_group = get_learner_group(
+                fw, env, scaling_config, eager_tracing=True
+            )
+            learner_group.load_state(initial_learner_checkpoint_dir)
+            check(learner_group.get_weights(), initial_learner_group_weights)
+            learner_group.update(batch.as_multi_agent(), reduce_fn=None)
+            results_without_break = learner_group.update(
+                batch.as_multi_agent(), reduce_fn=None
+            )
+            weights_after_1_update_without_break = learner_group.get_weights()
+            learner_group.shutdown()
+            del learner_group
+
+            # compare the results of the two updates
+            check(results_with_break, results_without_break)
+            check(
+                weights_after_1_update_with_break, weights_after_1_update_without_break
+            )
 
 
 class TestLearnerGroupAsyncUpdate(unittest.TestCase):

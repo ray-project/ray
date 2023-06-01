@@ -2021,6 +2021,15 @@ py_test(
 )
 
 py_test(
+    name = "TestLearnerGroupSaveLoadState",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupSaveLoadState"]
+)
+
+py_test(
     name = "test_learner_group_config",
     tags = ["team:rllib", "core"],
     size = "medium",
