@@ -262,7 +262,7 @@ class DataParallelTrainer(BaseTrainer):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
-        if isinstance(dataset_config, dict) or self._dataset_config:
+        if isinstance(dataset_config, dict) or self._dataset_config or preprocessor:
             # Warn about deprecated cases (will raise error in future).
             if isinstance(dataset_config, dict):
                 logger.warning(
