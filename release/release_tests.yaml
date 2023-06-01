@@ -2224,6 +2224,7 @@
   cluster:
     byod:
       type: cpu
+    cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -2247,6 +2248,7 @@
       smoke_test:
         frequency: manual
       cluster:
+        cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_apex
