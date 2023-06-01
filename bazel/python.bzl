@@ -28,7 +28,7 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
         data = ["//bazel:conftest.py"] + files + data,
         python_version = "PY3",
         srcs_version = "PY3",
-        tags = ["doctest"] + tags,
+        tags = ["doctest", "exclusive"] + tags,
         deps = ["//:ray_lib"] + deps,
         **kwargs
     )
