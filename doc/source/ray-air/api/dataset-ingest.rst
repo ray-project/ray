@@ -11,7 +11,7 @@ Ray Data Ingest into AIR Trainers
 
     air.session.get_dataset_shard
     ~data.DataIterator
-    ~air.DatasetConfig
+    ray.train.DataConfig
 
 Debugging Utilities
 -------------------

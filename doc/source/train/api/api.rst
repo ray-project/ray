@@ -23,6 +23,7 @@ Trainer Base Classes
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
+    ~train.data_config.DataConfig
     ~train.gbdt_trainer.GBDTTrainer
 
 ``BaseTrainer`` API
