@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Callable
 
@@ -24,19 +23,13 @@ class GradioIngress(ASGIAppReplicaWrapper):
     """User-facing class that wraps a Gradio App in a Serve Deployment."""
 
     def __init__(self, builder: Callable[[], Blocks]):
-        """
-        Takes a builder function which should take no arguments and return the Gradio
-        App (of type Interface or Blocks) to deploy as a Serve Deployment.
+        """Builds and wraps an ASGI app from the provided builder.
+
+        The builder should take no arguments and return a Gradio App (of type Interface
+        or Blocks).
         """
         io: Blocks = builder()
-
-        # ASGIAppReplicaWrapper's constructor is `async def` because it calls the ASGI
-        # LifespanOn event, but we want this constructor to be sync because it's a
-        # public API.
-        asyncio.run_coroutine_threadsafe(
-            super().__init__(routes.App.create_app(io)),
-            get_or_create_event_loop()
-        ).result()
+        super().__init__(routes.App.create_app(io))
 
 
 GradioServer = serve.deployment(GradioIngress)

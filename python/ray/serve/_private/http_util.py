@@ -329,7 +329,7 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
 class ASGIAppReplicaWrapper:
     """Provides a common wrapper for replicas running an ASGI app."""
 
-    async def __init__(self, app: ASGIApp):
+    def __init__(self, app: ASGIApp):
         self._asgi_app = app
 
         # Use uvicorn's lifespan handling code to properly deal with
@@ -339,6 +339,7 @@ class ASGIAppReplicaWrapper:
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
 
+    async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
         # Within this block we temporarily uplevel for cleaner logging
         from ray.serve._private.logging_utils import LoggingContext

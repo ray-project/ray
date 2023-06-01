@@ -213,13 +213,13 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
         class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
-            async def __init__(self, *args, **kwargs):
+            def __init__(self, *args, **kwargs):
                 # Call user-defined constructor.
                 cls.__init__(self, *args, **kwargs)
 
                 record_serve_tag("SERVE_FASTAPI_USED", "1")
                 install_serve_encoders_to_fastapi()
-                await ASGIAppReplicaWrapper.__init__(self, frozen_app)
+                ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
             async def __del__(self):
                 await ASGIAppReplicaWrapper.__del__(self)
