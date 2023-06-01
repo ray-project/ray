@@ -13,7 +13,7 @@ from ray._private.utils import (
     run_background_task,
 )
 from ray.actor import ActorHandle
-from ray._private import ray_constants
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.common import (
     DeploymentInfo,
@@ -922,8 +922,7 @@ class ServeControllerAvatar:
                 lifetime="detached" if detached else None,
                 max_restarts=-1,
                 max_task_retries=-1,
-                # Fate share the controller with GCS on the head node.
-                resources={ray_constants.HEAD_NODE_RESOURCE_NAME: 0.001},
+                resources={HEAD_NODE_RESOURCE_NAME: 0.001},
                 namespace="serve",
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(

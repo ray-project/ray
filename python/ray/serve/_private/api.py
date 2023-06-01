@@ -8,7 +8,7 @@ from pydantic.main import ModelMetaclass
 
 import ray
 from ray._private.usage import usage_lib
-from ray._private import ray_constants
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.config import HTTPOptions
@@ -155,8 +155,7 @@ def _start_controller(
         "lifetime": "detached" if detached else None,
         "max_restarts": -1,
         "max_task_retries": -1,
-        # Fate share the controller with GCS on the head node.
-        "resources": {ray_constants.HEAD_NODE_RESOURCE_NAME: 0.001},
+        "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
         "namespace": SERVE_NAMESPACE,
         "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
     }

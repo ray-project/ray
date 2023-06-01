@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     client_test_enabled,
 )
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -381,32 +382,24 @@ def test_head_node_resource(ray_start_cluster):
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
 
-    assert (
-        ray.cluster_resources()[ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME] == 1
-    )
+    assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
 
     # worker node
     cluster.add_node(num_cpus=1)
 
-    assert (
-        ray.cluster_resources()[ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME] == 1
-    )
+    assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
 
 
 def test_head_node_resource_ray_init(shutdown_only):
     ray.init()
 
-    assert (
-        ray.cluster_resources()[ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME] == 1
-    )
+    assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
 
 
 def test_head_node_resource_ray_start(call_ray_start):
     ray.init(address=call_ray_start)
 
-    assert (
-        ray.cluster_resources()[ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME] == 1
-    )
+    assert ray.cluster_resources()[HEAD_NODE_RESOURCE_NAME] == 1
 
 
 if __name__ == "__main__":

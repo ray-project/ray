@@ -485,7 +485,6 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
     def delete_miscellaneous_item(resources):
         del resources["memory"]
         del resources["object_store_memory"]
-        del resources[ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME]
         for key in list(resources.keys()):
             if key.startswith("node:"):
                 del resources[key]

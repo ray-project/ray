@@ -248,10 +248,11 @@ def test_ray_serve_basic(docker_cluster):
 import ray
 import requests
 from ray.serve.schema import ServeInstanceDetails
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 ray.init("auto")
 head_node_id = None
 for node in ray.nodes():
-    if ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME in node["Resources"]:
+    if HEAD_NODE_RESOURCE_NAME in node["Resources"]:
         head_node_id = node["NodeID"]
         break
 serve_details = ServeInstanceDetails(

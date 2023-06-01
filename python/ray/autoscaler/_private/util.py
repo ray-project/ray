@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 import ray._private.services as services
-from ray._private import ray_constants
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.docker import validate_docker_config
@@ -603,9 +602,6 @@ def parse_usage(usage: Usage, verbose: bool) -> List[str]:
     for resource, (used, total) in sorted(usage.items()):
         if "node:" in resource:
             continue  # Skip the auto-added per-node "node:<ip>" resource.
-
-        if resource == ray_constants.HEAD_NODE_RESOURCE_NAME:
-            continue  # Skip the auto-added head node resource.
 
         (_, pg_name, _) = parse_placement_group_resource_str(resource)
         if pg_name:
