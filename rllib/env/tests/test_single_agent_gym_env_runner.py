@@ -24,10 +24,7 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
 
         # Expect error if both num_timesteps and num_episodes given.
         self.assertRaises(
-            AssertionError,
-            lambda: env_runner.sample(
-                num_timesteps=10, num_episodes=10
-            )
+            AssertionError, lambda: env_runner.sample(num_timesteps=10, num_episodes=10)
         )
 
         # Sample 10 episodes (5 per env) 10 times.

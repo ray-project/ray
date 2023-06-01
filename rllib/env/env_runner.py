@@ -1,8 +1,6 @@
 import abc
-import platform
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict
 
-import ray
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import ExperimentalAPI
 

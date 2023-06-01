@@ -979,8 +979,8 @@ class WorkerSet:
     @Deprecated(
         old="_remote_workers",
         new="Use either the `foreach_worker()`, `foreach_worker_with_id()`, or "
-            "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
-            "tolerance.",
+        "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
+        "tolerance.",
         error=False,
     )
     def _remote_workers(self) -> List[ActorHandle]:
@@ -989,8 +989,8 @@ class WorkerSet:
     @Deprecated(
         old="remote_workers()",
         new="Use either the `foreach_worker()`, `foreach_worker_with_id()`, or "
-            "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
-            "tolerance.",
+        "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
+        "tolerance.",
         error=False,
     )
     def remote_workers(self) -> List[ActorHandle]:
