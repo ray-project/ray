@@ -36,6 +36,7 @@ from ray.serve._private.constants import (
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
     ASGIHTTPSender,
     ASGIHTTPQueueSender,
     RawASGIResponse,
@@ -173,9 +174,12 @@ def create_replica_wrapper(name: str):
                     _callable = deployment_def
                 else:
                     # This allows deployments to define an async __init__
-                    # method (required for FastAPI).
+                    # method (mostly used for testing).
                     _callable = deployment_def.__new__(deployment_def)
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
+
+                    if isinstance(_callable, ASGIAppReplicaWrapper):
+                        await _callable._run_asgi_lifespan_startup()
 
                 # Setting the context again to update the servable_object.
                 ray.serve.context._set_internal_replica_context(
@@ -538,7 +542,7 @@ class RayServeReplica:
 
         # Check if the callable is our ASGI wrapper (i.e., the user used
         # `@serve.ingress`).
-        callable_is_asgi_wrapper = hasattr(self.callable, "_is_serve_asgi_wrapper")
+        callable_is_asgi_wrapper = isinstance(self.callable, ASGIAppReplicaWrapper)
         if asgi_sender is not None and callable_is_asgi_wrapper:
             kwargs["asgi_sender"] = asgi_sender
 
