@@ -3120,9 +3120,10 @@ class AlgorithmConfig(_Config):
                 they will get auto-filled with these values obtrained from the policy
                 spec dict. Here we are relying on the policy's logic for infering these
                 values from other sources of information (e.g. environement)
-            single_agent_rl_module_spec: The single-agent RLModule spec to use for
-                constructing the multi-agent RLModule spec. If None, the default
-                RLModule spec for this algorithm will be used.
+            single_agent_rl_module_spec: The SingleAgentRLModuleSpec to use for
+                constructing a MultiAgentRLModuleSpec. If None, the already
+                configured spec (`self.rl_module_spec`) or the default ModuleSpec for
+                this algorithm (`self.get_default_rl_module_spec()`) will be used.
         """
         # TODO (Kourosh): When we replace policy entirely there will be no need for
         #  this function to map policy_dict to marl_module_specs anymore. The module

@@ -14,6 +14,7 @@ from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -87,10 +88,10 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             reps=(B, T, 1),
         )
         self.dreamer_model(
-            inputs=test_obs,
-            actions=test_actions.astype(np.float32),
-            is_first=np.ones((B, T), np.float32),
-            start_is_terminated_BxT=np.zeros((B * T,), np.float32),
+            inputs=_convert_to_tf(test_obs),
+            actions=_convert_to_tf(test_actions.astype(np.float32)),
+            is_first=_convert_to_tf(np.ones((B, T), np.float32)),
+            start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,), np.float32)),
             horizon_H=horizon_H,
             gamma=gamma,
         )
