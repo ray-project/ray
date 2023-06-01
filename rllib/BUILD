@@ -2014,12 +2014,11 @@ py_test(
     srcs = ["core/learner/tests/test_learner.py"]
 )
 
-# TODO (Kourosh): to be removed in favor of test_learner.py
 py_test(
-    name = "test_torch_learner",
+    name = "test_torch_learner_compile",
     tags = ["team:rllib", "core", "ray_data"],
     size = "medium",
-    srcs = ["core/learner/torch/tests/test_torch_learner.py"]
+    srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
 )
 
 py_test(
