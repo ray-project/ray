@@ -5,6 +5,15 @@ from ray_release.test import (
 
 
 class TestStateMachine:
+    """
+    State machine that computes the next state of a test based on the current state and
+    perform actions accordingly during the state transition. For example:
+    - passing -[two last results failed]-> failing: create github issue
+    - failing -[last result passed]-> passing: close github issue
+    - jailed -[latest result passed]-> passing: update the test's oncall
+    ...
+    """
+
     def __init__(self, test: Test) -> None:
         self.test = test
         self.test_results = test.get_test_results()
