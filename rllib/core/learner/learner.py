@@ -38,6 +38,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -124,6 +125,7 @@ class LearnerHyperparameters:
     learning_rate: LearningRateOrSchedule = None
     grad_clip: float = None
     grad_clip_by: str = None
+    seed: int = None
 
     # Maps ModuleIDs to LearnerHyperparameters that are to be used for that particular
     # module.
@@ -284,6 +286,12 @@ class Learner:
         learner_hyperparameters: Optional[LearnerHyperparameters] = None,
         framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
     ):
+        # We first set seeds
+        if learner_hyperparameters and learner_hyperparameters.seed is not None:
+            update_global_seed_if_necessary(
+                self.framework, learner_hyperparameters.seed
+            )
+
         if (module_spec is None) is (module is None):
             raise ValueError(
                 "Exactly one of `module_spec` or `module` must be provided to Learner!"
