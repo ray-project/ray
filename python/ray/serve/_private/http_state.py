@@ -79,7 +79,11 @@ class HTTPProxyState:
         PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD times. Also, when status is set to
         HEALTHY, we need to reset self._consecutive_health_check_failures to 0.
         """
-        if status == HTTPProxyStatus.UNHEALTHY and self._consecutive_health_check_failures < PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD:
+        if (
+            status == HTTPProxyStatus.UNHEALTHY
+            and self._consecutive_health_check_failures
+            < PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        ):
             self._consecutive_health_check_failures += 1
             logger.info(
                 f"HTTP proxy {self._actor_name} failed the health check "
@@ -94,7 +98,10 @@ class HTTPProxyState:
         self._status = status
         self.update_actor_details(status=self._status)
 
-        if self._consecutive_health_check_failures >= PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD:
+        if (
+            self._consecutive_health_check_failures
+            >= PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        ):
             logger.warning(
                 f"HTTP proxy {self._actor_name} failed the health check "
                 f"{self._consecutive_health_check_failures} times in a row, marking it "
@@ -146,7 +153,10 @@ class HTTPProxyState:
                         "Unexpected error occurred when checking readiness of HTTP "
                         f"Proxy on node {self._node_id}:\n{traceback.format_exc()}"
                     )
-            elif time.time() - self._last_health_check_time > DEFAULT_READY_CHECK_TIMEOUT_S:
+            elif (
+                time.time() - self._last_health_check_time
+                > DEFAULT_READY_CHECK_TIMEOUT_S
+            ):
                 # Ready check hasn't returned and the timeout is up, consider it failed.
                 self.set_status(HTTPProxyStatus.UNHEALTHY)
                 logger.warning(
@@ -171,7 +181,10 @@ class HTTPProxyState:
                         f"Health check for HTTP proxy {self._actor_name} failed: {e}"
                     )
                     self.set_status(HTTPProxyStatus.UNHEALTHY)
-            elif time.time() - self._last_health_check_time > DEFAULT_HEALTH_CHECK_TIMEOUT_S:
+            elif (
+                time.time() - self._last_health_check_time
+                > DEFAULT_HEALTH_CHECK_TIMEOUT_S
+            ):
                 # Health check hasn't returned and the timeout is up, consider it
                 # failed.
                 self._health_check_obj_ref = None
@@ -313,9 +326,7 @@ class HTTPState:
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=-1,
             max_task_retries=-1,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id, soft=False
-            ),
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
         ).remote(
             self._config.host,
             self._config.port,
