@@ -236,6 +236,7 @@ AUTO_INIT_APIS = {
     "kill",
     "put",
     "wait",
+    "get_runtime_context",
 }
 
 # Public APIs that should not automatically trigger ray.init().
@@ -252,7 +253,6 @@ NON_AUTO_INIT_APIS = {
     "client",
     "cluster_resources",
     "cpp_function",
-    "get_runtime_context",
     "init",
     "is_initialized",
     "java_actor_class",
