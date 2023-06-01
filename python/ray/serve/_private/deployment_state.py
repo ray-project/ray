@@ -521,6 +521,7 @@ class ActorReplicaWrapper:
 
         # Check whether the replica has been allocated.
         if not self._check_obj_ref_ready(self._allocated_obj_ref):
+            logger.info(f"{self.replica_tag} is not allocated_ready")
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         # Check whether relica initialization has completed.
@@ -528,6 +529,7 @@ class ActorReplicaWrapper:
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if not replica_ready:
+            logger.info(f"{self.replica_tag} is not init_ready")
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         else:
             try:
