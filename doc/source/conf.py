@@ -354,14 +354,6 @@ nb_render_priority = {
     ),
 }
 
-tag_mapping = {
-    # TODO: reestablish these tags for global gallery
-}
-
-# Create file with tag mappings for tags.js to use.
-with open("./_static/tag-mapping.json", "w") as f:
-    json.dump(tag_mapping, f)
-
 
 def setup(app):
     app.connect("html-page-context", update_context)

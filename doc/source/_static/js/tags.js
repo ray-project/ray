@@ -22,17 +22,14 @@ window.addEventListener('load', () => {
             "<div type=\"button\" id=\"cv\" class=\"tag btn btn-outline-primary\">Computer Vision</div>\n" +
             "<div type=\"button\" id=\"ts\" class=\"tag btn btn-outline-primary\">Time-series</div>\n" +
             "<div type=\"button\" id=\"nlp\" class=\"tag btn btn-outline-primary\">Natural Language Processing</div>\n" +
-            "<div type=\"button\" id=\"reco\" class=\"tag btn btn-outline-primary\">Recommendation systems</div>\n" +
             "<div type=\"button\" id=\"rl\" class=\"tag btn btn-outline-primary\">Reinforcement Learning</div>\n" +
             "<h6>ML Workloads</h6>\n" +
             "<div type=\"button\" id=\"data-processing\" class=\"tag btn btn-outline-primary\">Data Processing</div>\n" +
             "<div type=\"button\" id=\"training\" class=\"tag btn btn-outline-primary\">Model Training</div>\n" +
             "<div type=\"button\" id=\"tuning\" class=\"tag btn btn-outline-primary\">Hyperparameter Tuning</div>\n" +
-            "<div type=\"button\" id=\"batch-inference\" class=\"tag btn btn-outline-primary\">Batch Inference</div>\n" +
+            "<div type=\"button\" id=\"inference\" class=\"tag btn btn-outline-primary\">Batch Inference</div>\n" +
             "<div type=\"button\" id=\"serving\" class=\"tag btn btn-outline-primary\">Model Serving</div>\n" +
             "<h6>MLOps</h6>\n" +
-            "<div type=\"button\" id=\"data-validation\" class=\"tag btn btn-outline-primary\">Data Validation</div>\n" +
-            "<div type=\"button\" id=\"orchestration\" class=\"tag btn btn-outline-primary\">Orchestration</div>\n" +
             "<div type=\"button\" id=\"tracking\" class=\"tag btn btn-outline-primary\">Experiment Tracking</div>\n" +
             "<div type=\"button\" id=\"monitoring\" class=\"tag btn btn-outline-primary\">Monitoring</div>\n" +
             "<h6>ML Frameworks</h6>\n" +
