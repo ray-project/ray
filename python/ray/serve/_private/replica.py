@@ -333,18 +333,13 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             try:
                 await self.replica.reconfigure(deployment_config)
-                return await self.get_metadata()
+                return await self._get_metadata()
             except Exception:
                 raise RuntimeError(traceback.format_exc()) from None
 
-        async def get_metadata(
+        async def _get_metadata(
             self,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            if not self._init_finish_event.is_set():
-                raise RayServeException(
-                    "Failed to retrieve metadata information because the replica "
-                    f" {self._replica_tag} is not initilized"
-                )
             return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):

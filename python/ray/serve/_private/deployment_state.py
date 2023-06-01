@@ -493,7 +493,7 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+            self._ready_obj_ref = self._actor_handle.is_initialized.remote()
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """

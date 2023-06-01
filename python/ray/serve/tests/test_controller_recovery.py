@@ -47,7 +47,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
 
     replica_version_hash = None
     for replica in deployment_dict["app_recover_start_from_replica_actor_names"]:
-        ref = replica.actor_handle.get_metadata.remote()
+        ref = replica.actor_handle._get_metadata.remote()
         _, version = ray.get(ref)
         if replica_version_hash is None:
             replica_version_hash = hash(version)
