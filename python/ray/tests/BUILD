@@ -215,7 +215,7 @@ py_test_module_list(
   files = [
     "test_gcs_ha_e2e.py",
   ],
-  size = "medium",
+  size = "large",
   tags = ["exclusive", "ray_ha", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
