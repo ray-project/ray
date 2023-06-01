@@ -72,7 +72,7 @@ Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray
 The output of a program execution is below. As expected, the program takes around 4 seconds:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 4.0149290561676025
     results = [0, 1, 2, 3]
@@ -99,7 +99,7 @@ Now, let’s parallelize the above program with Ray. Some first-time users will 
 However, when executing the above program one gets:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 0.0003619194030761719
     results = [ObjectRef(df5a1a828c9685d3ffffffff0100000001000000), ObjectRef(cb230a572350ff44ffffffff0100000001000000), ObjectRef(7bbd90284b71e599ffffffff0100000001000000), ObjectRef(bd37d2621480fc7dffffffff0100000001000000)]
@@ -115,7 +115,7 @@ To get the actual results,  we need to use ray.get(), and here the first instinc
 By re-running the program after this change we get:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 4.018050909042358
     results =  [0, 1, 2, 3]
@@ -131,7 +131,7 @@ To enable parallelism, we need to call ``ray.get()`` after invoking all tasks. W
 By re-running the program after this change we now get:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 1.0064549446105957
     results =  [0, 1, 2, 3]
@@ -162,7 +162,7 @@ Let’s consider again the above examples, but this time we make the tasks much 
 By running this program we get:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 13.36544418334961
 
@@ -188,7 +188,7 @@ Let’s now parallelize this code using Ray, by making every invocation of ``tin
 The result of running this code is:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 27.46447515487671
 
@@ -218,7 +218,7 @@ One way to speed up this program is to make the remote tasks larger in order to 
 Now, if we run the above program we get:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 3.2539820671081543
 
@@ -238,7 +238,7 @@ This is approximately one fourth of the sequential execution, in line with our e
 Running the above program on a 2018 MacBook Pro notebook shows:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     per task overhead (ms) = 0.4739549160003662
 
@@ -270,7 +270,7 @@ However, there are cases when automatically calling ``ray.put()`` on a task invo
 This program outputs:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 1.0837509632110596
 
@@ -300,7 +300,7 @@ To avoid copying array ``a`` every time ``no_work()`` is invoked, one simple sol
 Running this program takes only:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 0.132796049118042
 
@@ -342,7 +342,7 @@ To illustrate this issue, consider the following example where we run four ``do_
 The output of the program shows that it takes close to 8 sec to run:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 7.82636022567749
     result =  6
@@ -376,7 +376,7 @@ Fortunately, Ray allows you to do exactly this by calling ``ray.wait()`` on a li
 This program now takes just a bit over 4.8sec, a significant improvement:
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     duration = 4.852453231811523
     result =  6
@@ -386,4 +386,3 @@ To aid the intuition, Figure 1 shows the execution timeline in both cases: when 
 .. figure:: /images/pipeline.png
 
     Figure 1: (a) Execution timeline when  using ray.get() to wait for all results from ``do_some_work()`` tasks before calling ``process_results()``. (b) Execution timeline when using ``ray.wait()`` to process results as soon as they become available.
-

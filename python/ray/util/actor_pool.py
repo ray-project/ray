@@ -141,7 +141,7 @@ class ActorPool:
                                               [1, 2, 3, 4])))
 
             .. testoutput::
-                :options: +SKIP
+                :options: +MOCK
 
                 [6, 8, 4, 2]
         """
@@ -332,7 +332,7 @@ class ActorPool:
                 print(pool.get_next_unordered())
 
             .. testoutput::
-                :options: +SKIP
+                :options: +MOCK
 
                 4
                 2

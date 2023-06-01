@@ -332,7 +332,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
                 print(ray.get(counter.get_counter.remote()))
 
         .. testoutput::
-            :options: +SKIP
+            :options: +MOCK
 
             0
             3

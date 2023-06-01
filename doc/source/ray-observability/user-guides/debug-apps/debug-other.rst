@@ -120,7 +120,7 @@ of Ray Tasks itself, e.g.
 This will error with message:
 
 .. testoutput::
-  :options: +SKIP
+  :options: +MOCK
 
     ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
     because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
