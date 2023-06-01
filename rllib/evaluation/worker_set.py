@@ -16,6 +16,7 @@ from typing import (
     Union,
 )
 
+import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.rllib.core.learner import LearnerGroup
@@ -121,16 +122,14 @@ class WorkerSet:
             deprecation_warning(
                 old="WorkerSet(policy_class=..)",
                 new="WorkerSet(default_policy_class=..)",
-                error=False,
+                error=True,
             )
-            default_policy_class = policy_class
         if trainer_config != DEPRECATED_VALUE:
             deprecation_warning(
                 old="WorkerSet(trainer_config=..)",
                 new="WorkerSet(config=..)",
-                error=False,
+                error=True,
             )
-            config = trainer_config
 
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
@@ -147,12 +146,14 @@ class WorkerSet:
             "num_cpus": self._remote_config.num_cpus_per_worker,
             "num_gpus": self._remote_config.num_gpus_per_worker,
             "resources": self._remote_config.custom_resources_per_worker,
-            "max_num_worker_restarts": config.max_num_worker_restarts,
+            "max_restarts": config.max_num_worker_restarts,
         }
 
         # See if we should use a custom RolloutWorker class for testing purpose.
-        worker_cls = RolloutWorker if config.worker_cls is None else config.worker_cls
-        self._cls = worker_cls.as_remote(**self._remote_args).remote
+        self.env_runner_cls = (
+            RolloutWorker if config.env_runner_cls is None else config.env_runner_cls
+        )
+        self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
         self._ignore_worker_failures = config["ignore_worker_failures"]
@@ -260,7 +261,7 @@ class WorkerSet:
         # Create a local worker, if needed.
         if local_worker:
             self._local_worker = self._make_worker(
-                cls=RolloutWorker,
+                cls=self.env_runner_cls,
                 env_creator=self._env_creator,
                 validate_env=validate_env,
                 worker_index=0,
@@ -276,7 +277,7 @@ class WorkerSet:
             A dict mapping from policy ids to spaces.
         """
         # Get ID of the first remote worker.
-        worker_id = next(iter(self.__worker_manager.actors().keys()))
+        worker_id = self.__worker_manager.actor_ids()[0]
 
         # Try to figure out spaces from the first remote worker.
         remote_spaces = self.foreach_worker(
@@ -320,35 +321,6 @@ class WorkerSet:
     def local_worker(self) -> RolloutWorker:
         """Returns the local rollout worker."""
         return self._local_worker
-
-    @property
-    @Deprecated(
-        old="_remote_workers",
-        help=(
-            "Accessing remote workers directly through "
-            "_remote_workers is strongly discouraged. "
-            "Please try to use one of the foreach accessors "
-            "that is fault tolerant. "
-        ),
-        error=False,
-    )
-    def _remote_workers(self) -> List[ActorHandle]:
-        """Returns the list of remote rollout workers."""
-        return list(self.__worker_manager.actors().values())
-
-    @Deprecated(
-        old="remote_workers()",
-        help=(
-            "Accessing the list of remote workers directly through "
-            "remote_workers() is strongly discouraged. "
-            "Please try to use one of the foreach accessors "
-            "that is fault tolerant. "
-        ),
-        error=False,
-    )
-    def remote_workers(self) -> List[ActorHandle]:
-        """Returns the list of remote rollout workers."""
-        return list(self.__worker_manager.actors().values())
 
     @DeveloperAPI
     def healthy_worker_ids(self) -> List[int]:
@@ -755,7 +727,7 @@ class WorkerSet:
             local_result = [func(0, self.local_worker())]
 
         if not remote_worker_ids:
-            remote_worker_ids = list(self.__worker_manager.actors().keys())
+            remote_worker_ids = self.__worker_manager.actor_ids()
 
         funcs = [functools.partial(func, i) for i in remote_worker_ids]
 
@@ -1003,6 +975,23 @@ class WorkerSet:
     def foreach_trainable_policy(self, func):
         pass
 
-    @Deprecated(new="WorkerSet.is_policy_to_train([pid], [batch]?)", error=True)
-    def trainable_policies(self):
-        pass
+    @property
+    @Deprecated(
+        old="_remote_workers",
+        new="Use either the `foreach_worker()`, `foreach_worker_with_id()`, or "
+        "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
+        "tolerance.",
+        error=False,
+    )
+    def _remote_workers(self) -> List[ActorHandle]:
+        return list(self.__worker_manager.actors().values())
+
+    @Deprecated(
+        old="remote_workers()",
+        new="Use either the `foreach_worker()`, `foreach_worker_with_id()`, or "
+        "`foreach_worker_async()` APIs of `WorkerSet`, which all handle fault "
+        "tolerance.",
+        error=False,
+    )
+    def remote_workers(self) -> List[ActorHandle]:
+        return list(self.__worker_manager.actors().values())
