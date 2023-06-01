@@ -167,7 +167,7 @@
             How to fine-tune a DreamBooth text-to-image model with your own images.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing
+        :class-item: gallery-item data-processing inference
 
         .. button-ref:: /ray-air/examples/opt_deepspeed_batch_inference
 
@@ -342,7 +342,7 @@
             GPT-J-6B Serving with Ray AIR
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item
+        :class-item: gallery-item inference
 
         .. button-link:: https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker
 
@@ -356,28 +356,28 @@
             Streaming distributed execution across CPUs and GPUs
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item llm nlp data-processing
+        :class-item: gallery-item llm nlp data-processing inference
 
         .. button-link:: https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding
 
             Using Ray Data to parallelize LangChain inference
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item data-processing
+        :class-item: gallery-item data-processing inference
 
         .. button-ref:: /data/batch_inference
 
             Batch Prediction using Ray Data
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing
+        :class-item: gallery-item data-processing inference
 
         .. button-ref:: /data/examples/nyc_taxi_basic_processing
 
             Batch Inference on NYC taxi data using Ray Data
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing
+        :class-item: gallery-item data-processing inference
 
         .. button-ref:: /data/examples/ocr_example
 
