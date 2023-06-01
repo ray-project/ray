@@ -17,6 +17,9 @@ class RayTestDBReporter(Reporter):
     """
 
     def report_result(self, test: Test, result: Result) -> None:
+        logger.info(
+            f"Updating test object {test.get_name()} with result {result.status}"
+        )
         test.persist_result_to_s3(result)
 
         # Update the test object with the latest test state
