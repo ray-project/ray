@@ -1,13 +1,13 @@
 from typing import List, Optional
-from ray.data._internal.progress_bar import ProgressBar
 
-from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
-    RefBundle,
     PhysicalOperator,
+    RefBundle,
     TaskContext,
 )
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.stats import StatsDict
 
 
 class AllToAllOperator(PhysicalOperator):
