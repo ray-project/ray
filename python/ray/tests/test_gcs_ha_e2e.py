@@ -1,7 +1,7 @@
 import pytest
 import sys
 import threading
-from time import sleep, time
+from time import sleep
 from ray._private.test_utils import wait_for_condition
 from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
@@ -77,10 +77,9 @@ redis = container(
 
 head_node_vol = volume()
 worker_node_vol = volume()
-head_node_container_name = "gcs" + str(int(time()))
 head_node = container(
     image="ray_ci:v1",
-    name=head_node_container_name,
+    name="gcs",
     network="{gcs_network.name}",
     command=[
         "ray",
@@ -112,7 +111,7 @@ worker_node = container(
         "ray",
         "start",
         "--address",
-        f"{head_node_container_name}:6379",
+        "gcs:6379",
         "--block",
         # Fix the port of raylet to make sure raylet restarts at the same
         # ip:port is treated as a different raylet.
@@ -194,7 +193,7 @@ assert len(pids) == {num_replicas}
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-def test_ray_server_basic(docker_cluster):
+def test_ray_serve_basic(docker_cluster):
     # This test covers the basic cases for gcs ha (serve ha)
     # - It starts the serve on worker nodes.
     # - Check the deployment is OK
@@ -244,6 +243,24 @@ def test_ray_server_basic(docker_cluster):
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
     assert output.exit_code == 0
 
+    # Make sure the serve controller still runs on the head node after restart
+    check_controller_head_node_script = """
+import ray
+import requests
+from ray.serve.schema import ServeInstanceDetails
+ray.init("auto")
+head_node_id = None
+for node in ray.nodes():
+    if ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME in node["Resources"]:
+        head_node_id = node["NodeID"]
+        break
+serve_details = ServeInstanceDetails(
+    **requests.get("http://localhost:52365/api/serve/applications/").json())
+assert serve_details.controller_info.node_id == head_node_id
+"""
+    output = worker.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
+    assert output.exit_code == 0
+
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_ray_nodes_liveness(docker_cluster):
@@ -275,55 +292,6 @@ print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
     wait_for_condition(check_alive, timeout=10, n=3)
     # Later, GCS detect the old raylet dead and the alive nodes will be 2
     wait_for_condition(check_alive, timeout=30, n=2)
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-def test_serve_controller_head_node(docker_cluster):
-    """Make sure the serve controller always runs on the head node
-    even when the head node restarts
-    """
-
-    get_nodes_script = """
-import ray
-ray.init("auto")
-print(sum([1 if n["Alive"] else 0 for n in ray.nodes()]))
-"""
-    head, worker = docker_cluster
-
-    def check_alive(n):
-        output = worker.exec_run(cmd=f"python -c '{get_nodes_script}'")
-        assert output.exit_code == 0
-        text = output.output.decode().strip().split("\n")[-1]
-        print("Alive nodes: ", text)
-        return n == int(text)
-
-    wait_for_condition(check_alive, n=2)
-    # Run serve application
-    output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
-    assert output.exit_code == 0
-
-    head.kill()
-    sleep(2)
-    head.restart()
-    sleep(2)
-    wait_for_condition(check_alive, timeout=30, n=2)
-
-    check_controller_head_node_script = """
-import ray
-import requests
-from ray.serve.schema import ServeInstanceDetails
-ray.init("auto")
-head_node_id = None
-for node in ray.nodes():
-    if ray._private.ray_constants.HEAD_NODE_RESOURCE_NAME in node["Resources"]:
-        head_node_id = node["NodeID"]
-        break
-serve_details = ServeInstanceDetails(
-    **requests.get("http://localhost:52365/api/serve/applications/").json())
-assert serve_details.controller_info.node_id == head_node_id
-"""
-    output = worker.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
-    assert output.exit_code == 0
 
 
 if __name__ == "__main__":
