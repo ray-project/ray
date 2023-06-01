@@ -78,6 +78,7 @@ class TorchLearner(Learner):
         if self._framework_hyperparameters.torch_compile:
             if self._framework_hyperparameters.what_to_compile == "complete_update":
                 self._torch_compile_update = True
+                self._compiled_update_initialized = False
             else:
                 self._torch_compile_rlm = True
 
@@ -245,6 +246,7 @@ class TorchLearner(Learner):
             module.compile(self._framework_hyperparameters.torch_compile_cfg)
         elif self._torch_compile_update:
             torch._dynamo.reset()
+            self._compiled_update_initialized = False
             torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
@@ -272,6 +274,7 @@ class TorchLearner(Learner):
 
         if self._torch_compile_update:
             torch._dynamo.reset()
+            self._compiled_update_initialized = False
             torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
@@ -317,6 +320,7 @@ class TorchLearner(Learner):
 
         if self._torch_compile_update:
             torch._dynamo.reset()
+            self._compiled_update_initialized = False
             torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
@@ -343,7 +347,17 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
-        return self._possibly_compiled_update(batch)
+        # The first time we call _update after building the learner or adding/removing models, 
+        # we update with the uncompiled update method.
+        # This makes it so that any variables that may be created during the first update
+        # step are already there when compiling.
+        # More specifically, this avoids errors that occur around using defaultdicts with
+        # torch.compile().
+        if self._torch_compile_update and not self._compiled_update_initialized:
+            self._compiled_update_initialized = True
+            return self._uncompiled_update(batch)
+        else:
+            return self._possibly_compiled_update(batch)
 
     @OverrideToImplementCustomLogic
     def _make_modules_ddp_if_necessary(self) -> None:
