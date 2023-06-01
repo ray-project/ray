@@ -4,27 +4,24 @@ import random
 import time
 from unittest.mock import patch
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
-from ray.data.block import BlockMetadata
 
 import ray
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.equalize import (
-    _equalize,
-)
+from ray.data._internal.equalize import _equalize
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats
 from ray.data._internal.split import (
     _drop_empty_block_split,
-    _generate_valid_indices,
-    _generate_per_block_split_indices,
     _generate_global_split_results,
-    _split_single_block,
+    _generate_per_block_split_indices,
+    _generate_valid_indices,
     _split_at_indices,
+    _split_single_block,
 )
-from ray.data.block import BlockAccessor
+from ray.data._internal.stats import DatasetStats
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values

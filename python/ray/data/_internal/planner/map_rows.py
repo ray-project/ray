@@ -4,7 +4,7 @@ from typing import Callable, Iterator
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _truncated_repr
-from ray.data.block import Block, BlockAccessor, UserDefinedFunction, StrictModeError
+from ray.data.block import Block, BlockAccessor, StrictModeError, UserDefinedFunction
 from ray.data.context import DataContext
 
 

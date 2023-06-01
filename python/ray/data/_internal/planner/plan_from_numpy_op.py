@@ -1,10 +1,7 @@
 from typing import List
 
 import ray
-from ray.data._internal.execution.interfaces import (
-    PhysicalOperator,
-    RefBundle,
-)
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
 
