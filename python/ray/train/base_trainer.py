@@ -197,6 +197,14 @@ class BaseTrainer(abc.ABC):
 
         air_usage.tag_air_trainer(self)
 
+        if preprocessor:
+            logger.warning(
+                "The `preprocessor` arg to Trainer is deprecated. Apply "
+                "preprocessor transformations ahead of time by calling "
+                "`preprocessor.transform(ds)`. Support for the preprocessor "
+                "arg will be dropped in a future release."
+            )
+
     @PublicAPI(stability="alpha")
     @classmethod
     def restore(

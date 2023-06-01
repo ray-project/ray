@@ -262,20 +262,13 @@ class DataParallelTrainer(BaseTrainer):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
 
-        if isinstance(dataset_config, dict) or self._dataset_config or preprocessor:
+        if isinstance(dataset_config, dict) or self._dataset_config:
             # Warn about deprecated cases (will raise error in future).
             if isinstance(dataset_config, dict):
                 logger.warning(
                     "The dict form of `dataset_config` is deprecated. Use the "
                     "DataConfig class instead. Support for this will be dropped "
                     "in a future release."
-                )
-            elif preprocessor:
-                logger.warning(
-                    "The `preprocessor` arg to Trainer is deprecated. Apply "
-                    "preprocessor transformations ahead of time by calling "
-                    "`preprocessor.transform(ds)`. Support for the preprocessor "
-                    "arg will be dropped in a future release."
                 )
             # If using the new API, hard-disallow deprecated features.
             if isinstance(dataset_config, DataConfig):
@@ -585,7 +578,7 @@ class DataParallelTrainer(BaseTrainer):
             return ""
 
     def _data_config_repr_html_(self) -> str:
-        # TODO
+        # TODO make this rendering nicer.
         content = [str(self._data_config)]
         return Template("rendered_html_common.html.j2").render(content=content)
 
