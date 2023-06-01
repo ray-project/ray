@@ -400,6 +400,10 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
     c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
 
+cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+    unordered_map[c_string, c_string] PythonGetNodeLabels(
+        const CGcsNodeInfo& node_info)
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":
         RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",

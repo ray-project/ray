@@ -234,6 +234,9 @@ class RAY_EXPORT PythonGcsClient {
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info);
 
+std::unordered_map<std::string, std::string> PythonGetNodeLabels(
+    const rpc::GcsNodeInfo &node_info);
+
 }  // namespace gcs
 
 }  // namespace ray

@@ -110,6 +110,8 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
+  // The key-value labels of this node.
+  absl::flat_hash_map<std::string, std::string> labels;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,

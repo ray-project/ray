@@ -97,6 +97,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
   // Read from env
   auto instance_id = std::getenv(kNodeCloudInstanceIdEnv);
   self_node_info_.set_instance_id(instance_id ? instance_id : "");
+  self_node_info_.mutable_labels()->insert(node_manager_config.labels.begin(),
+                                           node_manager_config.labels.end());
 }
 
 Raylet::~Raylet() {}
