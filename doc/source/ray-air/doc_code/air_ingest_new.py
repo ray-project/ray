@@ -13,6 +13,10 @@ from typing import Dict
 # Load the data.
 train_ds = ray.data.read_parquet("example://iris.parquet")
 
+# Randomize the block order each epoch.
+train_ds = train_ds.randomize_block_order()
+
+
 # Define a preprocessing function.
 def normalize_length(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     new_col = batch["sepal.length"] / np.max(batch["sepal.length"])
@@ -88,6 +92,7 @@ from ray.train import DataConfig
 
 options = DataConfig.default_ingest_options()
 options.resource_limits.object_store_memory = 10e9
+
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
