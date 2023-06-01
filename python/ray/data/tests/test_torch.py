@@ -8,15 +8,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-def maybe_pipeline(ds, enabled):
-    if enabled:
-        return ds.window(blocks_per_window=1)
-    else:
-        return ds
-
-
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_to_torch(ray_start_regular_shared, pipelined):
+def test_to_torch(ray_start_regular_shared):
     import torch
 
     df1 = pd.DataFrame(
@@ -28,10 +20,9 @@ def test_to_torch(ray_start_regular_shared, pipelined):
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3])
     ds = ray.data.from_pandas([df1, df2, df3])
-    ds = maybe_pipeline(ds, pipelined)
     torchd = ds.to_torch(label_column="label", batch_size=3)
 
-    num_epochs = 1 if pipelined else 2
+    num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
         for batch in iter(torchd):
@@ -141,8 +132,7 @@ def test_to_torch_feature_columns(
     np.testing.assert_array_equal(df.values, combined_iterations)
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_tensors_in_tables_to_torch(ray_start_regular_shared, pipelined):
+def test_tensors_in_tables_to_torch(ray_start_regular_shared):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -161,12 +151,11 @@ def test_tensors_in_tables_to_torch(ray_start_regular_shared, pipelined):
     )
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
-    ds = maybe_pipeline(ds, pipelined)
     torchd = ds.to_torch(
         label_column="label", batch_size=2, unsqueeze_label_tensor=False
     )
 
-    num_epochs = 1 if pipelined else 2
+    num_epochs = 2
     for _ in range(num_epochs):
         features, labels = [], []
         for batch in iter(torchd):
@@ -178,8 +167,7 @@ def test_tensors_in_tables_to_torch(ray_start_regular_shared, pipelined):
         np.testing.assert_array_equal(df["label"].to_numpy(), labels)
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared, pipelined):
+def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -202,7 +190,6 @@ def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared, pipelined):
     )
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
-    ds = maybe_pipeline(ds, pipelined)
     torchd = ds.to_torch(
         label_column="label",
         feature_columns=[["one"], ["two"]],
@@ -211,7 +198,7 @@ def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared, pipelined):
         unsqueeze_feature_tensors=False,
     )
 
-    num_epochs = 1 if pipelined else 2
+    num_epochs = 2
     for _ in range(num_epochs):
         col1, col2, labels = [], [], []
         for batch in iter(torchd):
@@ -230,10 +217,7 @@ def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared, pipelined):
         "Waiting for Torch to support unsqueezing and concatenating nested tensors."
     )
 )
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_tensors_in_tables_to_torch_variable_shaped(
-    ray_start_regular_shared, pipelined
-):
+def test_tensors_in_tables_to_torch_variable_shaped(ray_start_regular_shared):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs1 = [
@@ -261,12 +245,11 @@ def test_tensors_in_tables_to_torch_variable_shaped(
     )
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
-    ds = maybe_pipeline(ds, pipelined)
     torchd = ds.to_torch(
         label_column="label", batch_size=2, unsqueeze_label_tensor=False
     )
 
-    num_epochs = 1 if pipelined else 2
+    num_epochs = 2
     for _ in range(num_epochs):
         features, labels = [], []
         for batch in iter(torchd):
@@ -278,8 +261,7 @@ def test_tensors_in_tables_to_torch_variable_shaped(
         np.testing.assert_array_equal(df["label"].to_numpy(), labels)
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_iter_torch_batches(ray_start_regular_shared, pipelined):
+def test_iter_torch_batches(ray_start_regular_shared):
     import torch
 
     df1 = pd.DataFrame(
@@ -291,9 +273,8 @@ def test_iter_torch_batches(ray_start_regular_shared, pipelined):
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3])
     ds = ray.data.from_pandas([df1, df2, df3])
-    ds = maybe_pipeline(ds, pipelined)
 
-    num_epochs = 1 if pipelined else 2
+    num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
         for batch in ds.iter_torch_batches(batch_size=3):
@@ -307,15 +288,13 @@ def test_iter_torch_batches(ray_start_regular_shared, pipelined):
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_iter_torch_batches_tensor_ds(ray_start_regular_shared, pipelined):
+def test_iter_torch_batches_tensor_ds(ray_start_regular_shared):
     arr1 = np.arange(12).reshape((3, 2, 2))
     arr2 = np.arange(12, 24).reshape((3, 2, 2))
     arr = np.concatenate((arr1, arr2))
     ds = ray.data.from_numpy([arr1, arr2])
-    ds = maybe_pipeline(ds, pipelined)
 
-    num_epochs = 1 if pipelined else 2
+    num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
         for batch in ds.iter_torch_batches(batch_size=2):
