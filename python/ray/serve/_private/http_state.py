@@ -144,7 +144,9 @@ class HTTPProxyState:
         if self._shutting_down:
             return
 
-        print(f"update is called, status is: {self._status}, failure count: {self._consecutive_health_check_failures}")
+        print(
+            f"update is called, status is: {self._status}, failure count: {self._consecutive_health_check_failures}"
+        )
         if self._status == HTTPProxyStatus.STARTING:
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
             if finished:

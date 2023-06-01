@@ -52,7 +52,10 @@ class MockHTTPProxyActor:
         pass
 
 
-def _create_http_proxy_state(proxy_actor_class: Any = MockHTTPProxyActor, status: HTTPProxyStatus = HTTPProxyStatus.STARTING) -> HTTPProxyState:
+def _create_http_proxy_state(
+    proxy_actor_class: Any = MockHTTPProxyActor,
+    status: HTTPProxyStatus = HTTPProxyStatus.STARTING,
+) -> HTTPProxyState:
     proxy = proxy_actor_class.options(lifetime="detached").remote()
     state = HTTPProxyState(proxy, "alice", "mock_node_id", "mock_node_ip")
     state.set_status(status=status)
@@ -213,7 +216,9 @@ def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
     with a STARTING status. Also, the unhealthy proxy state should be showdown.
     """
     state = _make_http_state(HTTPOptions(location=DeploymentMode.HeadOnly))
-    state._proxy_states[HEAD_NODE_ID] = _create_http_proxy_state(status=HTTPProxyStatus.UNHEALTHY)
+    state._proxy_states[HEAD_NODE_ID] = _create_http_proxy_state(
+        status=HTTPProxyStatus.UNHEALTHY
+    )
 
     # Ensure before the update method is called, the status of the proxy is UNHEALTHY.
     assert state._proxy_states[HEAD_NODE_ID].status == HTTPProxyStatus.UNHEALTHY
@@ -277,10 +282,13 @@ def test_http_proxy_state_update_starting_ready_successful():
 
 
 def test_http_proxy_state_update_starting_ready_exception_once():
-    """Test calling update method on HTTPProxyState when the proxy state is
-
-    """
-    mock_ready = Mock(side_effect=[KeyError("bar"), json.dumps(["mock_worker_id", "mock_log_file_path"])])
+    """Test calling update method on HTTPProxyState when the proxy state is"""
+    mock_ready = Mock(
+        side_effect=[
+            KeyError("bar"),
+            json.dumps(["mock_worker_id", "mock_log_file_path"]),
+        ]
+    )
     proxy_state = _create_http_proxy_state()
     proxy_state._ready_obj_ref = mock_ready
 
@@ -301,23 +309,19 @@ def test_http_proxy_state_update_starting_ready_exception_once():
 
 
 def test_http_proxy_state_update_starting_ready_exception_many_times():
-    """Test calling update method on HTTPProxyState when the proxy state is
-
-    """
+    """Test calling update method on HTTPProxyState when the proxy state is"""
     pass
 
 
 def test_http_proxy_state_update_starting_ready_timeout_once():
-    """Test calling update method on HTTPProxyState when the proxy state is
-
-    """
+    """Test calling update method on HTTPProxyState when the proxy state is"""
     pass
+
 
 def test_http_proxy_state_update_starting_ready_timeout_many_times():
-    """Test calling update method on HTTPProxyState when the proxy state is
-
-    """
+    """Test calling update method on HTTPProxyState when the proxy state is"""
     pass
+
 
 # TODO: fill more test cases
 
