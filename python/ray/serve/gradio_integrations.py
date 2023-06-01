@@ -1,9 +1,7 @@
-import asyncio
 import logging
 from typing import Callable
 
 from ray.util.annotations import PublicAPI
-from ray._private.utils import get_or_create_event_loop
 
 from ray import serve
 from ray.serve._private.http_util import (
@@ -30,13 +28,7 @@ class GradioIngress(ASGIAppReplicaWrapper):
         or Blocks).
         """
         io: Blocks = builder()
-
-        # ASGIAppReplicaWrapper's constructor is `async def` because it calls the ASGI
-        # LifespanOn event, but we want this constructor to be sync because it's a
-        # public API.
-        asyncio.run_coroutine_threadsafe(
-            super().__init__(routes.App.create_app(io)), get_or_create_event_loop()
-        ).result()
+        super().__init__(routes.App.create_app(io))
 
 
 GradioServer = serve.deployment(GradioIngress)
