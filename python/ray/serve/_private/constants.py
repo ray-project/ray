@@ -140,6 +140,9 @@ SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
 # still replicas in the RECOVERING state.
 RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
+# Minimum duration to wait until broadcasting model IDs.
+PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 1.0
+
 
 class ServeHandleType(str, Enum):
     SYNC = "SYNC"
@@ -159,4 +162,38 @@ SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY = "SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY"
 MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
     "config files."
+)
+
+# Jsonify the log messages
+RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
+# Logging format attributes
+SERVE_LOG_REQUEST_ID = "request_id"
+SERVE_LOG_ROUTE = "route"
+SERVE_LOG_APPLICATION = "application"
+SERVE_LOG_DEPLOYMENT = "deployment"
+SERVE_LOG_REPLICA = "replica"
+SERVE_LOG_COMPONENT = "component_name"
+SERVE_LOG_COMPONENT_ID = "component_id"
+SERVE_LOG_MESSAGE = "message"
+# This is a reserved for python logging module attribute, it should not be changed.
+SERVE_LOG_LEVEL_NAME = "levelname"
+SERVE_LOG_TIME = "asctime"
+
+# Logging format with record key to format string dict
+SERVE_LOG_RECORD_FORMAT = {
+    SERVE_LOG_REQUEST_ID: "%(request_id)s",
+    SERVE_LOG_ROUTE: "%(route)s",
+    SERVE_LOG_APPLICATION: "%(application)s",
+    SERVE_LOG_MESSAGE: "%(filename)s:%(lineno)d - %(message)s",
+    SERVE_LOG_LEVEL_NAME: "%(levelname)s",
+    SERVE_LOG_TIME: "%(asctime)s",
+}
+
+# Serve HTTP request header key for routing requests.
+SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
+
+# Feature flag to enable StreamingResponse support.
+# When turned on, *all* HTTP responses will use Ray streaming object refs.
+RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
+    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
 )

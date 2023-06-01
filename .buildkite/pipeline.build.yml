@@ -14,7 +14,6 @@
   commands:
     # Build the wheels and jars
     - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
-    - bash ./java/build-jar-multiplatform.sh linux
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -492,6 +491,17 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
 
+- label: ":book: Doctest (CPU)"
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
+    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/install-horovod.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=doctest,-gpu
+      python/ray/... doc/...
+
 - label: ":python: Ray on Spark Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
@@ -578,7 +588,8 @@
     # Horovod needs to be installed separately (needed for API ref imports)
     - ./ci/env/install-horovod.sh
     # See https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
-    - pip install mosaicml==0.12.1 --ignore-installed
+    # Pin urllib to avoid downstream ssl incompatibility issues. This matches requirements-doc.txt.
+    - pip install "mosaicml==0.12.1" "urllib3<1.27" --ignore-installed
     - ./ci/ci.sh build
 
 - label: ":octopus: Tune multinode tests"

@@ -2,12 +2,12 @@ import copy
 import logging
 import math
 import os
+import sys
 from typing import (
     Any,
     Callable,
     Container,
     Dict,
-    List,
     Mapping,
     Optional,
     Tuple,
@@ -16,6 +16,8 @@ from typing import (
     Union,
 )
 
+from packaging import version
+
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHyperparameters
@@ -23,15 +25,16 @@ from ray.rllib.core.learner.learner_group_config import (
     LearnerGroupConfig,
     ModuleSpec,
 )
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
+from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
-from ray.rllib.env.wrappers.atari_wrappers import is_atari
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
@@ -63,21 +66,21 @@ from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     EnvConfigDict,
     EnvType,
+    LearningRateOrSchedule,
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
     SampleBatchType,
 )
-from ray.tune.tune import _Config
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result import TRIAL_INFO
+from ray.tune.tune import _Config
 from ray.util import log_once
 
 gym, old_gym = try_import_gymnasium_and_gym()
 Space = gym.Space
-
 
 """TODO(jungong, sven): in "offline_data" we can potentially unify all input types
 under input and input_config keys. E.g.
@@ -278,6 +281,17 @@ class AlgorithmConfig(_Config):
             "intra_op_parallelism_threads": 8,
             "inter_op_parallelism_threads": 8,
         }
+        # Torch compile settings
+        self.torch_compile_learner = False
+        self.torch_compile_learner_dynamo_backend = (
+            "aot_eager" if sys.platform == "darwin" else "inductor"
+        )
+        self.torch_compile_learner_dynamo_mode = "reduce-overhead"
+        self.torch_compile_worker = False
+        self.torch_compile_worker_dynamo_backend = (
+            "aot_eager" if sys.platform == "darwin" else "inductor"
+        )
+        self.torch_compile_worker_dynamo_mode = "reduce-overhead"
 
         # `self.environment()`
         self.env = None
@@ -317,7 +331,6 @@ class AlgorithmConfig(_Config):
         # `self.training()`
         self.gamma = 0.99
         self.lr = 0.001
-        self.lr_schedule = None
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
         self.train_batch_size = 32
@@ -338,6 +351,7 @@ class AlgorithmConfig(_Config):
 
         # `self.multi_agent()`
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
+        self.algorithm_config_overrides_per_module = {}
         self.policy_map_capacity = 100
         self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
@@ -773,6 +787,15 @@ class AlgorithmConfig(_Config):
         else:
             _torch, _ = try_import_torch()
 
+        # Check if torch framework supports torch.compile.
+        if (
+            _torch is not None
+            and self.framework_str == "torch"
+            and version.parse(_torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
+            and (self.torch_compile_learner or self.torch_compile_worker)
+        ):
+            raise ValueError("torch.compile is only supported from torch 2.0.0")
+
         self._check_if_correct_nn_framework_installed(_tf1, _tf, _torch)
         self._resolve_tf_settings(_tf1, _tfv)
 
@@ -864,6 +887,20 @@ class AlgorithmConfig(_Config):
                 "via `config.training(_enable_learner_api=True)` (or set both to "
                 "False)."
             )
+        # TODO @Avnishn: This is a short-term work around due to
+        # https://github.com/ray-project/ray/issues/35409
+        # Remove this once we are able to specify placement group bundle index in RLlib
+        if (
+            self.num_cpus_per_learner_worker > 1
+            and self.num_gpus_per_learner_worker > 0
+        ):
+            raise ValueError(
+                "Cannot set both `num_cpus_per_learner_worker` and "
+                " `num_gpus_per_learner_worker` > 0! Users must set one"
+                " or the other due to issues with placement group"
+                " fragmentation. See "
+                "https://github.com/ray-project/ray/issues/35409 for more details."
+            )
 
         if bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False)):
             # Enable RLModule API and connectors if env variable is set
@@ -874,7 +911,11 @@ class AlgorithmConfig(_Config):
 
         # LR-schedule checking.
         if self._enable_learner_api:
-            Scheduler.validate(self.lr_schedule, "lr_schedule", "learning rate")
+            Scheduler.validate(
+                fixed_value_or_schedule=self.lr,
+                setting_name="lr",
+                description="learning rate",
+            )
 
         # Validate grad clipping settings.
         if self.grad_clip_by not in ["value", "norm", "global_norm"]:
@@ -1126,7 +1167,8 @@ class AlgorithmConfig(_Config):
             num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
                 `num_learner_workers = 0`, any value greater than 0 will run the
                 training on a single GPU on the head node, while a value of 0 will run
-                the training on head node CPU cores.
+                the training on head node CPU cores. If num_gpus_per_learner_worker is
+                set, then num_cpus_per_learner_worker cannot be set.
             local_gpu_idx: if num_gpus_per_worker > 0, and num_workers<2, then this gpu
                 index will be used for training. This is an index into the available
                 cuda devices. For example if os.environ["CUDA_VISIBLE_DEVICES"] = "1"
@@ -1190,6 +1232,12 @@ class AlgorithmConfig(_Config):
         eager_max_retraces: Optional[int] = NotProvided,
         tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
+        torch_compile_learner: Optional[bool] = NotProvided,
+        torch_compile_learner_dynamo_mode: Optional[str] = NotProvided,
+        torch_compile_learner_dynamo_backend: Optional[str] = NotProvided,
+        torch_compile_worker: Optional[bool] = NotProvided,
+        torch_compile_worker_dynamo_backend: Optional[str] = NotProvided,
+        torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1210,6 +1258,21 @@ class AlgorithmConfig(_Config):
             tf_session_args: Configures TF for single-process operation by default.
             local_tf_session_args: Override the following tf session args on the local
                 worker
+            torch_compile_learner: If True, forward_train methods on TorchRLModules
+            on the learner are compiled. If not specified, the default is to compile
+            forward train on the learner.
+            torch_compile_learner_dynamo_backend: The torch dynamo backend to use on
+                the learner.
+            torch_compile_learner_dynamo_mode: The torch dynamo mode to use on the
+                learner.
+            torch_compile_worker: If True, forward exploration and inference methods on
+                TorchRLModules on the workers are compiled. If not specified,
+                the default is to not compile forward methods on the workers because
+                retracing can be expensive.
+            torch_compile_worker_dynamo_backend: The torch dynamo backend to use on
+                the workers.
+            torch_compile_worker_dynamo_mode: The torch dynamo mode to use on the
+                workers.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1230,6 +1293,23 @@ class AlgorithmConfig(_Config):
             self.tf_session_args = tf_session_args
         if local_tf_session_args is not NotProvided:
             self.local_tf_session_args = local_tf_session_args
+
+        if torch_compile_learner is not NotProvided:
+            self.torch_compile_learner = torch_compile_learner
+        if torch_compile_learner_dynamo_backend is not NotProvided:
+            self.torch_compile_learner_dynamo_backend = (
+                torch_compile_learner_dynamo_backend
+            )
+        if torch_compile_learner_dynamo_mode is not NotProvided:
+            self.torch_compile_learner_dynamo_mode = torch_compile_learner_dynamo_mode
+        if torch_compile_worker is not NotProvided:
+            self.torch_compile_worker = torch_compile_worker
+        if torch_compile_worker_dynamo_backend is not NotProvided:
+            self.torch_compile_worker_dynamo_backend = (
+                torch_compile_worker_dynamo_backend
+            )
+        if torch_compile_worker_dynamo_mode is not NotProvided:
+            self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
 
         return self
 
@@ -1576,8 +1656,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         gamma: Optional[float] = NotProvided,
-        lr: Optional[float] = NotProvided,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
+        lr: Optional[LearningRateOrSchedule] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
@@ -1591,40 +1670,46 @@ class AlgorithmConfig(_Config):
 
         Args:
             gamma: Float specifying the discount factor of the Markov Decision process.
-            lr: The default learning rate.
-            lr_schedule: Learning rate schedule. In the format of
+            lr: The learning rate (float) or learning rate schedule in the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
-                Intermediary timesteps will be assigned to interpolated learning rate
-                values. A schedule config's first entry must start with timestep 0,
-                i.e.: [[0, initial_value], [...]].
-            grad_clip: The value to use for gradient clipping. Depending on the
-                `grad_clip_by` setting, gradients will either be clipped by value,
-                norm, or global_norm (see docstring on `grad_clip_by` below for more
-                details). If `grad_clip` is None, gradients will be left unclipped.
-            grad_clip_by: If 'value': Will clip all computed gradients individually
-                inside the interval [-grad_clip, +grad_clip].
-                If 'norm', will compute the L2-norm of each weight/bias
-                gradient tensor and then clip all gradients such that this L2-norm does
-                not exceed `grad_clip`. The L2-norm of a tensor is computed via:
-                `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of the
-                tensor (no matter what the shape of this tensor is).
-                If 'global_norm', will compute the square of the L2-norm of each
-                weight/bias gradient tensor, sum up all these squared L2-norms across
-                all given gradient tensors (e.g. the entire module to
+                In case of a schedule, intermediary timesteps will be assigned to
+                linearly interpolated learning rate values. A schedule config's first
+                entry must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+            grad_clip: If None, no gradient clipping will be applied. Otherwise,
+                depending on the setting of `grad_clip_by`, the (float) value of
+                `grad_clip` will have the following effect:
+                If `grad_clip_by=value`: Will clip all computed gradients individually
+                inside the interval [-`grad_clip`, +`grad_clip`].
+                If `grad_clip_by=norm`, will compute the L2-norm of each weight/bias
+                gradient tensor individually and then clip all gradients such that these
+                L2-norms do not exceed `grad_clip`. The L2-norm of a tensor is computed
+                via: `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of
+                the tensor (no matter what the shape of this tensor is).
+                If `grad_clip_by=global_norm`, will compute the square of the L2-norm of
+                each weight/bias gradient tensor individually, sum up all these squared
+                L2-norms across all given gradient tensors (e.g. the entire module to
                 be updated), square root that overall sum, and then clip all gradients
-                such that this "global" L2-norm does not exceed the given value.
+                such that this global L2-norm does not exceed the given value.
                 The global L2-norm over a list of tensors (e.g. W and V) is computed
                 via:
                 `sqrt[SUM(w0^2, w1^2, ..., wn^2) + SUM(v0^2, v1^2, ..., vm^2)]`, where
                 w[i] and v[j] are the elements of the tensors W and V (no matter what
                 the shapes of these tensors are).
-                Note that if `grad_clip` is None, the `grad_clip_by` setting has no
-                effect.
+            grad_clip_by: See `grad_clip` for the effect of this setting on gradient
+                clipping. Allowed values are `value`, `norm`, and `global_norm`.
             train_batch_size: Training batch size, if applicable.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
-            optimizer: Arguments to pass to the policy optimizer.
+            optimizer: Arguments to pass to the policy optimizer. This setting is not
+                used when `_enable_learner_api=True`.
             max_requests_in_flight_per_sampler_worker: Max number of inflight requests
                 to each sampling worker. See the FaultTolerantActorManager class for
                 more details.
@@ -1648,8 +1733,6 @@ class AlgorithmConfig(_Config):
             self.gamma = gamma
         if lr is not NotProvided:
             self.lr = lr
-        if lr_schedule is not NotProvided:
-            self.lr_schedule = lr_schedule
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if grad_clip_by is not NotProvided:
@@ -2027,6 +2110,9 @@ class AlgorithmConfig(_Config):
         self,
         *,
         policies=NotProvided,
+        algorithm_config_overrides_per_module: Optional[
+            Dict[ModuleID, PartialAlgorithmConfigDict]
+        ] = NotProvided,
         policy_map_capacity: Optional[int] = NotProvided,
         policy_mapping_fn: Optional[
             Callable[[AgentID, "Episode"], PolicyID]
@@ -2054,6 +2140,18 @@ class AlgorithmConfig(_Config):
                 4-tuples of (policy_cls, obs_space, act_space, config) or PolicySpecs.
                 These tuples or PolicySpecs define the class of the policy, the
                 observation- and action spaces of the policies, and any extra config.
+            algorithm_config_overrides_per_module: Only used if both
+                `_enable_learner_api` and `_enable_rl_module_api` are True.
+                A mapping from ModuleIDs to
+                per-module AlgorithmConfig override dicts, which apply certain settings,
+                e.g. the learning rate, from the main AlgorithmConfig only to this
+                particular module (within a MultiAgentRLModule).
+                You can create override dicts by using the `AlgorithmConfig.overrides`
+                utility. For example, to override your learning rate and (PPO) lambda
+                setting just for a single RLModule with your MultiAgentRLModule, do:
+                config.multi_agent(algorithm_config_overrides_per_module={
+                    "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
+                })
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
@@ -2121,6 +2219,11 @@ class AlgorithmConfig(_Config):
                             f"AlgorithmConfig object, but got {type(spec.config)}!"
                         )
             self.policies = policies
+
+        if algorithm_config_overrides_per_module is not NotProvided:
+            self.algorithm_config_overrides_per_module = (
+                algorithm_config_overrides_per_module
+            )
 
         if policy_map_capacity is not NotProvided:
             self.policy_map_capacity = policy_map_capacity
@@ -2424,6 +2527,7 @@ class AlgorithmConfig(_Config):
                 By default if you call `config.rl_module(...)`, the
                 RLModule API will NOT be enabled. If you want to enable it, you can call
                 `config.rl_module(_enable_rl_module_api=True)`.
+
         Returns:
             This updated AlgorithmConfig object.
         """
@@ -2435,7 +2539,7 @@ class AlgorithmConfig(_Config):
             if _enable_rl_module_api is True and self.exploration_config:
                 logger.warning(
                     "Setting `exploration_config={}` because you set "
-                    "`_enable_rl_modules=True`. When RLModule API are "
+                    "`_enable_rl_module_api=True`. When RLModule API are "
                     "enabled, exploration_config can not be "
                     "set. If you want to implement custom exploration behaviour, "
                     "please modify the `forward_exploration` method of the "
@@ -2448,13 +2552,13 @@ class AlgorithmConfig(_Config):
             elif _enable_rl_module_api is False and not self.exploration_config:
                 if self.__prior_exploration_config is not None:
                     logger.warning(
-                        f"Setting `exploration_config="
+                        "Setting `exploration_config="
                         f"{self.__prior_exploration_config}` because you set "
-                        f"`_enable_rl_modules=False`. This exploration config was "
-                        f"restored from a prior exploration config that was overriden "
-                        f"when setting `_enable_rl_modules=True`. This occurs because "
-                        f"when RLModule API are enabled, exploration_config can not "
-                        f"be set."
+                        "`_enable_rl_module_api=False`. This exploration config was "
+                        "restored from a prior exploration config that was overriden "
+                        "when setting `_enable_rl_module_api=True`. This occurs "
+                        "because when RLModule API are enabled, exploration_config "
+                        "can not be set."
                     )
                     self.exploration_config = self.__prior_exploration_config
                     self.__prior_exploration_config = None
@@ -2923,6 +3027,33 @@ class AlgorithmConfig(_Config):
                     f"{suggested_rollout_fragment_length}."
                 )
 
+    def get_torch_compile_learner_config(self):
+        """Returns the TorchCompileConfig to use on learners."""
+
+        from ray.rllib.core.rl_module.torch.torch_compile_config import (
+            TorchCompileConfig,
+        )
+
+        return TorchCompileConfig(
+            compile_forward_train=self.torch_compile_learner,
+            torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
+            torch_dynamo_mode=self.torch_compile_learner_dynamo_mode,
+        )
+
+    def get_torch_compile_worker_config(self):
+        """Returns the TorchCompileConfig to use on workers."""
+
+        from ray.rllib.core.rl_module.torch.torch_compile_config import (
+            TorchCompileConfig,
+        )
+
+        return TorchCompileConfig(
+            compile_forward_exploration=self.torch_compile_worker,
+            compile_forward_inference=self.torch_compile_worker,
+            torch_dynamo_backend=self.torch_compile_worker_dynamo_backend,
+            torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
+        )
+
     def get_default_rl_module_spec(self) -> ModuleSpec:
         """Returns the RLModule spec to use for this algorithm.
 
@@ -3018,6 +3149,8 @@ class AlgorithmConfig(_Config):
                 marl_module_spec = cur_marl_module_spec.__class__(
                     marl_module_class=cur_marl_module_spec.marl_module_class,
                     module_specs=module_specs,
+                    modules_to_load=cur_marl_module_spec.modules_to_load,
+                    load_state_path=cur_marl_module_spec.load_state_path,
                 )
             else:
                 # Default is multi-agent and user wants to override it. In this case,
@@ -3045,6 +3178,8 @@ class AlgorithmConfig(_Config):
                     module_specs={
                         k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                     },
+                    modules_to_load=cur_marl_module_spec.modules_to_load,
+                    load_state_path=cur_marl_module_spec.load_state_path,
                 )
 
         # Make sure that policy_dict and marl_module_spec have similar keys
@@ -3117,7 +3252,7 @@ class AlgorithmConfig(_Config):
         if not self._is_frozen:
             raise ValueError(
                 "Cannot call `get_learner_group_config()` on an unfrozen "
-                "AlgorithmConfig! Please call `freeze()` first."
+                "AlgorithmConfig! Please call `AlgorithmConfig.freeze()` first."
             )
 
         config = (
@@ -3125,25 +3260,24 @@ class AlgorithmConfig(_Config):
             .module(module_spec)
             .learner(
                 learner_class=self.learner_class,
-                # TODO (Kourosh): optimizer config can now be more complicated.
-                # TODO (Sven): Shouldn't optimizer config be part of learner HPs?
-                #  E.g. if we have a lr schedule, this will have to be managed by
-                #  the learner, NOT the optimizer directly.
-                optimizer_config={
-                    "lr": self.lr,
-                    "grad_clip": self.grad_clip,
-                    "grad_clip_by": self.grad_clip_by,
-                },
                 learner_hyperparameters=self.get_learner_hyperparameters(),
             )
             .resources(
                 num_learner_workers=self.num_learner_workers,
-                num_cpus_per_learner_worker=self.num_cpus_per_learner_worker,
+                num_cpus_per_learner_worker=(
+                    self.num_cpus_per_learner_worker
+                    if not self.num_gpus_per_learner_worker
+                    else 0
+                ),
                 num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
                 local_gpu_idx=self.local_gpu_idx,
             )
-            .framework(eager_tracing=self.eager_tracing)
         )
+
+        if self.framework_str == "torch":
+            config.framework(torch_compile_cfg=self.get_torch_compile_learner_config())
+        elif self.framework_str == "tf2":
+            config.framework(eager_tracing=self.eager_tracing)
 
         return config
 
@@ -3158,8 +3292,36 @@ class AlgorithmConfig(_Config):
 
         Note that LearnerHyperparameters should always be derived directly from a
         AlgorithmConfig object's own settings and considered frozen/read-only.
+
+        Returns:
+             A LearnerHyperparameters instance for the respective Learner.
         """
-        return LearnerHyperparameters(lr_schedule=self.lr_schedule)
+        # Compile the per-module learner hyperparameter instances (if applicable).
+        per_module_learner_hp_overrides = {}
+        if self.algorithm_config_overrides_per_module:
+            for (
+                module_id,
+                overrides,
+            ) in self.algorithm_config_overrides_per_module.items():
+                # Copy this AlgorithmConfig object (unfreeze copy), update copy from
+                # the provided override dict for this module_id, then
+                # create a new LearnerHyperparameter object from this altered
+                # AlgorithmConfig.
+                config_for_module = self.copy(copy_frozen=False).update_from_dict(
+                    overrides
+                )
+                config_for_module.algorithm_config_overrides_per_module = None
+                per_module_learner_hp_overrides[
+                    module_id
+                ] = config_for_module.get_learner_hyperparameters()
+
+        return LearnerHyperparameters(
+            learning_rate=self.lr,
+            grad_clip=self.grad_clip,
+            grad_clip_by=self.grad_clip_by,
+            _per_module_overrides=per_module_learner_hp_overrides,
+            seed=self.seed,
+        )
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""

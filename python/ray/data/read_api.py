@@ -255,11 +255,6 @@ def range_table(n: int, *, parallelism: int = -1) -> Dataset:
     )
 
 
-@Deprecated
-def range_arrow(*args, **kwargs):
-    raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
-
-
 @PublicAPI
 def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Dataset:
     """Create a Tensor stream from a range of integers [0..n).
@@ -267,11 +262,12 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     Examples:
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
-        >>> ds  # doctest: +ellipsis
+        >>> ds  # doctest: +ELLIPSIS
         Dataset(
-            num_blocks=...,
-            num_rows=1000,
-            schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)})
+           num_blocks=...,
+           num_rows=1000,
+           schema={data: numpy.ndarray(shape=(2, 2), dtype=int64)}
+        )
         >>> ds.map_batches(lambda arr: arr * 2).take(2) # doctest: +SKIP
         [array([[0, 0],
                 [0, 0]]),
@@ -435,9 +431,9 @@ def read_datasource(
         owned_by_consumer=False,
     )
 
-    # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing
-    # LazyBlockList code path.
-    read_op = Read(datasource, requested_parallelism, ray_remote_args, read_args)
+    # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
+    # after removing LazyBlockList code path.
+    read_op = Read(datasource, read_tasks, ray_remote_args)
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(
@@ -855,8 +851,8 @@ def read_json(
         from file paths. If your data adheres to a different partitioning scheme, set
         the ``partitioning`` parameter.
 
-        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: + SKIP
-        >>> ds.take(1)  # doctest: + SKIP
+        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: +SKIP
+        >>> ds.take(1)  # doctest: +SKIP
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
 
     Args:
@@ -950,8 +946,8 @@ def read_csv(
         from file paths. If your data adheres to a different partitioning scheme, set
         the ``partitioning`` parameter.
 
-        >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")  # doctest: + SKIP
-        >>> ds.take(1)  # doctest: + SKIP
+        >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")  # doctest: +SKIP
+        >>> ds.take(1)  # doctest: +SKIP
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
         By default, ``read_csv`` reads all files from file paths. If you want to filter
@@ -1772,20 +1768,52 @@ def from_spark(
 @PublicAPI
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
-) -> Union[MaterializedDataset]:
+) -> Union[MaterializedDataset, Dict[str, MaterializedDataset]]:
     """Create a dataset from a Hugging Face Datasets Dataset.
 
     This function is not parallelized, and is intended to be used
     with Hugging Face Datasets that are loaded into memory (as opposed
     to memory-mapped).
 
+    Example:
+
+    .. doctest::
+        :options: +ELLIPSIS
+
+        >>> import ray
+        >>> import datasets
+        >>> hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
+        Downloading ...
+        >>> ray_ds = ray.data.from_huggingface(hf_dataset)
+        >>> ray_ds
+        {'train': MaterializedDataset(
+           num_blocks=1,
+           num_rows=3257,
+           schema={text: string, label: int64}
+        ), 'test': MaterializedDataset(
+           num_blocks=1,
+           num_rows=1421,
+           schema={text: string, label: int64}
+        ), 'validation': MaterializedDataset(
+           num_blocks=1,
+           num_rows=374,
+           schema={text: string, label: int64}
+        )}
+        >>> ray_ds = ray.data.from_huggingface(hf_dataset["train"])
+        >>> ray_ds
+        MaterializedDataset(
+           num_blocks=1,
+           num_rows=3257,
+           schema={text: string, label: int64}
+        )
+
     Args:
-        dataset: A Hugging Face ``Dataset``, or ``DatasetDict``.
-            ``IterableDataset`` is not supported.
+        dataset: A Hugging Face Dataset, or DatasetDict. IterableDataset is not
+            supported. ``IterableDataset`` is not supported.
 
     Returns:
-        MaterializedDataset holding Arrow records from the Hugging Face Dataset, or a
-        dict of MaterializedDataset in case ``dataset`` is a ``DatasetDict``.
+        Dataset holding Arrow records from the Hugging Face Dataset, or a dict of
+            datasets in case dataset is a DatasetDict.
     """
     import datasets
 
@@ -1797,12 +1825,22 @@ def from_huggingface(
         return ray_ds
 
     if isinstance(dataset, datasets.DatasetDict):
+        available_keys = list(dataset.keys())
+        logger.warning(
+            "You provided a Huggingface DatasetDict which contains multiple "
+            "datasets. The output of `from_huggingface` is a dictionary of Ray "
+            "Datasets. To convert just a single Huggingface Dataset to a "
+            "Ray Dataset, specify a split. For example, "
+            "`ray.data.from_huggingface(my_dataset_dictionary"
+            f"['{available_keys[0]}'])`. "
+            f"Available splits are {available_keys}."
+        )
         return {k: convert(ds) for k, ds in dataset.items()}
     elif isinstance(dataset, datasets.Dataset):
         return convert(dataset)
     else:
         raise TypeError(
-            "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`, "
+            "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`."
             f"got {type(dataset)}"
         )
 

@@ -1,3 +1,19 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "examples/**",
+            "tests/**",
+            "benchmarks/**",
+            # FIXME: Failing on Windows
+            "gradio_integrations.py"
+        ]
+    ),
+    tags = ["team:serve"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
@@ -99,6 +115,14 @@ py_test(
 
 py_test(
     name = "test_http_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_util",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -448,6 +472,7 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
+
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
    name = "test_controller_crashes",
@@ -458,6 +483,29 @@ py_test(
                "**/conftest.py"]),
    tags = ["exclusive", "team:serve"],
    deps = [":serve_lib"],
+)
+
+# Runs test_api, test_fastapi, and test_http_adapters with experimental streaming turned on.
+py_test(
+   name = "test_experimental_streaming",
+   size = "large",
+   srcs = glob(["tests/test_experimental_streaming.py",
+               "tests/test_api.py",
+               "tests/test_fastapi.py",
+               "tests/test_http_adapters.py",
+               "**/conftest.py"]),
+   tags = ["exclusive", "team:serve"],
+   deps = [":serve_lib"],
+   env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
+)
+
+py_test(
+    name = "test_streaming_response",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
 )
 
 py_test(
@@ -570,6 +618,14 @@ py_test(
 py_test(
     name = "test_common",
     size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_multiplex",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

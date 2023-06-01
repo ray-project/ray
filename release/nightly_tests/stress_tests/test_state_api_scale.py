@@ -1,7 +1,6 @@
 import click
 import json
 import ray
-from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME, LOG_PREFIX_JOB_ID
 from ray._private.state_api_test_utils import (
     STATE_LIST_LIMIT,
     StateAPIMetric,
@@ -16,7 +15,7 @@ import asyncio
 import time
 import os
 
-from ray.experimental.state.api import (
+from ray.util.state import (
     get_log,
     list_actors,
     list_objects,
@@ -251,9 +250,6 @@ def test_large_log_file(log_file_size_byte: int):
     class LogActor:
         def write_log(self, log_file_size_byte: int):
             ctx = hashlib.md5()
-            job_id = ray.get_runtime_context().get_job_id()
-            prefix = f"{LOG_PREFIX_JOB_ID}{job_id}\n{LOG_PREFIX_ACTOR_NAME}LogActor\n"
-            ctx.update(prefix.encode())
             while log_file_size_byte > 0:
                 n = min(log_file_size_byte, 4 * MiB)
                 chunk = "".join(random.choices(string.ascii_letters, k=n))
@@ -265,9 +261,9 @@ def test_large_log_file(log_file_size_byte: int):
             return ctx.hexdigest(), ray.get_runtime_context().get_node_id()
 
     actor = LogActor.remote()
-    expected_hash, node_id = ray.get(
-        actor.write_log.remote(log_file_size_byte=log_file_size_byte)
-    )
+
+    task = actor.write_log.remote(log_file_size_byte=log_file_size_byte)
+    expected_hash, node_id = ray.get(task)
     assert expected_hash is not None, "Empty checksum from the log actor"
     assert node_id is not None, "Empty node id from the log actor"
 
@@ -276,7 +272,7 @@ def test_large_log_file(log_file_size_byte: int):
 
     time_taken = 0
     t_start = time.perf_counter()
-    for s in get_log(actor_id=actor._actor_id.hex(), tail=1000000000):
+    for s in get_log(task_id=task.task_id().hex(), tail=1000000000):
         t_end = time.perf_counter()
         time_taken += t_end - t_start
         # Not including this time

@@ -132,7 +132,9 @@ want to print intermediate objects, use *doctest-style*. ::
         >>> import ray
         >>> ds = ray.data.range(100)
         >>> ds.schema()
-        Schema({'id': DataType(int64)})
+        Column  Type
+        ------  ----
+        id      int64
         >>> ds.take(5)
         [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
@@ -226,21 +228,21 @@ the `doctest` directive and replace problematic sections with ellipsis. ::
         :options: +ELLIPSIS
 
         >>> import ray
-        >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+        >>> ray.data.read_images("example://image-datasets/simple")
         Dataset(
            num_blocks=...,
            num_rows=...,
-           schema={image: numpy.ndarray(shape=..., dtype=uint8)}
+           schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
         )
 
 If you omit the `doctest` directive, append `# doctest: +ELLIPSIS` to your code instead.
 
     >>> import ray
-    >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")  # doctest: +ELLIPSIS
+    >>> ray.data.read_images("example://image-datasets/simple")  # doctest: +ELLIPSIS
     Dataset(
        num_blocks=...,
        num_rows=...,
-       schema={image: numpy.ndarray(shape=..., dtype=uint8)}
+       schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
     )
 
 To ignore an output altogether, write a *code-block-style* snippet. Don't use `# doctest: +SKIP`.
@@ -254,7 +256,7 @@ the `testoutput` directive and replace problematic sections with ellipsis. ::
     .. testcode::
 
         import ray
-        ds = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+        ds = ray.data.read_images("example://image-datasets/simple")
         print(ds)
 
     .. testoutput::
@@ -263,7 +265,7 @@ the `testoutput` directive and replace problematic sections with ellipsis. ::
         Dataset(
            num_blocks=...,
            num_rows=...,
-           schema={image: numpy.ndarray(shape=..., dtype=uint8)}
+           schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
         )
 
 If your output is nondeterministic and you want to display a sample output, add
@@ -280,7 +282,7 @@ If your output is nondeterministic and you want to display a sample output, add
         0.969461416250246
 
 If your output is hard to test and you don't want to display a sample output, add
-`:options: +SKIP` and `:hide:`. ::
+`:options: +ELLIPSIS` and `:hide:`. ::
 
     .. testcode::
 
@@ -288,9 +290,9 @@ If your output is hard to test and you don't want to display a sample output, ad
 
     .. testoutput::
         :hide:
-        :options: +SKIP
+        :options: +ELLIPSIS
 
-        ...  # Add ellipsis. Otherwise, Sphinx can't parse the block.
+        ...
 
 --------------------
 How to test examples

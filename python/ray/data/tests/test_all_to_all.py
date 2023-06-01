@@ -697,9 +697,9 @@ def test_groupby_tabular_std(ray_start_regular_shared, ds_format, num_parts):
     nan_agg_ds = nan_grouped_ds.std("B", ignore_nulls=False)
     assert nan_agg_ds.count() == 3
     result = nan_agg_ds.to_pandas()["std(B)"].to_numpy()
-    expected = nan_df.groupby("A")["B"].std()
-    expected[0] = None
-    np.testing.assert_array_almost_equal(result, expected)
+    expected = nan_df.groupby("A")["B"].std().to_numpy()
+    assert result[0] is None or np.isnan(result[0])
+    np.testing.assert_array_almost_equal(result[1:], expected[1:])
     # Test all nans
     nan_df = pd.DataFrame({"A": [x % 3 for x in xs], "B": [None] * len(xs)})
     ds = ray.data.from_pandas(nan_df).repartition(num_parts)
@@ -1730,7 +1730,7 @@ def test_random_shuffle_check_random(shutdown_only):
             prev = x
 
 
-def test_random_shuffle_with_custom_resource(ray_start_cluster):
+def test_random_shuffle_with_custom_resource(ray_start_cluster, use_push_based_shuffle):
     cluster = ray_start_cluster
     # Create two nodes which have different custom resources.
     cluster.add_node(

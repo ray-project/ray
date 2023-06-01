@@ -6,6 +6,7 @@ import ray
 
 from ray.air.config import RunConfig
 from ray.air._internal.remote_storage import list_at_uri
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.tune import TuneError
 from ray.tune.execution.experiment_state import _ResumeConfig
@@ -145,16 +146,20 @@ class Tuner:
         # TODO(xwjiang): Remove this later.
         _tuner_kwargs: Optional[Dict] = None,
         _tuner_internal: Optional[TunerInternal] = None,
-        _trainer_api: bool = False,
+        _entrypoint: AirEntrypoint = AirEntrypoint.TUNER,
     ):
         """Configure and construct a tune run."""
         kwargs = locals().copy()
         self._is_ray_client = ray.util.client.ray.is_connected()
-        if self._is_ray_client and get_air_verbosity() is not None:
-            logger.warning(
-                "Ignoring AIR_VERBOSITY setting, "
-                "as it doesn't support ray client mode yet."
-            )
+        if self._is_ray_client:
+            _run_config = run_config or RunConfig()
+            if get_air_verbosity(_run_config.verbose) is not None:
+                logger.info(
+                    "[output] This uses the legacy output and progress reporter, "
+                    "as Ray client is not supported by the new engine. "
+                    "For more information, see "
+                    "https://docs.ray.io/en/master/ray-air/experimental-features.html"
+                )
 
         if _tuner_internal:
             if not self._is_ray_client:
@@ -395,10 +400,10 @@ class Tuner:
                 progress_reporter,
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
-            fit_future = self._remote_tuner.fit.remote()
+            get_results_future = self._remote_tuner.get_results.remote()
             _stream_client_output(
-                fit_future,
+                get_results_future,
                 progress_reporter,
                 string_queue,
             )
-            return ray.get(fit_future)
+            return ray.get(get_results_future)

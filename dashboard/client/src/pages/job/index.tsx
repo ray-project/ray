@@ -39,6 +39,7 @@ const columns = [
   { label: "Submission ID" },
   { label: "Entrypoint" },
   { label: "Status" },
+  { label: "Status message" },
   { label: "Duration" },
   {
     label: "Tasks",

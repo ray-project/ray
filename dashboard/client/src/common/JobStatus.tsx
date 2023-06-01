@@ -5,9 +5,10 @@ import {
   RiCheckboxCircleFill,
   RiCloseCircleFill,
   RiLoader4Line,
+  RiStopCircleFill,
 } from "react-icons/ri";
 import { StatusChip } from "../components/StatusChip";
-import { UnifiedJob } from "../type/job";
+import { JobStatus, UnifiedJob } from "../type/job";
 import { ClassNameProps } from "./props";
 
 const useJobRunningIconStyles = makeStyles((theme) =>
@@ -75,6 +76,9 @@ const useJobStatusIconStyles = makeStyles((theme) =>
     colorError: {
       color: theme.palette.error.main,
     },
+    colorStopped: {
+      color: "#757575",
+    },
   }),
 );
 
@@ -89,9 +93,8 @@ export const JobStatusIcon = ({
   className,
 }: JobStatusIconProps) => {
   const classes = useJobStatusIconStyles();
-
   switch (job.status) {
-    case "SUCCEEDED":
+    case JobStatus.SUCCEEDED:
       return (
         <RiCheckboxCircleFill
           className={classNames(
@@ -104,13 +107,25 @@ export const JobStatusIcon = ({
           )}
         />
       );
-    case "FAILED":
-    case "STOPPED":
+    case JobStatus.FAILED:
       return (
         <RiCloseCircleFill
           className={classNames(
             classes.icon,
             classes.colorError,
+            {
+              [classes.iconSmall]: small,
+            },
+            className,
+          )}
+        />
+      );
+    case JobStatus.STOPPED:
+      return (
+        <RiStopCircleFill
+          className={classNames(
+            classes.icon,
+            classes.colorStopped,
             {
               [classes.iconSmall]: small,
             },
@@ -133,7 +148,7 @@ export const JobStatusWithIcon = ({ job }: JobStatusWithIconProps) => {
       <StatusChip
         type="job"
         status={job.status}
-        icon={<JobStatusIcon job={job} />}
+        icon={job.status === JobStatus.RUNNING && <JobRunningIcon />}
       />
     </Box>
   );

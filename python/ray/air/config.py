@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
     from ray.tune.syncer import SyncConfig
+    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -614,11 +615,11 @@ class CheckpointConfig:
 
     num_to_keep: Optional[int] = None
     checkpoint_score_attribute: Optional[str] = None
-    checkpoint_score_order: str = MAX
-    checkpoint_frequency: int = 0
+    checkpoint_score_order: Optional[str] = MAX
+    checkpoint_frequency: Optional[int] = 0
     checkpoint_at_end: Optional[bool] = None
-    _checkpoint_keep_all_ranks: bool = False
-    _checkpoint_upload_from_workers: bool = False
+    _checkpoint_keep_all_ranks: Optional[bool] = False
+    _checkpoint_upload_from_workers: Optional[bool] = False
 
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep <= 0:
@@ -726,9 +727,12 @@ class RunConfig:
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
-        verbose: 0, 1, 2, or 3. Verbosity mode.
+        verbose: 0, 1, or 2. Verbosity mode.
+            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
+            If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
+            uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
-            results, 3 = status and detailed results. Defaults to 2.
+            results, 3 = status and detailed results.
         log_to_file: Log stdout and stderr to files in
             trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
@@ -748,7 +752,7 @@ class RunConfig:
     sync_config: Optional["SyncConfig"] = None
     checkpoint_config: Optional[CheckpointConfig] = None
     progress_reporter: Optional["ProgressReporter"] = None
-    verbose: Union[int, "Verbosity"] = 3
+    verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated
@@ -757,6 +761,7 @@ class RunConfig:
     def __post_init__(self):
         from ray.tune.syncer import SyncConfig, Syncer
         from ray.tune.utils.util import _resolve_storage_path
+        from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -821,6 +826,13 @@ class RunConfig:
             raise ValueError(
                 "Must specify a remote `storage_path` to use a custom `syncer`."
             )
+
+        if self.verbose is None:
+            # Default `verbose` value. For new output engine,
+            # this is AirVerbosity.DEFAULT.
+            # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+            # Todo (krfricke): Currently uses number to pass test_configs::test_repr
+            self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
 
     def __repr__(self):
         from ray.tune.syncer import SyncConfig

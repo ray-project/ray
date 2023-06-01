@@ -4,17 +4,17 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import ActorDetailPage from "./pages/actor/ActorDetail";
+import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
 import JobList, { JobsLayout } from "./pages/job";
 import { JobDetailChartsPage } from "./pages/job/JobDetail";
 import {
-  JobDetailActorLayout,
+  JobDetailActorDetailWrapper,
   JobDetailActorsPage,
 } from "./pages/job/JobDetailActorPage";
 import { JobDetailInfoPage } from "./pages/job/JobDetailInfoPage";
-import { JobDetailLayout } from "./pages/job/JobDetailLayout";
+import { JobDetailLayout, JobPage } from "./pages/job/JobDetailLayout";
 import { MainNavLayout } from "./pages/layout/MainNavLayout";
 import { SideTabPage } from "./pages/layout/SideTabLayout";
 import { LogsLayout } from "./pages/log/Logs";
@@ -32,6 +32,11 @@ import {
 import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
 import { ServeLayout } from "./pages/serve/ServeLayout";
 import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
+import {
+  ServeControllerDetailPage,
+  ServeHttpProxyDetailPage,
+} from "./pages/serve/ServeSystemActorDetailPage";
+import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
 
@@ -165,48 +170,70 @@ const App = () => {
                       }
                       path=""
                     />
-                    <Route element={<NodeDetailPage />} path="nodes/:id" />
                   </Route>
+                  <Route element={<NodeDetailPage />} path="nodes/:id" />
                 </Route>
                 <Route element={<JobsLayout />} path="jobs">
                   <Route element={<JobList />} path="" />
-                  <Route element={<JobDetailLayout />} path=":id">
-                    <Route
-                      element={
-                        <SideTabPage tabId="info">
-                          <JobDetailInfoPage />
-                        </SideTabPage>
-                      }
-                      path="info"
-                    />
-                    <Route
-                      element={
-                        <SideTabPage tabId="charts">
-                          <JobDetailChartsPage />
-                        </SideTabPage>
-                      }
-                      path=""
-                    />
-                    <Route
-                      element={
-                        <SideTabPage tabId="actors">
-                          <JobDetailActorLayout />
-                        </SideTabPage>
-                      }
-                      path="actors"
-                    >
-                      <Route element={<JobDetailActorsPage />} path="" />
-                      <Route element={<ActorDetailPage />} path=":actorId" />
+                  <Route element={<JobPage />} path=":id">
+                    <Route element={<JobDetailLayout />} path="">
+                      <Route
+                        element={
+                          <SideTabPage tabId="info">
+                            <JobDetailInfoPage />
+                          </SideTabPage>
+                        }
+                        path="info"
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="charts">
+                            <JobDetailChartsPage />
+                          </SideTabPage>
+                        }
+                        path=""
+                      />
+                      <Route
+                        element={
+                          <SideTabPage tabId="actors">
+                            <JobDetailActorsPage />
+                          </SideTabPage>
+                        }
+                        path="actors"
+                      />
                     </Route>
+                    <Route
+                      element={
+                        <JobDetailActorDetailWrapper>
+                          <ActorDetailLayout />
+                        </JobDetailActorDetailWrapper>
+                      }
+                      path="actors/:actorId"
+                    >
+                      <Route element={<ActorDetailPage />} path="" />
+                      <Route element={<TaskPage />} path="tasks/:taskId" />
+                    </Route>
+                    <Route element={<TaskPage />} path="tasks/:taskId" />
                   </Route>
                 </Route>
                 <Route element={<ActorLayout />} path="actors">
                   <Route element={<Actors />} path="" />
-                  <Route element={<ActorDetailPage />} path=":actorId" />
+                  <Route element={<ActorDetailLayout />} path=":actorId">
+                    <Route element={<ActorDetailPage />} path="" />
+                    <Route element={<TaskPage />} path="tasks/:taskId" />
+                  </Route>
                 </Route>
                 <Route element={<Metrics />} path="metrics" />
                 <Route element={<ServeLayout />} path="serve">
                   <Route element={<ServeApplicationsListPage />} path="" />
+                  <Route
+                    element={<ServeControllerDetailPage />}
+                    path="controller"
+                  />
+                  <Route
+                    element={<ServeHttpProxyDetailPage />}
+                    path="httpProxies/:httpProxyId"
+                  />
                   <Route
                     element={<ServeApplicationDetailLayout />}
                     path="applications/:applicationName"

@@ -13,14 +13,14 @@ from ray.exceptions import RuntimeEnvSetupError
 from ray.runtime_env import RuntimeEnv
 
 import ray
-from ray.experimental.state.common import ListApiOptions, StateResource
+from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
     raw_metrics,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.experimental.state.api import StateApiClient, list_tasks
+from ray.util.state import StateApiClient, list_tasks
 
 from ray._private.worker import RayContext
 

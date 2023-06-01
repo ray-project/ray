@@ -11,7 +11,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
-from ray.train.hf_transformers import TransformersTrainer
+from ray.train.huggingface import TransformersTrainer
 from ray.train.rl import RLTrainer
 from ray.tune import Callback
 from ray.data.preprocessors.batch_mapper import BatchMapper
@@ -153,11 +153,10 @@ def test_gbdt_trainer_restore(ray_start_6_cpus, tmpdir, trainer_cls):
         run_config=RunConfig(
             local_dir=str(tmpdir),
             name=exp_name,
-            checkpoint_config=CheckpointConfig(num_to_keep=1, checkpoint_frequency=1),
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=1, checkpoint_frequency=1, checkpoint_at_end=False
+            ),
             callbacks=[FailureInjectionCallback(num_iters=2)],
-            # We also use a stopper, since the restored run will go for
-            # another 5 boosting rounds otherwise.
-            stop={"training_iteration": 5},
         ),
         num_boost_round=5,
     )
@@ -398,7 +397,7 @@ def test_restore_with_different_trainer(tmpdir):
                 trainer_cls.restore(str(tmpdir))
 
         if should_warn:
-            with pytest.warns() as warn_record:
+            with pytest.warns(Warning) as warn_record:
                 check_for_raise()
                 assert any(
                     "Invalid trainer type" in str(record.message)

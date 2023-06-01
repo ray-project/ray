@@ -16,10 +16,10 @@ import ray
 from ray import tune
 from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
     HyperBandScheduler,
@@ -2029,7 +2029,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             train,
             num_samples=3,
             scheduler=pbt,
-            checkpoint_freq=3,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             config=trial_hyperparams,
             stop={"training_iteration": 30},
         )
@@ -2068,7 +2068,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             train_dict,
             num_samples=3,
             scheduler=pbt,
-            checkpoint_freq=3,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             config=trial_hyperparams,
             stop={"training_iteration": 30},
         )

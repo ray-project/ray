@@ -99,6 +99,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         @staticmethod
         CRayStatus NotFound()
 
+        @staticmethod
+        CRayStatus ObjectRefEndOfStream()
+
         c_bool ok()
         c_bool IsOutOfMemory()
         c_bool IsKeyError()
@@ -118,6 +121,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectUnknownOwner()
         c_bool IsRpcError()
         c_bool IsOutOfResource()
+        c_bool IsObjectRefEndOfStream()
 
         c_string ToString()
         c_string CodeAsString()
@@ -153,6 +157,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef cppclass CLanguage "Language":
         pass
     cdef cppclass CWorkerType "ray::core::WorkerType":
+        pass
+    cdef cppclass CWorkerExitType "ray::rpc::WorkerExitType":
         pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
@@ -204,6 +210,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::core::WorkerType::SPILL_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::core::WorkerType::RESTORE_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_USER_ERROR "ray::rpc::WorkerExitType::USER_ERROR"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_SYSTEM_ERROR "ray::rpc::WorkerExitType::SYSTEM_ERROR"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -308,6 +316,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
+    cdef enum CGrpcStatusCode "grpc::StatusCode":
+        UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
+        UNKNOWN "grpc::StatusCode::UNKNOWN",
+
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
 
@@ -361,7 +373,41 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         CRayStatus PublishFunctionKey(const CPythonFunction& python_function)
 
+    cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
+
+        CPythonGcsSubscriber(
+            const c_string& gcs_address, int gcs_port, CChannelType channel_type,
+            const c_string& subscriber_id, const c_string& worker_id)
+
+        CRayStatus Subscribe()
+
+        int64_t last_batch_size()
+
+        CRayStatus PollError(
+            c_string* key_id, int64_t timeout_ms, CErrorTableData* data)
+
+        CRayStatus PollLogs(
+            c_string* key_id, int64_t timeout_ms, CLogBatch* data)
+
+        CRayStatus PollFunctionKey(
+            c_string* key_id, int64_t timeout_ms, CPythonFunction* data)
+
+        CRayStatus PollActor(
+            c_string* key_id, int64_t timeout_ms, CActorTableData* data)
+
+        CRayStatus Close()
+
+cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
+    c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
+    cdef enum CChannelType "ray::rpc::ChannelType":
+        RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",
+        RAY_LOG_CHANNEL "ray::rpc::ChannelType::RAY_LOG_CHANNEL",
+        RAY_PYTHON_FUNCTION_CHANNEL \
+            "ray::rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL",
+        GCS_ACTOR_CHANNEL "ray::rpc::ChannelType::GCS_ACTOR_CHANNEL",
+
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
         const c_string &SerializeAsString()
@@ -389,6 +435,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)
+        c_string key() const
 
     cdef cppclass CErrorTableData "ray::rpc::ErrorTableData":
         c_string job_id() const
@@ -402,6 +449,13 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void set_timestamp(double timestamp)
 
     cdef cppclass CLogBatch "ray::rpc::LogBatch":
+        c_string ip() const
+        c_string pid() const
+        c_string job_id() const
+        c_bool is_error() const
+        c_string actor_name() const
+        c_string task_name() const
+
         void set_ip(const c_string &ip)
         void set_pid(const c_string &pid)
         void set_job_id(const c_string &job_id)
@@ -410,6 +464,10 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void set_actor_name(const c_string &actor_name)
         void set_task_name(const c_string &task_name)
 
+    cdef cppclass CActorTableData "ray::rpc::ActorTableData":
+        CAddress address() const
+        void ParseFromString(const c_string &serialized)
+        const c_string &SerializeAsString()
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":
@@ -421,3 +479,8 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
         c_string GetName() const
         uint32_t GetMaxConcurrency() const
         c_vector[CFunctionDescriptor] GetFunctionDescriptors() const
+
+cdef extern from "ray/common/constants.h" nogil:
+    cdef const char[] kWorkerSetupHookKeyName
+    cdef int kResourceUnitScaling
+    cdef int kStreamingGeneratorReturn

@@ -8,7 +8,7 @@ from ray._private.state_api_test_utils import verify_failed_task
 
 import ray
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
-from ray.experimental.state.api import list_workers, list_nodes
+from ray.util.state import list_workers, list_nodes
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 

@@ -20,20 +20,12 @@ from ray.util.annotations import PublicAPI
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import _is_tensor_schema
 
 if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from ray.data.dataset import TensorFlowTensorBatchType, Schema
-
-
-def _is_tensor_dataset(schema) -> bool:
-    """Return ``True`` if this is an iterator over a tensor dataset."""
-    if schema is None or isinstance(schema, type):
-        return False
-    return _is_tensor_schema(schema.names)
 
 
 @PublicAPI(stability="beta")
@@ -202,7 +194,7 @@ class DataIterator(abc.ABC):
             >>> import ray
             >>> dataset = ray.data.range(10)
             >>> next(iter(dataset.iterator().iter_rows()))
-            0
+            {'id': 0}
 
         Time complexity: O(1)
 
@@ -632,7 +624,7 @@ class DataIterator(abc.ABC):
 
         .. warning::
             If your dataset contains ragged tensors, this method errors. To prevent
-            errors, :ref:`resize your tensors <transforming_variable_tensors>`.
+            errors, :ref:`resize your tensors <transforming_tensors>`.
 
         Examples:
             >>> import ray
@@ -728,20 +720,6 @@ class DataIterator(abc.ABC):
             raise ValueError("tensorflow must be installed!")
 
         schema = self.schema()
-
-        if _is_tensor_dataset(schema):
-            raise NotImplementedError(
-                "`to_tf` doesn't support single-column tensor datasets. Call the "
-                "more-flexible `iter_batches` instead."
-            )
-
-        if isinstance(schema, type):
-            raise NotImplementedError(
-                "`to_tf` doesn't support simple datasets. Call `map_batches` and "
-                "convert your data to a tabular format. Alternatively, call the more-"
-                "flexible `iter_batches` in place of `to_tf`."
-            )
-
         valid_columns = schema.names
 
         def validate_column(column: str) -> None:

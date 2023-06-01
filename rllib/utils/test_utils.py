@@ -35,7 +35,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
+from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
 
 
@@ -618,7 +618,7 @@ def check_off_policyness(
     return off_policy_ness
 
 
-def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict:
+def check_train_results(train_results: ResultDict):
     """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
@@ -702,9 +702,11 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
         if pid == "__all__":
             continue
 
-        # Make sure each policy has the LEARNER_STATS_KEY under it.
-        assert LEARNER_STATS_KEY in policy_stats
-        learner_stats = policy_stats[LEARNER_STATS_KEY]
+        # On the new API stack, policy has no LEARNER_STATS_KEY under it anymore.
+        if LEARNER_STATS_KEY in policy_stats:
+            learner_stats = policy_stats[LEARNER_STATS_KEY]
+        else:
+            learner_stats = policy_stats
         for key, value in learner_stats.items():
             # Min- and max-stats should be single values.
             if key.startswith("min_") or key.startswith("max_"):
@@ -786,9 +788,9 @@ def run_learning_tests_from_yaml(
 
             check_eval = should_check_eval(e)
             episode_reward_key = (
-                "episode_reward_mean"
+                "sampler_results/episode_reward_mean"
                 if not check_eval
-                else "evaluation/episode_reward_mean"
+                else "evaluation/sampler_results/episode_reward_mean"
             )
 
             # For smoke-tests, we just run for n min.
@@ -904,14 +906,18 @@ def run_learning_tests_from_yaml(
                 if check_eval:
                     episode_reward_mean = np.mean(
                         [
-                            t.metric_analysis["evaluation/episode_reward_mean"]["max"]
+                            t.metric_analysis[
+                                "evaluation/sampler_results/episode_reward_mean"
+                            ]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 else:
                     episode_reward_mean = np.mean(
                         [
-                            t.metric_analysis["episode_reward_mean"]["max"]
+                            t.metric_analysis["sampler_results/episode_reward_mean"][
+                                "max"
+                            ]
                             for t in trials_for_experiment
                         ]
                     )
@@ -1141,10 +1147,18 @@ def check_reproducibilty(
             check(results1["hist_stats"], results2["hist_stats"])
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            check(
-                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-            )
+            # As well as training behavior (minibatch sequence during SGD
+            # iterations).
+            if algo_config._enable_learner_api:
+                check(
+                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                )
+            else:
+                check(
+                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                )
 
 
 def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
@@ -1395,7 +1409,7 @@ def check_supported_spaces(
     config: "AlgorithmConfig",
     train: bool = True,
     check_bounds: bool = False,
-    frameworks: List = None,
+    frameworks: Optional[Tuple[str]] = None,
     use_gpu: bool = False,
 ):
     """Checks whether the given algorithm supports different action and obs spaces.
@@ -1474,8 +1488,7 @@ def check_supported_spaces(
         "dict",
     ]
 
-    # TODO(Artur): Add back tf2 once we CNNs there
-    rlmodule_supported_frameworks = {"torch"}
+    rlmodule_supported_frameworks = ("torch", "tf2")
 
     # The action spaces that we test RLModules with
     rlmodule_supported_action_spaces = ["discrete", "continuous"]
@@ -1568,12 +1581,15 @@ def check_supported_spaces(
             algo.stop()
         print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
+    if not frameworks:
+        frameworks = ("tf2", "tf", "torch")
+
     if config._enable_rl_module_api:
         # Only test the frameworks that are supported by RLModules.
-        frameworks = frameworks.intersection(rlmodule_supported_frameworks)
+        frameworks = tuple(
+            fw for fw in frameworks if fw in rlmodule_supported_frameworks
+        )
 
-    if not frameworks:
-        frameworks = ["tf2", "torch", "tf"]
     _do_check_remote = ray.remote(_do_check)
     _do_check_remote = _do_check_remote.options(num_gpus=1 if use_gpu else 0)
     for _ in framework_iterator(config, frameworks=frameworks):

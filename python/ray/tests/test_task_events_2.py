@@ -11,12 +11,12 @@ from ray._private.state_api_test_utils import (
     verify_tasks_running_or_terminated,
     verify_failed_task,
 )
-from ray.experimental.state.common import ListApiOptions, StateResource
+from ray.util.state.common import ListApiOptions, StateResource
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.experimental.state.api import (
+from ray.util.state import (
     StateApiClient,
     list_actors,
     list_tasks,
@@ -485,7 +485,6 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
 def test_fault_tolerance_chained_task_fail(
     shutdown_only, exit_type, actor_or_normal_tasks
 ):
-
     ray.init(_system_config=_SYSTEM_CONFIG)
 
     def sleep_or_fail(pid_actor=None, exit_type=None):
@@ -740,8 +739,11 @@ def check_file(type, task_name, expected_log, expect_no_end=False):
 
 
 @pytest.mark.skipif(
-    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
-    reason="Skipping if not recording task logs offsets.",
+    not ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING or sys.platform == "win32",
+    reason=(
+        "Skipping if not recording task logs offsets, "
+        "and windows has logging race issues."
+    ),
 )
 def test_task_logs_info_basic(shutdown_only):
     """Test tasks (normal tasks/actor tasks) execution logging
@@ -799,7 +801,7 @@ def test_task_logs_info_basic(shutdown_only):
 
 
 @pytest.mark.skipif(
-    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    not ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING,
     reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_disabled(shutdown_only, monkeypatch):
@@ -828,7 +830,7 @@ def test_task_logs_info_disabled(shutdown_only, monkeypatch):
 
 
 @pytest.mark.skipif(
-    not ray_constants.RAY_ENABLE_RECORD_TASK_LOGGING,
+    not ray_constants.RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING,
     reason="Skipping if not recording task logs offsets.",
 )
 def test_task_logs_info_running_task(shutdown_only):

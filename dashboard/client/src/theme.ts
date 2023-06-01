@@ -83,7 +83,7 @@ export const lightTheme = createTheme({
   ...basicTheme,
   palette: {
     primary: {
-      main: "#538DF9",
+      main: "#036DCF",
     },
     secondary: lightBlue,
     success: {

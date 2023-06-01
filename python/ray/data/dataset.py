@@ -36,6 +36,8 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.limit_operator import Limit
@@ -71,6 +73,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import (
     _estimate_available_parallelism,
     _is_local_scheme,
+    validate_compute,
     ConsumptionAPI,
 )
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -134,10 +137,7 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
-from ray.widgets.util import (
-    ensure_ipywidgets_dep,
-    repr_fallback_if_colab,
-)
+from ray.widgets.util import repr_with_fallback
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -215,18 +215,18 @@ class Dataset:
         >>> import ray
         >>> ds = ray.data.range(1000)
         >>> # Transform batches (Dict[str, np.ndarray]) with map_batches().
-        >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})
+        >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})  # doctest: +ELLIPSIS
         MapBatches(<lambda>)
-        +- Dataset(num_blocks=17, num_rows=1000, schema={id: int64})
+        +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Compute the maximum.
         >>> ds.max("id")
         999
         >>> # Shuffle this dataset randomly.
-        >>> ds.random_shuffle()
+        >>> ds.random_shuffle()  # doctest: +ELLIPSIS
         RandomShuffle
         +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Sort it back in order.
-        >>> ds.sort("id")
+        >>> ds.sort("id")  # doctest: +ELLIPSIS
         Sort
         +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
 
@@ -284,6 +284,8 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each record of this dataset.
@@ -330,8 +332,12 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray for each map worker.
 
         .. seealso::
 
@@ -347,20 +353,16 @@ class Dataset:
                 Call this method to transform batches of data. It's faster and more
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
+
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
 
         plan = self._plan.with_stage(
             OneToOneStage(
@@ -395,6 +397,8 @@ class Dataset:
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -456,7 +460,7 @@ class Dataset:
             per worker instead of once per inference.
 
             To transform batches with :ref:`actors <actor-guide>`, pass a callable type
-            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy>`.
+            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy`.
 
             In the example below, ``CachedModel`` is called on an autoscaling pool of
             two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
@@ -527,8 +531,11 @@ class Dataset:
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., ``num_gpus=1`` to request GPUs for the map tasks).
+                ray for each map worker.
 
         .. seealso::
 
@@ -549,6 +556,12 @@ class Dataset:
                 This method isn't recommended because it's slow; call
                 :meth:`~Dataset.map_batches` instead.
         """  # noqa: E501
+
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
 
         batch_format = _apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
@@ -571,16 +584,7 @@ class Dataset:
                 f"{batch_format}"
             )
 
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
+        validate_compute(fn, compute)
 
         if fn_constructor_args is not None or fn_constructor_kwargs is not None:
             if compute is None or (
@@ -790,6 +794,8 @@ class Dataset:
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
         *,
         compute: Optional[ComputeStrategy] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each record and then flatten results.
@@ -814,8 +820,12 @@ class Dataset:
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
                 autoscaling actor pool.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray for each map worker.
 
         .. seealso::
 
@@ -829,20 +839,16 @@ class Dataset:
                 This method isn't recommended because it's slow; call
                 :meth:`~Dataset.map_batches` instead.
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
+
+        if num_cpus is not None:
+            ray_remote_args["num_cpus"] = num_cpus
+
+        if num_gpus is not None:
+            ray_remote_args["num_gpus"] = num_gpus
 
         plan = self._plan.with_stage(
             OneToOneStage("FlatMap", transform_fn, compute, ray_remote_args, fn=fn)
@@ -891,17 +897,7 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        if isinstance(fn, CallableClass) and (
-            compute is None
-            or compute == "tasks"
-            or isinstance(compute, TaskPoolStrategy)
-        ):
-            raise ValueError(
-                "``compute`` must be specified when using a CallableClass, and must "
-                f"specify the actor compute strategy, but got: {compute}. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
-
+        validate_compute(fn, compute)
         self._warn_slow()
 
         transform_fn = generate_filter_fn()
@@ -2196,6 +2192,39 @@ class Dataset:
         else:
             return base_schema
 
+    @ConsumptionAPI(
+        if_more_than_read=True,
+        datasource_metadata="schema",
+        extra_condition="or if ``fetch_if_missing=True`` (the default)",
+        pattern="Time complexity:",
+    )
+    def columns(self, fetch_if_missing: bool = True) -> Optional[List[str]]:
+        """Returns the columns of this Dataset.
+
+        Time complexity: O(1)
+
+        Example:
+            >>> import ray
+            >>> # Create dataset from synthetic data.
+            >>> ds = ray.data.range(1000)
+            >>> ds.columns()
+            ['id']
+
+        Args:
+            fetch_if_missing: If True, synchronously fetch the column names from the
+                schema if it's not known. If False, None is returned if the schema is
+                not known. Default is True.
+
+        Returns:
+            A list of the column names for this Dataset or None if schema is not known
+            and `fetch_if_missing` is False.
+
+        """
+        schema = self.schema(fetch_if_missing=fetch_if_missing)
+        if schema is not None:
+            return schema.names
+        return None
+
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
 
@@ -3215,7 +3244,7 @@ class Dataset:
 
         .. warning::
             If your dataset contains ragged tensors, this method errors. To prevent
-            errors, :ref:`resize your tensors <transforming_variable_tensors>`.
+            errors, :ref:`resize your tensors <transforming_tensors>`.
 
         Examples:
             >>> import ray
@@ -3633,6 +3662,7 @@ class Dataset:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
+    @Deprecated
     @ConsumptionAPI
     def repeat(self, times: Optional[int] = None) -> "DatasetPipeline":
         """Convert this into a DatasetPipeline by looping over this dataset.
@@ -3721,6 +3751,7 @@ class Dataset:
             )
         return pipe
 
+    @Deprecated
     def window(
         self,
         *,
@@ -3949,6 +3980,26 @@ class Dataset:
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
         copy._plan.execute(force_read=True)
+
+        blocks = copy._plan._snapshot_blocks
+        blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
+        # TODO(hchen): Here we generate the same number of blocks as
+        # the original Dataset. Because the old code path does this, and
+        # some unit tests implicily depend on this behavior.
+        # After we remove the old code path, we should consider merging
+        # some blocks for better perf.
+        ref_bundles = [
+            RefBundle(
+                blocks=[block_with_metadata],
+                owns_blocks=False,
+            )
+            for block_with_metadata in blocks_with_metadata
+        ]
+
+        # Create a new logical plan whose input is the existing data
+        # from the the old Dataset.
+        copy._logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+
         return copy
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
@@ -4224,8 +4275,7 @@ class Dataset:
         else:
             return result
 
-    @ensure_ipywidgets_dep("8")
-    @repr_fallback_if_colab
+    @repr_with_fallback(["ipywidgets", "8"])
     def _repr_mimebundle_(self, **kwargs):
         """Return a mimebundle with an ipywidget repr and a simple text repr.
 
@@ -4395,14 +4445,8 @@ class Dataset:
         self._current_executor = None
 
     def __del__(self):
-        if sys.meta_path is None:
-            return
         if self._current_executor and ray is not None and ray.is_initialized():
             self._current_executor.shutdown()
-
-
-# Backwards compatibility alias.
-Dataset = Dataset
 
 
 @PublicAPI
@@ -4470,11 +4514,25 @@ class Schema:
     def __eq__(self, other):
         return isinstance(other, Schema) and other.base_schema == self.base_schema
 
-    def __str__(self):
-        return f"Schema({dict(zip(self.names, self.types))})"
-
     def __repr__(self):
-        return str(self)
+        column_width = max([len(name) for name in self.names] + [len("Column")])
+        padding = 2
+
+        output = "Column"
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "Type\n"
+
+        output += "-" * len("Column")
+        output += " " * ((column_width + padding) - len("Column"))
+        output += "-" * len("Type") + "\n"
+
+        for name, type in zip(self.names, self.types):
+            output += name
+            output += " " * ((column_width + padding) - len(name))
+            output += f"{type}\n"
+
+        output = output.rstrip()
+        return output
 
 
 def _get_size_bytes(block: Block) -> int:

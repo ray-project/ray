@@ -327,16 +327,16 @@ DEFAULT_GRAFANA_PANELS = [
         unit="nodes",
         targets=[
             Target(
-                expr="sum(ray_cluster_active_nodes{{{global_filters}}}) by (node_type)",
-                legend="Active Nodes: {{node_type}}",
+                expr="sum(autoscaler_active_nodes{{{global_filters}}}) by (NodeType)",
+                legend="Active Nodes: {{NodeType}}",
             ),
             Target(
-                expr="sum(ray_cluster_failed_nodes{{{global_filters}}}) by (node_type)",
-                legend="Failed Nodes: {{node_type}}",
+                expr="sum(autoscaler_recently_failed_nodes{{{global_filters}}}) by (NodeType)",
+                legend="Failed Nodes: {{NodeType}}",
             ),
             Target(
-                expr="sum(ray_cluster_pending_nodes{{{global_filters}}}) by (node_type)",
-                legend="Pending Nodes: {{node_type}}",
+                expr="sum(autoscaler_pending_nodes{{{global_filters}}}) by (NodeType)",
+                legend="Pending Nodes: {{NodeType}}",
             ),
         ],
     ),
@@ -393,6 +393,6 @@ default_dashboard_config = DashboardConfig(
     name="DEFAULT",
     default_uid="rayDefaultDashboard",
     panels=DEFAULT_GRAFANA_PANELS,
-    standard_global_filters=['SessionName="$SessionName"'],
+    standard_global_filters=['SessionName=~"$SessionName"'],
     base_json_file_name="default_grafana_dashboard_base.json",
 )

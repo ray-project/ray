@@ -4,7 +4,7 @@ import ray._private.test_utils as test_utils
 import time
 import tqdm
 
-from ray.experimental.state.api import summarize_tasks
+from ray.util.state import summarize_tasks
 from dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,

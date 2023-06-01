@@ -155,7 +155,7 @@ If you're using Ray, the three steps for running batch inference read as follows
    across the cluster.
 2. Define your model in a class and define a transformation that applies your model to
    your data batches (of format ``Dict[str, np.ndarray]`` by default).
-3. Run inference on your data by using the :meth:`ds.map_batches() <ray.data.Datastream.map_batches>`
+3. Run inference on your data by using the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
    method from Ray Data. In this step you also define how your batch processing job
    gets distributed across your cluster.
 
@@ -182,15 +182,15 @@ leveraging common Python libraries like NumPy and Pandas.
 
 In fact, we're using the exact same datasets as in the previous section, but load
 them into Ray data.
-The result of this step is a Ray Datastream ``ds`` that we can use to run inference on.
+The result of this step is a Dataset ``ds`` that we can use to run inference on.
 
 
 .. tabs::
 
     .. group-tab:: HuggingFace
 
-        Create a Pandas DataFrame with text data and convert it to a Ray Datastream
-        with the :meth:`ray.data.from_pandas() <ray.data.Datastream.from_pandas>` method.
+        Create a Pandas DataFrame with text data and convert it to a Dataset
+        with the :meth:`ray.data.from_pandas() <ray.data.Dataset.from_pandas>` method.
 
         .. literalinclude:: ./doc_code/hf_quick_start.py
             :language: python
@@ -200,8 +200,8 @@ The result of this step is a Ray Datastream ``ds`` that we can use to run infere
     .. group-tab:: PyTorch
 
         Create a NumPy array with 100
-        entries and convert it to a Ray Datastream with the
-        :meth:`ray.data.from_numpy() <ray.data.Datastream.from_numpy>` method.
+        entries and convert it to a Dataset with the
+        :meth:`ray.data.from_numpy() <ray.data.Dataset.from_numpy>` method.
 
         .. literalinclude:: ./doc_code/pytorch_quick_start.py
             :language: python
@@ -211,8 +211,8 @@ The result of this step is a Ray Datastream ``ds`` that we can use to run infere
     .. group-tab:: TensorFlow
 
         Create a NumPy array with 100
-        entries and convert it to a Ray Datastream with the
-        :meth:`ray.data.from_numpy() <ray.data.Datastream.from_numpy>` method.
+        entries and convert it to a Dataset with the
+        :meth:`ray.data.from_numpy() <ray.data.Dataset.from_numpy>` method.
 
         .. literalinclude:: ./doc_code/tf_quick_start.py
            :language: python
@@ -278,7 +278,7 @@ Below you find examples for PyTorch, TensorFlow, and HuggingFace.
 3. Getting predictions with Ray Data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Once you have your Ray Dataset ``ds`` and your predictor class, you can use
+Once you have your Dataset ``ds`` and your predictor class, you can use
 :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` to get predictions.
 ``map_batches`` takes your predictor class as an argument and allows you to specify
 ``compute`` resources by defining the :class:`ActorPoolStrategy <ray.data.ActorPoolStrategy>`.
@@ -526,7 +526,7 @@ which defines how many workers to use for inference.
 
         <2> Each actor should use one GPU.
 
-To summarize, mapping a function over batches is the simplest transform for Ray Datasets.
+To summarize, mapping a function over batches is the simplest transform for Datasets.
 The function defines the logic for transforming individual batches of data of the dataset
 Performing operations over batches of data is more performant than single element
 operations as it can leverage the underlying vectorization capabilities of Pandas or NumPy.
@@ -781,6 +781,14 @@ tutorials and examples:
         .. button-ref:: /data/examples/nyc_taxi_basic_processing
 
             Batch Inference on NYC taxi data using Ray Data
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: /data/examples/batch_inference_object_detection
+
+            Object Detection Batch Inference with PyTorch
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png

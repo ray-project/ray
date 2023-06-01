@@ -41,7 +41,7 @@ class ApplicationState:
 
         self._name = name
         self._deploy_obj_ref = deploy_obj_ref
-        self._app_msg = ""
+        self._status_msg = ""
         self._deployment_state_manager = deployment_state_manager
         self._deployment_params: List[Dict] = []
         # This set tracks old deployments that are being deleted
@@ -92,7 +92,7 @@ class ApplicationState:
 
     def delete(self):
         """Delete the application"""
-        self._status = ApplicationStatus.DELETING
+        self._update_status(ApplicationStatus.DELETING)
 
     def deploy(self, deployment_params: List[Dict]) -> List[str]:
         """Deploy the application.
@@ -141,13 +141,13 @@ class ApplicationState:
                 "path in your application to avoid this issue."
             )
 
-        self._status = ApplicationStatus.DEPLOYING
+        self._update_status(ApplicationStatus.DEPLOYING)
         return cur_deployments_to_delete
 
     def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
         self._deploy_obj_ref = deploy_obj_ref
         self._deployment_timestamp = deployment_time
-        self._status = ApplicationStatus.DEPLOYING
+        self._update_status(ApplicationStatus.DEPLOYING)
 
     def _process_terminating_deployments(self):
         """Update the tracking for all deployments being deleted
@@ -197,40 +197,65 @@ class ApplicationState:
                 finished, pending = ray.wait([self._deploy_obj_ref], timeout=0)
                 if pending:
                     return
+                self._deploy_obj_ref = None
                 try:
                     ray.get(finished[0])
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
                 except RayTaskError as e:
-                    self._status = ApplicationStatus.DEPLOY_FAILED
                     # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                     # here because the full details of the error is not displayed
                     # properly with traceback.format_exc(). RayTaskError has its own
                     # custom __str__ function.
-                    self._app_msg = f"Deploying app '{self._name}' failed:\n{str(e)}"
-                    self._deploy_obj_ref = None
-                    logger.warning(self._app_msg)
+                    self._update_status(
+                        ApplicationStatus.DEPLOY_FAILED,
+                        status_msg=f"Deploying app '{self._name}' failed:\n{str(e)}",
+                    )
+                    logger.warning(self._status_msg)
                     return
                 except RuntimeEnvSetupError:
-                    self._status = ApplicationStatus.DEPLOY_FAILED
-                    self._app_msg = (
-                        f"Runtime env setup for app '{self._name}' "
-                        f"failed:\n{traceback.format_exc()}"
+                    self._update_status(
+                        ApplicationStatus.DEPLOY_FAILED,
+                        status_msg=(
+                            f"Runtime env setup for app '{self._name}' "
+                            f"failed:\n{traceback.format_exc()}"
+                        ),
                     )
-                    self._deploy_obj_ref = None
-                    logger.warning(self._app_msg)
+                    logger.warning(self._status_msg)
+                    return
+                except Exception:
+                    self._update_status(
+                        ApplicationStatus.DEPLOY_FAILED,
+                        status_msg=(
+                            "Unexpected error occured while deploying "
+                            f"application '{self._name}':"
+                            f"\n{traceback.format_exc()}"
+                        ),
+                    )
+                    logger.warning(self._status_msg)
                     return
             deployments_statuses = (
                 self._deployment_state_manager.get_deployment_statuses(self.deployments)
             )
             num_health_deployments = 0
+            unhealthy_deployment_names = []
             for deployment_status in deployments_statuses:
                 if deployment_status.status == DeploymentStatus.UNHEALTHY:
-                    self._status = ApplicationStatus.DEPLOY_FAILED
-                    return
+                    unhealthy_deployment_names.append(deployment_status.name)
                 if deployment_status.status == DeploymentStatus.HEALTHY:
                     num_health_deployments += 1
+
+            if len(unhealthy_deployment_names) != 0:
+                self._update_status(
+                    ApplicationStatus.DEPLOY_FAILED,
+                    status_msg=(
+                        "The following deployments are UNHEALTHY: "
+                        f"{unhealthy_deployment_names}"
+                    ),
+                )
+                return
+
             if num_health_deployments == len(deployments_statuses):
-                self._status = ApplicationStatus.RUNNING
+                self._update_status(ApplicationStatus.RUNNING)
 
             self._process_terminating_deployments()
 
@@ -242,7 +267,7 @@ class ApplicationState:
         """Return the application status information"""
         return ApplicationStatusInfo(
             self._status,
-            message=self._app_msg,
+            message=self._status_msg,
             deployment_timestamp=self._deployment_timestamp,
         )
 
@@ -261,6 +286,10 @@ class ApplicationState:
             for name in self.deployments
         }
         return {k: v for k, v in details.items() if v is not None}
+
+    def _update_status(self, status: ApplicationStatus, status_msg: str = ""):
+        self._status = status
+        self._status_msg = status_msg
 
 
 class ApplicationStateManager:

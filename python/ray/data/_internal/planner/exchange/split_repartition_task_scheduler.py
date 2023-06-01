@@ -40,14 +40,19 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             if not ref_bundle.owns_blocks:
                 input_owned_by_consumer = False
 
-        # Compute the (output_num_blocks-1) indices needed for
-        # an equal split of the input blocks.
+        # Compute the (output_num_blocks) indices needed for an equal split of the
+        # input blocks. When output_num_blocks=1, the total number of
+        # input rows is used as the end index during the split calculation,
+        # so that we can combine all input blocks into a single output block.
         indices = []
-        cur_idx = 0
-        for _ in range(output_num_blocks - 1):
-            cur_idx += input_num_rows / output_num_blocks
-            indices.append(int(cur_idx))
-        assert len(indices) < output_num_blocks, (indices, output_num_blocks)
+        if output_num_blocks == 1:
+            indices = [input_num_rows]
+        else:
+            cur_idx = 0
+            for _ in range(output_num_blocks - 1):
+                cur_idx += input_num_rows / output_num_blocks
+                indices.append(int(cur_idx))
+        assert len(indices) <= output_num_blocks, (indices, output_num_blocks)
 
         if map_ray_remote_args is None:
             map_ray_remote_args = {}
@@ -60,19 +65,13 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
         blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]] = []
         for ref_bundle in refs:
             blocks_with_metadata.extend(ref_bundle.blocks)
-        if indices:
-            split_return = _split_at_indices(
-                blocks_with_metadata, indices, input_owned_by_consumer
-            )
-            split_block_refs, split_metadata = [], []
-            for b, m in zip(*split_return):
-                split_block_refs.append(b)
-                split_metadata.extend(m)
-        else:
-            split_block_refs, split_metadata = [], []
-            for b, m in blocks_with_metadata:
-                split_block_refs.append([b])
-                split_metadata.append(m)
+        split_return = _split_at_indices(
+            blocks_with_metadata, indices, input_owned_by_consumer
+        )
+        split_block_refs, split_metadata = [], []
+        for b, m in zip(*split_return):
+            split_block_refs.append(b)
+            split_metadata.extend(m)
 
         sub_progress_bar_dict = ctx.sub_progress_bar_dict
         should_close_bar = True

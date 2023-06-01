@@ -433,10 +433,8 @@ class BlockAccessor:
             import pyarrow as pa
 
             try:
-                return ArrowBlockAccessor.numpy_to_block(
-                    batch, passthrough_arrow_not_implemented_errors=True
-                )
-            except (pa.ArrowNotImplementedError, pa.ArrowInvalid):
+                return ArrowBlockAccessor.numpy_to_block(batch)
+            except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
                 import pandas as pd
 
                 # TODO(ekl) once we support Python objects within Arrow blocks, we
@@ -473,7 +471,7 @@ class BlockAccessor:
                     "Standalone Python objects are not "
                     "allowed in Ray 2.5. To use Python objects in a dataset, "
                     "wrap them in a dict of numpy arrays, e.g., "
-                    "return `{'item': np.array(batch)}` instead of just `batch`."
+                    "return `{'item': batch}` instead of just `batch`."
                 )
             return SimpleBlockAccessor(block)
         else:
