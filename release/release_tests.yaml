@@ -2220,10 +2220,13 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.8"
   team: core
   cluster:
     byod:
       type: cpu
+      pre_run_cmds:
+        - export RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 

@@ -1,9 +1,9 @@
 # Python requirements to run release tests from anyscale byod
 ale-py
 awscli
+gcsfs
 gsutil
 gym
-gcsfs
 pyarrow
 pytest
 tensorboardX
