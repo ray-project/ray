@@ -127,7 +127,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
     def output_specs_train(self) -> SpecDict:
         return [
             "sampled_obs_symlog_BxT",
-            "obs_distribution_BxT",
+            "obs_distribution_means_BxT",
             "reward_logits_BxT",
             "rewards_BxT",
             "continue_distribution_BxT",

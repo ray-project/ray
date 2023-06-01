@@ -538,7 +538,7 @@ class Algorithm(Trainable):
                 "-vv flags."
             )
         if self.config.log_level:
-            logging.getLogger("ray.rllib").setLevel(self.config.log_level)
+            logging.getLogger("ray.rllib").setLevel(self.config.log_level.upper())
 
         # Create local replay buffer if necessary.
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(

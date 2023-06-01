@@ -319,16 +319,27 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # If symlog is disabled (e.g. for uint8 image inputs), `obs_symlog_BxT` is the
         # same as `obs_BxT`.
         obs_BxT = fwd_out["sampled_obs_symlog_BxT"]
-        obs_distr = fwd_out["obs_distribution_BxT"]
+        obs_distr_means = fwd_out["obs_distribution_means_BxT"]
+        # In case we wanted to construct a distribution object from the fwd out data,
+        # we would have to do it like this:
+        # obs_distr = tfp.distributions.MultivariateNormalDiag(
+        #    loc=obs_distr_means,
+        #    # Scale == 1.0.
+        #    # [2]: "Distributions The image predictor outputs the mean of a diagonal
+        #    # Gaussian likelihood with **unit variance** ..."
+        #    scale_diag=tf.ones_like(obs_distr_means),
+        # )
+
         # Leave time dim folded (BxT) and flatten all other (e.g. image) dims.
         obs_BxT = tf.reshape(obs_BxT, shape=[-1, tf.reduce_prod(obs_BxT.shape[1:])])
 
-        # Neg logp loss.
-        # decoder_loss = - obs_distr.log_prob(observations)
-        # decoder_loss /= observations.shape.as_list()[1]
         # Squared diff loss w/ sum(!) over all (already folded) obs dims.
+        # decoder_loss_BxT = SUM[ (obs_distr.loc - observations)^2 ]
+        # Note: This is described strangely in the paper (stating a neglogp loss here),
+        # but the author's own implementation actually uses simple MSE with the loc
+        # of the Gaussian.
         decoder_loss_BxT = tf.reduce_sum(
-            tf.math.square(obs_distr.loc - obs_BxT), axis=-1
+            tf.math.square(obs_distr_means - obs_BxT), axis=-1
         )
 
         # Unfold time rank back in.

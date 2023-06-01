@@ -29,15 +29,15 @@ def reconstruct_obs_from_h_and_z(
     # Compute actual observations using h and z and the decoder net.
     # Note that the last h-state (T+1) is NOT used here as it's already part of
     # a new trajectory.
-    _, reconstructed_obs_distr_TxB = dreamer_model.world_model.decoder(
+    # Use mean() of the Gaussian, no sample! -> No need to construct dist object here.
+    reconstructed_obs_distr_means_TxB = dreamer_model.world_model.decoder(
         # Fold time rank.
         h=np.reshape(h_t0_to_H, (T * B, -1)),
         z=np.reshape(z_t0_to_H, (T * B,) + z_t0_to_H.shape[2:]),
     )
-    # Use mean() of the Gaussian, no sample!
     loc = reconstructed_obs_distr_TxB.loc
     # Unfold time rank again.
-    reconstructed_obs_T_B = np.reshape(loc, (T, B) + obs_dims_shape)
+    reconstructed_obs_T_B = np.reshape(reconstructed_obs_distr_means_TxB, (T, B) + obs_dims_shape)
     # Return inverse symlog'd (real env obs space) reconstructed observations.
     return reconstructed_obs_T_B
 
@@ -45,7 +45,6 @@ def reconstruct_obs_from_h_and_z(
 def summarize_dreamed_trajectory(
     *,
     results,
-    train_results,
     env,
     dreamer_model,
     obs_dims_shape,
@@ -56,7 +55,7 @@ def summarize_dreamed_trajectory(
     if not include_images:
         return
 
-    dream_data = train_results["dream_data"]
+    dream_data = results["dream_data"]
     dreamed_obs_H_B = reconstruct_obs_from_h_and_z(
         h_t0_to_H=dream_data["h_states_t0_to_H_BxT"],
         z_t0_to_H=dream_data["z_states_prior_t0_to_H_BxT"],
@@ -102,15 +101,14 @@ def summarize_dreamed_trajectory(
         )
 
 
-def summarize_forward_train_outs_vs_samples(
+def summarize_predicted_vs_sampled_obs(
     *,
     results,
-    train_results,
     sample,
     batch_size_B,
     batch_length_T,
     symlog_obs: bool = True,
-    include_images: bool = True,
+    #include_images: bool = True,
 ):
     """Summarizes sampled data (from the replay buffer) vs world-model predictions.
 
@@ -124,8 +122,7 @@ def summarize_forward_train_outs_vs_samples(
     Continues: Compute MSE (sampled vs predicted).
 
     Args:
-        results: The results dict to add summary data to and return. 
-        train_results: The results dict that was returned by `LearnerGroup.update()`.
+        results: The results dict that was returned by `LearnerGroup.update()`.
         sample: The sampled data (dict) from the replay buffer. Already tf-tensor
             converted.
         batch_size_B: The batch size (B). This is the number of trajectories sampled
@@ -136,12 +133,12 @@ def summarize_forward_train_outs_vs_samples(
     predicted_observation_means_BxT = train_results[
         "WORLD_MODEL_fwd_out_obs_distribution_means_BxT"
     ]
-    predicted_rewards_BxT = train_results[
-        "WORLD_MODEL_fwd_out_rewards_BxT"
-    ]
-    predicted_continues_BxT = train_results[
-        "WORLD_MODEL_fwd_out_continues_BxT"
-    ]
+    #predicted_rewards_BxT = train_results[
+    #    "WORLD_MODEL_fwd_out_rewards_BxT"
+    #]
+    #predicted_continues_BxT = train_results[
+    #    "WORLD_MODEL_fwd_out_continues_BxT"
+    #]
     _summarize_obs(
         results=results,
         computed_float_obs_B_T_dims=np.reshape(
@@ -152,29 +149,29 @@ def summarize_forward_train_outs_vs_samples(
         descr_prefix="WORLD_MODEL",
         descr_obs=f"predicted_posterior_T{batch_length_T}",
         symlog_obs=symlog_obs,
-        include_images=include_images,
+        #include_images=include_images,
     )
-    predicted_rewards_BxT = inverse_symlog(predicted_rewards_BxT)
-    _summarize_rewards(
-        results=results,
-        computed_rewards=predicted_rewards_BxT,
-        sampled_rewards=np.reshape(sample[SampleBatch.REWARDS], [-1]),
-        descr_prefix="WORLD_MODEL",
-        descr_reward="predicted_posterior",
-    )
-    results.update(
-        {
-            "sampled_rewards": sample[SampleBatch.REWARDS],
-            "WORLD_MODEL_predicted_posterior_rewards": predicted_rewards_BxT,
-        }
-    )
-    _summarize_continues(
-        results=results,
-        computed_continues=predicted_continues_BxT,
-        sampled_continues=np.reshape(1.0 - sample["is_terminated"], [-1]),
-        descr_prefix="WORLD_MODEL",
-        descr_cont="predicted_posterior",
-    )
+    #predicted_rewards_BxT = inverse_symlog(predicted_rewards_BxT)
+    #_summarize_rewards(
+    #    results=results,
+    #    computed_rewards=predicted_rewards_BxT,
+    #    sampled_rewards=np.reshape(sample[SampleBatch.REWARDS], [-1]),
+    #    descr_prefix="WORLD_MODEL",
+    #    descr_reward="predicted_posterior",
+    #)
+    #results.update(
+    #    {
+    #        "sampled_rewards": sample[SampleBatch.REWARDS],
+    #        "WORLD_MODEL_predicted_posterior_rewards": predicted_rewards_BxT,
+    #    }
+    #)
+    #_summarize_continues(
+    #    results=results,
+    #    computed_continues=predicted_continues_BxT,
+    #    sampled_continues=np.reshape(1.0 - sample["is_terminated"], [-1]),
+    #    descr_prefix="WORLD_MODEL",
+    #    descr_cont="predicted_posterior",
+    #)
 
 
 def summarize_dreamed_eval_trajectory_vs_samples(
@@ -234,7 +231,6 @@ def summarize_dreamed_eval_trajectory_vs_samples(
 
 def summarize_sampling_and_replay_buffer(
     *,
-    results,
     step,
     replay_buffer,
 ):
@@ -243,12 +239,10 @@ def summarize_sampling_and_replay_buffer(
     replayed_steps = replay_buffer.get_sampled_timesteps()
 
     # Summarize buffer length.
-    results.update(
-        {
-            "BUFFER_size_num_episodes": episodes_in_buffer,
-            "BUFFER_size_timesteps": ts_in_buffer,
-        }
-    )
+    return {
+        "BUFFER_size_num_episodes": episodes_in_buffer,
+        "BUFFER_size_timesteps": ts_in_buffer,
+    }
 
 
 def _summarize_obs(
@@ -259,7 +253,7 @@ def _summarize_obs(
     descr_prefix=None,
     descr_obs,
     symlog_obs,
-    include_images=True,
+    #include_images=True,
 ):
     """Summarizes computed- vs sampled observations: MSE and (if applicable) images.
 
@@ -275,29 +269,29 @@ def _summarize_obs(
         descr: A string used to describe the computed data to be used in the TB
             summaries.
     """
-    descr_prefix = (descr_prefix + "_") if descr_prefix else ""
-
-    if symlog_obs:
-        computed_float_obs_B_T_dims = inverse_symlog(computed_float_obs_B_T_dims)
-
     # MSE is the mean over all feature dimensions.
     # Images: Flatten image dimensions (w, h, C); Vectors: Mean over all items, etc..
     # Then sum over time-axis and mean over batch-axis.
-    mse_sampled_vs_computed_obs = np.square(
-        computed_float_obs_B_T_dims - sampled_obs_B_T_dims.astype(np.float32)
-    )
-    mse_sampled_vs_computed_obs = np.mean(mse_sampled_vs_computed_obs)
-    results.update(
-        {
-            f"{descr_prefix}sampled_vs_{descr_obs}_obs_mse": (
-                mse_sampled_vs_computed_obs
-            ),
-        }
-    )
+    #mse_sampled_vs_computed_obs = np.square(
+    #    computed_float_obs_B_T_dims - sampled_obs_B_T_dims.astype(np.float32)
+    #)
+    #mse_sampled_vs_computed_obs = np.mean(mse_sampled_vs_computed_obs)
+    #results.update(
+    #    {
+    #        f"{descr_prefix}sampled_vs_{descr_obs}_obs_mse": (
+    #            mse_sampled_vs_computed_obs
+    #        ),
+    #    }
+    #)
 
     # Videos: Create summary, comparing computed images with actual sampled ones.
     # 4=[B, T, w, h] grayscale image; 5=[B, T, w, h, C] RGB image.
-    if include_images and len(sampled_obs_B_T_dims.shape) in [4, 5]:
+    if len(sampled_obs_B_T_dims.shape) in [4, 5]:
+        descr_prefix = (descr_prefix + "_") if descr_prefix else ""
+
+        if symlog_obs:
+            computed_float_obs_B_T_dims = inverse_symlog(computed_float_obs_B_T_dims)
+
         # Restore image pixels from normalized (non-symlog'd) data.
         if not symlog_obs:
             computed_float_obs_B_T_dims = (computed_float_obs_B_T_dims + 1.0) * 128
@@ -323,7 +317,7 @@ def _summarize_obs(
             {f"{descr_prefix}sampled_vs_{descr_obs}_videos": sampled_vs_computed_images}
         )
 
-    return mse_sampled_vs_computed_obs
+    #return mse_sampled_vs_computed_obs
 
 
 def _summarize_rewards(

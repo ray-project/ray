@@ -63,12 +63,12 @@ class VectorDecoder(tf.keras.Model):
         loc = self.mlp(out)
 
         # Create the Gaussian diag distribution.
-        distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=loc,
-            # Scale == 1.0.
-            scale_diag=tf.ones_like(loc),
-        )
-        pred_obs = distribution.sample()
+        #distribution = tfp.distributions.MultivariateNormalDiag(
+        #    loc=loc,
+        #    # Scale == 1.0.
+        #    scale_diag=tf.ones_like(loc),
+        #)
+        #pred_obs = distribution.sample()
 
         # Always return both predicted observations (sample0 and distribution.
-        return pred_obs, distribution
+        return loc  #pred_obs, distribution

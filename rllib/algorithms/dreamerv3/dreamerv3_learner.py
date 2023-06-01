@@ -8,11 +8,13 @@ D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, DefaultDict, Dict
 
 from ray.rllib.core.learner.learner import Learner, LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import ModuleID
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import TensorType
 
 
 @dataclass
@@ -61,10 +63,10 @@ class DreamerV3Learner(Learner):
         self,
         *,
         batch: MultiAgentBatch,
-        fwd_out: Mapping[str, Any],
-        loss_per_module: Mapping[str, TensorType],
+        fwd_out: Dict[str, Any],
+        loss_per_module: Dict[str, TensorType],
         metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
-    ) -> Mapping[str, Any]:
+    ) -> Dict[str, Any]:
         results = super().compile_results(
             batch=batch,
             fwd_out=fwd_out,
@@ -72,7 +74,14 @@ class DreamerV3Learner(Learner):
             metrics_per_module=metrics_per_module,
         )
 
-        results["fwd_out"] = fwd_out
+        # Add the predicted obs distributions for possible (video) summarization.
+        if self.hps.summarize_images_and_videos:
+            for module_id, res in results.items():
+                if module_id in fwd_out:
+                    res["WORLD_MODEL_fwd_out_obs_distribution_means_BxT"] = (
+                        fwd_out[module_id]["obs_distribution_means_BxT"]
+                    )
+        return results
 
     @override(Learner)
     def additional_update_for_module(
@@ -89,6 +98,7 @@ class DreamerV3Learner(Learner):
             module_id=module_id, hps=hps, timestep=timestep
         )
 
+        print("performing critic-EMA UPDATE")
         # Update EMA weights of the critic.
         self.module[module_id].critic.update_ema()
 

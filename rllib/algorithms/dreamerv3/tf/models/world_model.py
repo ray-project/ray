@@ -343,7 +343,8 @@ class WorldModel(tf.keras.Model):
         h_BxT = tf.reshape(h_t1_to_T, shape=[-1] + h_t1_to_T.shape.as_list()[2:])
         z_BxT = tf.reshape(z_t1_to_T, shape=[-1] + z_t1_to_T.shape.as_list()[2:])
 
-        _, obs_distribution = self.decoder(h=h_BxT, z=z_BxT)
+        #_, obs_distribution = self.decoder(h=h_BxT, z=z_BxT)
+        obs_distribution_means = self.decoder(h=h_BxT, z=z_BxT)
 
         # Compute (predicted) reward distributions.
         rewards, reward_logits = self.reward_predictor(
@@ -356,11 +357,11 @@ class WorldModel(tf.keras.Model):
         )
 
         # Return outputs for loss computation.
-        # Note that all shapes are [B, ...] (no time axis).
+        # Note that all shapes are [BxT, ...] (time axis already folded).
         return {
             # Obs.
             "sampled_obs_symlog_BxT": observations,
-            "obs_distribution_BxT": obs_distribution,
+            "obs_distribution_means_BxT": obs_distribution_means,
             # Rewards.
             "reward_logits_BxT": reward_logits,
             "rewards_BxT": rewards,

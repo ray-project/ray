@@ -41,6 +41,7 @@ class TestDreamerV3(unittest.TestCase):
                 num_gpus_per_learner_worker=0,
                 num_gpus=0,
             )
+            .debugging(log_level="info")
             .rl_module(_enable_rl_module_api=True)
         )
 

@@ -10,7 +10,8 @@ https://arxiv.org/pdf/2010.02193.pdf
 import dataclasses
 import gc
 import logging
-from typing import Optional
+import tree  # pip install dm_tree
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -20,13 +21,12 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamerv3.dreamerv3_catalog import DreamerV3Catalog
 from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
     DreamerV3LearnerHyperparameters,
-    #_reduce_dreamerv3_results,
 )
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     summarize_dreamed_trajectory,
-    summarize_forward_train_outs_vs_samples,
+    summarize_predicted_vs_sampled_obs,
     summarize_sampling_and_replay_buffer,
 )
 from ray.rllib.core.learner.learner import LearnerHyperparameters
@@ -36,9 +36,18 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    GARBAGE_COLLECTION_TIMER,
+    LEARN_ON_BATCH_TIMER,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_GRAD_UPDATES_LIFETIME,
+    NUM_SYNCH_WORKER_WEIGHTS,
+    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
+    SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.typing import ResultDict
@@ -124,7 +133,7 @@ class DreamerV3Config(AlgorithmConfig):
         self.disagree_grad_clip_by_global_norm = 100.0
 
         # Reporting.
-        self.summary_frequency_train_steps = 20
+        #self.summary_frequency_train_steps = 20
         self.summarize_individual_batch_item_stats = False
         self.summarize_dream_data = False
         self.summarize_images_and_videos = False
@@ -150,9 +159,7 @@ class DreamerV3Config(AlgorithmConfig):
         *,
         model_dimension: Optional[str] = NotProvided,
         training_ratio: Optional[float] = NotProvided,
-        summary_frequency_train_steps: Optional[int] = NotProvided,
-        summary_include_histograms: Optional[bool] = NotProvided,
-        summary_include_images: Optional[bool] = NotProvided,
+        #summary_frequency_train_steps: Optional[int] = NotProvided,
         gc_frequency_train_steps: Optional[int] = NotProvided,
         batch_size_B: Optional[int] = NotProvided,
         batch_length_T: Optional[int] = NotProvided,
@@ -182,10 +189,10 @@ class DreamerV3Config(AlgorithmConfig):
                 model) over env steps (from the actual environment, not the dreamed
                 one).
             #num_pretrain_iterations: How many iterations do we pre-train?
-            summary_frequency_train_steps: Every how many training steps do we write
-                summary data (e.g. TensorBoard or WandB)? Note that this only affects
-                the more debug-relevant information and basic stats, such as total loss,
-                etc.. are logged at each training step.
+            #summary_frequency_train_steps: Every how many training steps do we write
+            #    summary data (e.g. TensorBoard or WandB)? Note that this only affects
+            #    the more debug-relevant information and basic stats, such as total loss,
+            #    etc.. are logged at each training step.
             gc_frequency_train_steps: Every how many training steps do we collect
                 garbage?
             batch_size_B: The batch size (B) interpreted as number of rows (each of
@@ -236,12 +243,8 @@ class DreamerV3Config(AlgorithmConfig):
             self.model_dimension = model_dimension
         if training_ratio is not NotProvided:
             self.training_ratio = training_ratio
-        if summary_frequency_train_steps is not NotProvided:
-            self.summary_frequency_train_steps = summary_frequency_train_steps
-        if summary_include_histograms is not NotProvided:
-            self.summary_include_histograms = summary_include_histograms
-        if summary_include_images is not NotProvided:
-            self.summary_include_images = summary_include_images
+        #if summary_frequency_train_steps is not NotProvided:
+        #    self.summary_frequency_train_steps = summary_frequency_train_steps
         if gc_frequency_train_steps is not NotProvided:
             self.gc_frequency_train_steps = gc_frequency_train_steps
         if batch_size_B is not NotProvided:
@@ -405,7 +408,10 @@ class DreamerV3Config(AlgorithmConfig):
 
 
 class DreamerV3(Algorithm):
-    """ """
+    """Implementation of the model-based DreamerV3 RL algorithm described in [1].
+
+
+    """
 
     @classmethod
     @override(Algorithm)
@@ -416,9 +422,10 @@ class DreamerV3(Algorithm):
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
-        # Summarize RLModule once here.
+        # Summarize (single-agent) RLModule once here.
+        # TODO: use local worker instead of learner group's local Learner
         if self.config.framework_str == "tf2":
-            self.learner_group._learner.module.summary(expand_nested=True)  # TODO: use local worker instead of learner group's local Learner
+            self.learner_group._learner.module[DEFAULT_POLICY_ID].dreamer_model.summary(expand_nested=True)
 
         # The vectorized gymnasium EnvRunner to collect samples of shape (B, T, ...).
         # self.env_runner = EnvRunner(model=None, config=self.config)
@@ -434,15 +441,11 @@ class DreamerV3(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         results = {}
+
         env_runner = self.workers.local_worker()
 
         # Push enough samples into buffer initially before we start training.
         env_steps = 0
-        # TEST: Put only a single row in the buffer and try to memorize it.
-        # env_steps_last_sample = 64
-        # while iteration == 0:
-        # END TEST
-
         if self.training_iteration == 0:
             logger.info(
                 "Filling replay buffer so it contains at least "
@@ -455,136 +458,146 @@ class DreamerV3(Algorithm):
         # enough data for at least one complete train batch
         # (batch_size_B x batch_length_T), only then proceeed to the training
         # update step.
-        while True:
-            done_episodes, ongoing_episodes = env_runner.sample(random_actions=False)
+        with self._timers[SAMPLE_TIMER]:
+            while True:
+                done_episodes, ongoing_episodes = env_runner.sample()
 
-            # We took B x T env steps.
-            env_steps_last_sample = sum(
-                len(eps) for eps in done_episodes + ongoing_episodes
-            )
-            env_steps += env_steps_last_sample
-            self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps_last_sample
-
-            # Add ongoing and finished episodes into buffer. The buffer will
-            # automatically take care of properly concatenating (by episode IDs) the
-            # different chunks of the same episodes, even if they come in via separate
-            # `add()` calls.
-            self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
-
-            ts_in_buffer = self.replay_buffer.get_num_timesteps()
-            if (
-                # More timesteps than BxT.
-                ts_in_buffer >= self.config.batch_size_B * self.config.batch_length_T
-                # And enough timesteps for the next train batch to not exceed
-                # the training_ratio.
-                and self._counters[NUM_ENV_STEPS_TRAINED]
-                / self._counters[NUM_ENV_STEPS_SAMPLED]
-                < self.config.training_ratio
-            ):
-                # Summarize environment interaction and buffer data.
-                summarize_sampling_and_replay_buffer(
-                    results=results,
-                    step=self._counters[NUM_ENV_STEPS_SAMPLED],
-                    replay_buffer=self.replay_buffer,
+                # We took B x T env steps.
+                env_steps_last_sample = sum(
+                    len(eps) for eps in done_episodes + ongoing_episodes
                 )
-                break
+                env_steps += env_steps_last_sample
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += env_steps_last_sample
+                self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps_last_sample
+
+                # Add ongoing and finished episodes into buffer. The buffer will
+                # automatically take care of properly concatenating (by episode IDs)
+                # the different chunks of the same episodes, even if they come in via
+                # separate `add()` calls.
+                self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
+
+                ts_in_buffer = self.replay_buffer.get_num_timesteps()
+                if (
+                    # More timesteps than BxT.
+                    ts_in_buffer >= (
+                        self.config.batch_size_B * self.config.batch_length_T
+                    )
+                    # And enough timesteps for the next train batch to not exceed
+                    # the training_ratio.
+                    and self._counters[NUM_ENV_STEPS_TRAINED]
+                    / self._counters[NUM_ENV_STEPS_SAMPLED]
+                    < self.config.training_ratio
+                ):
+                    # Summarize environment interaction and buffer data.
+                    results[ALL_MODULES] = summarize_sampling_and_replay_buffer(
+                        step=self._counters[NUM_ENV_STEPS_SAMPLED],
+                        replay_buffer=self.replay_buffer,
+                    )
+                    break
 
         # Repeat the following steps until we reach the correct training ratio:
         # - Draw a sample from the replay buffer and push it through the
         # LearnerGroup.update() procedure.
         # - This will perform a dreamer model forward pass, compute all losses and
         # gradients and apply the gradients to the models.
-        # -
         replayed_steps = sub_iter = 0
         while replayed_steps / env_steps_last_sample < self.config.training_ratio:
-            logger.info(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
 
-            # Draw a new sample from the replay buffer.
-            sample = self.replay_buffer.sample(
-                batch_size_B=self.config.batch_size_B,
-                batch_length_T=self.config.batch_length_T,
-            )
-            replayed_steps += self.config.batch_size_B * self.config.batch_length_T
+            # Time individual batch updates.
+            with self._timers[LEARN_ON_BATCH_TIMER]:
+                logger.info(f"\tSub-iteration {self.training_iteration}/{sub_iter})")
 
-            # Convert some bool columns to float32 and one-hot actions.
-            sample["is_first"] = sample["is_first"].astype(np.float32)
-            sample["is_last"] = sample["is_last"].astype(np.float32)
-            sample["is_terminated"] = sample["is_terminated"].astype(np.float32)
-            if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
-                sample["actions_ints"] = sample[SampleBatch.ACTIONS]
-                sample[SampleBatch.ACTIONS] = one_hot(
-                    sample["actions_ints"],
-                    depth=env_runner.env.single_action_space.n,
-                )
-
-            # Perform the actual update via our learner group.
-            # TODO (sven): DreamerV3 is single-agent only.
-            train_results = self.learner_group.update(
-                SampleBatch(sample).as_multi_agent(),
-                reduce_fn=None,#_reduce_dreamerv3_results,
-            )
-            train_results = train_results[DEFAULT_POLICY_ID]["learner_stats"]
-
-            if self.config.summary_frequency_train_steps and (
-                self._counters[NUM_GRAD_UPDATES_LIFETIME]
-                % self.config.summary_frequency_train_steps
-                == 0
-            ):
-                summarize_forward_train_outs_vs_samples(
-                    results=results,
-                    train_results=train_results,
-                    sample=sample,
+                # Draw a new sample from the replay buffer.
+                sample = self.replay_buffer.sample(
                     batch_size_B=self.config.batch_size_B,
                     batch_length_T=self.config.batch_length_T,
-                    symlog_obs=do_symlog_obs(
-                        env_runner.env.single_observation_space,
-                        self.config.model.get("symlog_obs", "auto"),
-                    ),
-                    include_images=self.config.summarize_images_and_videos,
                 )
+                replayed_steps += self.config.batch_size_B * self.config.batch_length_T
 
-                # TODO: Make this work with any renderable env.
-                if env_runner.config.env in [
-                    "CartPoleDebug-v0",
-                    "CartPole-v1",
-                    "FrozenLake-v1",
-                ]:
-                    summarize_dreamed_trajectory(
-                        results=results,
-                        train_results=train_results,
-                        env=env_runner.config.env,
-                        dreamer_model=env_runner.model.dreamer_model,
-                        obs_dims_shape=sample[SampleBatch.OBS].shape[2:],
-                        desc="for_actor_critic_learning",
-                        include_images=self.config.summarize_images_and_videos,
+                # Convert some bool columns to float32 and one-hot actions.
+                sample["is_first"] = sample["is_first"].astype(np.float32)
+                sample["is_last"] = sample["is_last"].astype(np.float32)
+                sample["is_terminated"] = sample["is_terminated"].astype(np.float32)
+                if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
+                    sample["actions_ints"] = sample[SampleBatch.ACTIONS]
+                    sample[SampleBatch.ACTIONS] = one_hot(
+                        sample["actions_ints"],
+                        depth=env_runner.env.single_action_space.n,
                     )
 
-            logger.info(
-                "\t\tWORLD_MODEL_L_total="
-                f"{train_results['WORLD_MODEL_L_total']:.5f} ("
-                "L_pred="
-                f"{train_results['WORLD_MODEL_L_prediction']:.5f} ("
-                f"dec/obs={train_results['WORLD_MODEL_L_decoder']} "
-                f"rew(two-hot)={train_results['WORLD_MODEL_L_reward']} "
-                f"cont={train_results['WORLD_MODEL_L_continue']}"
-                "); "
-                f"L_dyn={train_results['WORLD_MODEL_L_dynamics']:.5f}; "
-                "L_rep="
-                f"{train_results['WORLD_MODEL_L_representation']:.5f})"
-            )
-            msg = "\t\t"
-            if self.config.train_actor:
-                msg += f"L_actor={train_results['ACTOR_L_total']:.5f} "
-            if self.config.train_critic:
-                msg += f"L_critic={train_results['CRITIC_L_total']:.5f} "
-            if self.config.use_curiosity:
-                msg += f"L_disagree={train_results['DISAGREE_L_total']:.5f}"
-            logger.info(msg)
+                # Perform the actual update via our learner group.
+                train_results = self.learner_group.update(
+                    SampleBatch(sample).as_multi_agent(),
+                    reduce_fn=self._reduce_results,
+                )
 
-            sub_iter += 1
-            self._counters[NUM_GRAD_UPDATES_LIFETIME] += 1
+                self._counters[NUM_AGENT_STEPS_TRAINED] += replayed_steps
+                self._counters[NUM_ENV_STEPS_TRAINED] += replayed_steps
 
-        self._counters[NUM_ENV_STEPS_TRAINED] += replayed_steps
+                # Perform additional (non-gradient updates), such as the critic EMA-copy
+                # update.
+                with self._timers["critic_ema_update"]:
+                    self.learner_group.additional_update(
+                        timestep=self._counters[NUM_ENV_STEPS_TRAINED],
+                        reduce_fn=self._reduce_results,
+                    )
+
+                if self.config.summarize_images_and_videos:
+                    summarize_predicted_vs_sampled_obs(
+                        # TODO (sven): DreamerV3 is single-agent only.
+                        results=train_results[DEFAULT_POLICY_ID],
+                        sample=sample,
+                        batch_size_B=self.config.batch_size_B,
+                        batch_length_T=self.config.batch_length_T,
+                        symlog_obs=do_symlog_obs(
+                            env_runner.env.single_observation_space,
+                            self.config.model.get("symlog_obs", "auto"),
+                        ),
+                    )
+
+                # TODO: Make this work with any renderable env.
+                #if env_runner.config.env in [
+                #    "CartPoleDebug-v0",
+                #    "CartPole-v1",
+                #    "FrozenLake-v1",
+                #]:
+                #    summarize_dreamed_trajectory(
+                #        # TODO (sven): DreamerV3 is single-agent only.
+                #        results=train_results[DEFAULT_POLICY_ID],
+                #        env=env_runner.config.env,
+                #        dreamer_model=env_runner.rl_module.dreamer_model,
+                #        obs_dims_shape=sample[SampleBatch.OBS].shape[2:],
+                #        desc="for_actor_critic_learning",
+                #        include_images=self.config.summarize_images_and_videos,
+                #    )
+
+                res = train_results[DEFAULT_POLICY_ID]
+                logger.info(
+                    f"\t\tWORLD_MODEL_L_total={res['WORLD_MODEL_L_total']:.5f} ("
+                    f"L_pred={res['WORLD_MODEL_L_prediction']:.5f} ("
+                    f"decoder/obs={res['WORLD_MODEL_L_decoder']} "
+                    f"L_rew={res['WORLD_MODEL_L_reward']} "
+                    f"L_cont={res['WORLD_MODEL_L_continue']}); "
+                    f"L_dyn/rep={res['WORLD_MODEL_L_dynamics']:.5f})"
+                )
+                msg = "\t\t"
+                if self.config.train_actor:
+                    msg += f"L_actor={res['ACTOR_L_total']:.5f} "
+                if self.config.train_critic:
+                    msg += f"L_critic={res['CRITIC_L_total']:.5f} "
+                if self.config.use_curiosity:
+                    msg += f"L_disagree={res['DISAGREE_L_total']:.5f} "
+                logger.info(msg)
+
+                sub_iter += 1
+                self._counters[NUM_GRAD_UPDATES_LIFETIME] += 1
+
+        # Update weights - after learning on the LearnerGroup - on all EnvRunner
+        # workers.
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
+            self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
+            self.workers.sync_weights(from_worker_or_trainer=self.learner_group)
 
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
         # issue-in-keras-model-training-e703907a6501
@@ -593,7 +606,14 @@ class DreamerV3(Algorithm):
             % self.config.gc_frequency_train_steps
             == 0
         ):
-            gc.collect()
+            with self._timers[GARBAGE_COLLECTION_TIMER]:
+                gc.collect()
+
+        results.update(train_results)
 
         # Return all results.
         return results
+
+    @staticmethod
+    def _reduce_results(results: List[Dict[str, Any]]):
+        return tree.map_structure(lambda *s: np.mean(s, axis=0), *results)

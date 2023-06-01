@@ -242,7 +242,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             )
             episode = self.episodes[episode_idx]
 
-            # Starting a new chunk, set continue to False.
+            # Starting a new chunk, set is_first to True.
             is_first[B][T] = True
 
             # Begin of new batch item (row).
@@ -255,7 +255,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 else:
                     rewards[B].append(episode.rewards[episode_ts - 1])
             # We are in the middle of a batch item (row). Concat next episode to this
-            # row from the episode's beginning. In other words, we never concat
+            # row from the next episode's beginning. In other words, we never concat
             # a middle of an episode to another truncated one.
             else:
                 episode_ts = 0
@@ -387,7 +387,7 @@ class _Episode:
     def concat_episode(self, episode_chunk: "_Episode"):
         """Adds the given `episode_chunk` to the right side of self."""
         assert episode_chunk.id_ == self.id_
-        assert not self.done
+        assert not self.is_done
         # Make sure the timesteps match.
         assert self.t == episode_chunk.t_started
 
@@ -395,6 +395,8 @@ class _Episode:
 
         # Make sure, end matches other episode chunk's beginning.
         assert np.all(episode_chunk.observations[0] == self.observations[-1])
+        # Make sure the timesteps match (our last t should be the same as their first).
+        assert self.t == episode_chunk.t_started
         # Pop out our end.
         self.observations.pop()
 
@@ -403,6 +405,7 @@ class _Episode:
         self.observations.extend(list(episode_chunk.observations))
         self.actions.extend(list(episode_chunk.actions))
         self.rewards.extend(list(episode_chunk.rewards))
+        self.t = episode_chunk.t
         self.states = episode_chunk.states
 
         if episode_chunk.is_terminated:
@@ -410,6 +413,21 @@ class _Episode:
         elif episode_chunk.is_truncated:
             self.is_truncated = True
         # Validate.
+        self.validate()
+
+    def add_initial_observation(
+        self, *, initial_observation, initial_state=None, initial_render_image=None
+    ):
+        assert not self.is_done
+        assert len(self.observations) == 0
+        # Assume that this episode is completely empty and has not stepped yet.
+        # Leave self.t (and self.t_started) at 0.
+        assert self.t == self.t_started == 0
+
+        self.observations.append(initial_observation)
+        self.states = initial_state
+        if initial_render_image is not None:
+            self.render_images.append(initial_render_image)
         self.validate()
 
     def add_timestep(
@@ -424,7 +442,7 @@ class _Episode:
         render_image=None,
     ):
         # Cannot add data to an already done episode.
-        assert not self.done
+        assert not self.is_done
 
         self.observations.append(observation)
         self.actions.append(action)
@@ -437,21 +455,6 @@ class _Episode:
         self.is_truncated = is_truncated
         self.validate()
 
-    def add_initial_observation(
-        self, *, initial_observation, initial_state=None, initial_render_image=None
-    ):
-        assert not self.done
-        assert len(self.observations) == 0
-        # Assume that this episode is completely empty and has not stepped yet.
-        # Leave self.t at 0.
-        assert self.t == self.t_started == 0
-
-        self.observations.append(initial_observation)
-        self.states = initial_state
-        if initial_render_image is not None:
-            self.render_images.append(initial_render_image)
-        self.validate()
-
     def validate(self):
         # Make sure we always have one more obs stored than rewards (and actions)
         # due to the reset and last-obs logic of an MDP.
@@ -459,31 +462,39 @@ class _Episode:
         assert len(self.rewards) == (self.t - self.t_started)
 
         # Convert all lists to numpy arrays, if we are terminated.
-        if self.done:
+        if self.is_done:
             self.observations = np.array(self.observations)
             self.actions = np.array(self.actions)
             self.rewards = np.array(self.rewards)
             self.render_images = np.array(self.render_images, dtype=np.uint8)
 
     @property
-    def done(self):
+    def is_done(self):
+        """Whether the episode is actually done (terminated or truncated).
+
+        A done episode cannot be continued via `self.add_timestep()` or being
+        concatenated on its right-side with another episode chunk or being
+        succeeded via `self.create_successor()`.
+        """
         return self.is_terminated or self.is_truncated
 
     def create_successor(self) -> "_Episode":
-        """Returns a successor episode chunk continuing with this one.
+        """Returns a successor episode chunk (of len=0) continuing with this one.
 
         The successor will have the same ID and state as self and its only observation
-        will be the last observation in self.
+        will be the last observation in self. Its length will therefore be 0 (no
+        steps taken yet).
 
-        This method is useful if you would like to discontinue building this episode
+        This method is useful if you would like to discontinue building an episode
         chunk (b/c you have to return it from somewhere), but would like to have a new
-        instance to continue building the actual env episode at a later time.
+        episode (chunk) instance to continue building the actual env episode at a later
+        time.
 
         Returns:
             The successor Episode chunk of this one with the same ID and state and the
             only observation being the last observation in self.
         """
-        assert not self.done
+        assert not self.is_done
 
         return _Episode(
             # Same ID.
