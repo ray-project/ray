@@ -72,7 +72,7 @@ def test_from_mars_e2e(ray_start_regular, enable_optimizer):
     ds2 = ds.filter(lambda row: row["a"] % 2 == 0)
     assert ds2.take(5) == [{"a": 2 * i, "b": n + 2 * i} for i in range(5)]
     assert "Filter" in ds2.stats()
-    assert ds2._plan._logical_plan.dag.name == "Filter"
+    assert ds2._plan._logical_plan.dag.name == "Filter(<lambda>)"
 
     # Convert ray dataset to mars dataframe
     df2 = ds2.to_mars()
