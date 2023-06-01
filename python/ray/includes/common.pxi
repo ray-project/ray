@@ -7,6 +7,7 @@ from ray.includes.common cimport (
     CGcsClientOptions,
     CPythonGcsClient,
     CPythonGcsPublisher,
+    CPythonGcsSubscriber,
     kWorkerSetupHookKeyName,
     kResourceUnitScaling,
     kStreamingGeneratorReturn,
