@@ -710,7 +710,6 @@ class Algorithm(Trainable):
                 policy_dict=self.config.get_multi_agent_setup(
                     env=self.workers.local_worker().env  # TODO(sven): remove this hack
                 )[0],
-                module_spec=None,
             )
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()

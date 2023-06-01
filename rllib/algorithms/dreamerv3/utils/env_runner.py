@@ -110,9 +110,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Create our RLModule to compute actions with.
         policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
-        module_spec = self.config.get_marl_module_spec(
-            policy_dict=policy_dict, module_spec=None
-        )
+        module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
         # TODO (sven): DreamerV3 is currently single-agent only.
         self.rl_module = module_spec.build()[DEFAULT_POLICY_ID]
 
@@ -404,7 +402,8 @@ class DreamerV3EnvRunner(EnvRunner):
                         a,
                         r,
                         state=s,
-                        is_terminated=True,
+                        is_terminated=term,
+                        is_truncated=trunc,
                     )
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
@@ -424,7 +423,6 @@ class DreamerV3EnvRunner(EnvRunner):
                         a,
                         r,
                         state=s,
-                        is_terminated=False,
                         render_image=render_images[i],
                     )
                     is_first[i] = False
@@ -461,7 +459,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         return metrics
 
-    def set_weights(self, weights):
+    def set_weights(self, weights, global_vars=None):
         """Writes the weights of our (single-agent) RLModule."""
         self.rl_module.set_state(weights[DEFAULT_POLICY_ID])
 
