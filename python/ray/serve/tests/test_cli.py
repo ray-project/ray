@@ -1,11 +1,12 @@
 import os
+import re
 import signal
 import subprocess
 import sys
 import time
 import json
 from tempfile import NamedTemporaryFile
-from typing import List
+from typing import List, Pattern
 
 import click
 from pydantic import BaseModel
@@ -1240,6 +1241,17 @@ class TestRayReinitialization:
     def import_file_name(self) -> str:
         return "ray.serve.tests.test_config_files.ray_already_initialized:app"
 
+    @pytest.fixture
+    def pattern(self) -> Pattern:
+        return re.compile(
+            r"INFO ray._private.worker::Connecting to existing Ray cluster at "
+            r"address: (.*)\.\.\."
+        )
+
+    @pytest.fixture
+    def ansi_escape(self) -> Pattern:
+        return re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
     def test_run_without_address(self, import_file_name, ray_start_stop):
         """Test serve run with ray already initialized and run without address argument.
 
@@ -1267,7 +1279,9 @@ class TestRayReinitialization:
         p.send_signal(signal.SIGINT)
         p.wait()
 
-    def test_run_with_address_different_address(self, import_file_name, ray_start_stop):
+    def test_run_with_address_different_address(
+        self, import_file_name, pattern, ansi_escape, ray_start_stop
+    ):
         """Test serve run with ray already initialized and run with address argument
         that has the different address as existing ray instance.
 
@@ -1285,14 +1299,17 @@ class TestRayReinitialization:
         p.wait()
         process_output, _ = p.communicate()
         logs = process_output.decode("utf-8").strip()
+        ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
         expected_warning_message = (
             "An address was passed to `serve run` but the imported module also "
-            "connected to Ray at a different address: '127.0.0.1:6379'. You do not "
+            f"connected to Ray at a different address: '{ray_address}'. You do not "
             "need to call `ray.init` in your code when using `serve run`."
         )
         assert expected_warning_message in logs
 
-    def test_run_with_auto_address(self, import_file_name, ray_start_stop):
+    def test_run_with_auto_address(
+        self, import_file_name, pattern, ansi_escape, ray_start_stop
+    ):
         """Test serve run with ray already initialized and run with "auto" address
         argument.
 
@@ -1310,9 +1327,10 @@ class TestRayReinitialization:
         p.wait()
         process_output, _ = p.communicate()
         logs = process_output.decode("utf-8").strip()
+        ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
         expected_warning_message = (
             "An address was passed to `serve run` but the imported module also "
-            "connected to Ray at a different address: '127.0.0.1:6379'. You do not "
+            f"connected to Ray at a different address: '{ray_address}'. You do not "
             "need to call `ray.init` in your code when using `serve run`."
         )
         assert expected_warning_message not in logs
