@@ -300,12 +300,11 @@ class WaitBlockPrefetcher(BlockPrefetcher):
             try:
                 blocks_to_wait = []
                 with self._condition:
-                    if self._stopped:
-                        del self._blocks[:]
-                        return
                     if len(self._blocks) > 0:
                         blocks_to_wait, self._blocks = self._blocks[:], []
                     else:
+                        if self._stopped:
+                            return
                         blocks_to_wait = []
                         self._condition.wait()
                 if len(blocks_to_wait) > 0:

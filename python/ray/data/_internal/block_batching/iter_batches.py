@@ -122,6 +122,7 @@ def iter_batches(
     def _async_iter_batches(
         block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     ) -> Iterator[DataBatch]:
+
         # Step 1: Prefetch logical batches locally.
         block_refs = prefetch_batches_locally(
             block_ref_iter=block_refs,
