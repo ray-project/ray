@@ -1,13 +1,13 @@
-import pytest
 import pandas as pd
+import pytest
 
 import ray
-from ray.tests.conftest import *  # noqa
+from ray._private.test_utils import run_string_as_driver
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.tests.util import extract_values
-from ray._private.test_utils import run_string_as_driver
+from ray.tests.conftest import *  # noqa
 
 
 def test_context_saved_when_dataset_created(ray_start_regular_shared):

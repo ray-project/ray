@@ -1,35 +1,25 @@
 import copy
 import logging
-import time
 import threading
-from typing import (
-    List,
-    Dict,
-    Optional,
-    Iterator,
-    Tuple,
-    Union,
-    TYPE_CHECKING,
-)
+import time
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-
-from ray.data.iterator import DataIterator
+from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.execution.legacy_compat import (
-    execute_to_legacy_bundle_iterator,
-)
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
-from ray.data._internal.stats import DatasetStats
+from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
