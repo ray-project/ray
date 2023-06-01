@@ -286,6 +286,7 @@ class WaitBlockPrefetcher(BlockPrefetcher):
 
     def __init__(self):
         self._blocks = []
+        self._stopped = False
         self._condition = threading.Condition()
         self._thread = threading.Thread(
             target=self._run,
@@ -299,6 +300,9 @@ class WaitBlockPrefetcher(BlockPrefetcher):
             try:
                 blocks_to_wait = []
                 with self._condition:
+                    if self._stopped:
+                        del self._blocks[:]
+                        return
                     if len(self._blocks) > 0:
                         blocks_to_wait, self._blocks = self._blocks[:], []
                     else:
@@ -311,13 +315,22 @@ class WaitBlockPrefetcher(BlockPrefetcher):
 
     def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         with self._condition:
+            if self._stopped:
+                raise RuntimeError("Prefetcher is stopped.")
             self._blocks = blocks
             self._condition.notify()
 
+    def stop(self):
+        with self._condition:
+            if self._stopped:
+                return
+            self._stopped = True
+            self._condition.notify()
 
-# ray.wait doesn't work as expected, so we have an
-# actor-based prefetcher as a work around. See
-# https://github.com/ray-project/ray/issues/23983 for details.
+    def __del__(self):
+        self.stop()
+
+
 class ActorBlockPrefetcher(BlockPrefetcher):
     """Block prefetcher using a local actor."""
 

@@ -204,3 +204,4 @@ def _prefetch_blocks(
         trace_deallocation(
             block_ref, "block_batching._prefetch_blocks", free=eager_free
         )
+    prefetcher.stop()

@@ -122,7 +122,6 @@ def iter_batches(
     def _async_iter_batches(
         block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     ) -> Iterator[DataBatch]:
-
         # Step 1: Prefetch logical batches locally.
         block_refs = prefetch_batches_locally(
             block_ref_iter=block_refs,
@@ -274,14 +273,14 @@ def prefetch_batches_locally(
         current_window_size -= metadata.num_rows
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
-                sliding_window.append(next(block_ref_iter))
-                prefetcher.prefetch_blocks(
-                    [block_ref for block_ref, _ in list(sliding_window)]
-                )
+                block_ref, metadata = next(block_ref_iter)
+                sliding_window.append((block_ref, metadata))
+                prefetcher.prefetch_blocks([block_ref])
             except StopIteration:
                 pass
         yield block_ref
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+    prefetcher.stop()
 
 
 def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
