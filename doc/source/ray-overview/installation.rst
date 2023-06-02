@@ -266,40 +266,6 @@ You can install and use Ray C++ API as follows.
 
   If you build Ray from source, remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
 
-.. _apple-silcon-supprt:
-
-M1 Mac (Apple Silicon) Support
-------------------------------
-
-Ray has experimental support for machines running Apple Silicon (such as M1 macs).
-Multi-node clusters are untested. To get started with local Ray development:
-
-#. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
-
-   * ``wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh``
-
-   * ``bash Miniforge3-MacOSX-arm64.sh``
-
-   * ``rm Miniforge3-MacOSX-arm64.sh # Cleanup.``
-
-#. Ensure you're using the miniforge environment (you should see (base) in your terminal).
-
-   * ``source ~/.bash_profile``
-
-   * ``conda activate``
-
-#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs.
-
-   * ``pip uninstall grpcio; conda install grpcio=1.43.0 -c conda-forge``
-
-#. Install Ray as you normally would.
-
-   * ``pip install ray``
-
-.. note::
-
-  At this time, Apple Silicon ray wheels are being published for **releases only**. As support stabilizes, nightly wheels will be published in the future.
-
 .. _windows-support:
 
 Windows Support
