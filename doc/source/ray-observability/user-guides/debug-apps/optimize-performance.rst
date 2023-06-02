@@ -60,24 +60,14 @@ as well as some known problems. If you encounter other problems, please
 
 .. _ray-core-timeline:
 
-Visualizing Tasks in the Ray Timeline
+Visualizing Tasks with Ray Timeline
 -------------------------------------
+View :ref:` how to use Ray Timeline in the Dashboard <dashboard-timeline>` for more details.
 
-1. The :ref:`timeline API <ray-core-timeline>` is available from Ray Dashboard.
-
-* Download the Chrome tracing file by clicking the download button.
-* Second, you can use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. Using the Perfetto UI is the recommended way to visualize Chrome tracing files.
-* See the timeline visualization of Ray Tasks and Actors. There are Node rows (hardware) and Worker rows (processes). Each worker row displays a list of events (e.g., Task scheduled, Task running, input/output deserialization, etc.) from that Worker over time.
-
-2. You can also export the tracing file as a JSON file by running ``ray timeline`` from the command line or ``ray.timeline`` from the Python API.
+Instead of using Dashboard UI to download the tracing file, you can also export the tracing file as a JSON file by running ``ray timeline`` from the command line or ``ray.timeline`` from the Python API.
 .. code-block:: python
 ray.timeline(filename="/tmp/timeline.json")
 
-To use the timeline, enable Ray profiling by setting the ``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine, and setting the ``RAY_task_events_report_interval_ms`` to larger than 0 (default 1000).
-
-
-
-.. _`chrome://tracing`: chrome://tracing
 
 .. _dashboard-profiling:
 
@@ -325,7 +315,7 @@ Our example in total now takes only 1.5 seconds to run:
 
 GPU Profiling
 ------------------------
-Ray doesn't provide native integration with GPU profiling tools. Try running GPU profilers like PyTorch Profiler without Ray to identify the issues.
+Ray doesn't provide native integration with GPU profiling tools. Try running GPU profilers like [PyTorch Profiler](https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html) without Ray to identify the issues.
 
 If you have related feature requests, `let us know`_.
 

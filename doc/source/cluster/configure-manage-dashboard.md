@@ -22,7 +22,7 @@ Pass the keyword argument ``dashboard_port`` in your call to ``ray.init()``.
 :::
 
 :::{tab-item} VM Cluster Launcher
-Include the ``--dashboard-port`` argument in the `head_start_ray_commands` section of the Cluster Launcher YAML file.
+Include the ``--dashboard-port`` argument in the `head_start_ray_commands` section of the [Cluster Launcher's YAML file](https://github.com/ray-project/ray/blob/0574620d454952556fa1befc7694353d68c72049/python/ray/autoscaler/aws/example-full.yaml#L172).
 ```yaml
 head_start_ray_commands: 
   - ray stop 

@@ -65,17 +65,105 @@ System logs may include information about your applications. For example, ``runt
 - ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a Task, Actor or Job.  This file is only present if a runtime environment is installed.
 
 
-## Log rotation
+(log-redirection-to-driver)=
+## Logging to the driver
+By default, stdout and stderr for Tasks and Actors stream to the Ray driver (the entrypoint script that calls ``ray.init``). It helps users aggregate the logs for the distributed Ray application in a single place.
 
-Ray supports log rotation of log files. Note that not all components support log rotation. (Raylet, Python, and Java worker logs do not rotate).
+```{literalinclude} doc_code/app_logging.py
+```
 
-By default, logs rotate when they reach 512MB (maxBytes), and have a maximum of five backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
-To change the log rotation configuration, specify environment variables. For example,
+All stdout emitted from the ``print`` method are printed to the driver with a ``(Task or Actor repr, process ID, IP address)`` prefix.
+
+``` bash
+(pid=45601) task
+(Actor pid=480956) actor
+```
+
+### Customizing prefixes for Actor logs
+
+It is often useful to distinguish between log messages from different Actors. For example, if you have a large number of worker Actors, you may want to easily see the index of the Actor that logged a particular message. Define the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for the Actor class to replace the Actor name with the Actor repr. For example:
+
+```{literalinclude} /ray-core/doc_code/actor-repr.py
+```
+
+The resulting output follows:
 
 ```bash
-RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
-RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
+(MyActor(index=2) pid=482120) hello there
+(MyActor(index=1) pid=482119) hello there
 ```
+
+### Coloring Actor log prefixes
+By default, Ray prints Actor log prefixes in light blue.
+Activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``.
+This indexes into an array of colors modulo the PID of each process.
+
+![coloring-actor-log-prefixes](../images/coloring-actor-log-prefixes.png)
+
+### Disable logging to the driver
+In large scale runs, routing all worker logs to the driver may be unwanted. Disable this feature by setting ``log_to_driver=False`` in `ray.init`:
+
+```python
+import ray
+
+# Task and Actor logs are not copied to the driver stdout.
+ray.init(log_to_driver=False)
+```
+
+
+## Log deduplication
+
+By default, Ray deduplicates logs that appear redundantly across multiple processes. The first instance of each log message is always immediately printed. However, subsequent log messages of the same pattern (ignoring words with numeric components) are buffered for up to five seconds and printed in batch. For example, for the following code snippet:
+
+```python
+import ray
+import random
+
+@ray.remote
+def task():
+    print("Hello there, I am a task", random.random())
+
+ray.get([task.remote() for _ in range(100)])
+```
+
+The output is as follows:
+
+```bash
+2023-03-27 15:08:34,195	INFO worker.py:1603 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+(task pid=534172) Hello there, I am a task 0.20583517821231412
+(task pid=534174) Hello there, I am a task 0.17536720316370757 [repeated 99x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication)
+```
+
+This feature is especially useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when imported. Configure this feature as follows:
+
+1. Set ``RAY_DEDUP_LOGS=0`` to disable this feature entirely.
+2. Set ``RAY_DEDUP_LOGS_AGG_WINDOW_S=<int>`` to change the agggregation window.
+3. Set ``RAY_DEDUP_LOGS_ALLOW_REGEX=<string>`` to specify log messages to never deduplicate.
+4. Set ``RAY_DEDUP_LOGS_SKIP_REGEX=<string>`` to specify log messages to skip printing.
+
+
+
+## Distributed progress bars (tqdm)
+
+When using `tqdm <https://tqdm.github.io>`__ in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
+
+```{literalinclude} /ray-core/doc_code/tqdm.py
+```
+
+This tqdm implementation works as follows:
+
+1. The ``tqdm_ray`` module translates TQDM calls into special JSON log messages written to the worker stdout.
+2. The Ray log monitor routes these log messages to a tqdm singleton, instead of copying them directly to the driver stdout.
+3. The tqdm singleton determines the positions of progress bars from various Ray Tasks or Actors, ensuring they don't collide or conflict with each other.
+
+Limitations:
+
+- Only a subset of tqdm functionality is supported. Refer to the ray_tqdm `implementation <https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py>`__ for more details.
+- Performance may be poor if there are more than a couple thousand updates per second (updates are not batched).
+
+By default, the built-in print is also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
+This avoids progress bar corruption on driver print statements. To disable this, set `RAY_TQDM_PATCH_PRINT=0`.
+
 
 ## Using Ray's logger
 When ``import ray`` is executed, Ray's logger is initialized, generating a default configuration given in ``python/ray/_private/log.py``. The default logging level is ``logging.INFO``.
@@ -167,23 +255,92 @@ Some system component logs are not structured as suggested above as of 2.5. The 
 :::
 
 ### Add metadata to structured logs
-If you need additional metadata to make logs more structured, fetch the metadata of Jobs, Tasks or Actors with Ray’s {py:obj}`ray.runtime_context.get_runtime_context` APIs. 
+If you need additional metadata to make logs more structured, fetch the metadata of Jobs, Tasks or Actors with Ray’s {py:obj}`ray.runtime_context.get_runtime_context` API.
 ::::{tab-set}
 
 :::{tab-item} Ray Job
-...
+Get the job ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+
+```python
+import ray
+# Initiate a driver.
+ray.init()
+
+job_id = ray.get_runtime_context().get_job_id
+```
+
+```{admonition} Note
+:class: note
+The job submission ID is not supported yet. This [GitHub issue](https://github.com/ray-project/ray/issues/28089#issuecomment-1557891407) tracks the work to support it.
+```
 :::
 
 :::{tab-item} Ray Actor
-...
+Get the actor ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+
+```python
+import ray
+# Initiate a driver.
+ray.init()
+@ray.remote
+class actor():
+    actor_id = ray.get_runtime_context().get_actor_id
+```
+
+
 :::
 
 :::{tab-item} Ray Task
-...
+Get the task ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+
+```python
+import ray
+# Initiate a driver.
+ray.init()
+@ray.remote
+def task():
+    task_id = ray.get_runtime_context().get_task_id
+```
 :::
 
-:::{tab-item} AIR or library-specific entities
-...
+:::{tab-item} Node
+Get the node ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+
+```python
+import ray
+# Initiate a driver.
+ray.init()
+
+# Get the ID of the node where the driver process is running
+driver_process_node_id = ray.get_runtime_context().get_node_id
+
+@ray.remote
+def task():
+    # Get the ID of the node where the worker process is running
+    worker_process_node_id = ray.get_runtime_context().get_node_id
+```
+
+```{admonition} Tip
+:class: tip
+If you need node IP, use {py:obj}`ray.nodes` API to fetch all nodes and map the node ID to the corresponding IP.
+```
+
+
+:::
+
+:::{tab-item} Ray Worker
+Get the Ray Worker process ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+
+```python
+import ray
+# Initiate a driver.
+ray.init()
+
+@ray.remote
+def task():
+    # Get the ID of the Worker process where the task is running
+    worker_id = ray.get_runtime_context().get_worker_id
+```
 :::
 
 ::::
@@ -252,150 +409,19 @@ If you are using Ray AIR or any of the Ray libraries, follow the instructions pr
 
 ::::
 
+## Log rotation
 
-(log-redirection-to-driver)=
-## Logging to the driver
-By default, stdout and stderr for Tasks and Actors stream to the Ray driver (the entrypoint script that calls ``ray.init``). It helps users aggregate the logs for the distributed Ray application in a single place.
+Ray supports log rotation of log files. Note that not all components support log rotation. (Raylet, Python, and Java worker logs do not rotate).
 
-```{literalinclude} doc_code/app_logging.py
-```
-
-All stdout emitted from the ``print`` method are printed to the driver with a ``(Task or Actor repr, process ID, IP address)`` prefix.
-
-``` bash
-(pid=45601) task
-(Actor pid=480956) actor
-```
-
-### Customizing prefixes for Actor logs
-
-It is often useful to distinguish between log messages from different Actors. For example, if you have a large number of worker Actors, you may want to easily see the index of the Actor that logged a particular message. Define the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for the Actor class to replace the Actor name with the Actor repr. For example:
-
-```{literalinclude} /ray-core/doc_code/actor-repr.py
-```
-
-The resulting output follows:
+By default, logs rotate when they reach 512MB (maxBytes), and have a maximum of five backup files (backupCount). Indexes are appended to all backup files (e.g., `raylet.out.1`)
+To change the log rotation configuration, specify environment variables. For example,
 
 ```bash
-(MyActor(index=2) pid=482120) hello there
-(MyActor(index=1) pid=482119) hello there
-```
-
-### Coloring Actor log prefixes
-By default, Ray prints Actor log prefixes in light blue.
-Activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``.
-This indexes into an array of colors modulo the PID of each process.
-
-![coloring-actor-log-prefixes](../images/coloring-actor-log-prefixes.png){align=center}
-
-### Disable logging to the driver
-In large scale runs, routing all worker logs to the driver may be unwanted. Disable this feature by setting ``log_to_driver=False`` in Ray init:
-
-```python
-import ray
-
-# Task and Actor logs are not copied to the driver stdout.
-ray.init(log_to_driver=False)
-```
-(redirect-to-stderr)=
-## Redirecting Ray logs to stderr
-
-By default, Ray logs are written to files under the ``/tmp/ray/session_*/logs`` directory. To redirect logs to stderr of the host nodes instead, set the environment variable ``RAY_LOG_TO_STDERR=1`` on the driver and on all Ray nodes. This practice is not recommended but may be useful if your log processing tool only captures log records written to stderr.
-
-Redirecting logging to stderr also prepends a ``({component})`` prefix, for example ``(raylet)``, to each log record messages.
-
-```bash
-[2022-01-24 19:42:02,978 I 1829336 1829336] (gcs_server) grpc_server.cc:103: GcsServer server started, listening on port 50009.
-[2022-01-24 19:42:06,696 I 1829415 1829415] (raylet) grpc_server.cc:103: ObjectManager server started, listening on port 40545.
-2022-01-24 19:42:05,087 INFO (dashboard) dashboard.py:95 -- Setup static dir for dashboard: /mnt/data/workspace/ray/python/ray/dashboard/client/build
-2022-01-24 19:42:07,500 INFO (dashboard_agent) agent.py:105 -- Dashboard agent grpc address: 0.0.0.0:49228
-```
-
-These prefixes allow you to filter the stderr stream of logs down to the component of interest. Note that multi-line log records do **not** have this component marker at the beginning of each line.
-
-When running a local Ray Cluster, set this environment variable before starting the local cluster:
-
-```python
-os.environ["RAY_LOG_TO_STDERR"] = "1"
-ray.init()
-```
-
-When starting a local cluster with the CLI or starting nodes in a multi-node Ray Cluster, set this environment variable before starting up each node:
-
-```bash
-env RAY_LOG_TO_STDERR=1 ray start
-```
-
-If you are using the Ray Cluster Launcher, specify this environment variable in the Ray start commands:
-
-```bash
-head_start_ray_commands:
-    - ray stop
-    - env RAY_LOG_TO_STDERR=1 ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-
-worker_start_ray_commands:
-    - ray stop
-    - env RAY_LOG_TO_STDERR=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
-```
-
-When connecting to the cluster, be sure to set the environment variable before connecting:
-
-```python
-os.environ["RAY_LOG_TO_STDERR"] = "1"
-ray.init(address="auto")
+RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
+RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
 ```
 
 
+## Log persistence
 
-## Log deduplication
-
-By default, Ray deduplicates logs that appear redundantly across multiple processes. The first instance of each log message is always immediately printed. However, subsequent log messages of the same pattern (ignoring words with numeric components) are buffered for up to five seconds and printed in batch. For example, for the following code snippet:
-
-```python
-import ray
-import random
-
-@ray.remote
-def task():
-    print("Hello there, I am a task", random.random())
-
-ray.get([task.remote() for _ in range(100)])
-```
-
-The output is as follows:
-
-```bash
-2023-03-27 15:08:34,195	INFO worker.py:1603 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
-(task pid=534172) Hello there, I am a task 0.20583517821231412
-(task pid=534174) Hello there, I am a task 0.17536720316370757 [repeated 99x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication)
-```
-
-This feature is especially useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when imported. Configure this feature as follows:
-
-1. Set ``RAY_DEDUP_LOGS=0`` to disable this feature entirely.
-2. Set ``RAY_DEDUP_LOGS_AGG_WINDOW_S=<int>`` to change the agggregation window.
-3. Set ``RAY_DEDUP_LOGS_ALLOW_REGEX=<string>`` to specify log messages to never deduplicate.
-4. Set ``RAY_DEDUP_LOGS_SKIP_REGEX=<string>`` to specify log messages to skip printing.
-
-
-
-## Distributed progress bars (tqdm)
-
-When using `tqdm <https://tqdm.github.io>`__ in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
-
-```{literalinclude} /ray-core/doc_code/tqdm.py
-```
-
-This tqdm implementation works as follows:
-
-1. The ``tqdm_ray`` module translates TQDM calls into special JSON log messages written to the worker stdout.
-2. The Ray log monitor routes these log messages to a tqdm singleton, instead of copying them directly to the driver stdout.
-3. The tqdm singleton determines the positions of progress bars from various Ray Tasks or Actors, ensuring they don't collide or conflict with each other.
-
-Limitations:
-
-- Only a subset of tqdm functionality is supported. Refer to the ray_tqdm `implementation <https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py>`__ for more details.
-- Performance may be poor if there are more than a couple thousand updates per second (updates are not batched).
-
-By default, the built-in print is also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
-This avoids progress bar corruption on driver print statements. To disable this, set `RAY_TQDM_PATCH_PRINT=0`.
+To process and export logs to external stroage or management systems, view {ref}`log persistence on Kubernetes <kuberay-logging>` and {ref}`log persistence on VMs <vm-logging>` for more details.

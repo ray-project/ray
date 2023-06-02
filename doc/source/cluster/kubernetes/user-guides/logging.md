@@ -144,8 +144,53 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 [ConfigLink]: https://raw.githubusercontent.com/ray-project/ray/releases/2.4.0/doc/source/cluster/kubernetes/configs/ray-cluster.log.yaml
 
 
+(redirect-to-stderr)=
 ## Redirecting Ray logs to stderr
-By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` directory. If you prefer to capture logs from stderr, view {ref}`configuring logging <redirect-to-stderr>` for details on how to redirect all the logs to stderr of the host pods instead.
+
+By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` directory. To redirect logs to stderr of the host nodes instead, set the environment variable ``RAY_LOG_TO_STDERR=1`` on the driver and on all Ray nodes. This practice is not recommended but may be useful if your log processing tool only captures log records written to stderr.
+
+Redirecting logging to stderr also prepends a ``({component})`` prefix, for example ``(raylet)``, to each log record messages.
+
+```bash
+[2022-01-24 19:42:02,978 I 1829336 1829336] (gcs_server) grpc_server.cc:103: GcsServer server started, listening on port 50009.
+[2022-01-24 19:42:06,696 I 1829415 1829415] (raylet) grpc_server.cc:103: ObjectManager server started, listening on port 40545.
+2022-01-24 19:42:05,087 INFO (dashboard) dashboard.py:95 -- Setup static dir for dashboard: /mnt/data/workspace/ray/python/ray/dashboard/client/build
+2022-01-24 19:42:07,500 INFO (dashboard_agent) agent.py:105 -- Dashboard agent grpc address: 0.0.0.0:49228
+```
+
+These prefixes allow you to filter the stderr stream of logs down to the component of interest. Note that multi-line log records do **not** have this component marker at the beginning of each line.
+
+When running a local Ray Cluster, set this environment variable before starting the local cluster:
+
+```python
+os.environ["RAY_LOG_TO_STDERR"] = "1"
+ray.init()
+```
+
+When starting a local cluster with the CLI or starting nodes in a multi-node Ray Cluster, set this environment variable before starting up each node:
+
+```bash
+env RAY_LOG_TO_STDERR=1 ray start
+```
+
+If you are using the Ray Cluster Launcher, specify this environment variable in the Ray start commands:
+
+```bash
+head_start_ray_commands:
+    - ray stop
+    - env RAY_LOG_TO_STDERR=1 ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+
+worker_start_ray_commands:
+    - ray stop
+    - env RAY_LOG_TO_STDERR=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+```
+
+When connecting to the cluster, be sure to set the environment variable before connecting:
+
+```python
+os.environ["RAY_LOG_TO_STDERR"] = "1"
+ray.init(address="auto")
+```
 
 
 

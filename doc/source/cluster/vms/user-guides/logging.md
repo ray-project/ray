@@ -1,3 +1,4 @@
+(vm-logging)=
 # Log Persistence
 
 Logs are useful for troubleshooting Ray applications and your system. For example, you may want to access system logs if a node terminates unexpectedly.

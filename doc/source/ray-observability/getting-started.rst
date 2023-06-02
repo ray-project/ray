@@ -112,7 +112,8 @@ Tasks and Actors are grouped and nested using the following criteria:
 
   Job detail page can only display or retrieve up to 10K tasks per job. For Jobs with more than 10K Tasks, the portion of Tasks that exceed the 10K limit are unaccounted. The number of unaccounted tasks is available from the task breakdown.
 
-Task timeline
+(dashboard-timeline)=
+Task Timeline
 ~~~~~~~~~~~~~
 
 The :ref:`timeline API <ray-core-timeline>` is available from the Task Timeline pane.
