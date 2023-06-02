@@ -1,8 +1,10 @@
 import pytest
 import numpy as np
+from pytorch_lightning.strategies import StrategyRegistry
 
 import ray
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
+from ray.train.lightning._lightning_utils import RayStrategyFactory
 from ray.air.util.data_batch_conversion import _convert_batch_type_to_pandas
 from ray.train.tests.lightning_test_utils import (
     LinearModule,
@@ -40,11 +42,6 @@ def test_config_builder():
     ):
         LightningConfigBuilder().module(cls=LinearModule).trainer(10, 100)
 
-    with pytest.raises(
-        ValueError, match="LightningTrainer currently supports 'ddp' and 'fsdp'"
-    ):
-        LightningConfigBuilder().strategy(name="dummy_strategy")
-
     config = (
         LightningConfigBuilder()
         .module(cls=LinearModule, input_dim=10)
@@ -58,13 +55,13 @@ def test_config_builder():
     assert not config["_model_checkpoint_config"]
 
 
-@pytest.mark.parametrize("strategy", ["ddp", "fsdp"])
+@pytest.mark.parametrize("strategy", ["ddp", "fsdp", "deepspeed"])
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
 @pytest.mark.parametrize("datasource", ["dataloader", "datamodule"])
 def test_trainer_with_native_dataloader(
     ray_start_6_cpus_2_gpus, strategy, accelerator, datasource
 ):
-    if accelerator == "cpu" and strategy == "fsdp":
+    if accelerator == "cpu" and strategy in {"fsdp", "deepspeed"}:
         return
 
     num_epochs = 4
@@ -107,10 +104,10 @@ def test_trainer_with_native_dataloader(
     assert "val_loss" in results.metrics
 
 
-@pytest.mark.parametrize("strategy", ["ddp", "fsdp"])
+@pytest.mark.parametrize("strategy", ["ddp", "fsdp", "deepspeed"])
 @pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
 def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy, accelerator):
-    if accelerator == "cpu" and strategy == "fsdp":
+    if accelerator == "cpu" and strategy in {"fsdp", "deepspeed"}:
         return
 
     num_epochs = 4
@@ -195,6 +192,37 @@ def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator)
     assert "loss" in results.metrics
     assert "val_loss" in results.metrics
     assert results.checkpoint
+
+
+def test_strategy_factory():
+    # Test unsupported strategy names in the whitelist
+    for name in RayStrategyFactory.strategy_whitelist:
+        RayStrategyFactory.create_strategy(name)
+
+    # Test unsupported strategy names
+    unsupported_list = StrategyRegistry.keys() - RayStrategyFactory.strategy_whitelist
+    for name in unsupported_list:
+        with pytest.raises(
+            ValueError, match=f"LightningTrainer doesn't support {name} yet.*"
+        ):
+            RayStrategyFactory.create_strategy(name)
+
+    # Test invalid strategy names
+    for name in ["dummy_strategy", "", None]:
+        with pytest.raises(
+            ValueError, match=f"Invalid strategy name: {name} is not registered!"
+        ):
+            RayStrategyFactory.create_strategy(name)
+
+    # Test strategies with custom init_params
+    RayStrategyFactory.create_strategy("ddp", accelerator="gpu")
+    RayStrategyFactory.create_strategy("fsdp", cpu_offload=True)
+    RayStrategyFactory.create_strategy(
+        "deepspeed", stage=2, offload_optimizer=True, offload_params_device="cpu"
+    )
+    RayStrategyFactory.create_strategy(
+        "deepspeed_stage_2_offload", offload_params_device="cpu"
+    )
 
 
 if __name__ == "__main__":

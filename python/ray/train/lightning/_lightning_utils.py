@@ -125,11 +125,11 @@ class _RayStrategyFactory:
         self.ray_registry = dict()
         self.register_ray_strategies()
 
-        self.strategy_whitelist = [
+        self.strategy_whitelist = {
             name
             for name, registry in self.ptl_registry.items()
             if registry["strategy"] in self.ray_registry
-        ]
+        }
 
     def register_ray_strategies(self):
         self.ray_registry[DDPStrategy] = RayDDPStrategy
@@ -139,18 +139,19 @@ class _RayStrategyFactory:
     def create_strategy(self, name: str, **kwargs) -> "Strategy":
         """Function to check if a strategy is supported."""
         # Try to retrieve the strategy from the Lightning registry
-        registry = self.ptl_registry.get(name, None)
-        if not registry:
+        if name not in self.ptl_registry:
             raise ValueError(f"Invalid strategy name: {name} is not registered!")
+        registry = self.ptl_registry[name]
 
         # Check if the strategy is in the list of supported strategies
         if name not in self.strategy_whitelist:
             raise ValueError(f"LightningTrainer doesn't support {name} yet. Please choose from {self.strategy_whitelist}.")
 
-        strategy_cls = registry.get("strategy", None)
-        init_params = registry.get("init_params", {})
+        strategy_cls = registry["strategy"]
+        ray_strategy_cls = self.ray_registry[strategy_cls]
+        init_params = registry.get("init_params", {}).copy()
         init_params.update(kwargs)
-        return self.ray_registry[strategy_cls](**init_params)
+        return ray_strategy_cls(**init_params)
 
 
 RayStrategyFactory = _RayStrategyFactory()
