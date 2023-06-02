@@ -15,12 +15,11 @@ from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
 from ray.util import PublicAPI
 from ray.train.lightning._lightning_utils import (
-    RayDDPStrategy,
-    RayFSDPStrategy,
     RayEnvironment,
     RayDataModule,
     RayModelCheckpoint,
     get_worker_root_device,
+    RayStrategyFactory,
 )
 
 
@@ -141,20 +140,26 @@ class LightningConfigBuilder:
     def strategy(self, name: str = "ddp", **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.strategies.Strategy``.
 
-        Args:
-            name: The name of your distributed strategy. You can choose
-                from "ddp" and "fsdp". Default: "ddp".
-            kwargs: For valid arguments to pass, please refer to:
-                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
-                and
-                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
-        """
-        if name not in ["ddp", "fsdp"]:
-            raise ValueError(
-                "LightningTrainer currently supports 'ddp' and 'fsdp' strategy. "
-                "Please choose one of them."
-            )
+        The entire list of available strategies can be accessed in
+        `pytorch_lightning.strategies.StrategyRegistry`. As of the current
+        implementation, only the strategies of the classes `DDPStrategy`,
+        `FSDPStrategy`, and `DeepSpeedStrategy` are supported.
 
+        Args:
+            name: The name of your distributed strategy. Possible options include
+                "ddp", "fsdp", "deepspeed", and other variants. Default: "ddp".
+            kwargs: Initialization parameters for the strategy object. If you specified
+                a registered strategy with init params (e.g. deepspeed_stage_2_offload),
+                the kwargs specified here will update the original init params.
+
+                For valid arguments to pass, please refer to:
+                ddp:
+                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
+                fsdp:
+                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
+                deepspeed:
+                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DeepSpeedStrategy.html
+        """
         self._strategy_config["_strategy_name"] = name
         self._strategy_config.update(**kwargs)
         return self
@@ -524,10 +529,9 @@ def _lightning_train_loop_per_worker(config):
             "the settings passed into `LightningConfigBuilder.strategy()`."
         )
 
-    if strategy_name == "ddp":
-        trainer_config["strategy"] = RayDDPStrategy(**strategy_config)
-    if strategy_name == "fsdp":
-        trainer_config["strategy"] = RayFSDPStrategy(**strategy_config)
+    trainer_config["strategy"] = RayStrategyFactory.create_strategy(
+        strategy_name, **strategy_config
+    )
 
     # LightningTrainer always requires checkpointing
     trainer_config["enable_checkpointing"] = True
