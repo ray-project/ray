@@ -69,6 +69,10 @@ async frameworks like aiohttp, aioredis, etc.
     import time
     time.sleep(3)
 
+.. testoutput::
+
+    ...
+
 ObjectRefs as asyncio.Futures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ObjectRefs can be translated to asyncio.Futures. This feature
