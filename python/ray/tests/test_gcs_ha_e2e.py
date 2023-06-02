@@ -1,6 +1,7 @@
 import pytest
 import sys
 import threading
+import docker
 from time import sleep
 from ray._private.test_utils import wait_for_condition
 from pytest_docker_tools import container, fetch, network, volume
@@ -77,6 +78,14 @@ redis = container(
 
 head_node_vol = volume()
 worker_node_vol = volume()
+
+# Delete any left over containers from previous runs
+docker_client = docker.from_env()
+try:
+    docker_client.containers.get("gcs").remove(force=True)
+except Exception:
+    pass
+
 head_node = container(
     image="ray_ci:v1",
     name="gcs",
@@ -259,8 +268,8 @@ serve_details = ServeInstanceDetails(
     **requests.get("http://localhost:52365/api/serve/applications/").json())
 assert serve_details.controller_info.node_id == head_node_id
 """
-    #output = worker.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
-    #assert output.exit_code == 0
+    output = worker.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
+    assert output.exit_code == 0
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
