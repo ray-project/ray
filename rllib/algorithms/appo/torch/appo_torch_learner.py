@@ -74,17 +74,38 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
             trajectory_len=hps.rollout_frag_or_episode_len,
             recurrent_seq_len=hps.recurrent_seq_len,
         )
-        values_time_major = make_time_major(
-            values,
-            trajectory_len=hps.rollout_frag_or_episode_len,
-            recurrent_seq_len=hps.recurrent_seq_len,
-        )
-        bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
             trajectory_len=hps.rollout_frag_or_episode_len,
             recurrent_seq_len=hps.recurrent_seq_len,
         )
+        values_time_major = make_time_major(
+            values,
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
+        )
+        bootstrap_values_time_major = make_time_major(
+            batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        )
+        # Then add the shifted-by-one bootstrapped values to that to yield the final
+        # value tensor. Use the last ts in that resulting tensor as the
+        # "bootstrapped" values for vtrace.
+        T, B = values_time_major.shape
+        # Augment `values_time_major` by one timestep at the end (all zeros).
+        values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
+        # Augment `bootstrap_values_time_major` by one timestep at the beginning
+        # (all zeros).
+        bootstrap_values_time_major = torch.cat(
+            [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
+        )
+        # Note that the `SampleBatch.VALUES_BOOTSTRAPPED` values are always recorded
+        # ONLY at the last ts of a trajectory (for the following timestep,
+        # which is one past(!) the last ts). All other values in that tensor are
+        # zero.
+        # Adding values and bootstrap_values yields the correct values+bootstrap
+        # configuration, from which we can then take t=-1 (last timestep) to get
+        # the bootstrap_value arg for the vtrace function below.
+        values_time_major += bootstrap_values_time_major
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -103,8 +124,8 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
             discounts=discounts_time_major,
             rewards=rewards_time_major,
-            values=values_time_major,
-            bootstrap_value=bootstrap_value,
+            values=values_time_major[:-1],
+            bootstrap_value=values_time_major[-1],
             clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=hps.vtrace_clip_rho_threshold,
         )
@@ -133,7 +154,7 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
         mean_pi_loss = -torch.mean(surrogate_loss)
 
         # The baseline loss.
-        delta = values_time_major - vtrace_adjusted_target_values
+        delta = values_time_major[:-1] - vtrace_adjusted_target_values
         mean_vf_loss = 0.5 * torch.mean(delta**2)
 
         # The entropy loss.

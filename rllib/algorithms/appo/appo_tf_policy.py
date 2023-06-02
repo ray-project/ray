@@ -319,7 +319,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 value_targets = make_time_major(
                     train_batch[Postprocessing.VALUE_TARGETS]
                 )
-                delta = values_time_major - value_targets
+                delta = values_time_major[:-1] - value_targets
                 mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
                 # The entropy loss.

@@ -19,6 +19,7 @@ from ray.rllib.algorithms.impala.impala_torch_policy import (
 )
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
+    compute_bootstrap_value,
     compute_gae_for_sample_batch,
     Postprocessing,
 )
@@ -157,6 +158,29 @@ class APPOTorchPolicy(
         prev_action_dist = dist_class(behaviour_logits, model)
         values = model.value_function()
         values_time_major = _make_time_major(values)
+        bootstrap_values_time_major = make_time_major(
+            train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        )
+
+        # Then add the shifted-by-one bootstrapped values to that to yield the final
+        # value tensor. Use the last ts in that resulting tensor as the
+        # "bootstrapped" values for vtrace.
+        T, B = values_time_major.shape
+        # Augment `values_time_major` by one timestep at the end (all zeros).
+        values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
+        # Augment `bootstrap_values_time_major` by one timestep at the beginning
+        # (all zeros).
+        bootstrap_values_time_major = torch.cat(
+            [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
+        )
+        # Note that the `SampleBatch.VALUES_BOOTSTRAPPED` values are always recorded
+        # ONLY at the last ts of a trajectory (for the following timestep,
+        # which is one past(!) the last ts). All other values in that tensor are
+        # zero.
+        # Adding values and bootstrap_values yields the correct values+bootstrap
+        # configuration, from which we can then take t=-1 (last timestep) to get
+        # the bootstrap_value arg for the vtrace function below.
+        values_time_major += bootstrap_values_time_major
 
         if self.is_recurrent():
             max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
@@ -216,8 +240,8 @@ class APPOTorchPolicy(
                 discounts=(1.0 - _make_time_major(dones).float())
                 * self.config["gamma"],
                 rewards=_make_time_major(rewards),
-                values=values_time_major,
-                bootstrap_value=bootstrap_values[-1],
+                values=values_time_major[:-1],
+                bootstrap_value=values_time_major[-1],
                 dist_class=TorchCategorical if is_multidiscrete else dist_class,
                 model=model,
                 clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
@@ -255,7 +279,7 @@ class APPOTorchPolicy(
 
             # The value function loss.
             value_targets = vtrace_returns.vs.to(values_time_major.device)
-            delta = values_time_major - value_targets
+            delta = values_time_major[:-1] - value_targets
             mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
             # The entropy loss.
@@ -289,7 +313,7 @@ class APPOTorchPolicy(
 
             # The value function loss.
             value_targets = _make_time_major(train_batch[Postprocessing.VALUE_TARGETS])
-            delta = values_time_major - value_targets
+            delta = values_time_major[:-1] - value_targets
             mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
             # The entropy loss.
@@ -316,7 +340,7 @@ class APPOTorchPolicy(
         model.tower_stats["value_targets"] = value_targets
         model.tower_stats["vf_explained_var"] = explained_variance(
             torch.reshape(value_targets, [-1]),
-            torch.reshape(values_time_major, [-1]),
+            torch.reshape(values_time_major[:-1], [-1]),
         )
 
         return total_loss
