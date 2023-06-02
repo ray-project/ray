@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 import pathlib
 import pprint
-from typing import Iterator, Mapping, Any, Union, Dict, Optional, Type, Set
+from typing import Any, Dict, KeysView, Mapping, Optional, Set, Type, Union
 
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.annotations import override, ExperimentalAPI
@@ -30,7 +30,7 @@ class MultiAgentRLModule(RLModule):
 
     This class holds a mapping from module_ids to the underlying RLModules. It provides
     a convenient way of accessing each individual module, as well as accessing all of
-    them with only one api call. Whether or not a given module is trainable is
+    them with only one API call. Whether or not a given module is trainable is
     determined by the caller of this class (not the instance of this class itself).
 
     The extension of this class can include any arbitrary neural networks as part of
@@ -46,14 +46,16 @@ class MultiAgentRLModule(RLModule):
     communication with one another. The behavior of modules with such advanced
     communication would be undefined by default. To share parameters or communication
     between the underlying RLModules, you should implement your own
-    `MultiAgentRLModule`.
+    `MultiAgentRLModule` subclass.
     """
 
-    def __init__(self, config: "MultiAgentRLModuleConfig" = None) -> None:
-        if config is None:
-            config = MultiAgentRLModuleConfig()
+    def __init__(self, config: Optional["MultiAgentRLModuleConfig"] = None) -> None:
+        """Initializes a MultiagentRLModule instance.
 
-        super().__init__(config)
+        Args:
+            config: The MultiAgentRLModuleConfig to use.
+        """
+        super().__init__(config or MultiAgentRLModuleConfig())
 
     def setup(self):
         """Sets up the underlying RLModules."""
@@ -81,8 +83,8 @@ class MultiAgentRLModule(RLModule):
                     f"Module {module_id} is not a SingleAgentRLModuleSpec object."
                 )
 
-    def keys(self) -> Iterator[ModuleID]:
-        """Returns an iteratable of module ids."""
+    def keys(self) -> KeysView[ModuleID]:
+        """Returns a keys view over the module IDs in this MultiAgentRLModule."""
         return self._rl_modules.keys()
 
     @override(RLModule)

@@ -134,9 +134,12 @@ def clip_gradients(
     # Clip by L2-norm (per gradient tensor).
     elif grad_clip_by == "norm":
         for k, v in gradients_dict.copy().items():
-            gradients_dict[k] = (
-                None if v is None else nn.utils.clip_grad_norm_(v, grad_clip)
-            )
+            if v is not None:
+                # Compute the L2-norm of the gradient tensor.
+                norm = v.norm(2)
+                # Clip all the gradients.
+                if norm > grad_clip:
+                    v.mul_(grad_clip / norm)
 
     # Clip by global L2-norm (across all gradient tensors).
     else:

@@ -50,7 +50,7 @@ RLMODULE_METADATA_CHECKPOINT_DATE_TIME_KEY = "checkpoint_date_time"
 @ExperimentalAPI
 @dataclass
 class SingleAgentRLModuleSpec:
-    """A utility spec class to make it constructing RLModules (in single-agent case) easier.
+    """Utility spec class to make constructing RLModules (in single-agent case) easier.
 
     Args:
         module_class: The RLModule class to use.
@@ -68,7 +68,7 @@ class SingleAgentRLModuleSpec:
     module_class: Optional[Type["RLModule"]] = None
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
-    model_config_dict: Optional[Mapping[str, Any]] = None
+    model_config_dict: Optional[Dict[str, Any]] = None
     catalog_class: Optional[Type["Catalog"]] = None
     load_state_path: Optional[str] = None
 
@@ -173,7 +173,7 @@ class RLModuleConfig:
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    model_config_dict: Mapping[str, Any] = None
+    model_config_dict: Dict[str, Any] = None
     catalog_class: Type["Catalog"] = None
 
     def get_catalog(self) -> "Catalog":
@@ -334,6 +334,7 @@ class RLModule(abc.ABC):
         therefore, the subclass should call super.__init__() in its constructor. This
         abstraction can be used to create any component that your RLModule needs.
         """
+        pass
 
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for training.

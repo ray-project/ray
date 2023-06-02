@@ -4,14 +4,14 @@ import time
 import pytest
 
 import ray
-from ray.tests.conftest import *  # noqa
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    _ActorPool,
     AutoscalingConfig,
     AutoscalingPolicy,
+    _ActorPool,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.tests.conftest import *  # noqa
 
 
 @ray.remote

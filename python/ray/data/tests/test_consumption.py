@@ -1,15 +1,15 @@
 import logging
 import math
-import sys
 import os
 import random
+import sys
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from unittest.mock import patch
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
@@ -18,35 +18,24 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset, _sliding_window
-from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import column_udf, extract_values, STRICT_MODE
+from ray.data.tests.util import STRICT_MODE, column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
-def maybe_pipeline(ds, enabled):
-    if enabled:
-        return ds.window(blocks_per_window=1)
-    else:
-        return ds
-
-
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_avoid_placement_group_capture(shutdown_only, pipelined):
+def test_avoid_placement_group_capture(shutdown_only):
     ray.init(num_cpus=2)
 
     @ray.remote
     def run():
-        ds0 = ray.data.range(5)
-        ds = maybe_pipeline(ds0, pipelined)
+        ds = ray.data.range(5)
         assert sorted(
             extract_values("id", ds.map(column_udf("id", lambda x: x + 1)).take())
         ) == [1, 2, 3, 4, 5]
-        ds = maybe_pipeline(ds0, pipelined)
         assert ds.count() == 5
-        ds = maybe_pipeline(ds0, pipelined)
         assert sorted(extract_values("id", ds.iter_rows())) == [0, 1, 2, 3, 4]
 
     pg = ray.util.placement_group([{"CPU": 1}])
@@ -136,16 +125,12 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
         ds2.serialize_lineage()
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_basic(ray_start_regular_shared, pipelined):
-    ds0 = ray.data.range(5)
-    ds = maybe_pipeline(ds0, pipelined)
+def test_basic(ray_start_regular_shared):
+    ds = ray.data.range(5)
     assert sorted(
         extract_values("id", ds.map(column_udf("id", lambda x: x + 1)).take())
     ) == [1, 2, 3, 4, 5]
-    ds = maybe_pipeline(ds0, pipelined)
     assert ds.count() == 5
-    ds = maybe_pipeline(ds0, pipelined)
     assert sorted(extract_values("id", ds.iter_rows())) == [0, 1, 2, 3, 4]
 
 
@@ -756,9 +741,8 @@ def test_iter_batches_empty_block(ray_start_regular_shared):
     )
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
-def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
+def test_iter_batches_local_shuffle(shutdown_only, ds_format):
     # Input validation.
     # Batch size must be given for local shuffle.
     with pytest.raises(ValueError):
@@ -775,11 +759,7 @@ def test_iter_batches_local_shuffle(shutdown_only, pipelined, ds_format):
             ds = ray.data.range(n, parallelism=parallelism).map_batches(
                 lambda df: df, batch_size=None, batch_format="pandas"
             )
-        if pipelined:
-            pipe = ds.repeat(2)
-            return pipe
-        else:
-            return ds
+        return ds
 
     def to_row_dicts(batch):
         if isinstance(batch, pd.DataFrame):
@@ -1082,8 +1062,7 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 210
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_iter_tf_batches(ray_start_regular_shared, pipelined):
+def test_iter_tf_batches(ray_start_regular_shared):
     df1 = pd.DataFrame(
         {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
     )
@@ -1093,9 +1072,8 @@ def test_iter_tf_batches(ray_start_regular_shared, pipelined):
     df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
     df = pd.concat([df1, df2, df3])
     ds = ray.data.from_pandas([df1, df2, df3])
-    ds = maybe_pipeline(ds, pipelined)
 
-    num_epochs = 1 if pipelined else 2
+    num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
         for batch in ds.iter_tf_batches(batch_size=3):
@@ -1106,15 +1084,13 @@ def test_iter_tf_batches(ray_start_regular_shared, pipelined):
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_iter_tf_batches_tensor_ds(ray_start_regular_shared, pipelined):
+def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
     arr1 = np.arange(12).reshape((3, 2, 2))
     arr2 = np.arange(12, 24).reshape((3, 2, 2))
     arr = np.concatenate((arr1, arr2))
     ds = ray.data.from_numpy([arr1, arr2])
-    ds = maybe_pipeline(ds, pipelined)
 
-    num_epochs = 1 if pipelined else 2
+    num_epochs = 2
     for _ in range(num_epochs):
         iterations = []
         for batch in ds.iter_tf_batches(batch_size=2):
