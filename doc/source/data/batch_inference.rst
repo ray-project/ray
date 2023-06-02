@@ -410,8 +410,7 @@ Let's suppose our cluster has 4 nodes, each with 16 CPUs. To limit to at most
     class HuggingFacePredictor:
         def __init__(self):
             from transformers import pipeline
-            # Set "cuda:0" as the device so the Huggingface pipeline uses GPU.
-            self.model = pipeline("text-generation", model="gpt2", device="cuda:0")
+            self.model = pipeline("text-generation", model="gpt2")
 
         def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, list]:
             predictions = self.model(list(batch["data"]), max_length=20, num_return_sequences=1)
