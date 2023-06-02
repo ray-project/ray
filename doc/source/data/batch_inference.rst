@@ -5,7 +5,7 @@ End-to-end: Offline Batch Inference
 
 .. tip::
 
-    `Get in touch with us <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ if you are interested in Ray Data for offline batch inference. We believe we have the fastest & cheapest solution out there and would be happy to work with you on a POC.
+    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference. 
 
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications.
 
@@ -15,26 +15,26 @@ Offline batch inference is a process for generating model predictions on a fixed
 Why choose Ray Data for offline inference?
 ------------------------------------------
 
-.. dropdown:: Faster and Cheaper for modern Deep Learning Applications
+.. dropdown:: Faster and cheaper for modern deep learning applications
 
-    Ray Data is built for deep learning applications that involve both CPU preprocessing and GPU inference. Ray Data streams the working data from CPU preprocessing tasks to GPU inferencing tasks, allowing both sets of resources to be utilized concurrently.
+    Ray Data is for deep learning applications that involve both CPU preprocessing and GPU inference. Ray Data streams the working data from CPU preprocessing tasks to GPU inferencing tasks, allowing you to utilize both sets of resources concurrently.
 
-    By using Ray Data your GPUs are no longer idle during CPU computation, reducing overall cost of the batch inference job.
+    By using Ray Data, your GPUs are no longer idle during CPU computation, reducing overall cost of the batch inference job.
 
 .. dropdown:: Cloud, framework, and data format agnostic
 
     Ray Data has no restrictions on cloud provider, ML framework, or data format.
     
-    Through the :ref:`Ray cluster launcher <cluster-index>`, you can start a Ray cluster on any of the common cloud providers. Since Ray Data works with any Python function or class, you can use any ML framework of your choice, including PyTorch, HuggingFace, or Tensorflow. Ray Data also does not require a particular file format, and supports a :ref:`wide variety of formats <loading_data>` including CSV, Parquet, raw images, etc.
+    Through the :ref:`Ray cluster launcher <cluster-index>`, you can start a Ray cluster on any of the popular cloud providers. Since Ray Data works with any Python function or class, you can use any ML framework of your choice, including PyTorch, HuggingFace, or Tensorflow. Ray Data also does not require a particular file format, and supports a :ref:`wide variety of formats <loading_data>` including CSV, Parquet, raw images, etc.
 
 .. dropdown:: Out of the box scaling
 
-    Ray Data is built on Ray, so it easily scales to many machines. The same code that works on one machine also runs on a large cluster without any changes.
+    Ray Data is built on Ray, so it easily scales to many machines. The code that works on one machine also runs on a large cluster without any modifications.
 
 .. dropdown:: Python first
 
     With Ray Data, you can express your inference job directly in Python instead of
-    YAML files or other formats. This allows for faster iterations, easier debugging, and more native developer experience.
+    YAML or other formats, allowing for faster iterations, easier debugging, and a native developer experience.
 
 
 .. _batch_inference_quickstart:
@@ -45,12 +45,12 @@ To start, install Ray with the data processing library, Ray Data:
 
 .. code-block:: bash
 
-    pip install ray[data]
+    pip install -U "ray[data]"
 
-Then, use Ray Data for offline inference in 4 simple steps:
+Using Ray Data for offline inference involves four basic steps:
 
-| **Step 1:** Load in your data into a Ray Dataset. Many different data types and formats are supported, see :ref:`Loading Data <loading_data>` for more details.
-| **Step 2:** Loading the pre-trained model in a Python class. 
+| **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different data types and formats. See :ref:`Loading Data <loading_data>` for more details.
+| **Step 2:** Load the pre-trained model in a Python class. 
 | **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. See :ref:`Transforming Data <transforming-data>` for more details.
 | **Step 4:** Get the final predictions by either iterating through the output or saving the results. See :ref:`Consuming data <consuming_data>` for more details.
 
@@ -73,8 +73,8 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
             ds = ray.data.from_numpy(np.asarray(["Complete this", "for me"]))
 
             # Step 2: Define a Predictor class for inference.
-            # Use a class so the model can be initialized just once in `__init__`
-            # and then re-used for inference across multiple batches.
+            # Use a class to initialize the model just once in `__init__`
+            # and re-use it for inference across multiple batches.
             class HuggingFacePredictor:
                 def __init__(self):
                     from transformers import pipeline
@@ -92,10 +92,10 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
                     batch["output"] = [sequences[0]["generated_text"] for sequences in predictions]
                     return batch
 
-            # Use 2 parallel actors for inference. Each actor will predict on a
+            # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
             scale = ray.data.ActorPoolStrategy(size=2)
-            # Step 3: Map the the predictor over the dataset to get predictions.
+            # Step 3: Map the Predictor over the Dataset to get predictions.
             predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
             # Step 4: Show one prediction output.
             predictions.show(limit=1)
@@ -122,8 +122,8 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
             ds = ray.data.from_numpy(np.ones((1, 100)))
 
             # Step 2: Define a Predictor class for inference.
-            # Use a class so the model can be initialized just once in `__init__`
-            # and then re-used for inference across multiple batches.
+            # Use a class to initialize the model just once in `__init__`
+            # and re-use it for inference across multiple batches.
             class TorchPredictor:
                 def __init__(self):
                     # Load a dummy neural network.
@@ -144,7 +144,7 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
             # Use 2 parallel actors for inference. Each actor will predict on a
             # different partition of data.
             scale = ray.data.ActorPoolStrategy(size=2)
-            # Step 3: Map the the predictor over the dataset to get predictions.
+            # Step 3: Map the Predictor over the Dataset to get predictions.
             predictions = ds.map_batches(TorchPredictor, compute=scale)
             # Step 4: Show one prediction output.
             predictions.show(limit=1)
@@ -168,8 +168,8 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
             ds = ray.data.from_numpy(np.ones((1, 100)))
 
             # Step 2: Define a Predictor class for inference.
-            # Use a class so the model can be initialized just once in `__init__`
-            # and then re-used for inference across multiple batches.
+            # Use a class to initialize the model just once in `__init__`
+            # and re-use it for inference across multiple batches.
             class TFPredictor:
                 def __init__(self):
                     from tensorflow import keras
@@ -188,7 +188,7 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
             # Use 2 parallel actors for inference. Each actor will predict on a
             # different partition of data.
             scale = ray.data.ActorPoolStrategy(size=2)
-            # Step 3: Map the the predictor over the dataset to get predictions.
+            # Step 3: Map the Predictor over the Dataset to get predictions.
             predictions = ds.map_batches(TFPredictor, compute=scale)
              # Step 4: Show one prediction output.
             predictions.show(limit=1)
