@@ -319,10 +319,12 @@ class HTTPState:
 
         return target_nodes
 
-    def _generate_actor_name(self, node_id: str):
+    def _generate_actor_name(self, node_id: str) -> str:
         return format_actor_name(SERVE_PROXY_NAME, self._controller_name, node_id)
 
-    def _create_new_proxy(self, name: str, node_id: str, node_ip_address: str):
+    def _create_new_proxy(
+        self, name: str, node_id: str, node_ip_address: str
+    ) -> ActorHandle:
         proxy = HTTPProxyActor.options(
             num_cpus=self._config.num_cpus,
             name=name,
