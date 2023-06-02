@@ -34,11 +34,8 @@ def run(checkpoint_path, policy_id):
         # provide policy states or extra fetch dictionaries.
         # "env_1" and "agent_1" are dummy env and agent IDs to run connectors with.
         policy_outputs = local_policy_inference(
-            policy,
-            "env_1",
-            "agent_1",
-            obs,
-            explore=False)
+            policy, "env_1", "agent_1", obs, explore=False
+        )
         assert len(policy_outputs) == 1
         action, _, _ = policy_outputs[0]
         print(f"step {step}", obs, action)
