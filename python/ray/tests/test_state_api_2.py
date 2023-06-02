@@ -340,11 +340,13 @@ def test_actor_task_with_repr_name(ray_start_with_dashboard):
     wait_for_condition(verify)
 
 
-def test_state_api_scale_smoke(ray_start_cluster):
+def test_state_api_scale_smoke(shutdown_only):
+    ray.init()
     release_test_file_path = (
         "../../release/nightly_tests/stress_tests/test_state_api_scale.py"
     )
     full_path = Path(ray.__file__).parents[0] / release_test_file_path
+    assert full_path.exists()
 
     check_call_subprocess(["python", str(full_path), "--smoke-test"])
 
