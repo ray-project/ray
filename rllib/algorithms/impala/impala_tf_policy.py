@@ -5,9 +5,11 @@ Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 import numpy as np
 import logging
 import gymnasium as gym
-from typing import Dict, List, Type, Union
+from typing import Dict, List, Optional, Type, Union
 
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
+from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.postprocessing import compute_bootstrap_value
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
@@ -346,6 +348,24 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             )
             unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
             values = model.value_function()
+            values_time_major = make_time_major(values)
+            bootstrap_values_time_major = make_time_major(
+                train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
+            )
+
+            # Add values to bootstrap values to yield correct t=1 to T+1 trajectories,
+            # with T being the rollout length (max trajectory len).
+            # Note that the `SampleBatch.VALUES_BOOTSTRAPPED` values are always recorded
+            # ONLY at the last ts of a trajectory (for the following timestep,
+            # which is one past(!) the last ts). All other values in that tensor are
+            # zero.
+            shape = tf.shape(values_time_major)
+            B = shape[1]
+            values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
+            bootstrap_values_time_major = tf.concat(
+                [tf.zeros((1, B)), bootstrap_values_time_major], axis=0
+            )
+            values_time_major += bootstrap_values_time_major
 
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
@@ -370,8 +390,8 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 target_logits=make_time_major(unpacked_outputs),
                 discount=self.config["gamma"],
                 rewards=make_time_major(rewards),
-                values=make_time_major(values),
-                bootstrap_value=make_time_major(values)[-1],#TODO
+                values=values_time_major[:-1],
+                bootstrap_value=values_time_major[-1],
                 dist_class=Categorical if is_multidiscrete else dist_class,
                 model=model,
                 valid_mask=make_time_major(mask),
@@ -407,6 +427,23 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                     tf.reshape(values_batched, [-1]),
                 ),
             }
+
+        @override(base)
+        def postprocess_trajectory(
+            self,
+            sample_batch: SampleBatch,
+            other_agent_batches: Optional[SampleBatch] = None,
+            episode: Optional["Episode"] = None,
+        ):
+            # Call super's postprocess_trajectory first.
+            sample_batch = super().postprocess_trajectory(
+                sample_batch, other_agent_batches, episode
+            )
+
+            if self.config["vtrace"]:
+                sample_batch = compute_bootstrap_value(sample_batch, self)
+
+            return sample_batch
 
         @override(base)
         def get_batch_divisibility_req(self) -> int:

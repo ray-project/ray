@@ -197,7 +197,7 @@ def compute_gae_for_sample_batch(
 
 @DeveloperAPI
 def compute_bootstrap_value(sample_batch, policy):
-    """TODO (sven): docstr """
+    """TODO (sven): docstr"""
     # Trajectory is actually complete -> last r=0.0.
     if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0

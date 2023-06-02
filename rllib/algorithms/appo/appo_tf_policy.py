@@ -19,7 +19,6 @@ from ray.rllib.algorithms.impala.impala_tf_policy import (
 )
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
-    compute_bootstrap_value,
     compute_gae_for_sample_batch,
     Postprocessing,
 )
@@ -162,26 +161,18 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             bootstrap_values_time_major = make_time_major(
                 train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
             )
-
-            # Then add the shifted-by-one bootstrapped values to that to yield the final
-            # value tensor. Use the last ts in that resulting tensor as the
-            # "bootstrapped" values for vtrace.
-            shape = tf.shape(values_time_major)
-            T, B = shape[0], shape[1]
-            # Augment `values_time_major` by one timestep at the end (all zeros).
-            values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
-            # Augment `bootstrap_values_time_major` by one timestep at the beginning
-            # (all zeros).
-            bootstrap_values_time_major = tf.concat(
-                [tf.zeros((1, B)), bootstrap_values_time_major], axis=0
-            )
+            # Add values to bootstrap values to yield correct t=1 to T+1 trajectories,
+            # with T being the rollout length (max trajectory len).
             # Note that the `SampleBatch.VALUES_BOOTSTRAPPED` values are always recorded
             # ONLY at the last ts of a trajectory (for the following timestep,
             # which is one past(!) the last ts). All other values in that tensor are
             # zero.
-            # Adding values and bootstrap_values yields the correct values+bootstrap
-            # configuration, from which we can then take t=-1 (last timestep) to get
-            # the bootstrap_value arg for the vtrace function below.
+            shape = tf.shape(values_time_major)
+            B = shape[1]
+            values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
+            bootstrap_values_time_major = tf.concat(
+                [tf.zeros((1, B)), bootstrap_values_time_major], axis=0
+            )
             values_time_major += bootstrap_values_time_major
 
             if self.is_recurrent():
@@ -208,9 +199,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
 
                 # Prepare KL for Loss
-                mean_kl = make_time_major(
-                    old_policy_action_dist.multi_kl(action_dist)
-                )
+                mean_kl = make_time_major(old_policy_action_dist.multi_kl(action_dist))
 
                 unpacked_behaviour_logits = tf.split(
                     behaviour_logits, output_hidden_shape, axis=1
@@ -228,9 +217,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                         target_policy_logits=make_time_major(
                             unpacked_old_policy_behaviour_logits
                         ),
-                        actions=tf.unstack(
-                            make_time_major(loss_actions), axis=2
-                        ),
+                        actions=tf.unstack(make_time_major(loss_actions), axis=2),
                         discounts=tf.cast(
                             ~make_time_major(tf.cast(dones, tf.bool)),
                             tf.float32,
@@ -394,12 +381,15 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             other_agent_batches: Optional[SampleBatch] = None,
             episode: Optional["Episode"] = None,
         ):
+            # Call super's postprocess_trajectory first.
+            sample_batch = super().postprocess_trajectory(
+                sample_batch, other_agent_batches, episode
+            )
+
             if not self.config["vtrace"]:
                 sample_batch = compute_gae_for_sample_batch(
                     self, sample_batch, other_agent_batches, episode
                 )
-            else:
-                sample_batch = compute_bootstrap_value(sample_batch, self)
 
             return sample_batch
 

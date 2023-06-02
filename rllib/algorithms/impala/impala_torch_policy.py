@@ -1,9 +1,11 @@
 import gymnasium as gym
 import logging
 import numpy as np
-from typing import Dict, List, Type, Union
+from typing import Dict, List, Optional, Type, Union
 
 import ray
+from ray.rllib.evaluation.episode import Episode
+from ray.rllib.evaluation.postprocessing import compute_bootstrap_value
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -261,6 +263,23 @@ class ImpalaTorchPolicy(
             )
             unpacked_outputs = torch.chunk(model_out, output_hidden_shape, dim=1)
         values = model.value_function()
+        values_time_major = _make_time_major(values)
+        bootstrap_values_time_major = _make_time_major(
+            train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        )
+
+        # Add values to bootstrap values to yield correct t=1 to T+1 trajectories,
+        # with T being the rollout length (max trajectory len).
+        # Note that the `SampleBatch.VALUES_BOOTSTRAPPED` values are always recorded
+        # ONLY at the last ts of a trajectory (for the following timestep,
+        # which is one past(!) the last ts). All other values in that tensor are
+        # zero.
+        _, B = values_time_major.shape
+        values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
+        bootstrap_values_time_major = torch.cat(
+            [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
+        )
+        values_time_major += bootstrap_values_time_major
 
         if self.is_recurrent():
             max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
@@ -275,24 +294,16 @@ class ImpalaTorchPolicy(
         # Inputs are reshaped from [B * T] => [(T|T-1), B] for V-trace calc.
         loss = VTraceLoss(
             actions=_make_time_major(loss_actions),
-            actions_logp=_make_time_major(
-                action_dist.logp(actions)
-            ),
-            actions_entropy=_make_time_major(
-                action_dist.entropy()
-            ),
+            actions_logp=_make_time_major(action_dist.logp(actions)),
+            actions_entropy=_make_time_major(action_dist.entropy()),
             dones=_make_time_major(dones),
-            behaviour_action_logp=_make_time_major(
-                behaviour_action_logp
-            ),
-            behaviour_logits=_make_time_major(
-                unpacked_behaviour_logits
-            ),
+            behaviour_action_logp=_make_time_major(behaviour_action_logp),
+            behaviour_logits=_make_time_major(unpacked_behaviour_logits),
             target_logits=_make_time_major(unpacked_outputs),
             discount=self.config["gamma"],
             rewards=_make_time_major(rewards),
-            values=_make_time_major(values),
-            bootstrap_value=_make_time_major(bootstrap_values)[-1],
+            values=values_time_major[:-1],
+            bootstrap_value=values_time_major[-1],
             dist_class=TorchCategorical if is_multidiscrete else dist_class,
             model=model,
             valid_mask=_make_time_major(mask),
@@ -342,6 +353,23 @@ class ImpalaTorchPolicy(
                 ),
             }
         )
+
+    @override(TorchPolicyV2)
+    def postprocess_trajectory(
+        self,
+        sample_batch: SampleBatch,
+        other_agent_batches: Optional[SampleBatch] = None,
+        episode: Optional["Episode"] = None,
+    ):
+        # Call super's postprocess_trajectory first.
+        sample_batch = super().postprocess_trajectory(
+            sample_batch, other_agent_batches, episode
+        )
+
+        if self.config["vtrace"]:
+            sample_batch = compute_bootstrap_value(sample_batch, self)
+
+        return sample_batch
 
     @override(TorchPolicyV2)
     def extra_grad_process(

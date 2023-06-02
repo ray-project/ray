@@ -19,7 +19,6 @@ from ray.rllib.algorithms.impala.impala_torch_policy import (
 )
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
-    compute_bootstrap_value,
     compute_gae_for_sample_batch,
     Postprocessing,
 )
@@ -158,28 +157,21 @@ class APPOTorchPolicy(
         prev_action_dist = dist_class(behaviour_logits, model)
         values = model.value_function()
         values_time_major = _make_time_major(values)
-        bootstrap_values_time_major = make_time_major(
+        bootstrap_values_time_major = _make_time_major(
             train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
         )
 
-        # Then add the shifted-by-one bootstrapped values to that to yield the final
-        # value tensor. Use the last ts in that resulting tensor as the
-        # "bootstrapped" values for vtrace.
-        T, B = values_time_major.shape
-        # Augment `values_time_major` by one timestep at the end (all zeros).
-        values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
-        # Augment `bootstrap_values_time_major` by one timestep at the beginning
-        # (all zeros).
-        bootstrap_values_time_major = torch.cat(
-            [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
-        )
+        # Add values to bootstrap values to yield correct t=1 to T+1 trajectories,
+        # with T being the rollout length (max trajectory len).
         # Note that the `SampleBatch.VALUES_BOOTSTRAPPED` values are always recorded
         # ONLY at the last ts of a trajectory (for the following timestep,
         # which is one past(!) the last ts). All other values in that tensor are
         # zero.
-        # Adding values and bootstrap_values yields the correct values+bootstrap
-        # configuration, from which we can then take t=-1 (last timestep) to get
-        # the bootstrap_value arg for the vtrace function below.
+        _, B = values_time_major.shape
+        values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
+        bootstrap_values_time_major = torch.cat(
+            [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
+        )
         values_time_major += bootstrap_values_time_major
 
         if self.is_recurrent():
@@ -196,9 +188,7 @@ class APPOTorchPolicy(
             reduce_mean_valid = torch.mean
 
         if self.config["vtrace"]:
-            logger.debug(
-                "Using V-Trace surrogate loss (vtrace=True)"
-            )
+            logger.debug("Using V-Trace surrogate loss (vtrace=True)")
 
             old_policy_behaviour_logits = target_model_out.detach()
             old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
@@ -228,15 +218,11 @@ class APPOTorchPolicy(
 
             # Compute vtrace on the CPU for better perf.
             vtrace_returns = vtrace.multi_from_logits(
-                behaviour_policy_logits=_make_time_major(
-                    unpacked_behaviour_logits
-                ),
+                behaviour_policy_logits=_make_time_major(unpacked_behaviour_logits),
                 target_policy_logits=_make_time_major(
                     unpacked_old_policy_behaviour_logits
                 ),
-                actions=torch.unbind(
-                    _make_time_major(loss_actions), dim=2
-                ),
+                actions=torch.unbind(_make_time_major(loss_actions), dim=2),
                 discounts=(1.0 - _make_time_major(dones).float())
                 * self.config["gamma"],
                 rewards=_make_time_major(rewards),
@@ -248,12 +234,8 @@ class APPOTorchPolicy(
                 clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
             )
 
-            actions_logp = _make_time_major(
-                action_dist.logp(actions)
-            )
-            prev_actions_logp = _make_time_major(
-                prev_action_dist.logp(actions)
-            )
+            actions_logp = _make_time_major(action_dist.logp(actions))
+            prev_actions_logp = _make_time_major(prev_action_dist.logp(actions))
             old_policy_actions_logp = _make_time_major(
                 old_policy_action_dist.logp(actions)
             )
@@ -283,9 +265,7 @@ class APPOTorchPolicy(
             mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
             # The entropy loss.
-            mean_entropy = reduce_mean_valid(
-                _make_time_major(action_dist.entropy())
-            )
+            mean_entropy = reduce_mean_valid(_make_time_major(action_dist.entropy()))
 
         else:
             logger.debug("Using PPO surrogate loss (vtrace=False)")
@@ -417,6 +397,7 @@ class APPOTorchPolicy(
                 sample_batch = compute_gae_for_sample_batch(
                     self, sample_batch, other_agent_batches, episode
                 )
+
         return sample_batch
 
     @override(TorchPolicyV2)

@@ -78,7 +78,7 @@ class APPOTfLearner(AppoLearner, TfLearner):
         # value tensor. Use the last ts in that resulting tensor as the
         # "bootstrapped" values for vtrace.
         shape = tf.shape(values_time_major)
-        T, B = shape[0], shape[1]
+        B = shape[1]
         # Augment `values_time_major` by one timestep at the end (all zeros).
         values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
         # Augment `bootstrap_values_time_major` by one timestep at the beginning
