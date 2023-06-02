@@ -159,8 +159,30 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             prev_action_dist = dist_class(behaviour_logits, self.model)
             values = self.model.value_function()
             values_time_major = make_time_major(values)
-            bootstrap_value = train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
-            bootstrap_value = make_time_major(bootstrap_value)[-1]
+            bootstrap_values_time_major = make_time_major(
+                train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
+            )
+
+            # Then add the shifted-by-one bootstrapped values to that to yield the final
+            # value tensor. Use the last ts in that resulting tensor as the
+            # "bootstrapped" values for vtrace.
+            shape = tf.shape(values_time_major)
+            T, B = shape[0], shape[1]
+            # Augment `values_time_major` by one timestep at the end (all zeros).
+            values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
+            # Augment `bootstrap_values_time_major` by one timestep at the beginning
+            # (all zeros).
+            bootstrap_values_time_major = tf.concat(
+                [tf.zeros((1, B)), bootstrap_values_time_major], axis=0
+            )
+            # Note that the `SampleBatch.VALUES_BOOTSTRAPPED` values are always recorded
+            # ONLY at the last ts of a trajectory (for the following timestep,
+            # which is one past(!) the last ts). All other values in that tensor are
+            # zero.
+            # Adding values and bootstrap_values yields the correct values+bootstrap
+            # configuration, from which we can then take t=-1 (last timestep) to get
+            # the bootstrap_value arg for the vtrace function below.
+            values_time_major += bootstrap_values_time_major
 
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
@@ -215,8 +237,8 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                         )
                         * self.config["gamma"],
                         rewards=make_time_major(rewards),
-                        values=values_time_major,
-                        bootstrap_value=bootstrap_value,
+                        values=values_time_major[:-1],
+                        bootstrap_value=values_time_major[-1],
                         dist_class=Categorical if is_multidiscrete else dist_class,
                         model=model,
                         clip_rho_threshold=tf.cast(
@@ -257,8 +279,8 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
                 # The value function loss.
-                delta = values_time_major - vtrace_returns.vs
                 value_targets = vtrace_returns.vs
+                delta = values_time_major[:-1] - value_targets
                 mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
                 # The entropy loss.

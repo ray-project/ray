@@ -235,7 +235,7 @@ def compute_bootstrap_value(sample_batch, policy):
         else:
             last_r = policy._value(**input_dict)
 
-    # Set the SampleBatch.VALUES_BOOTSTRAPPED field to all zeros, except for the
+    # Set the SampleBatch.VALUES_BOOTSTRAPPED field to all 0.0, except for the
     # very last timestep (where this bootstrapping value is actually needed), which
     # we set to the computed `last_r`.
     values_bootstrapped = np.zeros_like(sample_batch[SampleBatch.REWARDS])
