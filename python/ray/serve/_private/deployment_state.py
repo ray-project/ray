@@ -40,6 +40,9 @@ from ray.serve.schema import (
 )
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
+    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -282,16 +285,34 @@ class ActorReplicaWrapper:
     def graceful_shutdown_timeout_s(self) -> Optional[float]:
         if self.deployment_config:
             return self.deployment_config.graceful_shutdown_timeout_s
+        else:
+            # We should have a better way to define this behavior.
+            # This means deployment_config value will not be honored
+            # if we don't retrieve deployment_config from the replica.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            return DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
 
     @property
     def health_check_period_s(self) -> Optional[float]:
         if self.deployment_config:
             return self.deployment_config.health_check_period_s
+        else:
+            # We should have a better way to define this behavior.
+            # This means deployment_config value will not be honored
+            # if we don't retrieve deployment_config from the replica.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            return DEFAULT_HEALTH_CHECK_PERIOD_S
 
     @property
     def health_check_timeout_s(self) -> Optional[float]:
         if self.deployment_config:
             return self.deployment_config.health_check_timeout_s
+        else:
+            # We should have a better way to define this behavior.
+            # This means deployment_config value will not be honored
+            # if we don't retrieve deployment_config from the replica.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            return DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
     @property
     def pid(self) -> Optional[int]:
