@@ -99,8 +99,8 @@ def test_remove_actor_tracking(ray_start_4_cpus_2_gpus_extra, resource_manager_c
     and thus they would remain in ``TuneController._stopping_actors`` until they
     get cleaned up after 600 seconds.
 
-    This test asserts that these actors are not tracked in ``self._stopping_actors``
-    at all.
+    This test asserts that these actors are not tracked in
+    ``TuneController._stopping_actors`` at all.
 
     We start 4 actors, and one can run at a time. Actors are re-used across trials.
     When the experiment ends, we expect that only one actor is left to track
