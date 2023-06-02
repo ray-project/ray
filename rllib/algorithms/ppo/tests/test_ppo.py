@@ -1,5 +1,6 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks

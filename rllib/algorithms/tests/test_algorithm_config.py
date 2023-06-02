@@ -305,7 +305,9 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         marl_spec = config.get_marl_module_spec(
             policy_dict={"p1": policy_spec_ph, "p2": policy_spec_ph},
-            module_spec=SingleAgentRLModuleSpec(module_class=passed_module_class)
+            single_agent_rl_module_spec=SingleAgentRLModuleSpec(
+                module_class=passed_module_class
+            )
             if passed_module_class
             else None,
         )
