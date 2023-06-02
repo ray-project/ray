@@ -19,7 +19,7 @@
     Use cases: llm, cv, ts, nlp, rl
     ML Workloads: data-processing, training, tuning, serving, inference
     MLOps: tracking, monitoring
-    Frameworks: pytorch, tensorflow
+    Frameworks: pytorch, tensorflow, huggingface
 
 
 .. grid:: 1 2 2 2

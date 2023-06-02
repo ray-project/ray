@@ -25,7 +25,7 @@ window.addEventListener('load', () => {
             "<div type=\"button\" id=\"rl\" class=\"tag btn btn-outline-primary\">Reinforcement Learning</div>\n" +
             "<h6>ML Workloads</h6>\n" +
             "<div type=\"button\" id=\"data-processing\" class=\"tag btn btn-outline-primary\">Data Processing</div>\n" +
-            "<div type=\"button\" id=\"training\" class=\"tag btn btn-outline-primary\">Model Training</div>\n" +
+            "<div type=\"button\" id=\"training\" class=\"tag btn btn-outline-primary\">Model Training & fine-tuning</div>\n" +
             "<div type=\"button\" id=\"tuning\" class=\"tag btn btn-outline-primary\">Hyperparameter Tuning</div>\n" +
             "<div type=\"button\" id=\"inference\" class=\"tag btn btn-outline-primary\">Batch Inference</div>\n" +
             "<div type=\"button\" id=\"serving\" class=\"tag btn btn-outline-primary\">Model Serving</div>\n" +
