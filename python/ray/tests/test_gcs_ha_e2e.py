@@ -177,7 +177,7 @@ class Counter:
         import os
         return {{"pid": os.getpid()}}
 
-serve.start(detached=True, dedicated_cpu=True)
+serve.start(detached=True)
 
 Counter.options(num_replicas={num_replicas}).deploy()
 """
@@ -259,17 +259,13 @@ import requests
 from ray.serve.schema import ServeInstanceDetails
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 ray.init(address="auto")
-head_node_id = None
-for node in ray.nodes():
-    if HEAD_NODE_RESOURCE_NAME in node["Resources"]:
-        head_node_id = node["NodeID"]
-        break
+head_node_id = ray.get_runtime_context().get_node_id()
 serve_details = ServeInstanceDetails(
     **requests.get("http://localhost:52365/api/serve/applications/").json())
 assert serve_details.controller_info.node_id == head_node_id
 """
-    #output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
-    #assert output.exit_code == 0
+    output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
+    assert output.exit_code == 0
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
