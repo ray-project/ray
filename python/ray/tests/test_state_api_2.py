@@ -279,7 +279,7 @@ def test_experimental_import_deprecation():
         from ray.experimental.state.util import convert_string_to_type  # noqa: F401
 
 
-def test_actor_task_with_repr_name():
+def test_actor_task_with_repr_name(ray_start_with_dashboard):
     @ray.remote
     class ReprActor:
         def __init__(self, x) -> None:
@@ -340,9 +340,7 @@ def test_actor_task_with_repr_name():
     wait_for_condition(verify)
 
 
-def test_state_api_scale_smoke(shutdown_only):
-    ray.init()
-
+def test_state_api_scale_smoke(ray_start_cluster):
     release_test_file_path = (
         "../../release/nightly_tests/stress_tests/test_state_api_scale.py"
     )
