@@ -1,9 +1,9 @@
-import pytest
-import ray
 import mars
 import mars.dataframe as md
 import pyarrow as pa
+import pytest
 
+import ray
 from ray.data.tests.test_execution_optimizer import _check_usage_record  # noqa
 
 

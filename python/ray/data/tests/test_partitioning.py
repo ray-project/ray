@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Union
 
 import pandas as pd
 import pyarrow as pa
-from pyarrow.fs import FileType
 import pytest
+from pyarrow.fs import FileType
 from pytest_lazyfixture import lazy_fixture
 
 import ray
@@ -14,9 +14,9 @@ from ray.data.block import Block
 from ray.data.dataset import Dataset
 from ray.data.datasource import (
     FileBasedDatasource,
-    PathPartitionParser,
-    PathPartitionEncoder,
     PartitionStyle,
+    PathPartitionEncoder,
+    PathPartitionParser,
 )
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter

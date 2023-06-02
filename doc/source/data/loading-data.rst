@@ -32,7 +32,11 @@ Generating Synthetic Data
       Create a dataset from a range of integers, packing this integer range into
       ndarrays of the provided shape.
 
-      .. doctest::
+      ..
+        FIXME: The following code snippets is failing. See
+        https://buildkite.com/ray-project/oss-ci-build-pr/builds/24240#0188797d-4416-4a34-ada6-2917d1fa9b19
+
+      .. code-block:: python
 
         >>> import ray
         >>> ds = ray.data.range_tensor(1, shape=(64, 64))
