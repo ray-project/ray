@@ -20,7 +20,6 @@ import argparse
 import os
 from pathlib import Path
 import sys
-from typing import Optional
 import yaml
 
 import ray
@@ -33,11 +32,11 @@ from ray.rllib.utils.deprecation import deprecation_warning
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    type=Optional[str],
+    type=str,
     choices=["torch", "tf2", "tf"],
     default=None,
     help="The deep learning framework to use. If not provided, try using the one "
-         "specified in the file, otherwise, use RLlib's default: `torch`.",
+    "specified in the file, otherwise, use RLlib's default: `torch`.",
 )
 parser.add_argument(
     "--dir",
@@ -47,10 +46,10 @@ parser.add_argument(
 )
 parser.add_argument(
     "--env",
-    type=Optional[str],
+    type=str,
     default=None,
     help="An optional env override setting. If not provided, try using the one "
-         "specified in the file.",
+    "specified in the file.",
 )
 parser.add_argument("--num-cpus", type=int, default=None)
 parser.add_argument(
