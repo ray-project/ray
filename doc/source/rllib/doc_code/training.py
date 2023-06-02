@@ -31,13 +31,15 @@ prep.transform(obs).shape
 import numpy as np
 from ray.rllib.algorithms.ppo import PPOConfig
 
-algo = (
+config = (
     PPOConfig()
     .environment("CartPole-v1")
     .framework("tf2")
+    .rl_module(_enable_rl_module_api=False)
+    .training(_enable_learner_api=False)
     .rollouts(num_rollout_workers=0)
-    .build()
 )
+algo = config.build()
 # <ray.rllib.algorithms.ppo.PPO object at 0x7fd020186384>
 
 policy = algo.get_policy()
