@@ -28,6 +28,16 @@ window.addEventListener("scroll", loadVisibleTermynals);
 createTermynals();
 loadVisibleTermynals();
 
+document.addEventListener("DOMContentLoaded", function() {
+    let inputElement = document.getElementsByClassName("mantine-TextInput-input")[0];
+    inputElement.placeholder = "Do not include any personal data or confidential information";
+    let main = document.getElementsByClassName("mantine-Text-root")[1];
+    main.textContent = "Ray Docs AI - Ask a question"
+    let left = document.getElementsByClassName("mantine-Text-root")[2];
+    left.textContent = "results are automated & may be incorrect or contain inappropriate information"
+});
+
+
 // Reintroduce dropdown icons on the sidebar. This is a hack, as we can't
 // programmatically figure out which nav items have children anymore.
 document.addEventListener("DOMContentLoaded", function() {
