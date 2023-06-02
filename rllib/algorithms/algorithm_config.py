@@ -3574,6 +3574,7 @@ class AlgorithmConfig(_Config):
             )
 
     @property
+    @Deprecated(error=False)
     def multiagent(self):
         """Shim method to help pretend we are a dict with 'multiagent' key."""
         return {
