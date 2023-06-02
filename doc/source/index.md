@@ -59,7 +59,7 @@
     <h2 style="font-weight:600;">Getting Started</h2>
     
 <div class="grid-container">
-  <a class="no-underline" href="./ray-overview/index.html" target="_blank"> <div class="info-box">
+  <a class="no-underline" href="./ray-overview/index.html" target="_blank"> <div class="info-box" style="height:100%;">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/ray_logo.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Learn basics</h3>
@@ -76,7 +76,7 @@
         <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p>
   </div></a>
   <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
-        ><div class="info-box">
+        ><div class="info-box" style="height:100%;">
         <div class="image-header" style="padding:0px;">
             <img src="_static/img/code.png" width="44px" height="44px" />
             <h3 style="font-size:20px;">Try it out</h3>
