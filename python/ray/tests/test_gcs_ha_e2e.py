@@ -258,7 +258,7 @@ import ray
 import requests
 from ray.serve.schema import ServeInstanceDetails
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-ray.init("auto")
+ray.init(address="auto")
 head_node_id = None
 for node in ray.nodes():
     if HEAD_NODE_RESOURCE_NAME in node["Resources"]:
@@ -268,7 +268,7 @@ serve_details = ServeInstanceDetails(
     **requests.get("http://localhost:52365/api/serve/applications/").json())
 assert serve_details.controller_info.node_id == head_node_id
 """
-    output = worker.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
+    output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
     assert output.exit_code == 0
 
 
