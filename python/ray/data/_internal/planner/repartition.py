@@ -50,7 +50,7 @@ def generate_repartition_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(shuffle_spec)
 
-        return scheduler.execute(refs, num_outputs)
+        return scheduler.execute(refs, num_outputs, ctx)
 
     def split_repartition_fn(
         refs: List[RefBundle],
@@ -58,7 +58,7 @@ def generate_repartition_fn(
     ) -> Tuple[List[RefBundle], StatsDict]:
         shuffle_spec = ShuffleTaskSpec(random_shuffle=False)
         scheduler = SplitRepartitionTaskScheduler(shuffle_spec)
-        return scheduler.execute(refs, num_outputs)
+        return scheduler.execute(refs, num_outputs, ctx)
 
     if shuffle:
         return shuffle_repartition_fn
