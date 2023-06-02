@@ -127,7 +127,7 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
             class TorchPredictor:
                 def __init__(self):
                     # Load a dummy neural network.
-                    # Replace this with your pre-trained model.
+                    # Set `self.model` to your pre-trained PyTorch model.
                     self.model = nn.Sequential(
                         nn.Linear(in_features=100, out_features=1),
                         nn.Sigmoid(),
@@ -175,7 +175,7 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
                     from tensorflow import keras
 
                     # Load a dummy neural network.
-                    # Replace this with your pre-trained model.
+                    # Set `self.model` to your pre-trained Keras model.
                     input_layer = keras.Input(shape=(100,))
                     output_layer = keras.layers.Dense(1, activation="sigmoid")
                     self.model = keras.Sequential([input_layer, output_layer])
@@ -220,7 +220,7 @@ To use GPUs for inference, make the following changes to your code:
 1. Update the class implementation to move the model and data to and from GPU device.
 2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` or call to indicate that each actor should use 1 GPU. 
 
-The rest of the code can remain the same as the :ref:`Quickstart <batch_inference_quickstart>`.
+The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
 .. tabs::
 
@@ -347,9 +347,9 @@ The rest of the code can remain the same as the :ref:`Quickstart <batch_inferenc
 Configuring Batch Size
 ~~~~~~~~~~~~~~~~~~~~~~
 
-You can configure the size of the input batch that is passed to ``__call__`` by setting the ``batch_size`` argument for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
+Configure the size of the input batch that is passed to ``__call__`` by setting the ``batch_size`` argument for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
 
-Increasing batch size results in faster execution since inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization. Generally, you want to set the batch size to as large possible without running out of memory. If encountering OOMs, decreasing your ``batch_size`` may help.
+Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization. Set the batch size to as large possible without running out of memory. If you encounter OOMs, decreasing the ``batch_size`` may help.
 
 .. testcode::
     
@@ -373,23 +373,23 @@ Increasing batch size results in faster execution since inference is a vectorize
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you are running into CUDA out-of-memory issues, it is likely that your batch size is too large. Decrease the batch size by following :ref:`these steps <_batch_inference_batch_size>`.
+If you are running into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following :ref:`these steps <_batch_inference_batch_size>`.
 
-If your batch size is already set to 1, then either use a smaller model or use GPU devices with more memory.
+If your batch size is already set to 1, then use either a smaller model or GPU devices with more memory.
 
-For advanced users working with large models, you can use model parallelism to shard your model across multiple GPUs.
+For advanced users working with large models, you can use model parallelism to shard the model across multiple GPUs.
 
 Optimizing expensive CPU preprocessing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If your workload involves expensive CPU preprocessing in addition to model inference, you can optimize throughput by separating the preprocessing and inference logic into separate stages. This allows inference on batch N to execute concurrently with preprocessing on batch N+1.
+If your workload involves expensive CPU preprocessing in addition to model inference, you can optimize throughput by separating the preprocessing and inference logic into separate stages. This separation allows inference on batch N to execute concurrently with preprocessing on batch N+1.
 
-See :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>` for an example where preprocessing is done in a separate `map` call than inference.
+See :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>` for an example of preprocessing is done in a separate `map` call that is separate from inference.
 
 Handling CPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you are running out of CPU RAM, it is likely that you have too many model replicas that are being run concurrently on the same node. For example, if a model
+If you are running out of CPU RAM, you likely that you have too many model replicas that are running concurrently on the same node. For example, if a model
 uses 5GB of RAM when created / run, and a machine has 16GB of RAM total, then no more
 than three of these models can be run at the same time. The default resource assignments
 of one CPU per task/actor will likely lead to OutOfMemoryErrors from Ray in this situation.
@@ -426,17 +426,17 @@ Let's suppose our cluster has 4 nodes, each with 16 CPUs. To limit to at most
         )
     predictions.show(limit=1)
 
-How does Ray Data compare to X for offline inference?
------------------------------------------------------
+How Ray Data compare to X for offline inference?
+------------------------------------------------
 
 .. dropdown:: Batch Services: AWS Batch, GCP Batch
 
-    Cloud providers such as AWS, GCP, and Azure provide batch services to manage compute infrastructure for you. Regardless of which service you choose, the process is the same: you provide your code, and the service runs your code on each node in a cluster. However, while infrastructure management is necessary, it is not enough. These services have limitations, such as a lack of software libraries to address optimized parallelization, efficient data transfer, and easy debugging. These solutions are suitable only for experienced users who can write their own optimized batch inference code.
+    Cloud providers such as AWS, GCP, and Azure provide batch services to manage compute infrastructure for you. Each service uses the same process: you provide the code, and the service runs your code on each node in a cluster. However, while infrastructure management is necessary, it is often not enough. These services have limitations, such as a lack of software libraries to address optimized parallelization, efficient data transfer, and easy debugging. These solutions are suitable only for experienced users who can write their own optimized batch inference code.
 
-    Ray Data abstracts away not only the infrastructure management, but also sharding your dataset, parallelizing the inference over these shards, and transferring data from storage to CPU to GPU.
+    Ray Data abstracts away not only the infrastructure management, but also the sharding your dataset, the parallelization of the inference over these shards, and the transfer of data from storage to CPU to GPU.
 
 
-.. dropdown:: Online Inference Solutions: Bento ML, Sagemaker Batch Transform
+.. dropdown:: Online inference solutions: Bento ML, Sagemaker Batch Transform
 
     Solutions like `Bento ML <https://www.bentoml.com/>`_, `Sagemaker Batch Transform <https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html>`_, or :ref:`Ray Serve <rayserve>` provide APIs to make it easy to write performant inference code and can abstract away infrastructure complexities. But they are designed for online inference rather than offline batch inference, which are two different problems with different sets of requirements. These solutions often don't perform well in the offline case, leading inference service providers like `Bento ML to integrating with Apache Spark <https://modelserving.com/blog/unifying-real-time-and-batch-inference-with-bentoml-and-spark>`_ for offline inference.
 
@@ -446,7 +446,7 @@ How does Ray Data compare to X for offline inference?
 
 .. dropdown:: Distributed Data Processing Frameworks: Apache Spark
 
-    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_, but with its streaming paradigm, it is better suited for GPU workloads that arise in deep learning inference.
+    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
 
     See `our blog <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_ for a more detailed performance comparison between Ray Data and Apache Spark.
 
