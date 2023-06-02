@@ -409,6 +409,7 @@ If you are using Ray AIR or any of the Ray libraries, follow the instructions pr
 
 ::::
 
+(log-rotation)=
 ## Log rotation
 
 Ray supports log rotation of log files. Note that not all components support log rotation. (Raylet, Python, and Java worker logs do not rotate).
@@ -420,6 +421,8 @@ To change the log rotation configuration, specify environment variables. For exa
 RAY_ROTATION_MAX_BYTES=1024; ray start --head # Start a ray instance with maxBytes 1KB.
 RAY_ROTATION_BACKUP_COUNT=1; ray start --head # Start a ray instance with backupCount 1.
 ```
+
+The max size of a log file, including its backup, is `RAY_ROTATION_MAX_BYTES * RAY_ROTATION_BACKUP_COUNT + RAY_ROTATION_MAX_BYTES`
 
 
 ## Log persistence

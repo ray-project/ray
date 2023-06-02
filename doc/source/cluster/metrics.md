@@ -1,22 +1,24 @@
 (collect-metrics)=
-# Collecting metrics
+# Collecting and monitoring metrics
 Metrics are useful for monitoring and troubleshooting your system and Ray applications. For example, you may want to access a node's metrics if it terminates unexpectedly.
 
-Similar to Kubernetes, Ray records and emits time-series metrics using the [Prometheus format](https://prometheus.io/docs/instrumenting/exposition_formats/). Ray does not provide a native storage solution for metrics. Users need to manage the lifecycle of the metrics by themselves. This page provides instructions on how to collect metrics from Ray Clusters.
+Similar to Kubernetes, Ray records and emits time-series metrics using the [Prometheus format](https://prometheus.io/docs/instrumenting/exposition_formats/). Ray does not provide a native storage solution for metrics. Users need to manage the lifecycle of the metrics by themselves. This page provides instructions on how to collect and monitor metrics from Ray Clusters.
 
 
 ## System and applcication metrics
+Ray exports metrics if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsbile for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
+
 **System metrics**: Ray exports a number of system metrics. View {ref}`system metrics <system-metrics>` for more details about the emitted metrics.
 
 **Application metrics**: Application-specific metrics are useful for monitoring your application states. View {ref}`adding application metrics <application-level-metrics>` for how to record metrics.
 
 (prometheus-setup)=
 ## Setting up your Prometheus server
-Ray doesn't start Prometheus servers for users. Users need to decide where to host and configure it to scrape the metrics from the clusters.
+Use Promtheus to scrape metrics from Ray Clusters. Ray doesn't start Prometheus servers for users. Users need to decide where to host and configure it to scrape the metrics from Clusters.
 
 ```{admonition} Tip
 :class: tip
-The instructions below describe how to set up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus server.
+The instructions below describe one way of setting up Prometheus on your local machine. View [Prometheus documentation](https://prometheus.io/docs/introduction/overview/) for the best strategy to set up your Prometheus server.
 
 For KubeRay users, follow [these instructions](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/) to set up Prometheus.
 ```
@@ -28,11 +30,6 @@ Then, unzip the archive into a local directory using the following command:
 ```bash
 tar xvfz prometheus-*.tar.gz
 cd prometheus-*
-```
-Ray exports metrics only when ``ray[default]`` is installed.
-
-```bash
-pip install "ray[default]"
 ```
 
 Ray provides a Prometheus config that works out of the box. After running Ray, you can find the config at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
@@ -169,6 +166,96 @@ to Prometheus.
 ```
 
 ## Processing and exporting metrics
-If you need to process and export metrics into other storage or management systems, you can consider a number of open source metric processing tools available, such as [Vector][Vector].
+If you need to process and export metrics into other storage or management systems, check out open source metric processing tools like [Vector][Vector].
 
 [Vector]: https://vector.dev/
+
+
+## Monitoring metrics
+To visualize and monitor collected metrics, there are 3 common paths:
+
+1. **Simplist**: Use Grafana with Ray-provided configurations, which include default Grafana dashboards showing some of the most valuable metrics for debugging Ray applications.
+2. **Recommended**: Use Ray Dashboard which embeds Grafana visualizations and look at metrics together with logs, job info and so on in a single pane of glass.
+3. **Manual**: Set up Grafana, or other tools like CloudWatch, Cloud Monitoring, and Datadog from scratch.
+
+Here are some instructions for each of the paths:
+
+(grafana)=
+### Simplist: Setting up Grafana with Ray-provided configurations
+Grafana is a tool that supports advanced visualizations of Prometheus metrics and allows you to create custom dashboards with your favorite metrics. 
+
+::::{tab-set}
+
+:::{tab-item} Creating a new Grafana server
+
+```{admonition} Note
+:class: note
+The instructions below describe one way of starting a Grafana server on a macOS machine. Refer to the [Grafana documentation](https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/#start-the-grafana-server) for how to start Grafana servers in different systems. 
+
+For KubeRay users, follow [these instructions](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/) to set up Grafana.
+```
+
+First, [download Grafana](https://grafana.com/grafana/download). Follow the instructions on the download page to download the right binary for your operating system.
+
+Go to the location of the binary and run Grafana using the built-in configuration found in the `/tmp/ray/session_latest/metrics/grafana` folder.
+
+```shell
+./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
+```
+
+Access Grafana using the default grafana URL, `http://localhost:3000`.
+See the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same {ref}`metric graphs <system-metrics>` are accessible in {ref}`Ray Dashboard <observability-getting-started>` after you integrate Grafana with Ray Dashboard.
+
+```{admonition} Note
+:class: note
+If this is your first time using Grafana, login with the username: `admin` and password `admin`.
+```
+
+
+![grafana login](images/graphs.png)
+
+:::
+
+:::{tab-item} Using an existing Grafana server
+
+After your Grafana server is running, find the Ray-provided default Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. [Import this dashboard](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
+
+If Grafana reports that datasource is not found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable) and using [JSON model view](https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model), change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
+
+```json
+"datasource": {
+  "type": "prometheus",
+  "uid": "$data_source"
+  }
+```
+:::
+
+::::
+
+
+#### Troubleshooting
+
+##### Using Ray configurations in Grafana with Homebrew on macOS X
+
+Homebrew installs Grafana as a service that is automatically launched for you.
+Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
+
+Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
+
+You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
+
+
+
+### Recommended: Use Ray Dashboard with embedded Grafana visualizations
+1. Follow the instructions above to set up Grafana with Ray-provided visualizations
+2. View {ref}`configuring and managing Ray Dashboard <embed-grafana-in-dashboard>` for how to embed Grafana visualizations into Dashboard
+3. View {ref}`Dashboard's metrics view<dash-metrics-view>` for how to inspect the metrics in Ray Dashboard.
+
+
+### Manual: Set up Grafana, or other tools like CloudWatch, Cloud Monitoring and Datadog from scratch
+Refer to the documentation of these tools for how to query and visualize the metrics.
+
+```{admonition} Tip
+:class: tip
+If you need to write Prometheus queries manually, check out the Prometheus queries in Ray-provided Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json` for inspiration.
+```

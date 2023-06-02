@@ -124,7 +124,7 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
 
 ## Disabling the Dashboard
 
-Dashboard is included if you use `ray[default]` and automatically started.
+Dashboard is included if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` and automatically started.
 
 To disable Dashboard, use the following arguments `--include-dashboard`.
 
@@ -192,71 +192,20 @@ You can query these metrics from the Prometheus or Grafana UI. Find instructions
 
 
 (observability-visualization-setup)=
-## Integrating with Prometheus and Grafana
-The optional integration with Prometheus and Grafana enables two features:
-- Access to default Grafana dashboard templates provided by Ray to visualize key system metrics for monitoring and debugging.
-- Embedding of Grafana visualizations in Ray Dashboard to view the time-series metrics.
+## Embed Grafana visualizations into Ray Dashboard
 
-
-For the enhanced Ray Dashboard experience, like viewing time-series metrics, set up Prometheus and Grafana to integrate with Ray Dashboard.
+For the enhanced Ray Dashboard experience, like {ref}`viewing time-series metrics<dash-metrics-view>` together with logs, job info, etc., set up Prometheus and Grafana and integrate them with Ray Dashboard.
 
 ### Setting up Prometheus
-To render Grafana visualizations, you need Prometheus to scrape metrics from Ray clusters. Follow {ref}`the instructions <prometheus-setup>` to set up your Prometheus server and start to scrape system and application metrics from Ray Clusters.
+To render Grafana visualizations, you need Prometheus to scrape metrics from Ray Clusters. Follow {ref}`the instructions <prometheus-setup>` to set up your Prometheus server and start to scrape system and application metrics from Ray Clusters.
 
 
-(grafana)=
 ### Setting up Grafana
-Grafana is a tool that supports advanced visualizations of Prometheus metrics and allows you to create custom dashboards with your favorite metrics. Ray exports some default configurations, which include a default Grafana dashboard showing some of the most valuable metrics for debugging Ray applications.
-
-::::{tab-set}
-
-:::{tab-item} Creating a new Grafana server
-
-```{admonition} Note
-:class: note
-The instructions below describe one way of starting a Grafana server on a macOS machine. Refer to the [Grafana documentation](https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/#start-the-grafana-server) for how to start Grafana servers in different systems. 
-
-For KubeRay users, follow [these instructions](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/) to set up Grafana.
-```
-
-First, [download Grafana](https://grafana.com/grafana/download). Follow the instructions on the download page to download the right binary for your operating system.
-
-Go to to the location of the binary and run Grafana using the built-in configuration found in the `/tmp/ray/session_latest/metrics/grafana` folder.
-
-```shell
-./bin/grafana-server --config /tmp/ray/session_latest/metrics/grafana/grafana.ini web
-```
-
-Access Grafana using the default grafana URL, `http://localhost:3000`.
-See the default dashboard by going to dashboards -> manage -> Ray -> Default Dashboard. The same {ref}`metric graphs <system-metrics>` are accessible in {ref}`Ray Dashboard <observability-getting-started>` after you integrate Grafana with Ray Dashboard.
-
-```{admonition} Note
-:class: note
-If this is your first time using Grafana, login with the username: `admin` and password `admin`.
-```
-
-![grafana login](images/graphs.png)
-
-:::
-
-:::{tab-item} Using an existing Grafana server
-
-After your Grafana serve is running, find the Ray-provided default Grafana dashboard JSON at `/tmp/ray/session_latest/metrics/grafana/dashboards/default_grafana_dashboard.json`. [Import this dashboard](https://grafana.com/docs/grafana/latest/dashboards/manage-dashboards/#import-a-dashboard) to your Grafana.
-
-If Grafana reports that datasource is not found, [add a datasource variable](https://grafana.com/docs/grafana/latest/dashboards/variables/add-template-variables/?pg=graf&plcmt=data-sources-prometheus-btn-1#add-a-data-source-variable) and using [JSON model view](https://grafana.com/docs/grafana/latest/dashboards/build-dashboards/modify-dashboard-settings/#view-dashboard-json-model), change all values of `datasource` key in the imported `default_grafana_dashboard.json` to the name of the variable. For example, if the variable name is `data_source`, all `"datasource"` mappings should be:
-
-```json
-"datasource": {
-  "type": "prometheus",
-  "uid": "$data_source"
-  }
-```
-:::
-
-::::
+Grafana is a tool that supports advanced visualizations of Prometheus metrics and allows you to create custom dashboards with your favorite metrics. Follow {ref}`the instructions <grafana>` to set up Grafana.
 
 
-### Embed Grafana visualizations into Ray Dashboard
+(embed-grafana-in-dashboard)=
+### Embedding Grafana visualizations into Ray Dashboard
 To view embedded time-series visualizations in Ray Dashboard, the following must be set up:
 
 1. The head node of the cluster is able to access Prometheus and Grafana
@@ -284,8 +233,8 @@ By default, Ray Dashboard assumes Grafana is hosted at `localhost:3000` You can 
 If Grafana is exposed with NGINX ingress on a Kubernetes cluster, the following line should be present in the Grafana ingress annotation:
 
 ```yaml
-  nginx.ingress.kubernetes.io/configuration-snippet: |
-      add_header X-Frame-Options SAMEORIGIN always;
+nginx.ingress.kubernetes.io/configuration-snippet: |
+    add_header X-Frame-Options SAMEORIGIN always;
 ```
 
 When both Grafana and the Ray Cluster are on the same Kubernetes cluster, set `RAY_GRAFANA_HOST` to the external URL of the Grafana ingress.
@@ -304,15 +253,6 @@ When the Grafana instance requires user authentication, the following settings h
 
 #### Troubleshooting
 
-##### Using Ray configurations in Grafana with Homebrew on macOS X
-
-Homebrew installs Grafana as a service that is automatically launched for you.
-Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
-
-Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
-
-You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
-
 ##### Grafana dashboards are not embedded in the Ray dashboard
 If you're getting an error that says `RAY_GRAFANA_HOST` is not setup despite having set it up, check that:
 * You've included the protocol in the URL (e.g., `http://your-grafana-url.com` instead of `your-grafana-url.com`).
@@ -320,4 +260,3 @@ If you're getting an error that says `RAY_GRAFANA_HOST` is not setup despite hav
 
 ##### Certificate Authority (CA error)
 You may see a CA error if your Grafana instance is hosted behind HTTPS. Contact the Grafana service owner to properly enable HTTPS traffic.
-

@@ -12,7 +12,7 @@ for a sample configuration showing how to extract logs from a Ray pod.
 :::
 
 ## Ray log directory
-By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` before you start to collect the logs.
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` and the {ref}`log rotation configuration <log-rotation>` before you start to collect the logs.
 
 ## Log processing tools
 There are a number of open source log processing tools available within the Kubernetes ecosystem. This page will shows how to extract Ray logs using [Fluent Bit][FluentBit].

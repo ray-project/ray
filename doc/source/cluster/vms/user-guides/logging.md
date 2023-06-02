@@ -6,7 +6,7 @@ Logs are useful for troubleshooting Ray applications and your system. For exampl
 Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. The following sections provide instructions on how to collect logs from Ray Clusters running on VMs.
 
 ## Ray log directory
-By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray node's file system, including application logs and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` before you start to collect logs.
+By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray node's file system, including application logs and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` and the {ref}`log rotation configuration <log-rotation>` before you start to collect logs.
 
 
 ## Log processing tools
