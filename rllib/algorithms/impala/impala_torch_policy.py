@@ -126,22 +126,20 @@ class VTraceLoss:
         )
 
 
-def make_time_major(policy, seq_lens, tensor, drop_last=False):
+def make_time_major(policy, seq_lens, tensor):
     """Swaps batch and trajectory axis.
 
     Args:
         policy: Policy reference
         seq_lens: Sequence lengths if recurrent or None
         tensor: A tensor or list of tensors to reshape.
-        drop_last: A bool indicating whether to drop the last
-        trajectory item.
 
     Returns:
         res: A tensor with swapped axes or a list of tensors with
         swapped axes.
     """
     if isinstance(tensor, (list, tuple)):
-        return [make_time_major(policy, seq_lens, t, drop_last) for t in tensor]
+        return [make_time_major(policy, seq_lens, t) for t in tensor]
 
     if policy.is_recurrent():
         B = seq_lens.shape[0]
@@ -158,8 +156,6 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
     # Swap B and T axes.
     res = torch.transpose(rs, 1, 0)
 
-    if drop_last:
-        return res[:-1]
     return res
 
 
@@ -277,30 +273,29 @@ class ImpalaTorchPolicy(
         loss_actions = actions if is_multidiscrete else torch.unsqueeze(actions, dim=1)
 
         # Inputs are reshaped from [B * T] => [(T|T-1), B] for V-trace calc.
-        drop_last = self.config["vtrace_drop_last_ts"]
         loss = VTraceLoss(
-            actions=_make_time_major(loss_actions, drop_last=drop_last),
+            actions=_make_time_major(loss_actions),
             actions_logp=_make_time_major(
-                action_dist.logp(actions), drop_last=drop_last
+                action_dist.logp(actions)
             ),
             actions_entropy=_make_time_major(
-                action_dist.entropy(), drop_last=drop_last
+                action_dist.entropy()
             ),
-            dones=_make_time_major(dones, drop_last=drop_last),
+            dones=_make_time_major(dones),
             behaviour_action_logp=_make_time_major(
-                behaviour_action_logp, drop_last=drop_last
+                behaviour_action_logp
             ),
             behaviour_logits=_make_time_major(
-                unpacked_behaviour_logits, drop_last=drop_last
+                unpacked_behaviour_logits
             ),
-            target_logits=_make_time_major(unpacked_outputs, drop_last=drop_last),
+            target_logits=_make_time_major(unpacked_outputs),
             discount=self.config["gamma"],
-            rewards=_make_time_major(rewards, drop_last=drop_last),
-            values=_make_time_major(values, drop_last=drop_last),
-            bootstrap_value=_make_time_major(values)[-1],
+            rewards=_make_time_major(rewards),
+            values=_make_time_major(values),
+            bootstrap_value=_make_time_major(bootstrap_values)[-1],
             dist_class=TorchCategorical if is_multidiscrete else dist_class,
             model=model,
-            valid_mask=_make_time_major(mask, drop_last=drop_last),
+            valid_mask=_make_time_major(mask),
             config=self.config,
             vf_loss_coeff=self.config["vf_loss_coeff"],
             entropy_coeff=self.entropy_coeff,
@@ -320,7 +315,6 @@ class ImpalaTorchPolicy(
             self,
             train_batch.get(SampleBatch.SEQ_LENS),
             values,
-            drop_last=self.config["vtrace"] and drop_last,
         )
         model.tower_stats["vf_explained_var"] = explained_variance(
             torch.reshape(loss.value_targets, [-1]), torch.reshape(values_batched, [-1])

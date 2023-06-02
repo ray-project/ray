@@ -158,13 +158,11 @@ class APPOTorchPolicy(
         values = model.value_function()
         values_time_major = _make_time_major(values)
 
-        drop_last = self.config["vtrace"] and self.config["vtrace_drop_last_ts"]
-
         if self.is_recurrent():
             max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
             mask = sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
             mask = torch.reshape(mask, [-1])
-            mask = _make_time_major(mask, drop_last=drop_last)
+            mask = _make_time_major(mask)
             num_valid = torch.sum(mask)
 
             def reduce_mean_valid(t):
@@ -175,7 +173,7 @@ class APPOTorchPolicy(
 
         if self.config["vtrace"]:
             logger.debug(
-                "Using V-Trace surrogate loss (vtrace=True; " f"drop_last={drop_last})"
+                "Using V-Trace surrogate loss (vtrace=True)"
             )
 
             old_policy_behaviour_logits = target_model_out.detach()
@@ -202,26 +200,24 @@ class APPOTorchPolicy(
             )
 
             # Prepare KL for loss.
-            action_kl = _make_time_major(
-                old_policy_action_dist.kl(action_dist), drop_last=drop_last
-            )
+            action_kl = _make_time_major(old_policy_action_dist.kl(action_dist))
 
             # Compute vtrace on the CPU for better perf.
             vtrace_returns = vtrace.multi_from_logits(
                 behaviour_policy_logits=_make_time_major(
-                    unpacked_behaviour_logits, drop_last=drop_last
+                    unpacked_behaviour_logits
                 ),
                 target_policy_logits=_make_time_major(
-                    unpacked_old_policy_behaviour_logits, drop_last=drop_last
+                    unpacked_old_policy_behaviour_logits
                 ),
                 actions=torch.unbind(
-                    _make_time_major(loss_actions, drop_last=drop_last), dim=2
+                    _make_time_major(loss_actions), dim=2
                 ),
-                discounts=(1.0 - _make_time_major(dones, drop_last=drop_last).float())
+                discounts=(1.0 - _make_time_major(dones).float())
                 * self.config["gamma"],
-                rewards=_make_time_major(rewards, drop_last=drop_last),
-                values=values_time_major[:-1] if drop_last else values_time_major,
-                bootstrap_value=values_time_major[-1],
+                rewards=_make_time_major(rewards),
+                values=values_time_major,
+                bootstrap_value=bootstrap_values[-1],
                 dist_class=TorchCategorical if is_multidiscrete else dist_class,
                 model=model,
                 clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
@@ -229,13 +225,13 @@ class APPOTorchPolicy(
             )
 
             actions_logp = _make_time_major(
-                action_dist.logp(actions), drop_last=drop_last
+                action_dist.logp(actions)
             )
             prev_actions_logp = _make_time_major(
-                prev_action_dist.logp(actions), drop_last=drop_last
+                prev_action_dist.logp(actions)
             )
             old_policy_actions_logp = _make_time_major(
-                old_policy_action_dist.logp(actions), drop_last=drop_last
+                old_policy_action_dist.logp(actions)
             )
             is_ratio = torch.clamp(
                 torch.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0
@@ -259,15 +255,12 @@ class APPOTorchPolicy(
 
             # The value function loss.
             value_targets = vtrace_returns.vs.to(values_time_major.device)
-            if drop_last:
-                delta = values_time_major[:-1] - value_targets
-            else:
-                delta = values_time_major - value_targets
+            delta = values_time_major - value_targets
             mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
             # The entropy loss.
             mean_entropy = reduce_mean_valid(
-                _make_time_major(action_dist.entropy(), drop_last=drop_last)
+                _make_time_major(action_dist.entropy())
             )
 
         else:
@@ -323,9 +316,7 @@ class APPOTorchPolicy(
         model.tower_stats["value_targets"] = value_targets
         model.tower_stats["vf_explained_var"] = explained_variance(
             torch.reshape(value_targets, [-1]),
-            torch.reshape(
-                values_time_major[:-1] if drop_last else values_time_major, [-1]
-            ),
+            torch.reshape(values_time_major, [-1]),
         )
 
         return total_loss
