@@ -21,12 +21,13 @@ Computer Vision
 
     .. grid-item-card::
 
-       .. button-ref:: huggingface_vit_batch_prediction.ipynb
+       .. button-ref:: huggingface_vit_batch_prediction
 
             Image Classification Batch Inference with Huggingface Vision Transformer
 
 
-    
+    .. grid-item-card::
+
        .. button-ref:: pytorch_resnet_batch_prediction
 
             Image Classification Batch Inference with PyTorch ResNet18
