@@ -204,7 +204,10 @@ class SkOptSearch(Searcher):
         self._convert_to_python = convert_to_python
 
         self._skopt_opt = optimizer
-        self._skopt_opt_kwargs = optimizer_kwargs
+        if optimizer_kwargs is None:
+            self._skopt_opt_kwargs = {}
+        else:
+            self._skopt_opt_kwargs = optimizer_kwargs
         if self._skopt_opt or self._space:
             self._setup_skopt()
 
