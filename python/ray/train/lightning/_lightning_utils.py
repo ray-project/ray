@@ -16,9 +16,10 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins.environments import LightningEnvironment
 from pytorch_lightning.strategies import (
+    Strategy,
     DDPStrategy,
-    StrategyRegistry,
     DeepSpeedStrategy,
+    StrategyRegistry,
 )
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
@@ -120,32 +121,36 @@ class _RayStrategyFactory:
     """A factory class that register and generate Ray Strategy."""
 
     def __init__(self):
-        self._ptl_strategies = StrategyRegistry
-        self._ray_strategies = dict()
+        self.ptl_registry = StrategyRegistry
+        self.ray_registry = dict()
         self.register_ray_strategies()
-        self.remove_unspported_strategies()
+
+        self.strategy_whitelist = [
+            name
+            for name, registry in self.ptl_registry.items()
+            if registry["strategy"] in self.ray_registry
+        ]
 
     def register_ray_strategies(self):
-        self._ray_strategies[DDPStrategy] = RayDDPStrategy
-        self._ray_strategies[FSDPStrategy] = RayFSDPStrategy
-        self._ray_strategies[DeepSpeedStrategy] = RayDeepSpeedStrategy
+        self.ray_registry[DDPStrategy] = RayDDPStrategy
+        self.ray_registry[FSDPStrategy] = RayFSDPStrategy
+        self.ray_registry[DeepSpeedStrategy] = RayDeepSpeedStrategy
 
-    def create_strategy(self, name, **kwargs):
+    def create_strategy(self, name: str, **kwargs) -> "Strategy":
         """Function to check if a strategy is supported."""
-        # Try to retrieve the strategy from the lightning registry
-        registry = self._ptl_strategies.get(name, None)
+        # Try to retrieve the strategy from the Lightning registry
+        registry = self.ptl_registry.get(name, None)
         if not registry:
             raise ValueError(f"Invalid strategy name: {name} is not registered!")
 
-        strategy_cls = registry.get("strategy", None)
-
         # Check if the strategy is in the list of supported strategies
-        if strategy_cls not in self._ray_strategies:
-            raise ValueError(f"LightningTrainer doesn't support {name} yet.")
+        if name not in self.strategy_whitelist:
+            raise ValueError(f"LightningTrainer doesn't support {name} yet. Please choose from {self.strategy_whitelist}.")
 
+        strategy_cls = registry.get("strategy", None)
         init_params = registry.get("init_params", {})
         init_params.update(kwargs)
-        return self._ray_strategies[strategy_cls](**init_params)
+        return self.ray_registry[strategy_cls](**init_params)
 
 
 RayStrategyFactory = _RayStrategyFactory()
