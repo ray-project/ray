@@ -2891,7 +2891,6 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
-            int64_t put_threshold
             unique_ptr[CAddress] c_owner_address = move(self._convert_python_address(
                     object_ref.owner_address()))
 
@@ -2934,13 +2933,11 @@ cdef class CoreWorker:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
-            int64_t put_threshold
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
 
         metadata = string_to_buffer(serialized_object.metadata)
-        put_threshold = RayConfig.instance().max_direct_call_object_size()
         total_bytes = serialized_object.total_bytes
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
@@ -2948,6 +2945,9 @@ cdef class CoreWorker:
             metadata, total_bytes, object_ref,
             contained_object_ids,
             &c_object_id, &data, True, owner_address, inline_small_object)
+
+        logger.debug(
+            f"Serialized object size of {c_object_id.Hex()} is {total_bytes} bytes")
 
         if not object_already_exists:
             if total_bytes > 0:
