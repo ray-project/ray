@@ -1366,39 +1366,56 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
 
 
 def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
-    ds = ray.data.range(100, parallelism=100).map(lambda x: x).limit(1).materialize()
+    def f1(x):
+        return x
+
+    def f2(x):
+        return x
+
+    ds = ray.data.range(100, parallelism=100).map(f1).limit(1).materialize()
     assert (
         str(ds._plan._logical_plan.dag)
-        == "Read[Read] -> Limit[Limit] -> MapRows[MapRows]"
+        == "Read[ReadRange] -> Limit[Limit] -> MapRows[Map(f1)]"
     )
     assert len(ds.take_all()) == 1
 
-    ds2 = ray.data.range(100).limit(5).map(lambda x: x).limit(100).materialize()
+    ds2 = ray.data.range(100).limit(5).map(f1).limit(100).materialize()
     assert (
         str(ds2._plan._logical_plan.dag)
-        == "Read[Read] -> Limit[Limit] -> Limit[Limit] -> MapRows[MapRows]"
+        == "Read[ReadRange] -> Limit[Limit] -> Limit[Limit] -> MapRows[Map(f1)]"
     )
     assert len(ds2.take_all()) == 5
 
-    ds3 = ray.data.range(100).limit(100).map(lambda x: x).limit(5).materialize()
+    ds3 = ray.data.range(100).limit(100).map(f1).limit(5).materialize()
     assert (
         str(ds3._plan._logical_plan.dag)
-        == "Read[Read] -> Limit[Limit] -> Limit[Limit] -> MapRows[MapRows]"
+        == "Read[ReadRange] -> Limit[Limit] -> Limit[Limit] -> MapRows[Map(f1)]"
     )
     assert len(ds3.take_all()) == 5
 
     ds4 = ray.data.range(100).sort("id").limit(5).materialize()
     assert (
-        str(ds4._plan._logical_plan.dag) == "Read[Read] -> Sort[Sort] -> Limit[Limit]"
+        str(ds4._plan._logical_plan.dag)
+        == "Read[ReadRange] -> Sort[Sort] -> Limit[Limit]"
     )
     assert ds4.take_all() == [{"id": i} for i in range(5)]
 
-    ds5 = ray.data.range(100).sort("id").map(lambda x: x).limit(5).materialize()
+    ds5 = ray.data.range(100).sort("id").map(f1).limit(5).materialize()
     assert (
         str(ds5._plan._logical_plan.dag)
-        == "Read[Read] -> Sort[Sort] -> Limit[Limit] -> MapRows[MapRows]"
+        == "Read[ReadRange] -> Sort[Sort] -> Limit[Limit] -> MapRows[Map(f1)]"
     )
     assert ds5.take_all() == [{"id": i} for i in range(5)]
+
+    ds6 = ray.data.range(100, parallelism=100).map(f1).limit(1).map(f2).materialize()
+    # Limit operator gets pushed down in the logical plan optimization.
+    assert (
+        str(ds6._plan._logical_plan.dag)
+        == "Read[ReadRange] -> Limit[Limit] -> MapRows[Map(f1)] -> MapRows[Map(f2)]"
+    )
+    # Map operators only get fused in the optimized physical plan, not the logical plan.
+    assert "Map(f1)->Map(f2)" in ds6.stats(), ds6.stats()
+    assert len(ds6.take_all()) == 1
 
 
 def test_blocks_to_input_buffer_op_name(

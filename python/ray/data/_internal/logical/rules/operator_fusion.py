@@ -21,6 +21,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomShuffle,
     Repartition,
 )
+from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block
@@ -96,6 +97,30 @@ class OperatorFusionRule(Rule):
         ]
         return dag
 
+    def _fuse_limit_operators_in_dag(self, dag: PhysicalOperator) -> Limit:
+        """Starting at the given operator, traverses up the DAG of operators
+        and recursively fuses compatible Limit -> Limit operator pairs.
+        Returns the current (root) operator after completing upstream operator fusions.
+        """
+        upstream_ops = dag.input_dependencies
+        while (
+            len(upstream_ops) == 1
+            and isinstance(dag, Limit)
+            and isinstance(upstream_ops[0], Limit)
+            and self._can_fuse(dag, upstream_ops[0])
+        ):
+            # Fuse operator with its upstream op.
+            dag = self._get_fused_limit_operator(dag, upstream_ops[0])
+            upstream_ops = dag.input_dependencies
+
+        # Done fusing back-to-back map operators together here,
+        # move up the DAG to find the next map operators to fuse.
+        dag._input_dependencies = [
+            self._fuse_limit_operators_in_dag(upstream_op)
+            for upstream_op in upstream_ops
+        ]
+        return dag
+
     def _can_fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator) -> bool:
         """Returns whether the provided downstream operator can be fused with the given
         upstream operator.
@@ -127,6 +152,7 @@ class OperatorFusionRule(Rule):
                 isinstance(up_op, TaskPoolMapOperator)
                 and isinstance(down_op, AllToAllOperator)
             )
+            or (isinstance(down_op, Limit) and isinstance(up_op, Limit))
         ):
             return False
 
@@ -360,6 +386,12 @@ class OperatorFusionRule(Rule):
         self._op_map[op] = logical_op
         # Return the fused physical operator.
         return op
+
+    def _get_fused_limit_operator(self, down_op: Limit, up_op: Limit) -> Limit:
+        assert self._can_fuse(down_op, up_op), (
+            "Current rule supports fusing Limit -> Limit"
+            f", but received: {type(up_op).__name__} -> {type(down_op).__name__}"
+        )
 
 
 def _are_remote_args_compatible(prev_args, next_args):

@@ -38,6 +38,12 @@ class Operator:
         ), "Operator.__init__() was not called."
         return self._output_dependencies
 
+    @property
+    def can_modify_num_rows(self) -> bool:
+        """Whether this operator modifies the number of rows,
+        i.e. number of input rows != number of output rows."""
+        raise NotImplementedError
+
     def post_order_iter(self) -> Iterator["Operator"]:
         """Depth-first traversal of this operator and its input dependencies."""
         for op in self.input_dependencies:

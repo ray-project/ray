@@ -133,6 +133,10 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
 
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return False
+
 
 class MapRows(AbstractUDFMap):
     """Logical operator for map."""
@@ -151,6 +155,10 @@ class MapRows(AbstractUDFMap):
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return False
 
 
 class Filter(AbstractUDFMap):
@@ -171,6 +179,10 @@ class Filter(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return True
+
 
 class FlatMap(AbstractUDFMap):
     """Logical operator for flat_map."""
@@ -189,3 +201,7 @@ class FlatMap(AbstractUDFMap):
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return False

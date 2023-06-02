@@ -214,6 +214,7 @@ class DataContext:
         global _default_context
 
         with _context_lock:
+
             if _default_context is None:
                 _default_context = DataContext(
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,

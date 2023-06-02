@@ -14,3 +14,7 @@ class Limit(LogicalOperator):
             [input_op],
         )
         self._limit = limit
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return True

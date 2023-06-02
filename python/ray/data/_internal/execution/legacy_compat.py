@@ -134,13 +134,7 @@ def _get_execution_dag(
         # TODO(hchen): Remove this when all operators support logical plan.
         and getattr(plan, "_logical_plan", None) is not None
     ):
-        optimized_logical_plan, optimized_physical_plan = get_execution_plan(
-            plan._logical_plan
-        )
-        dag = optimized_physical_plan.dag
-        # original ExecutionPlan does not get updated with the optimized
-        # logical plan, so we need to set it here
-        plan.link_logical_plan(optimized_logical_plan)
+        dag = get_execution_plan(plan._logical_plan).dag
         stats = _get_initial_stats_from_plan(plan)
     else:
         dag, stats = _to_operator_dag(plan, allow_clear_input_blocks)
