@@ -88,7 +88,7 @@ AgentID = Any
 # Represents a generic identifier for a policy (e.g., "pol1").
 PolicyID = str
 
-# Type of the config["multiagent"]["policies"] dict for multi-agent training.
+# Type of the config.policies dict for multi-agent training.
 MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 
 # State dict of a Policy, mapping strings (e.g. "weights") to some state

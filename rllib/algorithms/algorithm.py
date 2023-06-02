@@ -189,7 +189,6 @@ class Algorithm(Trainable):
         "env_config",
         "model",
         "optimizer",
-        "multiagent",
         "custom_resources_per_worker",
         "evaluation_config",
         "exploration_config",
@@ -616,13 +615,6 @@ class Algorithm(Trainable):
                 self.train_exec_impl = self.execution_plan(
                     self.workers, self.config, **self._kwargs_for_execution_plan()
                 )
-
-            # Now that workers have been created, update our policies
-            # dict in config[multiagent] (with the correct original/
-            # unpreprocessed spaces).
-            self.config["multiagent"][
-                "policies"
-            ] = self.workers.local_worker().policy_dict
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()

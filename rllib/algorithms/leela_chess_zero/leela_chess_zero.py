@@ -123,7 +123,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         }
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 1000
         self.lr_schedule = None
         self.vf_share_layers = False
@@ -248,7 +248,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
             num_steps_sampled_before_learning_starts: Number of timesteps to collect
                 from rollout workers before we start sampling from replay buffers for
                 learning. Whether we count this in agent steps  or environment steps
-                depends on config["multiagent"]["count_steps_by"].
+                depends on config.multi_agent(count_steps_by=..).
 
         Returns:
             This updated AlgorithmConfig object.

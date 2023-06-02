@@ -252,14 +252,6 @@ def validate_buffer_config(config: dict) -> None:
             if config.get("replay_buffer_config") is not None:
                 config["replay_buffer_config"][k] = config[k]
 
-    replay_mode = config.get("multiagent", {}).get("replay_mode", DEPRECATED_VALUE)
-    if replay_mode != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="config['multiagent']['replay_mode']",
-            help="config['replay_buffer_config']['replay_mode']",
-            error=True,
-        )
-
     learning_starts = config.get(
         "learning_starts",
         config.get("replay_buffer_config", {}).get("learning_starts", DEPRECATED_VALUE),
