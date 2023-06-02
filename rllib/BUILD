@@ -4222,10 +4222,6 @@ py_test(
     srcs = ["examples/learner/train_w_bc_finetune_w_ppo.py"],
 )
 
-py_test(
-    name = "examples/learner/"
-)
-
 # --------------------------------------------------------------------
 # examples/documentation directory
 #
