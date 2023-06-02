@@ -934,7 +934,7 @@ py_test(
     size = "small",
     srcs = ["examples/pbt_transformers/pbt_transformers.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
+    tags = ["team:ml", "exclusive", "example", "medium_instance"],
     args = ["--smoke-test"]
 )
 

@@ -14,13 +14,11 @@ tensorboardX==2.4.1
 
 # We need transformers>=4.19.0 for HuggingFaceTrainer to work (not available on py 3.6)
 # If changing the version here, also change it in HuggingFaceTrainer docstring
-transformers==4.18.0; python_version <= '3.6'
-transformers==4.19.1; python_version > '3.6'
+transformers==4.29.2
 # We need accelerate>=0.17.0 for AccelerateTrainer to work (not available on py 3.6)
 # If changing the version here, also change it in AccelerateTrainer docstring
-accelerate==0.5.1; python_version <= '3.6'
-accelerate==0.17.1; python_version > '3.6'
+accelerate==0.17.1
 # Tracking issue: https://github.com/ray-project/ray/issues/34399
-deepspeed==0.8.3; python_version > '3.6'
+deepspeed==0.8.3
 datasets==2.0.0
 sentencepiece==0.1.96
