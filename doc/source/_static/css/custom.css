@@ -639,3 +639,48 @@ padding: 20px;
 }
 
 
+.searchDiv {
+    width: 100%;
+    position: relative;
+    display: block;
+}
+
+.searchTerm {
+    width: 80%;
+    border: 2px solid var(--blue);
+    padding: 5px;
+    height: 45px;
+    border-radius: 5px;
+    outline: none;
+}
+
+.searchButton {
+    width: 40px;
+    height: 45px;
+    border: 1px solid var(--blue);
+    background: var(--blue);
+    color: #fff;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 20px;
+}
+
+/*Resize the wrap to see the search bar change!*/
+.searchWrap {
+    width: 100%;
+    position: relative;
+    margin: 15px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -10%);
+    text-align: center;
+}
+
+.sd-card {
+    border: none !important;
+}
+
+.tag {
+    margin-bottom: 5px;
+    font-size: small;
+}

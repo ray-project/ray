@@ -11,6 +11,8 @@ parts:
         title: "Installation"
       - file: ray-overview/use-cases
         title: "Use Cases"
+      - file: ray-overview/examples
+        title: "Example Gallery"
       - file: ray-overview/ray-libraries
         title: "Ecosystem"
 
