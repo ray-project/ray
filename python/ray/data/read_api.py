@@ -12,14 +12,14 @@ from typing import (
     Union,
 )
 
-
 import numpy as np
 
 import ray
+from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrowRefs,
@@ -33,18 +33,18 @@ from ray.data._internal.logical.operators.from_pandas_operator import (
     FromModin,
     FromPandasRefs,
 )
-from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
-    _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
-    pandas_df_to_arrow_block,
-    ndarray_to_block,
+    _lazy_import_pyarrow_dataset,
     get_table_block_metadata,
+    ndarray_to_block,
+    pandas_df_to_arrow_block,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
@@ -55,20 +55,20 @@ from ray.data.datasource import (
     Connection,
     CSVDatasource,
     Datasource,
-    SQLDatasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     ImageDatasource,
     JSONDatasource,
+    MongoDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
-    MongoDatasource,
     ReadTask,
+    SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
     WebDatasetDatasource,
@@ -83,7 +83,6 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.auto_init_hook import wrap_auto_init
 
 if TYPE_CHECKING:
     import dask
@@ -92,8 +91,8 @@ if TYPE_CHECKING:
     import modin
     import pandas
     import pyarrow
-    import pyspark
     import pymongoarrow.api
+    import pyspark
     import tensorflow as tf
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -1778,7 +1777,6 @@ def from_huggingface(
     Example:
 
     .. doctest::
-        :options: +ELLIPSIS
 
         >>> import ray
         >>> import datasets

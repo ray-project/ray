@@ -354,27 +354,6 @@ nb_render_priority = {
     ),
 }
 
-tag_mapping = {
-    # Tags for Ray Train examples gallery
-    "trainTorchFashionMnist": "PyTorch,Training",
-    "trainTransformers": "PyTorch,Training,HuggingFace",
-    "trainTensorflowMnist": "TensorFlow,Training",
-    "trainHorovod": "Horovod, PyTorch,Training",
-    "trainMlflow": "MLflow,Training",
-    "trainTuneTensorflow": "TensorFlow,Training,Tuning",
-    "trainTunePyTorch": "PyTorch,Training,Tuning",
-    "trainBenchmark": "PyTorch,Training",
-    "trainLightning": "PyTorch,Lightning,Training",
-    "trackLightning": "PyTorch,Lightning,Training,MLFlow"
-    # TODO add and integrate tags for other libraries.
-    # Tune has a proper example library
-    # Serve, RLlib and AIR could use one.
-}
-
-# Create file with tag mappings for tags.js to use.
-with open("./_static/tag-mapping.json", "w") as f:
-    json.dump(tag_mapping, f)
-
 
 def setup(app):
     app.connect("html-page-context", update_context)

@@ -1,35 +1,25 @@
 import copy
 import logging
-import time
 import threading
-from typing import (
-    List,
-    Dict,
-    Optional,
-    Iterator,
-    Tuple,
-    Union,
-    TYPE_CHECKING,
-)
+import time
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-
-from ray.data.iterator import DataIterator
+from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.execution.legacy_compat import (
-    execute_to_legacy_bundle_iterator,
-)
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
-from ray.data._internal.stats import DatasetStats
+from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
@@ -62,17 +52,21 @@ class StreamSplitDataIterator(DataIterator):
             ),
         ).remote(ctx, base_dataset, n, equal, locality_hints)
 
-        return [StreamSplitDataIterator(base_dataset, coord_actor, i) for i in range(n)]
+        return [
+            StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
+        ]
 
     def __init__(
         self,
         base_dataset: "Dataset",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
+        world_size: int,
     ):
         self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
+        self._world_size = world_size
 
     def _to_block_iterator(
         self,
@@ -109,6 +103,10 @@ class StreamSplitDataIterator(DataIterator):
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DataIterator."""
         return self._base_dataset.schema()
+
+    def world_size(self) -> int:
+        """Returns the number of splits total."""
+        return self._world_size
 
 
 @ray.remote(num_cpus=0)

@@ -93,12 +93,14 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
 
         # Handle empty blocks.
         if len(reduce_block_refs) < output_num_blocks:
-            from ray.data._internal.arrow_block import ArrowBlockBuilder
-            from ray.data._internal.pandas_block import PandasBlockBuilder
-            from ray.data._internal.simple_block import SimpleBlockBuilder
-
             import pyarrow as pa
-            from ray.data._internal.pandas_block import PandasBlockSchema
+
+            from ray.data._internal.arrow_block import ArrowBlockBuilder
+            from ray.data._internal.pandas_block import (
+                PandasBlockBuilder,
+                PandasBlockSchema,
+            )
+            from ray.data._internal.simple_block import SimpleBlockBuilder
 
             num_empty_blocks = output_num_blocks - len(reduce_block_refs)
             first_block_schema = reduce_metadata[0].schema
