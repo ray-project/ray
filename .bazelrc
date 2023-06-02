@@ -22,6 +22,9 @@ build:msvc-cl --compiler=msvc-cl
 # environment variable, see the test_fork test
 # (and https://github.com/ray-project/ray/issues/36001)
 build:linux --cxxopt="-DGRPC_ENABLE_FORK_SUPPORT=1"
+build:linux --cxxopt="-DGRPC_POSIX_FORK_ALLOW_PTHREAD_ATFORK=1"
+build:macos --cxxopt="-DGRPC_ENABLE_FORK_SUPPORT=1"
+build:macos --cxxopt="-DGRPC_POSIX_FORK_ALLOW_PTHREAD_ATFORK=1"
 # `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
 # If we don't add them, python's `click` library will raise an error.
 test --test_env=LC_ALL
