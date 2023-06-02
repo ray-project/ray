@@ -124,7 +124,7 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
 
 ## Disabling the Dashboard
 
-Dashboard is included if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` and automatically started.
+Dashboard is included if you use `ray[default]` and automatically started.
 
 To disable Dashboard, use the following arguments `--include-dashboard`.
 
