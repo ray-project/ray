@@ -73,7 +73,7 @@ Other performance tips
 
 
 Custom data config (advanced)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------
 
 For use cases not covered by the default config class, you can also fully customize exactly how your input datasets are splitted. To do this, you need to define a custom ``DataConfig`` class (DeveloperAPI). The ``DataConfig`` class is responsible for that shared setup and splitting of data across nodes.
 
