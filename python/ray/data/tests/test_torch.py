@@ -303,6 +303,34 @@ def test_iter_torch_batches_tensor_ds(ray_start_regular_shared):
         np.testing.assert_array_equal(arr, combined_iterations)
 
 
+# This test catches an error in stream_split_iterator dealing with empty blocks,
+# which is difficult to reproduce outside of TorchTrainer.
+def test_torch_trainer_crash(ray_start_10_cpus_shared):
+    from ray.air import session
+    from ray.air.config import ScalingConfig
+    from ray.train import DataConfig
+    from ray.train.torch import TorchTrainer
+
+    ray.data.DataContext.get_current().execution_options.verbose_progress = True
+
+    train_ds = ray.data.range_tensor(100)
+    train_ds = train_ds.materialize()
+
+    def train_loop_per_worker():
+        it = session.get_dataset_shard("train")
+        for i in range(2):
+            start = time.time()
+            for batch in it.iter_batches():
+                pass
+
+    my_trainer = TorchTrainer(
+        train_loop_per_worker,
+        scaling_config=ScalingConfig(num_workers=2),
+        datasets={"train": train_ds},
+    )
+    my_trainer.fit()
+
+
 if __name__ == "__main__":
     import sys
 
