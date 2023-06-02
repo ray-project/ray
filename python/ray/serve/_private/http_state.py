@@ -15,12 +15,12 @@ from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
-    DEFAULT_READY_CHECK_TIMEOUT_S,
     SERVE_LOGGER_NAME,
     SERVE_PROXY_NAME,
     SERVE_NAMESPACE,
     PROXY_HEALTH_CHECK_PERIOD_S,
     PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+    PROXY_READY_CHECK_TIMEOUT_S,
 )
 from ray.serve._private.http_proxy import HTTPProxyActor
 from ray.serve._private.utils import (
@@ -79,10 +79,10 @@ class HTTPProxyState:
     def try_update_status(self, status: HTTPProxyStatus):
         """Try update with the new status and only update when the conditions are met.
 
-        Status will only set to UNHEALTHY after consecutive failures
-        PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD times. A warning will be logged when the
-        status is set to UNHEALTHY. Also, when status is set to
-        HEALTHY, we will reset self._consecutive_health_check_failures to 0.
+        Status will only set to UNHEALTHY after PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        consecutive failures. A warning will be logged when the status is set to
+        UNHEALTHY. Also, when status is set to HEALTHY, we will reset
+        self._consecutive_health_check_failures to 0.
         """
         # Early return to skip setting UNHEALTHY status if there are still room for
         # retry.
@@ -127,11 +127,11 @@ class HTTPProxyState:
         """Update the status of the current HTTP proxy.
 
         1) When the HTTP proxy is already shutting down, do nothing.
-        2) When the HTTP proxy is starting, call ready object. If ready object returns a
-        successful call, set status to HEALTHY. If the ready call has any exception or
-        timeout, count towards 1 of the consecutive health check failures and retry on
-        the next update call. The status is only set to UNHEALTHY when all retries have
-        exhausted.
+        2) When the HTTP proxy is starting, check ready object reference. If ready
+        object reference returns a successful call, set status to HEALTHY. If the call
+        to ready() on the HTTP Proxy actor has any exception or timeout, increment the
+        consecutive health check failure counter and retry on the next update call. The
+        status is only set to UNHEALTHY when all retries have exhausted.
         3) When the HTTP proxy already has an in-progress health check. If health check
         object returns a successful call, set status to HEALTHY. If the call has any
         exception or timeout, count towards 1 of the consecutive health check failures
@@ -164,14 +164,13 @@ class HTTPProxyState:
                         f"Proxy on node {self._node_id}:\n{traceback.format_exc()}"
                     )
             elif (
-                time.time() - self._last_health_check_time
-                > DEFAULT_READY_CHECK_TIMEOUT_S
+                time.time() - self._last_health_check_time > PROXY_READY_CHECK_TIMEOUT_S
             ):
                 # Ready check hasn't returned and the timeout is up, consider it failed.
-                self.try_update_status(HTTPProxyStatus.UNHEALTHY)
+                self.set_status(HTTPProxyStatus.UNHEALTHY)
                 logger.warning(
                     "Didn't receive ready check response for HTTP proxy "
-                    f"{self._node_id} after {DEFAULT_READY_CHECK_TIMEOUT_S}s."
+                    f"{self._node_id} after {PROXY_READY_CHECK_TIMEOUT_S}s."
                 )
             return
 
