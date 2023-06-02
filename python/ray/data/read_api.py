@@ -20,12 +20,7 @@ from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.operators.from_arrow_operator import (
-    FromArrowRefs,
-    FromHuggingFace,
-)
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
     FromItems,
@@ -191,7 +186,7 @@ def from_items(
             )
         )
 
-    from_items_op = FromItems([RefBundle(blocks, metadata, owns_blocks=True)])
+    from_items_op = FromItems(blocks, metadata, True)
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
         ExecutionPlan(
@@ -1549,7 +1544,7 @@ def from_pandas(
     context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
-    return from_pandas_refs([ray.put(df) for df in dfs], owns_blocks=True)
+    return from_pandas_refs([ray.put(df) for df in dfs], owns_blocks=False)
 
 
 @DeveloperAPI
@@ -1586,7 +1581,7 @@ def from_pandas_refs(
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         logical_plan = LogicalPlan(
-            FromPandas([RefBundle(dfs, metadata, owns_blocks=owns_blocks)])
+            FromPandas(dfs, metadata, owns_blocks)
         )
         return MaterializedDataset(
             ExecutionPlan(
@@ -1605,7 +1600,7 @@ def from_pandas_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
     logical_plan = LogicalPlan(
-        FromPandas([RefBundle(blocks, metadata, owns_blocks=True)])
+        FromPandas(blocks, metadata, True)
     )
     return MaterializedDataset(
         ExecutionPlan(
@@ -1670,7 +1665,7 @@ def from_numpy_refs(
     metadata = ray.get(metadata)
 
     logical_plan = LogicalPlan(
-        FromNumpy([RefBundle(blocks, metadata, owns_blocks=True)])
+        FromNumpy(blocks, metadata, True)
     )
 
     return MaterializedDataset(
@@ -1702,7 +1697,7 @@ def from_arrow(
 
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
-    return from_arrow_refs([ray.put(t) for t in tables], owns_blocks=True)
+    return from_arrow_refs([ray.put(t) for t in tables], owns_blocks=False)
 
 
 @DeveloperAPI
@@ -1728,7 +1723,7 @@ def from_arrow_refs(
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
     logical_plan = LogicalPlan(
-        FromArrow([RefBundle(tables, metadata, owns_blocks=owns_blocks)])
+        FromArrow(tables, metadata, owns_blocks)
     )
 
     return MaterializedDataset(
