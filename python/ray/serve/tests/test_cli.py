@@ -1243,10 +1243,7 @@ class TestRayReinitialization:
 
     @pytest.fixture
     def pattern(self) -> Pattern:
-        return re.compile(
-            r"INFO ray._private.worker::Connecting to existing Ray cluster at "
-            r"address: (.*)\.\.\."
-        )
+        return re.compile(r"Connecting to existing Ray cluster at address: (.*)\.\.\.")
 
     @pytest.fixture
     def ansi_escape(self) -> Pattern:
