@@ -19,7 +19,15 @@ GYM_ENV = gym.make(GYM_ENV_NAME)
 
 
 class BCActor(torch.nn.Module):
-    """"""
+    """A wrapper for the encoder and policy networks of a PPORLModule.
+
+    Args:
+        encoder_network: The encoder network of the PPORLModule.
+        policy_network: The policy network of the PPORLModule.
+        distribution_cls: The distribution class to construct with the logits outputed
+            by the policy network.
+
+    """
 
     def __init__(
         self,
@@ -37,7 +45,8 @@ class BCActor(torch.nn.Module):
     ) -> torch.distributions.Distribution:
         """Return an action distribution output by the policy network.
 
-        batch: A dict containing the key "obs" mapping to a torch tensor of observations
+        batch: A dict containing the key "obs" mapping to a torch tensor of
+            observations.
 
         """
         encoder_out = self.encoder_network(batch)[ENCODER_OUT][ACTOR]
