@@ -1,16 +1,13 @@
 from typing import List, Union
 
 import ray
-from ray.data._internal.execution.interfaces import (
-    PhysicalOperator,
-    RefBundle,
-)
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.from_pandas_operator import (
-    FromPandasRefs,
     FromDask,
-    FromModin,
     FromMars,
+    FromModin,
+    FromPandasRefs,
 )
 from ray.data.context import DataContext
 
@@ -26,8 +23,9 @@ def _plan_from_pandas_refs_op(op: FromPandasRefsOperators) -> PhysicalOperator:
 
     def _init_data_from_dask(op: FromDask):
         import dask
-        from ray.util.dask import ray_dask_get
         import pandas
+
+        from ray.util.dask import ray_dask_get
 
         partitions = op._df.to_delayed()
         persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
@@ -60,20 +58,27 @@ def _plan_from_pandas_refs_op(op: FromPandasRefsOperators) -> PhysicalOperator:
     def get_input_data() -> List[RefBundle]:
         from ray.data._internal.remote_fn import cached_remote_fn
         from ray.data._internal.util import (
-            pandas_df_to_arrow_block,
             get_table_block_metadata,
+            pandas_df_to_arrow_block,
         )
 
-        owns_blocks = True
-        if isinstance(op, FromDask):
+        if isinstance(op, FromPandasRefs):
+            # Data is already put into the the Ray object store.
+            # So owns_blocks should be False.
+            owns_blocks = False
+        elif isinstance(op, FromDask):
             _init_data_from_dask(op)
+            owns_blocks = True
         elif isinstance(op, FromModin):
             _init_data_from_modin(op)
+            owns_blocks = True
         elif isinstance(op, FromMars):
             _init_data_from_mars(op)
             # MARS holds the MARS dataframe in memory in `to_ray_dataset()`
             # to avoid object GC, so this operator cannot not own the blocks.
             owns_blocks = False
+        else:
+            raise ValueError(f"Unsupported operator type: {type(op)}")
 
         context = DataContext.get_current()
 

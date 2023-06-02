@@ -11,6 +11,8 @@ parts:
         title: "Installation"
       - file: ray-overview/use-cases
         title: "Use Cases"
+      - file: ray-overview/examples
+        title: "Example Gallery"
       - file: ray-overview/ray-libraries
         title: "Ecosystem"
 
@@ -77,7 +79,6 @@ parts:
               - file: ray-air/examples/automl_with_ray_air
               - file: ray-air/examples/batch_tuning
               - file: ray-air/examples/batch_forecasting
-              - file: ray-air/examples/pytorch_resnet_batch_prediction
               - file: ray-air/examples/stablediffusion_batch_prediction
               - file: ray-air/examples/gptj_deepspeed_fine_tuning
               - file: ray-air/examples/gptj_batch_prediction
@@ -104,10 +105,10 @@ parts:
               - file: data/examples/random-access
               - file: data/examples/batch_inference_object_detection
                 title: Object Detection Batch Inference with PyTorch
+              - file: data/examples/custom-datasource
           - file: data/faq
           - file: data/api/api
           - file: data/glossary
-          - file: data/integrations
 
       - file: train/train
         title: Ray Train
@@ -285,6 +286,7 @@ parts:
               - file: serve/managing-java-deployments
               - file: serve/migration
               - file: serve/direct-ingress
+              - file: serve/model-multiplexing
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
@@ -327,6 +329,10 @@ parts:
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
           - file: ray-more-libs/using-ray-with-pytorch-lightning
+          - file: ray-more-libs/dask-on-ray
+          - file: ray-more-libs/raydp
+          - file: ray-more-libs/mars-on-ray
+          - file: ray-more-libs/modin/index
           - file: workflows/index
             title: Ray Workflows (Alpha)
             sections:
@@ -401,13 +407,12 @@ parts:
               - file: ray-observability/user-guides/debug-apps/index
                 title: Debugging Applications
                 sections:
-                  - file: ray-observability/user-guides/debug-apps/general-troubleshoot
                   - file: ray-observability/user-guides/debug-apps/debug-memory
                   - file: ray-observability/user-guides/debug-apps/debug-hangs
                   - file: ray-observability/user-guides/debug-apps/debug-failures
                   - file: ray-observability/user-guides/debug-apps/optimize-performance
+                  - file: ray-observability/user-guides/debug-apps/debug-other
                   - file: ray-observability/user-guides/debug-apps/ray-debugging
-                  - file: ray-observability/user-guides/debug-apps/ray-core-profiling
               - file: ray-observability/user-guides/cli-sdk
               - file: ray-observability/user-guides/configure-logging
               - file: ray-observability/user-guides/add-app-metrics

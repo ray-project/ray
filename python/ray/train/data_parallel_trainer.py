@@ -16,7 +16,7 @@ from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
+from ray.train.data_config import DataConfig, _LegacyDataConfigWrapper
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -238,10 +238,8 @@ class DataParallelTrainer(BaseTrainer):
         "placement_strategy",
     ]
 
-    _dataset_config = {
-        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
-        WILDCARD_KEY: DatasetConfig(split=False),
-    }
+    # For backwards compatibility with the legacy dataset config API.
+    _dataset_config = None
 
     _fields_for_tuner_param_space = BaseTrainer._fields_for_tuner_param_space + [
         "train_loop_config"
@@ -254,25 +252,62 @@ class DataParallelTrainer(BaseTrainer):
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
+
+        if isinstance(dataset_config, dict) or self._dataset_config or preprocessor:
+            # Warn about deprecated cases (will raise error in future).
+            if isinstance(dataset_config, dict):
+                logger.warning(
+                    "The dict form of `dataset_config` is deprecated. Use the "
+                    "DataConfig class instead. Support for this will be dropped "
+                    "in a future release."
+                )
+            # If using the new API, hard-disallow deprecated features.
+            if isinstance(dataset_config, DataConfig):
+                if self._dataset_config:
+                    raise ValueError(
+                        "The DataConfig class is not compatible with the "
+                        "Trainer._dataset_config field. Remove `_dataset_config` "
+                        "from your trainer subclass to use DataConfig."
+                    )
+                elif preprocessor:
+                    raise ValueError(
+                        "The DataConfig class is not compatible with the "
+                        "Trainer preprocessor arg. Remove the `preprocessor` arg "
+                        "to use DataConfig."
+                    )
+            if self._dataset_config is None:
+                base_dataset_config = {
+                    TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
+                    WILDCARD_KEY: DatasetConfig(split=False),
+                }
+            else:
+                base_dataset_config = self._dataset_config
+            self._data_config = _LegacyDataConfigWrapper(
+                base_dataset_config, dataset_config, datasets
+            )
+        elif isinstance(dataset_config, DataConfig):
+            self._data_config = dataset_config
+        elif dataset_config is None:
+            self._data_config = DataConfig()
+        else:
+            raise ValueError(
+                "`dataset_config` must be an instance of ray.train.DataConfig, "
+                f"was: {dataset_config}"
+            )
 
         backend_config = (
             backend_config if backend_config is not None else BackendConfig()
         )
         self._backend_config = backend_config
-        self._dataset_config = DatasetConfig.validated(
-            DatasetConfig.merge(self._dataset_config, dataset_config), datasets
-        )
-        self._ingest_spec = DataParallelIngestSpec(
-            dataset_config=self._dataset_config,
-        )
 
         super(DataParallelTrainer, self).__init__(
             scaling_config=scaling_config,
@@ -333,8 +368,8 @@ class DataParallelTrainer(BaseTrainer):
     def preprocess_datasets(self) -> None:
         # Evaluate all datasets.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-        self.datasets = self._ingest_spec.preprocess_datasets(
-            self.preprocessor, self.datasets
+        self.datasets = self._data_config._legacy_preprocessing(
+            self.datasets, self.preprocessor
         )
 
     def _validate_train_loop_per_worker(
@@ -438,7 +473,8 @@ class DataParallelTrainer(BaseTrainer):
             backend_executor=backend_executor,
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
-            dataset_spec=self._ingest_spec,
+            datasets=self.datasets,
+            data_config=self._data_config,
             checkpoint_manager=checkpoint_manager,
             checkpoint=self.resume_from_checkpoint,
             checkpoint_strategy=checkpoint_strategy,
@@ -450,13 +486,16 @@ class DataParallelTrainer(BaseTrainer):
         # Shutdown workers.
         backend_executor.shutdown()
 
-    def get_dataset_config(self) -> Dict[str, DatasetConfig]:
+    def get_dataset_config(self) -> DataConfig:
         """Return a copy of this Trainer's final dataset configs.
 
         Returns:
             The merged default + user-supplied dataset config.
         """
-        return self._dataset_config.copy()
+        if isinstance(self._data_config, _LegacyDataConfigWrapper):
+            return self._data_config._dataset_config
+        else:
+            return self._data_config
 
     @repr_with_fallback(["ipywidgets", "8"])
     def _repr_mimebundle_(self, **kwargs):
@@ -483,9 +522,8 @@ class DataParallelTrainer(BaseTrainer):
             children.append(self._datasets_repr_())
             titles.append("Datasets")
 
-        if self._dataset_config:
-            children.append(HTML(self._dataset_config_repr_html_()))
-            titles.append("Dataset Config")
+            children.append(HTML(self._data_config_repr_html_()))
+            titles.append("Data Config")
 
         if self._train_loop_config:
             children.append(HTML(self._train_loop_config_repr_html_()))
@@ -539,14 +577,9 @@ class DataParallelTrainer(BaseTrainer):
         else:
             return ""
 
-    def _dataset_config_repr_html_(self) -> str:
-        content = []
-        if self._dataset_config:
-            for name, config in self._dataset_config.items():
-                content.append(
-                    config._repr_html_(title=f"DatasetConfig - <code>{name}</code>")
-                )
-
+    def _data_config_repr_html_(self) -> str:
+        # TODO make this rendering nicer.
+        content = [str(self._data_config)]
         return Template("rendered_html_common.html.j2").render(content=content)
 
     def _datasets_repr_(self) -> str:

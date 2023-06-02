@@ -98,7 +98,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             scheduler=pbt,
             stop={"training_iteration": 10},
             num_samples=3,
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
             trial_executor=CustomExecutor(reuse_actors=False),
@@ -168,14 +168,18 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
             hyperparam_mutations={"b": [-1]},
         )
 
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_frequency=2,
+        )
+
         tune.run(
             MyTrainable,
             name="ray_demo",
             scheduler=pbt,
             stop={"training_iteration": 10},
             num_samples=4,
-            checkpoint_freq=2,
-            keep_checkpoints_num=1,
+            checkpoint_config=checkpoint_config,
             verbose=False,
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
@@ -464,6 +468,12 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
 
         random.seed(100)
         np.random.seed(1000)
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute="min-training_iteration",
+            checkpoint_frequency=1,
+            checkpoint_at_end=True,
+        )
         tune.run(
             MockTrainable,
             config={
@@ -473,10 +483,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             },
             fail_fast=True,
             num_samples=4,
-            checkpoint_freq=1,
-            checkpoint_at_end=True,
-            keep_checkpoints_num=1,
-            checkpoint_score_attr="min-training_iteration",
+            checkpoint_config=checkpoint_config,
             scheduler=scheduler,
             name="testPermutationContinuation",
             stop={"training_iteration": 3},
@@ -513,6 +520,10 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         param_b = MockParam([1.2, 0.9, 1.1, 0.8])
         random.seed(100)
         np.random.seed(1000)
+        checkpoint_config = CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute="min-training_iteration",
+        )
         tune.run(
             MockTrainingFunc,
             config={
@@ -522,8 +533,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             },
             fail_fast=True,
             num_samples=4,
-            keep_checkpoints_num=1,
-            checkpoint_score_attr="min-training_iteration",
+            checkpoint_config=checkpoint_config,
             scheduler=scheduler,
             name="testPermutationContinuationFunc",
             stop={"training_iteration": 3},

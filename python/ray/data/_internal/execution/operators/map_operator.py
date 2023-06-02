@@ -1,34 +1,29 @@
-from abc import ABC, abstractmethod
 import copy
-from dataclasses import dataclass
 import itertools
-from typing import Callable, List, Iterator, Any, Dict, Optional, Union
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-    BlockExecStats,
-)
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import (
+    ActorPoolStrategy,
     ComputeStrategy,
     TaskPoolStrategy,
-    ActorPoolStrategy,
 )
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
     ExecutionOptions,
     ExecutionResources,
-    PhysicalOperator,
-    TaskContext,
     MapTransformFn,
+    PhysicalOperator,
+    RefBundle,
+    TaskContext,
 )
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
-from ray._raylet import ObjectRefGenerator
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 class MapOperator(PhysicalOperator, ABC):
