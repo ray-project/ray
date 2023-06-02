@@ -1170,7 +1170,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             policy_dict=policy_dict_to_add,
             policy=policy,
             policy_states={policy_id: policy_state},
-            module_spec=module_spec,
+            single_agent_rl_module_spec=module_spec,
         )
 
         self.set_policy_mapping_fn(policy_mapping_fn)
@@ -1678,7 +1678,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         policy_dict: MultiAgentPolicyConfigDict,
         policy: Optional[Policy] = None,
         policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
-        module_spec: Optional[SingleAgentRLModuleSpec] = None,
+        single_agent_rl_module_spec: Optional[SingleAgentRLModuleSpec] = None,
     ) -> None:
         """Updates the policy map (and other stuff) on this worker.
 
@@ -1697,8 +1697,10 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             policy_dict: The policy dict to update the policy map with.
             policy: The policy to update the policy map with.
             policy_states: The policy states to update the policy map with.
-            module_spec: The RLModuleSpec to add to the marl_module_spec. If None, the
-                default_rl_module_spec will be used to create the policy with.
+            single_agent_rl_module_spec: The SingleAgentRLModuleSpec to add to the
+                MultiAgentRLModuleSpec. If None, the config's
+                `get_default_rl_module_spec` method's output will be used to create
+                the policy with.
         """
 
         # Update the input policy dict with the postprocessed observation spaces and
@@ -1708,7 +1710,8 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # Use the updated policy dict to create the marl_module_spec if necessary
         if self.config._enable_rl_module_api:
             spec = self.config.get_marl_module_spec(
-                policy_dict=updated_policy_dict, module_spec=module_spec
+                policy_dict=updated_policy_dict,
+                single_agent_rl_module_spec=single_agent_rl_module_spec,
             )
             if self.marl_module_spec is None:
                 # this is the first time, so we should create the marl_module_spec
