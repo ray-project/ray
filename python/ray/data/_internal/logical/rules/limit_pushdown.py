@@ -1,10 +1,8 @@
 from collections import deque
 from typing import Iterable
-from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.all_to_all_operator import (
-    AbstractAllToAll,
-)
 
+from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
 from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.read_operator import Read
 

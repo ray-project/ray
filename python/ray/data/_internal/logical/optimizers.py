@@ -1,10 +1,10 @@
 from typing import List, Tuple
 
 from ray.data._internal.logical.interfaces import (
-    Rule,
-    Optimizer,
     LogicalPlan,
+    Optimizer,
     PhysicalPlan,
+    Rule,
 )
 from ray.data._internal.logical.rules import (
     OperatorFusionRule,

@@ -1,19 +1,18 @@
 # Copyright NVIDIA Corporation 2023
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Any, Callable, Dict, Optional, Union, List, TYPE_CHECKING
-import tarfile
-import io
-import time
-import re
-import uuid
 import fnmatch
+import io
+import re
+import tarfile
+import time
+import uuid
 from functools import partial
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-from ray.util.annotations import PublicAPI
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -195,8 +194,8 @@ def _default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] 
         elif extension in ["cls", "cls2"]:
             sample[key] = int(value.decode("utf-8"))
         elif extension in ["jpg", "png", "ppm", "pgm", "pbm", "pnm"]:
-            import PIL.Image
             import numpy as np
+            import PIL.Image
 
             if format == "PIL":
                 sample[key] = PIL.Image.open(io.BytesIO(value))
@@ -249,8 +248,8 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
         elif extension in ["cls", "cls2"]:
             sample[key] = str(value).encode("utf-8")
         elif extension in ["jpg", "jpeg", "png", "ppm", "pgm", "pbm", "pnm"]:
-            import PIL.Image
             import numpy as np
+            import PIL.Image
 
             if isinstance(value, np.ndarray):
                 value = PIL.Image.fromarray(value)

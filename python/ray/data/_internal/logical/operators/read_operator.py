@@ -1,7 +1,7 @@
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.data._internal.logical.operators.map_operator import AbstractMap
-from ray.data.datasource.datasource import ReadTask, Datasource
+from ray.data.datasource.datasource import Datasource, ReadTask
 
 
 class Read(AbstractMap):
@@ -13,6 +13,6 @@ class Read(AbstractMap):
         read_tasks: List[ReadTask],
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
-        super().__init__("Read", None, ray_remote_args)
+        super().__init__(f"Read{datasource.get_name()}", None, ray_remote_args)
         self._datasource = datasource
         self._read_tasks = read_tasks

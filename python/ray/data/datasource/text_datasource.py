@@ -4,7 +4,6 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.util.annotations import PublicAPI
 
-
 if TYPE_CHECKING:
     import pyarrow
 
