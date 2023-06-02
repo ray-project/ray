@@ -91,7 +91,8 @@ def test_cifar10_pytorch(legacy_progress_reporter, start_client_server_2_cpus):
     # if the DataLoader is used on the Ray Client side, which we should
     # not encourage anyways (heavy processing should be done on the cluster).
     import torch
-    torch.multiprocessing.set_start_method('spawn')
+
+    torch.multiprocessing.set_start_method("spawn")
 
     main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
 
