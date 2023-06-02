@@ -1,104 +1,101 @@
 import gymnasium as gym
-import numpy as np
+import shutil
 import tempfile
+import torch
+from typing import Mapping
 
 import ray
 from ray import tune
-from ray.air import Checkpoint, session, ScalingConfig, RunConfig, FailureConfig
+from ray.air import RunConfig, FailureConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.learner.learner_group_config import LearnerGroupScalingConfig
-from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
+from ray.rllib.core.models.base import ACTOR, ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.examples.datasets.dataset_utils import convert_json_sample_batch_to_df
-from ray.train.torch import TorchTrainer
 
 GYM_ENV_NAME = "CartPole-v1"
 GYM_ENV = gym.make(GYM_ENV_NAME)
 
 
-def train_ppo_module_with_bc_finetune(dataset: ray.data.Dataset) -> str:
-    """Train a PPO module with BC finetuning on dataset.
+class BCActor(torch.nn.Module):
+    """"""
+
+    def __init__(
+        self,
+        encoder_network: torch.nn.Module,
+        policy_network: torch.nn.Module,
+        distribution_cls: torch.distributions.Distribution,
+    ):
+        super().__init__()
+        self.encoder_network = encoder_network
+        self.policy_network = policy_network
+        self.distribution_cls = distribution_cls
+
+    def forward(
+        self, batch: Mapping[str, torch.Tensor]
+    ) -> torch.distributions.Distribution:
+        """Return an action distribution output by the policy network.
+
+        batch: A dict containing the key "obs" mapping to a torch tensor of observations
+
+        """
+        encoder_out = self.encoder_network(batch)[ENCODER_OUT][ACTOR]
+        action_logits = self.policy_network(encoder_out)
+        distribution = self.distribution_cls(logits=action_logits)
+        return distribution
+
+
+def train_ppo_module_with_bc_finetune(
+    dataset: ray.data.Dataset, ppo_module_spec: SingleAgentRLModuleSpec
+) -> str:
+    """Train an Actor with BC finetuning on dataset.
 
     Args:
         dataset: The dataset to train on.
+        module_spec: The module spec of the PPORLModule that will be trained
+            after its encoder and policy networks are pretrained with BC.
 
     Returns:
-        The path to the checkpoint of the trained module.
+        The path to the checkpoint of the pretrained PPORLModule.
     """
+    batch_size = 512
+    learning_rate = 1e-3
+    num_epochs = 10
 
-    def train_func(config):
-        module_spec = config["module_spec"]
-        available_gpus = ray.get_gpu_ids()
-        scaling_config = LearnerGroupScalingConfig(
-            num_workers=session.get_world_size(),
-            num_cpus_per_worker=1,
-            num_gpus_per_worker=bool(available_gpus),
-        )
-        learner = BCTorchLearner(
-            module_spec=module_spec,
-            optimizer_config={"lr": config["lr"]},
-            learner_group_scaling_config=scaling_config,
-        )
-        learner.build()
-        ds = session.get_dataset_shard("train")
+    module = ppo_module_spec.build()
+    # We want to pretrain the encoder and policy networks of the RLModule. We don't want
+    # to pretrain the value network. The actor will use the Categorical distribution,
+    # as its output distribution since we are training on the CartPole environment which
+    # has a discrete action space.
+    BCActorNetwork = BCActor(module.encoder, module.pi, torch.distributions.Categorical)
+    optim = torch.optim.Adam(BCActorNetwork.parameters(), lr=learning_rate)
 
-        num_steps_trained = 0
-        for epoch in range(config["num_epochs"]):
-            for batch in ds.iter_batches(batch_size=config["batch_size"]):
-                batch_dict = {}
-                for key in batch.columns:
-                    batch_dict[key] = np.array(batch[key].tolist())
-                sample_batch: MultiAgentBatch = SampleBatch(batch_dict).as_multi_agent()
-                stats = learner.update(batch=sample_batch)
-                num_steps_trained += sample_batch.count
-            ckpt_dir = tempfile.mkdtemp()
-            learner.save_state(ckpt_dir)
-            ckpt = Checkpoint.from_directory(ckpt_dir)
-            session.report(
-                metrics={
-                    "epoch": epoch,
-                    "num_steps_trained": num_steps_trained,
-                    "loss": stats["__all__"]["total_loss"],
-                },
-                checkpoint=ckpt,
-            )
+    for epoch in range(num_epochs):
+        for batch in dataset.iter_torch_batches(
+            batch_size=batch_size, dtypes=torch.float32
+        ):
+            action_dist = BCActorNetwork(batch)
+            loss = -torch.mean(action_dist.log_prob(batch["actions"]))
+            optim.zero_grad()
+            loss.backward()
+            optim.step()
+        print(f"Epoch {epoch} loss: {loss.detach().item()}")
 
-    module_spec = SingleAgentRLModuleSpec(
-        module_class=PPOTorchRLModule,
-        observation_space=GYM_ENV.observation_space,
-        action_space=GYM_ENV.action_space,
-        model_config_dict={"fcnet_hiddens": [64, 64]},
-        catalog_class=PPOCatalog,
-    )
-    trainer = TorchTrainer(
-        train_func,
-        train_loop_config={
-            "num_epochs": 100,
-            "module_spec": module_spec,
-            "lr": 1e-3,
-            "batch_size": 128,
-        },
-        scaling_config=ScalingConfig(num_workers=1),
-        datasets={"train": dataset},
-        run_config=RunConfig(verbose=1),
-    )
-    result = trainer.fit()
-    return result.checkpoint.path + "/module_state/default_policy"
+    checkpoint_dir = tempfile.mkdtemp()
+    module.save_to_checkpoint(checkpoint_dir)
+    return checkpoint_dir
 
 
-def train_ppo_agent_from_checkpointed_module(ckpt_path: str):
+def train_ppo_agent_from_checkpointed_module(
+    module_spec_from_ckpt: SingleAgentRLModuleSpec,
+):
+    """Train a checkpointed RLModule using PPO.
 
-    module_spec_from_ckpt = SingleAgentRLModuleSpec(
-        module_class=PPOTorchRLModule,
-        observation_space=GYM_ENV.observation_space,
-        action_space=GYM_ENV.action_space,
-        model_config_dict={"fcnet_hiddens": [64, 64]},
-        catalog_class=PPOCatalog,
-        load_state_path=ckpt_path,
-    )
+    Args:
+        module_spec_from_ckpt: The module spec of the checkpointed RLModule.
+
+    """
 
     config = (
         PPOConfig()
@@ -125,10 +122,31 @@ if __name__ == "__main__":
     ray.data.set_progress_bars(False)
 
     # Read a directory of files in remote storage.
-    dataset_path = "../../tests/data/cartpole/large.json"
-    df = convert_json_sample_batch_to_df(dataset_path)
+    rllib_path = ray.__path__[0] + "/rllib/"
+    cartpole_dataset_path = rllib_path + "tests/data/cartpole/large.json"
+    df = convert_json_sample_batch_to_df(cartpole_dataset_path)
     ds = ray.data.from_pandas(df)
 
+    module_spec = SingleAgentRLModuleSpec(
+        module_class=PPOTorchRLModule,
+        observation_space=GYM_ENV.observation_space,
+        action_space=GYM_ENV.action_space,
+        model_config_dict={"fcnet_hiddens": [64, 64]},
+        catalog_class=PPOCatalog,
+    )
+
     # train a PPO Module with BC finetuning
-    module_checkpoint_path = train_ppo_module_with_bc_finetune(ds)
-    train_ppo_agent_from_checkpointed_module(module_checkpoint_path)
+    module_checkpoint_path = train_ppo_module_with_bc_finetune(ds, module_spec)
+
+    module_spec_from_ckpt = SingleAgentRLModuleSpec(
+        module_class=PPOTorchRLModule,
+        observation_space=GYM_ENV.observation_space,
+        action_space=GYM_ENV.action_space,
+        model_config_dict={"fcnet_hiddens": [64, 64]},
+        catalog_class=PPOCatalog,
+        load_state_path=module_checkpoint_path,
+    )
+
+    train_ppo_agent_from_checkpointed_module(module_spec_from_ckpt)
+    # clean up the checkpoint directory
+    shutil.rmtree(module_checkpoint_path)
