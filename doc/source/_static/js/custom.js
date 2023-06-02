@@ -28,6 +28,7 @@ window.addEventListener("scroll", loadVisibleTermynals);
 createTermynals();
 loadVisibleTermynals();
 
+
 // Reintroduce dropdown icons on the sidebar. This is a hack, as we can't
 // programmatically figure out which nav items have children anymore.
 document.addEventListener("DOMContentLoaded", function() {
@@ -120,4 +121,42 @@ document.addEventListener("DOMContentLoaded", function() {
                 });
             });
         }
+});
+
+
+function checkForElement() {
+    let element = document.getElementsByClassName('mantine-Modal-root')[0];
+    if (element) {
+        return element
+    } else {
+        setTimeout(checkForElement, 100);
+        return null
+    }
+}
+
+window.addEventListener("load", function(){
+
+    let targetElement = null;
+    while (targetElement == null) {
+        targetElement = checkForElement();
+    }
+    console.log(targetElement);
+
+    let observer = new MutationObserver(
+        function(mutationsList, observer) {
+      // Handle the changes in the element
+      mutationsList.forEach(function(mutation) {
+        // Code to handle the specific type of mutation, like "childList" additions
+        console.log('Element changed:', mutation);
+        let inputElement = document.getElementsByClassName("mantine-TextInput-input")[0];
+        inputElement.placeholder = "Do not include any personal data or confidential information";
+        let main = document.getElementsByClassName("mantine-Text-root")[1];
+        main.textContent = "Ray Docs AI - Ask a question"
+        let left = document.getElementsByClassName("mantine-Text-root")[2];
+        left.textContent = "results are automated & may be incorrect or contain inappropriate information"
+      });
+    });
+
+    let observerConfig = { childList: true };
+    observer.observe(targetElement, observerConfig);
 });
