@@ -394,6 +394,10 @@ class HTTPState:
         for node_id, node_ip_address in self._get_target_nodes():
             proxy_state = self._proxy_states[node_id]
             if proxy_state.status == HTTPProxyStatus.UNHEALTHY:
+                logger.info(
+                    f"HTTP proxy on node {node_id} UNHEALTHY. Shut down the unhealthy "
+                    "proxy and restart a new one."
+                )
                 proxy_state.shutdown()
                 name = self._generate_actor_name(node_id)
                 new_proxy = self._create_new_proxy(
