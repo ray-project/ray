@@ -6,7 +6,6 @@ import pytest
 from typing import Any, List, Tuple
 
 import ray
-from ray.experimental.state.api import list_actors
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve._private.common import HTTPProxyStatus
@@ -107,113 +106,12 @@ def test_node_selection(all_nodes, mock_get_all_node_ids):
     assert set(another_seed) != set(selected_nodes)
 
 
-def test_http_proxy_healthy():
-    ray.init()
-    signal = SignalActor.remote()
-
-    # @ray.remote(num_cpus=0)
-    # class MockHTTPProxyActor:
-    #     async def ready(self):
-    #         await signal.wait.remote()
-    #         return json.dumps(["mock_worker_id", "mock_log_file_path"])
-    #
-    #     async def check_health(self):
-    #         pass
-
-    proxy = MockHTTPProxyActor.options(lifetime="detached").remote()
-    state = HTTPProxyState(proxy, "alice", "mock_node_id", "mock_node_ip")
-    assert state.status == HTTPProxyStatus.STARTING
-
-    state.update()
-    assert state.status == HTTPProxyStatus.STARTING
-
-    signal.send.remote()
-
-    def check_proxy(status):
-        state.update()
-        return state.status == status
-
-    wait_for_condition(check_proxy, status=HTTPProxyStatus.HEALTHY, timeout=2)
-    ray.shutdown()
-
-
-def test_http_proxy_unhealthy():
-    ray.init()
-    signal = SignalActor.remote()
-
-    @ray.remote(num_cpus=0)
-    class MockHTTPProxyActor:
-        async def ready(self):
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        async def check_health(self):
-            await signal.wait.remote()
-
-    with patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 1):
-        proxy = MockHTTPProxyActor.options(lifetime="detached").remote()
-        state = HTTPProxyState(proxy, "alice", "mock_node_id", "mock_node_ip")
-        assert state.status == HTTPProxyStatus.STARTING
-
-        def check_proxy(status):
-            state.update()
-            return state.status == status
-
-        # Proxy actor is ready, so status should transition STARTING -> HEALTHY
-        wait_for_condition(check_proxy, status=HTTPProxyStatus.HEALTHY, timeout=2)
-
-        # Health check is blocked, so status should transition HEALTHY -> UNHEALTHY
-        wait_for_condition(check_proxy, status=HTTPProxyStatus.UNHEALTHY, timeout=2)
-
-        # Unblock health check, so status should transition UNHEALTHY -> HEALTHY
-        signal.send.remote()
-        wait_for_condition(check_proxy, status=HTTPProxyStatus.HEALTHY, timeout=2)
-
-    ray.shutdown()
-
-
-def test_http_proxy_shutdown():
-    ray.init()
-
-    @ray.remote(num_cpus=0)
-    class MockHTTPProxyActor:
-        async def ready(self):
-            return json.dumps(["mock_worker_id", "mock_log_file_path"])
-
-        async def check_health(self):
-            await asyncio.sleep(100)
-
-    proxy = MockHTTPProxyActor.options(lifetime="detached").remote()
-    state = HTTPProxyState(proxy, "alice", "mock_node_id", "mock_node_ip")
-    assert state.status == HTTPProxyStatus.STARTING
-
-    def check_proxy(status):
-        state.update()
-        return state.status == status
-
-    # Proxy actor is ready, so status should transition STARTING -> HEALTHY
-    wait_for_condition(check_proxy, status=HTTPProxyStatus.HEALTHY, timeout=2)
-
-    # Confirm that a new health check has been started
-    state.update()
-    assert state._health_check_obj_ref
-
-    # Shutdown the http proxy state. Wait for the http proxy actor to be killed
-    state.shutdown()
-    wait_for_condition(lambda: len(list_actors(filters=[("state", "=", "ALIVE")])) == 0)
-
-    # Make sure that the state doesn't try to check on the status of the dead actor
-    state.update()
-    assert state.status == HTTPProxyStatus.HEALTHY
-
-    ray.shutdown()
-
-
 def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
-    """Test the update method in HTTPState would kill and restart an unhealthy proxy.
+    """Test the update method in HTTPState would kill and restart unhealthy proxies.
 
-    Setting up the http proxy state with UNHEALTHY status and calls the update method on
-    the HTTPState object should expect the unhealthy proxy being replaced by a new proxy
-    with a STARTING status. Also, the unhealthy proxy state should be showdown.
+    Set up a HTTPProxyState with UNHEALTHY status. Calls the update method on the
+    HTTPState object. Expects the unhealthy proxy being replaced by a new proxy with
+    STARTING status. The unhealthy proxy state is also shutting down.
     """
     state = _make_http_state(HTTPOptions(location=DeploymentMode.HeadOnly))
     state._proxy_states[HEAD_NODE_ID] = _create_http_proxy_state(
@@ -233,8 +131,8 @@ def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
     # Ensure the old proxy is getting shutdown.
     assert old_proxy_state._shutting_down
 
-    # Ensure the new proxy is completely different instance than  old proxy.
-    assert old_proxy != new_proxy
+    # Ensure the new proxy is completely different object than old proxy.
+    assert new_proxy != old_proxy
 
 
 def test_http_proxy_state_update_shutting_down():
@@ -256,74 +154,366 @@ def test_http_proxy_state_update_shutting_down():
     assert previous_status == current_status
 
 
-def test_http_proxy_state_update_starting_ready_successful():
+def test_http_proxy_state_update_starting_ready_succeed():
     """Test calling update method on HTTPProxyState when the proxy state is STARTING and
-    when the ready call succeeded
+    when the ready call succeeded.
 
     The proxy state started with STARTING. After update is called and ready call
-    succeeded, the state will change to HEALTHY
+    succeeded, the state will change to HEALTHY.
     """
     proxy_state = _create_http_proxy_state()
 
     # Ensure the proxy status before update is STARTING.
     assert proxy_state.status == HTTPProxyStatus.STARTING
 
-    # Trigger update and wait for status to be changed.
-    proxy_state.update()
+    # Continuously trigger update and wait for status to be changed.
     wait_for_condition(
         condition_predictor=_check_proxy,
         state=proxy_state,
         status=HTTPProxyStatus.HEALTHY,
-        timeout=2,
     )
 
     # Ensure the proxy status is changed to HEALTHY after update.
     assert proxy_state.status == HTTPProxyStatus.HEALTHY
 
 
-def test_http_proxy_state_update_starting_ready_exception_once():
-    """Test calling update method on HTTPProxyState when the proxy state is"""
-    mock_ready = Mock(
-        side_effect=[
-            KeyError("bar"),
-            json.dumps(["mock_worker_id", "mock_log_file_path"]),
-        ]
-    )
-    proxy_state = _create_http_proxy_state()
-    proxy_state._ready_obj_ref = mock_ready
+def test_http_proxy_state_update_starting_ready_failed_once():
+    """Test calling update method on HTTPProxyState when the proxy state is STARTING and
+    when the ready call failed once and succeeded for the following call.
+
+    The proxy state started with STARTING status. After update is called for the first
+    time and read call is blocked, the status is not changed to UNHEALTHY immediately
+    and should stay as STARTING. The following ready call is unblocked and succeed. The
+    status will then change to HEALTHY.
+    """
+    signal = SignalActor.remote()
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        async def ready(self):
+            await signal.wait.remote()
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+        async def check_health(self):
+            pass
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
 
     # Ensure the proxy status before update is STARTING.
     assert proxy_state.status == HTTPProxyStatus.STARTING
 
-    # Trigger update and wait for status to be changed.
-    proxy_state.update()
+    # Trigger update. The status do not change even when ready call is blocked.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.STARTING,
+    )
+
+    # Unblock ready call, trigger update, and wait for status change to HEALTHY.
+    signal.send.remote()
     wait_for_condition(
         condition_predictor=_check_proxy,
         state=proxy_state,
         status=HTTPProxyStatus.HEALTHY,
-        timeout=2,
     )
 
     # Ensure the proxy status is changed to HEALTHY after update.
     assert proxy_state.status == HTTPProxyStatus.HEALTHY
 
 
-def test_http_proxy_state_update_starting_ready_exception_many_times():
-    """Test calling update method on HTTPProxyState when the proxy state is"""
-    pass
+def test_http_proxy_state_update_starting_ready_always_fails():
+    """Test calling update method on HTTPProxyState when the proxy state is STARTING and
+    when the ready call is always failing.
+
+    The proxy state started with STARTING. After update is called, read call only throws
+    exceptions. The state will eventually change to UNHEALTHY after all retries have
+    exhausted.
+    """
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        async def ready(self):
+            raise Exception("Never be ready")
+
+        async def check_health(self):
+            pass
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
+
+    # Ensure the proxy status before update is STARTING.
+    assert proxy_state.status == HTTPProxyStatus.STARTING
+
+    # Continuously trigger update and wait for status to be changed.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.UNHEALTHY,
+    )
+
+    # Ensure the proxy status is changed to UNHEALTHY after update.
+    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
+
+    # Ensure the _consecutive_health_check_failures is correct
+    assert proxy_state._consecutive_health_check_failures == 3
 
 
-def test_http_proxy_state_update_starting_ready_timeout_once():
-    """Test calling update method on HTTPProxyState when the proxy state is"""
-    pass
+@patch("ray.serve._private.http_state.DEFAULT_READY_CHECK_TIMEOUT_S", 1)
+def test_http_proxy_state_update_starting_ready_always_timeout():
+    """Test calling update method on HTTPProxyState when the proxy state is STARTING and
+    when the ready call always timed out.
+
+    The proxy state started with STARTING. After update is called, ready calls takes
+    very long time to finish. The state will eventually change to UNHEALTHY after all
+    retries have exhausted.
+    """
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        async def ready(self):
+            await asyncio.sleep(100)
+
+        async def check_health(self):
+            pass
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
+
+    # Ensure the proxy status before update is STARTING.
+    assert proxy_state.status == HTTPProxyStatus.STARTING
+
+    # Continuously trigger update and wait for status to be changed.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.UNHEALTHY,
+    )
+
+    # Ensure the proxy status is changed to UNHEALTHY after update.
+    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
+
+    # Ensure the _consecutive_health_check_failures is correct.
+    assert proxy_state._consecutive_health_check_failures == 3
 
 
-def test_http_proxy_state_update_starting_ready_timeout_many_times():
-    """Test calling update method on HTTPProxyState when the proxy state is"""
-    pass
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+def test_http_proxy_state_update_healthy_check_health_succeed():
+    """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
+    when the check_health call succeeded
+
+    The proxy state started with HEALTHY. After update is called and ready call
+    succeeded, the status will change to HEALTHY. After the next period of check_health
+    call, the status should stay as HEALTHY.
+    """
+    proxy_state = _create_http_proxy_state()
+
+    # Continuously trigger update. The status should change from STARTING to HEALTHY
+    # when ready.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+    first_check_time = proxy_state._last_health_check_time
+
+    # Ensure the proxy status is HEALTHY after updates.
+    assert proxy_state.status == HTTPProxyStatus.HEALTHY
+
+    # Continuously trigger update and status continue to be HEALTHY.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+    # Ensure the proxy status is still HEALTHY after updates.
+    assert proxy_state.status == HTTPProxyStatus.HEALTHY
+
+    # Ensure the check time have changed since the last update
+    assert first_check_time != proxy_state._last_health_check_time
 
 
-# TODO: fill more test cases
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+def test_http_proxy_state_update_healthy_check_health_failed_once():
+    """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
+    when the check_health call failed once and succeeded for the following call.
+
+    The proxy state started with STARTING. After update is called and ready call
+    succeeded, the status will change to HEALTHY. After the next period of check_health
+    call and that check_health call failed, the status should not be set to UNHEALTHY
+    and should stay as HEALTHY. The following check_health call continue to succeed
+    and the status continue to stay as HEALTHY.
+    """
+    signal = SignalActor.remote()
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        async def ready(self):
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+        async def check_health(self):
+            await signal.wait.remote()
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
+
+    # Continuously trigger update. The status should change from STARTING to HEALTHY
+    # when ready.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+    first_check_time = proxy_state._last_health_check_time
+
+    # Ensure the proxy status is HEALTHY after updates.
+    assert proxy_state.status == HTTPProxyStatus.HEALTHY
+
+    # Continuously trigger update and status continue to be HEALTHY.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+    # Ensure the proxy status is still HEALTHY after updates.
+    assert proxy_state.status == HTTPProxyStatus.HEALTHY
+
+    # Ensure the check time have changed since the last update
+    assert first_check_time != proxy_state._last_health_check_time
+
+    # Unblock ready check, trigger update, and the status is still HEALTHY.
+    signal.send.remote()
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+
+    # Ensure the proxy status is still HEALTHY after update.
+    assert proxy_state.status == HTTPProxyStatus.HEALTHY
+
+
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+def test_http_proxy_state_update_healthy_check_health_always_fails():
+    """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
+    when the check_health call is always failing.
+
+    The proxy state started with STARTING. After update is called and ready call
+    succeeded, the status will change to HEALTHY. After the next few check_health called
+    and failed, the status will eventually change to UNHEALTHY after all retries have
+    exhausted.
+    """
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        async def ready(self):
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+        async def check_health(self):
+            raise Exception("Never be healthy")
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
+
+    # Continuously trigger update. The status should change from STARTING to HEALTHY
+    # when ready.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+    first_check_time = proxy_state._last_health_check_time
+
+    # Ensure the proxy status is HEALTHY after updates.
+    assert proxy_state.status == HTTPProxyStatus.HEALTHY
+
+    # Continuously trigger update and status should change from HEALTHY to UNHEALTHY.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.UNHEALTHY,
+    )
+    # Ensure the proxy status is still UNHEALTHY after updates.
+    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
+
+    # Ensure the check time have changed since the last update
+    assert first_check_time != proxy_state._last_health_check_time
+
+    # Ensure _consecutive_health_check_failures is correct
+    assert proxy_state._consecutive_health_check_failures == 3
+
+
+@patch("ray.serve._private.http_state.DEFAULT_HEALTH_CHECK_TIMEOUT_S", 0.1)
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+def test_http_proxy_state_update_healthy_check_health_always_timeout():
+    """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
+    when the ready call always timed out.
+
+    The proxy state started with STARTING. After update is called and ready call
+    succeeded, the status will change to HEALTHY. After the next few check_health calls
+    takes very long time to finished, the status will eventually change to UNHEALTHY
+    after all retries have exhausted.
+    """
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        async def ready(self):
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+        async def check_health(self):
+            await asyncio.sleep(100)
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
+
+    # Continuously trigger update. The status should change from STARTING to HEALTHY
+    # when ready.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+    first_check_time = proxy_state._last_health_check_time
+
+    # Ensure the proxy status is HEALTHY after updates.
+    assert proxy_state.status == HTTPProxyStatus.HEALTHY
+
+    # Continuously trigger update and status continue to be UNHEALTHY.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.UNHEALTHY,
+    )
+    # Ensure the proxy status is still UNHEALTHY after updates.
+    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
+
+    # Ensure the check time have changed since the last update
+    assert first_check_time != proxy_state._last_health_check_time
+
+    # Ensure _consecutive_health_check_failures is correct
+    assert proxy_state._consecutive_health_check_failures == 3
+
+
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+def test_http_proxy_state_update_unhealthy_check_health_succeed():
+    """Test calling update method on HTTPProxyState when the proxy state is UNHEALTHY
+    and when the check_health call succeeded.
+
+    The proxy state started with UNHEALTHY. After the next period of check_health
+    call, the status changes to HEALTHY.
+    """
+    proxy_state = _create_http_proxy_state()
+    proxy_state.set_status(status=HTTPProxyStatus.UNHEALTHY)
+
+    # Ensure the proxy status is UNHEALTHY.
+    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
+
+    # Continuously trigger update and status should change to HEALTHY.
+    wait_for_condition(
+        condition_predictor=_check_proxy,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+
+    # Ensure the proxy status is still HEALTHY after updates.
+    assert proxy_state.status == HTTPProxyStatus.HEALTHY
+
+    # Ensure _consecutive_health_check_failures is correct
+    assert proxy_state._consecutive_health_check_failures == 0
 
 
 if __name__ == "__main__":

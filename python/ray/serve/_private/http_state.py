@@ -144,13 +144,9 @@ class HTTPProxyState:
         if self._shutting_down:
             return
 
-        print(
-            f"update is called, status is: {self._status}, failure count: {self._consecutive_health_check_failures}"
-        )
         if self._status == HTTPProxyStatus.STARTING:
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
             if finished:
-                self._ready_obj_ref = None
                 try:
                     worker_id, log_file_path = json.loads(ray.get(finished[0]))
                     self.try_update_status(HTTPProxyStatus.HEALTHY)
@@ -175,9 +171,6 @@ class HTTPProxyState:
                     "Didn't receive ready check response for HTTP proxy "
                     f"{self._node_id} after {DEFAULT_READY_CHECK_TIMEOUT_S}s."
                 )
-            # If the status is still STARTING, we will retry ready object call.
-            if self._status == HTTPProxyStatus.STARTING:
-                self._ready_obj_ref = self._actor_handle.ready.remote()
             return
 
         # Perform periodic health checks.
