@@ -80,11 +80,17 @@ The output of a program execution is below. As expected, the program takes aroun
 Now, let’s parallelize the above program with Ray. Some first-time users will do this by just making the function remote, i.e.,
 
 .. testcode::
+    :hide:
+
+    import ray
+    ray.shutdown()
+
+.. testcode::
 
     import time
     import ray
 
-    ray.init(num_cpus = 4) # Specify this system has 4 CPUs.
+    ray.init(num_cpus=4) # Specify this system has 4 CPUs.
 
     @ray.remote
     def do_some_work(x):
@@ -280,12 +286,18 @@ This running time is quite large for a program that calls just 10 remote tasks t
 To avoid copying array ``a`` every time ``no_work()`` is invoked, one simple solution is to explicitly call ``ray.put(a)``, and then pass ``a``’s ID to ``no_work()``, as illustrated below:
 
 .. testcode::
+    :hide:
+
+    import ray
+    ray.shutdown()
+
+.. testcode::
 
     import time
     import numpy as np
     import ray
 
-    ray.init(num_cpus = 4)
+    ray.init(num_cpus=4)
 
     @ray.remote
     def no_work(a):
