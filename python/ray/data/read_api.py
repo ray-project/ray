@@ -1586,7 +1586,7 @@ def from_pandas_refs(
         return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+                DatasetStats(stages={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             0,
@@ -1605,7 +1605,7 @@ def from_pandas_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1671,7 +1671,7 @@ def from_numpy_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1729,7 +1729,7 @@ def from_arrow_refs(
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1812,9 +1812,6 @@ def from_huggingface(
 
     def convert(ds: "datasets.Dataset") -> Dataset:
         ray_ds = from_arrow(ds.data.table)
-        logical_plan = LogicalPlan(FromHuggingFace(ds))
-        ray_ds._logical_plan = logical_plan
-        ray_ds._plan.link_logical_plan(logical_plan)
         return ray_ds
 
     if isinstance(dataset, datasets.DatasetDict):
