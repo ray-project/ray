@@ -20,18 +20,17 @@ from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrowRefs,
     FromHuggingFace,
 )
-from ray.data._internal.logical.operators.from_items_operator import FromItems
-from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
-from ray.data._internal.logical.operators.from_pandas_operator import (
-    FromDask,
-    FromMars,
-    FromModin,
-    FromPandasRefs,
+from ray.data._internal.logical.operators.from_operators import (
+    FromArrow,
+    FromItems,
+    FromNumpy,
+    FromPandas,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
@@ -192,7 +191,7 @@ def from_items(
             )
         )
 
-    from_items_op = FromItems(items, detected_parallelism)
+    from_items_op = FromItems([RefBundle(blocks, metadata, owns_blocks=True)])
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
         ExecutionPlan(
@@ -1475,22 +1474,21 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
 
     import pandas
 
-    def to_ref(df):
+    owns_blocks = True
+    dfs = []
+    for part in persisted_partitions:
+        df = next(iter(part.dask.values()))
         if isinstance(df, pandas.DataFrame):
-            return ray.put(df)
+            dfs.append(ray.put(df))
         elif isinstance(df, ray.ObjectRef):
-            return df
+            dfs.append(df)
+            owns_blocks = False
         else:
             raise ValueError(
                 "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
             )
 
-    ds = from_pandas_refs(
-        [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions],
-    )
-    logical_plan = LogicalPlan(FromDask(df))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
+    ds = from_pandas_refs(dfs, owns_blocks=owns_blocks)
     return ds
 
 
@@ -1507,10 +1505,6 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
     import mars.dataframe as md
 
     ds: Dataset = md.to_ray_dataset(df)
-
-    logical_plan = LogicalPlan(FromMars(ds.dataframe))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1527,11 +1521,7 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
     parts = unwrap_partitions(df, axis=0)
-    ds = from_pandas_refs(parts)
-
-    logical_plan = LogicalPlan(FromModin(df))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
+    ds = from_pandas_refs(parts, owns_blocks=True)
     return ds
 
 
@@ -1559,12 +1549,13 @@ def from_pandas(
     context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
-    return from_pandas_refs([ray.put(df) for df in dfs])
+    return from_pandas_refs([ray.put(df) for df in dfs], owns_blocks=True)
 
 
 @DeveloperAPI
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]],
+    owns_blocks: bool = False,
 ) -> MaterializedDataset:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
@@ -1590,11 +1581,13 @@ def from_pandas_refs(
             "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
         )
 
-    logical_plan = LogicalPlan(FromPandasRefs(dfs))
     context = DataContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
+        logical_plan = LogicalPlan(
+            FromPandas([RefBundle(dfs, metadata, owns_blocks=owns_blocks)])
+        )
         return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
@@ -1611,6 +1604,9 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
+    logical_plan = LogicalPlan(
+        FromPandas([RefBundle(blocks, metadata, owns_blocks=True)])
+    )
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
@@ -1673,8 +1669,9 @@ def from_numpy_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
-    from_numpy_refs_op = FromNumpyRefs(ndarrays)
-    logical_plan = LogicalPlan(from_numpy_refs_op)
+    logical_plan = LogicalPlan(
+        FromNumpy([RefBundle(blocks, metadata, owns_blocks=True)])
+    )
 
     return MaterializedDataset(
         ExecutionPlan(
@@ -1705,7 +1702,7 @@ def from_arrow(
 
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
-    return from_arrow_refs([ray.put(t) for t in tables])
+    return from_arrow_refs([ray.put(t) for t in tables], owns_blocks=True)
 
 
 @DeveloperAPI
@@ -1714,6 +1711,7 @@ def from_arrow_refs(
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ],
+    owns_blocks: bool = False,
 ) -> MaterializedDataset:
     """Create a dataset from a set of Arrow tables.
 
@@ -1729,7 +1727,9 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    logical_plan = LogicalPlan(FromArrowRefs(tables))
+    logical_plan = LogicalPlan(
+        FromArrow([RefBundle(tables, metadata, owns_blocks=owns_blocks)])
+    )
 
     return MaterializedDataset(
         ExecutionPlan(
