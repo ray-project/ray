@@ -179,10 +179,29 @@ def compute_gae_for_sample_batch(
     Returns:
         The postprocessed, modified SampleBatch (or a new one).
     """
+    sample_batch = compute_bootstrap_value(sample_batch, policy)
 
+    # Adds the policy logits, VF preds, and advantages to the batch,
+    # using GAE ("generalized advantage estimation") or not.
+    batch = compute_advantages(
+        rollout=sample_batch,
+        last_r=sample_batch[SampleBatch.VALUES_BOOTSTRAPPED][-1],
+        gamma=policy.config["gamma"],
+        lambda_=policy.config["lambda"],
+        use_gae=policy.config["use_gae"],
+        use_critic=policy.config.get("use_critic", True),
+    )
+
+    return batch
+
+
+@DeveloperAPI
+def compute_bootstrap_value(sample_batch, policy):
+    """TODO (sven): docstr """
     # Trajectory is actually complete -> last r=0.0.
     if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0
+
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
         # Input dict is provided to us automatically via the Model's
@@ -192,7 +211,6 @@ def compute_gae_for_sample_batch(
         input_dict = sample_batch.get_single_step_input_dict(
             policy.model.view_requirements, index="last"
         )
-
         if policy.config.get("_enable_rl_module_api"):
             # Note: During sampling you are using the parameters at the beginning of
             # the sampling process. If I'll be using this advantages during training
@@ -217,18 +235,14 @@ def compute_gae_for_sample_batch(
         else:
             last_r = policy._value(**input_dict)
 
-    # Adds the policy logits, VF preds, and advantages to the batch,
-    # using GAE ("generalized advantage estimation") or not.
-    batch = compute_advantages(
-        sample_batch,
-        last_r,
-        policy.config["gamma"],
-        policy.config["lambda"],
-        use_gae=policy.config["use_gae"],
-        use_critic=policy.config.get("use_critic", True),
-    )
+    # Set the SampleBatch.VALUES_BOOTSTRAPPED field to all zeros, except for the
+    # very last timestep (where this bootstrapping value is actually needed), which
+    # we set to the computed `last_r`.
+    values_bootstrapped = np.zeros_like(sample_batch[SampleBatch.REWARDS])
+    values_bootstrapped[-1] = last_r
+    sample_batch[SampleBatch.VALUES_BOOTSTRAPPED] = values_bootstrapped
 
-    return batch
+    return sample_batch
 
 
 @DeveloperAPI

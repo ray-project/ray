@@ -150,6 +150,10 @@ class SampleBatch(dict):
 
     # Value function predictions emitted by the behaviour policy.
     VF_PREDS = "vf_preds"
+    # Values one ts beyond the last ts taken. These are usually calculated via the value
+    # function network using the final observation (and in case of an RNN: the last
+    # returned internal state).
+    VALUES_BOOTSTRAPPED = "values_bootstrapped"
 
     # RE 3
     # This is only computed and used when RE3 exploration strategy is enabled.
@@ -161,9 +165,8 @@ class SampleBatch(dict):
 
     # Deprecated keys:
 
-    # SampleBatches must already not be constructed anymore by setting this key
-    # directly. Instead, the values under this key are auto-computed via the values of
-    # the new TERMINATEDS and TRUNCATEDS keys.
+    # Do not set this key directly. Instead, the values under this key are
+    # auto-computed via the values of the TERMINATEDS and TRUNCATEDS keys.
     DONES = "dones"
     # Use SampleBatch.OBS instead.
     CUR_OBS = "obs"

@@ -19,6 +19,7 @@ from ray.rllib.algorithms.impala.impala_tf_policy import (
 )
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
+    compute_bootstrap_value,
     compute_gae_for_sample_batch,
     Postprocessing,
 )
@@ -144,7 +145,6 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 is_multidiscrete = False
                 output_hidden_shape = 1
 
-            # TODO: (sven) deprecate this when trajectory view API gets activated.
             def make_time_major(*args, **kw):
                 return _make_time_major(
                     self, train_batch.get(SampleBatch.SEQ_LENS), *args, **kw
@@ -159,12 +159,14 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             prev_action_dist = dist_class(behaviour_logits, self.model)
             values = self.model.value_function()
             values_time_major = make_time_major(values)
+            bootstrap_value = train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
+            bootstrap_value = make_time_major(bootstrap_value)[-1]
 
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
                 mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
                 mask = tf.reshape(mask, [-1])
-                mask = make_time_major(mask, drop_last=self.config["vtrace"])
+                mask = make_time_major(mask)
 
                 def reduce_mean_valid(t):
                     return tf.reduce_mean(tf.boolean_mask(t, mask))
@@ -173,11 +175,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 reduce_mean_valid = tf.reduce_mean
 
             if self.config["vtrace"]:
-                drop_last = self.config["vtrace_drop_last_ts"]
-                logger.debug(
-                    "Using V-Trace surrogate loss (vtrace=True; "
-                    f"drop_last={drop_last})"
-                )
+                logger.debug("Using V-Trace surrogate loss (vtrace=True)")
 
                 # Prepare actions for loss.
                 loss_actions = (
@@ -189,7 +187,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
 
                 # Prepare KL for Loss
                 mean_kl = make_time_major(
-                    old_policy_action_dist.multi_kl(action_dist), drop_last=drop_last
+                    old_policy_action_dist.multi_kl(action_dist)
                 )
 
                 unpacked_behaviour_logits = tf.split(
@@ -203,26 +201,22 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 with tf.device("/cpu:0"):
                     vtrace_returns = vtrace.multi_from_logits(
                         behaviour_policy_logits=make_time_major(
-                            unpacked_behaviour_logits, drop_last=drop_last
+                            unpacked_behaviour_logits
                         ),
                         target_policy_logits=make_time_major(
-                            unpacked_old_policy_behaviour_logits, drop_last=drop_last
+                            unpacked_old_policy_behaviour_logits
                         ),
                         actions=tf.unstack(
-                            make_time_major(loss_actions, drop_last=drop_last), axis=2
+                            make_time_major(loss_actions), axis=2
                         ),
                         discounts=tf.cast(
-                            ~make_time_major(
-                                tf.cast(dones, tf.bool), drop_last=drop_last
-                            ),
+                            ~make_time_major(tf.cast(dones, tf.bool)),
                             tf.float32,
                         )
                         * self.config["gamma"],
-                        rewards=make_time_major(rewards, drop_last=drop_last),
-                        values=values_time_major[:-1]
-                        if drop_last
-                        else values_time_major,
-                        bootstrap_value=values_time_major[-1],
+                        rewards=make_time_major(rewards),
+                        values=values_time_major,
+                        bootstrap_value=bootstrap_value,
                         dist_class=Categorical if is_multidiscrete else dist_class,
                         model=model,
                         clip_rho_threshold=tf.cast(
@@ -233,14 +227,10 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                         ),
                     )
 
-                actions_logp = make_time_major(
-                    action_dist.logp(actions), drop_last=drop_last
-                )
-                prev_actions_logp = make_time_major(
-                    prev_action_dist.logp(actions), drop_last=drop_last
-                )
+                actions_logp = make_time_major(action_dist.logp(actions))
+                prev_actions_logp = make_time_major(prev_action_dist.logp(actions))
                 old_policy_actions_logp = make_time_major(
-                    old_policy_action_dist.logp(actions), drop_last=drop_last
+                    old_policy_action_dist.logp(actions)
                 )
 
                 is_ratio = tf.clip_by_value(
@@ -267,17 +257,12 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
                 # The value function loss.
-                if drop_last:
-                    delta = values_time_major[:-1] - vtrace_returns.vs
-                else:
-                    delta = values_time_major - vtrace_returns.vs
+                delta = values_time_major - vtrace_returns.vs
                 value_targets = vtrace_returns.vs
                 mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
                 # The entropy loss.
-                actions_entropy = make_time_major(
-                    action_dist.multi_entropy(), drop_last=True
-                )
+                actions_entropy = make_time_major(action_dist.multi_entropy())
                 mean_entropy = reduce_mean_valid(actions_entropy)
 
             else:
@@ -353,7 +338,6 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 self,
                 train_batch.get(SampleBatch.SEQ_LENS),
                 self.model.value_function(),
-                drop_last=self.config["vtrace"] and self.config["vtrace_drop_last_ts"],
             )
 
             stats_dict = {
@@ -392,6 +376,8 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 sample_batch = compute_gae_for_sample_batch(
                     self, sample_batch, other_agent_batches, episode
                 )
+            else:
+                sample_batch = compute_bootstrap_value(sample_batch, self)
 
             return sample_batch
 

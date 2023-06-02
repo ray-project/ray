@@ -131,14 +131,13 @@ class VTraceLoss:
             self.total_loss += self.vf_loss * vf_loss_coeff
 
 
-def _make_time_major(policy, seq_lens, tensor, drop_last=False):
+def _make_time_major(policy, seq_lens, tensor):
     """Swaps batch and trajectory axis.
 
     Args:
         policy: Policy reference
         seq_lens: Sequence lengths if recurrent or None
         tensor: A tensor or list of tensors to reshape.
-        drop_last: A bool indicating whether to drop the last
         trajectory item.
 
     Returns:
@@ -146,7 +145,7 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
         swapped axes.
     """
     if isinstance(tensor, list):
-        return [_make_time_major(policy, seq_lens, t, drop_last) for t in tensor]
+        return [_make_time_major(policy, seq_lens, t) for t in tensor]
 
     if policy.is_recurrent():
         B = tf.shape(seq_lens)[0]
@@ -163,8 +162,6 @@ def _make_time_major(policy, seq_lens, tensor, drop_last=False):
     # swap B and T axes
     res = tf.transpose(rs, [1, 0] + list(range(2, 1 + int(tf.shape(tensor).shape[0]))))
 
-    if drop_last:
-        return res[:-1]
     return res
 
 
@@ -363,30 +360,21 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             )
 
             # Inputs are reshaped from [B * T] => [(T|T-1), B] for V-trace calc.
-            drop_last = self.config["vtrace_drop_last_ts"]
             self.vtrace_loss = VTraceLoss(
-                actions=make_time_major(loss_actions, drop_last=drop_last),
-                actions_logp=make_time_major(
-                    action_dist.logp(actions), drop_last=drop_last
-                ),
-                actions_entropy=make_time_major(
-                    action_dist.multi_entropy(), drop_last=drop_last
-                ),
-                dones=make_time_major(dones, drop_last=drop_last),
-                behaviour_action_logp=make_time_major(
-                    behaviour_action_logp, drop_last=drop_last
-                ),
-                behaviour_logits=make_time_major(
-                    unpacked_behaviour_logits, drop_last=drop_last
-                ),
-                target_logits=make_time_major(unpacked_outputs, drop_last=drop_last),
+                actions=make_time_major(loss_actions),
+                actions_logp=make_time_major(action_dist.logp(actions)),
+                actions_entropy=make_time_major(action_dist.multi_entropy()),
+                dones=make_time_major(dones),
+                behaviour_action_logp=make_time_major(behaviour_action_logp),
+                behaviour_logits=make_time_major(unpacked_behaviour_logits),
+                target_logits=make_time_major(unpacked_outputs),
                 discount=self.config["gamma"],
-                rewards=make_time_major(rewards, drop_last=drop_last),
-                values=make_time_major(values, drop_last=drop_last),
-                bootstrap_value=make_time_major(values)[-1],
+                rewards=make_time_major(rewards),
+                values=make_time_major(values),
+                bootstrap_value=make_time_major(values)[-1],#TODO
                 dist_class=Categorical if is_multidiscrete else dist_class,
                 model=model,
-                valid_mask=make_time_major(mask, drop_last=drop_last),
+                valid_mask=make_time_major(mask),
                 config=self.config,
                 vf_loss_coeff=self.config["vf_loss_coeff"],
                 entropy_coeff=self.entropy_coeff,
@@ -401,12 +389,10 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
 
         @override(base)
         def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
-            drop_last = self.config["vtrace"] and self.config["vtrace_drop_last_ts"]
             values_batched = _make_time_major(
                 self,
                 train_batch.get(SampleBatch.SEQ_LENS),
                 self.model.value_function(),
-                drop_last=drop_last,
             )
 
             return {
