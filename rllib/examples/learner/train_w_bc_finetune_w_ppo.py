@@ -1,3 +1,8 @@
+"""
+This example shows how to pretrain an RLModule using behavioral cloning from offline
+data and, thereafter training it online with PPO.
+"""
+
 import gymnasium as gym
 import shutil
 import tempfile
@@ -98,11 +103,14 @@ def train_ppo_module_with_bc_finetune(
 
 def train_ppo_agent_from_checkpointed_module(
     module_spec_from_ckpt: SingleAgentRLModuleSpec,
-):
+) -> float:
     """Train a checkpointed RLModule using PPO.
 
     Args:
         module_spec_from_ckpt: The module spec of the checkpointed RLModule.
+
+    Returns:
+        The best reward mean achieved by the PPO agent.
 
     """
 
@@ -111,6 +119,7 @@ def train_ppo_agent_from_checkpointed_module(
         .training(_enable_learner_api=True)
         .rl_module(_enable_rl_module_api=True, rl_module_spec=module_spec_from_ckpt)
         .environment(GYM_ENV_NAME)
+        .debugging(seed=0)
     )
 
     tuner = tune.Tuner(
@@ -122,7 +131,9 @@ def train_ppo_agent_from_checkpointed_module(
             verbose=2,
         ),
     )
-    tuner.fit()
+    results = tuner.fit()
+    best_reward_mean = results.get_best_result().metrics["episode_reward_mean"]
+    return best_reward_mean
 
 
 if __name__ == "__main__":
@@ -148,6 +159,7 @@ if __name__ == "__main__":
     # train a PPO Module with BC finetuning
     module_checkpoint_path = train_ppo_module_with_bc_finetune(ds, module_spec)
 
+    # train a PPO Module online with the pretrained encoder and policy networks
     module_spec_from_ckpt = SingleAgentRLModuleSpec(
         module_class=PPOTorchRLModule,
         observation_space=GYM_ENV.observation_space,
@@ -157,6 +169,9 @@ if __name__ == "__main__":
         load_state_path=module_checkpoint_path,
     )
 
-    train_ppo_agent_from_checkpointed_module(module_spec_from_ckpt)
+    best_reward = train_ppo_agent_from_checkpointed_module(module_spec_from_ckpt)
+    assert (
+        best_reward > 300
+    ), "The PPO agent with pretraining should achieve a reward of at least 300."
     # clean up the checkpoint directory
     shutil.rmtree(module_checkpoint_path)
