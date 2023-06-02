@@ -125,7 +125,7 @@ class _RayStrategyFactory:
         self.ray_registry = dict()
         self.register_ray_strategies()
 
-        self.strategy_whitelist = {
+        self.whitelist = {
             name
             for name, registry in self.ptl_registry.items()
             if registry["strategy"] in self.ray_registry
@@ -144,8 +144,8 @@ class _RayStrategyFactory:
         registry = self.ptl_registry[name]
 
         # Check if the strategy is in the list of supported strategies
-        if name not in self.strategy_whitelist:
-            raise ValueError(f"LightningTrainer doesn't support {name} yet. Please choose from {self.strategy_whitelist}.")
+        if name not in self.whitelist:
+            raise ValueError(f"LightningTrainer doesn't support {name} yet. Please choose from {self.whitelist}.")
 
         strategy_cls = registry["strategy"]
         ray_strategy_cls = self.ray_registry[strategy_cls]

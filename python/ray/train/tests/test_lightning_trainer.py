@@ -196,11 +196,11 @@ def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator)
 
 def test_strategy_factory():
     # Test unsupported strategy names in the whitelist
-    for name in RayStrategyFactory.strategy_whitelist:
+    for name in RayStrategyFactory.whitelist:
         RayStrategyFactory.create_strategy(name)
 
     # Test unsupported strategy names
-    unsupported_list = StrategyRegistry.keys() - RayStrategyFactory.strategy_whitelist
+    unsupported_list = StrategyRegistry.keys() - RayStrategyFactory.whitelist
     for name in unsupported_list:
         with pytest.raises(
             ValueError, match=f"LightningTrainer doesn't support {name} yet.*"

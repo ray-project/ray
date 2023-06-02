@@ -140,17 +140,18 @@ class LightningConfigBuilder:
     def strategy(self, name: str = "ddp", **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.strategies.Strategy``.
 
-        The entire list of available strategies can be accessed in
-        `pytorch_lightning.strategies.StrategyRegistry`. As of the current
-        implementation, only the strategies of the classes `DDPStrategy`,
-        `FSDPStrategy`, and `DeepSpeedStrategy` are supported.
+        A full list of available strategy names can be accessed in 
+        `pytorch_lightning.strategies.StrategyRegistry`. As of the current 
+        implementation, only strategies of the "DDPStrategy", "FSDPStrategy" 
+        and "DeepSpeedStrategy" classes are supported.
 
         Args:
-            name: The name of your distributed strategy. Possible options include
+            name: The name of your training strategy. Possible options include
                 "ddp", "fsdp", "deepspeed", and other variants. Default: "ddp".
-            kwargs: Initialization parameters for the strategy object. If you specified
-                a registered strategy with init params (e.g. deepspeed_stage_2_offload),
-                the kwargs specified here will update the original init params.
+            kwargs: Initialization parameters for the strategy object. If you 
+                specify a registered strategy name with a predefined parameter 
+                list (e.g. deepspeed_stage_2_offload), the kwargs here will 
+                update the original initialization parameters.
 
                 For valid arguments to pass, please refer to:
                 ddp:
