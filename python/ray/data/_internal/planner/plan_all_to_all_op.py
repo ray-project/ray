@@ -41,5 +41,6 @@ def _plan_all_to_all_op(
         fn,
         input_physical_dag,
         num_outputs=op._num_outputs,
+        sub_progress_bar_names=op._sub_progress_bar_names,
         name=op.name,
     )

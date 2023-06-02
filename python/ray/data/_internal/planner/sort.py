@@ -62,7 +62,7 @@ def generate_sort_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(sort_spec)
 
-        return scheduler.execute(refs, num_outputs)
+        return scheduler.execute(refs, num_outputs, ctx)
 
     # NOTE: use partial function to pass parameters to avoid error like
     # "UnboundLocalError: local variable ... referenced before assignment",

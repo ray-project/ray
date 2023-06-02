@@ -60,6 +60,7 @@ def generate_random_shuffle_fn(
         return scheduler.execute(
             refs,
             num_outputs or num_input_blocks,
+            ctx=ctx,
             map_ray_remote_args=ray_remote_args,
             reduce_ray_remote_args=ray_remote_args,
         )
