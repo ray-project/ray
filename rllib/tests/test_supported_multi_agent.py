@@ -175,7 +175,8 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             "SAC",
             (
                 SACConfig()
-                .rollouts(num_rollout_workers=0, normalize_actions=False)
+                .environment(normalize_actions=False)
+                .rollouts(num_rollout_workers=0)
                 .training(replay_buffer_config={"capacity": 1000})
             ),
         )
