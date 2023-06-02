@@ -2496,7 +2496,7 @@ py_test(
 py_test(
     name = "tests/backward_compat/test_gym_env_apis",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
 
