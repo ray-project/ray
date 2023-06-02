@@ -18,6 +18,10 @@ build:linux --force_pic
 build:macos --force_pic
 build:clang-cl --compiler=clang-cl
 build:msvc-cl --compiler=msvc-cl
+# The following is to make it possible to enable forking support via an
+# environment variable, see the test_fork test
+# (and https://github.com/ray-project/ray/issues/36001)
+build:linux --cxxopt="-DGRPC_ENABLE_FORK_SUPPORT=1"
 # `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
 # If we don't add them, python's `click` library will raise an error.
 test --test_env=LC_ALL
