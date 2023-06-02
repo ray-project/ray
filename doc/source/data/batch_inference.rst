@@ -141,7 +141,7 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
                         # Get the predictions from the input batch.
                         return {"output": self.model(tensor).numpy()}
 
-            # Use 2 parallel actors for inference. Each actor will predict on a
+            # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
             scale = ray.data.ActorPoolStrategy(size=2)
             # Step 3: Map the Predictor over the Dataset to get predictions.
@@ -185,7 +185,7 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
                     # Get the predictions from the input batch.
                     return {"output": self.model(batch["data"]).numpy()}
 
-            # Use 2 parallel actors for inference. Each actor will predict on a
+            # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
             scale = ray.data.ActorPoolStrategy(size=2)
             # Step 3: Map the Predictor over the Dataset to get predictions.
