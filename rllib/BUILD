@@ -1046,21 +1046,18 @@ py_test(
     size = "small",
     srcs = ["algorithms/dt/tests/test_segmentation_buffer.py"]
 )
-
 py_test(
     name = "test_dt_model",
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/dt/tests/test_dt_model.py"]
 )
-
 py_test(
     name = "test_dt_policy",
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/dt/tests/test_dt_policy.py"]
 )
-
 py_test(
     name = "test_dt",
     tags = ["team:rllib", "algorithms_dir", "ray_data"],
@@ -1102,7 +1099,6 @@ py_test(
     size = "large",
     srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
 )
-
 py_test(
     name = "test_impala_learner",
     tags = ["team:rllib", "algorithms_dir"],
@@ -2500,7 +2496,7 @@ py_test(
 py_test(
     name = "tests/backward_compat/test_gym_env_apis",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
 
