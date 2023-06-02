@@ -34,6 +34,7 @@ window.addEventListener('load', () => {
             "<div type=\"button\" id=\"monitoring\" class=\"tag btn btn-outline-primary\">Monitoring</div>\n" +
             "<h6>ML Frameworks</h6>\n" +
             "<div type=\"button\" id=\"pytorch\" class=\"tag btn btn-outline-primary\">PyTorch</div>\n" +
+            "<div type=\"button\" id=\"huggingface\" class=\"tag btn btn-outline-primary\">HuggingFace 🤗</div>\n" +
             "<div type=\"button\" id=\"tensorflow\" class=\"tag btn btn-outline-primary\">TensorFlow/Keras</div>\n" +
             "</div>";
 

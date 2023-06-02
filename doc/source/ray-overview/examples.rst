@@ -48,7 +48,7 @@
             Faster stable diffusion fine-tuning with Ray AIR
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item tuning serving
+        :class-item: gallery-item training serving huggingface
 
         .. button-link:: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms-simply-quickly-and-cost-effectively-using
 
@@ -134,13 +134,6 @@
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item
 
-        .. button-ref:: /ray-air/examples/huggingface_text_classification
-
-            How to use Ray AIR to run Hugging Face Transformers fine-tuning on a text classification task
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-
         .. button-ref:: /ray-air/examples/gptj_deepspeed_fine_tuning
 
             How to use Ray AIR to run Hugging Face Transformers with DeepSpeed for fine-tuning a large model
@@ -160,7 +153,7 @@
             How to use Ray AIR to do online serving with the Hugging Face Transformers GPT-J model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item cv tuning
+        :class-item: gallery-item cv training
 
         .. button-ref:: /ray-air/examples/dreambooth_finetuning
 
@@ -174,7 +167,7 @@
             How to run batch inference on a dataset of texts with a 30B OPT model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
+        :class-item: gallery-item training
 
         .. button-ref:: /ray-air/examples/dolly_lightning_fsdp_finetuning
 
@@ -207,6 +200,27 @@
         .. button-ref:: /ray-air/examples/stablediffusion_batch_prediction
 
             How to use Ray AIR to do batch prediction with the Stable Diffusion text-to-image model
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item cv pytorch inference
+
+        .. button-ref:: /data/examples/batch_inference_object_detection
+
+            Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item cv pytorch inference
+
+        .. button-ref:: /data/examples/pytorch_resnet_batch_prediction
+
+            Image Classification Batch Inference with PyTorch ResNet18
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item cv inference huggingface
+
+        .. button-ref:: /data/examples/huggingface_vit_batch_prediction
+
+            Image Classification Batch Inference with Huggingface Vision Transformer
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item
@@ -665,7 +679,7 @@
             A Guide To Tuning Horovod Parameters With Tune
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
+        :class-item: gallery-item tuning huggingface
 
         .. button-ref:: tune-huggingface-example
 
@@ -700,7 +714,7 @@
             Getting Started with Ray Train
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
+        :class-item: gallery-item training huggingface
 
         .. button-ref:: /ray-air/examples/huggingface_text_classification
 
@@ -749,7 +763,7 @@
             Use LightningTrainer with Ray Data and Batch Predictor
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item llm nlp tuning
+        :class-item: gallery-item llm nlp training
 
         .. button-ref:: dolly_lightning_fsdp_finetuning
 
@@ -951,41 +965,6 @@
         .. button-link:: https://www.youtube.com/watch?v=_L0lsShbKaY
 
             Ray Summit Panel - ML Platform on Ray
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-
-        .. button-ref:: /ray-air/examples/huggingface_text_classification
-
-            Text classification with Ray
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch cv
-
-        .. button-ref:: /ray-air/examples/torch_image_example
-
-            Image classification with Ray
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch cv
-
-        .. button-ref:: /ray-air/examples/torch_detection
-
-            Object detection with Ray
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
-
-        .. button-ref:: /ray-air/examples/feast_example
-
-            Credit scoring with Ray and Feast
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing
-
-        .. button-ref:: /ray-air/examples/xgboost_example
-
-            Machine learning on tabular data
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item ts
