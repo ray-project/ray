@@ -429,11 +429,13 @@ class TuneController(_TuneControllerBase):
             tracked_actor, "stop", _return_future=True
         )
         now = time.monotonic()
-        self._stopping_actors[tracked_actor] = now
-        self._earliest_stopping_actor = min(self._earliest_stopping_actor, now)
-        self._actor_manager.remove_actor(
+
+        if self._actor_manager.remove_actor(
             tracked_actor, kill=False, stop_future=stop_future
-        )
+        ):
+            # If the actor was previously alive, track
+            self._stopping_actors[tracked_actor] = now
+            self._earliest_stopping_actor = min(self._earliest_stopping_actor, now)
 
     ###
     # ADD ACTORS
