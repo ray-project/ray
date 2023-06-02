@@ -1,15 +1,22 @@
-from typing import List, Optional
 import itertools
-import pytest
+from typing import List, Optional
+
 import pandas as pd
+import pytest
 
 import ray
 from ray.data._internal.execution.legacy_compat import _blocks_to_input_buffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    Aggregate,
+    RandomShuffle,
+    Repartition,
+    Sort,
+)
 from ray.data._internal.logical.operators.from_arrow_operator import (
     FromArrowRefs,
     FromHuggingFace,
@@ -27,34 +34,27 @@ from ray.data._internal.logical.operators.from_pandas_operator import (
     FromModin,
     FromPandasRefs,
 )
-from ray.data._internal.logical.optimizers import PhysicalOptimizer
-from ray.data._internal.logical.operators.all_to_all_operator import (
-    Aggregate,
-    RandomShuffle,
-    Repartition,
-    Sort,
-)
-from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.operators.map_operator import (
-    MapRows,
-    MapBatches,
     Filter,
     FlatMap,
+    MapBatches,
+    MapRows,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
+from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.optimizers import PhysicalOptimizer
 from ray.data._internal.logical.util import (
+    _op_name_white_list,
     _recorded_operators,
     _recorded_operators_lock,
-    _op_name_white_list,
 )
 from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.datasource.parquet_datasource import ParquetDatasource
-
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import extract_values, named_values, column_udf
+from ray.data.tests.util import column_udf, extract_values, named_values
 from ray.tests.conftest import *  # noqa
 
 

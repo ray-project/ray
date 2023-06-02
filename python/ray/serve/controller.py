@@ -172,7 +172,7 @@ class ServeController:
             node_ip=ray.util.get_node_ip_address(),
             actor_id=ray.get_runtime_context().get_actor_id(),
             actor_name=self.controller_name,
-            worker_id=ray._private.worker.global_worker.worker_id.hex(),
+            worker_id=ray.get_runtime_context().get_worker_id(),
             log_file_path=get_component_logger_file_path(),
         )
 

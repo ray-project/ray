@@ -1,15 +1,15 @@
 import logging
 import math
-import sys
 import os
 import random
+import sys
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from unittest.mock import patch
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
@@ -18,10 +18,10 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset, _sliding_window
-from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.datasource.csv_datasource import CSVDatasource
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import column_udf, extract_values, STRICT_MODE
+from ray.data.tests.util import STRICT_MODE, column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 

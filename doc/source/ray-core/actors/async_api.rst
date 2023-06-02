@@ -61,6 +61,18 @@ async frameworks like aiohttp, aioredis, etc.
     (AsyncActor pid=40293) finished
     (AsyncActor pid=40293) finished
 
+.. testcode::
+    :hide:
+
+    # NOTE: The outputs from the previous code block can show up in subsequent tests.
+    # To prevent flakiness, we wait for the async calls finish.
+    import time
+    time.sleep(3)
+
+.. testoutput::
+
+    ...
+
 ObjectRefs as asyncio.Futures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ObjectRefs can be translated to asyncio.Futures. This feature

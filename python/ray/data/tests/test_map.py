@@ -17,7 +17,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import extract_values, column_udf
+from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 
 

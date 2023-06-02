@@ -1,22 +1,22 @@
 import threading
-import pytest
 import time
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pytest
 
 import ray
+from ray.data._internal.block_batching.interfaces import Batch
 from ray.data._internal.block_batching.util import (
     Queue,
     _calculate_ref_hits,
-    make_async_gen,
     blocks_to_batches,
-    format_batches,
     collate,
+    format_batches,
+    make_async_gen,
     resolve_block_refs,
 )
-from ray.data._internal.block_batching.interfaces import Batch
 
 
 def block_generator(num_rows: int, num_blocks: int):
