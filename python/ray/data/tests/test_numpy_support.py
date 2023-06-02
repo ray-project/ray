@@ -1,6 +1,6 @@
 import numpy as np
-import torch
 import pytest
+import torch
 
 import ray
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray

@@ -2,18 +2,17 @@ import os
 import time
 from typing import Tuple
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 import ray
 from ray.data import dataset
-from ray.data.context import DataContext, WARN_PREFIX, OK_PREFIX
+from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.data.dataset import Dataset
 from ray.data.dataset_pipeline import DatasetPipeline
-
-from ray.tests.conftest import *  # noqa
 from ray.data.tests.util import column_udf, extract_values
+from ray.tests.conftest import *  # noqa
 
 
 class MockLogger:
