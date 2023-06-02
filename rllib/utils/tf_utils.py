@@ -33,7 +33,7 @@ def clip_gradients(
     gradients_dict: "ParamDict",
     *,
     grad_clip: Optional[float] = None,
-    grad_clip_by: str = "value",
+    grad_clip_by: str,
 ) -> Optional[float]:
     """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
 

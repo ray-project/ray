@@ -601,11 +601,11 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
-    def apply_gradients(self, gradients: ParamDict) -> None:
+    def apply_gradients(self, gradients_dict: ParamDict) -> None:
         """Applies the gradients to the MultiAgentRLModule parameters.
 
         Args:
-            gradients: A dictionary of gradients in the same (flat) format as
+            gradients_dict: A dictionary of gradients in the same (flat) format as
                 self._params. Note that top-level structures, such as module IDs,
                 will not be present anymore in this dict. It will merely map gradient
                 tensor references to gradient tensors.

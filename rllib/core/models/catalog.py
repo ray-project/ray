@@ -25,93 +25,6 @@ from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 
 
-def _multi_action_dist_partial_helper(
-    catalog_cls: "Catalog", action_space: gym.Space, framework: str
-) -> Distribution:
-    """Helper method to get a partial of a MultiActionDistribution.
-
-    This is useful for when we want to create MultiActionDistributions from
-    logits only (!) later, but know the action space now already.
-
-    Args:
-        catalog_cls: The ModelCatalog class to use.
-        action_space: The action space to get the child distribution classes for.
-        framework: The framework to use.
-
-    Returns:
-        A partial of the TorchMultiActionDistribution class.
-    """
-    action_space_struct = get_base_struct_from_space(action_space)
-    flat_action_space = flatten_space(action_space)
-    child_distribution_cls_struct = tree.map_structure(
-        lambda s: catalog_cls.get_dist_cls_from_action_space(
-            action_space=s,
-            framework=framework,
-        ),
-        action_space_struct,
-    )
-    flat_distribution_clses = tree.flatten(child_distribution_cls_struct)
-
-    logit_lens = [
-        int(dist_cls.required_input_dim(space))
-        for dist_cls, space in zip(flat_distribution_clses, flat_action_space)
-    ]
-
-    if framework == "torch":
-        from ray.rllib.models.torch.torch_distributions import (
-            TorchMultiDistribution,
-        )
-
-        multi_action_dist_cls = TorchMultiDistribution
-    elif framework == "tf2":
-        from ray.rllib.models.tf.tf_distributions import TfMultiDistribution
-
-        multi_action_dist_cls = TfMultiDistribution
-    else:
-        raise ValueError(f"Unsupported framework: {framework}")
-
-    partial_dist_cls = multi_action_dist_cls.get_partial_dist_cls(
-        space=action_space,
-        child_distribution_cls_struct=child_distribution_cls_struct,
-        input_lens=logit_lens,
-    )
-    return partial_dist_cls
-
-
-def _multi_categorical_dist_partial_helper(
-    action_space: gym.Space, framework: str
-) -> Distribution:
-    """Helper method to get a partial of a MultiCategorical Distribution.
-
-    This is useful for when we want to create MultiCategorical Distribution from
-    logits only (!) later, but know the action space now already.
-
-    Args:
-        action_space: The action space to get the child distribution classes for.
-        framework: The framework to use.
-
-    Returns:
-        A partial of the MultiCategorical class.
-    """
-
-    if framework == "torch":
-        from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
-
-        multi_categorical_dist_cls = TorchMultiCategorical
-    elif framework == "tf2":
-        from ray.rllib.models.tf.tf_distributions import TfMultiCategorical
-
-        multi_categorical_dist_cls = TfMultiCategorical
-    else:
-        raise ValueError(f"Unsupported framework: {framework}")
-
-    partial_dist_cls = multi_categorical_dist_cls.get_partial_dist_cls(
-        space=action_space, input_lens=list(action_space.nvec)
-    )
-
-    return partial_dist_cls
-
-
 class Catalog:
     """Describes the sub-modules architectures to be used in RLModules.
 
@@ -593,3 +506,90 @@ class Catalog:
             cls = get_preprocessor(observation_space)
             prep = cls(observation_space, options)
             return prep
+
+
+def _multi_action_dist_partial_helper(
+    catalog_cls: "Catalog", action_space: gym.Space, framework: str
+) -> Distribution:
+    """Helper method to get a partial of a MultiActionDistribution.
+
+    This is useful for when we want to create MultiActionDistributions from
+    logits only (!) later, but know the action space now already.
+
+    Args:
+        catalog_cls: The ModelCatalog class to use.
+        action_space: The action space to get the child distribution classes for.
+        framework: The framework to use.
+
+    Returns:
+        A partial of the TorchMultiActionDistribution class.
+    """
+    action_space_struct = get_base_struct_from_space(action_space)
+    flat_action_space = flatten_space(action_space)
+    child_distribution_cls_struct = tree.map_structure(
+        lambda s: catalog_cls.get_dist_cls_from_action_space(
+            action_space=s,
+            framework=framework,
+        ),
+        action_space_struct,
+    )
+    flat_distribution_clses = tree.flatten(child_distribution_cls_struct)
+
+    logit_lens = [
+        int(dist_cls.required_input_dim(space))
+        for dist_cls, space in zip(flat_distribution_clses, flat_action_space)
+    ]
+
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import (
+            TorchMultiDistribution,
+        )
+
+        multi_action_dist_cls = TorchMultiDistribution
+    elif framework == "tf2":
+        from ray.rllib.models.tf.tf_distributions import TfMultiDistribution
+
+        multi_action_dist_cls = TfMultiDistribution
+    else:
+        raise ValueError(f"Unsupported framework: {framework}")
+
+    partial_dist_cls = multi_action_dist_cls.get_partial_dist_cls(
+        space=action_space,
+        child_distribution_cls_struct=child_distribution_cls_struct,
+        input_lens=logit_lens,
+    )
+    return partial_dist_cls
+
+
+def _multi_categorical_dist_partial_helper(
+    action_space: gym.Space, framework: str
+) -> Distribution:
+    """Helper method to get a partial of a MultiCategorical Distribution.
+
+    This is useful for when we want to create MultiCategorical Distribution from
+    logits only (!) later, but know the action space now already.
+
+    Args:
+        action_space: The action space to get the child distribution classes for.
+        framework: The framework to use.
+
+    Returns:
+        A partial of the MultiCategorical class.
+    """
+
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
+
+        multi_categorical_dist_cls = TorchMultiCategorical
+    elif framework == "tf2":
+        from ray.rllib.models.tf.tf_distributions import TfMultiCategorical
+
+        multi_categorical_dist_cls = TfMultiCategorical
+    else:
+        raise ValueError(f"Unsupported framework: {framework}")
+
+    partial_dist_cls = multi_categorical_dist_cls.get_partial_dist_cls(
+        space=action_space, input_lens=list(action_space.nvec)
+    )
+
+    return partial_dist_cls

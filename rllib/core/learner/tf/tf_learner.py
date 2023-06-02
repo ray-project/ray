@@ -112,22 +112,21 @@ class TfLearner(Learner):
         return grads
 
     @override(Learner)
-    def apply_gradients(self, gradients: ParamDict):
+    def apply_gradients(self, gradients_dict: ParamDict) -> None:
         # TODO (Avnishn, kourosh): apply gradients doesn't work in cases where
         #  only some agents have a sample batch that is passed but not others.
         #  This is probably because of the way that we are iterating over the
         #  parameters in the optim_to_param_dictionary.
-        for optimizer, param_ref_seq in self._optimizer_parameters.items():
-            variable_list = [
-                self._params[param_ref]
-                for param_ref in param_ref_seq
-                if gradients[param_ref] is not None
-            ]
-            gradient_list = [
-                gradients[param_ref]
-                for param_ref in param_ref_seq
-                if gradients[param_ref] is not None
-            ]
+        for optimizer in self._optimizer_parameters:
+            optim_grad_dict = self.filter_param_dict_for_optimizer(
+                optimizer=optimizer, param_dict=gradients_dict
+            )
+            variable_list = []
+            gradient_list = []
+            for param_ref, grad in optim_grad_dict.items():
+                if grad is not None:
+                    variable_list.append(self._params[param_ref])
+                    gradient_list.append(grad)
             optimizer.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
