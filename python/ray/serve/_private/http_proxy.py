@@ -131,7 +131,9 @@ async def _handle_streaming_response(
     return status_code
 
 
-async def _send_request_to_handle(handle, scope, receive, send) -> str:
+async def _send_request_to_handle(
+    handle, scope, receive, send, request_processing_timeout
+) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
 
     # NOTE(edoakes): it's important that we defer building the starlette
@@ -185,14 +187,14 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # https://github.com/ray-project/ray/pull/29534 for more info.
 
             _, request_timed_out = await asyncio.wait(
-                [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                [object_ref], timeout=request_processing_timeout
             )
             if request_timed_out:
                 logger.info(
-                    "Request didn't finish within "
-                    f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
-                    "with another replica. You can modify this timeout by "
-                    'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                    f"Request didn't finish within {request_processing_timeout} seconds"
+                    ". Retrying with another replica. You can modify this timeout by "
+                    'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var or '
+                    '"request_processing_timeout" in serve config.'
                 )
                 backoff = True
             else:
@@ -325,7 +327,9 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str):
+    def __init__(self, controller_name: str, request_processing_timeout: float):
+        self.request_processing_timeout = request_processing_timeout
+
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
@@ -503,7 +507,9 @@ class HTTPProxy:
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(**request_context_info)
         )
-        status_code = await _send_request_to_handle(handle, scope, receive, send)
+        status_code = await _send_request_to_handle(
+            handle, scope, receive, send, self.request_processing_timeout
+        )
         self.request_counter.inc(
             tags={
                 "route": route_path,
@@ -559,6 +565,7 @@ class HTTPProxyActor:
         controller_name: str,
         node_ip_address: str,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
+        request_processing_timeout: float = RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
@@ -573,7 +580,10 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name)
+        self.app = HTTPProxy(
+            controller_name=controller_name,
+            request_processing_timeout=request_processing_timeout,
+        )
 
         self.wrapped_app = self.app
         for middleware in http_middlewares:

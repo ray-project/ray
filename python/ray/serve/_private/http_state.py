@@ -274,6 +274,7 @@ class HTTPState:
                     controller_name=self._controller_name,
                     node_ip_address=node_ip_address,
                     http_middlewares=self._config.middlewares,
+                    request_processing_timeout=self._config.request_processing_timeout,
                 )
 
             self._proxy_states[node_id] = HTTPProxyState(
