@@ -130,7 +130,8 @@ if __name__ == "__main__":
 
     ray.data.set_progress_bars(False)
 
-    # Read a directory of files in remote storage.
+    # Load the a CartPole dataset as a pandas dataframe.
+    # The columns of the dataset are ["obs", "actions"].
     rllib_path = ray.__path__[0] + "/rllib/"
     cartpole_dataset_path = rllib_path + "tests/data/cartpole/large.json"
     df = convert_json_sample_batch_to_df(cartpole_dataset_path)
