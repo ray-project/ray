@@ -122,10 +122,21 @@ def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
     assert state._proxy_states[HEAD_NODE_ID].status == HTTPProxyStatus.UNHEALTHY
     old_proxy_state = state._proxy_states[HEAD_NODE_ID]
     old_proxy = old_proxy_state.actor_handle
-    state.update()
 
-    # Ensure after the update method is called, the status of the proxy is STARTING.
-    assert state._proxy_states[HEAD_NODE_ID].status == HTTPProxyStatus.STARTING
+    def _update_state_and_check_proxy_status(
+        _state: HTTPState,
+        _status: HTTPProxyStatus,
+    ):
+        _state.update()
+        return _state._proxy_states[HEAD_NODE_ID].status == _status
+
+    # Continuously trigger update and wait for status to be changed to STARTING.
+    wait_for_condition(
+        condition_predictor=_update_state_and_check_proxy_status,
+        _state=state,
+        _status=HTTPProxyStatus.STARTING,
+    )
+
     new_proxy = state._proxy_states[HEAD_NODE_ID].actor_handle
 
     # Ensure the old proxy is getting shutdown.
@@ -173,9 +184,6 @@ def test_http_proxy_state_update_starting_ready_succeed():
         status=HTTPProxyStatus.HEALTHY,
     )
 
-    # Ensure the proxy status is changed to HEALTHY after update.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
-
 
 def test_http_proxy_state_update_starting_ready_failed_once():
     """Test calling update method on HTTPProxyState when the proxy state is STARTING and
@@ -217,9 +225,6 @@ def test_http_proxy_state_update_starting_ready_failed_once():
         status=HTTPProxyStatus.HEALTHY,
     )
 
-    # Ensure the proxy status is changed to HEALTHY after update.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
-
 
 def test_http_proxy_state_update_starting_ready_always_fails():
     """Test calling update method on HTTPProxyState when the proxy state is STARTING and
@@ -249,9 +254,6 @@ def test_http_proxy_state_update_starting_ready_always_fails():
         state=proxy_state,
         status=HTTPProxyStatus.UNHEALTHY,
     )
-
-    # Ensure the proxy status is changed to UNHEALTHY after update.
-    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
 
     # Ensure the _consecutive_health_check_failures is correct
     assert proxy_state._consecutive_health_check_failures == 3
@@ -287,9 +289,6 @@ def test_http_proxy_state_update_starting_ready_always_timeout():
         status=HTTPProxyStatus.UNHEALTHY,
     )
 
-    # Ensure the proxy status is changed to UNHEALTHY after update.
-    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
-
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_http_proxy_state_update_healthy_check_health_succeed():
@@ -311,17 +310,12 @@ def test_http_proxy_state_update_healthy_check_health_succeed():
     )
     first_check_time = proxy_state._last_health_check_time
 
-    # Ensure the proxy status is HEALTHY after updates.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
-
     # Continuously trigger update and status continue to be HEALTHY.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
         status=HTTPProxyStatus.HEALTHY,
     )
-    # Ensure the proxy status is still HEALTHY after updates.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
 
     # Ensure the check time have changed since the last update
     assert first_check_time != proxy_state._last_health_check_time
@@ -359,17 +353,12 @@ def test_http_proxy_state_update_healthy_check_health_failed_once():
     )
     first_check_time = proxy_state._last_health_check_time
 
-    # Ensure the proxy status is HEALTHY after updates.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
-
     # Continuously trigger update and status continue to be HEALTHY.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
         status=HTTPProxyStatus.HEALTHY,
     )
-    # Ensure the proxy status is still HEALTHY after updates.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
 
     # Ensure the check time have changed since the last update
     assert first_check_time != proxy_state._last_health_check_time
@@ -381,9 +370,6 @@ def test_http_proxy_state_update_healthy_check_health_failed_once():
         state=proxy_state,
         status=HTTPProxyStatus.HEALTHY,
     )
-
-    # Ensure the proxy status is still HEALTHY after update.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
@@ -416,17 +402,12 @@ def test_http_proxy_state_update_healthy_check_health_always_fails():
     )
     first_check_time = proxy_state._last_health_check_time
 
-    # Ensure the proxy status is HEALTHY after updates.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
-
     # Continuously trigger update and status should change from HEALTHY to UNHEALTHY.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
         status=HTTPProxyStatus.UNHEALTHY,
     )
-    # Ensure the proxy status is still UNHEALTHY after updates.
-    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
 
     # Ensure the check time have changed since the last update
     assert first_check_time != proxy_state._last_health_check_time
@@ -466,17 +447,12 @@ def test_http_proxy_state_update_healthy_check_health_always_timeout():
     )
     first_check_time = proxy_state._last_health_check_time
 
-    # Ensure the proxy status is HEALTHY after updates.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
-
     # Continuously trigger update and status should change to UNHEALTHY.
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=proxy_state,
         status=HTTPProxyStatus.UNHEALTHY,
     )
-    # Ensure the proxy status is still UNHEALTHY after updates.
-    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
 
     # Ensure the check time have changed since the last update
     assert first_check_time != proxy_state._last_health_check_time
@@ -505,9 +481,6 @@ def test_http_proxy_state_update_unhealthy_check_health_succeed():
         state=proxy_state,
         status=HTTPProxyStatus.HEALTHY,
     )
-
-    # Ensure the proxy status is still HEALTHY after updates.
-    assert proxy_state.status == HTTPProxyStatus.HEALTHY
 
     # Ensure _consecutive_health_check_failures has been reset
     assert proxy_state._consecutive_health_check_failures == 0

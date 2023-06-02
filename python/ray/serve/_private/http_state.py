@@ -280,7 +280,6 @@ class HTTPState:
         self._stop_proxies_if_needed()
         for proxy_state in self._proxy_states.values():
             proxy_state.update()
-        self._restart_unhealthy_proxies()
 
     def _get_target_nodes(self) -> List[Tuple[str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP servers on."""
@@ -323,7 +322,7 @@ class HTTPState:
     def _generate_actor_name(self, node_id: str) -> str:
         return format_actor_name(SERVE_PROXY_NAME, self._controller_name, node_id)
 
-    def _create_new_proxy(
+    def _start_proxy(
         self, name: str, node_id: str, node_ip_address: str
     ) -> ActorHandle:
         proxy = HTTPProxyActor.options(
@@ -357,13 +356,11 @@ class HTTPState:
                 proxy = ray.get_actor(name, namespace=SERVE_NAMESPACE)
             except ValueError:
                 logger.info(
-                    "Starting HTTP proxy with name '{}' on node '{}' "
-                    "listening on '{}:{}'".format(
-                        name, node_id, self._config.host, self._config.port
-                    ),
+                    f"Starting HTTP proxy with name '{name}' on node '{node_id}' "
+                    f"listening on '{self._config.host}:{self._config.port}'",
                     extra={"log_to_stderr": False},
                 )
-                proxy = self._create_new_proxy(
+                proxy = self._start_proxy(
                     name=name,
                     node_id=node_id,
                     node_ip_address=node_ip_address,
@@ -374,44 +371,26 @@ class HTTPState:
             )
 
     def _stop_proxies_if_needed(self) -> bool:
-        """Removes proxy actors from any nodes that no longer exist."""
+        """Removes proxy actors.
+
+        Removes proxy actors from any nodes that no longer exist or unhealthy proxy.
+        """
         all_node_ids = {node_id for node_id, _ in get_all_node_ids(self._gcs_client)}
         to_stop = []
-        for node_id in self._proxy_states:
+        for node_id, proxy_state in self._proxy_states.items():
             if node_id not in all_node_ids:
-                logger.info("Removing HTTP proxy on removed node '{}'.".format(node_id))
+                logger.info(f"Removing HTTP proxy on removed node '{node_id}'.")
+                to_stop.append(node_id)
+            elif proxy_state.status == HTTPProxyStatus.UNHEALTHY:
+                logger.info(
+                    f"HTTP proxy on node '{node_id}' UNHEALTHY. Shut down the unhealthy"
+                    " proxy and restart a new one."
+                )
                 to_stop.append(node_id)
 
         for node_id in to_stop:
-            proxy = self._proxy_states.pop(node_id)
-            ray.kill(proxy.actor_handle, no_restart=True)
-
-    def _restart_unhealthy_proxies(self):
-        """Kill and restart unhealthy proxies.
-
-        Iterate through all proxies and check the status of them. Shutdown the unhealthy
-        proxies and restart them.
-        """
-        for node_id, node_ip_address in self._get_target_nodes():
-            proxy_state = self._proxy_states[node_id]
-            if proxy_state.status == HTTPProxyStatus.UNHEALTHY:
-                logger.info(
-                    f"HTTP proxy on node {node_id} UNHEALTHY. Shut down the unhealthy "
-                    "proxy and restart a new one."
-                )
-                proxy_state.shutdown()
-                name = self._generate_actor_name(node_id)
-                new_proxy = self._create_new_proxy(
-                    name=name,
-                    node_id=node_id,
-                    node_ip_address=node_ip_address,
-                )
-                self._proxy_states[node_id] = HTTPProxyState(
-                    actor_handle=new_proxy,
-                    actor_name=name,
-                    node_id=node_id,
-                    node_ip=node_ip_address,
-                )
+            proxy_state = self._proxy_states.pop(node_id)
+            proxy_state.shutdown()
 
     async def ensure_http_route_exists(self, endpoint: EndpointTag, timeout_s: float):
         """Block until the route has been propagated to all HTTP proxies.
