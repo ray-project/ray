@@ -168,7 +168,7 @@ def test_many_objects(num_objects, num_actors):
         print("Skipping test with no objects")
         return
 
-    pg = placement_group([{"CPU": 1}]* num_actors, strategy="SPREAD")
+    pg = placement_group([{"CPU": 1}] * num_actors, strategy="SPREAD")
     ray.get(pg.ready())
 
     # We will try to put actors on multiple nodes.
@@ -230,7 +230,6 @@ def test_many_objects(num_objects, num_actors):
 
     del actors
     remove_placement_group(pg)
-
 
 
 def test_large_log_file(log_file_size_byte: int):
@@ -362,7 +361,10 @@ def test(
         num_tasks = "1,100"
         num_actors = "1,10"
         num_objects = "1,100"
+        num_actors_for_objects = 1
         log_file_size_byte = f"64,{16*MiB}"
+        global STATE_LIST_LIMIT
+        STATE_LIST_LIMIT = STATE_LIST_LIMIT // 1000
 
     # Parse the input
     num_tasks_arr, num_actors_arr, num_objects_arr, log_file_size_arr = _parse_input(

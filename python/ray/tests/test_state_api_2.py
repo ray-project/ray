@@ -1,8 +1,10 @@
 import asyncio
 import json
 import os
+from pathlib import Path
 
 from collections import defaultdict
+from ray._private.test_utils import check_call_subprocess
 
 import ray
 import requests
@@ -336,6 +338,17 @@ def test_actor_task_with_repr_name():
         return True
 
     wait_for_condition(verify)
+
+
+def test_state_api_scale_smoke(shutdown_only):
+    ray.init()
+
+    release_test_file_path = (
+        "../../release/nightly_tests/stress_tests/test_state_api_scale.py"
+    )
+    full_path = Path(ray.__file__).parents[0] / release_test_file_path
+
+    check_call_subprocess(["python", str(full_path), "--smoke-test"])
 
 
 if __name__ == "__main__":
