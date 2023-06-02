@@ -96,7 +96,7 @@ def test_remove_actor_tracking(ray_start_4_cpus_2_gpus_extra, resource_manager_c
 
     When actors are re-used, we cancel original actor requests for the trial.
     If these actors haven't been alive, there won't be a stop future to be resolved,
-    and thus they would remain in ``TuneContorller._stopping_actors`` until they
+    and thus they would remain in ``TuneController._stopping_actors`` until they
     get cleaned up after 600 seconds.
 
     This test asserts that these actors are not tracked in ``self._stopping_actors``
