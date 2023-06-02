@@ -14,6 +14,8 @@
 
 #include "ray/object_manager/push_manager.h"
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
 
@@ -199,6 +201,55 @@ TEST(TestPushManager, TestMultipleTransfers) {
   for (int i = 0; i < 10; i++) {
     ASSERT_EQ(results2[i], 2);
   }
+}
+
+TEST(TestPushManager, TestPushMultipleObject) {
+  std::vector<int> results;
+  results.resize(10);
+  auto node_id = NodeID::FromRandom();
+  auto obj_id_1 = ObjectID::FromRandom();
+  auto obj_id_2 = ObjectID::FromRandom();
+  auto obj_id_3 = ObjectID::FromRandom();
+  PushManager pm(3);
+
+  absl::flat_hash_map<ObjectID, absl::flat_hash_set<int64_t>> result;
+  pm.StartPush(node_id, obj_id_1, 4, [&, obj_id = obj_id_1](int64_t chunk_id) {
+    ASSERT_FALSE(result[obj_id].contains(chunk_id));
+    result[obj_id].insert(chunk_id);
+  });
+  pm.StartPush(node_id, obj_id_2, 1, [&, obj_id = obj_id_2](int64_t chunk_id) {
+    ASSERT_FALSE(result[obj_id].contains(chunk_id));
+    result[obj_id].insert(chunk_id);
+  });
+  pm.StartPush(node_id, obj_id_3, 2, [&, obj_id = obj_id_3](int64_t chunk_id) {
+    ASSERT_FALSE(result[obj_id].contains(chunk_id));
+    result[obj_id].insert(chunk_id);
+  });
+  ASSERT_EQ(pm.NumPendingPushRequest(), 3);
+  ASSERT_EQ(pm.NumChunksInFlight(), 3);
+  ASSERT_EQ(pm.NumChunksRemaining(), 7);
+  ASSERT_EQ(pm.NumPushesInFlight(), 3);
+
+  pm.OnChunkComplete(node_id, obj_id_1);
+  ASSERT_EQ(pm.NumPendingPushRequest(), 2);
+  pm.OnChunkComplete(node_id, obj_id_1);
+  ASSERT_EQ(pm.NumPendingPushRequest(), 1);
+  pm.OnChunkComplete(node_id, obj_id_1);
+  ASSERT_EQ(pm.NumPendingPushRequest(), 1);
+  pm.OnChunkComplete(node_id, obj_id_1);
+  ASSERT_EQ(pm.NumPendingPushRequest(), 0);
+
+  pm.OnChunkComplete(node_id, obj_id_2);
+  pm.OnChunkComplete(node_id, obj_id_3);
+  pm.OnChunkComplete(node_id, obj_id_3);
+
+  ASSERT_EQ(pm.NumChunksInFlight(), 0);
+  ASSERT_EQ(pm.NumChunksRemaining(), 0);
+  ASSERT_EQ(pm.NumPushesInFlight(), 0);
+
+  ASSERT_EQ(result[obj_id_1].size(), 4);
+  ASSERT_EQ(result[obj_id_2].size(), 1);
+  ASSERT_EQ(result[obj_id_3].size(), 2);
 }
 
 }  // namespace ray

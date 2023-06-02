@@ -15,6 +15,7 @@
 #pragma once
 
 #include <algorithm>
+#include <list>
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
@@ -65,6 +66,9 @@ class PushManager {
   /// Return the number of pushes currently in flight. For testing only.
   int64_t NumPushesInFlight() const { return push_info_.size(); };
 
+  /// Return the number of push requests with remaining chunks. For testing only.
+  int64_t NumPendingPushRequest() const { return pending_push_requests_.size(); };
+
   /// Record the internal metrics.
   void RecordMetrics() const;
 
@@ -100,10 +104,13 @@ class PushManager {
       return additional_chunks_to_send;
     }
 
+    /// whether all the chunks have been sent.
+    bool NoChunkRemained() { return num_chunks_to_send == 0; }
+
     /// Send one chunck. Return true if a new chunk is sent, false if no more chunk to
     /// send.
     bool SendOneChunk() {
-      if (num_chunks_to_send == 0) {
+      if (NoChunkRemained()) {
         return false;
       }
       num_chunks_to_send--;
@@ -139,7 +146,10 @@ class PushManager {
   int64_t chunks_remaining_ = 0;
 
   /// Tracks all pushes with chunk transfers in flight.
-  absl::flat_hash_map<PushID, std::unique_ptr<PushState>> push_info_;
+  absl::flat_hash_map<PushID, std::shared_ptr<PushState>> push_info_;
+
+  /// The list of push requests with chunks waiting to be sent.
+  std::list<std::pair<PushID, std::shared_ptr<PushState>>> pending_push_requests_;
 };
 
 }  // namespace ray
