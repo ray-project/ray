@@ -19,6 +19,7 @@ from ray.rllib.algorithms.impala.impala_torch_policy import (
 )
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
+    compute_bootstrap_value,
     compute_gae_for_sample_batch,
     Postprocessing,
 )
@@ -389,14 +390,17 @@ class APPOTorchPolicy(
         sample_batch = super().postprocess_trajectory(
             sample_batch, other_agent_batches, episode
         )
-        if not self.config["vtrace"]:
-            # Do all post-processing always with no_grad().
-            # Not using this here will introduce a memory leak
-            # in torch (issue #6962).
-            with torch.no_grad():
+
+        # Do all post-processing always with no_grad().
+        # Not using this here will introduce a memory leak
+        # in torch (issue #6962).
+        with torch.no_grad():
+            if not self.config["vtrace"]:
                 sample_batch = compute_gae_for_sample_batch(
                     self, sample_batch, other_agent_batches, episode
                 )
+            else:
+                sample_batch = compute_bootstrap_value(sample_batch, self)
 
         return sample_batch
 

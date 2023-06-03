@@ -19,6 +19,7 @@ from ray.rllib.algorithms.impala.impala_tf_policy import (
 )
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import (
+    compute_bootstrap_value,
     compute_gae_for_sample_batch,
     Postprocessing,
 )
@@ -390,6 +391,8 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 sample_batch = compute_gae_for_sample_batch(
                     self, sample_batch, other_agent_batches, episode
                 )
+            else:
+                sample_batch = compute_bootstrap_value(sample_batch, self)
 
             return sample_batch
 
