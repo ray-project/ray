@@ -1,8 +1,7 @@
 import pytest
 import sys
 import threading
-import docker
-from time import sleep
+from time import sleep, time
 from ray._private.test_utils import wait_for_condition
 from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
@@ -78,17 +77,10 @@ redis = container(
 
 head_node_vol = volume()
 worker_node_vol = volume()
-
-# Delete any left over containers from previous runs
-docker_client = docker.from_env()
-try:
-    docker_client.containers.get("gcs").remove(force=True)
-except Exception:
-    pass
-
+head_node_container_name = "gcs" + str(int(time()))
 head_node = container(
     image="ray_ci:v1",
-    name="gcs",
+    name=head_node_container_name,
     network="{gcs_network.name}",
     command=[
         "ray",
@@ -120,7 +112,7 @@ worker_node = container(
         "ray",
         "start",
         "--address",
-        "gcs:6379",
+        f"{head_node_container_name}:6379",
         "--block",
         # Fix the port of raylet to make sure raylet restarts at the same
         # ip:port is treated as a different raylet.
