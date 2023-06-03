@@ -485,7 +485,7 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_tasks
             list_tasks(detail=True)
 
-See :ref:`state CLI reference<state-api-cli-ref>` for more details about ``ray list`` command.
+See :ref:`state CLI reference <state-api-cli-ref>` for more details about ``ray list`` command.
 
 
 Get the states of a particular entity (task, actor, etc.)
