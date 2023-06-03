@@ -1577,9 +1577,7 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
-        logical_plan = LogicalPlan(
-            FromPandas(dfs, metadata)
-        )
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
@@ -1596,9 +1594,7 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    logical_plan = LogicalPlan(
-        FromPandas(blocks, metadata)
-    )
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
@@ -1661,9 +1657,7 @@ def from_numpy_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
-    logical_plan = LogicalPlan(
-        FromNumpy(blocks, metadata)
-    )
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
 
     return MaterializedDataset(
         ExecutionPlan(
@@ -1718,9 +1712,7 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    logical_plan = LogicalPlan(
-        FromArrow(tables, metadata)
-    )
+    logical_plan = LogicalPlan(FromArrow(tables, metadata))
 
     return MaterializedDataset(
         ExecutionPlan(
