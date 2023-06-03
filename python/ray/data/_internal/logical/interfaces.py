@@ -40,7 +40,7 @@ class Operator:
 
     @property
     def can_modify_num_rows(self) -> bool:
-        """Whether this operator modifies the number of rows,
+        """Whether this operator can modify the number of rows,
         i.e. number of input rows != number of output rows."""
         raise NotImplementedError
 

@@ -11,6 +11,7 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -43,8 +44,9 @@ class OperatorFusionRule(Rule):
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
 
-        # TODO(Scott): fuse back to back Limit operators together, i.e.
+        # Fuse back-to-back limit operators:
         # Limit(l1) -> Limit(l2) into Limit(min(l1, l2))
+        fused_dag = self._fuse_limit_operators_in_dag(fused_dag)
 
         return PhysicalPlan(fused_dag, self._op_map)
 
@@ -105,8 +107,8 @@ class OperatorFusionRule(Rule):
         upstream_ops = dag.input_dependencies
         while (
             len(upstream_ops) == 1
-            and isinstance(dag, Limit)
-            and isinstance(upstream_ops[0], Limit)
+            and isinstance(dag, LimitOperator)
+            and isinstance(upstream_ops[0], LimitOperator)
             and self._can_fuse(dag, upstream_ops[0])
         ):
             # Fuse operator with its upstream op.
@@ -152,7 +154,7 @@ class OperatorFusionRule(Rule):
                 isinstance(up_op, TaskPoolMapOperator)
                 and isinstance(down_op, AllToAllOperator)
             )
-            or (isinstance(down_op, Limit) and isinstance(up_op, Limit))
+            or (isinstance(down_op, LimitOperator) and isinstance(up_op, LimitOperator))
         ):
             return False
 
@@ -168,9 +170,22 @@ class OperatorFusionRule(Rule):
         # - AbstractMap -> AbstractMap
         # - AbstractMap -> RandomShuffle
         # - AbstractMap -> Repartition (shuffle=True)
-        if not isinstance(
-            down_logical_op, (AbstractMap, RandomShuffle, Repartition)
-        ) or not isinstance(up_logical_op, AbstractMap):
+        # - Limit -> Limit
+        if not (
+            (
+                isinstance(up_logical_op, AbstractMap)
+                and isinstance(down_logical_op, AbstractMap)
+            )
+            or (
+                isinstance(up_logical_op, AbstractMap)
+                and isinstance(down_logical_op, RandomShuffle)
+            )
+            or (
+                isinstance(up_logical_op, AbstractMap)
+                and isinstance(down_logical_op, Repartition)
+            )
+            or (isinstance(up_logical_op, Limit) and isinstance(down_logical_op, Limit))
+        ):
             return False
 
         # Do not fuse Repartition operator if shuffle is disabled
@@ -178,42 +193,42 @@ class OperatorFusionRule(Rule):
         if isinstance(down_logical_op, Repartition) and not down_logical_op._shuffle:
             return False
 
-        # Allow fusing tasks->actors if the resources are compatible (read->map), but
-        # not the other way around. The latter (downstream op) will be used as the
-        # compute if fused.
-        if (
-            isinstance(down_logical_op, AbstractUDFMap)
-            and is_task_compute(down_logical_op._compute)
-            and isinstance(up_logical_op, AbstractUDFMap)
-            and get_compute(up_logical_op._compute)
-            != get_compute(down_logical_op._compute)
+        if isinstance(down_logical_op, AbstractUDFMap) and isinstance(
+            up_logical_op, AbstractUDFMap
         ):
-            return False
+            # Allow fusing tasks->actors if the resources are compatible (read->map),
+            # but not the other way around. The latter (downstream op) will be used as
+            # the compute if fused.
+            if is_task_compute(down_logical_op._compute) and get_compute(
+                up_logical_op._compute
+            ) != get_compute(down_logical_op._compute):
+                return False
 
-        # Fusing callable classes is only supported if they are the same function AND
-        # their construction arguments are the same. Note the Write can be compatbile
-        # with any UDF as Write itself doesn't have UDF.
-        # TODO(Clark): Support multiple callable classes instantiating in the same actor
-        # worker.
-        if (
-            isinstance(down_logical_op, AbstractUDFMap)
-            and isinstance(down_logical_op._fn, CallableClass)
-            and isinstance(up_logical_op, AbstractUDFMap)
-            and isinstance(up_logical_op._fn, CallableClass)
-            and (
-                up_logical_op._fn != down_logical_op._fn
-                or (
-                    up_logical_op._fn_constructor_args
-                    != down_logical_op._fn_constructor_args
-                    or up_logical_op._fn_constructor_kwargs
-                    != down_logical_op._fn_constructor_kwargs
+            # Fusing callable classes is only supported if they are the same function
+            # AND their construction arguments are the same. Note the Write can be
+            # compatible  with any UDF as Write itself doesn't have UDF.
+            # TODO(Clark): Support multiple callable classes instantiating
+            # in the same actor worker.
+            if (
+                isinstance(down_logical_op._fn, CallableClass)
+                and isinstance(up_logical_op._fn, CallableClass)
+                and (
+                    up_logical_op._fn != down_logical_op._fn
+                    or (
+                        up_logical_op._fn_constructor_args
+                        != down_logical_op._fn_constructor_args
+                        or up_logical_op._fn_constructor_kwargs
+                        != down_logical_op._fn_constructor_kwargs
+                    )
                 )
-            )
-        ):
-            return False
+            ):
+                return False
 
         # Only fuse if the ops' remote arguments are compatible.
-        if not _are_remote_args_compatible(
+        if (
+            hasattr(up_logical_op, "_ray_remote_args")
+            and hasattr(down_logical_op, "_ray_remote_args")
+        ) and not _are_remote_args_compatible(
             up_logical_op._ray_remote_args or {}, down_logical_op._ray_remote_args or {}
         ):
             return False
@@ -387,11 +402,23 @@ class OperatorFusionRule(Rule):
         # Return the fused physical operator.
         return op
 
-    def _get_fused_limit_operator(self, down_op: Limit, up_op: Limit) -> Limit:
+    def _get_fused_limit_operator(
+        self, down_op: LimitOperator, up_op: LimitOperator
+    ) -> LimitOperator:
         assert self._can_fuse(down_op, up_op), (
             "Current rule supports fusing Limit -> Limit"
             f", but received: {type(up_op).__name__} -> {type(down_op).__name__}"
         )
+
+        new_limit = min(down_op._limit, up_op._limit)
+        fused_physical_op = LimitOperator(new_limit, up_op.input_dependencies[0])
+
+        up_logical_op = self._op_map.pop(up_op)
+        fused_logical_op = Limit(up_logical_op.input_dependencies[0], new_limit)
+        self._op_map[fused_physical_op] = fused_logical_op
+
+        # Return the fused physical operator.
+        return fused_physical_op
 
 
 def _are_remote_args_compatible(prev_args, next_args):

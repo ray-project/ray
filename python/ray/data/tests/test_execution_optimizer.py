@@ -1372,6 +1372,7 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     def f2(x):
         return x
 
+    # Test basic limit pushdown past Map, which happens on the logical plan.
     ds = ray.data.range(100, parallelism=100).map(f1).limit(1).materialize()
     assert (
         str(ds._plan._logical_plan.dag)
@@ -1379,43 +1380,75 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     )
     assert len(ds.take_all()) == 1
 
-    ds2 = ray.data.range(100).limit(5).map(f1).limit(100).materialize()
+    # Test basic Limit -> Limit fusion, which applies
+    # during physical plan optimization.
+    ds2 = ray.data.range(100).limit(5).limit(100).materialize()
     assert (
         str(ds2._plan._logical_plan.dag)
-        == "Read[ReadRange] -> Limit[Limit] -> Limit[Limit] -> MapRows[Map(f1)]"
+        == "Read[ReadRange] -> Limit[Limit] -> Limit[Limit]"
     )
-    assert len(ds2.take_all()) == 5
+    assert "Limit[limit=5]" in ds2.stats()
+    assert "Limit[limit=100]" not in ds2.stats()
 
-    ds3 = ray.data.range(100).limit(100).map(f1).limit(5).materialize()
+    # Test limit pushdown and Limit -> Limit fusion.
+    ds3 = ray.data.range(100).limit(5).map(f1).limit(100).materialize()
     assert (
         str(ds3._plan._logical_plan.dag)
         == "Read[ReadRange] -> Limit[Limit] -> Limit[Limit] -> MapRows[Map(f1)]"
     )
-    assert len(ds3.take_all()) == 5
+    assert "Limit[limit=5]" in ds3.stats()
+    assert "Limit[limit=100]" not in ds3.stats()
 
-    ds4 = ray.data.range(100).sort("id").limit(5).materialize()
+    ds4 = ray.data.range(100).limit(100).map(f1).limit(5).materialize()
     assert (
         str(ds4._plan._logical_plan.dag)
-        == "Read[ReadRange] -> Sort[Sort] -> Limit[Limit]"
+        == "Read[ReadRange] -> Limit[Limit] -> Limit[Limit] -> MapRows[Map(f1)]"
     )
-    assert ds4.take_all() == [{"id": i} for i in range(5)]
+    assert len(ds4.take_all()) == 5
+    assert "Limit[limit=5]" in ds4.stats()
+    assert "Limit[limit=100]" not in ds4.stats()
 
-    ds5 = ray.data.range(100).sort("id").map(f1).limit(5).materialize()
+    # Test basic limit pushdown up to Sort.
+    ds5 = ray.data.range(100).sort("id").limit(5).materialize()
     assert (
         str(ds5._plan._logical_plan.dag)
-        == "Read[ReadRange] -> Sort[Sort] -> Limit[Limit] -> MapRows[Map(f1)]"
+        == "Read[ReadRange] -> Sort[Sort] -> Limit[Limit]"
     )
     assert ds5.take_all() == [{"id": i} for i in range(5)]
 
-    ds6 = ray.data.range(100, parallelism=100).map(f1).limit(1).map(f2).materialize()
-    # Limit operator gets pushed down in the logical plan optimization.
+    ds6 = ray.data.range(100).sort("id").map(f1).limit(5).materialize()
     assert (
         str(ds6._plan._logical_plan.dag)
+        == "Read[ReadRange] -> Sort[Sort] -> Limit[Limit] -> MapRows[Map(f1)]"
+    )
+    assert ds6.take_all() == [{"id": i} for i in range(5)]
+
+    # Test limit pushdown between two Map operators.
+    ds7 = ray.data.range(100, parallelism=100).map(f1).limit(1).map(f2).materialize()
+    # Limit operator gets pushed down in the logical plan optimization.
+    assert (
+        str(ds7._plan._logical_plan.dag)
         == "Read[ReadRange] -> Limit[Limit] -> MapRows[Map(f1)] -> MapRows[Map(f2)]"
     )
     # Map operators only get fused in the optimized physical plan, not the logical plan.
-    assert "Map(f1)->Map(f2)" in ds6.stats(), ds6.stats()
-    assert len(ds6.take_all()) == 1
+    assert "Map(f1)->Map(f2)" in ds7.stats()
+    assert len(ds7.take_all()) == 1
+
+    ds8 = (
+        ray.data.range(100)
+        .sort("id")
+        .map(f1)
+        .limit(20)
+        .sort("id")
+        .map(f2)
+        .limit(5)
+        .materialize()
+    )
+    assert str(ds8._plan._logical_plan.dag) == (
+        "Read[ReadRange] -> Sort[Sort] -> Limit[Limit] -> MapRows[Map(f1)] -> "
+        "Sort[Sort] -> Limit[Limit] -> MapRows[Map(f2)]"
+    )
+    assert ds8.take_all() == [{"id": i} for i in range(5)]
 
 
 def test_blocks_to_input_buffer_op_name(
