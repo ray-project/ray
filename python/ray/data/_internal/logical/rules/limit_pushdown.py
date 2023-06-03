@@ -43,13 +43,13 @@ class LimitPushdownRule(Rule):
                 ), limit_op_copy.input_dependencies
                 new_input_into_limit = current_op.input_dependencies[0]
                 ops_between_new_input_and_limit: List[LogicalOperator] = []
-                while not (
-                    isinstance(new_input_into_limit, (Read, AbstractAllToAll))
-                    or new_input_into_limit.can_modify_num_rows
+                while (
+                    not (
+                        isinstance(new_input_into_limit, (Read, AbstractAllToAll))
+                        or getattr(new_input_into_limit, "can_modify_num_rows", False)
+                    )
+                    and len(new_input_into_limit.input_dependencies) == 1
                 ):
-                    assert (
-                        len(new_input_into_limit.input_dependencies) == 1
-                    ), new_input_into_limit.input_dependencies
                     new_input_into_limit_copy = copy.copy(new_input_into_limit)
                     ops_between_new_input_and_limit.append(new_input_into_limit_copy)
                     new_input_into_limit = new_input_into_limit.input_dependencies[0]

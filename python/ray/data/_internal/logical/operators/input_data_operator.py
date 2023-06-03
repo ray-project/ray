@@ -22,3 +22,7 @@ class InputData(LogicalOperator):
         super().__init__("InputData", [])
         self.input_data = input_data
         self.input_data_factory = input_data_factory
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return False

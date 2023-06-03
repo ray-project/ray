@@ -42,7 +42,7 @@ class Operator:
     def can_modify_num_rows(self) -> bool:
         """Whether this operator can modify the number of rows,
         i.e. number of input rows != number of output rows."""
-        raise NotImplementedError
+        raise AttributeError
 
     def post_order_iter(self) -> Iterator["Operator"]:
         """Depth-first traversal of this operator and its input dependencies."""
