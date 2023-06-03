@@ -8,7 +8,7 @@ from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-def test_to_torch(ray_start_regular_shared):
+def test_to_torch(ray_start_10_cpus_shared):
     import torch
 
     df1 = pd.DataFrame(
@@ -35,7 +35,7 @@ def test_to_torch(ray_start_regular_shared):
 @pytest.mark.parametrize("force_dtype", [False, True])
 @pytest.mark.parametrize("label_type", [None, "squeezed", "unsqueezed"])
 def test_to_torch_feature_columns(
-    ray_start_regular_shared, input, force_dtype, label_type
+    ray_start_10_cpus_shared, input, force_dtype, label_type
 ):
     import torch
 
@@ -132,7 +132,7 @@ def test_to_torch_feature_columns(
     np.testing.assert_array_equal(df.values, combined_iterations)
 
 
-def test_tensors_in_tables_to_torch(ray_start_regular_shared):
+def test_tensors_in_tables_to_torch(ray_start_10_cpus_shared):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -167,7 +167,7 @@ def test_tensors_in_tables_to_torch(ray_start_regular_shared):
         np.testing.assert_array_equal(df["label"].to_numpy(), labels)
 
 
-def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared):
+def test_tensors_in_tables_to_torch_mix(ray_start_10_cpus_shared):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -217,7 +217,7 @@ def test_tensors_in_tables_to_torch_mix(ray_start_regular_shared):
         "Waiting for Torch to support unsqueezing and concatenating nested tensors."
     )
 )
-def test_tensors_in_tables_to_torch_variable_shaped(ray_start_regular_shared):
+def test_tensors_in_tables_to_torch_variable_shaped(ray_start_10_cpus_shared):
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs1 = [
@@ -261,7 +261,7 @@ def test_tensors_in_tables_to_torch_variable_shaped(ray_start_regular_shared):
         np.testing.assert_array_equal(df["label"].to_numpy(), labels)
 
 
-def test_iter_torch_batches(ray_start_regular_shared):
+def test_iter_torch_batches(ray_start_10_cpus_shared):
     import torch
 
     df1 = pd.DataFrame(
@@ -288,7 +288,7 @@ def test_iter_torch_batches(ray_start_regular_shared):
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
-def test_iter_torch_batches_tensor_ds(ray_start_regular_shared):
+def test_iter_torch_batches_tensor_ds(ray_start_10_cpus_shared):
     arr1 = np.arange(12).reshape((3, 2, 2))
     arr2 = np.arange(12, 24).reshape((3, 2, 2))
     arr = np.concatenate((arr1, arr2))
