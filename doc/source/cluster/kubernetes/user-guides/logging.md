@@ -147,7 +147,7 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 (redirect-to-stderr)=
 ## Redirecting Ray logs to stderr
 
-By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` directory. If you prefer to redirect logs to stderr of the host pods instead, set the environment variable ``RAY_LOG_TO_STDERR=1`` on the driver and on all Ray nodes. This practice is not recommended but may be useful if your log processing tool only captures log records written to stderr.
+By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` directory. If you prefer to redirect logs to stderr of the host pods instead, set the environment variable ``RAY_LOG_TO_STDERR=1`` on all Ray nodes. This practice is not recommended but may be useful if your log processing tool only captures log records written to stderr.
 
 ```{admonition} Alert
 :class: alert
@@ -167,9 +167,7 @@ Redirecting logging to stderr also prepends a ``({component})`` prefix, for exam
 
 These prefixes allow you to filter the stderr stream of logs down to the component of interest. Note that multi-line log records do **not** have this component marker at the beginning of each line.
 
-Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` on the driver and on all Ray nodes
-
-1. **Set on all Ray Pods or Nodes**
+Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` on all Ray nodes
 
   ::::{tab-set}
 
@@ -193,13 +191,6 @@ Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` o
 
 
   ::::
-
-2. **When connecting to the cluster, be sure to set the environment variable before connecting**:
-
-  ```python
-  os.environ["RAY_LOG_TO_STDERR"] = "1"
-  ray.init(address="auto")
-  ```
 
 
 
