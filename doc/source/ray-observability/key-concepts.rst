@@ -12,33 +12,6 @@ Ray provides a web-based dashboard to help users monitor and debug Ray applicati
 See :ref:`Getting Started <observability-getting-started>` for more details about the Dashboard.
 
 
-Accessing Ray states
---------------------
-Ray 2.0 and later versions support CLI and Python APIs for querying the state of resources (e.g., Actor, Task, Object, etc.)
-
-For example, the following command summarizes the task state of the Cluster:
-
-.. code-block:: bash
-
-    ray summary tasks
-
-.. code-block:: text
-
-    ======== Tasks Summary: 2022-07-22 08:54:38.332537 ========
-    Stats:
-    ------------------------------------
-    total_actor_scheduled: 2
-    total_actor_tasks: 0
-    total_tasks: 2
-
-
-    Table (group by func_name):
-    ------------------------------------
-        FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
-    0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
-    1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
-
-
 Ray States
 ----------
 Ray States refer to the state of various Ray entities (e.g., Actor, Task, Object, etc.). Ray 2.0 and later versions support :ref:`querying the states of entities with the CLI and Python APIs <observability-programmatic>`
