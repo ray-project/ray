@@ -174,9 +174,12 @@ class TorchCNN(nn.Module):
         self.expected_input_dtype = torch.float32
 
     def forward(self, inputs):
-        # Permute b/c data comes in as [B, dim, dim, channels]:
+        # Permute b/c data comes in as channels_last ([B, dim, dim, channels]) ->
+        # Convert to `channels_first` for torch:
         inputs = inputs.permute(0, 3, 1, 2)
-        return self.cnn(inputs.type(self.expected_input_dtype))
+        out = self.cnn(inputs.type(self.expected_input_dtype))
+        # Permute back to `channels_last`.
+        return out.permute(0, 2, 3, 1)
 
 
 class TorchCNNTranspose(nn.Module):

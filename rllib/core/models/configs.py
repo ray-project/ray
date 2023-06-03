@@ -524,6 +524,8 @@ class CNNEncoderConfig(ModelConfig):
             # Last output dimension is easy: Set to num_filters.
             dims[2] = num_filters
 
+        # Also store the actual CNN output shape.
+        self.cnn_output_dims = dims
         # Flatten everything.
         self.output_dims = (int(np.prod(dims)),)
 
