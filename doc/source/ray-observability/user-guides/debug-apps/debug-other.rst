@@ -4,12 +4,12 @@ Debugging Other Issues
 ======================
 
 Ray sometimes has some aspects of its behavior that might catch
-users off guard (there may be sound arguments for these design choices). For example, users think of Ray as running on their local machine, and
-while this is sometimes true, this can lead to various issues.
+users off guard. There may be sound arguments for these design choices.
 
-Here we list some common issues people may run into.
+In particular, users think of Ray as running on their local machine, and
+while this is mostly true, this doesn't work.
 
-Environment variables are not passed from the driver process to worker processes
+Environment variables are not passed from the driver to workers
 ---------------------------------------------------------------
 
 **Issue**: If you set an environment variable at the command line, it is not passed to all the workers running in the cluster

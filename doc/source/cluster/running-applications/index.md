@@ -1,4 +1,4 @@
-# Application guide
+# Index
 
 This section introduces the main differences in running a Ray application on your laptop vs on a Ray Cluster.
 To get started, check out the [job submissions](jobs-quickstart) page.

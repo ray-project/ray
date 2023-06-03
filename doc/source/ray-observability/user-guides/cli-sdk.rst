@@ -1,17 +1,18 @@
 .. _observability-programmatic:
 
 Monitoring with the CLI or SDK
-===============================
+==============================
 
 Monitoring and debugging capabilities in Ray are available through a CLI or SDK.
 
 
-CLI command ``ray status`` 
-----------------------------
-You can monitor node status and resource usage by running the CLI command, ``ray status``, on the head node. It displays
+Monitoring Cluster state and resource demands
+---------------------------------------------
+Monitor Cluster usage and autoscaling status by running the ``ray status`` CLI command on the head node. It displays:
 
-- **Node Status**: Nodes that are running and autoscaling up or down. Addresses of running nodes. Information about pending nodes and failed nodes.
-- **Resource Usage**: The Ray resource usage of the cluster. For example, requested CPUs from all Ray Tasks and Actors. Number of GPUs that are used.
+- **Cluster State**: Nodes that are up and running. Addresses of running nodes. Information about pending nodes and failed nodes.
+- **Autoscaling Status**: The number of nodes that are autoscaling up and down.
+- **Cluster Usage**: The resource usage of the cluster. For example, requested CPUs from all Ray Tasks and Actors. Number of GPUs that are used.
 
 Following is an example output:
 
@@ -39,13 +40,10 @@ Following is an example output:
    Demands:
     (no resource demands)
 
-When you need more verbose info about each node, run ``ray status -v``. This is helpful when you need to investigate why particular nodes don't autoscale down.
-
-
 .. _state-api-overview-ref:
 
-Ray State CLI and SDK
-----------------------------
+Monitoring Ray states
+=====================
 
 .. tip:: We'd love to hear your feedback on using Ray state APIs - `feedback form <https://forms.gle/gh77mwjEskjhN8G46>`_!
 
@@ -53,17 +51,13 @@ Use Ray State APIs to access the current state (snapshot) of Ray through a CLI o
 
 .. note::
 
-    This feature requires a full installation of Ray using ``pip install "ray[default]"``. This feature also requires that the dashboard component is available. The dashboard component needs to be included when starting the Ray Cluster, which is the default behavior for ``ray start`` and ``ray.init()``.
+    This feature requires an installation of Ray using ``pip install "ray[default]"``. This feature also requires the Dashboard component to be available. The Dashboard component needs to be included when starting the Ray Cluster, which is the default behavior for ``ray start`` and ``ray.init()``. For more in-depth debugging, check the Dashboard log at ``<RAY_LOG_DIR>/dashboard.log``, which is usually ``/tmp/ray/session_latest/logs/dashboard.log``.
 
 .. note::
 
     State API CLI commands are :ref:`stable <api-stability-stable>`, while Python SDKs are :ref:`DeveloperAPI <developer-api-def>`. CLI usage is recommended over Python SDKs.
 
-
-Get started
-~~~~~~~~~~~
-
-This example uses the following script that runs two Tasks and creates two Actors.
+Run any workload. In this example, use the following script that runs 2 Tasks and creates 2 Actors.
 
 .. testcode::
     :hide:
@@ -235,30 +229,26 @@ Access logs through the ``ray logs`` API.
             for line in get_log(actor_id=<ACTOR_ID>):
                 print(line)
 
-Key Concepts
-~~~~~~~~~~~~~
-Ray State APIs allow you to access **states** of **resources** through **summary**, **list**, and **get** APIs. It also supports **logs** API to access logs.
+Key concepts
+------------
+Ray state APIs allow you to access **states** of **resources** through **summary**, **list**, and **get** APIs. It also supports **logs** API to access logs.
 
-- **states**: The state of the cluster of corresponding resources. States consist of immutable metadata (e.g., Actor's name) and mutable states (e.g., Actor's scheduling state or pid).
-- **resources**: Resources created by Ray. E.g., actors, tasks, objects, placement groups, and etc.
+- **states**: The state of the Cluster of corresponding resources. States consist of immutable metadata (e.g., actor's name) and mutable states (e.g., actor's scheduling state or pid).
+- **resources**: Resources created by Ray. For example, Actors, Tasks, Objects, Placement Groups, etc.
 - **summary**: API to return the summarized view of resources.
 - **list**: API to return every individual entity of resources.
 - **get**: API to return a single entity of resources in detail.
-- **logs**: API to access the log of Actors, Tasks, Workers, or system log files.
+- **logs**: API to access the log of Actors, Tasks, workers, or system log files.
 
-
-
-User guides
-~~~~~~~~~~~~~
-
-Getting a summary of states of entities by type
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Return the summarized information of the given Ray entity (Objects, Actors, Tasks).
+Summary
+-------
+Return the summarized information of the given Ray resource (Objects, Actors, Tasks).
 It is recommended to start monitoring states through summary APIs first. When you find anomalies
 (e.g., Actors running for a long time, Tasks that are not scheduled for a long time),
-you can use ``list`` or ``get`` APIs to get more details for an individual abnormal entity.
+use ``list`` or ``get`` APIs to get more details for an individual abnormal resource.
 
-**Summarize all actors**
+Example: Summarize all actors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -279,7 +269,8 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 
             {'cluster': {'summary': {'Actor': {'class_name': 'Actor', 'state_counts': {'ALIVE': 2}}}, 'total_actors': 2, 'summary_by': 'class'}}
 
-**Summarize all tasks**
+Example: Summarize all tasks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -300,7 +291,8 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 
             {'cluster': {'summary': {'task_running_300_seconds': {'func_or_class_name': 'task_running_300_seconds', 'type': 'NORMAL_TASK', 'state_counts': {'RUNNING': 2}}, 'Actor.__init__': {'func_or_class_name': 'Actor.__init__', 'type': 'ACTOR_CREATION_TASK', 'state_counts': {'FINISHED': 2}}}, 'total_tasks': 2, 'total_actor_tasks': 0, 'total_actor_scheduled': 2, 'summary_by': 'func_name'}}
 
-**Summarize all objects**
+Example: Summarize all objects
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. note::
 
@@ -327,11 +319,8 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 
             {'cluster': {'summary': {'disabled': {'total_objects': 6, 'total_size_mb': 0.0, 'total_num_workers': 3, 'total_num_nodes': 1, 'task_state_counts': {'SUBMITTED_TO_WORKER': 2, 'FINISHED': 2, 'NIL': 2}, 'ref_type_counts': {'LOCAL_REFERENCE': 2, 'ACTOR_HANDLE': 4}}}, 'total_objects': 6, 'total_size_mb': 0.0, 'callsite_enabled': False, 'summary_by': 'callsite'}}
 
-See :ref:`state CLI reference <state-api-cli-ref>` for more details about ``ray summary`` command.
-
-
-List the states of all entities of certain type
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+List
+----
 
 Get a list of resources. Possible resources include:
 
@@ -344,7 +333,8 @@ Get a list of resources. Possible resources include:
 - Workers (Ray worker processes), e.g., worker ID, type, exit type and details (:class:`output schema <ray.util.state.common.WorkerState>`)
 - :ref:`Runtime environments <runtime-environments>`, e.g., runtime envs, creation time, nodes (:class:`output schema <ray.util.state.common.RuntimeEnvState>`)
 
-**List all nodes**
+Example: List all nodes
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -361,7 +351,8 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_nodes
             list_nodes()
 
-**List all placement groups**
+Example: List all Placement Groups
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -379,7 +370,8 @@ Get a list of resources. Possible resources include:
             list_placement_groups()
 
 
-**List local referenced objects created by a process**
+Example: List local referenced objects created by a process
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tip:: You can list resources with one or multiple filters: using `--filter` or `-f`
 
@@ -398,7 +390,8 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_objects
             list_objects(filters=[("pid", "=", 1234), ("reference_type", "=", "LOCAL_REFERENCE")])
 
-**List alive actors**
+Example: List live actors
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -415,7 +408,8 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_actors
             list_actors(filters=[("state", "=", "ALIVE")])
 
-**List running tasks**
+Example: List running tasks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -432,7 +426,8 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_tasks
             list_tasks(filters=[("state", "=", "RUNNING")])
 
-**List non-running tasks**
+Example: List non-running tasks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -449,7 +444,8 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_tasks
             list_tasks(filters=[("state", "!=", "RUNNING")])
 
-**List running tasks that have a name func**
+Example: List running tasks that have a name func
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -466,7 +462,8 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_tasks
             list_tasks(filters=[("state", "=", "RUNNING"), ("name", "=", "task_running_300_seconds()")])
 
-**List tasks with more details**
+Example: List tasks with more details
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tip:: When ``--detail`` is specified, the API can query more data sources to obtain state information in details.
 
@@ -485,13 +482,11 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_tasks
             list_tasks(detail=True)
 
-See :ref:`state CLI reference <state-api-cli-ref>` for more details about ``ray list`` command.
+Get
+---
 
-
-Get the states of a particular entity (task, actor, etc.)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-**Get a task's states**
+Example: Get a task info
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -509,7 +504,8 @@ Get the states of a particular entity (task, actor, etc.)
             from ray.util.state import get_task
             get_task(id=<TASK_ID>)
 
-**Get a node's states**
+Example: Get node info
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -527,18 +523,16 @@ Get the states of a particular entity (task, actor, etc.)
             from ray.util.state import get_node
             get_node(id=<NODE_ID>)
 
-See :ref:`state CLI reference <state-api-cli-ref>` for more details about ``ray get`` command.
-
-
-Fetch the logs of a particular entity (task, actor, etc.)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Logs
+----
 
 .. _state-api-log-doc:
 
 State API also allows you to access Ray logs. Note that you cannot access the logs from a dead node.
 By default, the API prints logs from a head node.
 
-**Get all retrievable log file names from a head node in a cluster**
+Example: Get all retrievable log file names from a head node in a Cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -560,7 +554,8 @@ By default, the API prints logs from a head node.
             # Get the node ID / node IP from `ray list nodes`
             list_logs(node_id=<HEAD_NODE_ID>)
 
-**Get a particular log file from a node**
+Example: Get a particular log file from a node
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -584,7 +579,8 @@ By default, the API prints logs from a head node.
             for line in get_log(filename="gcs_server.out", node_id=<NODE_ID>):
                 print(line)
 
-**Stream a log file from a node**
+Example: Stream a log file from a node
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -610,7 +606,8 @@ By default, the API prints logs from a head node.
             for line in get_log(filename="raylet.out", node_ip=<NODE_IP>, follow=True):
                 print(line)
 
-**Stream log from an actor with actor id**
+Example: Stream log from an actor with Actor ID
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -632,7 +629,8 @@ By default, the API prints logs from a head node.
             for line in get_log(actor_id=<ACTOR_ID>, follow=True):
                 print(line)
 
-**Stream log from a pid**
+Example: Stream log from a PID
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. tabs::
 
@@ -656,78 +654,40 @@ By default, the API prints logs from a head node.
             for line in get_log(pid=<PID>, node_ip=<NODE_IP>, follow=True):
                 print(line)
 
-See :ref:`state CLI reference<state-api-cli-ref>` for more details about ``ray logs`` command.
+Failure semantics
+-----------------
 
+The state APIs don't guarantee to return a consistent or complete snapshot of the Cluster all the time. By default,
+all Python SDKs raise an exception when there's a missing output from the API. And the CLI returns a partial result
+and provides warning messages. These cases may not generate output from the API.
 
-Failure Semantics
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The State APIs don't guarantee to return a consistent or complete snapshot of the cluster all the time. By default,
-all Python SDKs raise an exception when output is missing from the API. The CLI returns a partial result
-and provides warning messages. Here are cases where there can be missing output from the API.
-
-**Query Failures**
+Query failures
+~~~~~~~~~~~~~~
 
 State APIs query "data sources" (e.g., GCS, raylets, etc.) to obtain and build the snapshot of the Cluster.
 However, data sources are sometimes unavailable (e.g., the source is down or overloaded). In this case, APIs
 return a partial (incomplete) snapshot of the Cluster, and users are informed that the output is incomplete through a warning message.
 All warnings are printed through Python's ``warnings`` library, and they can be suppressed.
 
-**Data Truncation**
+Data truncation
+~~~~~~~~~~~~~~~
 
-When the returned number of entities (number of rows) is too large (> 100K), state APIs truncate the output data to ensure system stability
-(when this happens, there's no way to choose truncated data). When truncation happens it is informed through Python's
+When the returned number of entities (number of rows) is too large (> 100K), state APIs truncate the output data to ensure system stability.
+(When this happens, there's no way to choose truncated data.) When truncation happens it is communicated through Python's
 ``warnings`` module.
 
-**Garbage Collected Resources**
+Garbage collected resources
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Depending on the lifecycle of the resources, some "finished" resources are not accessible
 through the APIs because they are already garbage collected.
-
-.. note::
-
-    Do not to rely on this API to obtain correct information on finished resources.
-    For example, Ray periodically garbage collects DEAD state Actor data to reduce memory usage.
-    Or it cleans up the FINISHED state of Tasks when its lineage goes out of scope.
+**It is recommended not to rely on this API to obtain correct information on finished resources**.
+For example, Ray periodically garbage collects DEAD state Actor data to reduce memory usage.
+Or it cleans up the FINISHED state of Tasks when its lineage goes out of scope.
 
 API Reference
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------
 
 - For the CLI Reference, see :ref:`State CLI Refernece <state-api-cli-ref>`.
 - For the SDK Reference, see :ref:`State API Reference <state-api-ref>`.
 - For the Log CLI Reference, see :ref:`Log CLI Reference <ray-logs-api-cli-ref>`.
-
-
-
-
-Using Ray CLI tools from outside the cluster
---------------------------------------------------------
-These CLI commands have to be run on a node in the Ray Cluster. Examples for
-executing these commands from a machine outside the Ray Cluster are provided
-below.
-
-.. tab-set::
-
-    .. tab-item:: VM Cluster Launcher
-
-        Execute a command on the cluster using ``ray exec``:
-
-        .. code-block:: shell
-
-            $ ray exec <cluster config file> "ray status"
-
-    .. tab-item:: KubeRay
-
-        Execute a command on the cluster using ``kubectl exec`` and the configured
-        RayCluster name. Ray uses the Service targeting the Ray head pod to
-        execute a CLI command on the cluster.
-
-        .. code-block:: shell
-
-            # First, find the name of the Ray head service.
-            $ kubectl get pod | grep <RayCluster name>-head
-            # NAME                                             READY   STATUS    RESTARTS   AGE
-            # <RayCluster name>-head-xxxxx                     2/2     Running   0          XXs
-
-            # Then, use the name of the Ray head service to run `ray status`.
-            $ kubectl exec <RayCluster name>-head-xxxxx -- ray status

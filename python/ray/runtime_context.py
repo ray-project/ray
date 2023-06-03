@@ -384,11 +384,8 @@ _runtime_context = None
 
 @PublicAPI
 @client_mode_hook
-def get_runtime_context() -> RuntimeContext:
+def get_runtime_context():
     """Get the runtime context of the current driver/worker.
-
-    The obtained runtime context can be used to get the metadata
-    of the current task and actor.
 
     Example:
 
@@ -397,12 +394,6 @@ def get_runtime_context() -> RuntimeContext:
             import ray
             # Get the job id.
             ray.get_runtime_context().get_job_id()
-            # Get the actor id.
-            ray.get_runtime_context().get_actor_id()
-            # Get the task id.
-            ray.get_runtime_context().get_task_id()
-            # Get the worker id.
-            ray.get_runtime_context().get_worker_id()
 
     """
     global _runtime_context
