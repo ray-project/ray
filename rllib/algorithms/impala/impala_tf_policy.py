@@ -20,7 +20,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
-from ray.rllib.policy.tf_mixins import GradStatsMixin
+from ray.rllib.policy.tf_mixins import GradStatsMixin, ValueNetworkMixin
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
@@ -273,6 +273,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
         LearningRateSchedule,
         EntropyCoeffSchedule,
         GradStatsMixin,
+        ValueNetworkMixin,
         base,
     ):
         def __init__(
@@ -295,6 +296,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 existing_inputs=existing_inputs,
                 existing_model=existing_model,
             )
+            ValueNetworkMixin.__init__(self, config)
 
             # If Learner API is used, we don't need any loss-specific mixins.
             # However, we also would like to avoid creating special Policy-subclasses
