@@ -11,6 +11,8 @@ parts:
         title: "Installation"
       - file: ray-overview/use-cases
         title: "Use Cases"
+      - file: ray-overview/examples
+        title: "Example Gallery"
       - file: ray-overview/ray-libraries
         title: "Ecosystem"
 
@@ -388,6 +390,7 @@ parts:
               sections:
               - file: cluster/vms/examples/ml-example
             - file: cluster/vms/references/index
+          - file: cluster/metrics
           - file: cluster/configure-manage-dashboard
           - file: cluster/running-applications/index
             title: Applications Guide
