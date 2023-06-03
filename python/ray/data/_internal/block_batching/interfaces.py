@@ -1,5 +1,4 @@
 import abc
-
 from dataclasses import dataclass
 from typing import Any, List
 
@@ -43,6 +42,7 @@ class BlockPrefetcher(metaclass=abc.ABCMeta):
         """Prefetch the provided blocks to this node."""
         pass
 
+    @abc.abstractmethod
     def stop(self):
         """Stop prefetching and release resources."""
         pass
