@@ -64,8 +64,6 @@ class TfCNNEncoder(TfModel, Encoder):
         # Add a flatten operation to move from 2/3D into 1D space.
         layers.append(tf.keras.layers.Flatten())
 
-        print(f"output shape={cnn.output_shape}")
-
         # Create the network from gathered layers.
         self.net = tf.keras.Sequential(layers)
 

@@ -4,6 +4,7 @@ from ray.rllib.utils.typing import ViewRequirementsDict
 import functools
 
 import gymnasium as gym
+import numpy as np
 
 from ray.rllib.core.models.base import ModelConfig, Model, Encoder
 from ray.rllib.models.utils import get_activation_fn
@@ -500,6 +501,31 @@ class CNNEncoderConfig(ModelConfig):
     cnn_activation: str = "relu"
     cnn_use_layernorm: bool = False
     use_bias: bool = True
+
+    def __post_init__(self):
+        """Post initialize implementation for this CNNEncoderConfig.
+
+        Infers the value of `self.output_dims` based on the other settings.
+        """
+        self._validate()
+
+        # Infer output dims, layer by layer.
+        dims = self.input_dims.copy()
+        for filter_spec in self.cnn_filter_specifiers:
+            # TODO (sven): For now, we only support "same" padding in cnn_filter_specifiers.
+            #  Add optional forth item to filter specs to indicate padding type:
+            #  "same" or "valid".
+            num_filters, kernel, stride = filter_spec
+            strides = (stride, stride) if isinstance(stride, (int, float)) else stride
+            # Divide 1st and 2nd dim (width and height) by the stride (because we
+            # do same padding).
+            dims[0] = np.ceil(dims[0] / strides[0])
+            dims[1] = np.ceil(dims[1] / strides[1])
+            # Last output dimension is easy: Set to num_filters.
+            dims[2] = num_filters
+
+        # Flatten everything.
+        self.output_dims = (int(np.prod(dims)),)
 
     def _validate(self, framework: str = "torch"):
         if len(self.input_dims) != 3:

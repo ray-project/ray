@@ -99,8 +99,6 @@ class TorchCNNEncoder(TorchModel, Encoder):
         # Add a flatten operation to move from 2/3D into 1D space.
         layers.append(nn.Flatten())
 
-        TODO: compute output_dims automatically
-
         # Create the network from gathered layers.
         self.net = nn.Sequential(*layers)
 
