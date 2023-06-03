@@ -1,12 +1,10 @@
 import abc
-from typing import TYPE_CHECKING, Any, Generic, List, TypeVar, Union
+from typing import TYPE_CHECKING, List, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
-
-T = TypeVar("T")
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -21,7 +19,6 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
         self,
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadata],
-        owns_blocks: bool,
     ):
         super().__init__(self.op_name(), [])
         assert len(input_blocks) == len(input_metadata), (
@@ -29,7 +26,7 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
             len(input_metadata),
         )
         self._input_data = [
-            RefBundle([(input_blocks[i], input_metadata[i])], owns_blocks)
+            RefBundle([(input_blocks[i], input_metadata[i])], False)
             for i in range(len(input_blocks))
         ]
 

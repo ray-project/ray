@@ -186,7 +186,7 @@ def from_items(
             )
         )
 
-    from_items_op = FromItems(blocks, metadata, True)
+    from_items_op = FromItems(blocks, metadata)
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
         ExecutionPlan(
@@ -1469,7 +1469,6 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
 
     import pandas
 
-    owns_blocks = True
     dfs = []
     for part in persisted_partitions:
         df = next(iter(part.dask.values()))
@@ -1477,13 +1476,12 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
             dfs.append(ray.put(df))
         elif isinstance(df, ray.ObjectRef):
             dfs.append(df)
-            owns_blocks = False
         else:
             raise ValueError(
                 "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
             )
 
-    ds = from_pandas_refs(dfs, owns_blocks=owns_blocks)
+    ds = from_pandas_refs(dfs)
     return ds
 
 
@@ -1516,7 +1514,7 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
     parts = unwrap_partitions(df, axis=0)
-    ds = from_pandas_refs(parts, owns_blocks=True)
+    ds = from_pandas_refs(parts)
     return ds
 
 
@@ -1544,13 +1542,12 @@ def from_pandas(
     context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
-    return from_pandas_refs([ray.put(df) for df in dfs], owns_blocks=False)
+    return from_pandas_refs([ray.put(df) for df in dfs])
 
 
 @DeveloperAPI
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]],
-    owns_blocks: bool = False,
 ) -> MaterializedDataset:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
@@ -1581,7 +1578,7 @@ def from_pandas_refs(
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         logical_plan = LogicalPlan(
-            FromPandas(dfs, metadata, owns_blocks)
+            FromPandas(dfs, metadata)
         )
         return MaterializedDataset(
             ExecutionPlan(
@@ -1600,7 +1597,7 @@ def from_pandas_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
     logical_plan = LogicalPlan(
-        FromPandas(blocks, metadata, True)
+        FromPandas(blocks, metadata)
     )
     return MaterializedDataset(
         ExecutionPlan(
@@ -1665,7 +1662,7 @@ def from_numpy_refs(
     metadata = ray.get(metadata)
 
     logical_plan = LogicalPlan(
-        FromNumpy(blocks, metadata, True)
+        FromNumpy(blocks, metadata)
     )
 
     return MaterializedDataset(
@@ -1697,7 +1694,7 @@ def from_arrow(
 
     if isinstance(tables, (pa.Table, bytes)):
         tables = [tables]
-    return from_arrow_refs([ray.put(t) for t in tables], owns_blocks=False)
+    return from_arrow_refs([ray.put(t) for t in tables])
 
 
 @DeveloperAPI
@@ -1706,7 +1703,6 @@ def from_arrow_refs(
         ObjectRef[Union["pyarrow.Table", bytes]],
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ],
-    owns_blocks: bool = False,
 ) -> MaterializedDataset:
     """Create a dataset from a set of Arrow tables.
 
@@ -1723,7 +1719,7 @@ def from_arrow_refs(
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
     logical_plan = LogicalPlan(
-        FromArrow(tables, metadata, owns_blocks)
+        FromArrow(tables, metadata)
     )
 
     return MaterializedDataset(
