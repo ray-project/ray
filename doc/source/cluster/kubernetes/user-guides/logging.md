@@ -151,7 +151,7 @@ By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` direc
 
 ```{admonition} Alert
 :class: alert
-There are known issues with this feature. For example, it may break features like {ref}`log redirection to driver <log-redirection-to-driver>`. If those features are wanted, use the {ref}`Fluent Bit solution`<kuberay-fluentbit>` above.
+There are known issues with this feature. For example, it may break features like {ref}`log redirection to driver <log-redirection-to-driver>`. If those features are wanted, use the {ref}`Fluent Bit solution <kuberay-fluentbit>` above.
 
 For Clusters on VMs, do not redirect logs to stderr. Follow {ref}`this guide <vm-logging>` to persist logs.
 ```
@@ -169,37 +169,37 @@ These prefixes allow you to filter the stderr stream of logs down to the compone
 
 Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` on the driver and on all Ray nodes
 
-1. Set on all Ray Pods or Nodes
+1. **Set on all Ray Pods or Nodes**
 
-::::{tab-set}
+  ::::{tab-set}
 
-:::{tab-item} Single-node local cluster
-**Start the cluster explicitly with CLI** <br/>
-```bash
-env RAY_LOG_TO_STDERR=1 ray start
-```
+  :::{tab-item} Single-node local cluster
+  **Start the cluster explicitly with CLI** <br/>
+  ```bash
+  env RAY_LOG_TO_STDERR=1 ray start
+  ```
 
-**Start the cluster implicitly with `ray.init`** <br/>
-```python
-os.environ["RAY_LOG_TO_STDERR"] = "1"
-ray.init()
-```
-:::
+  **Start the cluster implicitly with `ray.init`** <br/>
+  ```python
+  os.environ["RAY_LOG_TO_STDERR"] = "1"
+  ray.init()
+  ```
+  :::
 
-:::{tab-item} KubeRay
-Set `RAY_LOG_TO_STDERR` to `1` in `spec.headGroupSpec.template.spec.containers.env` and `spec.workerGroupSpec.template.spec.containers.env`. Check out this [example YAML file](https://gist.github.com/scottsun94/da4afda045d6e1cc32f9ccd6c33281c2)
+  :::{tab-item} KubeRay
+  Set `RAY_LOG_TO_STDERR` to `1` in `spec.headGroupSpec.template.spec.containers.env` and `spec.workerGroupSpec.template.spec.containers.env`. Check out this [example YAML file](https://gist.github.com/scottsun94/da4afda045d6e1cc32f9ccd6c33281c2)
 
-:::
+  :::
 
 
-::::
+  ::::
 
-2. When connecting to the cluster, be sure to set the environment variable before connecting:
+2. **When connecting to the cluster, be sure to set the environment variable before connecting**:
 
-```python
-os.environ["RAY_LOG_TO_STDERR"] = "1"
-ray.init(address="auto")
-```
+  ```python
+  os.environ["RAY_LOG_TO_STDERR"] = "1"
+  ray.init(address="auto")
+  ```
 
 
 
