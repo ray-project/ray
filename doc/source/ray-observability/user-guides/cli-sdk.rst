@@ -327,7 +327,7 @@ you can use ``list`` or ``get`` APIs to get more details for an individual abnor
 
             {'cluster': {'summary': {'disabled': {'total_objects': 6, 'total_size_mb': 0.0, 'total_num_workers': 3, 'total_num_nodes': 1, 'task_state_counts': {'SUBMITTED_TO_WORKER': 2, 'FINISHED': 2, 'NIL': 2}, 'ref_type_counts': {'LOCAL_REFERENCE': 2, 'ACTOR_HANDLE': 4}}}, 'total_objects': 6, 'total_size_mb': 0.0, 'callsite_enabled': False, 'summary_by': 'callsite'}}
 
-See :ref:`state CLI refrence<state-api-cli-ref>`` for more details about ``ray summary`` command.
+See :ref:`state CLI reference <state-api-cli-ref>` for more details about ``ray summary`` command.
 
 
 List the states of all entities of certain type
@@ -485,7 +485,7 @@ Get a list of resources. Possible resources include:
             from ray.util.state import list_tasks
             list_tasks(detail=True)
 
-See :ref:`state CLI refrence<state-api-cli-ref>`` for more details about ``ray list`` command.
+See :ref:`state CLI reference<state-api-cli-ref>` for more details about ``ray list`` command.
 
 
 Get the states of a particular entity (task, actor, etc.)
@@ -527,7 +527,7 @@ Get the states of a particular entity (task, actor, etc.)
             from ray.util.state import get_node
             get_node(id=<NODE_ID>)
 
-See :ref:`state CLI refrence<state-api-cli-ref>`` for more details about ``ray get`` command.
+See :ref:`state CLI reference <state-api-cli-ref>` for more details about ``ray get`` command.
 
 
 Fetch the logs of a particular entity (task, actor, etc.)
@@ -656,7 +656,7 @@ By default, the API prints logs from a head node.
             for line in get_log(pid=<PID>, node_ip=<NODE_IP>, follow=True):
                 print(line)
 
-See :ref:`state CLI refrence<state-api-cli-ref>`` for more details about ``ray logs`` command.
+See :ref:`state CLI reference<state-api-cli-ref>` for more details about ``ray logs`` command.
 
 
 Failure Semantics
@@ -708,7 +708,7 @@ below.
 
 .. tab-set::
 
-    .. tab-item:: VM cluster launcher
+    .. tab-item:: VM Cluster Launcher
 
         Execute a command on the cluster using ``ray exec``:
 
@@ -716,7 +716,7 @@ below.
 
             $ ray exec <cluster config file> "ray status"
 
-    .. tab-item:: Kubernetes
+    .. tab-item:: KubeRay
 
         Execute a command on the cluster using ``kubectl exec`` and the configured
         RayCluster name. Ray uses the Service targeting the Ray head pod to
