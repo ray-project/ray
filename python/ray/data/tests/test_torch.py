@@ -308,7 +308,6 @@ def test_iter_torch_batches_tensor_ds(ray_start_10_cpus_shared):
 def test_torch_trainer_crash(ray_start_10_cpus_shared):
     from ray.air import session
     from ray.air.config import ScalingConfig
-    from ray.train import DataConfig
     from ray.train.torch import TorchTrainer
 
     ray.data.DataContext.get_current().execution_options.verbose_progress = True
@@ -319,7 +318,6 @@ def test_torch_trainer_crash(ray_start_10_cpus_shared):
     def train_loop_per_worker():
         it = session.get_dataset_shard("train")
         for i in range(2):
-            start = time.time()
             for batch in it.iter_batches():
                 pass
 
