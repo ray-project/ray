@@ -62,7 +62,7 @@ as well as some known problems. If you encounter other problems, please
 
 Visualizing Tasks with Ray Timeline
 -------------------------------------
-View :ref:` how to use Ray Timeline in the Dashboard <dashboard-timeline>` for more details.
+View :ref:`how to use Ray Timeline in the Dashboard <dashboard-timeline>` for more details.
 
 Instead of using Dashboard UI to download the tracing file, you can also export the tracing file as a JSON file by running ``ray timeline`` from the command line or ``ray.timeline`` from the Python API.
 .. code-block:: python
@@ -315,12 +315,14 @@ Our example in total now takes only 1.5 seconds to run:
 
 GPU Profiling
 ------------------------
-Ray doesn't provide native integration with GPU profiling tools. Try running GPU profilers like [PyTorch Profiler](https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html) without Ray to identify the issues.
+Ray doesn't provide native integration with GPU profiling tools. Try running GPU profilers like `Pytorch Profiler`_ without Ray to identify the issues.
 
 If you have related feature requests, `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues
+.. _`Pytorch Profiler`: https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html
 
 Profiling for Developers
 ------------------------
 If you are developing Ray Core or debugging some system level failures, profiling the Ray Core could help. In this case, see :ref:`Profiling (Internal) <ray-core-internal-profiling>`.
+

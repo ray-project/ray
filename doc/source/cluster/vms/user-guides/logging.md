@@ -1,7 +1,7 @@
 (vm-logging)=
 # Log Persistence
 
-Logs are useful for troubleshooting Ray applications and your system. For example, you may want to access system logs if a node terminates unexpectedly.
+Logs are useful for troubleshooting Ray applications and Clusters. For example, you may want to access system logs if a node terminates unexpectedly.
 
 Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. The following sections provide instructions on how to collect logs from Ray Clusters running on VMs.
 
@@ -11,8 +11,7 @@ By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` 
 
 ## Log processing tools
 
-A number of open source log processing tools are available, such as [Vector][Vector] and [FluentBit][FluentBit].
-Other popular tools include [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
+A number of open source log processing tools are available, such as [Vector][Vector], [FluentBit][FluentBit], [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
 
 [Vector]: https://vector.dev/
 [FluentBit]: https://docs.fluentbit.io/manual

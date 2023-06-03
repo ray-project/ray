@@ -74,7 +74,7 @@ You can also view the dashboard from outside the Kubernetes cluster by using por
 
 ```{admonition} Note
 :class: note
-Do not use port forwarding if you have specific network security requirements. Follow the instructions below to add ingress rules to expose the Ray Dashboard.
+Do not use port forwarding for production environment. Follow the instructions above to expose the Dashboard with Ingress.
 ```
 
 ```shell

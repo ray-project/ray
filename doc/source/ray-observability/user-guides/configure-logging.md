@@ -259,7 +259,7 @@ If you need additional metadata to make logs more structured, fetch the metadata
 ::::{tab-set}
 
 :::{tab-item} Ray Job
-Get the job ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+Get the job ID.
 
 ```python
 import ray
@@ -276,7 +276,7 @@ The job submission ID is not supported yet. This [GitHub issue](https://github.c
 :::
 
 :::{tab-item} Ray Actor
-Get the actor ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+Get the actor ID.
 
 ```python
 import ray
@@ -291,7 +291,7 @@ class actor():
 :::
 
 :::{tab-item} Ray Task
-Get the task ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+Get the task ID.
 
 ```python
 import ray
@@ -304,7 +304,7 @@ def task():
 :::
 
 :::{tab-item} Node
-Get the node ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+Get the node ID.
 
 ```python
 import ray
@@ -329,7 +329,7 @@ If you need node IP, use {py:obj}`ray.nodes` API to fetch all nodes and map the 
 :::
 
 :::{tab-item} Ray Worker
-Get the Ray Worker process ID with {py:obj}`ray.runtime_context.get_runtime_context` API
+Get the Worker ID.
 
 ```python
 import ray

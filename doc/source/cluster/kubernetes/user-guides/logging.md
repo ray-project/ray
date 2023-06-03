@@ -2,7 +2,7 @@
 
 # Log Persistence
 
-Logs (both system and application logs) are useful for troubleshooting Ray applications and your system. For example, you may want to access system logs if a node terminates unexpectedly.
+Logs (both system and application logs) are useful for troubleshooting Ray applications and Clusters. For example, you may want to access system logs if a node terminates unexpectedly.
 
 Similar to Kubernetes, Ray does not provide a native storage solution for log data. Users need to manage the lifecycle of the logs by themselves. This page provides instructions on how to collect logs from Ray Clusters that are running on Kubernetes.
 
@@ -15,7 +15,7 @@ for a sample configuration showing how to extract logs from a Ray pod.
 By default, Ray writes logs to files in the directory `/tmp/ray/session_*/logs` on each Ray pod's file system, including application and system logs. Learn more about the {ref}`log directory and log files <logging-directory>` and the {ref}`log rotation configuration <log-rotation>` before you start to collect the logs.
 
 ## Log processing tools
-There are a number of open source log processing tools available within the Kubernetes ecosystem. This page will shows how to extract Ray logs using [Fluent Bit][FluentBit].
+There are a number of open source log processing tools available within the Kubernetes ecosystem. This page shows how to extract Ray logs using [Fluent Bit][FluentBit].
 Other popular tools include [Vector][Vector], [Fluentd][Fluentd], [Filebeat][Filebeat], and [Promtail][Promtail].
 
 ## Log collection strategies
@@ -24,7 +24,7 @@ Collect logs written to a pod's filesystem using one of two logging strategies:
 patterns in the [Kubernetes documentation][KubDoc].
 
 ### Sidecar containers
-We will provide an {ref}`example <kuberay-fluentbit>` of the sidecar strategy in this guide.
+We provide an {ref}`example <kuberay-fluentbit>` of the sidecar strategy in this guide.
 You can process logs by configuring a log-processing sidecar
 for each Ray pod. Ray containers should be configured to share the `/tmp/ray`
 directory with the logging sidecar via a volume mount.
@@ -147,7 +147,14 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 (redirect-to-stderr)=
 ## Redirecting Ray logs to stderr
 
-By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` directory. To redirect logs to stderr of the host nodes instead, set the environment variable ``RAY_LOG_TO_STDERR=1`` on the driver and on all Ray nodes. This practice is not recommended but may be useful if your log processing tool only captures log records written to stderr.
+By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` directory. If you prefer to redirect logs to stderr of the host pods instead, set the environment variable ``RAY_LOG_TO_STDERR=1`` on the driver and on all Ray nodes. This practice is not recommended but may be useful if your log processing tool only captures log records written to stderr.
+
+```{admonition} Alert
+:class: alert
+There are known issues with this feature. For example, it may break features like {ref}`log redirection to driver <log-redirection-to-driver>`. If those features are wanted, use the {ref}`Fluent Bit solution`<kuberay-fluentbit>` above.
+
+For Clusters on VMs, do not redirect logs to stderr. Follow {ref}`this guide <vm-logging>` to persist logs.
+```
 
 Redirecting logging to stderr also prepends a ``({component})`` prefix, for example ``(raylet)``, to each log record messages.
 
@@ -160,32 +167,34 @@ Redirecting logging to stderr also prepends a ``({component})`` prefix, for exam
 
 These prefixes allow you to filter the stderr stream of logs down to the component of interest. Note that multi-line log records do **not** have this component marker at the beginning of each line.
 
-When running a local Ray Cluster, set this environment variable before starting the local cluster:
+Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` on the driver and on all Ray nodes
 
-```python
-os.environ["RAY_LOG_TO_STDERR"] = "1"
-ray.init()
-```
+1. Set on all Ray Pods or Nodes
 
-When starting a local cluster with the CLI or starting nodes in a multi-node Ray Cluster, set this environment variable before starting up each node:
+::::{tab-set}
 
+:::{tab-item} Single-node local cluster
+**Start the cluster explicitly with CLI** <br/>
 ```bash
 env RAY_LOG_TO_STDERR=1 ray start
 ```
 
-If you are using the Ray Cluster Launcher, specify this environment variable in the Ray start commands:
-
-```bash
-head_start_ray_commands:
-    - ray stop
-    - env RAY_LOG_TO_STDERR=1 ray start --head --port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-
-worker_start_ray_commands:
-    - ray stop
-    - env RAY_LOG_TO_STDERR=1 ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+**Start the cluster implicitly with `ray.init`** <br/>
+```python
+os.environ["RAY_LOG_TO_STDERR"] = "1"
+ray.init()
 ```
+:::
 
-When connecting to the cluster, be sure to set the environment variable before connecting:
+:::{tab-item} KubeRay
+Set `RAY_LOG_TO_STDERR` to `1` in `spec.headGroupSpec.template.spec.containers.env` and `spec.workerGroupSpec.template.spec.containers.env`. Check out this [example YAML file](https://gist.github.com/scottsun94/da4afda045d6e1cc32f9ccd6c33281c2)
+
+:::
+
+
+::::
+
+2. When connecting to the cluster, be sure to set the environment variable before connecting:
 
 ```python
 os.environ["RAY_LOG_TO_STDERR"] = "1"

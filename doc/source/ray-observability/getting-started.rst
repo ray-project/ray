@@ -87,7 +87,7 @@ For more information on Ray jobs, see the :ref:`Ray Job Overview section <jobs-o
 Job Profiling
 ~~~~~~~~~~~~~
 
-You can profile Ray jobs by clicking on the “Stack Trace” or “CPU Flame Graph” actions. See :ref:` Profiling <profiling-concept>` for more details.
+You can profile Ray jobs by clicking on the “Stack Trace” or “CPU Flame Graph” actions. See :ref:`Profiling <profiling-concept>` for more details.
 
 .. _dash-workflow-job-progress:
 
@@ -112,20 +112,21 @@ Tasks and Actors are grouped and nested using the following criteria:
 
   Job detail page can only display or retrieve up to 10K tasks per job. For Jobs with more than 10K Tasks, the portion of Tasks that exceed the 10K limit are unaccounted. The number of unaccounted tasks is available from the task breakdown.
 
-(dashboard-timeline)=
+
+.. _dashboard-timeline:
 Task Timeline
 ~~~~~~~~~~~~~
 
-The :ref:`timeline API <ray-core-timeline>` is available from the Task Timeline pane.
+First, download the chrome tracing file by clicking the download button. Alternatively, you can :ref:`use CLI or SDK to export the tracing file <ray-core-timeline>`.
 
-Download the Chrome tracing file by clicking the download button.
+Second, use tools like ``chrome://tracing`` or the `Perfetto UI <https://ui.perfetto.dev/>`_ and drop the downloaded chrome tracing file. We will use the Perfetto as it is the recommendation way to visualize chrome tracing files.
 
-Drag and drop the downloaded Chrome tracing file to `Perfetto UI <https://ui.perfetto.dev/>`_ to visualize Chrome tracing files. If Perfetto is not available, you can use ``chrome://tracing``.  
+In the timeline visualization of Ray tasks and actors, there are Node rows (hardware) and Worker rows (processes).
+Each worker rows display a list of events (e.g., task scheduled, task running, input/output deserialization, etc.) happening from that worker over time.
 
-The timeline visualization of Ray Tasks and Actors has Node rows (hardware) and Worker rows (processes).
-Each worker row displays a list of events (e.g., task scheduled, task running, input/output deserialization, etc.) for that worker over time.
 
-Ray status
+
+Ray Status
 ~~~~~~~~~~
 
 The Jobs view displays the Autoscaler status of the Ray Cluster. This information is the output of the ``ray status`` CLI command.
