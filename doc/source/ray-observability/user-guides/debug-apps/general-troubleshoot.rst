@@ -1,15 +1,15 @@
-.. _observability-debug-other:
+.. _observability-general-troubleshoot:
 
-Debugging Other Issues
-======================
+General Troubleshooting
+=======================
 
 Ray sometimes has some aspects of its behavior that might catch
-users off guard (there may be sound arguments for these design choices). For example, users think of Ray as running on their local machine, and
-while this is sometimes true, this can lead to various issues.
+users off guard. There may be sound arguments for these design choices.
 
-Here we list some common issues people may run into.
+In particular, users think of Ray as running on their local machine, and
+while this is mostly true, this doesn't work.
 
-Environment variables are not passed from the driver process to worker processes
+Environment variables are not passed from the driver to workers
 ---------------------------------------------------------------
 
 **Issue**: If you set an environment variable at the command line, it is not passed to all the workers running in the cluster
@@ -70,6 +70,7 @@ And I have this code:
 
 .. testoutput::
     :hide:
+    :options: +ELLIPSIS
 
     ...
 
@@ -119,7 +120,7 @@ of Ray Tasks itself, e.g.
 This will error with message:
 
 .. testoutput::
-  :options: +MOCK
+  :options: +SKIP
 
     ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
     because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].

@@ -7,13 +7,15 @@ Ray provides a web-based dashboard for monitoring and debugging Ray applications
 The visual representation of the system state, allows users to track the performance
 of applications and troubleshoot issues.
 
-Set up
-------
+.. raw:: html
 
     <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/i33b1DYjYRQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
+
+Set up
+------
 
 To access the dashboard, use `ray[default]`, `ray[air]`, or :ref:`other installation commands <installation>` that include the Ray Dashboard component. For example:
 
@@ -75,11 +77,8 @@ Jobs view
         <iframe width="560" height="315" src="https://www.youtube.com/embed/CrpXSSs0uaw" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
-The Jobs view lists the active, finished, and failed Jobs on the Ray Cluster. Click on the job ID to view more detailed information.
-A Job is a Ray workload that uses Ray APIs (e.g., ``ray.init``). You can submit a Job directly (by executing a Python script within a head node) or with the :ref:`Ray Job API <jobs-quickstart>`.
-For more information about Ray Jobs, see the :ref:`Ray Job Overview <jobs-overview>` section.
-
-A Ray :ref:`job <jobs-overview>` is a Ray workload that uses Ray APIs (e.g., ``ray.init``). It is recommended to submit your job to clusters via :ref:`Ray job API <jobs-quickstart>`. You can also interactively run Ray jobs (e.g., by executing a Python script within a head node).
+The Jobs view lets you monitor the different jobs that ran on your Ray cluster.
+A :ref:`Ray Job <jobs-overview>` is a Ray workload that uses Ray APIs (e.g., ``ray.init``). It is recommended to submit your Job to Clusters via :ref:`Ray Job API <jobs-quickstart>`. You can also interactively run Ray jobs (e.g., by executing a Python script within a head node).
 
 The job page displays a list of active, finished, and failed jobs, and clicking on an ID allows users to view detailed information about that job.
 For more information on Ray jobs, see the :ref:`Ray Job Overview section <jobs-overview>`.
@@ -129,7 +128,7 @@ Each worker rows display a list of events (e.g., task scheduled, task running, i
 Ray Status
 ~~~~~~~~~~
 
-The Jobs view displays the Autoscaler status of the Ray Cluster. This information is the output of the ``ray status`` CLI command.
+The Jobs view displays the status of the Ray Cluster. This information is the output of the ``ray status`` CLI command.
 
 The left panel shows the autoscaling status, including pending, active, and failed nodes.
 The right panel displays the cluster's demands, which are resources that cannot be scheduled to the cluster at the moment. This page is useful for debugging resource deadlocks or slow scheduling.
@@ -158,9 +157,6 @@ Serve view
     <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/eqXfwM641a4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
-
-The initial page presents your general Serve configurations, a list of the Serve applications, and, if you have :ref:`Grafana and Prometheus <observability-visualization-setup>` configured, some high-level
-metrics of your Serve applications. Click the name of a Serve application to go to the Serve Application Detail page.
 
 See your general Serve configurations, a list of the Serve applications, and, if you configured :ref:`Grafana and Prometheus <observability-configure-manage-dashboard>`, high-level
 metrics of your Serve applications. Click the name of a Serve application to go to the Serve Application Detail page.
@@ -255,16 +251,12 @@ Metrics view
         <iframe width="560" height="315" src="https://www.youtube.com/embed/yn5Q65iHAR8" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
-Ray exports default metrics, which are available from the Metrics View. Here are some available example metrics.
-
 Ray exports default metrics which are available from the :ref:`Metrics view <dash-metrics-view>`. Here are some available example metrics.
 
 - Tasks, Actors, and Placement Groups broken down by states
 - :ref:`Logical resource usage <logical-resources>` across nodes
 - Hardware resource usage across nodes
 - Autoscaler status
-
-You can select the time range of the metrics in the top right corner. The graphs refresh automatically every 15 seconds.
 
 See :ref:`System Metrics Page <system-metrics>` for available metrics.
 
@@ -273,6 +265,10 @@ See :ref:`System Metrics Page <system-metrics>` for available metrics.
   The Metrics view requires the Prometheus and Grafana setup. See :ref:`Configuring and Managing the Dashboard <observability-visualization-setup>` to learn how to set up Prometheus and Grafana.
 
 The Metrics view provides visualizations of the time series metrics emitted by Ray.
+
+You can select the time range of the metrics in the top right corner. The graphs refresh automatically every 15 seconds.
+
+There is also a convenient button to open the grafana UI from the dashboard. The Grafana UI provides additional customizability of the charts.
 
 .. _dash-workflow-cpu-memory-analysis:
 
@@ -340,13 +336,13 @@ The Logs view provides search functionality to help you find specific log messag
 
 **Driver logs**
 
-If the Ray Job is submitted by the :ref:`Ray job API <jobs-quickstart>`, the Job logs are available from the Dashboard. The log file follows the following format; ``job-driver-<job_submission_id>.log``.
+If the Ray Job is submitted by the :ref:`Ray Job API <jobs-quickstart>`, the Job logs are available from the Dashboard. The log file follows the following format; ``job-driver-<job_submission_id>.log``.
 
 .. note::
 
   If the driver is executed directly on the head node of the Ray Cluster (without the job API) or run with :ref:`Ray client <ray-client-ref>`, the driver logs are not accessible from the dashboard. In this case, see the terminal output to view the driver logs.
 
-**Task and Actor Logs (worker logs)**
+**Task and Actor Logs (Worker logs)**
 
 Task and actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the "Log" button.
 You can see the ``stdout`` and ``stderr`` logs that contain the output emitted from Tasks and Actors.
