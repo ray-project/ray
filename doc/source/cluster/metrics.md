@@ -54,7 +54,7 @@ Next, start Prometheus:
 ```
 ```{admonition} Note
 :class: note
-If you are using macOS, you may receive an error at this point about trying to launch an application where the developer has not been verified. See the "Troubleshooting" guide below to fix the issue.
+If you are using macOS, you may receive an error at this point about trying to launch an application where the developer has not been verified. See the [Troubleshooting](#troubleshooting) guide below to fix the issue.
 ```
 
 Now, you can access Ray metrics from the default Prometheus URL, `http://localhost:9090`.

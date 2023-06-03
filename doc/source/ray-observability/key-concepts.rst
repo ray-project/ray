@@ -11,34 +11,6 @@ Ray provides a web-based dashboard to help users monitor and debug Ray applicati
 
 See :ref:`Getting Started <observability-getting-started>` for more details about the Dashboard.
 
-
-Accessing Ray states
---------------------
-Ray 2.0 and later versions support CLI and Python APIs for querying the state of resources (e.g., Actor, Task, Object, etc.)
-
-For example, the following command summarizes the task state of the Cluster:
-
-.. code-block:: bash
-
-    ray summary tasks
-
-.. code-block:: text
-
-    ======== Tasks Summary: 2022-07-22 08:54:38.332537 ========
-    Stats:
-    ------------------------------------
-    total_actor_scheduled: 2
-    total_actor_tasks: 0
-    total_tasks: 2
-
-
-    Table (group by func_name):
-    ------------------------------------
-        FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
-    0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
-    1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
-
-
 Ray States
 ----------
 Ray States refer to the state of various Ray entities (e.g., Actor, Task, Object, etc.). Ray 2.0 and later versions support :ref:`querying the states of entities with the CLI and Python APIs <observability-programmatic>`
@@ -144,12 +116,12 @@ For the following code:
     ray.init()
 
     @ray.remote
-    def task-foo():
+    def task_foo():
         print("task!")
 
     ray.get(task.remote())
 
-#. Ray task ``task-foo`` runs on a Ray worker process. String ``task!`` is saved into the corresponding worker ``stdout`` log file.
+#. Ray task ``task_foo`` runs on a Ray worker process. String ``task!`` is saved into the corresponding worker ``stdout`` log file.
 #. The Driver reads the worker log file and sends it to its ``stdout`` (terminal) where you should be able to see the string ``task!``.
 
 When logs are printed, the process id (pid) and an IP address of the node that executes Tasks or Actors are printed together. Here is the output:

@@ -1,6 +1,6 @@
 .. _observability-debug-other:
 
-Debugging Other Issues
+General debugging
 ======================
 
 Ray sometimes has some aspects of its behavior that might catch
