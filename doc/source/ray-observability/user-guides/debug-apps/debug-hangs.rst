@@ -18,6 +18,11 @@ trace is shown. To show native code frames, set the URL parameter ``native=1`` (
    :align: center
    :width: 60%
 
+.. note::
+   If you run Ray in a Docker container, you may run into permission errors when viewing the stack traces. Follow the `py-spy documentation`_  to resolve it.
+   
+.. _`py-spy documentation`: https://github.com/benfred/py-spy#how-do-i-run-py-spy-in-docker
+
 
 Use ``ray stack`` CLI command
 ------------------

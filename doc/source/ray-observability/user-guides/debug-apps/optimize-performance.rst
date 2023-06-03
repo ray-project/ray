@@ -110,6 +110,13 @@ not have root permissions, the Dashboard prompts with instructions on how to set
 
     Alternatively, you can start Ray with passwordless sudo / root permissions.
 
+.. note::
+   If you run Ray in a Docker container, you may run into permission errors when viewing the stack traces. Follow the `py-spy documentation`_  to resolve it.
+   
+.. _`py-spy documentation`: https://github.com/benfred/py-spy#how-do-i-run-py-spy-in-docker
+
+
+
 .. _dashboard-cprofile:
 
 Profiling using Python's cProfile

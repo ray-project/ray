@@ -150,7 +150,7 @@ kubectl logs raycluster-complete-logs-head-xxxxx -c fluentbit
 By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` directory. If you prefer to redirect logs to stderr of the host pods instead, set the environment variable ``RAY_LOG_TO_STDERR=1`` on all Ray nodes. This practice is not recommended but may be useful if your log processing tool only captures log records written to stderr.
 
 ```{admonition} Alert
-:class: alert
+:class: caution
 There are known issues with this feature. For example, it may break features like {ref}`log redirection to driver <log-redirection-to-driver>`. If those features are wanted, use the {ref}`Fluent Bit solution <kuberay-fluentbit>` above.
 
 For Clusters on VMs, do not redirect logs to stderr. Follow {ref}`this guide <vm-logging>` to persist logs.
