@@ -33,6 +33,8 @@ appo-pongnoframeskip-v5:
             dim: 42
             conv_filters: [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]]
             conv_activation: relu
+            # Use a (256, 1)-MLP for values and (256, [num actions])-MLP
+            # for the policy.
             post_fcnet_hiddens: [256]
 
         # Run with Learner- and RLModule API (new stack).

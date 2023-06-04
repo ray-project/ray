@@ -83,18 +83,21 @@ class TfCNNEncoder(TfModel, Encoder):
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict({
-            ENCODER_OUT: (
-                TensorSpec("b, d", d=self.config.output_dims[0], framework="tf2")
-                if self.config.flatten_at_end
-                else TensorSpec(
-                    "b, w, h, c",
-                    w=self.config.output_dims[0],
-                    h=self.config.output_dims[1],
-                    d=self.config.output_dims[2],
-                    framework="tf2")
-            )
-        })
+        return SpecDict(
+            {
+                ENCODER_OUT: (
+                    TensorSpec("b, d", d=self.config.output_dims[0], framework="tf2")
+                    if self.config.flatten_at_end
+                    else TensorSpec(
+                        "b, w, h, c",
+                        w=self.config.output_dims[0],
+                        h=self.config.output_dims[1],
+                        d=self.config.output_dims[2],
+                        framework="tf2",
+                    )
+                )
+            }
+        )
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:

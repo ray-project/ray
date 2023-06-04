@@ -1280,7 +1280,8 @@ class ModelChecker:
         # same input and all nets have the same (dummy) weight values.
         for v in self.output_values.values():
             check(
-                v, self.output_values[main_key],
+                v,
+                self.output_values[main_key],
                 atol=atol or 0.0001,
                 rtol=rtol or 0.0,
             )
