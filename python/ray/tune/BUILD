@@ -1,4 +1,31 @@
 load("//bazel:python.bzl", "py_test_module_list")
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "**/examples/**",
+            "**/tests/**",
+            "suggest/**",
+            "impl/test_utils.py",
+            "automl/board/**",
+            "checkpoint_manager.py",
+            "cluster_info.py",
+            "config_parser.py",
+            "function_runner.py",
+            "insufficient_resources_manager.py",
+            "ray_trial_executor.py",
+            "sample.py",
+            "session.py",
+            "trial.py",
+            "trial_runner.py",
+            "utils/placement_groups.py",
+            "utils/trainable.py"
+        ]
+    ),
+    tags = ["team:ml"]
+)
 
 py_library(
     name = "conftest",

@@ -35,23 +35,21 @@ def main(debug, stop_iters=2000, tf=False, asymmetric_env=False):
     rllib_config = {
         "env": AsymCoinGame if asymmetric_env else CoinGame,
         "env_config": env_config,
-        "multiagent": {
-            "policies": {
-                env_config["players_ids"][0]: (
-                    None,
-                    AsymCoinGame(env_config).observation_space,
-                    AsymCoinGame.action_space,
-                    {},
-                ),
-                env_config["players_ids"][1]: (
-                    None,
-                    AsymCoinGame(env_config).observation_space,
-                    AsymCoinGame.action_space,
-                    {},
-                ),
-            },
-            "policy_mapping_fn": lambda agent_id, episode, worker, **kwargs: agent_id,
+        "policies": {
+            env_config["players_ids"][0]: (
+                None,
+                AsymCoinGame(env_config).observation_space,
+                AsymCoinGame.action_space,
+                {},
+            ),
+            env_config["players_ids"][1]: (
+                None,
+                AsymCoinGame(env_config).observation_space,
+                AsymCoinGame.action_space,
+                {},
+            ),
         },
+        "policy_mapping_fn": lambda agent_id, episode, worker, **kwargs: agent_id,
         # Size of batches collected from each worker.
         "rollout_fragment_length": 20,
         # Number of timesteps collected for each SGD round.

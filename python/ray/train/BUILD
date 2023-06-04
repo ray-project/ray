@@ -1,3 +1,27 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "examples/**",
+            "tests/**",
+            # GPU tests
+            "tensorflow/tensorflow_trainer.py",
+            # FIXME: Failing doctests
+            "xgboost/xgboost_predictor.py",
+            "xgboost/xgboost_checkpoint.py"
+        ]
+    ),
+    tags = ["team:ml"],
+)
+
+doctest(
+    files = ["tensorflow/tensorflow_trainer.py"],
+    tags = ["team:ml"],
+    gpu = True
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/train/examples directory.
 # Please keep these sorted alphabetically.
