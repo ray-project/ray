@@ -1,14 +1,22 @@
+import abc
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple, Union
-from ray.rllib.utils.typing import ViewRequirementsDict
 import functools
+from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
 
 import gymnasium as gym
 import numpy as np
 
-from ray.rllib.core.models.base import ModelConfig, Model, Encoder
+from ray.rllib.models.torch.misc import (
+    same_padding,
+    same_padding_transpose_after_stride,
+    valid_padding,
+)
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.typing import ViewRequirementsDict
+
+if TYPE_CHECKING:
+    from ray.rllib.core.models.base import Model, Encoder
 
 
 @ExperimentalAPI
@@ -49,6 +57,52 @@ def _framework_implemented(torch: bool = True, tf2: bool = True):
 
 @ExperimentalAPI
 @dataclass
+class ModelConfig(abc.ABC):
+    """Base class for configuring a `Model` instance.
+
+    ModelConfigs are DL framework-agnostic.
+    A `Model` (as a sub-component of an `RLModule`) is built via calling the
+    respective ModelConfig's `build()` method.
+    RLModules build their sub-components this way after receiving one or more
+    `ModelConfig` instances from a Catalog object.
+
+    However, `ModelConfig` is not restricted to be used only with Catalog or RLModules.
+    Usage examples can be found in the individual Model classes', e.g.
+    see `ray.rllib.core.models.configs::MLPHeadConfig`.
+
+    Attributes:
+        input_dims: The input dimensions of the network
+        always_check_shapes: Whether to always check the inputs and outputs of the
+            model for the specifications. Input specifications are checked on failed
+            forward passes of the model regardless of this flag. If this flag is set
+            to `True`, inputs and outputs are checked on every call. This leads to
+            a slow-down and should only be used for debugging.
+        _output_dims: The output dimensions of the network. The value of this field
+            will be inferred by the class automatically based on all other settings.
+    """
+
+    input_dims: Union[List[int], Tuple[int]] = None
+    always_check_shapes: bool = False
+    _output_dims: Union[List[int], Tuple[int]] = None
+
+    @abc.abstractmethod
+    def build(self, framework: str):
+        """Builds the model.
+
+        Args:
+            framework: The framework to use for building the model.
+        """
+        raise NotImplementedError
+
+    @property
+    def output_dims(self):
+        """Read-only `output_dims` are inferred automatically from other settings.
+        """
+        return self._output_dims
+
+
+@ExperimentalAPI
+@dataclass
 class _MLPConfig(ModelConfig):
     """Generic configuration class for multi-layer-perceptron based Model classes.
 
@@ -58,27 +112,49 @@ class _MLPConfig(ModelConfig):
 
     Attributes:
         input_dims: A 1D tensor indicating the input dimension, e.g. `[32]`.
-        hidden_layer_dims: The sizes of the hidden layers. If an empty list, only a
-            single layer will be built of size `output_dims[0]`.
+        hidden_layer_dims: The sizes of the hidden layers. If an empty list,
+            `output_layer_dim` must be provided (int) and only a single layer will be
+            built.
         hidden_layer_activation: The activation function to use after each layer (
             except for the output).
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
             in between each hidden layer's output and its activation.
-        output_dims: A 1D Tensor indicating the size of the output layer. This may be
+        hidden_layer_use_bias: Whether to use bias on all dense layers in the network
+            (excluding a possible separate output layer defined by `output_layer_dim`).
+        output_layer_dim: An int indicating the size of the output layer. This may be
             set to `None` in case no extra output layer should be built and only the
-            layers specified by `hidden_layer_dims` will part of the network.
-        output_activation: The activation function to use for the output layer, if any.
-        use_bias: Whether to use bias on all dense layers in the network (including
-            a possible output layer).
+            layers specified by `hidden_layer_dims` will be part of the network.
+        output_layer_activation: The activation function to use for the output layer,
+            if any.
+        output_layer_use_bias: Whether to use bias on the separate output layer, if any.
     """
 
-    input_dims: Union[List[int], Tuple[int]] = None
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
-    output_dims: Optional[Union[List[int], Tuple[int]]] = None
-    output_activation: str = "linear"
-    use_bias: bool = True
+    hidden_layer_use_bias: bool = True
+
+    # Optional last output layer with - possibly - different activation and use_bias
+    # settings.
+    output_layer_dim: Optional[int] = None
+    output_layer_activation: str = "linear"
+    output_layer_use_bias: bool = True
+
+    def __post_init__(self):
+        """Post initialize implementation for this _MLPConfig.
+
+        Infers the value of `self.output_dims` based on the other settings.
+        """
+        if self.output_layer_dim is None and not self.hidden_layer_dims:
+            raise ValueError(
+                "If `output_layer_dim` is None, you must specify at least one hidden "
+                "layer dim, e.g. `hidden_layer_dims=[32]`!"
+            )
+
+        # Infer `output_dims` automatically.
+        self._output_dims = (self.output_layer_dim or self.hidden_layer_dims[-1],)
+
+        self._validate()
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
@@ -87,21 +163,16 @@ class _MLPConfig(ModelConfig):
                 f"`input_dims` ({self.input_dims}) of MLPConfig must be 1D, "
                 "e.g. `[32]`!"
             )
-        if self.output_dims is not None and len(self.output_dims) != 1:
+        if len(self.output_dims) != 1:
             raise ValueError(
-                f"`output_dims` ({self.output_dims}) of MLPConfig must be 1D, "
-                "e.g. `[32]`!"
-            )
-        if self.output_dims is None and not self.hidden_layer_dims:
-            raise ValueError(
-                "If `output_dims` is None, you must specify at least one hidden layer "
-                "dim, e.g. `hidden_layer_dims=[32]`! `hidden_layer_dims` must not "
-                "be empty in this case."
+                f"`output_dims` ({self.output_dims}) of _MLPConfig must be "
+                "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
+                " be wrong."
             )
 
         # Call these already here to catch errors early on.
         get_activation_fn(self.hidden_layer_activation, framework=framework)
-        get_activation_fn(self.output_activation, framework=framework)
+        get_activation_fn(self.output_layer_activation, framework=framework)
 
 
 @ExperimentalAPI
@@ -110,8 +181,6 @@ class MLPHeadConfig(_MLPConfig):
     """Configuration for an MLP head.
 
     See _MLPConfig for usage details.
-    Note that MLPHeads must specify `output_dims` as a 1D tensor. It is not allowed to
-    leave `output_dims` as None.
 
     Example:
     .. code-block:: python
@@ -121,8 +190,9 @@ class MLPHeadConfig(_MLPConfig):
             hidden_layer_dims=[8, 8],
             hidden_layer_activation="relu",
             hidden_layer_use_layernorm=False,
-            output_dims=[2],  # must be 1D tensor
-            output_activation="linear",
+            # final output layer with no activation (linear)
+            output_layer_dim=2,
+            output_layer_activation="linear",
         )
         model = config.build(framework="tf2")
 
@@ -141,9 +211,11 @@ class MLPHeadConfig(_MLPConfig):
             hidden_layer_dims=[10],
             hidden_layer_activation="silu",
             hidden_layer_use_layernorm=True,
-            output_dims=[4],
-            output_activation="tanh",
-            use_bias=False,
+            hidden_layer_use_bias=False,
+            # final output layer with no activation (linear)
+            output_layer_dim=4,
+            output_layer_activation="tanh",
+            output_layer_use_bias=False,
         )
         model = config.build(framework="torch")
 
@@ -156,7 +228,7 @@ class MLPHeadConfig(_MLPConfig):
     """
 
     @_framework_implemented()
-    def build(self, framework: str = "torch") -> Model:
+    def build(self, framework: str = "torch") -> "Model":
         self._validate(framework=framework)
 
         if framework == "torch":
@@ -196,8 +268,9 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
             hidden_layer_dims=[16],
             hidden_layer_activation=None,
             hidden_layer_use_layernorm=False,
-            output_dims=[8],  # <- this must be an even size
-            use_bias=True,
+            hidden_layer_use_bias=True,
+            output_layer_dim=8,  # <- this must be an even size
+            output_layer_use_bias=True,
         )
         model = config.build(framework="tf2")
 
@@ -215,8 +288,8 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
             hidden_layer_dims=[31, 100],   # <- last idx must be an even size
             hidden_layer_activation="relu",
             hidden_layer_use_layernorm=False,
-            output_dims=None,  # use the last hidden layer
-            use_bias=False,
+            hidden_layer_use_bias=False,
+            output_layer_dim=None,  # use the last hidden layer as output layer
         )
         model = config.build(framework="torch")
 
@@ -230,20 +303,16 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
     """
 
     def _validate(self, framework: str = "torch"):
-        actual_output_dims = (
-            [self.hidden_layer_dims[-1]]
-            if self.output_dims is None
-            else self.output_dims
-        )
-        if len(actual_output_dims) > 1 or actual_output_dims[0] % 2 == 1:
+        if len(self.output_dims) > 1 or self.output_dims[0] % 2 == 1:
             raise ValueError(
-                "`output_dims` or last value in `hidden_layer_dims` "
-                f"({actual_output_dims}) of a FreeLogStdMLPHeadConfig must be a "
-                "1D tensor, whose only item is dividable by 2, e.g. `[2]` or `[128]`!"
+                f"`output_layer_dim` ({self.ouput_layer_dim}) or the last value in "
+                f"`hidden_layer_dims` ({self.hidden_layer_dims}) of a "
+                "FreeLogStdMLPHeadConfig must be an even int (dividable by 2), "
+                "e.g. `output_layer_dim=8` or `hidden_layer_dims=[133, 128]`!"
             )
 
     @_framework_implemented()
-    def build(self, framework: str = "torch") -> Model:
+    def build(self, framework: str = "torch") -> "Model":
         self._validate(framework=framework)
 
         if framework == "torch":
@@ -409,6 +478,40 @@ class CNNTransposeHeadConfig(ModelConfig):
     cnn_transpose_use_layernorm: bool = False
     cnn_transpose_use_bias: bool = True
 
+    def __post_init__(self):
+        """Post initialize implementation for this CNNTransposeHeadConfig.
+
+        Infers the value of `self.output_dims` based on the other settings.
+        """
+        # Infer output dims, layer by layer.
+        dims = self.initial_image_dims
+        for filter_spec in self.cnn_transpose_filter_specifiers:
+            # Same padding.
+            num_filters, kernel, stride = filter_spec
+            # Compute stride output size first (striding is performed first in a
+            # conv transpose layer.
+            stride_w, stride_h = (stride, stride) if isinstance(stride, int) else stride
+            dims = [
+                dims[0] * stride_w - (stride_w - 1),
+                dims[1] * stride_h - (stride_h - 1),
+                num_filters,
+            ]
+            # Apply the correct padding. Note that this might be asymetrical, meaning
+            # left padding might be != right padding, same for top/bottom.
+            _, padding_out_size = same_padding_transpose_after_stride(
+                (dims[0], dims[1]), kernel, stride
+            )
+            # Perform conv transpose operation with the kernel.
+            kernel_w, kernel_h = (kernel, kernel) if isinstance(kernel, int) else kernel
+            dims = [
+                padding_out_size[0] - (kernel_w - 1),
+                padding_out_size[1] - (kernel_h - 1),
+                num_filters,
+            ]
+        self._output_dims = dims
+
+        self._validate()
+
     def _validate(self, framework: str = "torch"):
         if len(self.input_dims) != 1:
             raise ValueError(
@@ -418,7 +521,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             )
 
     @_framework_implemented()
-    def build(self, framework: str = "torch") -> Model:
+    def build(self, framework: str = "torch") -> "Model":
         self._validate()
 
         if framework == "torch":
@@ -515,34 +618,28 @@ class CNNEncoderConfig(ModelConfig):
 
         Infers the value of `self.output_dims` based on the other settings.
         """
-        self._validate()
-
-        if self.output_dims is not None:
-            raise ValueError(
-                f"`output_dims` ({self.output_dims}) of CNNEncoderConfig must be left "
-                "None by the user! The encoder will figure out the output_dims value "
-                "automatically via the given `cnn_filter_specifiers` setting."
-            )
-
         # Infer output dims, layer by layer.
-        dims = list(self.input_dims)  # Creates a copy (works for tuple/list).
+        dims = self.input_dims  # Creates a copy (works for tuple/list).
         for filter_spec in self.cnn_filter_specifiers:
-            # TODO (sven): For now, we only support "same" padding in
-            #  `cnn_filter_specifiers`. Add optional forth item to filter specs to
-            #  indicate padding type: "same" or "valid".
-            num_filters, kernel, stride = filter_spec
-            strides = (stride, stride) if isinstance(stride, (int, float)) else stride
-            # Divide 1st and 2nd dim (width and height) by the stride (because we
-            # do same padding).
-            dims[0] = np.ceil(dims[0] / strides[0])
-            dims[1] = np.ceil(dims[1] / strides[1])
-            # Last output dimension is easy: Set to num_filters.
-            dims[2] = num_filters
+            # Same padding.
+            if len(filter_spec) == 3:
+                num_filters, kernel, stride = filter_spec
+                _, dims = same_padding(dims[:2], kernel, stride)
+            # Valid padding.
+            else:
+                num_filters, kernel, stride, _ = filter_spec
+                dims = valid_padding(dims[:2], kernel, stride)
+            # Add depth (num_filters) to the end (our utility functions for same/valid
+            # only return the image width/height).
+            dims = [dims[0], dims[1], num_filters]
 
         # Also store the actual CNN output shape.
-        self.cnn_output_dims = dims
+        self._output_dims = self.cnn_output_dims = dims
         # Flatten everything.
-        self.output_dims = (int(np.prod(dims)),)
+        if self.flatten_at_end:
+            self._output_dims = (int(np.prod(dims)),)
+
+        self._validate()
 
     def _validate(self, framework: str = "torch"):
         if len(self.input_dims) != 3:
@@ -551,9 +648,15 @@ class CNNEncoderConfig(ModelConfig):
                 "tensor (image) with the dimensions meaning: width x height x "
                 "channels, e.g. `[64, 64, 3]`!"
             )
+        if len(self.output_dims) != 3:
+            raise ValueError(
+                f"`output_dims` ({self.output_dims}) of CNNEncoderConfig must be "
+                "3D, e.g. `[4, 4, 128]`! This is an inferred value, hence other "
+                "settings might be wrong."
+            )
 
     @_framework_implemented()
-    def build(self, framework: str = "torch") -> Model:
+    def build(self, framework: str = "torch") -> "Model":
         self._validate()
 
         if framework == "torch":
@@ -573,8 +676,6 @@ class MLPEncoderConfig(_MLPConfig):
     """Configuration for an MLP that acts as an encoder.
 
     See _MLPConfig for usage details.
-    Note that MLPEncoders may specify `output_dims` as None in case only the hidden
-    layers with their specified activations should be part of the resulting network.
 
     Example:
     .. code-block:: python
@@ -584,7 +685,7 @@ class MLPEncoderConfig(_MLPConfig):
             hidden_layer_dims=[16],
             hidden_layer_activation="relu",
             hidden_layer_use_layernorm=False,
-            output_dims=None,  # maybe None or a 1D tensor
+            output_layer_dim=None,  # maybe None or an int
         )
         model = config.build(framework="torch")
 
@@ -600,9 +701,10 @@ class MLPEncoderConfig(_MLPConfig):
             hidden_layer_dims=[8, 8],
             hidden_layer_activation="silu",
             hidden_layer_use_layernorm=True,
-            output_dims=[4],
-            output_activation="tanh",
-            use_bias=False,
+            hidden_layer_use_bias=False,
+            output_layer_dim=4,
+            output_layer_activation="tanh",
+            output_layer_use_bias=False,
         )
         model = config.build(framework="tf2")
 
@@ -617,16 +719,8 @@ class MLPEncoderConfig(_MLPConfig):
         # Tanh()
     """
 
-    def _validate(self, framework: str = "torch"):
-        super()._validate(framework)
-        if self.output_dims is None:
-            raise ValueError(
-                f"`output_dims` ({self.output_dims}) of MLPEncoderConfig must not be "
-                "None! Use a 1D tensor describing the output dimension, e.g. `[32]`!"
-            )
-
     @_framework_implemented()
-    def build(self, framework: str = "torch") -> Encoder:
+    def build(self, framework: str = "torch") -> "Encoder":
         self._validate()
 
         if framework == "torch":
@@ -659,8 +753,6 @@ class RecurrentEncoderConfig(ModelConfig):
             input_dims=[16],  # must be 1D tensor
             hidden_dim=128,
             num_layers=2,
-            output_dims=[256],  # maybe None or a 1D tensor
-            output_activation="linear",
             use_bias=True,
         )
         model = config.build(framework="torch")
@@ -668,7 +760,6 @@ class RecurrentEncoderConfig(ModelConfig):
         # Resulting stack in pseudocode:
         # LSTM(16, 128, bias=True)
         # LSTM(128, 128, bias=True)
-        # Linear(128, 256, bias=True)
 
         # Resulting shape of the internal states (c- and h-states):
         # (2, B, 128) for each c- and h-states.
@@ -681,7 +772,6 @@ class RecurrentEncoderConfig(ModelConfig):
             input_dims=[32],  # must be 1D tensor
             hidden_dim=64,
             num_layers=1,
-            output_dims=None,  # maybe None or a 1D tensor
             use_bias=False,
         )
         model = config.build(framework="torch")
@@ -693,17 +783,16 @@ class RecurrentEncoderConfig(ModelConfig):
         # (1, B, 64)
 
     Attributes:
-        recurrent_layer_type: The type of the recurrent layer(s).
-            Either "lstm" or "gru".
         input_dims: The input dimensions. Must be 1D. This is the 1D shape of the tensor
             that goes into the first recurrent layer.
+        recurrent_layer_type: The type of the recurrent layer(s).
+            Either "lstm" or "gru".
         hidden_dim: The size of the hidden internal state(s) of the recurrent layer(s).
             For example, for an LSTM, this would be the size of the c- and h-tensors.
         num_layers: The number of recurrent (LSTM or GRU) layers to stack.
         batch_major: Wether the input is batch major (B, T, ..) or
             time major (T, B, ..).
-        output_activation: The activation function to use for the linear output layer.
-        use_bias: Whether to use bias on all layers in the network.
+        use_bias: Whether to use bias on the recurrent layers in the network.
         view_requirements_dict: The view requirements to use if anything else than
             observation_space or action_space is to be encoded. This signifies an
             advanced use case.
@@ -716,10 +805,19 @@ class RecurrentEncoderConfig(ModelConfig):
     hidden_dim: int = None
     num_layers: int = None
     batch_major: bool = True
-    output_activation: str = "linear"
     use_bias: bool = True
     view_requirements_dict: ViewRequirementsDict = None
     get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
+
+    def __post_init__(self):
+        """Post initialize implementation for this RecurrentEncoderConfig.
+
+        Infers the value of `self.output_dims` based on the other settings.
+        """
+        # Infer `output_dims` automatically.
+        self._output_dims = (self.hidden_dim,)
+
+        self._validate()
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
@@ -733,12 +831,18 @@ class RecurrentEncoderConfig(ModelConfig):
                 f"`input_dims` ({self.input_dims}) of RecurrentEncoderConfig must be "
                 "1D, e.g. `[32]`!"
             )
+        if len(self.output_dims) != 1:
+            raise ValueError(
+                f"`output_dims` ({self.output_dims}) of RecurrentEncoderConfig must be "
+                "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
+                " be wrong."
+            )
 
         # Call these already here to catch errors early on.
         get_activation_fn(self.output_activation, framework=framework)
 
     @_framework_implemented()
-    def build(self, framework: str = "torch") -> Encoder:
+    def build(self, framework: str = "torch") -> "Encoder":
         if (
             self.get_tokenizer_config is not None
             or self.view_requirements_dict is not None
@@ -786,7 +890,7 @@ class ActorCriticEncoderConfig(ModelConfig):
     shared: bool = True
 
     @_framework_implemented()
-    def build(self, framework: str = "torch") -> Model:
+    def build(self, framework: str = "torch") -> "Encoder":
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import (
                 TorchActorCriticEncoder,

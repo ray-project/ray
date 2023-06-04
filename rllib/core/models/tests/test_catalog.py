@@ -12,7 +12,6 @@ from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.models.base import (
-    ModelConfig,
     Encoder,
     STATE_IN,
     ENCODER_OUT,
@@ -23,7 +22,11 @@ from ray.rllib.core.models.catalog import (
     _multi_action_dist_partial_helper,
     _multi_categorical_dist_partial_helper,
 )
-from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.core.models.configs import (
+    MLPEncoderConfig,
+    ModelConfig,
+    CNNEncoderConfig,
+)
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
@@ -451,7 +454,6 @@ class TestCatalog(unittest.TestCase):
                 self.latent_dims = (10,)
                 self.encoder_config = MyCostumTorchEncoderConfig(
                     input_dims=self.observation_space.shape,
-                    output_dims=self.latent_dims,
                 )
 
         spec = SingleAgentRLModuleSpec(

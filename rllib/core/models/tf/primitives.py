@@ -25,9 +25,10 @@ class TfMLP(tf.keras.Model):
         hidden_layer_dims: List[int],
         hidden_layer_use_layernorm: bool = False,
         hidden_layer_activation: Optional[Union[str, Callable]] = "relu",
+        hidden_layer_use_bias: bool = True,
         output_dim: Optional[int] = None,
         output_activation: Optional[Union[str, Callable]] = "linear",
-        use_bias: bool = True,
+        output_use_bias: bool = True,
     ):
         """Initialize a TfMLP object.
 
@@ -41,6 +42,8 @@ class TfMLP(tf.keras.Model):
                 (except for the output). Either a tf.nn.[activation fn] callable or a
                 string that's supported by tf.keras.layers.Activation(activation=...),
                 e.g. "relu", "ReLU", "silu", or "linear".
+            hidden_layer_use_bias: Whether to use bias on all dense layers (excluding
+                the possible separate output layer).
             output_dim: The output dimension of the network. If None, no specific output
                 layer will be added and the last layer in the stack will have
                 size=`hidden_layer_dims[-1]`.
@@ -48,8 +51,8 @@ class TfMLP(tf.keras.Model):
                 (if any). Either a tf.nn.[activation fn] callable or a string that's
                 supported by tf.keras.layers.Activation(activation=...), e.g. "relu",
                 "ReLU", "silu", or "linear".
-            use_bias: Whether to use bias on all dense layers (including the possible
-                output layer).
+            output_use_bias: Whether to use bias on the separate output layer,
+                if any.
         """
         super().__init__()
         assert input_dim > 0
@@ -69,7 +72,7 @@ class TfMLP(tf.keras.Model):
                     activation=(
                         hidden_activation if not hidden_layer_use_layernorm else None
                     ),
-                    use_bias=use_bias,
+                    use_bias=hidden_layer_use_bias,
                 )
             )
             # Add LayerNorm and activation.
@@ -85,7 +88,7 @@ class TfMLP(tf.keras.Model):
                 tf.keras.layers.Dense(
                     output_dim,
                     activation=output_activation,
-                    use_bias=use_bias,
+                    use_bias=output_use_bias,
                 )
             )
 

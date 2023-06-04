@@ -4,6 +4,7 @@ from ray.rllib.core.models.torch.utils import Stride2D
 from ray.rllib.models.torch.misc import (
     same_padding,
     same_padding_transpose_after_stride,
+    valid_padding,
 )
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.framework import try_import_torch
@@ -30,9 +31,10 @@ class TorchMLP(nn.Module):
         hidden_layer_dims: List[int],
         hidden_layer_activation: Union[str, Callable] = "relu",
         hidden_layer_use_layernorm: bool = False,
+        hidden_layer_use_bias: bool = True,
         output_dim: Optional[int] = None,
         output_activation: Union[str, Callable] = "linear",
-        use_bias: bool = True,
+        output_use_bias: bool = True,
     ):
         """Initialize a TorchMLP object.
 
@@ -46,6 +48,8 @@ class TorchMLP(nn.Module):
                 (except for the output). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
+            hidden_layer_use_bias: Whether to use bias on all dense layers (excluding
+                the possible separate output layer).
             output_dim: The output dimension of the network. If None, no specific output
                 layer will be added and the last layer in the stack will have
                 size=`hidden_layer_dims[-1]`.
@@ -53,8 +57,8 @@ class TorchMLP(nn.Module):
                 (if any). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
-            use_bias: Whether to use bias on all dense layers (including the possible
-                output layer).
+            output_use_bias: Whether to use bias on the separate output layer,
+                if any.
         """
         super().__init__()
         assert input_dim > 0
@@ -72,11 +76,16 @@ class TorchMLP(nn.Module):
             + ([output_dim] if output_dim else [])
         )
         for i in range(0, len(dims) - 1):
-            layers.append(nn.Linear(dims[i], dims[i + 1], bias=use_bias))
+            is_output_layer = output_dim is not None and i == len(dims) - 2
+            layers.append(nn.Linear(
+                dims[i],
+                dims[i + 1],
+                bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
+            ))
 
             # We are still in the hidden layer section: Possibly add layernorm and
             # hidden activation.
-            if output_dim is None or i < len(dims) - 2:
+            if not is_output_layer:
                 # Insert a layer normalization in between layer's output and
                 # the activation.
                 if hidden_layer_use_layernorm:
@@ -146,15 +155,28 @@ class TorchCNN(nn.Module):
         # Add user-specified hidden convolutional layers first
         width, height, in_depth = input_dims
         in_size = [width, height]
-        for out_depth, kernel, stride in cnn_filter_specifiers:
-            # Pad like in tensorflow's SAME mode.
-            padding, out_size = same_padding(in_size, kernel, stride)
-            layers.extend(
-                [
-                    nn.ZeroPad2d(padding),
-                    nn.Conv2d(in_depth, out_depth, kernel, stride, bias=cnn_use_bias),
-                ]
+        for filter_specs in cnn_filter_specifiers:
+            # Padding information not provided -> Use "same" as default.
+            if len(filter_specs) == 3:
+                out_depth, kernel_size, strides = filter_specs
+                padding = "same"
+            # Padding information provided.
+            else:
+                out_depth, kernel_size, strides, padding = filter_specs
+
+            # Pad like in tensorflow's SAME/VALID mode.
+            if padding == "same":
+                padding_size, out_size = same_padding(in_size, kernel_size, strides)
+                layers.append(nn.ZeroPad2d(padding_size))
+            # No actual padding is performed for "valid" mode, but we will still
+            # compute the output size (input for the next layer).
+            else:
+                out_size = valid_padding(in_size, kernel_size, strides)
+
+            layers.append(
+                nn.Conv2d(in_depth, out_depth, kernel_size, strides, bias=cnn_use_bias)
             )
+
             # Layernorm.
             if cnn_use_layernorm:
                 layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
@@ -164,9 +186,6 @@ class TorchCNN(nn.Module):
 
             in_size = out_size
             in_depth = out_depth
-
-        self.output_width, self.output_height = out_size
-        self.output_depth = out_depth
 
         # Create the CNN.
         self.cnn = nn.Sequential(*layers)
@@ -285,9 +304,6 @@ class TorchCNNTranspose(nn.Module):
 
             in_size = (out_size[0], out_size[1])
             in_depth = out_depth
-
-        self.output_width, self.output_height = out_size[0], out_size[1]
-        self.output_depth = out_depth
 
         # Create the final CNNTranspose network.
         self.cnn_transpose = nn.Sequential(*layers)

@@ -86,7 +86,6 @@ class TestCNNTransposeHeads(unittest.TestCase):
                 cnn_transpose_activation=cnn_transpose_activation,
                 cnn_transpose_use_layernorm=cnn_transpose_use_layernorm,
                 cnn_transpose_use_bias=cnn_transpose_use_bias,
-                output_dims=expected_output_dims,
             )
 
             # Use a ModelChecker to compare all added models (different frameworks)

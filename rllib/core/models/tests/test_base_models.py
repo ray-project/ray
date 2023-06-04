@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import gymnasium as gym
 
-from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.checker import SpecCheckingError
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.models.specs.specs_base import TensorSpec

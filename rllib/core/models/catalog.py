@@ -8,7 +8,7 @@ import tree
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 from ray.rllib.core.models.base import Encoder
-from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
@@ -242,8 +242,6 @@ class Catalog:
                 hidden_dim=model_config_dict["lstm_cell_size"],
                 batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
-                output_dims=[model_config_dict["lstm_cell_size"]],
-                output_activation=output_activation,
                 view_requirements_dict=view_requirements,
                 get_tokenizer_config=cls.get_tokenizer_config,
             )
@@ -264,8 +262,8 @@ class Catalog:
                     input_dims=[observation_space.shape[0]],
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
-                    output_dims=[encoder_latent_dim],
-                    output_activation=output_activation,
+                    output_layer_dim=encoder_latent_dim,
+                    output_layer_activation=output_activation,
                 )
 
             # input_space is a 3D Box

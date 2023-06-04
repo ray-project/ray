@@ -115,9 +115,10 @@ class TfMLPEncoder(Encoder, TfModel):
             hidden_layer_dims=config.hidden_layer_dims,
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
-            output_dim=config.output_dims[0],
-            output_activation=config.output_activation,
-            use_bias=config.use_bias,
+            hidden_layer_use_bias=config.hidden_layer_use_bias,
+            output_dim=config.output_layer_dim,
+            output_activation=config.output_layer_activation,
+            output_use_bias=config.output_layer_use_bias,
         )
 
     @override(Model)
@@ -163,12 +164,6 @@ class TfGRUEncoder(TfModel, Encoder):
                     return_state=True,
                 )
             )
-
-        # Create the final dense layer.
-        self.linear = tf.keras.layers.Dense(
-            units=config.output_dims[0],
-            use_bias=config.use_bias,
-        )
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -231,8 +226,6 @@ class TfGRUEncoder(TfModel, Encoder):
             out, h = layer(out, states_in["h"][i])
             states_out.append(h)
 
-        out = self.linear(out)
-
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
         outputs[STATE_OUT] = {"h": tf.stack(states_out, 1)}
@@ -257,12 +250,6 @@ class TfLSTMEncoder(TfModel, Encoder):
                     return_state=True,
                 )
             )
-
-        # Create the final dense layer.
-        self.linear = tf.keras.layers.Dense(
-            units=config.output_dims[0],
-            use_bias=config.use_bias,
-        )
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -339,8 +326,6 @@ class TfLSTMEncoder(TfModel, Encoder):
             out, h, c = layer(out, (states_in["h"][i], states_in["c"][i]))
             states_out_h.append(h)
             states_out_c.append(c)
-
-        out = self.linear(out)
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out

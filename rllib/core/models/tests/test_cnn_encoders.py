@@ -79,6 +79,35 @@ class TestCNNEncoders(unittest.TestCase):
             # Check all added models against each other.
             model_checker.check(atol=0.0005)
 
+    def test_cnn_encoders_valid_padding(self):
+        """Tests building CNN encoders with valid padding."""
+
+        inputs_dims = [42, 42, 3]
+
+        # Test filter specifier with "valid"-padding setting in it.
+        # Historical fun fact: The following was our old default CNN setup for
+        # (42, 42, 3) Atari image spaces. The last layer, with its hard-coded :( padding
+        # setting was narrowing down the image size to 1x1, so we could use the last
+        # layer already as a 256-sized pre-logits layer (normally done by a Dense).
+        filter_specifiers = [[16, 4, 2], [32, 4, 2], [256, 11, 1, "valid"]]
+
+        config = CNNEncoderConfig(
+            input_dims=inputs_dims,
+            cnn_filter_specifiers=filter_specifiers,
+        )
+
+        # Use a ModelChecker to compare all added models (different frameworks)
+        # with each other.
+        model_checker = ModelChecker(config)
+
+        for fw in framework_iterator(frameworks=("tf2", "torch")):
+            # Add this framework version of the model to our checker.
+            outputs = model_checker.add(framework=fw)
+            self.assertEqual(outputs[ENCODER_OUT].shape, (1, config.output_dims[0]))
+
+        # Check all added models against each other.
+        model_checker.check(atol=0.0005)
+
 
 if __name__ == "__main__":
     import pytest

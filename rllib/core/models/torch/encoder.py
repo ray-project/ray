@@ -49,9 +49,10 @@ class TorchMLPEncoder(TorchModel, Encoder):
             hidden_layer_dims=config.hidden_layer_dims,
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
-            output_dim=config.output_dims[0],
-            output_activation=config.output_activation,
-            use_bias=config.use_bias,
+            hidden_layer_use_bias=config.hidden_layer_use_bias,
+            output_dim=config.output_layer_dim,
+            output_activation=config.output_layer_activation,
+            output_use_bias=config.output_layer_use_bias,
         )
 
     @override(Model)
@@ -153,12 +154,6 @@ class TorchGRUEncoder(TorchModel, Encoder):
             batch_first=config.batch_major,
             bias=config.use_bias,
         )
-        # Create the final dense layer.
-        self.linear = nn.Linear(
-            config.hidden_dim,
-            config.output_dims[0],
-            bias=config.use_bias,
-        )
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -218,8 +213,6 @@ class TorchGRUEncoder(TorchModel, Encoder):
         out, states_out = self.gru(out, states_in["h"])
         states_out = {"h": states_out}
 
-        out = self.linear(out)
-
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
         outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
@@ -239,12 +232,6 @@ class TorchLSTMEncoder(TorchModel, Encoder):
             config.hidden_dim,
             config.num_layers,
             batch_first=config.batch_major,
-            bias=config.use_bias,
-        )
-        # Create the final dense layer.
-        self.linear = nn.Linear(
-            config.hidden_dim,
-            config.output_dims[0],
             bias=config.use_bias,
         )
 
@@ -316,8 +303,6 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
         out, states_out = self.lstm(out, (states_in["h"], states_in["c"]))
         states_out = {"h": states_out[0], "c": states_out[1]}
-
-        out = self.linear(out)
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
