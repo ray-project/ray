@@ -315,24 +315,17 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
-            logger.info(f"{self._replica_tag} is_initialized called")
             try:
                 async with self._replica_init_lock:
-                    logger.info(f"{self._replica_tag} is_initialized grabbed lock")
                     if not self._initialized:
-                        logger.info(
-                            f"{self._replica_tag} is_initialized calling _initialize_replica"
-                        )
                         await self._initialize_replica()
                     if deployment_config:
-                        logger.info(f"{self._replica_tag} is_initialized calling reconfigure")
                         await self.reconfigure(deployment_config)
                 metadata = await self._get_metadata()
 
                 # A new replica should not be considered healthy until it passes an
                 # initial health check. If an initial health check fails, consider
                 # it an initialization failure.
-                logger.info(f"{self._replica_tag} is_initialized calling check_health")
                 await self.check_health()
                 return metadata
             except Exception:

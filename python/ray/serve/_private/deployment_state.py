@@ -43,6 +43,7 @@ from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -277,12 +278,22 @@ class ActorReplicaWrapper:
             return self._version.deployment_config
 
     @property
-    def max_concurrent_queries(self) -> Optional[int]:
+    def max_concurrent_queries(self) -> int:
         if self.deployment_config:
             return self.deployment_config.max_concurrent_queries
+        else:
+            # We should have a better way to define this behavior.
+            # This means deployment_config value will not be honored
+            # if we don't retrieve deployment_config from the replica.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for max_concurrent_queries"
+            )
+            return DEFAULT_MAX_CONCURRENT_QUERIES
 
     @property
-    def graceful_shutdown_timeout_s(self) -> Optional[float]:
+    def graceful_shutdown_timeout_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.graceful_shutdown_timeout_s
         else:
@@ -290,10 +301,14 @@ class ActorReplicaWrapper:
             # This means deployment_config value will not be honored
             # if we don't retrieve deployment_config from the replica.
             # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for graceful_shutdown_timeout_s"
+            )
             return DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
 
     @property
-    def health_check_period_s(self) -> Optional[float]:
+    def health_check_period_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.health_check_period_s
         else:
@@ -301,10 +316,14 @@ class ActorReplicaWrapper:
             # This means deployment_config value will not be honored
             # if we don't retrieve deployment_config from the replica.
             # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for health_check_period_s"
+            )
             return DEFAULT_HEALTH_CHECK_PERIOD_S
 
     @property
-    def health_check_timeout_s(self) -> Optional[float]:
+    def health_check_timeout_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.health_check_timeout_s
         else:
@@ -312,6 +331,10 @@ class ActorReplicaWrapper:
             # This means deployment_config value will not be honored
             # if we don't retrieve deployment_config from the replica.
             # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for health_check_timeout_s"
+            )
             return DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
     @property
@@ -456,15 +479,13 @@ class ActorReplicaWrapper:
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = (
-                self._actor_handle.initialized_and_get_metadata.remote(
-                    deployment_config,
-                    # Ensure that `is_allocated` will execute before `reconfigure`,
-                    # because `reconfigure` runs user code that could block the replica
-                    # asyncio loop. If that happens before `is_allocated` is executed,
-                    # the `is_allocated` call won't be able to run.
-                    self._allocated_obj_ref,
-                )
+            self._ready_obj_ref = self._actor_handle.initialized_and_get_metadata.remote(
+                deployment_config,
+                # Ensure that `is_allocated` will execute before `reconfigure`,
+                # because `reconfigure` runs user code that could block the replica
+                # asyncio loop. If that happens before `is_allocated` is executed,
+                # the `is_allocated` call won't be able to run.
+                self._allocated_obj_ref,
             )
 
     def _format_user_config(self, user_config: Any):
@@ -548,7 +569,6 @@ class ActorReplicaWrapper:
 
         # Check whether the replica has been allocated.
         if not self._check_obj_ref_ready(self._allocated_obj_ref):
-            logger.info(f"{self.replica_tag} is not allocated_ready")
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         # Check whether relica initialization has completed.
@@ -556,7 +576,6 @@ class ActorReplicaWrapper:
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if not replica_ready:
-            logger.info(f"{self.replica_tag} is not init_ready")
             return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         else:
             try:
