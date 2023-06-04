@@ -12,7 +12,7 @@ from ray.rllib.models.torch.misc import (
     valid_padding,
 )
 from ray.rllib.models.utils import get_activation_fn
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.typing import ViewRequirementsDict
 
 if TYPE_CHECKING:
@@ -83,7 +83,6 @@ class ModelConfig(abc.ABC):
 
     input_dims: Union[List[int], Tuple[int]] = None
     always_check_shapes: bool = False
-    _output_dims: Union[List[int], Tuple[int]] = None
 
     @abc.abstractmethod
     def build(self, framework: str):
@@ -95,15 +94,22 @@ class ModelConfig(abc.ABC):
         raise NotImplementedError
 
     @property
-    def output_dims(self):
+    def output_dims(self) -> Optional[Tuple[int]]:
         """Read-only `output_dims` are inferred automatically from other settings."""
-        return self._output_dims
+        return None
 
 
 @ExperimentalAPI
 @dataclass
 class _MLPConfig(ModelConfig):
     """Generic configuration class for multi-layer-perceptron based Model classes.
+
+    `output_dims` is reached by either the provided `output_layer_dim` setting (int) OR
+    by the last entry of `hidden_layer_dims`. In the latter case, no special output
+    layer is added and all layers in the stack behave exactly the same. If
+    `output_layer_dim` is provided, users might also change this last layer's
+    activation (`output_layer_activation`) and its bias setting
+    (`output_layer_use_bias`).
 
     This is a private class as users should not configure their models directly
     through this class, but use one of the sub-classes, e.g. `MLPHeadConfig` or
@@ -139,11 +145,8 @@ class _MLPConfig(ModelConfig):
     output_layer_activation: str = "linear"
     output_layer_use_bias: bool = True
 
-    def __post_init__(self):
-        """Post initialize implementation for this _MLPConfig.
-
-        Infers the value of `self.output_dims` based on the other settings.
-        """
+    @property
+    def output_dims(self):
         if self.output_layer_dim is None and not self.hidden_layer_dims:
             raise ValueError(
                 "If `output_layer_dim` is None, you must specify at least one hidden "
@@ -151,9 +154,7 @@ class _MLPConfig(ModelConfig):
             )
 
         # Infer `output_dims` automatically.
-        self._output_dims = (self.output_layer_dim or self.hidden_layer_dims[-1],)
-
-        self._validate()
+        return (self.output_layer_dim or self.hidden_layer_dims[-1],)
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
@@ -207,14 +208,13 @@ class MLPHeadConfig(_MLPConfig):
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[2],
-            hidden_layer_dims=[10],
+            hidden_layer_dims=[10, 4],
             hidden_layer_activation="silu",
             hidden_layer_use_layernorm=True,
             hidden_layer_use_bias=False,
-            # final output layer with no activation (linear)
-            output_layer_dim=4,
-            output_layer_activation="tanh",
-            output_layer_use_bias=False,
+            # No final output layer (use last dim in `hidden_layer_dims`
+            # as the size of the last layer in the stack).
+            output_layer_dim=None,
         )
         model = config.build(framework="torch")
 
@@ -223,7 +223,8 @@ class MLPHeadConfig(_MLPConfig):
         # LayerNorm((10,))  # layer norm always before activation
         # SiLU()
         # Linear(10, 4, bias=False)
-        # Tanh()
+        # LayerNorm((4,))  # layer norm always before activation
+        # SiLU()
     """
 
     @_framework_implemented()
@@ -477,11 +478,8 @@ class CNNTransposeHeadConfig(ModelConfig):
     cnn_transpose_use_layernorm: bool = False
     cnn_transpose_use_bias: bool = True
 
-    def __post_init__(self):
-        """Post initialize implementation for this CNNTransposeHeadConfig.
-
-        Infers the value of `self.output_dims` based on the other settings.
-        """
+    @property
+    def output_dims(self):
         # Infer output dims, layer by layer.
         dims = self.initial_image_dims
         for filter_spec in self.cnn_transpose_filter_specifiers:
@@ -507,9 +505,7 @@ class CNNTransposeHeadConfig(ModelConfig):
                 padding_out_size[1] - (kernel_h - 1),
                 num_filters,
             ]
-        self._output_dims = dims
-
-        self._validate()
+        return tuple(dims)
 
     def _validate(self, framework: str = "torch"):
         if len(self.input_dims) != 1:
@@ -543,9 +539,11 @@ class CNNEncoderConfig(ModelConfig):
     The stack of layers is composed of a sequence of convolutional layers.
     `input_dims` describes the shape of the input tensor. Beyond that, each layer
     specified by `filter_specifiers` is followed by an activation function according
-    to `filter_activation`. `output_dims` is reached by flattening the final
-    convolutional layer and must not be provided by the user (it's inferred
-    automatically from the other settings).
+    to `filter_activation`.
+
+    `output_dims` is reached by either the final convolutional layer's output directly
+    OR by flatten this output.
+
     See ModelConfig for usage details.
 
     Example:
@@ -600,7 +598,7 @@ class CNNEncoderConfig(ModelConfig):
         cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's output and its activation. Note that
             the output layer
-        use_bias: Whether to use bias on all Conv2D layers.
+        cnn_use_bias: Whether to use bias on all Conv2D layers.
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
@@ -612,11 +610,8 @@ class CNNEncoderConfig(ModelConfig):
     cnn_use_bias: bool = True
     flatten_at_end: bool = True
 
-    def __post_init__(self):
-        """Post initialize implementation for this CNNEncoderConfig.
-
-        Infers the value of `self.output_dims` based on the other settings.
-        """
+    @property
+    def output_dims(self):
         # Infer output dims, layer by layer.
         dims = self.input_dims  # Creates a copy (works for tuple/list).
         for filter_spec in self.cnn_filter_specifiers:
@@ -632,13 +627,11 @@ class CNNEncoderConfig(ModelConfig):
             # only return the image width/height).
             dims = [dims[0], dims[1], num_filters]
 
-        # Also store the actual CNN output shape.
-        self._output_dims = self.cnn_output_dims = dims
         # Flatten everything.
         if self.flatten_at_end:
-            self._output_dims = (int(np.prod(dims)),)
+            return (int(np.prod(dims)),)
 
-        self._validate()
+        return tuple(dims)
 
     def _validate(self, framework: str = "torch"):
         if len(self.input_dims) != 3:
@@ -752,6 +745,9 @@ class RecurrentEncoderConfig(ModelConfig):
     For example, the hidden states of an LSTMEncoder with num_layers=2 and hidden_dim=8
     would be: {"h": (2, B, 8), "c": (2, B, 8)}.
 
+    `output_dims` is reached by the last recurrent layer's dimension, which is always
+    the `hidden_dims` value.
+
     Example:
     .. code-block:: python
         # Configuration:
@@ -816,15 +812,9 @@ class RecurrentEncoderConfig(ModelConfig):
     view_requirements_dict: ViewRequirementsDict = None
     get_tokenizer_config: Callable[[gym.Space, Dict], ModelConfig] = None
 
-    def __post_init__(self):
-        """Post initialize implementation for this RecurrentEncoderConfig.
-
-        Infers the value of `self.output_dims` based on the other settings.
-        """
-        # Infer `output_dims` automatically.
-        self._output_dims = (self.hidden_dim,)
-
-        self._validate()
+    @property
+    def output_dims(self):
+        return (self.hidden_dim,)
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
