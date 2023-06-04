@@ -1,6 +1,6 @@
-.. _observability-general-troubleshoot:
+.. _observability-general-debugging:
 
-General Troubleshooting
+General Debugging
 =======================
 
 Ray sometimes has some aspects of its behavior that might catch
