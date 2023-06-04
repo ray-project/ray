@@ -268,7 +268,7 @@ The Metrics view provides visualizations of the time series metrics emitted by R
 
 You can select the time range of the metrics in the top right corner. The graphs refresh automatically every 15 seconds.
 
-There is also a convenient button to open the grafana UI from the dashboard. The Grafana UI provides additional customizability of the charts.
+There is also a convenient button to open the Grafana UI from the dashboard. The Grafana UI provides additional customizability of the charts.
 
 .. _dash-workflow-cpu-memory-analysis:
 
@@ -340,11 +340,11 @@ If the Ray Job is submitted by the :ref:`Ray Job API <jobs-quickstart>`, the Job
 
 .. note::
 
-  If the driver is executed directly on the head node of the Ray Cluster (without the job API) or run with :ref:`Ray client <ray-client-ref>`, the driver logs are not accessible from the dashboard. In this case, see the terminal output to view the driver logs.
+  If you execute the driver directly on the head node of the Ray Cluster (without the Job API) or run with :ref:`Ray client <ray-client-ref>`, the driver logs are not accessible from the dashboard. In this case, see the terminal output to view the driver logs.
 
 **Task and Actor Logs (Worker logs)**
 
-Task and actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the "Log" button.
+Task and Actor logs are accessible from the :ref:`task and actor table view <dash-workflow-state-apis>`. Click the "Log" button.
 You can see the ``stdout`` and ``stderr`` logs that contain the output emitted from Tasks and Actors.
 For Actors, you can also see the system logs for the corresponding worker process.
 
