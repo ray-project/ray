@@ -107,7 +107,7 @@ class TfCNNTransposeHead(TfModel):
             cnn_transpose_filter_specifiers=config.cnn_transpose_filter_specifiers,
             cnn_transpose_activation=config.cnn_transpose_activation,
             cnn_transpose_use_layernorm=config.cnn_transpose_use_layernorm,
-            use_bias=config.use_bias,
+            cnn_transpose_use_bias=config.cnn_transpose_use_bias,
         )
 
     @override(Model)

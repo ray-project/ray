@@ -116,7 +116,7 @@ class TorchCNN(nn.Module):
         cnn_filter_specifiers: List[List[Union[int, List]]],
         cnn_use_layernorm: bool = False,
         cnn_activation: str = "relu",
-        use_bias: bool = True,
+        cnn_use_bias: bool = True,
     ):
         """Initializes a TorchCNN instance.
 
@@ -133,7 +133,7 @@ class TorchCNN(nn.Module):
             cnn_use_layernorm: Whether to insert a LayerNorm functionality
                 in between each CNN layer's outputs and its activation.
             cnn_activation: The activation function to use after each Conv2D layer.
-            use_bias: Whether to use bias on all Conv2D layers.
+            cnn_use_bias: Whether to use bias on all Conv2D layers.
         """
         super().__init__()
 
@@ -152,7 +152,7 @@ class TorchCNN(nn.Module):
             layers.extend(
                 [
                     nn.ZeroPad2d(padding),
-                    nn.Conv2d(in_depth, out_depth, kernel, stride, bias=use_bias),
+                    nn.Conv2d(in_depth, out_depth, kernel, stride, bias=cnn_use_bias),
                 ]
             )
             # Layernorm.
@@ -201,7 +201,7 @@ class TorchCNNTranspose(nn.Module):
         cnn_transpose_filter_specifiers: List[List[Union[int, List]]],
         cnn_transpose_activation: str = "relu",
         cnn_transpose_use_layernorm: bool = False,
-        use_bias: bool = True,
+        cnn_transpose_use_bias: bool = True,
     ):
         """Initializes a TorchCNNTranspose instance.
 
@@ -223,7 +223,7 @@ class TorchCNNTranspose(nn.Module):
             cnn_transpose_activation: The activation function to use after each layer
                 (except for the last Conv2DTranspose layer, which is always
                 non-activated).
-            use_bias: Whether to use bias on all Conv2DTranspose layers.
+            cnn_transpose_use_bias: Whether to use bias on all Conv2DTranspose layers.
         """
         super().__init__()
 
@@ -273,7 +273,7 @@ class TorchCNNTranspose(nn.Module):
                     padding=(k_w - 1, k_h - 1),
                     # Last layer always uses bias (b/c has no LayerNorm, regardless of
                     # config).
-                    bias=use_bias or is_final_layer,
+                    bias=cnn_transpose_use_bias or is_final_layer,
                 ),
             )
             # Layernorm (never for final layer).

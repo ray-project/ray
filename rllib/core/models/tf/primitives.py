@@ -113,24 +113,27 @@ class TfCNN(tf.keras.Model):
         cnn_filter_specifiers: List[List[Union[int, List]]],
         cnn_use_layernorm: bool = False,
         cnn_activation: Optional[str] = "relu",
-        use_bias: bool = True,
+        cnn_use_bias: bool = True,
     ):
         """Initializes a TfCNN instance.
 
         Args:
             input_dims: The 3D input dimensions of the network (incoming image).
-            cnn_filter_specifiers: A list of lists, where each item represents one
-                Conv2D layer. Each such Conv2D layer is further specified by the
-                elements of the inner lists. The inner lists follow the format:
-                `[number of filters, kernel, stride]` to
+            cnn_filter_specifiers: A list of lists, where each element of an inner list
+                contains elements of the form
+                `[number of channels/filters, kernel, stride, [padding=same]?]` to
                 specify a convolutional layer stacked in order of the outer list.
-                `kernel` as well as `stride` might be provided as width x height tuples
-                OR as single ints representing both dimension (width and height)
-                in case of square shapes.
+                Note that `padding` is "same" by default and that `kernel` and `stride`
+                may be provided as single ints (square) or as a tuple/list of two ints
+                (width and height dimensions) for non-squared kernel/stride shapes.
+                A good rule of thumb for constructing CNN stacks is:
+                When using padding="same", the input "image" will be reduced in size by
+                the fctor of stride, e.g. input=(84, 84, 3) stride=2 kernel=x
+                padding="same": filters=16 -> output=(42, 42, 16).
             cnn_use_layernorm: Whether to insert a LayerNormalization functionality
                 in between each Conv2D layer's outputs and its activation.
             cnn_activation: The activation function to use after each Conv2D layer.
-            use_bias: Whether to use bias on all Conv2D layers.
+            cnn_use_bias: Whether to use bias on all Conv2D layers.
         """
         super().__init__()
 
@@ -143,14 +146,22 @@ class TfCNN(tf.keras.Model):
         # Input layer.
         layers.append(tf.keras.layers.Input(shape=input_dims))
 
-        for num_filters, kernel_size, strides in cnn_filter_specifiers:
+        for filter_specs in cnn_filter_specifiers:
+            # Padding information not provided -> Use "same" as default.
+            if len(filter_specs) == 3:
+                num_filters, kernel_size, strides = filter_specs
+                padding = "same"
+            # Padding information provided.
+            else:
+                num_filters, kernel_size, strides, padding = filter_specs
+
             layers.append(
                 tf.keras.layers.Conv2D(
                     filters=num_filters,
                     kernel_size=kernel_size,
                     strides=strides,
-                    padding="same",
-                    use_bias=use_bias,
+                    padding=padding,
+                    use_bias=cnn_use_bias,
                     activation=None if cnn_use_layernorm else cnn_activation,
                 )
             )
@@ -190,7 +201,7 @@ class TfCNNTranspose(tf.keras.Model):
         cnn_transpose_filter_specifiers: List[List[Union[int, List]]],
         cnn_transpose_activation: Optional[str] = "relu",
         cnn_transpose_use_layernorm: bool = False,
-        use_bias: bool = True,
+        cnn_transpose_use_bias: bool = True,
     ):
         """Initializes a TfCNNTranspose instance.
 
@@ -212,7 +223,7 @@ class TfCNNTranspose(tf.keras.Model):
             cnn_transpose_activation: The activation function to use after each layer
                 (except for the last Conv2DTranspose layer, which is always
                 non-activated).
-            use_bias: Whether to use bias on all Conv2DTranspose layers.
+            cnn_transpose_use_bias: Whether to use bias on all Conv2DTranspose layers.
         """
         super().__init__()
 
@@ -245,7 +256,7 @@ class TfCNNTranspose(tf.keras.Model):
                     ),
                     # Last layer always uses bias (b/c has no LayerNorm, regardless of
                     # config).
-                    use_bias=use_bias or is_final_layer,
+                    use_bias=cnn_transpose_use_bias or is_final_layer,
                 )
             )
             if cnn_transpose_use_layernorm and not is_final_layer:

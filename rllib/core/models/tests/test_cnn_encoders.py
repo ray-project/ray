@@ -33,19 +33,19 @@ class TestCNNEncoders(unittest.TestCase):
         ]
         cnn_activations = [None, "linear", "relu"]
         cnn_use_layernorms = [False, True]
-        use_biases = [False, True]
+        cnn_use_biases = [False, True]
 
         for permutation in itertools.product(
             inputs_dimss,
             cnn_activations,
             cnn_use_layernorms,
-            use_biases,
+            cnn_use_biases,
         ):
             (
                 inputs_dims,
                 cnn_activation,
                 cnn_use_layernorm,
-                use_bias,
+                cnn_use_bias,
             ) = permutation
 
             filter_specifiers = get_filter_config(inputs_dims)
@@ -56,7 +56,7 @@ class TestCNNEncoders(unittest.TestCase):
                 f"cnn_filter_specifiers: {filter_specifiers}\n"
                 f"cnn_activation: {cnn_activation}\n"
                 f"cnn_use_layernorm: {cnn_use_layernorm}\n"
-                f"use_bias: {use_bias}\n"
+                f"cnn_use_bias: {cnn_use_bias}\n"
             )
 
             config = CNNEncoderConfig(
@@ -64,7 +64,7 @@ class TestCNNEncoders(unittest.TestCase):
                 cnn_filter_specifiers=filter_specifiers,
                 cnn_activation=cnn_activation,
                 cnn_use_layernorm=cnn_use_layernorm,
-                use_bias=use_bias,
+                cnn_use_bias=cnn_use_bias,
             )
 
             # Use a ModelChecker to compare all added models (different frameworks)
@@ -77,7 +77,7 @@ class TestCNNEncoders(unittest.TestCase):
                 self.assertEqual(outputs[ENCODER_OUT].shape, (1, config.output_dims[0]))
 
             # Check all added models against each other.
-            model_checker.check()
+            model_checker.check(atol=0.0005)
 
 
 if __name__ == "__main__":

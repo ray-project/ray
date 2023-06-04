@@ -21,7 +21,6 @@ from ray.rllib.core.models.tf.primitives import TfMLP, TfCNN
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.specs_base import TensorSpec
-from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
@@ -57,12 +56,13 @@ class TfCNNEncoder(TfModel, Encoder):
             cnn_filter_specifiers=config.cnn_filter_specifiers,
             cnn_activation=config.cnn_activation,
             cnn_use_layernorm=config.cnn_use_layernorm,
-            use_bias=config.use_bias,
+            cnn_use_bias=config.cnn_use_bias,
         )
         layers.append(cnn)
 
         # Add a flatten operation to move from 2/3D into 1D space.
-        layers.append(tf.keras.layers.Flatten())
+        if config.flatten_at_end:
+            layers.append(tf.keras.layers.Flatten())
 
         # Create the network from gathered layers.
         self.net = tf.keras.Sequential(layers)
@@ -83,13 +83,18 @@ class TfCNNEncoder(TfModel, Encoder):
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TensorSpec(
-                    "b, d", d=self.config.output_dims[0], framework="tf2"
-                ),
-            }
-        )
+        return SpecDict({
+            ENCODER_OUT: (
+                TensorSpec("b, d", d=self.config.output_dims[0], framework="tf2")
+                if self.config.flatten_at_end
+                else TensorSpec(
+                    "b, w, h, c",
+                    w=self.config.output_dims[0],
+                    h=self.config.output_dims[1],
+                    d=self.config.output_dims[2],
+                    framework="tf2")
+            )
+        })
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:

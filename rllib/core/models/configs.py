@@ -332,7 +332,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             (except for the output).
         cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
             in between each Conv2DTranspose layer's output and its activation.
-        use_bias: Whether to use bias on all Conv2D layers.
+        cnn_transpose_use_bias: Whether to use bias on all Conv2DTranspose layers.
 
     Example:
     .. code-block:: python
@@ -407,7 +407,7 @@ class CNNTransposeHeadConfig(ModelConfig):
     )
     cnn_transpose_activation: str = "relu"
     cnn_transpose_use_layernorm: bool = False
-    use_bias: bool = True
+    cnn_transpose_use_bias: bool = True
 
     def _validate(self, framework: str = "torch"):
         if len(self.input_dims) != 1:
@@ -484,8 +484,15 @@ class CNNEncoderConfig(ModelConfig):
             form of `(width, height, channels)`.
         cnn_filter_specifiers: A list of lists, where each element of an inner list
             contains elements of the form
-            `[number of channels/filters, [kernel width, kernel height], stride]` to
-            specify a convolutional layer stacked in order of the outer list.
+            `[number of channels/filters, kernel, stride, [padding=same]?]` to specify a
+            convolutional layer stacked in order of the outer list.
+            Note that `padding` is "same" by default and that `kernel` and `stride`
+            may be privided as single ints (square) or as a tuple/list of two ints
+            (width and height dimensions) for non-squared kernel/stride shapes.
+            A good rule of thumb for constructing CNN stacks is:
+            When using padding="same", the input "image" will be reduced in size by
+            stride, e.g. input=(84, 84, 3) stride=2 kernel=x padding="same" filters=16
+            -> output=(42, 42, 16).
         cnn_activation: The activation function to use after each layer (
             except for the output).
         cnn_use_layernorm: Whether to insert a LayerNorm functionality
@@ -500,7 +507,8 @@ class CNNEncoderConfig(ModelConfig):
     )
     cnn_activation: str = "relu"
     cnn_use_layernorm: bool = False
-    use_bias: bool = True
+    cnn_use_bias: bool = True
+    flatten_at_end: bool = True
 
     def __post_init__(self):
         """Post initialize implementation for this CNNEncoderConfig.
@@ -509,12 +517,19 @@ class CNNEncoderConfig(ModelConfig):
         """
         self._validate()
 
+        if self.output_dims is not None:
+            raise ValueError(
+                f"`output_dims` ({self.output_dims}) of CNNEncoderConfig must be left "
+                "None by the user! The encoder will figure out the output_dims value "
+                "automatically via the given `cnn_filter_specifiers` setting."
+            )
+
         # Infer output dims, layer by layer.
-        dims = self.input_dims.copy()
+        dims = list(self.input_dims)  # Creates a copy (works for tuple/list).
         for filter_spec in self.cnn_filter_specifiers:
-            # TODO (sven): For now, we only support "same" padding in cnn_filter_specifiers.
-            #  Add optional forth item to filter specs to indicate padding type:
-            #  "same" or "valid".
+            # TODO (sven): For now, we only support "same" padding in
+            #  `cnn_filter_specifiers`. Add optional forth item to filter specs to
+            #  indicate padding type: "same" or "valid".
             num_filters, kernel, stride = filter_spec
             strides = (stride, stride) if isinstance(stride, (int, float)) else stride
             # Divide 1st and 2nd dim (width and height) by the stride (because we
