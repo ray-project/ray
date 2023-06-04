@@ -74,6 +74,7 @@ class TestCNNEncoders(unittest.TestCase):
             for fw in framework_iterator(frameworks=("tf2", "torch")):
                 # Add this framework version of the model to our checker.
                 outputs = model_checker.add(framework=fw)
+                # Confirm that the config conputed the correct (actual) output dims.
                 self.assertEqual(outputs[ENCODER_OUT].shape, (1, config.output_dims[0]))
 
             # Check all added models against each other.
@@ -103,6 +104,7 @@ class TestCNNEncoders(unittest.TestCase):
         for fw in framework_iterator(frameworks=("tf2", "torch")):
             # Add this framework version of the model to our checker.
             outputs = model_checker.add(framework=fw)
+            # Confirm that the config conputed the correct (actual) output dims.
             self.assertEqual(outputs[ENCODER_OUT].shape, (1, config.output_dims[0]))
 
         # Check all added models against each other.

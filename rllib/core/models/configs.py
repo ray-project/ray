@@ -612,6 +612,9 @@ class CNNEncoderConfig(ModelConfig):
 
     @property
     def output_dims(self):
+        if not self.input_dims:
+            return None
+
         # Infer output dims, layer by layer.
         dims = self.input_dims  # Creates a copy (works for tuple/list).
         for filter_spec in self.cnn_filter_specifiers:
