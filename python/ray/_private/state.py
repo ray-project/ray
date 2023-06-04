@@ -6,7 +6,7 @@ from google.protobuf.json_format import MessageToDict
 
 import ray
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.resource_spec import NODE_ID_PREFIX
+from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import binary_to_hex, decode, hex_to_binary
 from ray._raylet import GlobalStateAccessor
 from ray.core.generated import common_pb2
@@ -808,7 +808,7 @@ def node_ids():
     node_ids = []
     for node in nodes():
         for k, v in node["Resources"].items():
-            if k.startswith(NODE_ID_PREFIX):
+            if k.startswith(NODE_ID_PREFIX) and k != HEAD_NODE_RESOURCE_NAME:
                 node_ids.append(k)
     return node_ids
 

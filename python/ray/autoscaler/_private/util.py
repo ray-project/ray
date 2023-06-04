@@ -13,7 +13,6 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-import ray._private.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.cli_logger import cli_logger
