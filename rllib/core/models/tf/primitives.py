@@ -24,11 +24,11 @@ class TfMLP(tf.keras.Model):
         input_dim: int,
         hidden_layer_dims: List[int],
         hidden_layer_use_layernorm: bool = False,
-        hidden_layer_activation: Optional[Union[str, Callable]] = "relu",
         hidden_layer_use_bias: bool = True,
+        hidden_layer_activation: Optional[Union[str, Callable]] = "relu",
         output_dim: Optional[int] = None,
-        output_activation: Optional[Union[str, Callable]] = "linear",
         output_use_bias: bool = True,
+        output_activation: Optional[Union[str, Callable]] = "linear",
     ):
         """Initialize a TfMLP object.
 
@@ -38,21 +38,21 @@ class TfMLP(tf.keras.Model):
                 single layer will be built of size `output_dim`.
             hidden_layer_use_layernorm: Whether to insert a LayerNormalization
                 functionality in between each hidden layer's output and its activation.
+            hidden_layer_use_bias: Whether to use bias on all dense layers (excluding
+                the possible separate output layer).
             hidden_layer_activation: The activation function to use after each layer
                 (except for the output). Either a tf.nn.[activation fn] callable or a
                 string that's supported by tf.keras.layers.Activation(activation=...),
                 e.g. "relu", "ReLU", "silu", or "linear".
-            hidden_layer_use_bias: Whether to use bias on all dense layers (excluding
-                the possible separate output layer).
             output_dim: The output dimension of the network. If None, no specific output
                 layer will be added and the last layer in the stack will have
                 size=`hidden_layer_dims[-1]`.
+            output_use_bias: Whether to use bias on the separate output layer,
+                if any.
             output_activation: The activation function to use for the output layer
                 (if any). Either a tf.nn.[activation fn] callable or a string that's
                 supported by tf.keras.layers.Activation(activation=...), e.g. "relu",
                 "ReLU", "silu", or "linear".
-            output_use_bias: Whether to use bias on the separate output layer,
-                if any.
         """
         super().__init__()
         assert input_dim > 0
@@ -114,9 +114,9 @@ class TfCNN(tf.keras.Model):
         *,
         input_dims: Union[List[int], Tuple[int]],
         cnn_filter_specifiers: List[List[Union[int, List]]],
+        cnn_use_bias: bool = True,
         cnn_use_layernorm: bool = False,
         cnn_activation: Optional[str] = "relu",
-        cnn_use_bias: bool = True,
     ):
         """Initializes a TfCNN instance.
 
@@ -133,10 +133,10 @@ class TfCNN(tf.keras.Model):
                 When using padding="same", the input "image" will be reduced in size by
                 the fctor of stride, e.g. input=(84, 84, 3) stride=2 kernel=x
                 padding="same": filters=16 -> output=(42, 42, 16).
+            cnn_use_bias: Whether to use bias on all Conv2D layers.
             cnn_use_layernorm: Whether to insert a LayerNormalization functionality
                 in between each Conv2D layer's outputs and its activation.
             cnn_activation: The activation function to use after each Conv2D layer.
-            cnn_use_bias: Whether to use bias on all Conv2D layers.
         """
         super().__init__()
 
@@ -202,9 +202,9 @@ class TfCNNTranspose(tf.keras.Model):
         *,
         input_dims: Union[List[int], Tuple[int]],
         cnn_transpose_filter_specifiers: List[List[Union[int, List]]],
+        cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: Optional[str] = "relu",
         cnn_transpose_use_layernorm: bool = False,
-        cnn_transpose_use_bias: bool = True,
     ):
         """Initializes a TfCNNTranspose instance.
 
@@ -219,6 +219,7 @@ class TfCNNTranspose(tf.keras.Model):
                 `kernel` as well as `stride` might be provided as width x height tuples
                 OR as single ints representing both dimension (width and height)
                 in case of square shapes.
+            cnn_transpose_use_bias: Whether to use bias on all Conv2DTranspose layers.
             cnn_transpose_use_layernorm: Whether to insert a LayerNormalization
                 functionality in between each Conv2DTranspose layer's outputs and its
                 activation.
@@ -226,7 +227,6 @@ class TfCNNTranspose(tf.keras.Model):
             cnn_transpose_activation: The activation function to use after each layer
                 (except for the last Conv2DTranspose layer, which is always
                 non-activated).
-            cnn_transpose_use_bias: Whether to use bias on all Conv2DTranspose layers.
         """
         super().__init__()
 

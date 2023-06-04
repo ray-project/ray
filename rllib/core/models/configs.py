@@ -120,30 +120,30 @@ class _MLPConfig(ModelConfig):
         hidden_layer_dims: The sizes of the hidden layers. If an empty list,
             `output_layer_dim` must be provided (int) and only a single layer will be
             built.
+        hidden_layer_use_bias: Whether to use bias on all dense layers in the network
+            (excluding a possible separate output layer defined by `output_layer_dim`).
         hidden_layer_activation: The activation function to use after each layer (
             except for the output).
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
             in between each hidden layer's output and its activation.
-        hidden_layer_use_bias: Whether to use bias on all dense layers in the network
-            (excluding a possible separate output layer defined by `output_layer_dim`).
         output_layer_dim: An int indicating the size of the output layer. This may be
             set to `None` in case no extra output layer should be built and only the
             layers specified by `hidden_layer_dims` will be part of the network.
+        output_layer_use_bias: Whether to use bias on the separate output layer, if any.
         output_layer_activation: The activation function to use for the output layer,
             if any.
-        output_layer_use_bias: Whether to use bias on the separate output layer, if any.
     """
 
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
+    hidden_layer_use_bias: bool = True
     hidden_layer_activation: str = "relu"
     hidden_layer_use_layernorm: bool = False
-    hidden_layer_use_bias: bool = True
 
     # Optional last output layer with - possibly - different activation and use_bias
     # settings.
     output_layer_dim: Optional[int] = None
-    output_layer_activation: str = "linear"
     output_layer_use_bias: bool = True
+    output_layer_activation: str = "linear"
 
     @property
     def output_dims(self):
@@ -397,11 +397,11 @@ class CNNTransposeHeadConfig(ModelConfig):
             list contains elements of the form
             `[number of channels/filters, [kernel width, kernel height], stride]` to
             specify a convolutional layer stacked in order of the outer list.
+        cnn_transpose_use_bias: Whether to use bias on all Conv2DTranspose layers.
         cnn_transpose_activation: The activation function to use after each layer
             (except for the output).
         cnn_transpose_use_layernorm: Whether to insert a LayerNorm functionality
             in between each Conv2DTranspose layer's output and its activation.
-        cnn_transpose_use_bias: Whether to use bias on all Conv2DTranspose layers.
 
     Example:
     .. code-block:: python
@@ -474,9 +474,9 @@ class CNNTransposeHeadConfig(ModelConfig):
     cnn_transpose_filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[48, [4, 4], 2], [24, [4, 4], 2], [3, [4, 4], 2]]
     )
+    cnn_transpose_use_bias: bool = True
     cnn_transpose_activation: str = "relu"
     cnn_transpose_use_layernorm: bool = False
-    cnn_transpose_use_bias: bool = True
 
     @property
     def output_dims(self):
@@ -593,21 +593,21 @@ class CNNEncoderConfig(ModelConfig):
             When using padding="same", the input "image" will be reduced in size by
             stride, e.g. input=(84, 84, 3) stride=2 kernel=x padding="same" filters=16
             -> output=(42, 42, 16).
+        cnn_use_bias: Whether to use bias on all Conv2D layers.
         cnn_activation: The activation function to use after each layer (
             except for the output).
         cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's output and its activation. Note that
             the output layer
-        cnn_use_bias: Whether to use bias on all Conv2D layers.
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
     cnn_filter_specifiers: List[List[Union[int, List[int]]]] = field(
         default_factory=lambda: [[16, [4, 4], 2], [32, [4, 4], 2], [64, [8, 8], 2]]
     )
+    cnn_use_bias: bool = True
     cnn_activation: str = "relu"
     cnn_use_layernorm: bool = False
-    cnn_use_bias: bool = True
     flatten_at_end: bool = True
 
     @property

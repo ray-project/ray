@@ -30,11 +30,11 @@ class TorchMLP(nn.Module):
         input_dim: int,
         hidden_layer_dims: List[int],
         hidden_layer_activation: Union[str, Callable] = "relu",
-        hidden_layer_use_layernorm: bool = False,
         hidden_layer_use_bias: bool = True,
+        hidden_layer_use_layernorm: bool = False,
         output_dim: Optional[int] = None,
-        output_activation: Union[str, Callable] = "linear",
         output_use_bias: bool = True,
+        output_activation: Union[str, Callable] = "linear",
     ):
         """Initialize a TorchMLP object.
 
@@ -44,21 +44,21 @@ class TorchMLP(nn.Module):
                 single layer will be built of size `output_dim`.
             hidden_layer_use_layernorm: Whether to insert a LayerNormalization
                 functionality in between each hidden layer's output and its activation.
+            hidden_layer_use_bias: Whether to use bias on all dense layers (excluding
+                the possible separate output layer).
             hidden_layer_activation: The activation function to use after each layer
                 (except for the output). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
-            hidden_layer_use_bias: Whether to use bias on all dense layers (excluding
-                the possible separate output layer).
             output_dim: The output dimension of the network. If None, no specific output
                 layer will be added and the last layer in the stack will have
                 size=`hidden_layer_dims[-1]`.
+            output_use_bias: Whether to use bias on the separate output layer,
+                if any.
             output_activation: The activation function to use for the output layer
                 (if any). Either a torch.nn.[activation fn] callable or
                 the name thereof, or an RLlib recognized activation name,
                 e.g. "ReLU", "relu", "tanh", "SiLU", or "linear".
-            output_use_bias: Whether to use bias on the separate output layer,
-                if any.
         """
         super().__init__()
         assert input_dim > 0
@@ -76,7 +76,9 @@ class TorchMLP(nn.Module):
             + ([output_dim] if output_dim else [])
         )
         for i in range(0, len(dims) - 1):
+            # Whether we are already processing the last (special) output layer.
             is_output_layer = output_dim is not None and i == len(dims) - 2
+
             layers.append(
                 nn.Linear(
                     dims[i],
@@ -125,9 +127,9 @@ class TorchCNN(nn.Module):
         *,
         input_dims: Union[List[int], Tuple[int]],
         cnn_filter_specifiers: List[List[Union[int, List]]],
+        cnn_use_bias: bool = True,
         cnn_use_layernorm: bool = False,
         cnn_activation: str = "relu",
-        cnn_use_bias: bool = True,
     ):
         """Initializes a TorchCNN instance.
 
@@ -141,10 +143,10 @@ class TorchCNN(nn.Module):
                 `kernel` as well as `stride` might be provided as width x height tuples
                 OR as single ints representing both dimension (width and height)
                 in case of square shapes.
+            cnn_use_bias: Whether to use bias on all Conv2D layers.
             cnn_use_layernorm: Whether to insert a LayerNorm functionality
                 in between each CNN layer's outputs and its activation.
             cnn_activation: The activation function to use after each Conv2D layer.
-            cnn_use_bias: Whether to use bias on all Conv2D layers.
         """
         super().__init__()
 
@@ -220,9 +222,9 @@ class TorchCNNTranspose(nn.Module):
         *,
         input_dims: Union[List[int], Tuple[int]],
         cnn_transpose_filter_specifiers: List[List[Union[int, List]]],
+        cnn_transpose_use_bias: bool = True,
         cnn_transpose_activation: str = "relu",
         cnn_transpose_use_layernorm: bool = False,
-        cnn_transpose_use_bias: bool = True,
     ):
         """Initializes a TorchCNNTranspose instance.
 
@@ -237,6 +239,7 @@ class TorchCNNTranspose(nn.Module):
                 `kernel` as well as `stride` might be provided as width x height tuples
                 OR as single ints representing both dimension (width and height)
                 in case of square shapes.
+            cnn_transpose_use_bias: Whether to use bias on all Conv2DTranspose layers.
             cnn_transpose_use_layernorm: Whether to insert a LayerNormalization
                 functionality in between each Conv2DTranspose layer's outputs and its
                 activation.
@@ -244,7 +247,6 @@ class TorchCNNTranspose(nn.Module):
             cnn_transpose_activation: The activation function to use after each layer
                 (except for the last Conv2DTranspose layer, which is always
                 non-activated).
-            cnn_transpose_use_bias: Whether to use bias on all Conv2DTranspose layers.
         """
         super().__init__()
 
