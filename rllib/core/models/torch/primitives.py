@@ -77,11 +77,13 @@ class TorchMLP(nn.Module):
         )
         for i in range(0, len(dims) - 1):
             is_output_layer = output_dim is not None and i == len(dims) - 2
-            layers.append(nn.Linear(
-                dims[i],
-                dims[i + 1],
-                bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
-            ))
+            layers.append(
+                nn.Linear(
+                    dims[i],
+                    dims[i + 1],
+                    bias=output_use_bias if is_output_layer else hidden_layer_use_bias,
+                )
+            )
 
             # We are still in the hidden layer section: Possibly add layernorm and
             # hidden activation.

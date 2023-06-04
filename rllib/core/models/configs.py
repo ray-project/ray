@@ -96,8 +96,7 @@ class ModelConfig(abc.ABC):
 
     @property
     def output_dims(self):
-        """Read-only `output_dims` are inferred automatically from other settings.
-        """
+        """Read-only `output_dims` are inferred automatically from other settings."""
         return self._output_dims
 
 
@@ -648,11 +647,19 @@ class CNNEncoderConfig(ModelConfig):
                 "tensor (image) with the dimensions meaning: width x height x "
                 "channels, e.g. `[64, 64, 3]`!"
             )
-        if len(self.output_dims) != 3:
+        if not self.flatten_at_end and len(self.output_dims) != 3:
             raise ValueError(
                 f"`output_dims` ({self.output_dims}) of CNNEncoderConfig must be "
-                "3D, e.g. `[4, 4, 128]`! This is an inferred value, hence other "
-                "settings might be wrong."
+                "3D, e.g. `[4, 4, 128]`, b/c your `flatten_at_end` setting is False! "
+                "`output_dims` is an inferred value, hence other settings might be "
+                "wrong."
+            )
+        elif self.flatten_at_end and len(self.output_dims) != 1:
+            raise ValueError(
+                f"`output_dims` ({self.output_dims}) of CNNEncoderConfig must be "
+                "1D, e.g. `[32]`, b/c your `flatten_at_end` setting is True! "
+                "`output_dims` is an inferred value, hence other settings might be "
+                "wrong."
             )
 
     @_framework_implemented()
@@ -837,9 +844,6 @@ class RecurrentEncoderConfig(ModelConfig):
                 "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
                 " be wrong."
             )
-
-        # Call these already here to catch errors early on.
-        get_activation_fn(self.output_activation, framework=framework)
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":

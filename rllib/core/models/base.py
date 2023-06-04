@@ -1,5 +1,4 @@
 import abc
-from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
 from ray.rllib.core.models.configs import ModelConfig
