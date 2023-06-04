@@ -531,7 +531,7 @@
     - python ci/build/build-docker-images.py --py-versions py38 --device-types cpu --build-type LOCAL --build-base
     # Tag the image built in the last step. We want to be sure to distinguish the image from the real Ray nightly.
     - docker tag rayproject/ray:nightly-py38-cpu ray-ci:kuberay-test
-    # Load the image into the kind node.
+    # Load the image into the kind node
     - kind load docker-image ray-ci:kuberay-test
     - echo "--- Setting up KubeRay operator."
     - python python/ray/tests/kuberay/setup/setup_kuberay.py
