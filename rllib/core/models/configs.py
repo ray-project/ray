@@ -12,7 +12,7 @@ from ray.rllib.models.torch.misc import (
     valid_padding,
 )
 from ray.rllib.models.utils import get_activation_fn
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.typing import ViewRequirementsDict
 
 if TYPE_CHECKING:
