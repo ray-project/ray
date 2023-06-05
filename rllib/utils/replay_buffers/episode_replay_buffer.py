@@ -503,7 +503,7 @@ class _Episode:
             observations=[self.observations[-1]],
             # Same state.
             states=self.states,
-            # Continue with our last timestep.
+            # Continue with self's current timestep.
             t=self.t,
         )
 

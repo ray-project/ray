@@ -29,7 +29,7 @@ class DreamerV3Catalog(Catalog):
             model_config_dict=model_config_dict,
         )
 
-        self.model_dimension = self.model_config_dict["model_dimension"]
+        self.model_size = self.model_config_dict["model_size"]
         self.is_img_space = len(self.observation_space.shape) in [2, 3]
         self.is_gray_scale = (
             self.is_img_space and len(self.observation_space.shape) == 2
@@ -51,11 +51,11 @@ class DreamerV3Catalog(Catalog):
                 CNNAtari,
             )
 
-            return CNNAtari(model_dimension=self.model_dimension)
+            return CNNAtari(model_size=self.model_size)
         else:
             from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
-            return MLP(model_dimension=self.model_dimension, name="vector_encoder")
+            return MLP(model_size=self.model_size, name="vector_encoder")
 
     def build_decoder(self, framework: str) -> Model:
         """Builds the World-Model's decoder network depending on the obs space."""
@@ -68,7 +68,7 @@ class DreamerV3Catalog(Catalog):
             )
 
             return ConvTransposeAtari(
-                model_dimension=self.model_dimension,
+                model_size=self.model_size,
                 gray_scaled=self.is_gray_scale,
             )
         else:
@@ -77,6 +77,6 @@ class DreamerV3Catalog(Catalog):
             )
 
             return VectorDecoder(
-                model_dimension=self.model_dimension,
+                model_size=self.model_size,
                 observation_space=self.observation_space,
             )

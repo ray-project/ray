@@ -21,11 +21,11 @@ _ALLOWED_MODEL_DIMS = [
 ]
 
 
-def get_cnn_multiplier(model_dimension, override=None):
+def get_cnn_multiplier(model_size, override=None):
     if override is not None:
         return override
 
-    assert model_dimension in _ALLOWED_MODEL_DIMS
+    assert model_size in _ALLOWED_MODEL_DIMS
     cnn_multipliers = {
         "nano": 2,
         "micro": 4,
@@ -36,14 +36,14 @@ def get_cnn_multiplier(model_dimension, override=None):
         "L": 64,
         "XL": 96,
     }
-    return cnn_multipliers[model_dimension]
+    return cnn_multipliers[model_size]
 
 
-def get_dense_hidden_units(model_dimension, override=None):
+def get_dense_hidden_units(model_size, override=None):
     if override is not None:
         return override
 
-    assert model_dimension in _ALLOWED_MODEL_DIMS
+    assert model_size in _ALLOWED_MODEL_DIMS
     dense_units = {
         "nano": 16,
         "micro": 32,
@@ -54,14 +54,14 @@ def get_dense_hidden_units(model_dimension, override=None):
         "L": 768,
         "XL": 1024,
     }
-    return dense_units[model_dimension]
+    return dense_units[model_size]
 
 
-def get_gru_units(model_dimension, override=None):
+def get_gru_units(model_size, override=None):
     if override is not None:
         return override
 
-    assert model_dimension in _ALLOWED_MODEL_DIMS
+    assert model_size in _ALLOWED_MODEL_DIMS
     gru_units = {
         "nano": 16,
         "micro": 32,
@@ -72,14 +72,14 @@ def get_gru_units(model_dimension, override=None):
         "L": 2048,
         "XL": 4096,
     }
-    return gru_units[model_dimension]
+    return gru_units[model_size]
 
 
-def get_num_z_categoricals(model_dimension, override=None):
+def get_num_z_categoricals(model_size, override=None):
     if override is not None:
         return override
 
-    assert model_dimension in _ALLOWED_MODEL_DIMS
+    assert model_size in _ALLOWED_MODEL_DIMS
     gru_units = {
         "nano": 4,
         "micro": 8,
@@ -90,14 +90,14 @@ def get_num_z_categoricals(model_dimension, override=None):
         "L": 32,
         "XL": 32,
     }
-    return gru_units[model_dimension]
+    return gru_units[model_size]
 
 
-def get_num_z_classes(model_dimension, override=None):
+def get_num_z_classes(model_size, override=None):
     if override is not None:
         return override
 
-    assert model_dimension in _ALLOWED_MODEL_DIMS
+    assert model_size in _ALLOWED_MODEL_DIMS
     gru_units = {
         "nano": 4,
         "micro": 8,
@@ -108,14 +108,14 @@ def get_num_z_classes(model_dimension, override=None):
         "L": 32,
         "XL": 32,
     }
-    return gru_units[model_dimension]
+    return gru_units[model_size]
 
 
-def get_num_curiosity_nets(model_dimension, override=None):
+def get_num_curiosity_nets(model_size, override=None):
     if override is not None:
         return override
 
-    assert model_dimension in _ALLOWED_MODEL_DIMS
+    assert model_size in _ALLOWED_MODEL_DIMS
     num_curiosity_nets = {
         "nano": 8,
         "micro": 8,
@@ -126,14 +126,14 @@ def get_num_curiosity_nets(model_dimension, override=None):
         "L": 8,
         "XL": 8,
     }
-    return num_curiosity_nets[model_dimension]
+    return num_curiosity_nets[model_size]
 
 
-def get_num_dense_layers(model_dimension, override=None):
+def get_num_dense_layers(model_size, override=None):
     if override is not None:
         return override
 
-    assert model_dimension in _ALLOWED_MODEL_DIMS
+    assert model_size in _ALLOWED_MODEL_DIMS
     num_dense_layers = {
         "nano": 1,
         "micro": 1,
@@ -144,7 +144,7 @@ def get_num_dense_layers(model_dimension, override=None):
         "L": 4,
         "XL": 5,
     }
-    return num_dense_layers[model_dimension]
+    return num_dense_layers[model_size]
 
 
 def do_symlog_obs(observation_space, symlog_obs_user_setting):

@@ -35,7 +35,6 @@ def reconstruct_obs_from_h_and_z(
         h=np.reshape(h_t0_to_H, (T * B, -1)),
         z=np.reshape(z_t0_to_H, (T * B,) + z_t0_to_H.shape[2:]),
     )
-    loc = reconstructed_obs_distr_TxB.loc
     # Unfold time rank again.
     reconstructed_obs_T_B = np.reshape(reconstructed_obs_distr_means_TxB, (T, B) + obs_dims_shape)
     # Return inverse symlog'd (real env obs space) reconstructed observations.
@@ -80,12 +79,12 @@ def summarize_dreamed_trajectory(
                     # `DISAGREE_intrinsic_rewards_H_B` are shifted by 1 already
                     # (from t1 to H, not t0 to H like all other data here).
                     dreamed_ri_tp1=(
-                        train_results["DISAGREE_intrinsic_rewards_H_BxT"][t][b]
-                        if "DISAGREE_intrinsic_rewards_H_BxT" in train_results
+                        results["DISAGREE_intrinsic_rewards_H_BxT"][t][b]
+                        if "DISAGREE_intrinsic_rewards_H_BxT" in results
                         else None
                     ),
                     dreamed_c_tp1=(dream_data["continues_dreamed_t0_to_H_BxT"][t + 1][b]),
-                    value_target=train_results["VALUE_TARGETS_H_BxT"][t][b],
+                    value_target=results["VALUE_TARGETS_H_BxT"][t][b],
                     initial_h=dream_data["h_states_t0_to_H_BxT"][t][b],
                     as_tensor=True,
                 ).numpy()
@@ -108,7 +107,6 @@ def summarize_predicted_vs_sampled_obs(
     batch_size_B,
     batch_length_T,
     symlog_obs: bool = True,
-    #include_images: bool = True,
 ):
     """Summarizes sampled data (from the replay buffer) vs world-model predictions.
 
@@ -130,7 +128,7 @@ def summarize_predicted_vs_sampled_obs(
         batch_length_T: The batch length (T). This is the length of an individual
             trajectory sampled from the buffer.
     """
-    predicted_observation_means_BxT = train_results[
+    predicted_observation_means_BxT = results[
         "WORLD_MODEL_fwd_out_obs_distribution_means_BxT"
     ]
     #predicted_rewards_BxT = train_results[
@@ -149,7 +147,6 @@ def summarize_predicted_vs_sampled_obs(
         descr_prefix="WORLD_MODEL",
         descr_obs=f"predicted_posterior_T{batch_length_T}",
         symlog_obs=symlog_obs,
-        #include_images=include_images,
     )
     #predicted_rewards_BxT = inverse_symlog(predicted_rewards_BxT)
     #_summarize_rewards(
@@ -183,7 +180,6 @@ def summarize_dreamed_eval_trajectory_vs_samples(
     dreamed_T,
     dreamer_model,
     symlog_obs: bool = True,
-    include_images=True,
 ):
     # Obs MSE.
     dreamed_obs_T_B = reconstruct_obs_from_h_and_z(
@@ -206,7 +202,6 @@ def summarize_dreamed_eval_trajectory_vs_samples(
         descr_prefix="EVALUATION",
         descr_obs=f"dreamed_prior_H{dreamed_T}",
         symlog_obs=symlog_obs,
-        include_images=include_images,
     )
 
     # Reward MSE.
@@ -231,7 +226,6 @@ def summarize_dreamed_eval_trajectory_vs_samples(
 
 def summarize_sampling_and_replay_buffer(
     *,
-    step,
     replay_buffer,
 ):
     episodes_in_buffer = replay_buffer.get_num_episodes()
@@ -242,6 +236,7 @@ def summarize_sampling_and_replay_buffer(
     return {
         "BUFFER_size_num_episodes": episodes_in_buffer,
         "BUFFER_size_timesteps": ts_in_buffer,
+        "BUFFER_replayed_steps": replayed_steps,
     }
 
 
@@ -253,7 +248,6 @@ def _summarize_obs(
     descr_prefix=None,
     descr_obs,
     symlog_obs,
-    #include_images=True,
 ):
     """Summarizes computed- vs sampled observations: MSE and (if applicable) images.
 

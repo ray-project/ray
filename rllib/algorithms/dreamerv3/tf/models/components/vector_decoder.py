@@ -22,13 +22,13 @@ class VectorDecoder(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         observation_space: gym.Space,
     ):
         """Initializes a VectorDecoder instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                 Determines the exact size of the underlying MLP.
             observation_space: The observation space to decode back into. This must
                 be a Box of shape (d,), where d >= 1.
@@ -41,7 +41,7 @@ class VectorDecoder(tf.keras.Model):
         )
 
         self.mlp = MLP(
-            model_dimension=model_dimension,
+            model_size=model_size,
             output_layer_size=observation_space.shape[0],
         )
 

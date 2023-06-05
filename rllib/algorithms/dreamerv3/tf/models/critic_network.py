@@ -27,7 +27,7 @@ class CriticNetwork(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         num_buckets: int = 255,
         lower_bound: float = -20.0,
         upper_bound: float = 20.0,
@@ -36,7 +36,7 @@ class CriticNetwork(tf.keras.Model):
         """Initializes a CriticNetwork instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                Use None for manually setting the different network sizes.
             num_buckets: The number of buckets to create. Note that the number of
                 possible symlog'd outcomes from the used distribution is
@@ -63,7 +63,7 @@ class CriticNetwork(tf.keras.Model):
         """
         super().__init__(name="critic")
 
-        self.model_dimension = model_dimension
+        self.model_size = model_size
         self.ema_decay = ema_decay
 
         # "Fast" critic network(s) (mlp + reward-pred-layer). This is the network
@@ -72,7 +72,7 @@ class CriticNetwork(tf.keras.Model):
         # the critic loss term such that the weights of this fast critic stay close
         # to the EMA weights (see below).
         self.mlp = MLP(
-            model_dimension=self.model_dimension,
+            model_size=self.model_size,
             output_layer_size=None,
         )
         self.return_layer = RewardPredictorLayer(
@@ -85,7 +85,7 @@ class CriticNetwork(tf.keras.Model):
         # target net, BUT not used to compute anything, just for the
         # weights regularizer term inside the critic loss).
         self.mlp_ema = MLP(
-            model_dimension=self.model_dimension,
+            model_size=self.model_size,
             output_layer_size=None,
             trainable=False,
         )

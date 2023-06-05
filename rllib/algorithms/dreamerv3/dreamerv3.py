@@ -65,7 +65,7 @@ class DreamerV3Config(AlgorithmConfig):
         >>> from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
         >>> config = DreamerV3Config()
         >>> config = config.training(  # doctest: +SKIP
-        ...     batch_size_B=8, model_dimension="M"
+        ...     batch_size_B=8, model_size="M"
         ... )
         >>> config = config.resources(num_gpus=4)  # doctest: +SKIP
         >>> print(config.to_dict())  # doctest: +SKIP
@@ -103,7 +103,7 @@ class DreamerV3Config(AlgorithmConfig):
         # __sphinx_doc_begin__
 
         # DreamerV3 specific settings:
-        self.model_dimension = "XS"
+        self.model_size = "XS"
         self.training_ratio = 1024
 
         self.replay_buffer_config = {
@@ -157,7 +157,7 @@ class DreamerV3Config(AlgorithmConfig):
     def training(
         self,
         *,
-        model_dimension: Optional[str] = NotProvided,
+        model_size: Optional[str] = NotProvided,
         training_ratio: Optional[float] = NotProvided,
         #summary_frequency_train_steps: Optional[int] = NotProvided,
         gc_frequency_train_steps: Optional[int] = NotProvided,
@@ -181,7 +181,7 @@ class DreamerV3Config(AlgorithmConfig):
         """Sets the training related configuration.
 
         Args:
-            model_dimension: The main switch (given as a string such as "S", "M", or
+            model_size: The main switch (given as a string such as "S", "M", or
                 "L") for adjusting the overall model size. See [1] (table B) for more
                 information. Individual model settings, such as the sizes of individual
                 layers can still be overwritten by the user.
@@ -239,8 +239,8 @@ class DreamerV3Config(AlgorithmConfig):
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
-        if model_dimension is not NotProvided:
-            self.model_dimension = model_dimension
+        if model_size is not NotProvided:
+            self.model_size = model_size
         if training_ratio is not NotProvided:
             self.training_ratio = training_ratio
         #if summary_frequency_train_steps is not NotProvided:
@@ -353,7 +353,7 @@ class DreamerV3Config(AlgorithmConfig):
     def get_learner_hyperparameters(self) -> LearnerHyperparameters:
         base_hps = super().get_learner_hyperparameters()
         return DreamerV3LearnerHyperparameters(
-            model_dimension=self.model_dimension,
+            model_size=self.model_size,
             training_ratio=self.training_ratio,
             batch_size_B=self.batch_size_B,
             batch_length_T=self.batch_length_T,

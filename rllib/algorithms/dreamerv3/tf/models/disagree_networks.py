@@ -21,10 +21,10 @@ class DisagreeNetworks(tf.keras.Model):
     TODO
     """
 
-    def __init__(self, *, num_networks, model_dimension, intrinsic_rewards_scale):
+    def __init__(self, *, num_networks, model_size, intrinsic_rewards_scale):
         super().__init__(name="disagree_networks")
 
-        self.model_dimension = model_dimension
+        self.model_size = model_size
         self.num_networks = num_networks
         self.intrinsic_rewards_scale = intrinsic_rewards_scale
 
@@ -34,14 +34,14 @@ class DisagreeNetworks(tf.keras.Model):
         for _ in range(self.num_networks):
             self.mlps.append(
                 MLP(
-                    model_dimension=self.model_dimension,
+                    model_size=self.model_size,
                     output_layer_size=None,
                     trainable=True,
                 )
             )
             self.representation_layers.append(
                 RepresentationLayer(
-                    model_dimension=self.model_dimension, name="disagree"
+                    model_size=self.model_size, name="disagree"
                 )
             )
 

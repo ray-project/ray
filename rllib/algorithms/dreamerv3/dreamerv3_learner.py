@@ -27,7 +27,7 @@ class DreamerV3LearnerHyperparameters(LearnerHyperparameters):
     more details on the individual properties.
     """
 
-    model_dimension: str = None
+    model_size: str = None
     training_ratio: float = None
     batch_size_B: int = None
     batch_length_T: int = None
@@ -98,7 +98,6 @@ class DreamerV3Learner(Learner):
             module_id=module_id, hps=hps, timestep=timestep
         )
 
-        print("performing critic-EMA UPDATE")
         # Update EMA weights of the critic.
         self.module[module_id].critic.update_ema()
 

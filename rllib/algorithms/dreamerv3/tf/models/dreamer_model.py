@@ -28,7 +28,7 @@ class DreamerModel(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: str = "XS",
+        model_size: str = "XS",
         action_space: gym.Space,
         batch_size_B,
         batch_length_T,
@@ -42,13 +42,13 @@ class DreamerModel(tf.keras.Model):
         """TODO
 
         Args:
-             model_dimension: The "Model Size" used according to [1] Appendinx B.
+             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
              action_space: The action space the our environment used.
         """
         super().__init__(name="dreamer_model")
 
-        self.model_dimension = model_dimension
+        self.model_size = model_size
         self.action_space = action_space
         self.use_curiosity = use_curiosity
         self.batch_size_B = batch_size_B
@@ -63,7 +63,7 @@ class DreamerModel(tf.keras.Model):
         if self.use_curiosity:
             self.disagree_nets = DisagreeNetworks(
                 num_networks=8,
-                model_dimension=self.model_dimension,
+                model_size=self.model_size,
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 

@@ -135,7 +135,37 @@ class DreamerV3EnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ):
+    ) -> Tuple[List[Episode], List[Episode]]:
+        """Runs and returns a sample (n timesteps or m episodes) on the environment(s).
+
+        Timesteps or episodes are counted in total (across all vectorized
+        sub-environments). For example, if self.num_envs=2 and num_timesteps=10, each
+        sub-environment will be sampled for 5 steps. If self.num_envs=3 and
+        num_episodes=30, each sub-environment will be sampled for 10 episodes.
+
+        Args:
+            num_timesteps: The number of timesteps to sample from the environment(s).
+                Note that only exactly one of `num_timesteps` or `num_episodes` must be
+                provided.
+            num_episodes: The number of full episodes to sample from the environment(s).
+                Note that only exactly one of `num_timesteps` or `num_episodes` must be
+                provided.
+            explore: Indicates whether to utilize exploration when picking actions.
+            random_actions: Whether to only use random actions. If True, the value of
+                `explore` is ignored.
+            force_reset: Whether to reset the environment(s) before starting to sample.
+                If False, will still reset the environment(s) if they were left in
+                a terminated or truncated state during previous sample calls.
+            with_render_data: If True, will record rendering images per timestep
+                in the returned Episodes. This data can be used to create video
+                reports.
+                TODO (sven): Note that this is only supported for runnign with
+                 `num_episodes` yet.
+
+        Returns:
+            A tuple consisting of a) list of Episode instances that are done and
+            b) list of Episode instances that are still ongoing.
+        """
         # If no execution details are provided, use self.config.
         if num_timesteps is None and num_episodes is None:
             if self.config.batch_mode == "truncate_episodes":
@@ -153,12 +183,14 @@ class DreamerV3EnvRunner(EnvRunner):
             )
         # Sample n episodes.
         else:
+            # `_sample_episodes` returns only one list (with completed episodes)
+            # return empty list for incomplete ones.
             return self._sample_episodes(
                 num_episodes=num_episodes,
                 explore=explore,
                 random_actions=random_actions,
                 with_render_data=with_render_data,
-            )
+            ), []
 
     def _sample_timesteps(
         self,
@@ -167,23 +199,9 @@ class DreamerV3EnvRunner(EnvRunner):
         random_actions: bool = False,
         force_reset: bool = False,
     ) -> Tuple[List[Episode], List[Episode]]:
-        """Runs n timesteps on the environment(s) and returns experiences.
+        """Helper method to run n timesteps.
 
-        Timesteps are counted in total (across all vectorized sub-environments). For
-        example, if self.num_envs=2 and num_timesteps=10, each sub-environment
-        will be sampled for 5 steps.
-
-        Args:
-            num_timesteps: The number of timesteps to sample from the environment(s).
-            explore: Indicates whether to utilize exploration when picking actions.
-            random_actions: Whether to only use random actions. If True, the value of
-                `explore` is ignored.
-            force_reset: Whether to reset the environment(s) before starting to sample.
-                If False, will still reset the environment(s) if they were left in
-                a terminated or truncated state during previous sample calls.
-
-        Returns:
-            A MultiAgentBatch holding the collected experiences.
+        See docstring of self.sample() for more details.
         """
         done_episodes_to_return = []
 
@@ -204,9 +222,9 @@ class DreamerV3EnvRunner(EnvRunner):
             self._needs_initial_reset = False
 
             # Set initial obs and states in the episodes.
-            for i, o in enumerate(self._split_by_env(obs)):
+            for i in range(self.num_envs):
                 self._episodes[i].add_initial_observation(
-                    initial_observation=o,
+                    initial_observation=obs[i],
                     initial_state={k: s[i] for k, s in states.items()},
                 )
         # Don't reset existing envs; continue in already started episodes.
@@ -262,28 +280,20 @@ class DreamerV3EnvRunner(EnvRunner):
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
 
-            for i, (o, a, r, term, trunc) in enumerate(
-                zip(
-                    self._split_by_env(obs),
-                    self._split_by_env(actions),
-                    self._split_by_env(rewards),
-                    self._split_by_env(terminateds),
-                    self._split_by_env(truncateds),
-                )
-            ):
+            for i in range(self.num_envs):
                 s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
-                if term or trunc:
+                if terminateds[i] or truncateds[i]:
                     # Finish the episode with the actual terminal observation stored in
                     # the info dict.
                     self._episodes[i].add_timestep(
                         infos["final_observation"][i],
-                        a,
-                        r,
+                        actions[i],
+                        rewards[i],
                         state=s,
-                        is_terminated=term,
-                        is_truncated=trunc,
+                        is_terminated=terminateds[i],
+                        is_truncated=truncateds[i],
                     )
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
@@ -292,9 +302,11 @@ class DreamerV3EnvRunner(EnvRunner):
                     is_first[i] = True
                     done_episodes_to_return.append(self._episodes[i])
                     # Create a new episode object.
-                    self._episodes[i] = Episode(observations=[o], states=s)
+                    self._episodes[i] = Episode(observations=[obs[i]], states=s)
                 else:
-                    self._episodes[i].add_timestep(o, a, r, state=s)
+                    self._episodes[i].add_timestep(
+                        obs[i], actions[i], rewards[i], state=s
+                    )
                     is_first[i] = False
 
         # Return done episodes ...
@@ -317,20 +329,10 @@ class DreamerV3EnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         with_render_data: bool = False,
-    ):
-        """Runs n episodes (reset first) on the environment(s) and returns experiences.
+    ) -> List[Episode]:
+        """Helper method to run n episodes.
 
-        Episodes are counted in total (across all vectorized sub-environments). For
-        example, if self.num_envs=2 and num_episodes=10, each sub-environment
-        will run 5 episodes.
-
-        Args:
-            num_episodes: The number of episodes to sample from the environment(s).
-            explore: Indicates whether to utilize exploration when picking actions.
-            force_reset: Whether to reset the environment(s) before starting to sample.
-                If False, will still reset the environment(s) if they were left in
-                a terminated or truncated state during previous sample calls.
-            with_render_data:
+        See docstring of `self.sample()` for more details.
         """
         done_episodes_to_return = []
 
@@ -348,9 +350,9 @@ class DreamerV3EnvRunner(EnvRunner):
         if with_render_data:
             render_images = [e.render() for e in self.env.envs]
 
-        for i, o in enumerate(self._split_by_env(obs)):
+        for i in range(self.num_envs):
             episodes[i].add_initial_observation(
-                initial_observation=o,
+                initial_observation=obs[i],
                 initial_state={k: s[i] for k, s in states.items()},
                 initial_render_image=render_images[i],
             )
@@ -382,28 +384,20 @@ class DreamerV3EnvRunner(EnvRunner):
             if with_render_data:
                 render_images = [e.render() for e in self.env.envs]
 
-            for i, (o, a, r, term, trunc) in enumerate(
-                zip(
-                    self._split_by_env(obs),
-                    self._split_by_env(actions),
-                    self._split_by_env(rewards),
-                    self._split_by_env(terminateds),
-                    self._split_by_env(truncateds),
-                )
-            ):
+            for i in range(self.num_envs):
                 s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
-                if term or trunc:
+                if terminateds[i] or truncateds[i]:
                     eps += 1
 
                     episodes[i].add_timestep(
                         infos["final_observation"][i],
-                        a,
-                        r,
+                        actions[i],
+                        rewards[i],
                         state=s,
-                        is_terminated=term,
-                        is_truncated=trunc,
+                        is_terminated=terminateds[i],
+                        is_truncated=truncateds[i],
                     )
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
@@ -413,15 +407,15 @@ class DreamerV3EnvRunner(EnvRunner):
                     done_episodes_to_return.append(episodes[i])
 
                     episodes[i] = Episode(
-                        observations=[o],
+                        observations=[obs[i]],
                         states=s,
                         render_images=[render_images[i]],
                     )
                 else:
                     episodes[i].add_timestep(
-                        o,
-                        a,
-                        r,
+                        obs[i],
+                        actions[i],
+                        rewards[i],
                         state=s,
                         render_image=render_images[i],
                     )
@@ -436,6 +430,9 @@ class DreamerV3EnvRunner(EnvRunner):
 
         return done_episodes_to_return
 
+    # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
+    #  API. Instead Algorithm should compile episode metrics itself via its local
+    #  buffer.
     def get_metrics(self) -> List[RolloutMetrics]:
         # Compute per-episode metrics (only on already completed episodes).
         metrics = []
@@ -459,6 +456,8 @@ class DreamerV3EnvRunner(EnvRunner):
 
         return metrics
 
+    # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
+    #  API. Replace by proper state overriding via `EnvRunner.set_state()`
     def set_weights(self, weights, global_vars=None):
         """Writes the weights of our (single-agent) RLModule."""
         self.rl_module.set_state(weights[DEFAULT_POLICY_ID])
@@ -472,9 +471,6 @@ class DreamerV3EnvRunner(EnvRunner):
     def stop(self):
         # Close our env object via gymnasium's API.
         self.env.close()
-
-    def _split_by_env(self, inputs):
-        return [inputs[i] for i in range(self.num_envs)]
 
 
 class NormalizedImageEnv(gym.ObservationWrapper):

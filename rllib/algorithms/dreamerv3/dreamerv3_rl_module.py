@@ -34,7 +34,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             self.config.observation_space,
             self.config.model_config_dict.get("symlog_obs", "auto"),
         )
-        model_dimension = self.config.model_config_dict["model_dimension"]
+        model_size = self.config.model_config_dict["model_size"]
 
         # Build encoder and decoder from catalog.
         catalog = self.config.get_catalog()
@@ -43,7 +43,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
         # Build the world model (containing encoder and decoder).
         self.world_model = WorldModel(
-            model_dimension=model_dimension,
+            model_size=model_size,
             action_space=self.config.action_space,
             batch_length_T=T,
             # num_gru_units=self.model_config.num_gru_units,
@@ -53,14 +53,14 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
         self.actor = ActorNetwork(
             action_space=self.config.action_space,
-            model_dimension=model_dimension,
+            model_size=model_size,
         )
         self.critic = CriticNetwork(
-            model_dimension=model_dimension,
+            model_size=model_size,
         )
         # Build the final dreamer model (containing the world model).
         self.dreamer_model = DreamerModel(
-            model_dimension=self.config.model_config_dict["model_dimension"],
+            model_size=self.config.model_config_dict["model_size"],
             action_space=self.config.action_space,
             world_model=self.world_model,
             actor=self.actor,

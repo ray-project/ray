@@ -16,13 +16,13 @@ class CNNAtari(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         cnn_multiplier: Optional[int] = None,
     ):
         """Initializes a CNNAtari instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the `cnn_multiplier`.
             cnn_multiplier: Optional override for the additional factor used to multiply
                 the number of filters with each CNN layer. Starting with
@@ -32,7 +32,7 @@ class CNNAtari(tf.keras.Model):
         """
         super().__init__(name="image_encoder")
 
-        cnn_multiplier = get_cnn_multiplier(model_dimension, override=cnn_multiplier)
+        cnn_multiplier = get_cnn_multiplier(model_size, override=cnn_multiplier)
 
         # See appendix C in [1]:
         # "We use a similar network architecture but employ layer normalization and

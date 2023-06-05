@@ -32,7 +32,7 @@ class TestDreamerV3(unittest.TestCase):
                     "batch_size_B": 16,
                     "batch_length_T": 64,
                     "horizon_H": 15,
-                    "model_dimension": "nano",  # Use a tiny model for testing.
+                    "model_size": "nano",  # Use a tiny model for testing.
                     "gamma": 0.997,
                     "training_ratio": 512,
                     "symlog_obs": True,
@@ -77,7 +77,7 @@ class TestDreamerV3(unittest.TestCase):
                 "batch_size_B": 16,
                 "batch_length_T": 64,
                 "horizon_H": 15,
-                "model_dimension": "XS",
+                "model_size": "XS",
                 "gamma": 0.997,
                 "training_ratio": 512,
                 "symlog_obs": True,
@@ -89,7 +89,6 @@ class TestDreamerV3(unittest.TestCase):
         rl_module = module_spec.build()[DEFAULT_POLICY_ID]
         # Count the generated RLModule's parameters and compare to the paper's reported
         # numbers.
-
 
 
 if __name__ == "__main__":
