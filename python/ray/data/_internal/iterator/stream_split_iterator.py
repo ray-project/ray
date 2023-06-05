@@ -191,7 +191,7 @@ class SplitCoordinator:
                     next_bundle = None
 
             # Fetch next bundle if needed.
-            if next_bundle is None:
+            while next_bundle is None or not next_bundle.blocks:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
