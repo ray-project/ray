@@ -17,23 +17,14 @@ from ray._private.test_utils import wait_for_condition
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import extract_values, column_udf
+from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 
 
-def maybe_pipeline(ds, enabled):
-    if enabled:
-        return ds.window(blocks_per_window=1)
-    else:
-        return ds
-
-
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_basic_actors(shutdown_only, pipelined):
+def test_basic_actors(shutdown_only):
     ray.init(num_cpus=6)
     n = 5
     ds = ray.data.range(n)
-    ds = maybe_pipeline(ds, pipelined)
     assert sorted(
         extract_values(
             "id",
@@ -45,7 +36,6 @@ def test_basic_actors(shutdown_only, pipelined):
 
     # Should still work even if num actors > num cpus.
     ds = ray.data.range(n)
-    ds = maybe_pipeline(ds, pipelined)
     assert sorted(
         extract_values(
             "id",
@@ -58,7 +48,6 @@ def test_basic_actors(shutdown_only, pipelined):
 
     # Test setting custom max inflight tasks.
     ds = ray.data.range(10, parallelism=5)
-    ds = maybe_pipeline(ds, pipelined)
     assert sorted(
         extract_values(
             "id",

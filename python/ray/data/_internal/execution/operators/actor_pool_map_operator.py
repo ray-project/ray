@@ -1,28 +1,28 @@
 import collections
 from dataclasses import dataclass
-from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
-from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    ExecutionResources,
     ExecutionOptions,
-    PhysicalOperator,
-    TaskContext,
+    ExecutionResources,
     NodeIdStr,
+    PhysicalOperator,
+    RefBundle,
+    TaskContext,
 )
-from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
     _TaskState,
 )
+from ray.data._internal.execution.util import locality_string
+from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
 from ray.types import ObjectRef
-from ray._raylet import ObjectRefGenerator
 
 logger = DatasetLogger(__name__)
 
