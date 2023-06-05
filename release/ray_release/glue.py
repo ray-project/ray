@@ -36,7 +36,7 @@ from ray_release.exception import (
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
-from ray_release.result import Result, handle_exception
+from ray_release.result import Result, ResultStatus, handle_exception
 from ray_release.signal_handling import (
     setup_signal_handling,
     reset_signal_handling,
@@ -384,7 +384,7 @@ def _fetching_results(
         command_results["smoke_test"] = True
 
     result.results = command_results
-    result.status = "finished"
+    result.status = ResultStatus.SUCCESS.value
 
     return metrics, fetch_result_exception
 
