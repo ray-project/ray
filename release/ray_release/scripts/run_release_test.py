@@ -154,11 +154,6 @@ def main(
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         reporters.append(RayTestDBReporter())
 
-    # TODO(can): this env var is used as a feature flag, in case we need to turn this
-    # off quickly. We should remove this when the new db reporter is stable.
-    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
-        reporters.append(RayTestDBReporter())
-
     try:
         result = run_release_test(
             test,
