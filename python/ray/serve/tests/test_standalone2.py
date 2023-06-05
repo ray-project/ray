@@ -1471,7 +1471,10 @@ class TestDeployApp:
         )
 
     def test_deploy_one_app_failed(self, client: ServeControllerClient):
-        """Deploy two applications with separate runtime envs."""
+        """Deploy two applications where one fails health check upon startup. The other
+        application should deploy successfully, independent of the first application's
+        failures.
+        """
 
         world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
         fail_import_path = "ray.serve.tests.test_config_files.fail.node"

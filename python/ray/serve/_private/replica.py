@@ -159,7 +159,7 @@ def create_replica_wrapper(name: str):
             )
 
             # Indicates whether the replica has finished initializing.
-            self._init_finish_event = asyncio.Event()
+            self._init_lock = asyncio.Lock()
 
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
@@ -200,7 +200,6 @@ def create_replica_wrapper(name: str):
                     controller_handle,
                     app_name,
                 )
-                self._init_finish_event.set()
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
@@ -326,14 +325,16 @@ def create_replica_wrapper(name: str):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             try:
-                await self._initialize_replica()
-                metadata = await self.reconfigure(deployment_config)
+                async with self._init_lock:
+                    if not self.replica:
+                        await self._initialize_replica()
+                        await self.replica.reconfigure(deployment_config.user_config)
 
-                # A new replica should not be considered healthy until it passes an
-                # initial health check. If an initial health check fails, consider
-                # it an initialization failure.
-                await self.check_health()
-                return metadata
+                        # A new replica should not be considered healthy until it passes
+                        # an initial health check. If an initial health check fails,
+                        # consider it an initialization failure.
+                    await self.check_health()
+                    return await self.get_metadata()
             except Exception:
                 raise RuntimeError(traceback.format_exc()) from None
 
@@ -341,7 +342,7 @@ def create_replica_wrapper(name: str):
             self, deployment_config: DeploymentConfig
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             try:
-                await self.replica.reconfigure(deployment_config)
+                await self.replica.update_deployment_config(deployment_config)
                 return await self.get_metadata()
             except Exception:
                 raise RuntimeError(traceback.format_exc()) from None
@@ -350,7 +351,6 @@ def create_replica_wrapper(name: str):
             self,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Wait for replica initialization to finish
-            await self._init_finish_event.wait()
             return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
@@ -389,7 +389,7 @@ class RayServeReplica:
         self.callable = _callable
         self.is_function = is_function
         self.version = version
-        self.deployment_config = None
+        self.deployment_config = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
         self.app_name = app_name
 
@@ -599,20 +599,19 @@ class RayServeReplica:
 
         return result, success
 
-    async def reconfigure(self, deployment_config: DeploymentConfig):
-        async with self.rwlock.writer_lock:
-            user_config_changed = False
-            if (
-                self.deployment_config is None
-                or self.deployment_config.user_config != deployment_config.user_config
-            ):
-                user_config_changed = True
-            self.deployment_config = deployment_config
-            self.version = DeploymentVersion.from_deployment_version(
-                self.version, self.deployment_config
-            )
+    async def update_deployment_config(self, deployment_config: DeploymentConfig):
+        old_user_config = self.deployment_config.user_config
+        self.deployment_config = deployment_config
+        self.version = DeploymentVersion.from_deployment_version(
+            self.version, self.deployment_config
+        )
 
-            if self.deployment_config.user_config is not None and user_config_changed:
+        if old_user_config != deployment_config.user_config:
+            await self.reconfigure(deployment_config.user_config)
+
+    async def reconfigure(self, user_config: Any):
+        async with self.rwlock.writer_lock:
+            if user_config is not None:
                 if self.is_function:
                     raise ValueError(
                         "deployment_def must be a class to use user_config"

@@ -51,6 +51,7 @@ class MockReplicaActorWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        version: Optional[DeploymentVersion],
         scheduling_strategy="SPREAD",
     ):
         self._actor_name = actor_name
@@ -62,7 +63,7 @@ class MockReplicaActorWrapper:
         # Will be set when `recover()` is called.
         self.recovering = False
         # Will be set when `start()` is called.
-        self.version = None
+        self.version = version
         # Initial state for a replica is PENDING_ALLOCATION.
         self.ready = ReplicaStartupStatus.PENDING_ALLOCATION
         # Will be set when `graceful_stop()` is called.
@@ -143,9 +144,8 @@ class MockReplicaActorWrapper:
         """Mocked deployment_worker return version from reconfigure()"""
         self.starting_version = version
 
-    def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
+    def start(self, deployment_info: DeploymentInfo):
         self.started = True
-        self.version = version
         self.deployment_info = deployment_info
 
     def reconfigure(self, version: DeploymentVersion):
@@ -157,7 +157,6 @@ class MockReplicaActorWrapper:
     def recover(self):
         self.recovering = True
         self.started = False
-        self.version = None
 
     def check_ready(self) -> ReplicaStartupStatus:
         ready = self.ready

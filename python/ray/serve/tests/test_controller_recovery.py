@@ -249,5 +249,85 @@ def test_controller_recover_initializing_actor(serve_instance):
     assert actor_tag == get_actor_info(f"app_{V1.name}")[0]
 
 
+def test_recover_deleting_deployment(serve_instance):
+    """Recover a deployment that is in the deleting state."""
+    # TODO(zcin): Update this test to use serve.run() and application after the deploy
+    # refactor adds checkpointing for applications. Right now we checkpoint the user
+    # submitted config and use that for recovery, so applications that are in the
+    # process of deleting when the controller crashes, will not be recovered when the
+    # controller recovers (although its deployment will be recovered). This should be
+    # fixed after we refactor the application state manager.
+
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class A:
+        async def __del__(self):
+            await signal.wait.remote()
+
+    A.deploy()
+
+    @ray.remote
+    def delete_task():
+        serve.get_deployment("A").delete()
+
+    # Delete deployment and make sure it is stuck on deleting
+    delete_ref = delete_task.remote()
+    print("Started task to delete deployment `A`")
+
+    def deployment_deleting():
+        check = True
+        # Confirm deployment is in updating state
+        status = serve_instance.get_all_deployment_statuses()[0]
+        check |= status.name == "A" and status.status == "UPDATING"
+
+        # Confirm delete task is still blocked
+        finished, pending = ray.wait([delete_ref], timeout=0)
+        check |= pending and not finished
+        return check
+
+    def check_deleted():
+        check = True
+        deployment_statuses = serve_instance.get_all_deployment_statuses()
+        check |= len(deployment_statuses) == 0
+        finished, pending = ray.wait([delete_ref], timeout=0)
+        check |= finished and not pending
+        return check
+
+    wait_for_condition(deployment_deleting)
+    for _ in range(10):
+        time.sleep(0.1)
+        assert deployment_deleting()
+
+    print("Confirmed that deployment is stuck on deleting.")
+
+    # Kill controller while the deployment is stuck on deleting
+    ray.kill(serve.context._global_client._controller, no_restart=False)
+    print("Finished killing the controller (with restart).")
+
+    def check_controller_alive():
+        all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
+        for actor in all_current_actors:
+            if actor["class_name"] == "ServeController":
+                return True
+        return False
+
+    wait_for_condition(check_controller_alive)
+    print("Controller is back alive.")
+
+    wait_for_condition(deployment_deleting)
+    # Before we send the signal, the deployment should still be deleting
+    for _ in range(10):
+        time.sleep(0.1)
+        assert deployment_deleting()
+
+    print("Confirmed that deployment is still stuck on deleting.")
+
+    signal.send.remote()
+    print("Sent signal to unblock deletion of deployment")
+    wait_for_condition(check_deleted)
+    print("Confirmed that deployment finished deleting and delete task has returned.")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
