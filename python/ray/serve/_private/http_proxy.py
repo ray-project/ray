@@ -68,11 +68,21 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
-        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
+        "been deprecated. Please use `request_processing_timeout` in the serve config"
         "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
-        "future versions."
+        "future versions. See: https://docs.ray.io/en/master/serve/api/doc/ray.serve.sc"
+        "hema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSchema.request_process"
+        "ing_timeout"
     )
-
+if os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
+    logger.warning(
+        "The `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
+        "been deprecated. Please use `request_processing_timeout` in the serve config"
+        "instead. `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
+        "future versions. See: https://docs.ray.io/en/master/serve/api/doc/ray.serve.sc"
+        "hema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSchema.request_process"
+        "ing_timeout"
+    )
 
 async def _handle_streaming_response(
     asgi_response_generator: "ray._raylet.StreamingObjectRefGenerator",
@@ -193,8 +203,7 @@ async def _send_request_to_handle(
                 logger.info(
                     f"Request didn't finish within {request_processing_timeout} seconds"
                     ". Retrying with another replica. You can modify this timeout by "
-                    'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var or '
-                    '"request_processing_timeout" in serve config.'
+                    'setting the "request_processing_timeout" in the serve config.'
                 )
                 backoff = True
             else:
@@ -564,8 +573,8 @@ class HTTPProxyActor:
         root_path: str,
         controller_name: str,
         node_ip_address: str,
+        request_processing_timeout: float,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
-        request_processing_timeout: float = RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S,
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
@@ -582,7 +591,8 @@ class HTTPProxyActor:
 
         self.app = HTTPProxy(
             controller_name=controller_name,
-            request_processing_timeout=request_processing_timeout,
+            request_processing_timeout=(request_processing_timeout
+                                        or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S),
         )
 
         self.wrapped_app = self.app

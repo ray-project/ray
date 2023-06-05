@@ -512,6 +512,10 @@ class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
             'deployment routes will be prefixed with this path. Defaults to "".'
         ),
     )
+    request_processing_timeout: float = Field(
+        default=None,
+        description="The timeout set for HTTP requests. Default to no timeout.",
+    )
 
 
 @PublicAPI(stability="alpha")

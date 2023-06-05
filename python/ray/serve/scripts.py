@@ -429,10 +429,11 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    client = _private_api.serve_start(
-        detached=True,
-        http_options={"host": host, "port": port, "location": "EveryNode"},
-    )
+    http_options = {"host": host, "port": port, "location": "EveryNode"}
+    if is_config:
+        config_http_options = config.http_options.dict()
+        http_options = {**config_http_options, **http_options}
+    client = _private_api.serve_start(detached=True, http_options=http_options)
 
     try:
         if is_config:
