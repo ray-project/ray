@@ -176,7 +176,7 @@ class TuneController(_TuneControllerBase):
         return self._resource_updater.debug_string(allocated_resources)
 
     def on_step_begin(self):
-        pass
+        self._resource_updater.update_avail_resources()
 
     def on_step_end(self):
         self._cleanup_cached_actors(force_all=False)
