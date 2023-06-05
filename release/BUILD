@@ -13,6 +13,16 @@ compile_pip_requirements(
     visibility = ["//visibility:private"],
 )
 
+compile_pip_requirements(
+    name = "requirements_byod",
+    requirements_in = "ray_release/byod/requirements_byod.in",
+    requirements_txt = "ray_release/byod/requirements_byod.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
 test_srcs = glob(["**/*.py"])
 
 ####
@@ -605,6 +615,21 @@ py_test(
         "ray_release/tests/_test_run_release_test_sh.py",
         "run_release_test.sh",
     ],
+    exec_compatible_with = [":hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_state_machine",
+    size = "small",
+    srcs = ["ray_release/tests/test_state_machine.py"],
     exec_compatible_with = [":hermetic_python"],
     tags = [
         "release_unit",

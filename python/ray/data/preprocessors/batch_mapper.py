@@ -1,5 +1,5 @@
 import sys
-from typing import Dict, Callable, Optional, Union, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 import numpy as np
 
