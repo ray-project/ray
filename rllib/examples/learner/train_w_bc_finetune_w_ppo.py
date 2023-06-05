@@ -17,7 +17,6 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.models.base import ACTOR, ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.examples.datasets.dataset_utils import convert_json_sample_batch_to_df
 
 GYM_ENV_NAME = "CartPole-v1"
 GYM_ENV = gym.make(GYM_ENV_NAME)
@@ -54,6 +53,8 @@ class BCActor(torch.nn.Module):
             observations.
 
         """
+        # The encoder network has outputs for the actor and critic heads of the
+        # PPORLModule. We only want the outputs for the actor head.
         encoder_out = self.encoder_network(batch)[ENCODER_OUT][ACTOR]
         action_logits = self.policy_network(encoder_out)
         distribution = self.distribution_cls(logits=action_logits)
@@ -116,8 +117,8 @@ def train_ppo_agent_from_checkpointed_module(
 
     config = (
         PPOConfig()
-        .training(_enable_learner_api=True)
-        .rl_module(_enable_rl_module_api=True, rl_module_spec=module_spec_from_ckpt)
+        .training()
+        .rl_module(rl_module_spec=module_spec_from_ckpt)
         .environment(GYM_ENV_NAME)
         .debugging(seed=0)
     )
@@ -141,12 +142,10 @@ if __name__ == "__main__":
 
     ray.data.set_progress_bars(False)
 
-    # Load the a CartPole dataset as a pandas dataframe.
+    # You can use Ray Data to load a dataset from pandas or from a JSON file.
     # The columns of the dataset are ["obs", "actions"].
-    rllib_path = ray.__path__[0] + "/rllib/"
-    cartpole_dataset_path = rllib_path + "tests/data/cartpole/large.json"
-    df = convert_json_sample_batch_to_df(cartpole_dataset_path)
-    ds = ray.data.from_pandas(df)
+
+    ds = ray.data.read_json("s3://rllib-oss-tests/cartpole-expert")
 
     module_spec = SingleAgentRLModuleSpec(
         module_class=PPOTorchRLModule,
@@ -156,20 +155,15 @@ if __name__ == "__main__":
         catalog_class=PPOCatalog,
     )
 
-    # train a PPO Module with BC finetuning
+    # Run supervised training on a PPO Module with behavioral cloning loss.
     module_checkpoint_path = train_ppo_module_with_bc_finetune(ds, module_spec)
 
-    # train a PPO Module online with the pretrained encoder and policy networks
-    module_spec_from_ckpt = SingleAgentRLModuleSpec(
-        module_class=PPOTorchRLModule,
-        observation_space=GYM_ENV.observation_space,
-        action_space=GYM_ENV.action_space,
-        model_config_dict={"fcnet_hiddens": [64, 64]},
-        catalog_class=PPOCatalog,
-        load_state_path=module_checkpoint_path,
-    )
+    # Modify the load_state_path attribute of module_spec to indicate the checkpoint
+    # path for the RLModule. This allows us to resume RL fine-tuning after loading the
+    # pre-trained model weights.
+    module_spec.load_state_path = module_checkpoint_path
 
-    best_reward = train_ppo_agent_from_checkpointed_module(module_spec_from_ckpt)
+    best_reward = train_ppo_agent_from_checkpointed_module(module_spec)
     assert (
         best_reward > 300
     ), "The PPO agent with pretraining should achieve a reward of at least 300."
