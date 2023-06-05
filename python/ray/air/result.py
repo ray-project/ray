@@ -11,6 +11,7 @@ import ray
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     EXPR_RESULT_FILE,
+    EXPR_PROGRESS_FILE,
     EXPR_ERROR_PICKLE_FILE,
     CHECKPOINT_TUNE_METADATA_FILE,
 )
@@ -58,7 +59,6 @@ class Result:
     _local_path: Optional[str] = None
     _remote_path: Optional[str] = None
     _items_to_repr = ["error", "metrics", "path", "checkpoint"]
-    _restore_required_files = [EXPR_RESULT_FILE]
     # Deprecate: raise in 2.5, remove in 2.6
     log_dir: Optional[Path] = None
 
@@ -129,10 +129,7 @@ class Result:
         if not os.path.exists(trial_dir):
             raise RuntimeError(f"Trial folder {trial_dir} doesn't exists!")
 
-        all_files = os.listdir(trial_dir)
-        for file in Result._restore_required_files:
-            if file not in all_files:
-                raise RuntimeError(f"{file} not found in the trial folder!")
+        # TODO(yunxuanx): Add more checks for cloud storage restoration
 
     @classmethod
     def from_path(cls, path: str) -> "Result":
@@ -145,22 +142,32 @@ class Result:
             A :py:class:`Result` object of that trial.
         """
 
-        # TODO(yunxuanx): restoration from cloud storage
         local_path = path
-
+        # TODO(yunxuanx): restoration from cloud storage
         cls._validate_trial_dir(local_path)
+        file_list = os.listdir(local_path)
 
         # Restore reported metrics
-        with open(Path(local_path) / EXPR_RESULT_FILE, "r") as f:
-            json_list = [json.loads(line) for line in f if line]
-            metrics_df = pd.json_normalize(json_list, sep="/")
+        if EXPR_RESULT_FILE in file_list:
+            # Restore metrics from result.json
+            with open(Path(local_path) / EXPR_RESULT_FILE, "r") as f:
+                json_list = [json.loads(line) for line in f if line]
+                metrics_df = pd.json_normalize(json_list, sep="/")
+        elif EXPR_PROGRESS_FILE in file_list:
+            # Fallback to load from progress.csv
+            metrics_df = pd.read_csv(Path(local_path) / EXPR_PROGRESS_FILE)
+        else:
+            raise RuntimeError(
+                f"Failed to restore the Result object: Neither {EXPR_RESULT_FILE}"
+                " nor {EXPR_PROGRESS_FILE} exists in the trial folder!"
+            )
 
         latest_metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
 
         # Restore all checkpoints from the checkpoint folders
         ckpt_dirs = [
             join(local_path, entry)
-            for entry in os.listdir(local_path)
+            for entry in file_list
             if entry.startswith("checkpoint_")
         ]
 
@@ -229,20 +236,15 @@ class Result:
                 f'Unsupported mode: {mode}. Please choose from ["min", "max"]!'
             )
 
-        if metric not in self.metrics:
-            logger.warning(
-                f"Invalid metric name {metric}! "
-                f"You may choose from the following metrics: {self.metrics.keys()}."
-            )
-            return None
-
         op = max if mode == "max" else min
         valid_checkpoints = [
             ckpt_info for ckpt_info in self.best_checkpoints if metric in ckpt_info[1]
         ]
 
-        return (
-            op(valid_checkpoints, key=lambda x: x[1][metric])[0]
-            if valid_checkpoints
-            else None
-        )
+        if not valid_checkpoints:
+            raise RuntimeError(
+                f"Invalid metric name {metric}! "
+                f"You may choose from the following metrics: {self.metrics.keys()}."
+            )
+
+        return op(valid_checkpoints, key=lambda x: x[1][metric])[0]

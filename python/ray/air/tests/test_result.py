@@ -3,6 +3,7 @@ import pytest
 
 import ray
 from ray.air import CheckpointConfig, RunConfig, ScalingConfig, session
+from ray.air.constants import EXPR_RESULT_FILE
 from ray.air.result import Result
 from ray.train.torch import TorchCheckpoint, TorchTrainer
 from ray.train.base_trainer import TrainingFailedError
@@ -77,13 +78,21 @@ def test_result_restore(ray_start_4_cpus, tmpdir, mode):
             trial_dir = os.path.join(exp_dir, dirname)
             break
 
-    # Restore from local path
+    # [1] Restore from local path
     result = Result.from_path(trial_dir)
 
     # Check if we restored all checkpoints
     assert result.checkpoint
     assert len(result.best_checkpoints) == NUM_CHECKPOINTS
 
+    """
+    Top-3 checkpoints with metrics:
+
+                        | iter   | metric_a    metric_b
+    checkpoint_000004        4            4          -4
+    checkpoint_000003        3            3          -3
+    checkpoint_000002        2            2          -2
+    """
     # Check if the checkpoints bounded with correct metrics
     best_ckpt_a = result.get_best_checkpoint(metric="metric_a", mode="max")
     assert best_ckpt_a.to_dict()["iter"] == NUM_ITERATIONS - 1
@@ -92,6 +101,22 @@ def test_result_restore(ray_start_4_cpus, tmpdir, mode):
     assert best_ckpt_b.to_dict()["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
 
     # Check if we properly restored errors
+    assert isinstance(result.error, RuntimeError)
+
+    # [2] Restore from local path without result.json
+    os.remove(f"{trial_dir}/{EXPR_RESULT_FILE}")
+    result = Result.from_path(trial_dir)
+
+    # Do the same checks as above
+    assert result.checkpoint
+    assert len(result.best_checkpoints) == NUM_CHECKPOINTS
+
+    best_ckpt_a = result.get_best_checkpoint(metric="metric_a", mode="max")
+    assert best_ckpt_a.to_dict()["iter"] == NUM_ITERATIONS - 1
+
+    best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
+    assert best_ckpt_b.to_dict()["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
+
     assert isinstance(result.error, RuntimeError)
 
 
