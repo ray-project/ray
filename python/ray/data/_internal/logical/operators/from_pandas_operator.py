@@ -5,10 +5,10 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
-    import pandas
     import dask
-    import modin
     import mars
+    import modin
+    import pandas
 
 
 class FromPandasRefs(LogicalOperator):

@@ -10,7 +10,6 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
-    UserDefinedFunction,
     Block,
     BlockAccessor,
     BlockExecStats,
@@ -18,6 +17,7 @@ from ray.data.block import (
     BlockPartition,
     CallableClass,
     StrictModeError,
+    UserDefinedFunction,
 )
 from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
 from ray.types import ObjectRef

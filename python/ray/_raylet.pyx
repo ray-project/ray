@@ -15,6 +15,7 @@ import msgpack
 import io
 import os
 import pickle
+import random
 import setproctitle
 import signal
 import sys
@@ -99,6 +100,12 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
+    CChannelType,
+    RAY_ERROR_INFO_CHANNEL,
+    RAY_LOG_CHANNEL,
+    RAY_PYTHON_FUNCTION_CHANNEL,
+    GCS_ACTOR_CHANNEL,
+    PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
     kResourceUnitScaling,
@@ -1441,15 +1448,8 @@ cdef void execute_task(
                 actor_title = f"{class_name}({args!r}, {kwargs!r})"
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
 
-            # Record the task id via magic token in the log file.
-            # This will be used to locate the beginning of logs from a task.
-            attempt_number = core_worker.get_current_task_attempt_number()
-            task_attempt_magic_token = "{}{}-{}\n".format(
-                ray_constants.LOG_PREFIX_TASK_ATTEMPT_START, task_id.hex(),
-                attempt_number)
-            # Print on both .out and .err
-            print(task_attempt_magic_token, end="")
-            print(task_attempt_magic_token, file=sys.stderr, end="")
+            # Record the log file offsets if applicable.
+            worker.record_task_log_start()
 
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
@@ -1533,14 +1533,8 @@ cdef void execute_task(
                                      exc_info=True)
                     raise e
                 finally:
-                    # Record the end of task via magic token in the log file.
-                    # This will be used to locate the end of logs from a task.
-                    task_attempt_magic_token = "{}{}-{}\n".format(
-                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END, task_id.hex(),
-                        attempt_number)
-                    # Print on both .out and .err
-                    print(task_attempt_magic_token, end="")
-                    print(task_attempt_magic_token, file=sys.stderr, end="")
+                    # Record the end of the task log.
+                    worker.record_task_log_end()
 
                 if (returns[0].size() == 1
                         and not inspect.isgenerator(outputs)
@@ -2412,6 +2406,222 @@ cdef class GcsPublisher:
             check_status(self.inner.get().PublishFunctionKey(python_function))
 
 
+cdef class _GcsSubscriber:
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    cdef:
+        shared_ptr[CPythonGcsSubscriber] inner
+
+    def _construct(self, address, channel, worker_id):
+        cdef:
+            c_worker_id = worker_id or b""
+        # subscriber_id needs to match the binary format of a random
+        # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
+        subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
+        gcs_address, gcs_port = address.split(":")
+        self.inner.reset(new CPythonGcsSubscriber(
+            gcs_address, int(gcs_port), channel, subscriber_id, c_worker_id))
+
+    def subscribe(self):
+        """Registers a subscription for the subscriber's channel type.
+
+        Before the registration, published messages in the channel will not be
+        saved for the subscriber.
+        """
+        with nogil:
+            check_status(self.inner.get().Subscribe())
+
+    @property
+    def last_batch_size(self):
+        """Batch size of the result from last poll.
+
+        Used to indicate whether the subscriber can keep up.
+        """
+        return self.inner.get().last_batch_size()
+
+    def close(self):
+        """Closes the subscriber and its active subscription."""
+        with nogil:
+            check_status(self.inner.get().Close())
+
+
+cdef class GcsErrorSubscriber(_GcsSubscriber):
+    """Subscriber to error info. Thread safe.
+
+    Usage example:
+        subscriber = GcsErrorSubscriber()
+        # Subscribe to the error channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            error_id, error_data = subscriber.poll()
+            ......
+        # Unsubscribe from the error channels.
+        subscriber.close()
+    """
+
+    def __init__(self, address, worker_id=None):
+        self._construct(address, RAY_ERROR_INFO_CHANNEL, worker_id)
+
+    def poll(self, timeout=None):
+        """Polls for new error messages.
+
+        Returns:
+            A tuple of error message ID and dict describing the error,
+            or None, None if polling times out or subscriber closed.
+        """
+        cdef:
+            CErrorTableData error_data
+            c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        with nogil:
+            check_status(self.inner.get().PollError(&key_id, timeout_ms, &error_data))
+
+        if key_id == b"":
+            return None, None
+
+        return (bytes(key_id), {
+            "job_id": error_data.job_id(),
+            "type": error_data.type().decode(),
+            "error_message": error_data.error_message().decode(),
+            "timestamp": error_data.timestamp(),
+        })
+
+
+cdef class GcsLogSubscriber(_GcsSubscriber):
+    """Subscriber to logs. Thread safe.
+
+    Usage example:
+        subscriber = GcsLogSubscriber()
+        # Subscribe to the log channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            log = subscriber.poll()
+            ......
+        # Unsubscribe from the log channel.
+        subscriber.close()
+    """
+
+    def __init__(self, address, worker_id=None):
+        self._construct(address, RAY_LOG_CHANNEL, worker_id)
+
+    def poll(self, timeout=None):
+        """Polls for new log messages.
+
+        Returns:
+            A dict containing a batch of log lines and their metadata.
+        """
+        cdef:
+            CLogBatch log_batch
+            c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_log_lines
+            c_string c_log_line
+
+        with nogil:
+            check_status(self.inner.get().PollLogs(&key_id, timeout_ms, &log_batch))
+
+        c_log_lines = PythonGetLogBatchLines(log_batch)
+
+        log_lines = []
+        for c_log_line in c_log_lines:
+            log_lines.append(c_log_line.decode())
+
+        return {
+            "ip": log_batch.ip().decode(),
+            "pid": log_batch.pid().decode(),
+            "job": log_batch.job_id().decode(),
+            "is_err": log_batch.is_error(),
+            "lines": log_lines,
+            "actor_name": log_batch.actor_name().decode(),
+            "task_name": log_batch.task_name().decode(),
+        }
+
+
+cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
+    """Subscriber to function（and actor class) dependency keys. Thread safe.
+
+    Usage example:
+        subscriber = GcsFunctionKeySubscriber()
+        # Subscribe to the function key channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            key = subscriber.poll()
+            ......
+        # Unsubscribe from the function key channel.
+        subscriber.close()
+    """
+
+    def __init__(self, address, worker_id=None):
+        self._construct(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
+
+    def poll(self, timeout=None):
+        """Polls for new function key messages.
+
+        Returns:
+            A byte string of function key.
+            None if polling times out or subscriber closed.
+        """
+        cdef:
+            CPythonFunction python_function
+            c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        with nogil:
+            check_status(self.inner.get().PollFunctionKey(
+                &key_id, timeout_ms, &python_function))
+
+        if python_function.key() == b"":
+            return None
+        else:
+            return python_function.key()
+
+
+# This class should only be used for tests
+cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
+    """Subscriber to actor updates. Thread safe.
+
+    Usage example:
+        subscriber = GcsActorSubscriber()
+        # Subscribe to the actor channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            actor_data = subscriber.poll()
+            ......
+        # Unsubscribe from the channel.
+        subscriber.close()
+    """
+
+    def __init__(self, address, worker_id=None):
+        self._construct(address, GCS_ACTOR_CHANNEL, worker_id)
+
+    def poll(self, timeout=None):
+        """Polls for new actor messages.
+
+        Returns:
+            A byte string of function key.
+            None if polling times out or subscriber closed.
+        """
+        cdef:
+            CActorTableData actor_data
+            c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        with nogil:
+            check_status(self.inner.get().PollActor(
+                &key_id, timeout_ms, &actor_data))
+
+        from ray.core.generated import gcs_pb2
+
+        info = gcs_pb2.ActorTableData.FromString(
+            actor_data.SerializeAsString())
+
+        return [(key_id, info)]
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -2681,7 +2891,6 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
-            int64_t put_threshold
             unique_ptr[CAddress] c_owner_address = move(self._convert_python_address(
                     object_ref.owner_address()))
 
@@ -2724,13 +2933,11 @@ cdef class CoreWorker:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
-            int64_t put_threshold
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
 
         metadata = string_to_buffer(serialized_object.metadata)
-        put_threshold = RayConfig.instance().max_direct_call_object_size()
         total_bytes = serialized_object.total_bytes
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
@@ -2738,6 +2945,9 @@ cdef class CoreWorker:
             metadata, total_bytes, object_ref,
             contained_object_ids,
             &c_object_id, &data, True, owner_address, inline_small_object)
+
+        logger.debug(
+            f"Serialized object size of {c_object_id.Hex()} is {total_bytes} bytes")
 
         if not object_already_exists:
             if total_bytes > 0:
@@ -3658,6 +3868,10 @@ cdef class CoreWorker:
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
+
+    def current_actor_max_concurrency(self):
+        return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                .CurrentActorMaxConcurrency())
 
     def get_current_runtime_env(self) -> str:
         # This should never change, so we can safely cache it to avoid ser/de

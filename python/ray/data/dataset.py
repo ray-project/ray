@@ -1,9 +1,9 @@
 import collections
+import html
 import itertools
 import logging
 import sys
 import time
-import html
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -13,52 +13,24 @@ from typing import (
     Iterable,
     Iterator,
     List,
-    Type,
+    Mapping,
     Optional,
     Tuple,
+    Type,
     Union,
-    Mapping,
 )
 from uuid import uuid4
 
 import numpy as np
 
 import ray
+import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-import ray.cloudpickle as pickle
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
-from ray.data._internal.logical.operators.all_to_all_operator import (
-    RandomShuffle,
-    RandomizeBlocks,
-    Repartition,
-    Sort,
-)
-from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.optimizers import LogicalPlan
-from ray.data._internal.logical.operators.limit_operator import Limit
-from ray.data._internal.logical.operators.map_operator import (
-    Filter,
-    FlatMap,
-    MapRows,
-    MapBatches,
-)
-from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.planner.filter import generate_filter_fn
-from ray.data._internal.planner.flat_map import generate_flat_map_fn
-from ray.data._internal.planner.map_batches import generate_map_batches_fn
-from ray.data._internal.planner.map_rows import generate_map_rows_fn
-from ray.data._internal.planner.write import generate_write_fn
-from ray.data.iterator import DataIterator
+from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.iterator.iterator_impl import (
-    DataIteratorImpl,
-)
-from ray.data._internal.iterator.stream_split_iterator import (
-    StreamSplitDataIterator,
-)
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     CallableClass,
@@ -67,37 +39,56 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
+from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
+from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.operators.all_to_all_operator import (
+    RandomizeBlocks,
+    RandomShuffle,
+    Repartition,
+    Sort,
+)
+from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.logical.operators.limit_operator import Limit
+from ray.data._internal.logical.operators.map_operator import (
+    Filter,
+    FlatMap,
+    MapBatches,
+    MapRows,
+)
+from ray.data._internal.logical.operators.n_ary_operator import Zip
+from ray.data._internal.logical.operators.write_operator import Write
+from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.pandas_block import PandasBlockSchema
+from ray.data._internal.plan import ExecutionPlan, OneToOneStage
+from ray.data._internal.planner.filter import generate_filter_fn
+from ray.data._internal.planner.flat_map import generate_flat_map_fn
+from ray.data._internal.planner.map_batches import generate_map_batches_fn
+from ray.data._internal.planner.map_rows import generate_map_rows_fn
+from ray.data._internal.planner.write import generate_write_fn
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.split import _get_num_rows, _split_at_indices
+from ray.data._internal.stage_impl import (
+    LimitStage,
+    RandomizeBlocksStage,
+    RandomShuffleStage,
+    RepartitionStage,
+    SortStage,
+    ZipStage,
+)
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import (
+    ConsumptionAPI,
     _estimate_available_parallelism,
     _is_local_scheme,
     validate_compute,
-    ConsumptionAPI,
 )
-from ray.data._internal.pandas_block import PandasBlockSchema
-from ray.data._internal.plan import (
-    ExecutionPlan,
-    OneToOneStage,
-)
-from ray.data._internal.stage_impl import (
-    RandomizeBlocksStage,
-    RepartitionStage,
-    RandomShuffleStage,
-    ZipStage,
-    SortStage,
-    LimitStage,
-)
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.split import _split_at_indices, _get_num_rows
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
-    VALID_BATCH_FORMATS,
     STRICT_MODE_EXPLANATION,
-    _apply_strict_mode_batch_format,
-    _apply_strict_mode_batch_size,
-    UserDefinedFunction,
+    VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     BlockMetadata,
@@ -106,13 +97,16 @@ from ray.data.block import (
     StrictModeError,
     T,
     U,
+    UserDefinedFunction,
+    _apply_strict_mode_batch_format,
+    _apply_strict_mode_batch_size,
     _validate_key_fn,
 )
 from ray.data.context import (
-    DataContext,
-    WARN_PREFIX,
-    OK_PREFIX,
     ESTIMATED_SAFE_MEMORY_FRACTION,
+    OK_PREFIX,
+    WARN_PREFIX,
+    DataContext,
 )
 from ray.data.datasource import (
     BlockWritePathProvider,
@@ -130,9 +124,10 @@ from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
     _wrap_arrow_serialization_workaround,
 )
+from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI, Deprecated
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
@@ -152,12 +147,12 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     import torch.utils.data
+    from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_data import GroupedData
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
     from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
-    from tensorflow_metadata.proto.v0 import schema_pb2
+    from ray.data.dataset_pipeline import DatasetPipeline
+    from ray.data.grouped_data import GroupedData
 
 
 logger = logging.getLogger(__name__)
@@ -213,18 +208,18 @@ class Dataset:
         >>> import ray
         >>> ds = ray.data.range(1000)
         >>> # Transform batches (Dict[str, np.ndarray]) with map_batches().
-        >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})
+        >>> ds.map_batches(lambda batch: {"id": batch["id"] * 2})  # doctest: +ELLIPSIS
         MapBatches(<lambda>)
         +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Compute the maximum.
         >>> ds.max("id")
         999
         >>> # Shuffle this dataset randomly.
-        >>> ds.random_shuffle()
+        >>> ds.random_shuffle()  # doctest: +ELLIPSIS
         RandomShuffle
         +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
         >>> # Sort it back in order.
-        >>> ds.sort("id")
+        >>> ds.sort("id")  # doctest: +ELLIPSIS
         Sort
         +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
 
@@ -271,7 +266,7 @@ class Dataset:
         ds: "Dataset", _deep_copy: bool = False, _as: Optional[type] = None
     ) -> "Dataset":
         if not _as:
-            _as = Dataset
+            _as = type(ds)
         if _deep_copy:
             return _as(ds._plan.deep_copy(), ds._epoch, ds._lazy, ds._logical_plan)
         else:
@@ -3660,6 +3655,7 @@ class Dataset:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
+    @Deprecated
     @ConsumptionAPI
     def repeat(self, times: Optional[int] = None) -> "DatasetPipeline":
         """Convert this into a DatasetPipeline by looping over this dataset.
@@ -3748,6 +3744,7 @@ class Dataset:
             )
         return pipe
 
+    @Deprecated
     def window(
         self,
         *,
@@ -3976,6 +3973,26 @@ class Dataset:
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
         copy._plan.execute(force_read=True)
+
+        blocks = copy._plan._snapshot_blocks
+        blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
+        # TODO(hchen): Here we generate the same number of blocks as
+        # the original Dataset. Because the old code path does this, and
+        # some unit tests implicily depend on this behavior.
+        # After we remove the old code path, we should consider merging
+        # some blocks for better perf.
+        ref_bundles = [
+            RefBundle(
+                blocks=[block_with_metadata],
+                owns_blocks=False,
+            )
+            for block_with_metadata in blocks_with_metadata
+        ]
+
+        # Create a new logical plan whose input is the existing data
+        # from the the old Dataset.
+        copy._logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+
         return copy
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
@@ -4282,7 +4299,7 @@ class Dataset:
         return bundle
 
     def _tab_repr_(self):
-        from ipywidgets import Tab, HTML
+        from ipywidgets import HTML, Tab
 
         metadata = {
             "num_blocks": self._plan.initial_num_blocks(),
@@ -4463,7 +4480,8 @@ class Schema:
         For non-Arrow compatible types, we return "object".
         """
         import pyarrow as pa
-        from ray.data.extensions import TensorDtype, ArrowTensorType
+
+        from ray.data.extensions import ArrowTensorType, TensorDtype
 
         if isinstance(self.base_schema, pa.lib.Schema):
             return list(self.base_schema.types)
