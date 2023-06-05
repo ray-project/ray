@@ -4,10 +4,9 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type
 
 from fastapi.encoders import jsonable_encoder
-from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -46,8 +45,6 @@ def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
         return {"body": serialized_body, "type": "http.request", "more_body": False}
 
     return mock_receive
-
-    return Request(scope, mock_receive)
 
 
 class Response:

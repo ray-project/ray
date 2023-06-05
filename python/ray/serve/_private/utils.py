@@ -2,7 +2,6 @@ import copy
 import importlib
 import inspect
 import os
-import pickle
 import random
 import string
 import time
@@ -38,7 +37,6 @@ from ray.serve._private.constants import (
     RAY_GCS_RPC_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.http_util import HTTPRequestWrapper
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag

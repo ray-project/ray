@@ -123,11 +123,14 @@ def test_make_fastapi_class_based_view(websocket: bool):
     app = FastAPI()
 
     if websocket:
+
         class A:
             @app.get("/{i}")
             def b(self, i: int):
                 pass
+
     else:
+
         class A:
             @app.websocket("/{i}")
             def b(self, i: int):

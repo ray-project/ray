@@ -462,12 +462,13 @@ class HTTPProxy:
                 }
             )
 
-
     async def send_request_to_replica_unary(
         self,
         request_id: str,
         handle: RayServeHandle,
-        scope: Scope, receive: Receive, send: Send,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
     ) -> str:
         http_body_bytes = await receive_http_body(scope, receive, send)
 
@@ -539,7 +540,9 @@ class HTTPProxy:
                 return DISCONNECT_ERROR_CODE
             except RayTaskError as e:
                 error_message = f"Unexpected error, traceback: {e}."
-                await Response(error_message, status_code=500).send(scope, receive, send)
+                await Response(error_message, status_code=500).send(
+                    scope, receive, send
+                )
                 return "500"
             except RayActorError:
                 logger.info(
@@ -581,51 +584,55 @@ class HTTPProxy:
         self,
         request_id: str,
         handle: RayServeHandle,
-        scope: Scope, receive: Receive, send: Send,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
     ) -> str:
-            # Proxy the receive interface by placing the received messages on a queue.
-            # The downstream replica must call back into `receive_asgi_message` on this
-            # actor to receive the messages.
-            receive_queue = asyncio.Queue()
-            self.asgi_receive_queues[request_id] = receive_queue
-            proxy_asgi_receive_task = get_or_create_event_loop().create_task(
-                self.proxy_asgi_receive(receive, receive_queue)
+        # Proxy the receive interface by placing the received messages on a queue.
+        # The downstream replica must call back into `receive_asgi_message` on this
+        # actor to receive the messages.
+        receive_queue = asyncio.Queue()
+        self.asgi_receive_queues[request_id] = receive_queue
+        proxy_asgi_receive_task = get_or_create_event_loop().create_task(
+            self.proxy_asgi_receive(receive, receive_queue)
+        )
+
+        status_code = ""
+        first_message_sent = False
+        try:
+            object_ref_generator = await handle.remote(
+                pickle.dumps(scope), self.self_actor_handle
             )
+            async for obj_ref in object_ref_generator:
+                asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
+                for asgi_message in asgi_messages:
+                    if not first_message_sent:
+                        # HTTP responses begin with exactly one "http.response.start"
+                        # message containing the "status" field. Other response types
+                        # (e.g., WebSockets) may not.
+                        status_code = str(asgi_message.get("status", "UNKNOWN"))
 
-            status_code = ""
-            first_message_sent = False
-            try:
-                object_ref_generator = await handle.remote(
-                    pickle.dumps(scope), self.self_actor_handle
+                    first_message_sent = True
+                    await send(asgi_message)
+        except Exception as e:
+            error_message = f"Unexpected error, traceback: {e}."
+            logger.warning(error_message)
+
+            # If the first message has been sent we cannot send a 500 status as it
+            # would violate ASGI protocol.
+            # TODO(edoakes): this may not be valid at all for WebSocket requests.
+            if not first_message_sent:
+                status_code = "500"
+                await Response(error_message, status_code=500).send(
+                    scope, receive, send
                 )
-                async for obj_ref in object_ref_generator:
-                    asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
-                    for asgi_message in asgi_messages:
-                        if not first_message_sent:
-                            # HTTP responses begin with exactly one "http.response.start"
-                            # message containing the "status" field. Other response types
-                            # (e.g., WebSockets) may not.
-                            status_code = str(asgi_message.get("status", "UNKNOWN"))
 
-                        first_message_sent = True
-                        await send(asgi_message)
-            except Exception as e:
-                error_message = f"Unexpected error, traceback: {e}."
-                logger.warning(error_message)
+        finally:
+            if not proxy_asgi_receive_task.done():
+                proxy_asgi_receive_task.cancel()
+            del self.asgi_receive_queues[request_id]
 
-                # If the first message has been sent we cannot send a 500 status as it
-                # would violate ASGI protocol.
-                # TODO(edoakes): this may not be valid at all for WebSocket requests.
-                if not first_message_sent:
-                    status_code = "500"
-                    await Response(error_message, status_code=500).send(scope, receive, send)
-
-            finally:
-                if not proxy_asgi_receive_task.done():
-                    proxy_asgi_receive_task.cancel()
-                del self.asgi_receive_queues[request_id]
-
-            return status_code
+        return status_code
 
 
 @ray.remote(num_cpus=0)

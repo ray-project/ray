@@ -50,7 +50,7 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
 )
-from ray.serve._private.router import Query, RequestMetadata
+from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import (
     parse_import_path,
     wrap_to_ray_error,
@@ -220,14 +220,12 @@ def create_replica_wrapper(name: str):
                 buffered_receive = make_buffered_asgi_receive(request.body)
                 request_args = (scope, buffered_receive, buffered_sender)
 
-
             result = await self.replica.handle_request(
                 request_metadata, request_args, request_kwargs
             )
 
             if request_metadata.is_http_request:
                 result = buffered_sender.build_asgi_response()
-
 
             # Returns a small object for router to track request status.
             return b"", result
@@ -315,7 +313,9 @@ def create_replica_wrapper(name: str):
                 proto.request_id, proto.endpoint, call_method=proto.call_method
             )
             request_args = request_args[0]
-            return await self.replica.handle_request(query, request_args, request_kwargs)
+            return await self.replica.handle_request(
+                request_metadata, request_args, request_kwargs
+            )
 
         async def is_allocated(self) -> str:
             """poke the replica to check whether it's alive.
@@ -528,9 +528,7 @@ class RayServeReplica:
         common Python objects.
         """
         if not isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await Response(result).send(
-                scope, asgi_receive, asgi_sender
-            )
+            await Response(result).send(scope, asgi_receive, asgi_sender)
         else:
             await result(scope, asgi_receive, asgi_sender)
 
@@ -568,7 +566,10 @@ class RayServeReplica:
 
             # Edge case to support empty HTTP handlers: don't pass the Request
             # argument if the callable has no parameters.
-            if (request_metadata.is_http_request and len(inspect.signature(runner_method).parameters) == 0):
+            if (
+                request_metadata.is_http_request
+                and len(inspect.signature(runner_method).parameters) == 0
+            ):
                 request_args, request_kwargs = tuple(), {}
 
             result = await method_to_call(*request_args, **request_kwargs)
@@ -579,10 +580,7 @@ class RayServeReplica:
                     assert result is None
                 # For the vanilla deployment codepath, always send the result over ASGI.
                 else:
-                    await self.send_user_result_over_asgi(
-                        result, scope, send, receive
-                    )
-
+                    await self.send_user_result_over_asgi(result, scope, send, receive)
 
             self.request_counter.inc(tags={"route": request_metadata.route})
         except Exception as e:
@@ -655,7 +653,9 @@ class RayServeReplica:
 
             start_time = time.time()
             result, success = await self.invoke_single(
-                request_metadata, request_args, request_kwargs,
+                request_metadata,
+                request_args,
+                request_kwargs,
             )
             latency_ms = (time.time() - start_time) * 1000
             self.processing_latency_tracker.observe(
