@@ -282,9 +282,7 @@ class ActorReplicaWrapper:
         if self.deployment_config:
             return self.deployment_config.max_concurrent_queries
         else:
-            # We should have a better way to define this behavior.
-            # This means deployment_config value will not be honored
-            # if we don't retrieve deployment_config from the replica.
+            # The value in deployment_config won't be respected.
             # Issue: https://github.com/ray-project/ray/issues/36035
             logger.warn(
                 "Deployment config is not found, "
@@ -297,9 +295,7 @@ class ActorReplicaWrapper:
         if self.deployment_config:
             return self.deployment_config.graceful_shutdown_timeout_s
         else:
-            # We should have a better way to define this behavior.
-            # This means deployment_config value will not be honored
-            # if we don't retrieve deployment_config from the replica.
+            # The value in deployment_config won't be respected.
             # Issue: https://github.com/ray-project/ray/issues/36035
             logger.warn(
                 "Deployment config is not found, "
@@ -312,9 +308,7 @@ class ActorReplicaWrapper:
         if self.deployment_config:
             return self.deployment_config.health_check_period_s
         else:
-            # We should have a better way to define this behavior.
-            # This means deployment_config value will not be honored
-            # if we don't retrieve deployment_config from the replica.
+            # The value in deployment_config won't be respected.
             # Issue: https://github.com/ray-project/ray/issues/36035
             logger.warn(
                 "Deployment config is not found, "
@@ -327,9 +321,7 @@ class ActorReplicaWrapper:
         if self.deployment_config:
             return self.deployment_config.health_check_timeout_s
         else:
-            # We should have a better way to define this behavior.
-            # This means deployment_config value will not be honored
-            # if we don't retrieve deployment_config from the replica.
+            # The value in deployment_config won't be respected.
             # Issue: https://github.com/ray-project/ray/issues/36035
             logger.warn(
                 "Deployment config is not found, "
