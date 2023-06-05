@@ -84,6 +84,7 @@ if os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
         "ing_timeout"
     )
 
+
 async def _handle_streaming_response(
     asgi_response_generator: "ray._raylet.StreamingObjectRefGenerator",
     scope: Scope,
@@ -591,8 +592,9 @@ class HTTPProxyActor:
 
         self.app = HTTPProxy(
             controller_name=controller_name,
-            request_processing_timeout=(request_processing_timeout
-                                        or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S),
+            request_processing_timeout=(
+                request_processing_timeout or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+            ),
         )
 
         self.wrapped_app = self.app
