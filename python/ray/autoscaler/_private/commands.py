@@ -146,7 +146,7 @@ def debug_status(status, error, verbose: bool = False) -> str:
         else:
             status = "No cluster status. It may take a few seconds for the Ray autoscaler to start up."
     else:
-        status = "No cluster status. It may take a few seconds for the Ray autoscaler to start up."
+        status = "No cluster status. It may take a few seconds for the Ray internal services to start up."
 
     if error:
         status += "\n"
