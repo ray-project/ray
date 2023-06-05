@@ -2496,7 +2496,7 @@ py_test(
 py_test(
     name = "tests/backward_compat/test_gym_env_apis",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
 
@@ -2798,7 +2798,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_appo",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesAPPO"]
@@ -2807,7 +2807,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_impala",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesIMPALA"]
@@ -2816,7 +2816,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_a3c",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesA3C"]
@@ -2852,7 +2852,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces_off_policy",
     main = "tests/test_supported_spaces.py",
-    tags = ["team:rllib", "tests_dir"],
+    tags = ["team:rllib", "tests_dir", "exclusive"],
     size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
@@ -4187,7 +4187,7 @@ py_test(
 py_test(
     name = "examples/learner/ppo_tuner_local_gpu_tf2",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu"],
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
     args = ["--framework=tf2", "--config=local-gpu"]
