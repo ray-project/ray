@@ -1658,7 +1658,7 @@ py_test(
 py_test(
     name = "env/tests/test_single_agent_gym_env_runner",
     tags = ["team:rllib", "env"],
-    size = "small",
+    size = "medium",
     srcs = ["env/tests/test_single_agent_gym_env_runner.py"]
 )
 
