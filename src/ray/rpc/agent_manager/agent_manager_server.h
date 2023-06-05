@@ -24,8 +24,7 @@ namespace ray {
 namespace rpc {
 
 #define RAY_AGENT_MANAGER_RPC_HANDLERS \
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH(     \
-      AgentManagerService, RegisterAgent, -1, AuthType::NO_AUTH)
+  RPC_SERVICE_HANDLER(AgentManagerService, RegisterAgent, -1)
 
 /// Implementations of the `AgentManagerGrpcService`, check interface in
 /// `src/ray/protobuf/agent_manager.proto`.

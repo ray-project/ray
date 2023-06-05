@@ -240,7 +240,7 @@ class ClientCallManager {
   /// -1 means it will use the default timeout configured for the handler.
   ///
   /// \return A `ClientCall` representing the request that was just sent.
-  template <class GrpcService, class Request, class Reply, bool Insecure>
+  template <class GrpcService, class Request, class Reply>
   std::shared_ptr<ClientCall> CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
@@ -253,12 +253,7 @@ class ClientCallManager {
       method_timeout_ms = call_timeout_ms_;
     }
 
-    ClusterID const *maybe_cluster_token;
-    if constexpr (Insecure) {
-      maybe_cluster_token = nullptr;
-    } else {
-      maybe_cluster_token = cluster_token_.valid() ? &cluster_token_.get() : nullptr;
-    }
+    ClusterID const *maybe_cluster_token = nullptr;
 
     auto call = std::make_shared<ClientCallImpl<Reply>>(
         callback, maybe_cluster_token, std::move(stats_handle), method_timeout_ms);

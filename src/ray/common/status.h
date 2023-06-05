@@ -116,7 +116,6 @@ enum class StatusCode : char {
   RpcError = 30,
   OutOfResource = 31,
   ObjectRefEndOfStream = 32,
-  AuthError = 33,
 };
 
 #if defined(__clang__)
@@ -252,10 +251,6 @@ class RAY_EXPORT Status {
     return Status(StatusCode::OutOfResource, msg);
   }
 
-  static Status AuthError(const std::string &msg) {
-    return Status(StatusCode::AuthError, msg);
-  }
-
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -306,8 +301,6 @@ class RAY_EXPORT Status {
   bool IsRpcError() const { return code() == StatusCode::RpcError; }
 
   bool IsOutOfResource() const { return code() == StatusCode::OutOfResource; }
-
-  bool IsAuthError() const { return code() == StatusCode::AuthError; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

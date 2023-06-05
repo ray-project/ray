@@ -77,7 +77,7 @@ using namespace rpc::autoscaler;
 
 // As this is internal to GCS, there is no need to do cluster auth here.
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
-  RPC_SERVICE_HANDLER_CUSTOM_AUTH(InternalKVGcsService, HANDLER, -1, AuthType::NO_AUTH)
+  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
 #define RUNTIME_ENV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(RuntimeEnvGcsService, HANDLER, -1)
@@ -318,11 +318,7 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       ClusterID const &cluster_id) override {
-    RPC_SERVICE_HANDLER_CUSTOM_AUTH(
-        NodeInfoGcsService,
-        RegisterClient,
-        RayConfig::instance().gcs_max_active_rpcs_per_handler(),
-        AuthType::LAZY_AUTH);
+    NODE_INFO_SERVICE_RPC_HANDLER(RegisterClient);
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
