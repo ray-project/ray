@@ -468,17 +468,9 @@ See `Writing Custom Single Agent RL Modules`_ for more details on how to impleme
 
                 def _forward_inference(self, batch):
                     ...
-                    return {
-                        "actions": ...  # will be used as-is
-                        # "action_dist_inputs": ...
-                    }
 
                 def _forward_exploration(self, batch):
                     ...
-                    return {
-                        "action_dist_inputs": ...  # create a dist object, from which we'll sample the actions
-                        # "actions": ...
-                    }
 
 
     .. tab-item:: Returning "actions"
@@ -497,13 +489,14 @@ See `Writing Custom Single Agent RL Modules`_ for more details on how to impleme
                     ...
                     return {
                         "actions": ...  # actions will be used as-is
+                        # "action_dist_inputs": ...  # this is optional
                     }
 
                 def _forward_exploration(self, batch):
                     ...
                     return {
                         "actions": ...  # actions will be used as-is (no sampling step!)
-                        "action_dist_inputs":  # will be used to compute action probs and logp.
+                        "action_dist_inputs": ...  # optional: If provided, will be used to compute action probs and logp.
                     }
 
     .. tab-item:: Not returning "actions"
@@ -534,7 +527,7 @@ See `Writing Custom Single Agent RL Modules`_ for more details on how to impleme
                         # - "sample" from the (stochastic) distribution.
                         # - Compute action probs/logs automatically using the sampled
                         #   actions and the generated distribution object.
-                        "action_dist_inputs":
+                        "action_dist_inputs": ...
                     }
 
 Notable TODOs
