@@ -31,12 +31,13 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self._reconciler_executor = ThreadPoolExecutor(max_workers=1)
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
-        # TODO: we should do reconciliation based on events.
-        self._reconciler_executor.submit(self._run_reconcile)
-
-    def _run_reconcile(self) -> None:
-        self._handle_ray_failure()
-        self._reconcile_with_node_provider()
+        if any(
+            event.new_status in [Instance.ALLOCATED]
+            and event.new_ray_status
+            in [Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED]
+            for event in events
+        ):
+            self._reconciler_executor.submit(self._handle_ray_failure)
 
     def _handle_ray_failure(self) -> int:
         failing_instances, _ = self._instance_storage.get_instances(
