@@ -1,4 +1,6 @@
+import copy
 import logging
+import time
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
@@ -68,9 +70,11 @@ class InstanceStorage:
             return StoreStatus(False, version)
 
         for instance in updates:
+            instance = copy.deepcopy(instance)
             # the instance version is set to 0, it will be
             # populated by the storage entry's verion on read
             instance.version = 0
+            instance.timestamp_since_last_modified = int(time.time())
             mutations[instance.instance_id] = instance.SerializeToString()
 
         result, version = self._storage.batch_update(
@@ -114,6 +118,8 @@ class InstanceStorage:
         Returns:
             StoreStatus: A tuple of (success, storage_version).
         """
+        instance = copy.deepcopy(instance)
+        instance.timestamp_since_last_modified = int(time.time())
         # the instance version is set to 0, it will be
         # populated by the storage entry's verion on read
         instance.version = 0
@@ -139,13 +145,18 @@ class InstanceStorage:
         return StoreStatus(result, version)
 
     def get_instances(
-        self, instance_ids: List[str] = None, status_filter: Set[int] = None
+        self,
+        instance_ids: List[str] = None,
+        status_filter: Set[int] = None,
+        ray_status_filter: Set[int] = None,
     ) -> Tuple[Dict[str, Instance], int]:
         """Get instances from the storage.
 
         Args:
             instance_ids: A list of instance ids to be retrieved. If empty, all
                 instances will be retrieved.
+            status_filter: Only instances with the specified status will be returned.
+            ray_status_filter: Only instances with the specified ray status will be returned.
 
         Returns:
             Tuple[Dict[str, Instance], int]: A tuple of (instances, version).
@@ -160,6 +171,8 @@ class InstanceStorage:
             instance.ParseFromString(instance_data)
             instance.version = entry_version
             if status_filter and instance.status not in status_filter:
+                continue
+            if ray_status_filter and instance.ray_status not in ray_status_filter:
                 continue
             instances[instance_id] = instance
         return instances, version

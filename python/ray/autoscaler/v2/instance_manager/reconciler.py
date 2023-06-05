@@ -15,11 +15,11 @@ from ray.core.generated.instance_manager_pb2 import Instance
 logger = logging.getLogger(__name__)
 
 
-PENDING_START_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
-STARTING_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
-ALIVE_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
-STOPPING_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
-STOPPED_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
+PENDING_START_STATUS = {Instance.QEUEUD}
+STARTING_STATUS = {Instance.QEUEUD}
+ALIVE_STATUS = {Instance.QEUEUD}
+STOPPING_STATUS = {Instance.QEUEUD}
+STOPPED_STATUS = {Instance.QEUEUD}
 
 
 class InstanceReconciler(InstanceUpdatedSuscriber):
@@ -47,11 +47,15 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self._reconciler_executor.submit(self._run_reconcile)
 
     def _run_reconcile(self) -> None:
-        self._reconcile_with_node_provider()
+        self._install_ray_on_new_nodes()
+        self._launch_new_instances()
+        self._install_ray_on_new_nodes()
+        self._terminate_failing_nodes()
+        self._reconcile_leaked_instances()
 
     def _launch_new_instances(self):
         queued_instances, storage_version = self._instance_storage.get_instances(
-            status_filter={Instance.INSTANCE_STATUS_UNSPECIFIED}
+            status_filter={Instance.QEUEUD}
         )
         if not queued_instances:
             logger.debug("No queued instances to launch")
@@ -79,95 +83,138 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         )
 
     def _launch_new_instances_by_type(
-        self, instance_type: str, instances: List[Instance], storage_version
+        self, instance_type: str, instances: List[Instance]
     ) -> int:
         logger.info(f"Launching {len(instances)} instances of type {instance_type}")
+        instances_selected = []
         for instance in instances:
-            instance.state = Instance.STARTING
-
-        result, version = self._instance_storage.upsert_instances(
-            instances, storage_version
-        )
-        if not result:
-            # TODO: we can retry here if starved.
-            logger.info(
-                f"Failed to update instance status due to version mismatch, "
-                f"expected version {storage_version}, actual version {version}"
+            instance.status = Instance.REQUESTED
+            result, version = self._instance_storage.upsert_instance(
+                instance, expected_instance_version=instance.version
             )
+            if not result:
+                logger.warn(
+                    f"Failed to update instance {instance} status due to version mismatch, "
+                    "it is likely that the instance has been updated by others."
+                )
+            instance.version = version
+            instances_selected.append(instance)
+
+        if not instances_selected:
             return 0
 
         created_cloud_instances = self._node_provider.create_nodes(
-            instance_type, len(instances)
+            instance_type, len(instances_selected)
         )
 
-        assert len(created_cloud_instances) <= len(instances)
+        assert len(created_cloud_instances) <= len(instances_selected)
 
-        for i, instance in enumerate(instances):
-            if i < len(created_cloud_instances):
-                cloud_instance = created_cloud_instances[i]
-                instance.cloud_instance_id = cloud_instance.cloud_instance_id
-                instance.interal_ip = cloud_instance.internal_ip
-                instance.external_ip = cloud_instance.external_ip
-                instance.state = Instance.INSTANCE_ALLOCATED
-            else:
-                # alternatively, we can retry.
-                # TODO: we probably should retry here anyway.
-                instance.state = Instance.ALLOCATION_FAILED
+        while created_cloud_instances and instances_selected:
+            cloud_instance = created_cloud_instances.pop()
+            instance = self._instance_storage.pop()
+            instance.cloud_instance_id = cloud_instance.cloud_instance_id
+            instance.interal_ip = cloud_instance.internal_ip
+            instance.external_ip = cloud_instance.external_ip
+            instance.status = Instance.ALLOCATED
+            instance.ray_status = Instance.RAY_STATUS_UNKOWN
 
-        # blind upsert that ignores version mismatch
-        self._instance_storage.upsert_instances(instances, expected_version=None)
-
-    def _install_ray_on_new_nodes(self) -> None:
-        allocated_instance, storage_version = self._instance_storage.get_instances(
-            status_filter={Instance.INSTANCE_ALLOCATED}
-        )
-        for instance in allocated_instance.values():
-            self._ray_installaion_executor.submit(
-                self._install_ray_on_single_node, instance
+            # update instance status into the storage
+            result, _ = self._instance_storage.upsert_instance(
+                instance, expected_instance_version=instance.version
             )
 
+            if not result:
+                # TODO: this could only happen when the request is canceled.
+                logger.warn(
+                    f"Failed to update instance {instance} status due to version mismatch, "
+                    "it is likely that the instance has been updated by others."
+                )
+                # push the cloud instance back
+                created_cloud_instances.append(cloud_instance)
+
+        if created_cloud_instances:
+            # instances are leaked, we probably need to terminate them
+            self._node_provider.terminate_nodes(
+                [instance.cloud_instance_id for instance in created_cloud_instances]
+            )
+
+        if instances_selected:
+            # instances creation failed, we need to marke them allocation failed.
+            for instance in instances_selected:
+                instance.status = Instance.ALLOCATION_FAILED
+                result, _ = self._instance_storage.upsert_instance(
+                    instance, expected_instance_version=instance.version
+                )
+                # TODO: this could only happen when the request is canceled.
+
+    def _install_ray_on_new_nodes(self) -> None:
+        allocated_instance, _ = self._instance_storage.get_instances(
+            status_filter={Instance.ALLOCATED}
+        )
+        for instance in allocated_instance.values():
+            if instance.ray_status == Instance.RAY_STATUS_UNKOWN:
+                self._ray_installaion_executor.submit(
+                    self._install_ray_on_single_node, instance
+                )
+
     def _install_ray_on_single_node(self, instance: Instance) -> None:
-        instance.state = Instance.RAY_INSTALLING
-        self._instance_storage.upsert_instances([instance], expected_version=None)
+        assert instance.status == Instance.ALLOCATED
+        assert instance.ray_status == Instance.RAY_STATUS_UNKOWN
+        instance.ray_status = Instance.RAY_INSTALLING
+        success, version = self._instance_storage.upsert_instance(
+            instance, expected_instance_version=instance.version
+        )
+        if not success:
+            logger.warning(
+                f"Failed to update instance {instance.instance_id} to RAY_INSTALLING"
+            )
+            # Do not need to handle failures, it will be covered by
+            # garbage collection.
+            return
+
         if not self._ray_installer.install_ray(instance, self._head_node_ip):
-            instance.state = Instance.RAY_INSTALL_FAILED
-            self._instance_storage.upsert_instances([instance], expected_version=None)
+            instance.ray_status = Instance.RAY_INSTALL_FAILED
+            success, version = self._instance_storage.upsert_instance(
+                instance,
+                expected_instance_version=version,
+            )
         else:
-            instance.state = Instance.RUNNING
-            self._instance_storage.upsert_instances([instance], expected_version=None)
+            instance.ray_status = Instance.RAY_RUNNING
+            success, version = self._instance_storage.upsert_instance(
+                instance,
+                expected_instance_version=version,
+            )
+        if not success:
+            logger.warning(
+                f"Failed to update instance {instance.instance_id} to {instance.status}"
+            )
+            # Do not need to handle failures, it will be covered by
+            # garbage collection.
+            return
 
     def _terminate_failing_nodes(self) -> int:
-        failling_instances, storage_version = self._instance_storage.get_instances(
-            status_filter={Instance.FAILING}
+        failing_instances, _ = self._instance_storage.get_instances(
+            status_filter={Instance.ALLOCATED},
+            ray_status_filter={Instance.RAY_INSTALL_FAILED},
         )
-        if not failling_instances:
+        if not failing_instances:
             logger.info("No instances to terminate")
             return
 
-        for instance in failling_instances:
-            instance.state = Instance.STOPPING
-
-        result, version = self._instance_storage.upsert_instances(
-            failling_instances, expected_version=storage_version
-        )
-
-        if not result:
-            # TODO: we should retry here if verson conflicts.
-            logger.info(
-                f"Failed to update instance status due to version mismatch, "
-                f"expected version {storage_version}, actual version {version}"
-            )
-            return 0
-
+        failing_instances = failing_instances.values()
         cloud_instance_ids = [
-            instance.cloud_instance_id for instance in failling_instances
+            instance.cloud_instance_id for instance in failing_instances
         ]
-        self._node_provider.async_terminate_nodes(cloud_instance_ids)
-        return len(cloud_instance_ids)
 
-    def _terminate_stopping_nodes(self) -> int:
-        # TODO: we should retry nodes that are stuck in STOPPING state.
-        pass
+        self._node_provider.async_terminate_nodes(cloud_instance_ids)
+
+        for instance in failing_instances:
+            instance.status = Instance.STOPPING
+            self._instance_storage.upsert_instance(
+                instance, expected_instance_version=instance.version
+            )
+
+        return len(cloud_instance_ids)
 
     def _reconcile_with_node_provider(self) -> None:
         # main reconcile loop.
@@ -179,11 +226,6 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         instances, _ = self._instance_storage.get_instances()
         for instance in instances.values():
             self._reconcile_single_intance(instance, none_terminated_cloud_instances)
-
-        self._launch_new_instances()
-
-        # dealing with leaked intances.
-        self._reconcile_leaked_instances(none_terminated_cloud_instances)
 
     def _reconcile_single_intance(
         self,
@@ -200,7 +242,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         # if the instance doesn't have cloud_instance_id, it means it is either not
         # launched yet, or it is already being terminated.
         if not storage_instance.cloud_instance_id:
-            assert storage_instance.state in PENDING_START_STATUS
+            assert storage_instance.status in PENDING_START_STATUS
             return
 
         cloud_instance = none_terminated_cloud_instance_by_id.pop(
@@ -211,7 +253,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         if cloud_instance is None:
             logging.info(f"Instance is not found in cloud provider, {storage_instance}")
 
-            assert storage_instance.state not in PENDING_START_STATUS
+            assert storage_instance.status not in PENDING_START_STATUS
 
             # TODO: we should log error if the instance is not expected to
             # be disappeared.
@@ -219,7 +261,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
                 [storage_instance.instance_id]
             )
 
-    def _reconcile_leaked_instances(self, potentially_leaked_instances: List[Instance]):
+    def _reconcile_leaked_instances(self):
         # TODO: after reconciling with the storage, the remaining cloud instances
         # could either be leaked, or they are just launched and not
         # stored into the storage yet.

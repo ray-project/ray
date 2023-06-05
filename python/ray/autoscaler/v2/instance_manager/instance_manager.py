@@ -91,7 +91,8 @@ class SimpleInstanceManager(InstanceManager):
             instance = Instance()
             instance.instance_id = str(uuid.uuid4())
             instance.instance_type = instance_type.type_name
-            instance.status = Instance.INSTANCE_STATUS_UNSPECIFIED
+            instance.status = Instance.QEUEUD
+            instance.ray_status = Instance.RAY_STATUS_UNKOWN
             new_instances.append(instance)
 
         expected_version = (
