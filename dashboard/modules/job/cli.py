@@ -172,7 +172,7 @@ def submit(
     submission_id: Optional[str],
     runtime_env: Optional[str],
     runtime_env_json: Optional[str],
-    metadata: Optional[str],
+    metadata_json: Optional[str],
     working_dir: Optional[str],
     entrypoint: Tuple[str],
     entrypoint_num_cpus: Optional[Union[int, float]],
@@ -194,8 +194,10 @@ def submit(
         entrypoint_resources = parse_resources_json(
             entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources"
         )
-    if metadata is not None:
-        metadata = parse_metadata_json(metadata, cli_logger, cf, command_arg="metadata")
+    if metadata_json is not None:
+        metadata_json = parse_metadata_json(
+            metadata_json, cli_logger, cf, command_arg="metadata-json"
+        )
 
     submission_id = submission_id or job_id
 
@@ -207,6 +209,7 @@ def submit(
             submission_id=submission_id,
             runtime_env=runtime_env,
             runtime_env_json=runtime_env_json,
+            metadata_json=metadata_json,
             working_dir=working_dir,
             entrypoint=entrypoint,
             entrypoint_num_cpus=entrypoint_num_cpus,
@@ -226,7 +229,7 @@ def submit(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
-        metadata=metadata,
+        metadata=metadata_json,
         entrypoint_num_cpus=entrypoint_num_cpus,
         entrypoint_num_gpus=entrypoint_num_gpus,
         entrypoint_resources=entrypoint_resources,
