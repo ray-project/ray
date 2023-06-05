@@ -50,7 +50,6 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
@@ -58,6 +57,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema

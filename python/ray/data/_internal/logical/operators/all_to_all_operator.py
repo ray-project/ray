@@ -50,10 +50,6 @@ class RandomizeBlocks(AbstractAllToAll):
         )
         self._seed = seed
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return False
-
 
 class RandomShuffle(AbstractAllToAll):
     """Logical operator for random_shuffle."""
@@ -77,10 +73,6 @@ class RandomShuffle(AbstractAllToAll):
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
-
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return False
 
 
 class Repartition(AbstractAllToAll):
@@ -109,10 +101,6 @@ class Repartition(AbstractAllToAll):
         )
         self._shuffle = shuffle
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return False
-
 
 class Sort(AbstractAllToAll):
     """Logical operator for sort."""
@@ -135,10 +123,6 @@ class Sort(AbstractAllToAll):
         self._key = key
         self._descending = descending
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return False
-
 
 class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
@@ -159,7 +143,3 @@ class Aggregate(AbstractAllToAll):
         )
         self._key = key
         self._aggs = aggs
-
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return True

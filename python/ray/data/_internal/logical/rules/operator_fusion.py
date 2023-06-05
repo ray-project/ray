@@ -11,8 +11,8 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.one_to_one_operator import LimitOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -22,8 +22,8 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomShuffle,
     Repartition,
 )
-from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block
 
@@ -310,7 +310,7 @@ class OperatorFusionRule(Rule):
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
         # on a lower-level operator spec.
         if isinstance(up_logical_op, AbstractUDFMap):
-            input_op = up_logical_op.input_dependencies[0]
+            input_op = up_logical_op.input_dependency
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op
@@ -411,7 +411,7 @@ class OperatorFusionRule(Rule):
         )
 
         new_limit = min(down_op._limit, up_op._limit)
-        fused_physical_op = LimitOperator(new_limit, up_op.input_dependencies[0])
+        fused_physical_op = LimitOperator(new_limit, up_op.input_dependency)
 
         up_logical_op = self._op_map.pop(up_op)
         fused_logical_op = Limit(up_logical_op.input_dependencies[0], new_limit)

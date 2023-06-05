@@ -1390,6 +1390,14 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     assert "Limit[limit=5]" in ds2.stats()
     assert "Limit[limit=100]" not in ds2.stats()
 
+    ds2 = ray.data.range(100).limit(100).limit(5).materialize()
+    assert (
+        str(ds2._plan._logical_plan.dag)
+        == "Read[ReadRange] -> Limit[Limit] -> Limit[Limit]"
+    )
+    assert "Limit[limit=5]" in ds2.stats()
+    assert "Limit[limit=100]" not in ds2.stats()
+
     # Test limit pushdown and Limit -> Limit fusion.
     ds3 = ray.data.range(100).limit(5).map(f1).limit(100).materialize()
     assert (
@@ -1434,6 +1442,7 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     assert "Map(f1)->Map(f2)" in ds7.stats()
     assert len(ds7.take_all()) == 1
 
+    # More complex interweaved case.
     ds8 = (
         ray.data.range(100)
         .sort("id")
