@@ -32,6 +32,7 @@ class TestState(enum.Enum):
 
     JAILED = "jailed"
     FAILING = "failing"
+    CONSITENTLY_FAILING = "consistently_failing"
     PASSING = "passing"
 
 
@@ -71,6 +72,7 @@ class Test(dict):
     """A class represents a test to run on buildkite"""
 
     KEY_GITHUB_ISSUE_NUMBER = "github_issue_number"
+    KEY_BISECT_BUILD_NUMBER = "bisect_build_number"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1714,21 +1714,6 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: remove_before_commit
-  group: Devprod tests
-  working_dir: tune_tests/cloud_tests
-  frequency: manual
-  team: ml
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: exit 40
-
-
 - name: tune_cloud_no_sync_down
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
