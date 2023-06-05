@@ -37,19 +37,23 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
 
 class FromItems(AbstractFrom):
     """Logical operator for `from_items`."""
+
     pass
 
 
 class FromNumpy(AbstractFrom):
     """Logical operator for `from_numpy`."""
+
     pass
 
 
 class FromArrow(AbstractFrom):
     """Logical operator for `from_arrow`."""
+
     pass
 
 
 class FromPandas(AbstractFrom):
     """Logical operator for `from_pandas`."""
+
     pass
