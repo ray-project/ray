@@ -82,7 +82,11 @@ GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
 Status GcsClient::Connect(instrumented_io_context &io_service,
-                          ClusterID const &cluster_id) {
+                          const ClusterID &cluster_id) {
+  // There isn't a difference between doing this sync and async
+  // because current sync APIs just wrap async by blocking on future.
+  // For an RPC, it is better not to wait for the response if it can
+  // be helped.
   cluster_token_promise_ = std::promise<ClusterID>();
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(

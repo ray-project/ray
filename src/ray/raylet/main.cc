@@ -170,153 +170,156 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
-  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
-      [&](::ray::Status status,
-          const boost::optional<std::string> &stored_raylet_config) {
-        RAY_CHECK_OK(status);
-        RAY_CHECK(stored_raylet_config.has_value());
-        RayConfig::instance().initialize(stored_raylet_config.get());
+  auto f = std::async(std::launch::async, [&]() {
+    RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
+        [&](::ray::Status status,
+            const boost::optional<std::string> &stored_raylet_config) {
+          RAY_CHECK_OK(status);
+          RAY_CHECK(stored_raylet_config.has_value());
+          RayConfig::instance().initialize(stored_raylet_config.get());
 
-        // Parse the worker port list.
-        std::istringstream worker_port_list_string(worker_port_list);
-        std::string worker_port;
-        std::vector<int> worker_ports;
+          // Parse the worker port list.
+          std::istringstream worker_port_list_string(worker_port_list);
+          std::string worker_port;
+          std::vector<int> worker_ports;
 
-        while (std::getline(worker_port_list_string, worker_port, ',')) {
-          worker_ports.push_back(std::stoi(worker_port));
-        }
+          while (std::getline(worker_port_list_string, worker_port, ',')) {
+            worker_ports.push_back(std::stoi(worker_port));
+          }
 
-        // Parse the resource list.
-        std::istringstream resource_string(static_resource_list);
-        std::string resource_name;
-        std::string resource_quantity;
+          // Parse the resource list.
+          std::istringstream resource_string(static_resource_list);
+          std::string resource_name;
+          std::string resource_quantity;
 
-        while (std::getline(resource_string, resource_name, ',')) {
-          RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
-          static_resource_conf[resource_name] = std::stod(resource_quantity);
-        }
-        auto num_cpus_it = static_resource_conf.find("CPU");
-        int num_cpus = num_cpus_it != static_resource_conf.end()
-                           ? static_cast<int>(num_cpus_it->second)
-                           : 0;
+          while (std::getline(resource_string, resource_name, ',')) {
+            RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
+            static_resource_conf[resource_name] = std::stod(resource_quantity);
+          }
+          auto num_cpus_it = static_resource_conf.find("CPU");
+          int num_cpus = num_cpus_it != static_resource_conf.end()
+                             ? static_cast<int>(num_cpus_it->second)
+                             : 0;
 
-        node_manager_config.raylet_config = stored_raylet_config.get();
-        node_manager_config.resource_config =
-            ray::ResourceMapToResourceRequest(std::move(static_resource_conf), false);
-        RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
-                       << node_manager_config.resource_config.DebugString();
-        node_manager_config.node_manager_address = node_ip_address;
-        node_manager_config.node_manager_port = node_manager_port;
-        auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();
-        node_manager_config.num_workers_soft_limit =
-            soft_limit_config >= 0 ? soft_limit_config : num_cpus;
-        node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
-        node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
-        node_manager_config.min_worker_port = min_worker_port;
-        node_manager_config.max_worker_port = max_worker_port;
-        node_manager_config.worker_ports = worker_ports;
-        node_manager_config.labels = parse_node_labels(labels_json_str);
+          node_manager_config.raylet_config = stored_raylet_config.get();
+          node_manager_config.resource_config =
+              ray::ResourceMapToResourceRequest(std::move(static_resource_conf), false);
+          RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
+                         << node_manager_config.resource_config.DebugString();
+          node_manager_config.node_manager_address = node_ip_address;
+          node_manager_config.node_manager_port = node_manager_port;
+          auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();
+          node_manager_config.num_workers_soft_limit =
+              soft_limit_config >= 0 ? soft_limit_config : num_cpus;
+          node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
+          node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
+          node_manager_config.min_worker_port = min_worker_port;
+          node_manager_config.max_worker_port = max_worker_port;
+          node_manager_config.worker_ports = worker_ports;
+          node_manager_config.labels = parse_node_labels(labels_json_str);
 
-        if (!python_worker_command.empty()) {
-          node_manager_config.worker_commands.emplace(
-              make_pair(ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
-        }
-        if (!java_worker_command.empty()) {
-          node_manager_config.worker_commands.emplace(
-              make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
-        }
-        if (!cpp_worker_command.empty()) {
-          node_manager_config.worker_commands.emplace(
-              make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
-        }
-        node_manager_config.native_library_path = native_library_path;
-        if (python_worker_command.empty() && java_worker_command.empty() &&
-            cpp_worker_command.empty()) {
-          RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
-                         << "should be provided";
-        }
-        if (!agent_command.empty()) {
-          node_manager_config.agent_command = agent_command;
-        } else {
-          RAY_LOG(DEBUG) << "Agent command is empty. Not starting agent.";
-        }
+          if (!python_worker_command.empty()) {
+            node_manager_config.worker_commands.emplace(make_pair(
+                ray::Language::PYTHON, ParseCommandLine(python_worker_command)));
+          }
+          if (!java_worker_command.empty()) {
+            node_manager_config.worker_commands.emplace(
+                make_pair(ray::Language::JAVA, ParseCommandLine(java_worker_command)));
+          }
+          if (!cpp_worker_command.empty()) {
+            node_manager_config.worker_commands.emplace(
+                make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
+          }
+          node_manager_config.native_library_path = native_library_path;
+          if (python_worker_command.empty() && java_worker_command.empty() &&
+              cpp_worker_command.empty()) {
+            RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
+                           << "should be provided";
+          }
+          if (!agent_command.empty()) {
+            node_manager_config.agent_command = agent_command;
+          } else {
+            RAY_LOG(DEBUG) << "Agent command is empty. Not starting agent.";
+          }
 
-        node_manager_config.report_resources_period_ms =
-            RayConfig::instance().raylet_report_resources_period_milliseconds();
-        node_manager_config.record_metrics_period_ms =
-            RayConfig::instance().metrics_report_interval_ms() / 2;
-        node_manager_config.store_socket_name = store_socket_name;
-        node_manager_config.temp_dir = temp_dir;
-        node_manager_config.log_dir = log_dir;
-        node_manager_config.session_dir = session_dir;
-        node_manager_config.resource_dir = resource_dir;
-        node_manager_config.ray_debugger_external = ray_debugger_external;
-        node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
-        node_manager_config.min_spilling_size = RayConfig::instance().min_spilling_size();
+          node_manager_config.report_resources_period_ms =
+              RayConfig::instance().raylet_report_resources_period_milliseconds();
+          node_manager_config.record_metrics_period_ms =
+              RayConfig::instance().metrics_report_interval_ms() / 2;
+          node_manager_config.store_socket_name = store_socket_name;
+          node_manager_config.temp_dir = temp_dir;
+          node_manager_config.log_dir = log_dir;
+          node_manager_config.session_dir = session_dir;
+          node_manager_config.resource_dir = resource_dir;
+          node_manager_config.ray_debugger_external = ray_debugger_external;
+          node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+          node_manager_config.min_spilling_size =
+              RayConfig::instance().min_spilling_size();
 
-        // Configuration for the object manager.
-        ray::ObjectManagerConfig object_manager_config;
-        object_manager_config.object_manager_address = node_ip_address;
-        object_manager_config.object_manager_port = object_manager_port;
-        object_manager_config.store_socket_name = store_socket_name;
+          // Configuration for the object manager.
+          ray::ObjectManagerConfig object_manager_config;
+          object_manager_config.object_manager_address = node_ip_address;
+          object_manager_config.object_manager_port = object_manager_port;
+          object_manager_config.store_socket_name = store_socket_name;
 
-        object_manager_config.timer_freq_ms =
-            RayConfig::instance().object_manager_timer_freq_ms();
-        object_manager_config.pull_timeout_ms =
-            RayConfig::instance().object_manager_pull_timeout_ms();
-        object_manager_config.push_timeout_ms =
-            RayConfig::instance().object_manager_push_timeout_ms();
-        if (object_store_memory <= 0) {
-          RAY_LOG(FATAL) << "Object store memory should be set.";
-        }
-        object_manager_config.object_store_memory = object_store_memory;
-        object_manager_config.max_bytes_in_flight =
-            RayConfig::instance().object_manager_max_bytes_in_flight();
-        object_manager_config.plasma_directory = plasma_directory;
-        object_manager_config.fallback_directory = temp_dir;
-        object_manager_config.huge_pages = huge_pages;
+          object_manager_config.timer_freq_ms =
+              RayConfig::instance().object_manager_timer_freq_ms();
+          object_manager_config.pull_timeout_ms =
+              RayConfig::instance().object_manager_pull_timeout_ms();
+          object_manager_config.push_timeout_ms =
+              RayConfig::instance().object_manager_push_timeout_ms();
+          if (object_store_memory <= 0) {
+            RAY_LOG(FATAL) << "Object store memory should be set.";
+          }
+          object_manager_config.object_store_memory = object_store_memory;
+          object_manager_config.max_bytes_in_flight =
+              RayConfig::instance().object_manager_max_bytes_in_flight();
+          object_manager_config.plasma_directory = plasma_directory;
+          object_manager_config.fallback_directory = temp_dir;
+          object_manager_config.huge_pages = huge_pages;
 
-        object_manager_config.rpc_service_threads_number =
-            std::min(std::max(2, num_cpus / 4), 8);
-        object_manager_config.object_chunk_size =
-            RayConfig::instance().object_manager_default_chunk_size();
+          object_manager_config.rpc_service_threads_number =
+              std::min(std::max(2, num_cpus / 4), 8);
+          object_manager_config.object_chunk_size =
+              RayConfig::instance().object_manager_default_chunk_size();
 
-        RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
-                       << "rpc_service_threads_number = "
-                       << object_manager_config.rpc_service_threads_number
-                       << ", object_chunk_size = "
-                       << object_manager_config.object_chunk_size;
-        // Initialize stats.
-        const ray::stats::TagsType global_tags = {
-            {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::WorkerIdKey, ""},
-            {ray::stats::VersionKey, kRayVersion},
-            {ray::stats::NodeAddressKey, node_ip_address},
-            {ray::stats::SessionNameKey, session_name}};
-        ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
+          RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
+                         << "rpc_service_threads_number = "
+                         << object_manager_config.rpc_service_threads_number
+                         << ", object_chunk_size = "
+                         << object_manager_config.object_chunk_size;
+          // Initialize stats.
+          const ray::stats::TagsType global_tags = {
+              {ray::stats::ComponentKey, "raylet"},
+              {ray::stats::WorkerIdKey, ""},
+              {ray::stats::VersionKey, kRayVersion},
+              {ray::stats::NodeAddressKey, node_ip_address},
+              {ray::stats::SessionNameKey, session_name}};
+          ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        // Initialize the node manager.
-        raylet = std::make_unique<ray::raylet::Raylet>(main_service,
-                                                       raylet_socket_name,
-                                                       node_ip_address,
-                                                       node_name,
-                                                       node_manager_config,
-                                                       object_manager_config,
-                                                       gcs_client,
-                                                       metrics_export_port,
-                                                       is_head_node);
+          // Initialize the node manager.
+          raylet = std::make_unique<ray::raylet::Raylet>(main_service,
+                                                         raylet_socket_name,
+                                                         node_ip_address,
+                                                         node_name,
+                                                         node_manager_config,
+                                                         object_manager_config,
+                                                         gcs_client,
+                                                         metrics_export_port,
+                                                         is_head_node);
 
-        // Initialize event framework.
-        if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-          ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
-                            {{"node_id", raylet->GetNodeId().Hex()}},
-                            log_dir,
-                            RayConfig::instance().event_level(),
-                            RayConfig::instance().emit_event_to_log_file());
-        };
+          // Initialize event framework.
+          if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
+            ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
+                              {{"node_id", raylet->GetNodeId().Hex()}},
+                              log_dir,
+                              RayConfig::instance().event_level(),
+                              RayConfig::instance().emit_event_to_log_file());
+          };
 
-        raylet->Start();
-      }));
+          raylet->Start();
+        }));
+  });
 
   auto shutted_down = std::make_shared<std::atomic<bool>>(false);
 

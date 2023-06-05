@@ -179,8 +179,6 @@ class ServerCallImpl : public ServerCall {
         start_time_(0),
         record_metrics_(record_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
-    RAY_LOG(INFO) << "xxx is nil? " << cluster_id_.IsNil() << " "
-                  << typeid(Request).name() << " " << cluster_id_.Hex();
     // TODO call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
@@ -217,7 +215,7 @@ class ServerCallImpl : public ServerCall {
         auth_success = false;
       }
     } else {
-      if (cluster_id_.IsNil()) {
+      if (!cluster_id_.IsNil()) {
         RAY_LOG_EVERY_N(WARNING, 100)
             << "Unexpected cluster ID in server call! " << cluster_id_;
       }
@@ -311,6 +309,7 @@ class ServerCallImpl : public ServerCall {
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     if (io_service_.stopped()) {
+      RAY_LOG_EVERY_N(WARNING, 100) << "Not sending reply because executor stopped.";
       return;
     }
     state_ = ServerCallState::SENDING_REPLY;
