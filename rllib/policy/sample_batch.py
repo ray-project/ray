@@ -1,4 +1,5 @@
 import collections
+from functools import partial
 import numpy as np
 import sys
 import itertools
@@ -1532,11 +1533,22 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
         try:
             if k == "infos":
                 concatd_data[k] = _concat_values(
-                    *[s[k] for s in concated_samples], time_major=time_major
+                    *[s[k] for s in concated_samples], time_major=time_major, concat_fn=concat_fn
                 )
             else:
+                values_to_concat = [c[k] for c in concated_samples]
+                if torch and isinstance(values_to_concat[0], torch.tensor):
+                    concat_fn = torch.cat
+                elif isinstance(values_to_concat[0], np.ndarray):
+                    concat_fn = np.concatenate
+                elif tf and isinstance(values_to_concat[0], tf.tensor):
+                    concat_fn = tf.concat
+                else:
+                    raise ValueError("Unsupported type for concatenation")
+                _concat_values_w_fn = partial(_concat_values, concat_fn=concat_fn, 
+                                              time_major=time_major)
                 concatd_data[k] = tree.map_structure(
-                    _concat_values, *[c[k] for c in concated_samples]
+                    _concat_values_w_fn, *values_to_concat
                 )
         except RuntimeError as e:
             # This should catch torch errors that occur when concatenating
@@ -1623,7 +1635,7 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     return MultiAgentBatch(out, env_steps)
 
 
-def _concat_values(*values, time_major=None) -> TensorType:
+def _concat_values(*values, time_major=None, concat_fn=np.concatenate) -> TensorType:
     """Concatenates a list of values.
 
     Args:
@@ -1631,7 +1643,7 @@ def _concat_values(*values, time_major=None) -> TensorType:
         time_major: Whether to concatenate along the first axis
             (time_major=False) or the second axis (time_major=True).
     """
-    return np.concatenate(list(values), axis=1 if time_major else 0)
+    return concat_fn(list(values), 1 if time_major else 0)
 
 
 @DeveloperAPI

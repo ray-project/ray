@@ -42,8 +42,8 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .framework(args.framework)
-        .training(_enable_learner_api=True)
-        .rl_module(_enable_rl_module_api=True)
+        .training()
+        .rl_module()
         .environment("CartPole-v1")
         .resources(**RESOURCE_CONFIG[args.config])
     )
@@ -57,6 +57,7 @@ if __name__ == "__main__":
         run_config=air.RunConfig(
             stop={"training_iteration": 1},
             failure_config=air.FailureConfig(fail_fast="raise"),
+            verbose=0,
         ),
     )
     tuner.fit()

@@ -1143,9 +1143,9 @@ class Learner:
             batch_iter = MiniBatchDummyIterator
 
         results = []
-        for minibatch in batch_iter(batch, minibatch_size, num_iters):
-            # Convert minibatch into a tensor batch (NestedDict).
-            tensor_minibatch = self._convert_batch_type(minibatch)
+        # Convert minibatch into a tensor batch (NestedDict).
+        batch = self._convert_batch_type(batch)
+        for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             (
@@ -1155,7 +1155,7 @@ class Learner:
             ) = self._update(tensor_minibatch)
 
             result = self.compile_results(
-                batch=minibatch,
+                batch=tensor_minibatch,
                 fwd_out=fwd_out,
                 loss_per_module=loss_per_module,
                 metrics_per_module=defaultdict(dict, **metrics_per_module),
