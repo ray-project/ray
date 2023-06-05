@@ -738,10 +738,7 @@ class AlgorithmConfig(_Config):
             return False
 
         try:
-            if self.env.startswith("ALE/"):
-                env = gym.make("GymV26Environment-v0", env_id=self.env)
-            else:
-                env = gym.make(self.env)
+            env = gym.make(self.env)
         except gym.error.NameNotFound:
             # Not an Atari env if this is not a gym env.
             return False
