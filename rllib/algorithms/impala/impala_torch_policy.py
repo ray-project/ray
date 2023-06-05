@@ -13,6 +13,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import (
     EntropyCoeffSchedule,
     LearningRateSchedule,
+    ValueNetworkMixin,
 )
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
@@ -190,6 +191,7 @@ class ImpalaTorchPolicy(
     VTraceOptimizer,
     LearningRateSchedule,
     EntropyCoeffSchedule,
+    ValueNetworkMixin,
     TorchPolicyV2,
 ):
     """PyTorch policy class used with Impala."""
@@ -219,6 +221,8 @@ class ImpalaTorchPolicy(
             config,
             max_seq_len=config["model"]["max_seq_len"],
         )
+
+        ValueNetworkMixin.__init__(self, config)
 
         self._initialize_loss_from_dummy_batch()
 
