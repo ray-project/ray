@@ -502,26 +502,22 @@ class AlgorithmConfig(_Config):
             config["input"] = getattr(self, "input_")
             config.pop("input_")
 
-        # Setup legacy multi-agent sub-dict:
-        config["multiagent"] = {}
-        for k in self.multiagent.keys():
-            # Convert policies dict such that each policy ID maps to a old-style
-            # 4-tuple: class, obs-, and action space, config.
-            if k == "policies" and isinstance(self.multiagent[k], dict):
-                policies_dict = {}
-                for policy_id, policy_spec in config.pop(k).items():
-                    if isinstance(policy_spec, PolicySpec):
-                        policies_dict[policy_id] = (
-                            policy_spec.policy_class,
-                            policy_spec.observation_space,
-                            policy_spec.action_space,
-                            policy_spec.config,
-                        )
-                    else:
-                        policies_dict[policy_id] = policy_spec
-                config["multiagent"][k] = policies_dict
-            else:
-                config["multiagent"][k] = config.pop(k)
+        # Convert `policies` (PolicySpecs?) into dict.
+        # Convert policies dict such that each policy ID maps to a old-style.
+        # 4-tuple: class, obs-, and action space, config.
+        if "policies" in config and isinstance(config["policies"], dict):
+            policies_dict = {}
+            for policy_id, policy_spec in config.pop("policies").items():
+                if isinstance(policy_spec, PolicySpec):
+                    policies_dict[policy_id] = (
+                        policy_spec.policy_class,
+                        policy_spec.observation_space,
+                        policy_spec.action_space,
+                        policy_spec.config,
+                    )
+                else:
+                    policies_dict[policy_id] = policy_spec
+            config["policies"] = policies_dict
 
         # Switch out deprecated vs new config keys.
         config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
@@ -3141,7 +3137,8 @@ class AlgorithmConfig(_Config):
         # Algorithm is currently setup as a single-agent one.
         if isinstance(current_rl_module_spec, SingleAgentRLModuleSpec):
             # Use either the provided `single_agent_rl_module_spec` (a
-            # SingleAgentRLModuleSpec), the currently setup one, or the default.
+            # SingleAgentRLModuleSpec), the currently configured one of this
+            # AlgorithmConfig object, or the default one.
             single_agent_rl_module_spec = (
                 single_agent_rl_module_spec or current_rl_module_spec
             )
@@ -3152,32 +3149,34 @@ class AlgorithmConfig(_Config):
                     for k in policy_dict.keys()
                 },
             )
+
         # Algorithm is currently setup as a multi-agent one.
         else:
+            # The user currently has a MultiAgentSpec setup (either via
+            # self.rl_module_spec or the default spec of this AlgorithmConfig).
             assert isinstance(current_rl_module_spec, MultiAgentRLModuleSpec)
 
+            # Default is single-agent but the user has provided a multi-agent spec
+            # so the use-case is multi-agent.
             if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
-                # Default is single-agent but the user has provided a multi-agent spec
-                # so the use-case is multi-agent. We need to inherit the multi-agent
-                # class from `current_rl_module_spec` and fill in the module_specs dict.
-                # If the user provided a multi-agent spec, we use that for the values,
-                # otherwise we see if they have provided a multi-agent spec that
-                # specifies the SingleAgentRLModuleSpec to use instead of the default,
-                # in that case, we use that spec for the values. otherwise we use
-                # the default spec for the values.
+                # The individual (single-agent) module specs are defined by the user
+                # in the currently setup MultiAgentRLModuleSpec -> Use that
+                # SingleAgentRLModuleSpec.
                 if isinstance(
                     current_rl_module_spec.module_specs, SingleAgentRLModuleSpec
                 ):
-                    # The individual module specs are defined by the user
                     single_agent_spec = single_agent_rl_module_spec or (
                         current_rl_module_spec.module_specs
                     )
                     module_specs = {
                         k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                     }
+
+                # The individual (single-agent) module specs have not been configured
+                # via this AlgorithmConfig object -> Use provided single-agent spec or
+                # the the default spec (which is also a SingleAgentRLModuleSpec in this
+                # case).
                 else:
-                    # The individual module specs are not defined by the user,
-                    # so we use the default
                     single_agent_spec = (
                         single_agent_rl_module_spec or default_rl_module_spec
                     )
@@ -3190,19 +3189,28 @@ class AlgorithmConfig(_Config):
                         for k in policy_dict.keys()
                     }
 
+                # Now construct the proper MultiAgentRLModuleSpec.
+                # We need to infer the multi-agent class from `current_rl_module_spec`
+                # and fill in the module_specs dict.
                 marl_module_spec = current_rl_module_spec.__class__(
                     marl_module_class=current_rl_module_spec.marl_module_class,
                     module_specs=module_specs,
                     modules_to_load=current_rl_module_spec.modules_to_load,
                     load_state_path=current_rl_module_spec.load_state_path,
                 )
+
+            # Default is multi-agent and user wants to override it -> Don't use the
+            # default.
             else:
-                # Default is multi-agent and user wants to override it. In this case,
-                # we have two options: 1) the user provided a multi-agent spec, in
-                # which case we use that for the values, 2) self.rl_module_spec is a
-                # spec that defines SingleAgentRLModuleSpecs to be used for everything.
-                # In this case, we need to use that spec for the values.
-                if single_agent_rl_module_spec is None:
+                # Use has given an override SingleAgentRLModuleSpec -> Use this to
+                # construct the individual RLModules within the MultiAgentRLModuleSpec.
+                if single_agent_rl_module_spec is not None:
+                    pass
+                # User has NOT provided an override SingleAgentRLModuleSpec.
+                else:
+                    # But the currently setup multi-agent spec has a SingleAgentRLModule
+                    # spec defined -> Use that to construct the individual RLModules
+                    # within the MultiAgentRLModuleSpec.
                     if isinstance(
                         current_rl_module_spec.module_specs, SingleAgentRLModuleSpec
                     ):
@@ -3211,6 +3219,9 @@ class AlgorithmConfig(_Config):
                         single_agent_rl_module_spec = (
                             current_rl_module_spec.module_specs
                         )
+                    # The currently setup multi-agent spec has NO
+                    # SingleAgentRLModuleSpec in it -> Error (there is no way we can
+                    # infer this information from anywhere at this point).
                     else:
                         raise ValueError(
                             "We have a MultiAgentRLModuleSpec "
@@ -3221,6 +3232,7 @@ class AlgorithmConfig(_Config):
                             "policy_dict=.., single_agent_rl_module_spec=..)`."
                         )
 
+                # Now construct the proper MultiAgentRLModuleSpec.
                 marl_module_spec = current_rl_module_spec.__class__(
                     marl_module_class=current_rl_module_spec.marl_module_class,
                     module_specs={
@@ -3490,6 +3502,17 @@ class AlgorithmConfig(_Config):
                 ma_config["policy_mapping_fn"] = NOT_SERIALIZABLE
             if ma_config.get("policies_to_train"):
                 ma_config["policies_to_train"] = NOT_SERIALIZABLE
+        # However, if these "multiagent" settings have been provided directly
+        # on the top-level (as they should), we override the settings under
+        # "multiagent". Note that the "multiagent" key should no longer be used anyways.
+        if isinstance(config.get("policies"), (set, tuple)):
+            config["policies"] = list(config["policies"])
+        # Do NOT serialize functions/lambdas.
+        if config.get("policy_mapping_fn"):
+            config["policy_mapping_fn"] = NOT_SERIALIZABLE
+        if config.get("policies_to_train"):
+            config["policies_to_train"] = NOT_SERIALIZABLE
+
         return config
 
     @staticmethod
@@ -3620,6 +3643,7 @@ class AlgorithmConfig(_Config):
             )
 
     @property
+    @Deprecated(error=False)
     def multiagent(self):
         """Shim method to help pretend we are a dict with 'multiagent' key."""
         return {

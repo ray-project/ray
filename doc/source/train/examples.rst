@@ -10,25 +10,6 @@ Below are examples for using Ray Train with a variety of models, frameworks,
 and use cases. You can filter these examples by the following categories:
 
 
-.. raw:: html
-
-    <div>
-        <div id="allButton" type="button" class="tag btn btn-primary">All</div>
-
-        <!--Frameworks-->
-        <div type="button" class="tag btn btn-outline-primary">PyTorch</div>
-        <div type="button" class="tag btn btn-outline-primary">TensorFlow</div>
-        <div type="button" class="tag btn btn-outline-primary">HuggingFace</div>
-        <div type="button" class="tag btn btn-outline-primary">Lightning</div>
-        <div type="button" class="tag btn btn-outline-primary">Horovod</div>
-        <div type="button" class="tag btn btn-outline-primary">MLflow</div>
-
-        <!--Workload-->
-        <div type="button" class="tag btn btn-outline-primary">Training</div>
-        <div type="button" class="tag btn btn-outline-primary">Tuning</div>
-    </div>
-
-
 Distributed Training Examples using Ray Train
 ---------------------------------------------
 

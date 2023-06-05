@@ -189,7 +189,6 @@ class Algorithm(Trainable):
         "env_config",
         "model",
         "optimizer",
-        "multiagent",
         "custom_resources_per_worker",
         "evaluation_config",
         "exploration_config",

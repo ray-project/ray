@@ -3,8 +3,8 @@ from ray.data._internal.execution.operators.all_to_all_operator import AllToAllO
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
     Aggregate,
-    RandomShuffle,
     RandomizeBlocks,
+    RandomShuffle,
     Repartition,
     Sort,
 )
@@ -41,5 +41,6 @@ def _plan_all_to_all_op(
         fn,
         input_physical_dag,
         num_outputs=op._num_outputs,
+        sub_progress_bar_names=op._sub_progress_bar_names,
         name=op.name,
     )

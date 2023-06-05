@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 import numpy as np
 
+import ray.cloudpickle as cloudpickle
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -18,7 +19,6 @@ from ray.data.datasource.file_meta_provider import (
 )
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.util.annotations import PublicAPI
-import ray.cloudpickle as cloudpickle
 
 if TYPE_CHECKING:
     import pyarrow
