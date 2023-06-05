@@ -118,13 +118,20 @@ def test_class_based_view(serve_instance):
     assert ray.get(handle.other.remote("world")) == "world"
 
 
-def test_make_fastapi_cbv_util():
+@pytest.mark.parametrize("websocket", [False, True])
+def test_make_fastapi_class_based_view(websocket: bool):
     app = FastAPI()
 
-    class A:
-        @app.get("/{i}")
-        def b(self, i: int):
-            pass
+    if websocket:
+        class A:
+            @app.get("/{i}")
+            def b(self, i: int):
+                pass
+    else:
+        class A:
+            @app.websocket("/{i}")
+            def b(self, i: int):
+                pass
 
     # before, "self" is treated as a query params
     assert app.routes[-1].endpoint == A.b

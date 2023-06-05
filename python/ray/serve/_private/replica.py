@@ -10,7 +10,8 @@ from typing import Any, AsyncGenerator, Callable, Optional, Tuple, Dict
 import traceback
 
 import starlette.responses
-from starlette.types import Receive, Send
+from starlette.requests import Request
+from starlette.types import Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
@@ -36,9 +37,11 @@ from ray.serve._private.constants import (
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
+    make_buffered_asgi_receive,
     ASGIAppReplicaWrapper,
-    ASGIHTTPSender,
+    BufferedASGISender,
     ASGIHTTPQueueSender,
+    HTTPRequestWrapper,
     RawASGIResponse,
     Response,
 )
@@ -50,7 +53,6 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.router import Query, RequestMetadata
 from ray.serve._private.utils import (
     parse_import_path,
-    parse_request_item,
     wrap_to_ray_error,
     merge_dict,
     MetricsPusher,
@@ -59,14 +61,6 @@ from ray.serve._private.version import DeploymentVersion
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-async def mock_asgi_receive():
-    # This is called in a tight loop in responses just to check
-    # for an HTTP disconnect. So rather than returning immediately
-    # we should suspend execution to avoid wasting CPU cycles.
-    never_set_event = asyncio.Event()
-    await never_set_event.wait()
 
 
 def _format_replica_actor_name(deployment_name: str):
@@ -214,20 +208,35 @@ def create_replica_wrapper(name: str):
             pickled_request_metadata: bytes,
             *request_args,
             **request_kwargs,
-        ):
-            query = Query(
-                request_args,
-                request_kwargs,
-                pickle.loads(pickled_request_metadata),
+        ) -> Tuple[bytes, Any]:
+
+            request_metadata = pickle.loads(pickled_request_metadata)
+            if request_metadata.is_http_request:
+                assert len(request_args) == 1
+                request: HTTPRequestWrapper = pickle.loads(request_args[0])
+
+                scope = request.scope
+                buffered_sender = BufferedASGISender()
+                buffered_receive = make_buffered_asgi_receive(request.body)
+                request_args = (scope, buffered_receive, buffered_sender)
+
+
+            result = await self.replica.handle_request(
+                request_metadata, request_args, request_kwargs
             )
-            return await self.replica.handle_request(query)
+
+            if request_metadata.is_http_request:
+                result = buffered_sender.build_asgi_response()
+
+
+            # Returns a small object for router to track request status.
+            return b"", result
 
         async def handle_request_streaming(
             self,
-            http_proxy_handle: ActorHandle,
             pickled_request_metadata: bytes,
-            *request_args,
-            **request_kwargs,
+            pickled_asgi_scope: bytes,
+            http_proxy_handle: ActorHandle,
         ) -> AsyncGenerator[Dict[str, Any], None]:
             """Handle a request and stream the results to the caller.
 
@@ -237,30 +246,30 @@ def create_replica_wrapper(name: str):
             interface. This allows us to return the messages back to the HTTP proxy as
             they're sent by user code (e.g., the FastAPI wrapper).
             """
-            query = Query(
-                request_args,
-                request_kwargs,
-                pickle.loads(pickled_request_metadata),
-            )
-
-            assert query.metadata.request_id, query.metadata.request_id
+            request_metadata = pickle.loads(pickled_request_metadata)
+            if not request_metadata.is_http_request:
+                raise NotImplementedError(
+                    "Only HTTP requests are currently supported over streaming."
+                )
 
             # TODO: optimize by fetching multiple messages per actor call.
             async def asgi_receive() -> Dict[str, Any]:
-                msg = await http_proxy_handle.receive_asgi_message.remote(
-                    query.metadata.request_id
+                return await http_proxy_handle.receive_asgi_message.remote(
+                    request_metadata.request_id
                 )
-                print("GOT MSG:", msg)
-                return msg
+
+            scope = pickle.loads(pickled_asgi_scope)
+            asgi_queue_sender = ASGIHTTPQueueSender()
+            request_args = (scope, asgi_receive, asgi_queue_sender)
+            request_kwargs = {}
 
             # Handle the request in a background asyncio.Task. It's expected that this
             # task will use the provided ASGI sender interface to send its HTTP
             # response. We will poll for the sent messages and yield them back to the
             # caller.
-            asgi_queue_sender = ASGIHTTPQueueSender()
             handle_request_task = self._event_loop.create_task(
                 self.replica.handle_request(
-                    query, asgi_sender=asgi_queue_sender, asgi_receive=asgi_receive
+                    request_metadata, request_args, request_kwargs
                 )
             )
 
@@ -296,7 +305,7 @@ def create_replica_wrapper(name: str):
             proto_request_metadata: bytes,
             *request_args,
             **request_kwargs,
-        ):
+        ) -> Any:
             from ray.serve.generated.serve_pb2 import (
                 RequestMetadata as RequestMetadataProto,
             )
@@ -306,8 +315,7 @@ def create_replica_wrapper(name: str):
                 proto.request_id, proto.endpoint, call_method=proto.call_method
             )
             request_args = request_args[0]
-            query = Query(request_args, request_kwargs, request_metadata, return_num=1)
-            return await self.replica.handle_request(query)
+            return await self.replica.handle_request(query, request_args, request_kwargs)
 
         async def is_allocated(self) -> str:
             """poke the replica to check whether it's alive.
@@ -487,8 +495,8 @@ class RayServeReplica:
 
         return {self.replica_tag: num_inflight_requests}
 
-    def get_runner_method(self, request_item: Query) -> Callable:
-        method_name = request_item.metadata.call_method
+    def get_runner_method(self, request_metadata: RequestMetadata) -> Callable:
+        method_name = request_metadata.call_method
         if not hasattr(self.callable, method_name):
             # Filter to methods that don't start with '__' prefix.
             def callable_method_filter(attr):
@@ -507,10 +515,11 @@ class RayServeReplica:
             )
         if self.is_function:
             return self.callable
+
         return getattr(self.callable, method_name)
 
     async def send_user_result_over_asgi(
-        self, result: Any, asgi_sender: Send, asgi_receive: Receive
+        self, result: Any, scope: Scope, asgi_sender: Send, asgi_receive: Receive
     ):
         """Handle the result from user code and send it over the ASGI interface.
 
@@ -520,94 +529,62 @@ class RayServeReplica:
         """
         if not isinstance(result, (starlette.responses.Response, RawASGIResponse)):
             await Response(result).send(
-                scope=None, receive=asgi_receive, send=asgi_sender
+                scope, asgi_receive, asgi_sender
             )
         else:
-            await result(scope=None, receive=asgi_receive, send=asgi_sender)
-
-    async def convert_streaming_response_to_unary(
-        self, response: starlette.responses.StreamingResponse
-    ) -> RawASGIResponse:
-        """Convert a StreamingResponse to a custom buffered unary response.
-
-        This is used on the legacy non-streaming codepath because we cannot serialize
-        and return a StreamingResponse.
-        """
-        sender = ASGIHTTPSender()
-        await response(scope=None, receive=mock_asgi_receive, send=sender)
-        return sender.build_asgi_response()
+            await result(scope, asgi_receive, asgi_sender)
 
     async def invoke_single(
         self,
-        request_item: Query,
-        *,
-        asgi_sender: Optional[Send] = None,
-        asgi_receive: Optional[Receive] = None,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
     ) -> Tuple[Any, bool]:
         """Executes the provided request on this replica.
 
         Returns the user-provided output and a boolean indicating if the
         request succeeded (user code didn't raise an exception).
-
-        If asgi_sender is provided, then the result is always `None`
-        because the response is sent over that interface instead.
         """
         logger.info(
-            f"Started executing request {request_item.metadata.request_id}",
+            f"Started executing request {request_metadata.request_id}",
             extra={"log_to_stderr": False},
         )
 
-        if asgi_sender is None:
-            args, kwargs = parse_request_item(request_item)
-        else:
-            args, kwargs = request_item.args, request_item.kwargs
+        if request_metadata.is_http_request:
+            assert len(request_args) == 3
+            scope, receive, send = request_args
 
-        # Check if the callable is our ASGI wrapper (i.e., the user used
-        # `@serve.ingress`).
-        callable_is_asgi_wrapper = isinstance(self.callable, ASGIAppReplicaWrapper)
-        if asgi_sender is not None and callable_is_asgi_wrapper:
-            kwargs["asgi_sender"] = asgi_sender
-            kwargs["asgi_receive"] = asgi_receive
+            if isinstance(self.callable, ASGIAppReplicaWrapper):
+                request_args = (scope, receive, send)
+            else:
+                request_args = (Request(scope, receive, send),)
 
         method_to_call = None
         success = True
         try:
-            runner_method = self.get_runner_method(request_item)
+            runner_method = self.get_runner_method(request_metadata)
             method_to_call = sync_to_async(runner_method)
             result = None
-            if len(inspect.signature(runner_method).parameters) > 0:
-                result = await method_to_call(*args, **kwargs)
-            else:
-                # When access via http http_arg_is_pickled with no args:
-                # args = (<starlette.requests.Request object at 0x7fe900694cc0>,)
-                # When access via python with no args:
-                # args = ()
-                if len(args) == 1 and isinstance(args[0], starlette.requests.Request):
-                    # The method doesn't take in anything, including the request
-                    # information, so we pass nothing into it
-                    result = await method_to_call()
-                else:
-                    # Will throw due to signature mismatch if user attempts to
-                    # call with non-empty args
-                    result = await method_to_call(*args, **kwargs)
 
-            # Streaming HTTP codepath: always send response over ASGI interface.
-            if asgi_sender is not None:
+            # Edge case to support empty HTTP handlers: don't pass the Request
+            # argument if the callable has no parameters.
+            if (request_metadata.is_http_request and len(inspect.signature(runner_method).parameters) == 0):
+                request_args, request_kwargs = tuple(), {}
+
+            result = await method_to_call(*request_args, **request_kwargs)
+            if request_metadata.is_http_request:
                 # For the FastAPI codepath, the response has already been sent over the
                 # ASGI interace and result should always be `None`.
-                if callable_is_asgi_wrapper:
+                if isinstance(self.callable, ASGIAppReplicaWrapper):
                     assert result is None
                 # For the vanilla deployment codepath, always send the result over ASGI.
                 else:
-                    result = await self.send_user_result_over_asgi(
-                        result, asgi_sender, asgi_receive
+                    await self.send_user_result_over_asgi(
+                        result, scope, send, receive
                     )
 
-            # Legacy codepath: always return the result, so ensure it can be serialized.
-            elif isinstance(result, starlette.responses.StreamingResponse):
-                result = await self.convert_streaming_response_to_unary(result)
 
-            self.request_counter.inc(tags={"route": request_item.metadata.route})
+            self.request_counter.inc(tags={"route": request_metadata.route})
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
             success = False
@@ -620,7 +597,7 @@ class RayServeReplica:
             if method_to_call is not None:
                 function_name = method_to_call.__name__
             result = wrap_to_ray_error(function_name, e)
-            self.error_counter.inc(tags={"route": request_item.metadata.route})
+            self.error_counter.inc(tags={"route": request_metadata.route})
 
         return result, success
 
@@ -657,11 +634,10 @@ class RayServeReplica:
 
     async def handle_request(
         self,
-        request: Query,
-        *,
-        asgi_sender: Optional[Send] = None,
-        asgi_receive: Optional[Receive] = None,
-    ) -> asyncio.Future:
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
+    ) -> Any:
         async with self.rwlock.reader_lock:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
@@ -670,35 +646,29 @@ class RayServeReplica:
             # handle can pass the correct request context to subsequent replicas.
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(
-                    request.metadata.route,
-                    request.metadata.request_id,
+                    request_metadata.route,
+                    request_metadata.request_id,
                     self.app_name,
-                    request.metadata.multiplexed_model_id,
+                    request_metadata.multiplexed_model_id,
                 )
             )
 
             start_time = time.time()
             result, success = await self.invoke_single(
-                request,
-                asgi_sender=asgi_sender,
-                asgi_receive=asgi_receive,
+                request_metadata, request_args, request_kwargs,
             )
             latency_ms = (time.time() - start_time) * 1000
             self.processing_latency_tracker.observe(
-                latency_ms, tags={"route": request.metadata.route}
+                latency_ms, tags={"route": request_metadata.route}
             )
             logger.info(
                 access_log_msg(
-                    method=request.metadata.call_method,
+                    method=request_metadata.call_method,
                     status="OK" if success else "ERROR",
                     latency_ms=latency_ms,
                 )
             )
-            if request.return_num == 1:
-                return result
-            else:
-                # Returns a small object for router to track request status.
-                return b"", result
+            return result
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.

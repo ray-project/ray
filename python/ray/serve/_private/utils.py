@@ -38,7 +38,7 @@ from ray.serve._private.constants import (
     RAY_GCS_RPC_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
+from ray.serve._private.http_util import HTTPRequestWrapper
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -78,17 +78,6 @@ T = TypeVar("T")
 Default = Union[DEFAULT, T]
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def parse_request_item(request_item):
-    if len(request_item.args) == 1:
-        arg = request_item.args[0]
-        if request_item.metadata.http_arg_is_pickled:
-            assert isinstance(arg, bytes)
-            arg: HTTPRequestWrapper = pickle.loads(arg)
-            return (build_starlette_request(arg.scope, arg.body),), {}
-
-    return request_item.args, request_item.kwargs
 
 
 class _ServeCustomEncoders:

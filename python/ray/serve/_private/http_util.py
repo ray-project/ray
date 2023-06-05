@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 from fastapi.encoders import jsonable_encoder
 from starlette.requests import Request
-from starlette.types import ASGIApp, Receive, Send
+from starlette.types import ASGIApp, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
@@ -21,16 +21,12 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @dataclass
 class HTTPRequestWrapper:
-    scope: Dict[Any, Any]
+    scope: Scope
     body: bytes
 
 
-def build_starlette_request(scope, serialized_body: bytes):
-    """Build and return a Starlette Request from ASGI payload.
-
-    This function is intended to be used immediately before task invocation
-    happens.
-    """
+def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
+    """Returns an ASGI receiver that returns the provided buffered body."""
 
     # Simulates receiving HTTP body from TCP socket.  In reality, the body has
     # already been streamed in chunks and stored in serialized_body.
@@ -48,6 +44,8 @@ def build_starlette_request(scope, serialized_body: bytes):
 
         received = True
         return {"body": serialized_body, "type": "http.request", "more_body": False}
+
+    return mock_receive
 
     return Request(scope, mock_receive)
 
@@ -144,9 +142,10 @@ class RawASGIResponse(ASGIApp):
         return self.messages[0]["status"]
 
 
-class ASGIHTTPSender(Send):
-    """Implement the interface for ASGI sender to save data from varisous
-    asgi response type (fastapi, starlette, etc.)
+class BufferedASGISender(Send):
+    """Implements the ASGI sender interface by buffering messages.
+
+    The messages can be built into an ASGI response.
     """
 
     def __init__(self) -> None:
@@ -220,7 +219,7 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
     """
     # Delayed import to prevent ciruclar imports in workers.
     from fastapi import Depends, APIRouter
-    from fastapi.routing import APIRoute
+    from fastapi.routing import APIRoute, APIWebSocketRoute
 
     def get_current_servable_instance():
         from ray import serve
@@ -232,8 +231,8 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         route
         for route in fastapi_app.routes
         if
-        # User defined routes must all be APIRoute.
-        isinstance(route, APIRoute)
+        # User defined routes must all be APIRoute or APIWebSocketRoute.
+        isinstance(route, (APIRoute, APIWebSocketRoute))
         # We want to find the route that's bound to the `cls`.
         # NOTE(simon): we can't use `route.endpoint in inspect.getmembers(cls)`
         # because the FastAPI supports different routes for the methods with
@@ -280,12 +279,12 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
 
     routes_to_remove = list()
     for route in fastapi_app.routes:
-        if not isinstance(route, APIRoute):
+        if not isinstance(route, (APIRoute, APIWebSocketRoute)):
             continue
 
         # If there is a response model, FastAPI creates a copy of the fields.
         # But FastAPI creates the field incorrectly by missing the outer_type_.
-        if route.response_model:
+        if isinstance(route, APIRoute) and route.response_model:
             route.secure_cloned_response_field.outer_type_ = (
                 route.response_field.outer_type_
             )
@@ -349,38 +348,16 @@ class ASGIAppReplicaWrapper:
 
     async def __call__(
         self,
-        request: Union[Request, dict],
-        asgi_sender: Optional[Send] = None,
-        asgi_receive: Optional[Receive] = None,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
     ) -> Optional[ASGIApp]:
-        """Calls into the wrapped ASGI app.
-
-        If asgi_sender is provided, it's passed into the app and nothing is
-        returned.
-
-        If no asgi_sender is provided, an ASGI response is built and returned.
-        """
-        build_and_return_response = False
-        if asgi_sender is None:
-            assert asgi_receive is None
-            assert isinstance(request, Request)
-            scope = request.scope
-            asgi_sender = ASGIHTTPSender()
-            asgi_receive = request.receive
-            build_and_return_response = True
-        else:
-            assert asgi_receive is not None
-            assert isinstance(request, dict)
-            scope = request
-
+        """Calls into the wrapped ASGI app."""
         await self._asgi_app(
             scope,
-            asgi_receive,
-            asgi_sender,
+            receive,
+            send,
         )
-
-        if build_and_return_response:
-            return asgi_sender.build_asgi_response()
 
     # NOTE: __del__ must be async so that we can run ASGI shutdown
     # in the same event loop.
