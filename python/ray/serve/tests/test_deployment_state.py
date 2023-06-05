@@ -17,6 +17,7 @@ from ray.serve._private.common import (
     ReplicaState,
 )
 from ray.serve._private.deployment_state import (
+    ActorReplicaWrapper,
     DeploymentState,
     DriverDeploymentState,
     DeploymentStateManager,
@@ -32,15 +33,34 @@ from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
     DEFAULT_HEALTH_CHECK_PERIOD_S,
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
+class FakeRemoteFunction:
+    def remote(self):
+        pass
+
+
 class MockActorHandle:
     def __init__(self):
         self._actor_id = "fake_id"
+        self.initialize_and_get_metadata_called = False
+        self.is_allocated_called = False
+
+    @property
+    def initialize_and_get_metadata(self):
+        self.initialize_and_get_metadata_called = True
+        # return a mock object so that we can call `remote()` on it.
+        return FakeRemoteFunction()
+
+    @property
+    def is_allocated(self):
+        self.is_allocated_called = True
+        return FakeRemoteFunction()
 
 
 class MockReplicaActorWrapper:
@@ -2357,6 +2377,37 @@ def test_add_and_remove_nodes_for_driver_deployment(
         replica._actor.set_done_stopping()
     deployment_state.update()
     check_counts(deployment_state, total=4, by_state=[(ReplicaState.RUNNING, 4)])
+
+
+class TestActorReplicaWrapper:
+    def test_default_value(self):
+        actor_replica = ActorReplicaWrapper(
+            actor_name="test",
+            detached=False,
+            controller_name="test_controller",
+            replica_tag="test_tag",
+            deployment_name="test_deployment",
+        )
+        assert (
+            actor_replica.graceful_shutdown_timeout_s
+            == DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
+        )
+        assert actor_replica.max_concurrent_queries == DEFAULT_MAX_CONCURRENT_QUERIES
+        assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
+        assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
+
+    def test_recover(self):
+        actor_replica = ActorReplicaWrapper(
+            actor_name="test",
+            detached=False,
+            controller_name="test_controller",
+            replica_tag="test_tag",
+            deployment_name="test_deployment",
+        )
+        actor_replica._actor_handle = MockActorHandle()
+        actor_replica.recover()
+        assert actor_replica._actor_handle.initialize_and_get_metadata_called
+        assert actor_replica._actor_handle.is_allocated_called
 
 
 if __name__ == "__main__":
