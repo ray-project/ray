@@ -242,7 +242,7 @@ class LightningTrainer(TorchTrainer):
     you can specify one or more customized PyTorch Lightning Callbacks
     in `LightningConfigBuilder.trainer(callbacks=)`.
 
-    LightningTrainer requires ``pytorch_lightning>=1.6.5`` package, and it is tested
+    LightningTrainer supports ``pytorch_lightning>=1.6.5`` package, and it is tested
     with ``pytorch_lightning==1.6.5`` and ``pytorch_lightning==2.0.0``.
 
     Example:

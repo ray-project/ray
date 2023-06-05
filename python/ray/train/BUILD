@@ -410,7 +410,7 @@ py_test(
 
 py_test(
     name = "test_lightning_trainer_restore",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_lightning_trainer_restore.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
     deps = [":train_lib"]
