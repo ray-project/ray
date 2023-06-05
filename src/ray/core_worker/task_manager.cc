@@ -1039,8 +1039,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
   // for more details.
   if (spec.IsStreamingGenerator()) {
-    auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
-    for (auto i = 0; i < num_streaming_generator_returns; i++) {
+    for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.count(generator_return_id)) {
         put_in_local_plasma_callback_(error, generator_return_id);
