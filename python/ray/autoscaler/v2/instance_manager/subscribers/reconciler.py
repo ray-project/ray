@@ -1,15 +1,9 @@
 import logging
-import math
 import time
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import List
 
-from ray.autoscaler._private.constants import (
-    AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
-    AUTOSCALER_MAX_LAUNCH_BATCH,
-)
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
     InstanceUpdatedSuscriber,
@@ -29,14 +23,6 @@ class RayInstallerConfig:
     max_concurrent_installs: int = 50
 
 
-@dataclass
-class LaunchInstanceConfig:
-    max_concurrent_requests: int = math.ceil(
-        AUTOSCALER_MAX_CONCURRENT_LAUNCHES / float(AUTOSCALER_MAX_LAUNCH_BATCH)
-    )
-    max_nodes_per_request: int = AUTOSCALER_MAX_LAUNCH_BATCH
-
-
 class InstanceReconciler(InstanceUpdatedSuscriber):
     """InstanceReconciler is responsible for reconciling the difference between
     node provider and instance storage. It is also responsible for launching new
@@ -50,20 +36,15 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         node_provider: NodeProvider,
         ray_installer: RayInstaller,
         installer_config: RayInstallerConfig = RayInstallerConfig(),
-        launch_instance_config: LaunchInstanceConfig = LaunchInstanceConfig(),
     ) -> None:
         self._head_node_ip = head_node_ip
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._ray_installer = ray_installer
         self._installer_config = installer_config
-        self._launch_instance_config = launch_instance_config
         self._reconciler_executor = ThreadPoolExecutor(max_workers=1)
         self._ray_installation_executor = ThreadPoolExecutor(
             max_workers=self._installer_config.max_concurrent_installs
-        )
-        self._launch_instance_executor = ThreadPoolExecutor(
-            max_workers=self.launch_instance_config.max_concurrent_requests
         )
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
@@ -71,104 +52,9 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self._reconciler_executor.submit(self._run_reconcile)
 
     def _run_reconcile(self) -> None:
-        self._launch_new_instances()
         self._install_ray_on_new_nodes()
         self._handle_ray_failure()
         self._reconcile_with_node_provider()
-
-    def _launch_new_instances(self):
-        queued_instances, _ = self._instance_storage.get_instances(
-            status_filter={Instance.QEUEUD}
-        )
-        if not queued_instances:
-            logger.debug("No queued instances to launch")
-            return
-
-        instances_by_type = defaultdict(list)
-        instance_type_min_request_time = {}
-        for instance in queued_instances.values():
-            instances_by_type[instance.instance_type].append(instance)
-            instance_type_min_request_time[instance.instance_type] = min(
-                instance.timestamp_since_last_modified,
-                instance_type_min_request_time.get(
-                    instance.instance_type, float("inf")
-                ),
-            )
-
-        # Sort instance types by the time of the earlest request
-        picked_instance_type = sorted(
-            instance_type_min_request_time.items(), key=lambda x: x[1]
-        )[0][0]
-
-        self._launch_instance_executor.submit(
-            self._launch_new_instances_by_type,
-            picked_instance_type,
-            instances_by_type[picked_instance_type],
-        )
-
-    def _launch_new_instances_by_type(
-        self, instance_type: str, instances: List[Instance]
-    ) -> int:
-        logger.info(f"Launching {len(instances)} instances of type {instance_type}")
-        instances_selected = []
-        for instance in instances:
-            instance.status = Instance.REQUESTED
-            result, version = self._instance_storage.upsert_instance(
-                instance, expected_instance_version=instance.version
-            )
-            if not result:
-                logger.warn(f"Failed to update instance {instance}")
-            instance.version = version
-            instances_selected.append(instance)
-            if (
-                len(instances_selected)
-                >= self._launch_instance_config.max_nodes_per_request
-            ):
-                break
-
-        if not instances_selected:
-            return 0
-
-        created_cloud_instances = self._node_provider.create_nodes(
-            instance_type, len(instances_selected)
-        )
-
-        assert len(created_cloud_instances) <= len(instances_selected)
-
-        while created_cloud_instances and instances_selected:
-            cloud_instance = created_cloud_instances.pop()
-            instance = self._instance_storage.pop()
-            instance.cloud_instance_id = cloud_instance.cloud_instance_id
-            instance.interal_ip = cloud_instance.internal_ip
-            instance.external_ip = cloud_instance.external_ip
-            instance.status = Instance.ALLOCATED
-            instance.ray_status = Instance.RAY_STATUS_UNKOWN
-
-            # update instance status into the storage
-            result, _ = self._instance_storage.upsert_instance(
-                instance, expected_instance_version=instance.version
-            )
-
-            if not result:
-                # TODO: this could only happen when the request is canceled.
-                logger.warn(f"Failed to update instance {instance}")
-                # push the cloud instance back
-                created_cloud_instances.append(cloud_instance)
-
-        if created_cloud_instances:
-            # instances are leaked, we probably need to terminate them
-            self._node_provider.terminate_nodes(
-                [instance.cloud_instance_id for instance in created_cloud_instances]
-            )
-
-        if instances_selected:
-            # instances creation failed, we need to marke them allocation failed.
-            for instance in instances_selected:
-                instance.status = Instance.ALLOCATION_FAILED
-                result, _ = self._instance_storage.upsert_instance(
-                    instance, expected_instance_version=instance.version
-                )
-                # TODO: this could only happen when the request is canceled.
 
     def _install_ray_on_new_nodes(self) -> None:
         allocated_instance, _ = self._instance_storage.get_instances(

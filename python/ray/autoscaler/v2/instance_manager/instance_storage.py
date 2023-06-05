@@ -17,6 +17,7 @@ class InstanceUpdateEvent:
 
     instance_id: str
     new_status: int
+    new_ray_status: int = Instance.RAY_STATUS_UNKOWN
 
 
 class InstanceUpdatedSuscriber(metaclass=ABCMeta):
@@ -87,6 +88,7 @@ class InstanceStorage:
                     InstanceUpdateEvent(
                         instance_id=instance.instance_id,
                         new_status=instance.status,
+                        new_ray_status=instance.ray_status,
                     )
                     for instance in updates
                 ],
@@ -138,6 +140,7 @@ class InstanceStorage:
                     InstanceUpdateEvent(
                         instance_id=instance.instance_id,
                         new_status=instance.status,
+                        new_ray_status=instance.ray_status,
                     )
                 ],
             )
@@ -206,6 +209,7 @@ class InstanceStorage:
                     InstanceUpdateEvent(
                         instance_id=instance_id,
                         new_status=Instance.GARBAGE_COLLECTED,
+                        new_ray_status=Instance.RAY_STATUS_UNKOWN,
                     )
                     for instance_id in instance_ids
                 ],

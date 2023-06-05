@@ -20,10 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class InstanceLauncher(InstanceUpdatedSuscriber):
-    """InstanceLauncher is responsible for reconciling the difference between
-    node provider and instance storage. It is also responsible for launching new
-    nodes and terminating failing nodes.
-    """
+    """InstanceLauncher is responsible for provisioning new instances."""
 
     def __init__(
         self,
@@ -32,12 +29,12 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
         max_concurrent_requests: int = math.ceil(
             AUTOSCALER_MAX_CONCURRENT_LAUNCHES / float(AUTOSCALER_MAX_LAUNCH_BATCH)
         ),
-        max_nodes_per_request: int = AUTOSCALER_MAX_LAUNCH_BATCH,
+        max_instances_per_request: int = AUTOSCALER_MAX_LAUNCH_BATCH,
     ) -> None:
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._max_concurrent_requests = max_concurrent_requests
-        self._max_nodes_per_request = max_nodes_per_request
+        self._max_instances_per_request = max_instances_per_request
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._launch_instance_executor = ThreadPoolExecutor(
             max_workers=self._max_concurrent_requests
@@ -77,13 +74,13 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
             instances_by_type[instance.instance_type].append(instance)
 
         for instance_type, instances in instances_by_type.items():
-            for i in range(0, len(instances), self._max_nodes_per_request):
+            for i in range(0, len(instances), self._max_instances_per_request):
                 self._launch_instance_executor.submit(
                     self._launch_new_instances_by_type,
                     instance_type,
                     instances[
                         i : min(
-                            i + self._max_nodes_per_request,
+                            i + self._max_instances_per_request,
                             len(instances),
                         )
                     ],
