@@ -106,6 +106,21 @@ class TuneController(_TuneControllerBase):
 
         # Removed actors
         self._started_actors: Set[TrackedActor] = set()
+
+        # Map of tracked actors -> timestamp
+        # The timestamp is when we requested the stop.
+        # We track these actors here to force a
+        # cleanup after some time (as they might be hanging).
+        # Todo: This timeout logic should be moved into the actor manager.
+        # This map is populated whenever we request an actor stop:
+        #  - Regular STOP decision
+        #  - Removing an actor because its trial REUSEs a different trial's actor
+        #  - Removing a cached actor because it's not needed anymore
+        # Actors are only tracked in this map if they actually started (not if they
+        # were only requested but never started).
+        # Actors are removed from this map:
+        #  - When the STOP resolved and the actor actually stopped
+        #  - When they are forcefully cleaned up after the timeout.
         self._stopping_actors: Dict[TrackedActor, float] = {}
         self._earliest_stopping_actor: float = float("inf")
         self._actor_cleanup_timeout: int = int(
@@ -207,7 +222,7 @@ class TuneController(_TuneControllerBase):
 
         if (
             not force_all
-            and now - self._earliest_stopping_actor > self._actor_cleanup_timeout
+            and now - self._earliest_stopping_actor <= self._actor_cleanup_timeout
         ):
             # If the earliest actor to timeout has not reached the timeout, return
             return
@@ -429,11 +444,13 @@ class TuneController(_TuneControllerBase):
             tracked_actor, "stop", _return_future=True
         )
         now = time.monotonic()
-        self._stopping_actors[tracked_actor] = now
-        self._earliest_stopping_actor = min(self._earliest_stopping_actor, now)
-        self._actor_manager.remove_actor(
+
+        if self._actor_manager.remove_actor(
             tracked_actor, kill=False, stop_future=stop_future
-        )
+        ):
+            # If the actor was previously alive, track
+            self._stopping_actors[tracked_actor] = now
+            self._earliest_stopping_actor = min(self._earliest_stopping_actor, now)
 
     ###
     # ADD ACTORS
