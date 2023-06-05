@@ -1,3 +1,4 @@
+import copy
 from typing import Callable, List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -29,7 +30,7 @@ class InputDataBuffer(PhysicalOperator):
         if input_data is not None:
             assert input_data_factory is None
             # Copy the input data to avoid mutating the original list.
-            self._input_data = input_data[:]
+            self._input_data = copy.deepcopy(input_data)
             self._is_input_initialized = True
             self._initialize_metadata()
         else:
@@ -41,7 +42,8 @@ class InputDataBuffer(PhysicalOperator):
 
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:
-            self._input_data = self._input_data_factory()
+            # Copy the input data to avoid mutating the original list.
+            self._input_data = copy.deepcopy(self._input_data_factory())
             self._is_input_initialized = True
             self._initialize_metadata()
         super().start(options)

@@ -3975,7 +3975,16 @@ class Dataset:
         copy._plan.execute(force_read=True)
 
         blocks = copy._plan._snapshot_blocks
+        stats = copy._plan.stats()
         blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
+
+        # Reset the plan to point to the materialized blocks.
+        copy._plan = ExecutionPlan(
+            blocks,
+            stats,
+            run_by_consumer=False,
+        )
+
         # TODO(hchen): Here we generate the same number of blocks as
         # the original Dataset. Because the old code path does this, and
         # some unit tests implicily depend on this behavior.

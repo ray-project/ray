@@ -136,6 +136,16 @@ class ExecutionPlan:
         # determined by the config at the time it was created.
         self._context = copy.deepcopy(DataContext.get_current())
 
+        # If there's nothing to do (i.e., this plan is for a MaterializedDataset),
+        # set the outputs to the inputs.
+        if (
+            not self.has_lazy_input()
+            and not self._stages_before_snapshot
+            and not self._stages_after_snapshot
+        ):
+            self._snapshot_blocks = self._in_blocks
+            self._snapshot_stats = self._in_stats
+
     def __repr__(self) -> str:
         return (
             f"ExecutionPlan("
