@@ -106,6 +106,9 @@ message Instance {
   int64 version = 19;
   // the status of the ray process on the instance.
   RayStatus ray_status = 20;
+  // the idempotency token that is used to ensure
+  // the request is idempotent.
+  string idempotency_token = 21;
 }
 
 message UpdateInstanceManagerStateRequest {

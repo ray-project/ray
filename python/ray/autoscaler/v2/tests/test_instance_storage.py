@@ -2,6 +2,7 @@
 import copy
 import os
 import sys
+from unittest import mock
 
 import pytest  # noqa
 from ray.autoscaler.v2.instance_manager.instance_storage import (
@@ -22,9 +23,15 @@ class DummySubscriber(InstanceUpdatedSuscriber):
 
 
 def create_instance(instance_id, status=Instance.UNKNOWN, version=0):
-    return Instance(instance_id=instance_id, status=status, version=version)
+    return Instance(
+        instance_id=instance_id,
+        status=status,
+        version=version,
+        timestamp_since_last_modified=1,
+    )
 
 
+@mock.patch("time.time", mock.MagicMock(return_value=1))
 def test_upsert():
     subscriber = DummySubscriber()
 
@@ -93,6 +100,7 @@ def test_upsert():
     ]
 
 
+@mock.patch("time.time", mock.MagicMock(return_value=1))
 def test_update():
     subscriber = DummySubscriber()
 
@@ -180,6 +188,7 @@ def test_update():
     ]
 
 
+@mock.patch("time.time", mock.MagicMock(return_value=1))
 def test_delete():
     subscriber = DummySubscriber()
 
@@ -237,6 +246,7 @@ def test_delete():
     ]
 
 
+@mock.patch("time.time", mock.MagicMock(return_value=1))
 def test_get_instances():
     storage = InstanceStorage(
         cluster_id="test_cluster",
