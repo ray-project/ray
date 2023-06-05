@@ -3720,7 +3720,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=tf2
+    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=tf
 
   alert: default
 
