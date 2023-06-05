@@ -41,7 +41,7 @@ catalog = Catalog(env.observation_space, env.action_space, model_config_dict={})
 # We expect a categorical distribution for CartPole.
 action_dist_class = catalog.get_action_dist_cls(framework="torch")
 # Therefore, we need `env.action_space.n` action distribution inputs.
-expected_action_dist_input_dims = (env.action_space.n,)
+expected_action_dist_input_dims = (int(env.action_space.n),)
 # Build an encoder that fits CartPole's observation space.
 encoder = catalog.build_encoder(framework="torch")
 # Build a suitable head model for the action distribution.
