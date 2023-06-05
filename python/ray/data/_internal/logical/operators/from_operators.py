@@ -20,7 +20,7 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadata],
     ):
-        super().__init__(self.op_name(), [])
+        super().__init__(self.__class__.__name__, [])
         assert len(input_blocks) == len(input_metadata), (
             len(input_blocks),
             len(input_metadata),
@@ -30,11 +30,6 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
             for i in range(len(input_blocks))
         ]
 
-    @abc.abstractmethod
-    def op_name(self) -> str:
-        """Returns the name of the operator."""
-        pass
-
     @property
     def input_data(self) -> List[RefBundle]:
         return self._input_data
@@ -42,27 +37,19 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
 
 class FromItems(AbstractFrom):
     """Logical operator for `from_items`."""
-
-    def op_name(self) -> str:
-        return "FromItems"
+    pass
 
 
 class FromNumpy(AbstractFrom):
     """Logical operator for `from_numpy`."""
-
-    def op_name(self) -> str:
-        return "FromNumpy"
+    pass
 
 
 class FromArrow(AbstractFrom):
     """Logical operator for `from_arrow`."""
-
-    def op_name(self) -> str:
-        return "FromArrow"
+    pass
 
 
 class FromPandas(AbstractFrom):
     """Logical operator for `from_pandas`."""
-
-    def op_name(self) -> str:
-        return "FromPandas"
+    pass

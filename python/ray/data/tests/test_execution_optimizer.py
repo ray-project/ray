@@ -84,7 +84,7 @@ def test_from_operators(ray_start_regular_shared, enable_optimizer):
     ]
     for op_cls in op_classes:
         planner = Planner()
-        op = op_cls([], [], True)
+        op = op_cls([], [])
         plan = LogicalPlan(op)
         physical_op = planner.plan(plan).dag
 
