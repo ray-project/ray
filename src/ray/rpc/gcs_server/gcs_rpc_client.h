@@ -91,8 +91,8 @@ class Executor {
 ///
 /// Currently, SyncMETHOD will copy the reply additionally.
 /// TODO(sang): Fix it.
-#define _VOID_GCS_RPC_CLIENT_METHOD(                                                     \
-    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS, IS_INSECURE)                 \
+#define VOID_GCS_RPC_CLIENT_METHOD(                                                      \
+    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS)                              \
   void METHOD(const METHOD##Request &request,                                            \
               const ClientCallback<METHOD##Reply> &callback,                             \
               const int64_t timeout_ms = method_timeout_ms) SPECS {                      \
@@ -149,13 +149,12 @@ class Executor {
     };                                                                                   \
     auto operation =                                                                     \
         [request, operation_callback, timeout_ms](GcsRpcClient *gcs_rpc_client) {        \
-          RAY_UNUSED(_INVOKE_RPC_CALL(SERVICE,                                           \
-                                      METHOD,                                            \
-                                      request,                                           \
-                                      operation_callback,                                \
-                                      gcs_rpc_client->grpc_client,                       \
-                                      timeout_ms,                                        \
-                                      IS_INSECURE));                                     \
+          RAY_UNUSED(INVOKE_RPC_CALL(SERVICE,                                            \
+                                     METHOD,                                             \
+                                     request,                                            \
+                                     operation_callback,                                 \
+                                     gcs_rpc_client->grpc_client,                        \
+                                     timeout_ms));                                       \
         };                                                                               \
     executor->Execute(std::move(operation));                                             \
   }                                                                                      \
@@ -172,16 +171,6 @@ class Executor {
         timeout_ms);                                                                     \
     return promise.get_future().get();                                                   \
   }
-
-#define VOID_GCS_RPC_CLIENT_METHOD(                         \
-    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS) \
-  _VOID_GCS_RPC_CLIENT_METHOD(                              \
-      SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS, false)
-
-#define VOID_GCS_RPC_CLIENT_METHOD_NO_AUTH(                 \
-    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS) \
-  _VOID_GCS_RPC_CLIENT_METHOD(                              \
-      SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS, true)
 
 /// Client used for communicating with gcs server.
 class GcsRpcClient {
@@ -327,10 +316,10 @@ class GcsRpcClient {
                              actor_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
   /// Register a client to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD_NO_AUTH(NodeInfoGcsService,
-                                     RegisterClient,
-                                     node_info_grpc_client_,
-                                     /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             RegisterClient,
+                             node_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   /// Register a node to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,

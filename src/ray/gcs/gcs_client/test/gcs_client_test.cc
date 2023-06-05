@@ -152,8 +152,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       rpc::CheckAliveReply reply;
       auto status = stub->CheckAlive(&context, request, &reply);
       // If it is in memory, we don't have the new token until we connect again.
-      if (!((!in_memory && !status.ok()) ||
-            (in_memory && GrpcStatusToRayStatus(status).IsAuthError()))) {
+      if (!status.ok()) {
         RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                          << status.error_message();
         continue;
@@ -1002,15 +1001,8 @@ TEST_P(GcsClientTest, TestGcsAuth) {
   // Restart GCS.
   RestartGcsServer();
   auto node_info = Mocker::GenNodeInfo();
-  if (RayConfig::instance().gcs_storage() != gcs::GcsServer::kInMemoryStorage) {
-    EXPECT_TRUE(RegisterNode(*node_info));
-    return;
-  }
 
-  EXPECT_FALSE(RegisterNode(*node_info));
-  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
-    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
-  }
+  RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   EXPECT_TRUE(RegisterNode(*node_info));
 }
 

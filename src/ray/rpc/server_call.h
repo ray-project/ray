@@ -29,13 +29,6 @@
 namespace ray {
 namespace rpc {
 
-// Authentication type of ServerCall.
-enum class AuthType {
-  NO_AUTH,      // Do not authenticate (accept all).
-  LAZY_AUTH,    // Accept missing token, but reject wrong token.
-  STRICT_AUTH,  // Reject missing token and wrong token.
-};
-
 /// Get the thread pool for the gRPC server.
 /// This pool is shared across gRPC servers.
 boost::asio::thread_pool &GetServerCallExecutor();
@@ -141,15 +134,10 @@ using HandleRequestFunction = void (ServiceHandler::*)(Request,
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
 /// RPC method.
 ///
-/// IMPORTANT NOTE: Template specializations of HandleRequest live in server_call-* files!
-///
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class ServiceHandler,
-          class Request,
-          class Reply,
-          AuthType EnableAuth = AuthType::STRICT_AUTH>
+template <class ServiceHandler, class Request, class Reply>
 class ServerCallImpl : public ServerCall {
  public:
   /// Constructor.
@@ -193,54 +181,21 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
-    bool auth_success = true;
-    if constexpr (EnableAuth == AuthType::STRICT_AUTH) {
-      RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
-      auto &metadata = context_.client_metadata();
-      if (auto it = metadata.find(kClusterIdKey);
-          it == metadata.end() || it->second != cluster_id_.Hex()) {
-        RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
-                       << cluster_id_.Hex() << ", but got: "
-                       << (it == metadata.end() ? "No token!" : it->second);
-        auth_success = false;
-      }
-    } else if constexpr (EnableAuth == AuthType::LAZY_AUTH) {
-      RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
-      auto &metadata = context_.client_metadata();
-      if (auto it = metadata.find(kClusterIdKey);
-          it != metadata.end() && it->second != cluster_id_.Hex()) {
-        RAY_LOG(DEBUG) << "Wrong cluster ID token in request! Expected: "
-                       << cluster_id_.Hex() << ", but got: "
-                       << (it == metadata.end() ? "No token!" : it->second);
-        auth_success = false;
-      }
-    } else {
-      if (!cluster_id_.IsNil()) {
-        RAY_LOG_EVERY_N(WARNING, 100)
-            << "Unexpected cluster ID in server call! " << cluster_id_;
-      }
-    }
-
     start_time_ = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
     }
     if (!io_service_.stopped()) {
-      io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
-                       call_name_);
+      io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
       RAY_LOG(DEBUG) << "Handle service has been closed.";
-      if (auth_success) {
-        SendReply(Status::Invalid("HandleServiceClosed"));
-      } else {
-        SendReply(Status::AuthError("WrongClusterToken"));
-      }
+      SendReply(Status::Invalid("HandleServiceClosed"));
     }
   }
 
-  void HandleRequestImpl(bool auth_success) {
+  void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
@@ -252,24 +207,18 @@ class ServerCallImpl : public ServerCall {
       // a new request comes in.
       factory.CreateCall();
     }
-    if (!auth_success) {
-      boost::asio::post(GetServerCallExecutor(),
-                        [this]() { SendReply(Status::AuthError("WrongClusterToken")); });
-    } else {
-      (service_handler_.*handle_request_function_)(
-          std::move(request_),
-          reply_,
-          [this](Status status,
-                 std::function<void()> success,
-                 std::function<void()> failure) {
-            // These two callbacks must be set before `SendReply`, because `SendReply`
-            // is async and this `ServerCall` might be deleted right after `SendReply`.
-            send_reply_success_callback_ = std::move(success);
-            send_reply_failure_callback_ = std::move(failure);
-            boost::asio::post(GetServerCallExecutor(),
-                              [this, status]() { SendReply(status); });
-          });
-    }
+    (service_handler_.*handle_request_function_)(
+        std::move(request_),
+        reply_,
+        [this](
+            Status status, std::function<void()> success, std::function<void()> failure) {
+          // These two callbacks must be set before `SendReply`, because `SendReply`
+          // is async and this `ServerCall` might be deleted right after `SendReply`.
+          send_reply_success_callback_ = std::move(success);
+          send_reply_failure_callback_ = std::move(failure);
+          boost::asio::post(GetServerCallExecutor(),
+                            [this, status]() { SendReply(status); });
+        });
   }
 
   void OnReplySent() override {
@@ -369,7 +318,7 @@ class ServerCallImpl : public ServerCall {
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;
 
-  template <class T1, class T2, class T3, class T4, AuthType T5>
+  template <class T1, class T2, class T3, class T4>
   friend class ServerCallFactoryImpl;
 };
 
@@ -393,11 +342,7 @@ using RequestCallFunction =
 /// \tparam ServiceHandler Type of the handler that handles the request.
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
-template <class GrpcService,
-          class ServiceHandler,
-          class Request,
-          class Reply,
-          AuthType EnableAuth = AuthType::STRICT_AUTH>
+template <class GrpcService, class ServiceHandler, class Request, class Reply>
 class ServerCallFactoryImpl : public ServerCallFactory {
   using AsyncService = typename GrpcService::AsyncService;
 

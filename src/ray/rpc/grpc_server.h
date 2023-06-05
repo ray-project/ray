@@ -48,20 +48,11 @@ namespace rpc {
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AuthType::STRICT_AUTH, true)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, true)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AuthType::STRICT_AUTH, false)
-
-/// Define a RPC service handler with gRPC server metrics enabled.
-#define RPC_SERVICE_HANDLER_CUSTOM_AUTH(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true)
-
-/// Define a RPC service handler with gRPC server metrics disabled.
-#define RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
-    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, false)
 
 // Define a void RPC client method.
 #define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
@@ -78,7 +69,7 @@ class GrpcService;
 /// 2) and a thread that polls events from the `ServerCompletionQueue`.
 ///
 /// Subclasses can register one or multiple services to a `GrpcServer`, see
-/// `RegisterServices`. And they should also implement `nitServerCallFactories` to decide
+/// `RegisterServices`. And they should also implement `InitServerCallFactories` to decide
 /// which kinds of requests this server should accept.
 class GrpcServer {
  public:

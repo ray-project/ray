@@ -269,7 +269,7 @@ class JobInfoAccessor {
 class NodeInfoAccessor {
  public:
   NodeInfoAccessor() = default;
-  NodeInfoAccessor(GcsClient *client_impl);
+  explicit NodeInfoAccessor(GcsClient *client_impl);
   virtual ~NodeInfoAccessor() = default;
   /// Register local node to GCS asynchronously.
   ///
