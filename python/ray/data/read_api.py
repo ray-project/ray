@@ -1469,19 +1469,19 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
 
     import pandas
 
-    dfs = []
-    for part in persisted_partitions:
-        df = next(iter(part.dask.values()))
+    def to_ref(df):
         if isinstance(df, pandas.DataFrame):
-            dfs.append(ray.put(df))
+            return ray.put(df)
         elif isinstance(df, ray.ObjectRef):
-            dfs.append(df)
+            return df
         else:
             raise ValueError(
                 "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
             )
 
-    ds = from_pandas_refs(dfs)
+    ds = from_pandas_refs(
+        [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions],
+    )
     return ds
 
 
