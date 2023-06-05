@@ -37,16 +37,21 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self._reconcile_timer.start()
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
-        if any(
-            event.new_status in [Instance.ALLOCATED]
-            and event.new_ray_status
-            in [Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED]
+        instance_ids = [
+            event.instance_id
             for event in events
-        ):
-            self._failure_handling_executor.submit(self._handle_ray_failure)
+            if event.new_status in {Instance.ALLOCATED}
+            and event.new_ray_status
+            in {Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED}
+        ]
+        if instance_ids:
+            self._failure_handling_executor.submit(
+                self._handle_ray_failure, instance_ids
+            )
 
-    def _handle_ray_failure(self) -> int:
+    def _handle_ray_failure(self, instance_ids: List[str]) -> int:
         failing_instances, _ = self._instance_storage.get_instances(
+            instance_ids=instance_ids,
             status_filter={Instance.ALLOCATED},
             ray_status_filter={Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED},
         )
