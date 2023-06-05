@@ -219,7 +219,7 @@ def test_container_option_serialize(runtime_env_class):
         container={"image": "ray:latest", "run_options": ["--name=test"]}
     )
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
-    job_config_serialized = job_config.serialize()
+    job_config_serialized = job_config._serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
     # job_config.runtime_env_info.serialized_runtime_env
     # has container_option info

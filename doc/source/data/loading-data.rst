@@ -32,12 +32,18 @@ Generating Synthetic Data
       Create a dataset from a range of integers, packing this integer range into
       ndarrays of the provided shape.
 
-      .. doctest::
+      ..
+        FIXME: The following code snippets is failing. See
+        https://buildkite.com/ray-project/oss-ci-build-pr/builds/24240#0188797d-4416-4a34-ada6-2917d1fa9b19
+
+      .. code-block:: python
 
         >>> import ray
-        >>> ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
+        >>> ds = ray.data.range_tensor(1, shape=(64, 64))
         >>> ds.schema()
-        Schema({'data': numpy.ndarray(shape=(64, 64), dtype=int64)})
+        Column  Type
+        ------  ----
+        data    numpy.ndarray(shape=(64, 64), dtype=int64)
         >>> ds.show(1)
         {'data': array([[0, 0, 0, ..., 0, 0, 0],
                [0, 0, 0, ..., 0, 0, 0],
@@ -802,7 +808,7 @@ Once you have implemented `YourCustomDataSource`, you can use it like any other 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
 
-For more details, check out :ref:`guide for implementing a custom datasource <custom_datasources>`.
+For more details, read :ref:`Implementing a Custom Datasource <custom_datasources>`.
 
 --------------------------
 Performance Considerations

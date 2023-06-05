@@ -107,6 +107,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+        ":autoscaler_cc_grpc",
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
         ":pubsub_lib",
@@ -286,6 +287,25 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":monitor_cc_grpc",
+    ],
+)
+
+cc_grpc_library(
+    name = "autoscaler_cc_grpc",
+    srcs = ["//src/ray/protobuf:autoscaler_proto"],
+    grpc_only = True,
+    deps = [
+        "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/protobuf:instance_manager_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "autoscaler_rpc",
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":autoscaler_cc_grpc",
     ],
 )
 
@@ -530,6 +550,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":agent_manager_rpc",
+        ":autoscaler_rpc",
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_cc_grpc",
@@ -2156,6 +2177,23 @@ cc_test(
 )
 
 cc_test(
+    name = "gcs_autoscaler_state_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_autoscaler_state_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "gcs_resource_manager_test",
     size = "small",
     srcs = [
@@ -2546,6 +2584,7 @@ cc_library(
     deps = [
         "redis_client",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -2611,6 +2650,31 @@ cc_test(
         "//:redis-server",
     ],
     tags = ["team:core"],
+    deps = [
+        ":redis_store_client",
+        ":store_client_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "chaos_redis_store_client_test",
+    size = "small",
+    srcs = ["src/ray/gcs/store_client/test/redis_store_client_test.cc"],
+    args = [
+        "$(location redis-server)",
+        "$(location redis-cli)",
+    ],
+    copts = COPTS,
+    data = [
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    env = {"REDIS_CHAOS": "1"},
+    tags = ["team:core"],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
     deps = [
         ":redis_store_client",
         ":store_client_test_lib",

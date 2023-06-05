@@ -22,10 +22,6 @@ from ray.serve._private.utils import (
     get_random_letters,
     DEFAULT,
 )
-from ray.serve._private.autoscaling_metrics import start_metrics_pusher
-from ray.serve._private.common import DeploymentInfo
-from ray.serve._private.constants import HANDLE_METRIC_PUSH_INTERVAL_S
-from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve._private.router import Router, RequestMetadata
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -123,12 +119,14 @@ class RayServeHandle:
         *,
         _router: Optional[Router] = None,
         _internal_pickled_http_request: bool = False,
+        _stream: bool = False,
     ):
         self.controller_handle = controller_handle
         self.deployment_name = deployment_name
         self.handle_options = handle_options or HandleOptions()
         self.handle_tag = f"{self.deployment_name}#{get_random_letters()}"
         self._pickled_http_request = _internal_pickled_http_request
+        self._stream = _stream
 
         self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
@@ -144,39 +142,13 @@ class RayServeHandle:
 
         self.router: Router = _router or self._make_router()
 
-        deployment_route = DeploymentRoute.FromString(
-            ray.get(
-                self.controller_handle.get_deployment_info.remote(self.deployment_name)
-            )
-        )
-        deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
-
-        self._stop_event: Optional[threading.Event] = None
-        self._pusher: Optional[threading.Thread] = None
-        remote_func = self.controller_handle.record_handle_metrics.remote
-        if deployment_info.deployment_config.autoscaling_config:
-            self._stop_event = threading.Event()
-            self._pusher = start_metrics_pusher(
-                interval_s=HANDLE_METRIC_PUSH_INTERVAL_S,
-                collection_callback=self._collect_handle_queue_metrics,
-                metrics_process_func=remote_func,
-                stop_event=self._stop_event,
-            )
-
-    def _collect_handle_queue_metrics(self) -> Dict[str, int]:
-        return {self.deployment_name: self.router.get_num_queued_queries()}
-
     def _make_router(self) -> Router:
         return Router(
             self.controller_handle,
             self.deployment_name,
             event_loop=get_or_create_event_loop(),
+            _stream=self._stream,
         )
-
-    def stop_metrics_pusher(self):
-        if self._stop_event and self._pusher:
-            self._stop_event.set()
-            self._pusher.join()
 
     @property
     def _is_polling(self) -> bool:
@@ -195,6 +167,7 @@ class RayServeHandle:
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
     ):
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
@@ -204,6 +177,13 @@ class RayServeHandle:
         }
         new_options_dict.update(user_modified_options_dict)
         new_options = HandleOptions(**new_options_dict)
+
+        if multiplexed_model_id != DEFAULT.VALUE:
+            # If the user specifies model id, we need to update the RequestContext
+            # to include the model_id.
+            ray.serve.context._set_request_context(
+                multiplexed_model_id=multiplexed_model_id
+            )
 
         return self.__class__(
             self.controller_handle,
@@ -217,6 +197,7 @@ class RayServeHandle:
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -227,9 +208,12 @@ class RayServeHandle:
             # The following two lines are equivalent:
             obj_ref = await handle.other_method.remote(*args)
             obj_ref = await handle.options(method_name="other_method").remote(*args)
-
+            obj_ref = await handle.options(
+                multiplexed_model_id="model:v1").remote(*args)
         """
-        return self._options(method_name=method_name)
+        return self._options(
+            method_name=method_name, multiplexed_model_id=multiplexed_model_id
+        )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
         _request_context = ray.serve.context._serve_request_context.get()
@@ -240,6 +224,7 @@ class RayServeHandle:
             http_arg_is_pickled=self._pickled_http_request,
             route=_request_context.route,
             app_name=_request_context.app_name,
+            multiplexed_model_id=_request_context.multiplexed_model_id,
         )
         self.request_counter.inc(
             tags={
@@ -291,9 +276,6 @@ class RayServeHandle:
     def __getattr__(self, name):
         return self.options(method_name=name)
 
-    def __del__(self):
-        self.stop_metrics_pusher()
-
 
 @PublicAPI(stability="beta")
 class RayServeSyncHandle(RayServeHandle):
@@ -333,12 +315,14 @@ class RayServeSyncHandle(RayServeHandle):
             self.controller_handle,
             self.deployment_name,
             event_loop=_create_or_get_async_loop_in_thread(),
+            _stream=self._stream,
         )
 
     def options(
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -349,9 +333,12 @@ class RayServeSyncHandle(RayServeHandle):
             # The following two lines are equivalent:
             obj_ref = handle.other_method.remote(*args)
             obj_ref = handle.options(method_name="other_method").remote(*args)
+            obj_ref = handle.options(multiplexed_model_id="model1").remote(*args)
 
         """
-        return self._options(method_name=method_name)
+        return self._options(
+            method_name=method_name, multiplexed_model_id=multiplexed_model_id
+        )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:
         """Issue an asynchronous request to the __call__ method of the deployment.

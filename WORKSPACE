@@ -41,12 +41,12 @@ http_archive(
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
-    name = "python3_8",
-    python_version = "3.8",
+    name = "python3_9",
+    python_version = "3.9",
     register_toolchains = False,
 )
 
-load("@python3_8//:defs.bzl", bk_python = "interpreter")
+load("@python3_9//:defs.bzl", bk_python = "interpreter")
 load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
 
 pip_install_dependencies()

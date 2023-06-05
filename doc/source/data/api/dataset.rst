@@ -68,15 +68,6 @@ Grouped and Global Aggregations
    Dataset.mean
    Dataset.std
 
-Converting to Pipeline
-----------------------
-
-.. autosummary::
-   :toctree: doc/
-
-   Dataset.repeat
-   Dataset.window
-
 Consuming Data
 ---------------------
 
@@ -126,8 +117,8 @@ Inspecting Metadata
    :toctree: doc/
 
    Dataset.count
+   Dataset.columns
    Dataset.schema
-   Dataset.default_batch_format
    Dataset.num_blocks
    Dataset.size_bytes
    Dataset.input_files
@@ -152,15 +143,3 @@ Serialization
    Dataset.has_serializable_lineage
    Dataset.serialize_lineage
    Dataset.deserialize_lineage
-
-Internals
----------
-
-.. autosummary::
-   :toctree: doc/
-
-   Dataset.__init__
-   Dataset.dataset_format
-   Dataset.fully_executed
-   Dataset.is_fully_executed
-   Dataset.lazy

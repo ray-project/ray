@@ -15,7 +15,7 @@
 syntax = "proto3";
 option cc_enable_arenas = true;
 
-package ray.autoscaler;
+package ray.rpc.autoscaler;
 
 import "src/ray/protobuf/experimental/instance_manager.proto";
 
@@ -165,7 +165,7 @@ message ReportAutoscalingStateRequest {
   repeated Instance instances = 3;
   // infeasible resource requests.
   repeated ResourceRequest infeasible_resource_requests = 4;
-  repeated ClusterResourceConstraint infeasible_gange_resource_requests = 5;
+  repeated GangResourceRequest infeasible_gange_resource_requests = 5;
   repeated ClusterResourceConstraint infeasible_cluster_resource_constraints = 6;
 }
 

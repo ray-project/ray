@@ -1,5 +1,5 @@
 import { makeStyles } from "@material-ui/core";
-import React from "react";
+import React, { PropsWithChildren } from "react";
 
 import { Section } from "../../common/Section";
 import ActorList from "../actor/ActorList";
@@ -15,26 +15,37 @@ const useStyle = makeStyles((theme) => ({
 
 export const JobDetailActorsPage = () => {
   const classes = useStyle();
-  const { job, params } = useJobDetail();
-
-  const pageInfo = job
-    ? {
-        title: "Actors",
-        id: "actors",
-        path: job.job_id ? `/jobs/${job.job_id}/actors` : undefined,
-      }
-    : {
-        title: "Actors",
-        id: "actors",
-        path: undefined,
-      };
+  const { params } = useJobDetail();
 
   return (
     <div className={classes.root}>
-      <MainNavPageInfo pageInfo={pageInfo} />
+      <MainNavPageInfo
+        pageInfo={{
+          title: "Actors",
+          id: "actors",
+          path: "actors",
+        }}
+      />
       <Section title="Actors">
         <ActorList jobId={params.id} />
       </Section>
+    </div>
+  );
+};
+
+export const JobDetailActorDetailWrapper = ({
+  children,
+}: PropsWithChildren<{}>) => {
+  return (
+    <div>
+      <MainNavPageInfo
+        pageInfo={{
+          title: "Actors",
+          id: "actors",
+          path: "actors",
+        }}
+      />
+      {children}
     </div>
   );
 };

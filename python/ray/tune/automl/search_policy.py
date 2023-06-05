@@ -181,7 +181,7 @@ class AutoMLSearcher(SearchAlgorithm):
                     "reward_attr": self.reward_attr,
                     "reward": self.best_trial.best_result[self.reward_attr]
                     if self.best_trial
-                    else None,
+                    else 0,
                 },
             )
 

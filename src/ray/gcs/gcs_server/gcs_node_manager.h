@@ -17,6 +17,7 @@
 #include <gtest/gtest_prod.h>
 
 #include <boost/bimap.hpp>
+#include <boost/bimap/unordered_multiset_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 
 #include "absl/container/flat_hash_map.h"
@@ -35,6 +36,7 @@
 namespace ray {
 namespace gcs {
 
+class GcsAutoscalerStateManagerTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
@@ -101,6 +103,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllAliveNodes()
       const {
     return alive_nodes_;
+  }
+
+  /// Get all dead nodes.
+  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllDeadNodes()
+      const {
+    return dead_nodes_;
   }
 
   /// Add listener to monitor the remove action of nodes.
@@ -173,10 +181,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// A map of NodeId <-> ip:port of raylet
   using NodeIDAddrBiMap =
       boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
-                   boost::bimaps::unordered_set_of<std::string>>;
+                   boost::bimaps::unordered_multiset_of<std::string>>;
   NodeIDAddrBiMap node_map_;
 
   friend GcsMonitorServerTest;
+  friend GcsAutoscalerStateManagerTest;
 };
 
 }  // namespace gcs

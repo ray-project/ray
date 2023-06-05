@@ -1,4 +1,31 @@
 load("//bazel:python.bzl", "py_test_module_list")
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "**/examples/**",
+            "**/tests/**",
+            "suggest/**",
+            "impl/test_utils.py",
+            "automl/board/**",
+            "checkpoint_manager.py",
+            "cluster_info.py",
+            "config_parser.py",
+            "function_runner.py",
+            "insufficient_resources_manager.py",
+            "ray_trial_executor.py",
+            "sample.py",
+            "session.py",
+            "trial.py",
+            "trial_runner.py",
+            "utils/placement_groups.py",
+            "utils/trainable.py"
+        ]
+    ),
+    tags = ["team:ml"]
+)
 
 py_library(
     name = "conftest",
@@ -518,6 +545,54 @@ py_test(
     tags = ["team:ml", "exclusive"]
 )
 
+py_test(
+    name = "test_controller_callback_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_callback_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_checkpointing_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_checkpointing_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_control_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_control_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_errors_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_errors_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_resources_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_resources_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
+    name = "test_controller_search_alg_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_search_alg_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
 # --------------------------------------------------------------------
 # Examples from the python/ray/tune/examples directory.
 # Please keep these sorted alphabetically.
@@ -949,15 +1024,6 @@ py_test(
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
-)
-
-py_test(
-    name = "wandb_example",
-    size = "medium",
-    srcs = ["examples/wandb_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--mock-api"]
 )
 
 py_test(

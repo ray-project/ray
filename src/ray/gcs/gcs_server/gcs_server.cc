@@ -22,6 +22,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
@@ -172,6 +173,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Install event listeners.
   InstallEventListeners();
+
+  // Init autoscaling manager
+  InitGcsAutoscalerStateManager();
 
   // Start RPC server when all tables have finished loading initial
   // data.
@@ -558,7 +562,7 @@ void GcsServer::InitRuntimeEnvManager() {
       main_service_,
       *runtime_env_manager_, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(main_service_, task, delay_ms);
+        return execute_after(main_service_, task, std::chrono::milliseconds(delay_ms));
       });
   runtime_env_service_ =
       std::make_unique<rpc::RuntimeEnvGrpcService>(main_service_, *runtime_env_handler_);
@@ -573,6 +577,18 @@ void GcsServer::InitGcsWorkerManager() {
   worker_info_service_.reset(
       new rpc::WorkerInfoGrpcService(main_service_, *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
+}
+
+void GcsServer::InitGcsAutoscalerStateManager() {
+  gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
+      cluster_resource_scheduler_->GetClusterResourceManager(),
+      *gcs_resource_manager_,
+      *gcs_node_manager_);
+
+  autoscaler_state_service_.reset(
+      new rpc::AutoscalerStateGrpcService(main_service_, *gcs_autoscaler_state_manager_));
+
+  rpc_server_.RegisterService(*autoscaler_state_service_);
 }
 
 void GcsServer::InitGcsTaskManager() {
@@ -702,7 +718,8 @@ void GcsServer::RecordMetrics() const {
   execute_after(
       main_service_,
       [this] { RecordMetrics(); },
-      (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
+      std::chrono::milliseconds(RayConfig::instance().metrics_report_interval_ms() /
+                                2) /* milliseconds */);
 }
 
 void GcsServer::DumpDebugStateToFile() const {

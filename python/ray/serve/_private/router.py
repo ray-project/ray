@@ -1,11 +1,13 @@
+from abc import ABC
 import asyncio
+from collections import defaultdict
 from dataclasses import dataclass
 import itertools
 import logging
 import pickle
 import random
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -13,14 +15,19 @@ from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 
-from ray.serve._private.common import RunningReplicaInfo
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    HANDLE_METRIC_PUSH_INTERVAL_S,
+)
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
+    MetricsPusher,
 )
 from ray.serve.generated.serve_pb2 import (
+    DeploymentRoute,
     RequestMetadata as RequestMetadataProto,
 )
 
@@ -42,6 +49,9 @@ class RequestMetadata:
 
     # Application Name
     app_name: str = ""
+
+    # Multiplexed model ID
+    multiplexed_model_id: str = ""
 
 
 @dataclass
@@ -65,16 +75,68 @@ class Query:
         scanner.clear()
 
 
-class ReplicaSet:
-    """Data structure representing a set of replica actor handles"""
+class ReplicaScheduler(ABC):
+    async def assign_replica(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        pass
 
-    def __init__(
-        self,
-        deployment_name,
-        event_loop: asyncio.AbstractEventLoop,
-    ):
-        self.deployment_name = deployment_name
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        pass
+
+
+class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
+    """Round-robins requests across a set of actor replicas using streaming calls.
+
+    This policy does *not* respect `max_concurrent_queries`.
+    """
+
+    def __init__(self):
+        self._replica_iterator = itertools.cycle([])
+        self._replicas_updated_event = asyncio.Event()
+
+    async def assign_replica(
+        self, query: Query
+    ) -> "ray._raylet.StreamingObjectRefGenerator":
+        replica = None
+        while replica is None:
+            try:
+                replica = next(self._replica_iterator)
+            except StopIteration:
+                logger.info(
+                    "Tried to assign replica but none available",
+                    extra={"log_to_stderr": False},
+                )
+                await self._replicas_updated_event.wait()
+
+        if replica.is_cross_language:
+            raise RuntimeError(
+                "Streaming is not yet supported for cross-language actors."
+            )
+
+        return replica.actor_handle.handle_request_streaming.options(
+            num_returns="streaming"
+        ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
+
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        random.shuffle(running_replicas)
+        self._replica_iterator = itertools.cycle(running_replicas)
+        self._replicas_updated_event.set()
+
+
+class RoundRobinReplicaScheduler(ReplicaScheduler):
+    """Round-robins requests across a set of actor replicas.
+
+    The policy respects `max_concurrent_queries` for the replicas: a replica
+    is not chosen if `max_concurrent_queries` requests are already outstanding.
+
+    This is maintained using a "tracker" object ref to determine when a given request
+    has finished (to decrement the number of concurrent queries).
+    """
+
+    def __init__(self, event_loop: asyncio.AbstractEventLoop):
         self.in_flight_queries: Dict[RunningReplicaInfo, set] = dict()
+
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
         # replicas.
@@ -94,18 +156,11 @@ class ReplicaSet:
         else:
             self.config_updated_event = asyncio.Event(loop=event_loop)
 
-        self.num_queued_queries = 0
-        self.num_queued_queries_gauge = metrics.Gauge(
-            "serve_deployment_queued_queries",
-            description=(
-                "The current number of queries to this deployment waiting"
-                " to be assigned to a replica."
-            ),
-            tag_keys=("deployment", "route", "application"),
-        )
-        self.num_queued_queries_gauge.set_default_tags(
-            {"deployment": self.deployment_name}
-        )
+        # A map from multiplexed model id to a list of replicas that have the
+        # model loaded.
+        self.multiplexed_replicas_table: Dict[
+            str, List[RunningReplicaInfo]
+        ] = defaultdict(list)
 
     def _reset_replica_iterator(self):
         """Reset the iterator used to load balance replicas.
@@ -117,6 +172,13 @@ class ReplicaSet:
         replicas = list(self.in_flight_queries.keys())
         random.shuffle(replicas)
         self.replica_iterator = itertools.cycle(replicas)
+
+        # Update the multiplexed_replicas_table
+        new_multiplexed_replicas_table = defaultdict(list)
+        for replica in replicas:
+            for mdoel_id in replica.multiplexed_model_ids:
+                new_multiplexed_replicas_table[mdoel_id].append(replica)
+        self.multiplexed_replicas_table = new_multiplexed_replicas_table
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         added, removed, _ = compute_iterable_delta(
@@ -137,51 +199,100 @@ class ReplicaSet:
             self._reset_replica_iterator()
             self.config_updated_event.set()
 
+    def _assign_replica(self, query: Query, replica: RunningReplicaInfo):
+        """Assign query to the replica.
+        Args:
+            query: Query object, containing the request metadata and args.
+            replica: Replica object, containing the actor handle to the replica.
+        Returns: object ref of the requests.
+        """
+
+        logger.debug(
+            f"Assigned query {query.metadata.request_id} "
+            f"to replica {replica.replica_tag}."
+        )
+        if replica.is_cross_language:
+            # Handling requests for Java replica
+            arg = query.args[0]
+            if query.metadata.http_arg_is_pickled:
+                assert isinstance(arg, bytes)
+                loaded_http_input = pickle.loads(arg)
+                query_string = loaded_http_input.scope.get("query_string")
+                if query_string:
+                    arg = query_string.decode().split("=", 1)[1]
+                elif loaded_http_input.body:
+                    arg = loaded_http_input.body.decode()
+            user_ref = JavaActorHandleProxy(replica.actor_handle).handle_request.remote(
+                RequestMetadataProto(
+                    request_id=query.metadata.request_id,
+                    endpoint=query.metadata.endpoint,
+                    call_method=query.metadata.call_method
+                    if query.metadata.call_method != "__call__"
+                    else "call",
+                ).SerializeToString(),
+                [arg],
+            )
+            self.in_flight_queries[replica].add(user_ref)
+        else:
+            # Directly passing args because it might contain an ObjectRef.
+            tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
+                pickle.dumps(query.metadata), *query.args, **query.kwargs
+            )
+            self.in_flight_queries[replica].add(tracker_ref)
+        return user_ref
+
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
         """Try to assign query to a replica, return the object ref if succeeded
         or return None if it can't assign this query to any replicas.
         """
+
+        # Try to find a replica that can handle this query
+        # If multiplexed model id is not specified, we can assign the query to
+        # any non-overloaded replica.
+        # If multiplexed model id is specified, we can try to assign the query
+        # to a replica that has the specified model loaded and
+        # is not overloaded with requests.
+        # If no such replica exists, we can assign the query to any non-overloaded
+        # replica.
+        if (
+            query.metadata.multiplexed_model_id
+            and query.metadata.multiplexed_model_id in self.multiplexed_replicas_table
+        ):
+            # Try to find the replica that is already handling the model.
+            for replica in self.multiplexed_replicas_table[
+                query.metadata.multiplexed_model_id
+            ]:
+                if (
+                    len(self.in_flight_queries[replica])
+                    >= replica.max_concurrent_queries
+                ):
+                    # This replica is overloaded, try next one
+                    continue
+                logger.debug(
+                    f"Assigned query {query.metadata.request_id} "
+                    f"to replica {replica.replica_tag}."
+                )
+                return self._assign_replica(query, replica)
+
         for _ in range(len(self.in_flight_queries.keys())):
             replica = next(self.replica_iterator)
             if len(self.in_flight_queries[replica]) >= replica.max_concurrent_queries:
                 # This replica is overloaded, try next one
                 continue
 
+            if query.metadata.multiplexed_model_id:
+                # This query has a multiplexed model id, but the model is not
+                # loaded on this replica. Save this replica for future queries
+                # with the same model id.
+                self.multiplexed_replicas_table[
+                    query.metadata.multiplexed_model_id
+                ].append(replica)
+
             logger.debug(
                 f"Assigned query {query.metadata.request_id} "
                 f"to replica {replica.replica_tag}."
             )
-            if replica.is_cross_language:
-                # Handling requests for Java replica
-                arg = query.args[0]
-                if query.metadata.http_arg_is_pickled:
-                    assert isinstance(arg, bytes)
-                    loaded_http_input = pickle.loads(arg)
-                    query_string = loaded_http_input.scope.get("query_string")
-                    if query_string:
-                        arg = query_string.decode().split("=", 1)[1]
-                    elif loaded_http_input.body:
-                        arg = loaded_http_input.body.decode()
-                user_ref = JavaActorHandleProxy(
-                    replica.actor_handle
-                ).handle_request.remote(
-                    RequestMetadataProto(
-                        request_id=query.metadata.request_id,
-                        endpoint=query.metadata.endpoint,
-                        call_method=query.metadata.call_method
-                        if query.metadata.call_method != "__call__"
-                        else "call",
-                    ).SerializeToString(),
-                    [arg],
-                )
-                self.in_flight_queries[replica].add(user_ref)
-            else:
-                # Directly passing args because it might contain an ObjectRef.
-                tracker_ref, user_ref = replica.actor_handle.handle_request.remote(
-                    pickle.dumps(query.metadata), *query.args, **query.kwargs
-                )
-                self.in_flight_queries[replica].add(tracker_ref)
-            return user_ref
+            return self._assign_replica(query, replica)
         return None
 
     @property
@@ -230,14 +341,6 @@ class ReplicaSet:
         and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
         """
-        self.num_queued_queries += 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "route": query.metadata.route,
-                "application": query.metadata.app_name,
-            },
-        )
         await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
@@ -260,14 +363,7 @@ class ReplicaSet:
             # We are pretty sure a free replica is ready now, let's recurse and
             # assign this query a replica.
             assigned_ref = self._try_assign_replica(query)
-        self.num_queued_queries -= 1
-        self.num_queued_queries_gauge.set(
-            self.num_queued_queries,
-            tags={
-                "route": query.metadata.route,
-                "application": query.metadata.app_name,
-            },
-        )
+
         return assigned_ref
 
 
@@ -277,6 +373,7 @@ class Router:
         controller_handle: ActorHandle,
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
+        _stream: bool = False,
     ):
         """Router process incoming queries: assign a replica.
 
@@ -284,7 +381,10 @@ class Router:
             controller_handle: The controller handle.
         """
         self._event_loop = event_loop
-        self._replica_set = ReplicaSet(deployment_name, event_loop)
+        if _stream:
+            self._replica_scheduler = RoundRobinStreamingReplicaScheduler()
+        else:
+            self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
@@ -294,35 +394,78 @@ class Router:
         )
         self.num_router_requests.set_default_tags({"deployment": deployment_name})
 
+        self.num_queued_queries = 0
+        self.num_queued_queries_gauge = metrics.Gauge(
+            "serve_deployment_queued_queries",
+            description=(
+                "The current number of queries to this deployment waiting"
+                " to be assigned to a replica."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+        self.num_queued_queries_gauge.set_default_tags({"deployment": deployment_name})
+
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
                 (
                     LongPollNamespace.RUNNING_REPLICAS,
                     deployment_name,
-                ): self._replica_set.update_running_replicas,
+                ): self._replica_scheduler.update_running_replicas,
             },
             call_in_event_loop=event_loop,
         )
 
-    def get_num_queued_queries(self):
-        return self._replica_set.num_queued_queries
+        # Start the metrics pusher if autoscaling is enabled.
+        self.deployment_name = deployment_name
+        deployment_route = DeploymentRoute.FromString(
+            ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
+        )
+        deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
+        if deployment_info.deployment_config.autoscaling_config:
+            self.metrics_pusher = MetricsPusher(
+                controller_handle.record_handle_metrics.remote,
+                HANDLE_METRIC_PUSH_INTERVAL_S,
+                self._collect_handle_queue_metrics,
+            )
+            self.metrics_pusher.start()
+
+    def _collect_handle_queue_metrics(self) -> Dict[str, int]:
+        return {self.deployment_name: self.num_queued_queries}
 
     async def assign_request(
         self,
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ):
-        """Assign a query and returns an object ref represent the result"""
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        """Assign a query and returns an object ref represent the result."""
 
         self.num_router_requests.inc(
             tags={"route": request_meta.route, "application": request_meta.app_name}
         )
-        return await self._replica_set.assign_replica(
-            Query(
-                args=list(request_args),
-                kwargs=request_kwargs,
-                metadata=request_meta,
-            )
+        self.num_queued_queries += 1
+        self.num_queued_queries_gauge.set(
+            self.num_queued_queries,
+            tags={
+                "application": request_meta.app_name,
+            },
         )
+
+        query = Query(
+            args=list(request_args),
+            kwargs=request_kwargs,
+            metadata=request_meta,
+        )
+        await query.resolve_async_tasks()
+        result = await self._replica_scheduler.assign_replica(query)
+
+        self.num_queued_queries -= 1
+        self.num_queued_queries_gauge.set(
+            self.num_queued_queries,
+            tags={
+                "application": request_meta.app_name,
+            },
+        )
+
+        return result

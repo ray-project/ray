@@ -31,6 +31,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     RunningReplicaInfo,
     ReplicaState,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.schema import (
     DeploymentDetails,
@@ -39,6 +40,10 @@ from ray.serve.schema import (
 )
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
+    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -217,6 +222,7 @@ class ActorReplicaWrapper:
 
         self._pid: int = None
         self._actor_id: str = None
+        self._worker_id: str = None
         if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
             self._node_id = scheduling_strategy.node_id
         else:
@@ -272,24 +278,56 @@ class ActorReplicaWrapper:
             return self._version.deployment_config
 
     @property
-    def max_concurrent_queries(self) -> Optional[int]:
+    def max_concurrent_queries(self) -> int:
         if self.deployment_config:
             return self.deployment_config.max_concurrent_queries
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for max_concurrent_queries"
+            )
+            return DEFAULT_MAX_CONCURRENT_QUERIES
 
     @property
-    def graceful_shutdown_timeout_s(self) -> Optional[float]:
+    def graceful_shutdown_timeout_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.graceful_shutdown_timeout_s
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for graceful_shutdown_timeout_s"
+            )
+            return DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
 
     @property
-    def health_check_period_s(self) -> Optional[float]:
+    def health_check_period_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.health_check_period_s
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for health_check_period_s"
+            )
+            return DEFAULT_HEALTH_CHECK_PERIOD_S
 
     @property
-    def health_check_timeout_s(self) -> Optional[float]:
+    def health_check_timeout_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.health_check_timeout_s
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for health_check_timeout_s"
+            )
+            return DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
     @property
     def pid(self) -> Optional[int]:
@@ -300,6 +338,11 @@ class ActorReplicaWrapper:
     def actor_id(self) -> Optional[str]:
         """Returns the actor id, None if not started."""
         return self._actor_id
+
+    @property
+    def worker_id(self) -> Optional[str]:
+        """Returns the worker id, None if not started."""
+        return self._worker_id
 
     @property
     def node_id(self) -> Optional[str]:
@@ -426,7 +469,8 @@ class ActorReplicaWrapper:
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+            replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
+            self._ready_obj_ref = replica_ready_check_func.remote(
                 deployment_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
@@ -486,7 +530,9 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+            self._ready_obj_ref = (
+                self._actor_handle.initialize_and_get_metadata.remote()
+            )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
@@ -536,6 +582,7 @@ class ActorReplicaWrapper:
                 (
                     self._pid,
                     self._actor_id,
+                    self._worker_id,
                     self._node_id,
                     self._node_ip,
                     self._log_file_path,
@@ -752,6 +799,13 @@ class DeploymentReplica(VersionedReplica):
         self._replica_tag = replica_tag
         self._start_time = None
         self._prev_slow_startup_warning_time = None
+        self._actor_details = ReplicaDetails(
+            actor_name=self._actor._actor_name,
+            replica_id=self._replica_tag,
+            state=ReplicaState.STARTING,
+            start_time_s=0,
+        )
+        self._multiplexed_model_ids: List = []
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
@@ -760,26 +814,20 @@ class DeploymentReplica(VersionedReplica):
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
+            multiplexed_model_ids=self.multiplexed_model_ids,
         )
 
-    def get_replica_details(self, state: ReplicaState) -> ReplicaDetails:
-        """Get replica details.
+    def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
+        """Record the multiplexed model ids for this replica."""
+        self._multiplexed_model_ids = multiplexed_model_ids
 
-        Args:
-            state: The state of the replica, which is not stored within a
-                DeploymentReplica object
-        """
-        return ReplicaDetails(
-            replica_id=self.replica_tag,
-            state=state,
-            pid=self._actor.pid,
-            actor_name=self._actor._actor_name,
-            actor_id=self._actor.actor_id,
-            node_id=self._actor.node_id,
-            node_ip=self._actor.node_ip,
-            start_time_s=self._start_time,
-            log_file_path=self._actor._log_file_path,
-        )
+    @property
+    def multiplexed_model_ids(self) -> List[str]:
+        return self._multiplexed_model_ids
+
+    @property
+    def actor_details(self) -> ReplicaDetails:
+        return self._actor_details
 
     @property
     def replica_tag(self) -> ReplicaTag:
@@ -809,6 +857,7 @@ class DeploymentReplica(VersionedReplica):
         self._actor.start(deployment_info, version)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
+        self.update_actor_details(start_time_s=self._start_time)
 
     def reconfigure(self, version: DeploymentVersion) -> bool:
         """
@@ -826,8 +875,7 @@ class DeploymentReplica(VersionedReplica):
         """
         self._actor.recover()
         self._start_time = time.time()
-        # Replica version is fetched from recovered replica dynamically in
-        # check_started() below
+        self.update_actor_details(start_time_s=self._start_time)
 
     def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """Check if the replica has started. If so, transition to RUNNING.
@@ -838,7 +886,16 @@ class DeploymentReplica(VersionedReplica):
             status: Most recent state of replica by
                 querying actor obj ref
         """
-        return self._actor.check_ready()
+        is_ready = self._actor.check_ready()
+        self.update_actor_details(
+            pid=self._actor.pid,
+            node_id=self._actor.node_id,
+            node_ip=self._actor.node_ip,
+            actor_id=self._actor.actor_id,
+            worker_id=self._actor.worker_id,
+            log_file_path=self._actor.log_file_path,
+        )
+        return is_ready
 
     def stop(self, graceful: bool = True) -> None:
         """Stop the replica.
@@ -878,6 +935,15 @@ class DeploymentReplica(VersionedReplica):
         Returns `True` if the replica is healthy, else `False`.
         """
         return self._actor.check_health()
+
+    def update_state(self, state: ReplicaState) -> None:
+        """Updates state in actor details."""
+        self.update_actor_details(state=state)
+
+    def update_actor_details(self, **kwargs) -> None:
+        details_kwargs = self._actor_details.dict()
+        details_kwargs.update(kwargs)
+        self._actor_details = ReplicaDetails(**details_kwargs)
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -920,6 +986,7 @@ class ReplicaStateContainer:
         """
         assert isinstance(state, ReplicaState)
         assert isinstance(replica, VersionedReplica)
+        replica.update_state(state)
         self._replicas[state].append(replica)
 
     def get(
@@ -1086,6 +1153,10 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
+        # Whether the multiplexed model ids have been updated since the last
+        # time we checked.
+        self._multiplexed_model_ids_updated = False
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1168,11 +1239,7 @@ class DeploymentState:
         ]
 
     def list_replica_details(self) -> List[ReplicaDetails]:
-        return [
-            replica.get_replica_details(state)
-            for state in ReplicaState
-            for replica in self._replicas.get([state])
-        ]
+        return [replica.actor_details for replica in self._replicas.get()]
 
     def _notify_running_replicas_changed(self):
         self._long_poll_host.notify_changed(
@@ -1840,8 +1907,12 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             running_replicas_changed |= self._check_and_update_replicas()
 
+            # Check if the model_id has changed.
+            running_replicas_changed |= self._multiplexed_model_ids_updated
+
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
+                self._multiplexed_model_ids_updated = False
 
             deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
@@ -1852,6 +1923,23 @@ class DeploymentState:
             )
 
         return deleted, any_replicas_recovering
+
+    def record_multiplexed_model_ids(
+        self, replica_name: str, multiplexed_model_ids: List[str]
+    ) -> None:
+        """Records the multiplexed model IDs of a replica.
+
+        Args:
+            replica_name: Name of the replica.
+            multiplexed_model_ids: List of model IDs that replica is serving.
+        """
+        # Find the replica
+        for replica in self._replicas.get():
+            if replica.replica_tag == replica_name:
+                replica.record_multiplexed_model_ids(multiplexed_model_ids)
+                self._multiplexed_model_ids_updated = True
+                return
+        logger.warn(f"Replia {replica_name} not found in deployment {self._name}")
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -2376,4 +2464,21 @@ class DeploymentStateManager:
                 num_gpu_deployments += 1
         record_extra_usage_tag(
             TagKey.SERVE_NUM_GPU_DEPLOYMENTS, str(num_gpu_deployments)
+        )
+
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """
+        Record multiplexed model ids for a multiplexed replica.
+
+        Args:
+            info: Multiplexed replica info including deployment name,
+                replica tag and model ids.
+        """
+        if info.deployment_name not in self._deployment_states:
+            logger.error(
+                f"Deployment {info.deployment_name} not found in state manager."
+            )
+            return
+        self._deployment_states[info.deployment_name].record_multiplexed_model_ids(
+            info.replica_tag, info.model_ids
         )

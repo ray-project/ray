@@ -12,6 +12,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
+from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
@@ -88,6 +89,7 @@ class TorchPolicyV2(Policy):
         # Create model.
         if self.config.get("_enable_rl_module_api", False):
             model = self.make_rl_module()
+
             dist_class = None
         else:
             model, dist_class = self._init_model_and_dist_class()
@@ -620,20 +622,35 @@ class TorchPolicyV2(Policy):
                 if self.config.get("_enable_rl_module_api", False):
                     if in_training:
                         output = self.model.forward_train(input_dict)
+                        action_dist_cls = self.model.get_train_action_dist_cls()
+                        if action_dist_cls is None:
+                            raise ValueError(
+                                "The RLModules must provide an appropriate action "
+                                "distribution class for training if is_eval_mode is "
+                                "False."
+                            )
                     else:
-                        self.model.eval()
                         output = self.model.forward_exploration(input_dict)
+                        action_dist_cls = self.model.get_exploration_action_dist_cls()
+                        if action_dist_cls is None:
+                            raise ValueError(
+                                "The RLModules must provide an appropriate action "
+                                "distribution class for exploration if is_eval_mode is "
+                                "True."
+                            )
 
-                    action_dist = output.get(SampleBatch.ACTION_DIST)
-
-                    if action_dist is None:
+                    action_dist_inputs = output.get(
+                        SampleBatch.ACTION_DIST_INPUTS, None
+                    )
+                    if action_dist_inputs is None:
                         raise ValueError(
-                            "The model output must contain the key "
-                            "`SampleBatch.ACTION_DIST` when using the RL module API."
-                            "Make sure if is_eval_mode is True the forward_exploration "
-                            "returns this key, and if it is False the forward_train "
-                            "returns this key."
+                            "The RLModules must provide inputs to create the action "
+                            "distribution. These should be part of the output of the "
+                            "appropriate forward method under the key "
+                            "SampleBatch.ACTION_DIST_INPUTS."
                         )
+
+                    action_dist = action_dist_cls.from_logits(action_dist_inputs)
                 else:
                     dist_class = self.dist_class
                     dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
@@ -944,7 +961,10 @@ class TorchPolicyV2(Policy):
     @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
         weights = convert_to_torch_tensor(weights, device=self.device)
-        self.model.load_state_dict(weights)
+        if self.config.get("_enable_rl_module_api", False):
+            self.model.set_state(weights)
+        else:
+            self.model.load_state_dict(weights)
 
     @override(Policy)
     @DeveloperAPI
@@ -1127,9 +1147,10 @@ class TorchPolicyV2(Policy):
                 actions = action_dist.sample()
                 logp = None
 
-            state_out = fwd_out.pop("state_out", {})
+            # Anything but actions and state_out is an extra fetch.
+            state_out = fwd_out.pop(STATE_OUT, {})
             extra_fetches = fwd_out
-            dist_inputs = None
+            dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         elif is_overridden(self.action_sampler_fn):
             action_dist = None
             actions, logp, dist_inputs, state_out = self.action_sampler_fn(
