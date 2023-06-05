@@ -1,3 +1,16 @@
+"""
+[1] Mastering Diverse Domains through World Models - 2023
+D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
+https://arxiv.org/pdf/2301.04104v1.pdf
+
+[2] Mastering Atari with Discrete World Models - 2021
+D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
+https://arxiv.org/pdf/2010.02193.pdf
+
+[3]
+D. Hafner's (author) original code repo (for JAX):
+https://github.com/danijar/dreamerv3
+"""
 import unittest
 
 import gymnasium as gym
@@ -66,31 +79,105 @@ class TestDreamerV3(unittest.TestCase):
     def test_dreamerv3_dreamer_model_sizes(self):
         """Tests, whether the different model sizes match the ones reported in [1]."""
 
+        # For Atari, these are the exact numbers from the repo ([3]).
+        # However, for CartPole + size "S" and "M", the author's original code will not
+        # match on the world model count. This is due to the fact that the
+        # encoder/decoder nets use 5x1024 nodes regardless of the `model_size`
+        # settings (iff >="S").
+        expected_num_params_world_model = {
+            "XS_cartpole": 2435076,
+            "S_cartpole": 7493380,
+            "M_cartpole": 16206084,
+            "XS_atari": 7538979,
+            "S_atari": 15687811,
+            "M_atari": 32461635,
+        }
+
+        # All values confirmed against [3] (100% match).
+        expected_num_params_actor = {
+            # hidden=[1280, 256]
+            # hidden_norm=[256], [256]
+            # pi (2 actions)=[256, 2], [2]
+            "XS_cartpole": 328706,
+            "S_cartpole": 1051650,
+            "M_cartpole": 2135042,
+            "XS_atari": 329734,
+            "S_atari": 1053702,
+            "M_atari": 2137606,
+        }
+
+        # All values confirmed against [3] (100% match).
+        expected_num_params_critic = {
+            # hidden=[1280, 256]
+            # hidden_norm=[256], [256]
+            # vf (buckets)=[256, 255], [255]
+            "XS_cartpole": 393727,
+            "S_cartpole": 1181439,
+            "M_cartpole": 2297215,
+            "XS_atari": 393727,
+            "S_atari": 1181439,
+            "M_atari": 2297215,
+        }
+
         config = (
             dreamerv3.DreamerV3Config()
-            .environment(
-                observation_space=gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32),
-                action_space=gym.spaces.Discrete(6),
-            )
-            .framework("tf2", eager_tracing=False)
+            .framework("tf2", eager_tracing=True)
             .training(
                 model={
-                    "batch_size_B": 16,
-                    "batch_length_T": 64,
-                    "horizon_H": 15,
-                    "model_size": "XS",
+                    "batch_size_B": 2,
+                    "batch_length_T": 16,
+                    "horizon_H": 5,
                     "gamma": 0.997,
                     "training_ratio": 512,
                     "symlog_obs": True,
                 }
             )
         )
-        # Create our RLModule to compute actions with.
-        policy_dict, _ = config.get_multi_agent_setup()
-        module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
-        rl_module = module_spec.build()[DEFAULT_POLICY_ID]
-        # Count the generated RLModule's parameters and compare to the paper's reported
-        # numbers.
+
+        for model_size in ["S", "XS", "M"]:
+            config.model_size = model_size
+            config.model.update({
+                "model_size": model_size,
+            })
+
+            # Atari and CartPole spaces.
+            for obs_space, num_actions, env_name in [
+                (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
+                (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
+            ]:
+                config.environment(
+                    observation_space=obs_space,
+                    action_space=gym.spaces.Discrete(num_actions),
+                )
+
+                # Create our RLModule to compute actions with.
+                policy_dict, _ = config.get_multi_agent_setup()
+                module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
+                rl_module = module_spec.build()[DEFAULT_POLICY_ID]
+
+                # Count the generated RLModule's parameters and compare to the paper's
+                # reported numbers ([1] and [3]).
+                num_params_world_model = sum(
+                    np.prod(v.shape.as_list()) for v in rl_module.world_model.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_world_model,
+                    expected_num_params_world_model[f"{model_size}_{env_name}"],
+                )
+                num_params_actor = sum(
+                    np.prod(v.shape.as_list()) for v in rl_module.actor.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_actor,
+                    expected_num_params_actor[f"{model_size}_{env_name}"],
+                )
+                num_params_critic = sum(
+                    np.prod(v.shape.as_list()) for v in rl_module.critic.trainable_variables
+                )
+                self.assertEqual(
+                    num_params_critic,
+                    expected_num_params_critic[f"{model_size}_{env_name}"],
+                )
 
 
 if __name__ == "__main__":
