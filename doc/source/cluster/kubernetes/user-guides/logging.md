@@ -151,7 +151,7 @@ By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` direc
 
 ```{admonition} Alert
 :class: caution
-There are known issues with this feature. For example, it may break features like {ref}`log redirection to driver <log-redirection-to-driver>`. If those features are wanted, use the {ref}`Fluent Bit solution <kuberay-fluentbit>` above.
+There are known issues with this feature. For example, it may break features like {ref}`Worker log redirection to Driver <log-redirection-to-driver>`. If those features are wanted, use the {ref}`Fluent Bit solution <kuberay-fluentbit>` above.
 
 For Clusters on VMs, do not redirect logs to stderr. Follow {ref}`this guide <vm-logging>` to persist logs.
 ```

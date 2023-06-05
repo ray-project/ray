@@ -47,9 +47,9 @@ When you need more verbose info about each node, run ``ray status -v``. This is 
 Ray State CLI and SDK
 ----------------------------
 
-.. tip:: We'd love to hear your feedback on using Ray state APIs - `feedback form <https://forms.gle/gh77mwjEskjhN8G46>`_!
+.. tip:: Provide feedback on using Ray state APIs - `feedback form <https://forms.gle/gh77mwjEskjhN8G46>`_!
 
-Use Ray State APIs to access the current state (snapshot) of Ray through a CLI or Python SDK (developer APIs).
+Use Ray State APIs to access the current state (snapshot) of Ray through the CLI or Python SDK (developer APIs).
 
 .. note::
 

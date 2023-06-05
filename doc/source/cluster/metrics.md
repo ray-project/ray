@@ -175,7 +175,7 @@ If you need to process and export metrics into other storage or management syste
 To visualize and monitor collected metrics, there are 3 common paths:
 
 1. **Simplist**: Use Grafana with Ray-provided configurations, which include default Grafana dashboards showing some of the most valuable metrics for debugging Ray applications.
-2. **Recommended**: Use Ray Dashboard which embeds Grafana visualizations and look at metrics together with logs, job info and so on in a single pane of glass.
+2. **Recommended**: Use Ray Dashboard which embeds Grafana visualizations and look at metrics together with logs, Job info and so on in a single pane of glass.
 3. **Manual**: Set up Grafana or other tools like CloudWatch, Cloud Monitoring, and Datadog from scratch.
 
 Here are some instructions for each of the paths:
@@ -214,6 +214,17 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 ![grafana login](images/graphs.png)
 
+#### Troubleshooting
+
+##### Using Ray configurations in Grafana with Homebrew on macOS X
+
+Homebrew installs Grafana as a service that is automatically launched for you.
+Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
+
+Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
+
+You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
+
 :::
 
 :::{tab-item} Using an existing Grafana server
@@ -231,18 +242,6 @@ If Grafana reports that datasource is not found, [add a datasource variable](htt
 :::
 
 ::::
-
-
-#### Troubleshooting
-
-##### Using Ray configurations in Grafana with Homebrew on macOS X
-
-Homebrew installs Grafana as a service that is automatically launched for you.
-Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
-
-Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
-
-You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
 
 
 

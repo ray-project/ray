@@ -29,7 +29,7 @@ In Ray, there are 3 types of failures. See exception APIs for more details.
 - **Intentional system failures**: This means Ray is failed, but the failure is intended. For example, when you call cancellation APIs like ``ray.cancel`` (for task) or ``ray.kill`` (for actors), the system fails remote tasks and actors, but it is intentional.
 - **Unintended system failures**: This means the remote tasks and actors failed due to unexpected system failures such as processes crashing (for example, by out-of-memory error) or nodes failing.
 
-  1. `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_ or :ref:`Ray OOM killer <ray-oom-monitor>` kills processes with high memory usages to avoid out-of-memory.
+  1. `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_ or :ref:`Ray Memory Monitor <ray-oom-monitor>` kills processes with high memory usages to avoid out-of-memory.
   2. The machine shuts down (e.g., spot instance termination) or a :term:`raylet <raylet>` is crashed (e.g., by an unexpected failure). 
   3. System is highly overloaded or stressed (either machine or system components like Raylet or :term:`GCS <GCS / Global Control Service>`), which makes the system unstable and fail.
 
@@ -43,22 +43,22 @@ print
 ~~~~~
 
 ``print`` debugging is one of the most common ways to debug Python programs. 
-:ref:`Ray's task and actor logs are printed to the Ray driver <ray-worker-logs>` by default, 
+:ref:`Ray's Task and Actor logs are printed to the Ray Driver <ray-worker-logs>` by default, 
 which allows you to simply use the ``print`` function to debug the application failures.
 
 Debugger
 ~~~~~~~~
 
 Many Python developers use a debugger to debug Python programs, and `Python pdb <https://docs.python.org/3/library/pdb.html>`_) is one of the popular choices.
-Ray has native integration to ``pdb``. You can simply add ``breakpoint()`` to actors and tasks code to enable ``pdb``. View :ref:`Ray Debugger <ray-debugger>` for more details.
+Ray has native integration to ``pdb``. You can simply add ``breakpoint()`` to Actors and Tasks code to enable ``pdb``. View :ref:`Ray Debugger <ray-debugger>` for more details.
 
 
 Running out of file descriptors (``Too may open files``)
 --------------------------------------------------------
 
 In a Ray cluster, arbitrary two system components can communicate with each other and make 1 or more connections.
-For example, some workers may need to communicate with GCS to schedule actors (worker <-> GCS connection).
-Your driver can invoke actor methods (worker <-> worker connection).
+For example, some workers may need to communicate with GCS to schedule Actors (worker <-> GCS connection).
+Your Driver can invoke Actor methods (worker <-> worker connection).
 
 Ray can support 1000s of raylets and 10000s of worker processes. When a Ray cluster gets larger, 
 each component can have an increasing number of network connections which requires file descriptors. 
@@ -109,7 +109,6 @@ View :ref:`debugging memory issues <ray-core-mem-profiling>` for more details.
 
 
 This document discusses some common problems that people run into when using Ray
-as well as some known problems. If you encounter other problems, please
-`let us know`_.
+as well as some known problems. If you encounter other problems, `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues

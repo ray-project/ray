@@ -47,14 +47,12 @@ application! The most common reasons are the following.
   despite needing ``torch.set_num_threads(1)`` to be called to avoid contention.
 
 If you are still experiencing a slowdown, but none of the above problems apply,
-we'd really like to know! Please create a `GitHub issue`_ and consider
-submitting a minimal code example that demonstrates the problem.
+we'd really like to know! Create a `GitHub issue`_ and Submit a minimal code example that demonstrates the problem.
 
 .. _`Github issue`: https://github.com/ray-project/ray/issues
 
 This document discusses some common problems that people run into when using Ray
-as well as some known problems. If you encounter other problems, please
-`let us know`_.
+as well as some known problems. If you encounter other problems, `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues
 
@@ -197,9 +195,7 @@ Profiling Ray Actors with cProfile
 Considering that the detailed output of cProfile can be quite different depending
 on what Ray functionalities we use, let us see what cProfile's output might look
 like if our example involved Actors (for an introduction to Ray actors, see our
-`Actor documentation here`_).
-
-.. _`Actor documentation here`: http://docs.ray.io/en/master/actors.html
+:ref:`Actor documentation <actor-guide>`).
 
 Now, instead of looping over five calls to a remote function like in ``ex1``,
 let's create a new example and loop over five calls to a remote function
