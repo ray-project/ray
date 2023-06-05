@@ -40,6 +40,10 @@ from ray.serve.schema import (
 )
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
+    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -274,24 +278,56 @@ class ActorReplicaWrapper:
             return self._version.deployment_config
 
     @property
-    def max_concurrent_queries(self) -> Optional[int]:
+    def max_concurrent_queries(self) -> int:
         if self.deployment_config:
             return self.deployment_config.max_concurrent_queries
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for max_concurrent_queries"
+            )
+            return DEFAULT_MAX_CONCURRENT_QUERIES
 
     @property
-    def graceful_shutdown_timeout_s(self) -> Optional[float]:
+    def graceful_shutdown_timeout_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.graceful_shutdown_timeout_s
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for graceful_shutdown_timeout_s"
+            )
+            return DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
 
     @property
-    def health_check_period_s(self) -> Optional[float]:
+    def health_check_period_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.health_check_period_s
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for health_check_period_s"
+            )
+            return DEFAULT_HEALTH_CHECK_PERIOD_S
 
     @property
-    def health_check_timeout_s(self) -> Optional[float]:
+    def health_check_timeout_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.health_check_timeout_s
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for health_check_timeout_s"
+            )
+            return DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
     @property
     def pid(self) -> Optional[int]:
@@ -433,7 +469,8 @@ class ActorReplicaWrapper:
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+            replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
+            self._ready_obj_ref = replica_ready_check_func.remote(
                 deployment_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
@@ -493,7 +530,9 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+            self._ready_obj_ref = (
+                self._actor_handle.initialize_and_get_metadata.remote()
+            )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
