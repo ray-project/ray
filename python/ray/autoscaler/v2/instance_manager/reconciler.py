@@ -197,7 +197,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
     def _handle_ray_failure(self) -> int:
         failing_instances, _ = self._instance_storage.get_instances(
             status_filter={Instance.ALLOCATED},
-            ray_status_filter={Instance.RAY_FAILED, Instance.RAY_INSTALL_FAILED},
+            ray_status_filter={Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED},
         )
         if not failing_instances:
             logger.info("No ray failure")

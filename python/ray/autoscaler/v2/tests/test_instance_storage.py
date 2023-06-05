@@ -232,8 +232,8 @@ def test_delete():
         InstanceUpdateEvent("instance1", Instance.UNKNOWN),
         InstanceUpdateEvent("instance2", Instance.UNKNOWN),
         InstanceUpdateEvent("instance3", Instance.UNKNOWN),
-        InstanceUpdateEvent("instance1", Instance.GARAGE_COLLECTED),
-        InstanceUpdateEvent("instance2", Instance.GARAGE_COLLECTED),
+        InstanceUpdateEvent("instance1", Instance.GARBAGE_COLLECTED),
+        InstanceUpdateEvent("instance2", Instance.GARBAGE_COLLECTED),
     ]
 
 
