@@ -131,7 +131,8 @@ def _gym_env_creator(
         # If class provided, call constructor directly.
         if isinstance(env_descriptor, type):
             env = env_descriptor(env_context)
-        env = gym.make(env_descriptor, **env_context)
+        else:
+            env = gym.make(env_descriptor, **env_context)
         # If we are dealing with an old gym-env API, use the provided compatibility
         # wrapper.
         if auto_wrap_old_gym_envs:

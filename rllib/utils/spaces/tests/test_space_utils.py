@@ -35,18 +35,18 @@ class TestSpaceUtils(unittest.TestCase):
             }
         )
 
-        box_space_uncoverted = box_space.sample().astype(np.float64)
+        box_space_unconverted = box_space.sample().astype(np.float64)
         multi_discrete_unconverted = multi_discrete_space.sample().astype(np.int32)
         multi_binary_unconverted = multi_binary_space.sample().astype(np.int32)
-        tuple_unconverted = (box_space_uncoverted, float(0))
+        tuple_unconverted = (box_space_unconverted, float(0))
         modified_element = {
-            "box": box_space_uncoverted,
+            "box": box_space_unconverted,
             "discrete": float(0),
             "multi_discrete": multi_discrete_unconverted,
             "multi_binary": multi_binary_unconverted,
             "tuple_space": tuple_unconverted,
             "dict_space": {
-                "box2": box_space_uncoverted,
+                "box2": box_space_unconverted,
                 "discrete2": float(0),
             },
         }
