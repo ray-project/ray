@@ -392,7 +392,7 @@ The Events view displays a list of events associated with a specific type (e.g.,
 
 Two types of events are available:
 
-- Job: Events related to :ref:`Ray job submission APIs <jobs-quickstart>`.
+- Job: Events related to :ref:`Ray Jobs API <jobs-quickstart>`.
 - Autoscaler: Events related to the :ref:`Ray autoscaler <cluster-autoscaler>`.
 
 Resources
