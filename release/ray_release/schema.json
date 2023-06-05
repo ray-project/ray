@@ -114,7 +114,6 @@
 				}
 			},
 			"required": [
-				"type"
 			],
 			"title": "Byod"
 		},
