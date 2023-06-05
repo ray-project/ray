@@ -351,7 +351,7 @@ class RuntimeContext(object):
         Returns:
             The handle of current actor.
         """
-        if self.actor_id is None:
+        if self.get_actor_id() is None:
             raise RuntimeError("This method is only available in an actor.")
         worker = self.worker
         worker.check_connected()
