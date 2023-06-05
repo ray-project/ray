@@ -206,7 +206,7 @@ def create_replica_wrapper(name: str):
             self.replica = None
             self._initialize_replica = initialize_replica
 
-            # Used to make sure only one single init task happen.
+            # Used to guard `initialize_replica` so that it isn't called twice.
             self._replica_init_lock = asyncio.Lock()
 
         @ray.method(num_returns=2)
@@ -308,7 +308,7 @@ def create_replica_wrapper(name: str):
                 get_component_logger_file_path(),
             )
 
-        async def initialized_and_get_metadata(
+        async def initialize_and_get_metadata(
             self,
             deployment_config: DeploymentConfig = None,
             _after: Optional[Any] = None,
@@ -316,6 +316,8 @@ def create_replica_wrapper(name: str):
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             try:
+                # Ensure that initialization is only performed once.
+                # When controller restarts, it will call this method again.
                 async with self._replica_init_lock:
                     if not self._initialized:
                         await self._initialize_replica()

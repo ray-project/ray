@@ -48,12 +48,12 @@ class FakeRemoteFunction:
 class MockActorHandle:
     def __init__(self):
         self._actor_id = "fake_id"
-        self.initialized_and_get_metadata_called = False
+        self.initialize_and_get_metadata_called = False
         self.is_allocated_called = False
 
     @property
-    def initialized_and_get_metadata(self):
-        self.initialized_and_get_metadata_called = True
+    def initialize_and_get_metadata(self):
+        self.initialize_and_get_metadata_called = True
         # return a mock object so that we can call `remote()` on it.
         return FakeRemoteFunction()
 
@@ -2406,7 +2406,7 @@ class TestActorReplicaWrapper:
         )
         actor_replica._actor_handle = MockActorHandle()
         actor_replica.recover()
-        assert actor_replica._actor_handle.initialized_and_get_metadata_called
+        assert actor_replica._actor_handle.initialize_and_get_metadata_called
         assert actor_replica._actor_handle.is_allocated_called
 
 
