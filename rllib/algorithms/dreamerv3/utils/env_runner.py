@@ -402,12 +402,18 @@ class DreamerV3EnvRunner(EnvRunner):
                         is_terminated=terminateds[i],
                         is_truncated=truncateds[i],
                     )
+                    done_episodes_to_return.append(episodes[i])
+
+                    # Also early-out if we reach the number of episodes within this
+                    # for-loop.
+                    if eps == num_episodes:
+                        break
+
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
                     for k, v in self.rl_module.get_initial_state().items():
                         states[k][i] = v.numpy()
                     is_first[i] = True
-                    done_episodes_to_return.append(episodes[i])
 
                     episodes[i] = Episode(
                         observations=[obs[i]],
