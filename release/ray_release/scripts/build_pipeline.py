@@ -186,6 +186,8 @@ def main(
         or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
         or (branch.startswith("releases/") and buildkite_branch.startswith("releases/"))
     )
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        env["REPORT_TO_RAY_TEST_DB"] = "1"
 
     steps = []
     for group in sorted(grouped_tests):

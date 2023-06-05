@@ -1,3 +1,4 @@
+import enum
 import os
 import json
 import time
@@ -5,8 +6,13 @@ from typing import Optional, List
 from dataclasses import dataclass
 
 import boto3
+from botocore.exceptions import ClientError
 
-from ray_release.result import Result
+from ray_release.result import (
+    ResultStatus,
+    Result,
+)
+from ray_release.logger import logger
 
 AWS_BUCKET = "ray-ci-results"
 AWS_TEST_KEY = "ray_tests"
@@ -17,6 +23,16 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
+
+
+class TestState(enum.Enum):
+    """
+    Overall state of the test
+    """
+
+    JAILED = "jailed"
+    FAILING = "failing"
+    PASSING = "passing"
 
 
 @dataclass
@@ -43,6 +59,12 @@ class TestResult:
             url=result["url"],
             timestamp=result["timestamp"],
         )
+
+    def is_failing(self) -> bool:
+        return not self.is_passing()
+
+    def is_passing(self) -> bool:
+        return self.status == ResultStatus.SUCCESS.value
 
 
 class Test(dict):
@@ -79,6 +101,38 @@ class Test(dict):
         Returns the name of the test.
         """
         return self["name"]
+
+    def update_from_s3(self) -> None:
+        """
+        Update test object with data field from s3
+        """
+        try:
+            data = (
+                boto3.client("s3")
+                .get_object(
+                    Bucket=AWS_BUCKET,
+                    Key=f"{AWS_TEST_KEY}/{self.get_name()}.json",
+                )
+                .get("Body")
+                .read()
+                .decode("utf-8")
+            )
+        except ClientError as e:
+            logger.warning(f"Failed to update data for {self.get_name()} from s3:  {e}")
+            return
+        self.update(json.loads(data))
+
+    def get_state(self) -> TestState:
+        """
+        Returns the state of the test.
+        """
+        return TestState(self.get("state", TestState.PASSING.value))
+
+    def set_state(self, state: TestState) -> None:
+        """
+        Sets the state of the test.
+        """
+        self["state"] = state.value
 
     def get_python_version(self) -> str:
         """
