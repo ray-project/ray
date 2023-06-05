@@ -24,7 +24,7 @@ ppo-breakoutnoframeskip-v5:
         sgd_minibatch_size: 500
         num_sgd_iter: 10
         num_workers: 30
-        # Run with Learner- and RLModule API (new stack).
+        # Run without Learner- and RLModule API (new stack).
         _enable_learner_api: false
         _enable_rl_module_api: false
         num_envs_per_worker: 1
