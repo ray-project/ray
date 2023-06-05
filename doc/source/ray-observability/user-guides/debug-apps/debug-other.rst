@@ -1,7 +1,7 @@
-.. _gotchas:
+.. _observability-debug-other:
 
-Ray Gotchas
-===========
+Debugging Other Issues
+======================
 
 Ray sometimes has some aspects of its behavior that might catch
 users off guard. There may be sound arguments for these design choices.
