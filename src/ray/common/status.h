@@ -115,7 +115,7 @@ enum class StatusCode : char {
   ObjectUnknownOwner = 29,
   RpcError = 30,
   OutOfResource = 31,
-  ObjectRefEndOfstream = 32,
+  ObjectRefEndOfStream = 32,
   AuthError = 33,
 };
 

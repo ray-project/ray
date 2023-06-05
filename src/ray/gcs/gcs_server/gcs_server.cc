@@ -554,7 +554,7 @@ void GcsServer::InitUsageStatsClient() {
   // GCS client inside the UsageStatsClient will not be answered by GCS server.
   usage_stats_client_ =
       std::make_unique<UsageStatsClient>("127.0.0.1:" + std::to_string(GetPort()),
-                                         client_service_,
+                                         main_service_,
                                          rpc_server_.GetClusterTokenFuture().get());
 }
 

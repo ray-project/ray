@@ -88,7 +88,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service,
-                         ClusterID const &cluster_id = ClusterID::Nil());
+                         const ClusterID &cluster_id = ClusterID::Nil());
 
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect();
