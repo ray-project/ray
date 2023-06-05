@@ -4247,6 +4247,14 @@ py_test(
     args = ["--framework=tf2", "--config=multi-gpu-ddp"]
 )
 
+py_test(
+    name = "examples/learner/train_w_bc_finetune_w_ppo",
+    main = "examples/learner/train_w_bc_finetune_w_ppo.py",
+    tags = ["team:rllib", "examples", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learner/train_w_bc_finetune_w_ppo.py"],
+)
+
 # --------------------------------------------------------------------
 # examples/documentation directory
 #
