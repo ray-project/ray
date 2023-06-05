@@ -1,4 +1,5 @@
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
@@ -24,11 +25,16 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         head_node_ip: str,
         instance_storage: InstanceStorage,
         node_provider: NodeProvider,
+        reconciler_interval_s: int = 120,
     ) -> None:
         self._head_node_ip = head_node_ip
         self._instance_storage = instance_storage
         self._node_provider = node_provider
-        self._reconciler_executor = ThreadPoolExecutor(max_workers=1)
+        self._failure_handling_executor = ThreadPoolExecutor(max_workers=1)
+        self._reconcile_timer = threading.Timer(
+            reconciler_interval_s, self._reconcile_with_node_provider
+        )
+        self._reconcile_timer.start()
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         if any(
@@ -37,7 +43,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
             in [Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED]
             for event in events
         ):
-            self._reconciler_executor.submit(self._handle_ray_failure)
+            self._failure_handling_executor.submit(self._handle_ray_failure)
 
     def _handle_ray_failure(self) -> int:
         failing_instances, _ = self._instance_storage.get_instances(
