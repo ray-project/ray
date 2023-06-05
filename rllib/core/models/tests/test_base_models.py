@@ -3,13 +3,13 @@ from dataclasses import dataclass
 
 import gymnasium as gym
 
-from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.checker import SpecCheckingError
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.torch.base import TorchModel
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog

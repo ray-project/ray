@@ -76,30 +76,20 @@ class PPOCatalog(Catalog):
             shared=self.model_config_dict["vf_share_layers"],
         )
 
-        post_fcnet_hiddens = self.model_config_dict["post_fcnet_hiddens"]
-        post_fcnet_activation = self.model_config_dict["post_fcnet_activation"]
+        self.pi_and_vf_head_hiddens = self.model_config_dict["post_fcnet_hiddens"]
+        self.pi_and_vf_head_activation = self.model_config_dict["post_fcnet_activation"]
 
-        pi_head_config_class = (
-            FreeLogStdMLPHeadConfig
-            if self.model_config_dict["free_log_std"]
-            else MLPHeadConfig
-        )
-        self.pi_head_config = pi_head_config_class(
-            input_dims=self.latent_dims,
-            hidden_layer_dims=post_fcnet_hiddens,
-            hidden_layer_activation=post_fcnet_activation,
-            output_activation="linear",
-            # We don't know the output dimension yet, because it depends on the
-            # action distribution input dimension.
-            output_dims=None,
-        )
+        # We don't have the exact (framework specific) action dist class yet and thus
+        # cannot determine the exact number of output nodes (action space) required.
+        # -> Build pi config only in the `self.build_pi_head` method.
+        self.pi_head_config = None
 
         self.vf_head_config = MLPHeadConfig(
             input_dims=self.latent_dims,
-            hidden_layer_dims=post_fcnet_hiddens,
-            hidden_layer_activation=post_fcnet_activation,
-            output_activation="linear",
-            output_dims=[1],
+            hidden_layer_dims=self.pi_and_vf_head_hiddens,
+            hidden_layer_activation=self.pi_and_vf_head_activation,
+            output_layer_activation="linear",
+            output_layer_dim=1,
         )
 
     def build_actor_critic_encoder(self, framework: str) -> ActorCriticEncoder:
@@ -142,14 +132,28 @@ class PPOCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        required_output_dim = action_distribution_cls.required_input_dim(
-            space=self.action_space, model_config=self.model_config_dict
-        )
-        self.pi_head_config.output_dims = (required_output_dim,)
         if self.model_config_dict["free_log_std"]:
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
             )
+        required_output_dim = action_distribution_cls.required_input_dim(
+            space=self.action_space, model_config=self.model_config_dict
+        )
+        # Now that we have the action dist class and number of outputs, we can define
+        # our pi-config and build the pi head.
+        pi_head_config_class = (
+            FreeLogStdMLPHeadConfig
+            if self.model_config_dict["free_log_std"]
+            else MLPHeadConfig
+        )
+        self.pi_head_config = pi_head_config_class(
+            input_dims=self.latent_dims,
+            hidden_layer_dims=self.pi_and_vf_head_hiddens,
+            hidden_layer_activation=self.pi_and_vf_head_activation,
+            output_layer_dim=required_output_dim,
+            output_layer_activation="linear",
+        )
+
         return self.pi_head_config.build(framework=framework)
 
     def build_vf_head(self, framework: str) -> Model:

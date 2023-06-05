@@ -12,7 +12,6 @@ from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.models.base import (
-    ModelConfig,
     Encoder,
     STATE_IN,
     ENCODER_OUT,
@@ -23,7 +22,11 @@ from ray.rllib.core.models.catalog import (
     _multi_action_dist_partial_helper,
     _multi_categorical_dist_partial_helper,
 )
-from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.core.models.configs import (
+    MLPEncoderConfig,
+    ModelConfig,
+    CNNEncoderConfig,
+)
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
@@ -63,11 +66,15 @@ class TestCatalog(unittest.TestCase):
         convert_method = (
             tf.convert_to_tensor if framework == "tf2" else convert_to_torch_tensor
         )
-        # In order to stay backward compatible, we default to fcnet_hiddens[-1].
-        # See MODEL_DEFAULTS for more details
-        latent_dim = model_config_dict.get(
-            "latent_dim", model_config_dict["fcnet_hiddens"][-1]
-        )
+        expected_latent_dim = model_config_dict.get("latent_dim")
+        if expected_latent_dim is None:
+            # For CNNEncoders, `output_dims` are computed automatically.
+            if isinstance(model.config, CNNEncoderConfig):
+                expected_latent_dim = model.config.output_dims[0]
+            # In order to stay backward compatible, we default to fcnet_hiddens[-1].
+            # See MODEL_DEFAULTS for more details
+            else:
+                expected_latent_dim = model_config_dict["fcnet_hiddens"][-1]
         observations = convert_method(
             get_dummy_batch_for_space(input_space, batch_size=32)
         )
@@ -82,7 +89,7 @@ class TestCatalog(unittest.TestCase):
         }
         outputs = model(inputs)
 
-        self.assertEqual(outputs[ENCODER_OUT].shape, (32, latent_dim))
+        self.assertEqual(outputs[ENCODER_OUT].shape, (32, expected_latent_dim))
         if STATE_OUT in outputs:
             tree.map_structure_with_path(
                 lambda p, v: (
@@ -447,7 +454,6 @@ class TestCatalog(unittest.TestCase):
                 self.latent_dims = (10,)
                 self.encoder_config = MyCostumTorchEncoderConfig(
                     input_dims=self.observation_space.shape,
-                    output_dims=self.latent_dims,
                 )
 
         spec = SingleAgentRLModuleSpec(
