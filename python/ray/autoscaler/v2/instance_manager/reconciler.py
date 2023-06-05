@@ -15,7 +15,11 @@ from ray.core.generated.instance_manager_pb2 import Instance
 logger = logging.getLogger(__name__)
 
 
-PENDING_INSTANCE_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
+PENDING_START_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
+STARTING_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
+ALIVE_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
+STOPPING_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
+STOPPED_STATUS = {Instance.INSTANCE_STATUS_UNSPECIFIED}
 
 
 class InstanceReconciler(InstanceUpdatedSuscriber):
@@ -50,7 +54,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
             status_filter={Instance.INSTANCE_STATUS_UNSPECIFIED}
         )
         if not queued_instances:
-            logger.info("No queued instances to launch")
+            logger.debug("No queued instances to launch")
             return
 
         instances_by_type = defaultdict(list)
@@ -125,14 +129,12 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
     def _install_ray_on_single_node(self, instance: Instance) -> None:
         instance.state = Instance.RAY_INSTALLING
         self._instance_storage.upsert_instances([instance], expected_version=None)
-        try:
-            self._ray_installer.install_ray_on_node(instance, self._head_node_ip)
-        except Exception:
+        if not self._ray_installer.install_ray(instance, self._head_node_ip):
             instance.state = Instance.RAY_INSTALL_FAILED
             self._instance_storage.upsert_instances([instance], expected_version=None)
-            raise
-        instance.state = Instance.RUNNING
-        self._instance_storage.upsert_instances([instance], expected_version=None)
+        else:
+            instance.state = Instance.RUNNING
+            self._instance_storage.upsert_instances([instance], expected_version=None)
 
     def _terminate_failing_nodes(self) -> int:
         failling_instances, storage_version = self._instance_storage.get_instances(
@@ -168,16 +170,25 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         pass
 
     def _reconcile_with_node_provider(self) -> None:
+        # main reconcile loop.
+        #
+        # 1. reconcile the difference between cloud provider and storage.
+        # 2. launch new instances.
+        # 3. detect leaked instances.
         none_terminated_cloud_instances = self._node_provider.get_non_terminated_nodes()
         instances, _ = self._instance_storage.get_instances()
         for instance in instances.values():
             self._reconcile_single_intance(instance, none_terminated_cloud_instances)
 
+        self._launch_new_instances()
+
         # dealing with leaked intances.
         self._reconcile_leaked_instances(none_terminated_cloud_instances)
 
     def _reconcile_single_intance(
-        self, storage_instance: Instance, cloud_instance_by_id: Dict[str, Instance]
+        self,
+        storage_instance: Instance,
+        none_terminated_cloud_instance_by_id: Dict[str, Instance],
     ) -> None:
         """Reconcile the instance state with the cloud instance state.
 
@@ -186,24 +197,27 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
             cloud_instance_by_id: A dictionary of cloud instances keyed by
             cloud_instance_id.
         """
-        # if the instance doesn't have cloud_instance_id, it means it is not
-        # launched yet, or it is already terminated.
+        # if the instance doesn't have cloud_instance_id, it means it is either not
+        # launched yet, or it is already being terminated.
         if not storage_instance.cloud_instance_id:
-            assert storage_instance.state in PENDING_INSTANCE_STATUS
+            assert storage_instance.state in PENDING_START_STATUS
             return
 
-        cloud_instance = cloud_instance_by_id.pop(
+        cloud_instance = none_terminated_cloud_instance_by_id.pop(
             storage_instance.cloud_instance_id, None
         )
-        # if the cloud instance is not found, it means the instance is already
+        # if the cloud instance is not found, it means the instance is already being
+        # terminated.
         if cloud_instance is None:
             logging.info(f"Instance is not found in cloud provider, {storage_instance}")
+
+            assert storage_instance.state not in PENDING_START_STATUS
+
             # TODO: we should log error if the instance is not expected to
             # be disappeared.
             self._instance_storage.batch_delete_instances(
                 [storage_instance.instance_id]
             )
-            return
 
     def _reconcile_leaked_instances(self, potentially_leaked_instances: List[Instance]):
         # TODO: after reconciling with the storage, the remaining cloud instances
