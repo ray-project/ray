@@ -4,27 +4,24 @@ import random
 import time
 from unittest.mock import patch
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pytest
-from ray.data.block import BlockMetadata
 
 import ray
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.equalize import (
-    _equalize,
-)
+from ray.data._internal.equalize import _equalize
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats
 from ray.data._internal.split import (
     _drop_empty_block_split,
-    _generate_valid_indices,
-    _generate_per_block_split_indices,
     _generate_global_split_results,
-    _split_single_block,
+    _generate_per_block_split_indices,
+    _generate_valid_indices,
     _split_at_indices,
+    _split_single_block,
 )
-from ray.data.block import BlockAccessor
+from ray.data._internal.stats import DatasetStats
+from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
@@ -41,22 +38,11 @@ class Counter:
         return self.value
 
 
-def maybe_pipeline(ds, enabled):
-    if enabled:
-        return ds.window(blocks_per_window=1)
-    else:
-        return ds
-
-
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_equal_split(shutdown_only, pipelined):
+def test_equal_split(shutdown_only):
     ray.init(num_cpus=2)
 
     def range2x(n):
-        if pipelined:
-            return ray.data.range(n).repeat(2)
-        else:
-            return ray.data.range(2 * n)
+        return ray.data.range(2 * n)
 
     def counts(shards):
         @ray.remote(num_cpus=0)
@@ -154,8 +140,7 @@ def test_equal_split_balanced_grid(ray_start_regular_shared):
                 _test_equal_split_balanced(block_sizes, num_splits)
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_split_small(ray_start_regular_shared, pipelined):
+def test_split_small(ray_start_regular_shared):
     x = [Counter.remote() for _ in range(4)]
     data = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
     fail = []
@@ -170,7 +155,6 @@ def test_split_small(ray_start_regular_shared, pipelined):
                 for equal in [True, False]:
                     print("Testing", m, n, equal, locality_hints)
                     ds = ray.data.from_items(data, parallelism=m)
-                    ds = maybe_pipeline(ds, pipelined)
                     splits = ds.split(n, equal=equal, locality_hints=locality_hints)
                     assert len(splits) == n
                     outs = ray.get([take.remote(s) for s in splits])
@@ -182,11 +166,6 @@ def test_split_small(ray_start_regular_shared, pipelined):
                         limit = len(data) - (len(data) % n)
                         allowed = [limit]
                         # Allow for some pipelining artifacts.
-                        if pipelined:
-                            allowed.append(limit + 2)
-                            allowed.append(limit + 1)
-                            allowed.append(limit - 1)
-                            allowed.append(limit - 2)
                         print(len(out), len(set(out)), allowed)
                         if (
                             len(out) not in allowed
