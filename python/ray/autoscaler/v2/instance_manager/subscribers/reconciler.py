@@ -1,5 +1,6 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from typing import List
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
