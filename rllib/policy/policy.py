@@ -1,13 +1,8 @@
-from abc import ABCMeta, abstractmethod
-import gymnasium as gym
-from gymnasium.spaces import Box
 import json
 import logging
-import numpy as np
 import os
-from packaging import version
 import platform
-import tree  # pip install dm_tree
+from abc import ABCMeta, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,10 +17,16 @@ from typing import (
     Union,
 )
 
+import gymnasium as gym
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Box
+from packaging import version
+
 import ray
+import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
-import ray.cloudpickle as pickle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -38,15 +39,15 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
 )
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
     get_checkpoint_info,
     try_import_msgpack,
+)
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
 )
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -974,6 +975,9 @@ class Policy(metaclass=ABCMeta):
         State includes the Model(s)' weights, optimizer weights,
         the exploration component's state, as well as global variables, such
         as sampling timesteps.
+
+        Note that the state may contain references to the original variables.
+        This means that you may need to deepcopy() the state before mutating it.
 
         Returns:
             Serialized local state.
