@@ -419,6 +419,7 @@ py_library(
         bk_require("click"),
         bk_require("google-cloud-storage"),
         bk_require("jinja2"),
+        bk_require("pygithub"),
         bk_require("retry"),
     ],
 )
