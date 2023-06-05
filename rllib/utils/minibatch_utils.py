@@ -92,7 +92,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # TODO (Kourosh): len(batch) is not correct here. However it's also not
             # clear what the correct value should be. Since training does not depend on
             # this it will be fine for now.
-            minibatch = MultiAgentBatch(minibatch, len(self._batch))
+            length = max(len(b) for b in minibatch.values())
+            minibatch = MultiAgentBatch(minibatch, length)
             yield minibatch
 
 

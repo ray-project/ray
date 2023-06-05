@@ -57,7 +57,6 @@ if __name__ == "__main__":
         run_config=air.RunConfig(
             stop={"training_iteration": 1},
             failure_config=air.FailureConfig(fail_fast="raise"),
-            verbose=0,
         ),
     )
     tuner.fit()
