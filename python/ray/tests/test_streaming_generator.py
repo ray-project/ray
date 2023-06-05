@@ -5,6 +5,8 @@ import sys
 import time
 import gc
 
+from collections import Counter
+
 from unittest.mock import Mock
 
 import ray
