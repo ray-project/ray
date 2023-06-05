@@ -1,8 +1,5 @@
 import logging
-import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from typing import List
 
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
@@ -10,17 +7,9 @@ from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceUpdateEvent,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProvider
-from ray.autoscaler.v2.instance_manager.ray_installer import RayInstaller
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class RayInstallerConfig:
-    max_install_attempts: int = 3
-    install_retry_interval: int = 10
-    max_concurrent_installs: int = 50
 
 
 class InstanceReconciler(InstanceUpdatedSuscriber):
@@ -34,83 +23,19 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         head_node_ip: str,
         instance_storage: InstanceStorage,
         node_provider: NodeProvider,
-        ray_installer: RayInstaller,
-        installer_config: RayInstallerConfig = RayInstallerConfig(),
     ) -> None:
         self._head_node_ip = head_node_ip
         self._instance_storage = instance_storage
         self._node_provider = node_provider
-        self._ray_installer = ray_installer
-        self._installer_config = installer_config
         self._reconciler_executor = ThreadPoolExecutor(max_workers=1)
-        self._ray_installation_executor = ThreadPoolExecutor(
-            max_workers=self._installer_config.max_concurrent_installs
-        )
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         # TODO: we should do reconciliation based on events.
         self._reconciler_executor.submit(self._run_reconcile)
 
     def _run_reconcile(self) -> None:
-        self._install_ray_on_new_nodes()
         self._handle_ray_failure()
         self._reconcile_with_node_provider()
-
-    def _install_ray_on_new_nodes(self) -> None:
-        allocated_instance, _ = self._instance_storage.get_instances(
-            status_filter={Instance.ALLOCATED},
-            ray_status_filter={Instance.RAY_STATUS_UNKOWN},
-        )
-        for instance in allocated_instance.values():
-            self._ray_installation_executor.submit(
-                self._install_ray_on_single_node, instance
-            )
-
-    def _install_ray_on_single_node(self, instance: Instance) -> None:
-        assert instance.status == Instance.ALLOCATED
-        assert instance.ray_status == Instance.RAY_STATUS_UNKOWN
-        instance.ray_status = Instance.RAY_INSTALLING
-        success, version = self._instance_storage.upsert_instance(
-            instance, expected_instance_version=instance.version
-        )
-        if not success:
-            logger.warning(
-                f"Failed to update instance {instance.instance_id} to RAY_INSTALLING"
-            )
-            # Do not need to handle failures, it will be covered by
-            # garbage collection.
-            return
-
-        # install with exponential backoff
-        installed = False
-        backoff_factor = 1
-        for _ in range(self._installer_config.max_install_attempts):
-            installed = self._ray_installer.install_ray(instance, self._head_node_ip)
-            if installed:
-                break
-            logger.warning("Failed to install ray, retrying...")
-            time.sleep(self._installer_config.install_retry_interval * backoff_factor)
-            backoff_factor *= 2
-
-        if not installed:
-            instance.ray_status = Instance.RAY_INSTALL_FAILED
-            success, version = self._instance_storage.upsert_instance(
-                instance,
-                expected_instance_version=version,
-            )
-        else:
-            instance.ray_status = Instance.RAY_RUNNING
-            success, version = self._instance_storage.upsert_instance(
-                instance,
-                expected_instance_version=version,
-            )
-        if not success:
-            logger.warning(
-                f"Failed to update instance {instance.instance_id} to {instance.status}"
-            )
-            # Do not need to handle failures, it will be covered by
-            # garbage collection.
-            return
 
     def _handle_ray_failure(self) -> int:
         failing_instances, _ = self._instance_storage.get_instances(
