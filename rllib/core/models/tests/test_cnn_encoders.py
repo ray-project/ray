@@ -78,7 +78,7 @@ class TestCNNEncoders(unittest.TestCase):
                 self.assertEqual(outputs[ENCODER_OUT].shape, (1, config.output_dims[0]))
 
             # Check all added models against each other.
-            model_checker.check(atol=0.0005)
+            model_checker.check()
 
     def test_cnn_encoders_valid_padding(self):
         """Tests building CNN encoders with valid padding."""
@@ -108,7 +108,7 @@ class TestCNNEncoders(unittest.TestCase):
             self.assertEqual(outputs[ENCODER_OUT].shape, (1, config.output_dims[0]))
 
         # Check all added models against each other.
-        model_checker.check(atol=0.0005)
+        model_checker.check()
 
 
 if __name__ == "__main__":

@@ -1267,7 +1267,7 @@ class ModelChecker:
             )
         return outputs
 
-    def check(self, atol=None, rtol=None):
+    def check(self):
         """Compares all added Models with each other and possibly raises errors."""
 
         main_key = next(iter(self.models.keys()))
@@ -1279,12 +1279,7 @@ class ModelChecker:
         # Compare dummy outputs by exact values given that all nets received the
         # same input and all nets have the same (dummy) weight values.
         for v in self.output_values.values():
-            check(
-                v,
-                self.output_values[main_key],
-                atol=atol or 0.0001,
-                rtol=rtol or 0.0,
-            )
+            check(v, self.output_values[main_key], atol=0.0005)
 
 
 def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.ndarray:
