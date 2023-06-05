@@ -77,19 +77,8 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
               pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING)
         << "Placement group load should only include pending/rescheduling PGs. ";
 
-    // Default no anti-affinity for PG.
-    absl::optional<rpc::PlacementConstraint> anti_affinity_constraint = absl::nullopt;
-
-    // But if it's a strict spread pg. We will add the anti-affinity constraint.
-    // which has a special name placeholder key and the pg id. This way,
-    // bundles that should be strictly spread will not be placed on the same node
-    // due to the same anti-affinity constraint.
-    if (pg_data.strategy() == rpc::PlacementStrategy::STRICT_SPREAD) {
-      anti_affinity_constraint = rpc::PlacementConstraint();
-      anti_affinity_constraint->mutable_anti_affinity()->set_label_name(
-          FormatPlacementGroupAffinityLabel(pg_data.placement_group_id()));
-      anti_affinity_constraint->mutable_anti_affinity()->set_label_value("");
-    }
+    const auto pg_constraint = GenPlacementConstraintForPlacementGroup(
+        pg_data.placement_group_id(), pg_data.strategy());
 
     // Copy the PG's bundles to the request.
     for (const auto &bundle : pg_data.bundles()) {
@@ -107,10 +96,9 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       resource_req->mutable_resources_bundle()->insert(bundle.unit_resources().begin(),
                                                        bundle.unit_resources().end());
 
-      // Add the placement constraint if there's any.
-      if (anti_affinity_constraint.has_value()) {
-        resource_req->add_placement_constraints()->CopyFrom(
-            anti_affinity_constraint.value());
+      // Add the placement constraint.
+      if (pg_constraint.has_value()) {
+        resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
       }
     }
   }

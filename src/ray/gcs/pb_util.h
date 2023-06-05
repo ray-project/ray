@@ -20,6 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
+#include "src/ray/protobuf/experimental/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -338,10 +339,41 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
   }
 }
 
-inline std::string FormatPlacementGroupAffinityLabel(const std::string &pg_id) {
-  std::stringstream ss;
-  ss << kPlacementGroupAntiAffinityLabelNamePrefix << pg_id;
-  return ss.str();
+/// Generate a placement constraint for placement group.
+///
+/// \param pg_id The ID of placement group.
+/// \param strategy The placement strategy of placement group.
+/// \return The placement constraint for placement group if it's not a strict
+///   strategy, else absl::nullopt.
+inline absl::optional<rpc::autoscaler::PlacementConstraint>
+GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
+                                        rpc::PlacementStrategy strategy) {
+  // Defaults to be overwritten.
+  rpc::autoscaler::PlacementConstraint::Type type =
+      rpc::autoscaler::PlacementConstraint::ANTI_AFFINITY;
+  switch (strategy) {
+  case rpc::PlacementStrategy::STRICT_SPREAD: {
+    type = rpc::autoscaler::PlacementConstraint::ANTI_AFFINITY;
+    break;
+  }
+  case rpc::PlacementStrategy::STRICT_PACK: {
+    type = rpc::autoscaler::PlacementConstraint::AFFINITY;
+    break;
+  }
+  case rpc::PlacementStrategy::SPREAD:
+  case rpc::PlacementStrategy::PACK: {
+    return absl::nullopt;
+  }
+  default: {
+    RAY_LOG(ERROR) << "Encountered unexpected strategy type: " << strategy;
+  }
+  }
+  auto pg_constraint = rpc::autoscaler::PlacementConstraint();
+  pg_constraint.set_type(type);
+  pg_constraint.set_key(kPlacementGroupConstraintKey);
+  pg_constraint.set_value(pg_id);
+
+  return pg_constraint;
 }
 
 }  // namespace gcs

@@ -153,6 +153,25 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     gcs_resource_manager_->UpdatePlacementGroupLoad(load);
   }
 
+  void GroupResourceRequestsByConstraintForPG(
+      std::unordered_map<std::string, std::vector<ResourceBundleMap>> &actual_data,
+      const rpc::autoscaler::GangResourceRequest &pg_request) {
+    for (const auto &req : pg_request.requests()) {
+      ResourceBundleMap resource_map;
+      for (const auto &resource : req.resources_bundle()) {
+        resource_map[resource.first] = resource.second;
+      }
+
+      if (req.placement_constraints_size() == 0) {
+        actual_data[""].push_back(resource_map);
+        continue;
+      }
+      for (const auto &constraint : req.placement_constraints()) {
+        actual_data[constraint.DebugString()].push_back(resource_map);
+      }
+    }
+  }
+
   void CheckGangResourceRequests(
       const rpc::autoscaler::GetClusterResourceStateReply &reply,
       const std::unordered_map<std::string, std::vector<ResourceBundleMap>>
@@ -161,25 +180,12 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     std::unordered_map<std::string, std::vector<ResourceBundleMap>> actual_data;
     // Parse the data.
     for (const auto &pending_pg_req : pending_reqs) {
-      for (const auto &req : pending_pg_req.requests()) {
-        ResourceBundleMap resource_map;
-        for (const auto &resource : req.resources_bundle()) {
-          resource_map[resource.first] = resource.second;
-        }
-
-        // Parse the affinity to PG.
-        if (req.placement_constraints_size() == 0) {
-          actual_data[""].push_back(resource_map);
-          continue;
-        }
-        for (const auto &constraint : req.placement_constraints()) {
-          actual_data[constraint.anti_affinity().label_name()].push_back(resource_map);
-        }
-      }
+      GroupResourceRequestsByConstraintForPG(actual_data, pending_pg_req);
     }
 
     for (const auto &[pg_label_name, resource_lists] : expected_data) {
-      ASSERT_EQ(actual_data[pg_label_name].size(), resource_lists.size());
+      ASSERT_EQ(actual_data[pg_label_name].size(), resource_lists.size())
+          << pg_label_name;
       std::vector<std::string> actual_resource_map_str;
       std::vector<std::string> expected_resource_map_str;
 
@@ -325,9 +331,30 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
                                             rpc::PlacementGroupTableData::PENDING)});
 
     auto reply = GetClusterResourceStateSync();
-    CheckGangResourceRequests(
-        reply,
-        {{FormatPlacementGroupAffinityLabel(pg.Binary()), {{{"CPU", 1}}, {{"GPU", 1}}}}});
+    CheckGangResourceRequests(reply,
+                              {{GenPlacementConstraintForPlacementGroup(
+                                    pg.Binary(), rpc::PlacementStrategy::STRICT_SPREAD)
+                                    ->DebugString(),
+                                {{{"CPU", 1}}, {{"GPU", 1}}}}});
+  }
+
+  // A strict pack should also generate constraints.
+  {
+    auto pg = PlacementGroupID::Of(job_id);
+    UpdatePlacementGroupLoad(
+        {Mocker::GenPlacementGroupTableData(pg,
+                                            job_id,
+                                            {{{"CPU", 1}}, {{"GPU", 1}}},
+                                            {"", ""},
+                                            rpc::PlacementStrategy::STRICT_PACK,
+                                            rpc::PlacementGroupTableData::PENDING)});
+
+    auto reply = GetClusterResourceStateSync();
+    CheckGangResourceRequests(reply,
+                              {{GenPlacementConstraintForPlacementGroup(
+                                    pg.Binary(), rpc::PlacementStrategy::STRICT_PACK)
+                                    ->DebugString(),
+                                {{{"CPU", 1}}, {{"GPU", 1}}}}});
   }
 }
 
@@ -337,67 +364,62 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
   node->mutable_resources_total()->insert({"CPU", 1});
   // Adding a node.
   AddNode(node);
-  JobID job_id = JobID::FromInt(0);
+  JobID job_id1 = JobID::FromInt(0);
+  JobID job_id2 = JobID::FromInt(1);
 
-  // A non strict spreading pending pg should not generate gang resource requests without
-  // affinity.
+  // A non strict spreading pending pg should not generate gang resource requests
+  // without affinity.
   {
-    auto pg = PlacementGroupID::Of(job_id);
+    auto pg1 = PlacementGroupID::Of(job_id1);
+    auto pg2 = PlacementGroupID::Of(job_id2);
     UpdatePlacementGroupLoad(
-        {Mocker::GenPlacementGroupTableData(pg,
-                                            job_id,
+        {Mocker::GenPlacementGroupTableData(pg1,
+                                            job_id1,
                                             {{{"CPU", 1}, {"GPU", 2}}},
                                             {""},
                                             rpc::PlacementStrategy::PACK,
                                             rpc::PlacementGroupTableData::PENDING),
-         Mocker::GenPlacementGroupTableData(pg,
-                                            job_id,
+         Mocker::GenPlacementGroupTableData(pg2,
+                                            job_id2,
                                             {{{"TPU", 1}}},
                                             {""},
-                                            rpc::PlacementStrategy::STRICT_PACK,
-                                            rpc::PlacementGroupTableData::RESCHEDULING)});
+                                            rpc::PlacementStrategy::SPREAD,
+                                            rpc::PlacementGroupTableData::PENDING)});
 
     auto reply = GetClusterResourceStateSync();
     CheckGangResourceRequests(
         reply,
-        {{"",
+        {{/* no pg constraint */ "",
           {/* from first */ {{"CPU", 1}, {"GPU", 2}}, /* from second */ {{"TPU", 1}}}}});
   }
 }
 
-TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsRescheduling) {
+TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialRescheduling) {
   auto node = Mocker::GenNodeInfo();
   node->set_instance_id("instance_1");
   node->mutable_resources_total()->insert({"CPU", 1});
   // Adding a node.
   AddNode(node);
-  JobID job_id = JobID::FromInt(0);
-  // A partially placed PG should not have unplaced bundles requests for strict spread
-  // PGs.
+  JobID job_id1 = JobID::FromInt(0);
+  // A partially placed PG should not have unplaced bundles requests for strict spread.
   {
-    auto pg = PlacementGroupID::Of(job_id);
-    UpdatePlacementGroupLoad(
-        {Mocker::GenPlacementGroupTableData(
-             pg,
-             job_id,
-             {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
-             {"", node->node_id()},
-             rpc::PlacementStrategy::STRICT_SPREAD,
-             rpc::PlacementGroupTableData::RESCHEDULING),
-         Mocker::GenPlacementGroupTableData(pg,
-                                            job_id,
-                                            {{{"TPU", 1}}},
-                                            {""},
-                                            rpc::PlacementStrategy::STRICT_SPREAD,
-                                            rpc::PlacementGroupTableData::PENDING)});
+    auto pg1 = PlacementGroupID::Of(job_id1);
+    UpdatePlacementGroupLoad({Mocker::GenPlacementGroupTableData(
+        pg1,
+        job_id1,
+        {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
+        {"", node->node_id()},
+        rpc::PlacementStrategy::STRICT_SPREAD,
+        rpc::PlacementGroupTableData::RESCHEDULING)});
 
     auto reply = GetClusterResourceStateSync();
 
     // CPU_success_2 should not be reported as needed.
-    CheckGangResourceRequests(
-        reply,
-        {{FormatPlacementGroupAffinityLabel(pg.Binary()),
-          {/* from first */ {{"CPU_failed_1", 1}}, /* from second */ {{"TPU", 1}}}}});
+    CheckGangResourceRequests(reply,
+                              {{GenPlacementConstraintForPlacementGroup(
+                                    pg1.Binary(), rpc::PlacementStrategy::STRICT_SPREAD)
+                                    ->DebugString(),
+                                {{{"CPU_failed_1", 1}}}}});
   }
 }
 
