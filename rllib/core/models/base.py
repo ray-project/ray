@@ -220,8 +220,8 @@ class Encoder(Model, abc.ABC):
         from dataclasses import dataclass
         import numpy as np
 
-        from ray.rllib.core.models.configs import ModelConfig
         from ray.rllib.core.models.base import Encoder, ENCODER_OUT, STATE_IN, STATE_OUT
+        from ray.rllib.core.models.configs import ModelConfig
         from ray.rllib.policy.sample_batch import SampleBatch
 
         class NumpyEncoder(Encoder):

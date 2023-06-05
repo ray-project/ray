@@ -90,7 +90,7 @@ class TestCNNEncoders(unittest.TestCase):
         # (42, 42, 3) Atari image spaces. The last layer, with its hard-coded :( padding
         # setting was narrowing down the image size to 1x1, so we could use the last
         # layer already as a 256-sized pre-logits layer (normally done by a Dense).
-        filter_specifiers = [[16, 4, 2], [32, 4, 2], [256, 11, 1, "valid"]]
+        filter_specifiers = [[16, 4, 2, "same"], [32, 4, 2], [256, 11, 1, "valid"]]
 
         config = CNNEncoderConfig(
             input_dims=inputs_dims,

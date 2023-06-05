@@ -77,8 +77,6 @@ class ModelConfig(abc.ABC):
             forward passes of the model regardless of this flag. If this flag is set
             to `True`, inputs and outputs are checked on every call. This leads to
             a slow-down and should only be used for debugging.
-        _output_dims: The output dimensions of the network. The value of this field
-            will be inferred by the class automatically based on all other settings.
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
@@ -123,7 +121,7 @@ class _MLPConfig(ModelConfig):
         hidden_layer_use_bias: Whether to use bias on all dense layers in the network
             (excluding a possible separate output layer defined by `output_layer_dim`).
         hidden_layer_activation: The activation function to use after each layer (
-            except for the output).
+            except for the output). The default activation for hidden layers is "relu".
         hidden_layer_use_layernorm: Whether to insert a LayerNorm functionality
             in between each hidden layer's output and its activation.
         output_layer_dim: An int indicating the size of the output layer. This may be
@@ -131,7 +129,8 @@ class _MLPConfig(ModelConfig):
             layers specified by `hidden_layer_dims` will be part of the network.
         output_layer_use_bias: Whether to use bias on the separate output layer, if any.
         output_layer_activation: The activation function to use for the output layer,
-            if any.
+            if any. The default activation for the output layer, if any, is "linear",
+            meaning no activation.
     """
 
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
@@ -493,6 +492,8 @@ class CNNTransposeHeadConfig(ModelConfig):
                 dims[1] * stride_h - (stride_h - 1),
                 num_filters,
             ]
+            # TODO (Sven): Support "valid" padding for Conv2DTranspose layers, too.
+            #  Analogous to Conv2D Layers in a CNNEncoder.
             # Apply the correct padding. Note that this might be asymetrical, meaning
             # left padding might be != right padding, same for top/bottom.
             _, padding_out_size = same_padding_transpose_after_stride(
@@ -582,23 +583,34 @@ class CNNEncoderConfig(ModelConfig):
     Attributes:
         input_dims: The input dimension of the network. These must be given in the
             form of `(width, height, channels)`.
-        cnn_filter_specifiers: A list of lists, where each element of an inner list
-            contains elements of the form
-            `[number of channels/filters, kernel, stride, [padding=same]?]` to specify a
-            convolutional layer stacked in order of the outer list.
-            Note that `padding` is "same" by default and that `kernel` and `stride`
-            may be privided as single ints (square) or as a tuple/list of two ints
-            (width and height dimensions) for non-squared kernel/stride shapes.
+        cnn_filter_specifiers: A list in which each element is another (inner) list
+            of either the following forms:
+            `[number of channels/filters, kernel, stride]`
+            OR:
+            `[number of channels/filters, kernel, stride, padding]`, where `padding`
+            can either be "same" or "valid".
+            When using the first format w/o the `padding` specifier, `padding` is "same"
+            by default. Also, `kernel` and `stride` may be provided either as single
+            ints (square) or as a tuple/list of two ints (width- and height dimensions)
+            for non-squared kernel/stride shapes.
             A good rule of thumb for constructing CNN stacks is:
             When using padding="same", the input "image" will be reduced in size by
-            stride, e.g. input=(84, 84, 3) stride=2 kernel=x padding="same" filters=16
-            -> output=(42, 42, 16).
+            the factor `stride`, e.g. input=(84, 84, 3) stride=2 kernel=x padding="same"
+            filters=16 -> output=(42, 42, 16).
+            For example, if you would like to reduce an Atari image from its original
+            (84, 84, 3) dimensions down to (6, 6, F), you can construct the following
+            stack and reduce the w x h dimension of the image by 2 in each layer:
+            [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]] -> output=(6, 6, 128)
         cnn_use_bias: Whether to use bias on all Conv2D layers.
         cnn_activation: The activation function to use after each layer (
-            except for the output).
+            except for the output). The default activation for Conv2d layers is "relu".
         cnn_use_layernorm: Whether to insert a LayerNorm functionality
             in between each CNN layer's output and its activation. Note that
-            the output layer
+            the output layer.
+        flatten_at_end: Whether to flatten the output of the last conv 2D layer into
+            a 1D tensor. By default, this is True. Note that if you set this to False,
+            you might simply stack another CNNEncoder on top of this one (maybe with
+            different activation and bias settings).
     """
 
     input_dims: Union[List[int], Tuple[int]] = None
@@ -618,14 +630,21 @@ class CNNEncoderConfig(ModelConfig):
         # Infer output dims, layer by layer.
         dims = self.input_dims  # Creates a copy (works for tuple/list).
         for filter_spec in self.cnn_filter_specifiers:
-            # Same padding.
+            # Padding not provided, "same" by default.
             if len(filter_spec) == 3:
                 num_filters, kernel, stride = filter_spec
+                padding = "same"
+            # Padding option provided, use given value.
+            else:
+                num_filters, kernel, stride, padding = filter_spec
+
+            # Same padding.
+            if padding == "same":
                 _, dims = same_padding(dims[:2], kernel, stride)
             # Valid padding.
             else:
-                num_filters, kernel, stride, _ = filter_spec
                 dims = valid_padding(dims[:2], kernel, stride)
+
             # Add depth (num_filters) to the end (our utility functions for same/valid
             # only return the image width/height).
             dims = [dims[0], dims[1], num_filters]

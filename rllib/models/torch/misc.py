@@ -160,10 +160,10 @@ def valid_padding(
     filter_size: Union[int, Tuple[int, int]],
     stride_size: Union[int, Tuple[int, int]],
 ) -> Tuple[int, int]:
-    """Note: No padding is applied to match TF conv2d `valid` padding.
+    """Emulates TF Conv2DLayer "valid" padding (no padding) and computes output dims.
 
-    However, this method, analogous to its "same" counterpart, computes the output
-    image size.
+    This method, analogous to its "same" counterpart, but it only computes the output
+    image size, since valid padding means (0, 0, 0, 0).
 
     See www.tensorflow.org/versions/r0.12/api_docs/python/nn/convolution
 

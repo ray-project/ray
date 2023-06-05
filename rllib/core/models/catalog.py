@@ -69,6 +69,10 @@ class Catalog:
         out = my_head(torch.Tensor([[1]]))
     """
 
+    # TODO (Sven): Add `framework` arg to c'tor and remove this arg from `build`
+    #  methods. This way, we can already know in the c'tor of Catalog, what the exact
+    #  action distibution objects are and thus what the output dims for e.g. a pi-head
+    #  will be.
     def __init__(
         self,
         observation_space: gym.Space,
@@ -88,7 +92,6 @@ class Catalog:
             view_requirements: The view requirements of Models to produce. This is
                 needed for a Model that encodes a complex temporal mix of
                 observations, actions or rewards.
-
         """
         self.observation_space = observation_space
         self.action_space = action_space

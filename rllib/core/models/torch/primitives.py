@@ -135,18 +135,29 @@ class TorchCNN(nn.Module):
 
         Args:
             input_dims: The 3D input dimensions of the network (incoming image).
-            cnn_filter_specifiers: A list of lists, where each item represents one
-                Conv2D layer. Each such Conv2D layer is further specified by the
-                elements of the inner lists. The inner lists follow the format:
-                `[number of filters, kernel, stride]` to
-                specify a convolutional layer stacked in order of the outer list.
-                `kernel` as well as `stride` might be provided as width x height tuples
-                OR as single ints representing both dimension (width and height)
-                in case of square shapes.
+            cnn_filter_specifiers: A list in which each element is another (inner) list
+                of either the following forms:
+                `[number of channels/filters, kernel, stride]`
+                OR:
+                `[number of channels/filters, kernel, stride, padding]`, where `padding`
+                can either be "same" or "valid".
+                When using the first format w/o the `padding` specifier, `padding` is
+                "same" by default. Also, `kernel` and `stride` may be provided either as
+                single ints (square) or as a tuple/list of two ints (width- and height
+                dimensions) for non-squared kernel/stride shapes.
+                A good rule of thumb for constructing CNN stacks is:
+                When using padding="same", the input "image" will be reduced in size by
+                the factor `stride`, e.g. input=(84, 84, 3) stride=2 kernel=x
+                padding="same" filters=16 -> output=(42, 42, 16).
+                For example, if you would like to reduce an Atari image from its
+                original (84, 84, 3) dimensions down to (6, 6, F), you can construct the
+                following stack and reduce the w x h dimension of the image by 2 in each
+                layer:
+                [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]] -> output=(6, 6, 128)
             cnn_use_bias: Whether to use bias on all Conv2D layers.
-            cnn_use_layernorm: Whether to insert a LayerNorm functionality
-                in between each CNN layer's outputs and its activation.
             cnn_activation: The activation function to use after each Conv2D layer.
+            cnn_use_layernorm: Whether to insert a LayerNormalization functionality
+                in between each Conv2D layer's outputs and its activation.
         """
         super().__init__()
 
