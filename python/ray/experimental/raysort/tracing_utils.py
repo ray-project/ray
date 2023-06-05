@@ -5,10 +5,12 @@ import time
 from typing import List, Tuple
 
 import ray
-from ray.experimental.raysort import constants, logging_utils
+from ray.experimental.raysort import constants
 from ray.util.metrics import Gauge, Histogram
 
 HISTOGRAM_BOUNDARIES = list(range(50, 200, 50))
+
+logger = logging.getLogger(__name__)
 
 
 def timeit(
@@ -80,7 +82,6 @@ class ProgressTracker:
         self.gauges = {m: Gauge(m) for m in gauges}
         self.reset_gauges()
         self.histograms = {m: Histogram(m, boundaries=b) for m, b in histograms}
-        logging_utils.init()
 
     def reset_gauges(self):
         for g in self.gauges.values():
@@ -89,12 +90,12 @@ class ProgressTracker:
     def inc(self, metric_name, value=1, echo=False):
         gauge = self.gauges.get(metric_name)
         if gauge is None:
-            logging.warning(f"No such Gauge: {metric_name}")
+            logger.warning(f"No such Gauge: {metric_name}")
             return
         self.counts[metric_name] += value
         gauge.set(self.counts[metric_name])
         if echo:
-            logging.info(f"{metric_name} {self.counts[metric_name]}")
+            logger.info(f"{metric_name} {self.counts[metric_name]}")
 
     def dec(self, metric_name, value=1, echo=False):
         return self.inc(metric_name, -value, echo)
@@ -102,15 +103,15 @@ class ProgressTracker:
     def observe(self, metric_name, value, echo=False):
         histogram = self.histograms.get(metric_name)
         if histogram is None:
-            logging.warning(f"No such Histogram: {metric_name}")
+            logger.warning(f"No such Histogram: {metric_name}")
             return
         histogram.observe(value)
         if echo:
-            logging.info(f"{metric_name} {value}")
+            logger.info(f"{metric_name} {value}")
 
 
 def export_timeline():
     timestr = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"/tmp/ray-timeline-{timestr}.json"
     ray.timeline(filename=filename)
-    logging.info(f"Exported Ray timeline to {filename}")
+    logger.info(f"Exported Ray timeline to {filename}")
