@@ -480,7 +480,6 @@ class DreamerV3(Algorithm):
                 ):
                     # Summarize environment interaction and buffer data.
                     results[ALL_MODULES] = summarize_sampling_and_replay_buffer(
-                        step=self._counters[NUM_ENV_STEPS_SAMPLED],
                         replay_buffer=self.replay_buffer,
                     )
                     break

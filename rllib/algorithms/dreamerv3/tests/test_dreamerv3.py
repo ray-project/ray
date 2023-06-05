@@ -39,12 +39,18 @@ class TestDreamerV3(unittest.TestCase):
             dreamerv3.DreamerV3Config()
             .framework(eager_tracing=True)
             .training(
+                # Keep things simple. Especially the long dream rollouts seem
+                # to take an enormous amount of time (initially).
+                batch_size_B=2,
+                batch_length_T=16,
+                horizon_H=5,
                 # TODO (sven): Fix having to provide this.
-                #  Should be compiled as `RLModuleConfig` by AlgorithmConfig?
+                #  Should be compiled automatically as `RLModuleConfig` by
+                #  AlgorithmConfig?
                 model={
-                    "batch_size_B": 16,
-                    "batch_length_T": 64,
-                    "horizon_H": 15,
+                    "batch_size_B": 2,
+                    "batch_length_T": 16,
+                    "horizon_H": 5,
                     "model_size": "nano",  # Use a tiny model for testing.
                     "gamma": 0.997,
                     "training_ratio": 512,
@@ -58,7 +64,7 @@ class TestDreamerV3(unittest.TestCase):
                 num_gpus_per_learner_worker=0,
                 num_gpus=0,
             )
-            .debugging(log_level="info")
+            .debugging(log_level="INFO")
             .rl_module(_enable_rl_module_api=True)
         )
 
@@ -158,21 +164,24 @@ class TestDreamerV3(unittest.TestCase):
                 # Count the generated RLModule's parameters and compare to the paper's
                 # reported numbers ([1] and [3]).
                 num_params_world_model = sum(
-                    np.prod(v.shape.as_list()) for v in rl_module.world_model.trainable_variables
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.world_model.trainable_variables
                 )
                 self.assertEqual(
                     num_params_world_model,
                     expected_num_params_world_model[f"{model_size}_{env_name}"],
                 )
                 num_params_actor = sum(
-                    np.prod(v.shape.as_list()) for v in rl_module.actor.trainable_variables
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.actor.trainable_variables
                 )
                 self.assertEqual(
                     num_params_actor,
                     expected_num_params_actor[f"{model_size}_{env_name}"],
                 )
                 num_params_critic = sum(
-                    np.prod(v.shape.as_list()) for v in rl_module.critic.trainable_variables
+                    np.prod(v.shape.as_list())
+                    for v in rl_module.critic.trainable_variables
                 )
                 self.assertEqual(
                     num_params_critic,
