@@ -169,29 +169,22 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
         // Parse the affinity to PG.
         if (req.placement_constraints_size() == 0) {
-          actual_data["no-pg-affinity"].push_back(resource_map);
+          actual_data[""].push_back(resource_map);
           continue;
         }
         for (const auto &constraint : req.placement_constraints()) {
-          if (constraint.anti_affinity().label_name() ==
-              kPlacementGroupAntiAffinityLabelName) {
-            auto pg_id = constraint.anti_affinity().label_value();
-
-            actual_data[pg_id].push_back(resource_map);
-          } else {
-            actual_data["no-pg-affinity"].push_back(resource_map);
-          }
+          actual_data[constraint.anti_affinity().label_name()].push_back(resource_map);
         }
       }
     }
 
-    for (const auto &[pg, resource_lists] : expected_data) {
-      ASSERT_EQ(actual_data[pg].size(), resource_lists.size());
+    for (const auto &[pg_label_name, resource_lists] : expected_data) {
+      ASSERT_EQ(actual_data[pg_label_name].size(), resource_lists.size());
       std::vector<std::string> actual_resource_map_str;
       std::vector<std::string> expected_resource_map_str;
 
-      std::transform(actual_data[pg].begin(),
-                     actual_data[pg].end(),
+      std::transform(actual_data[pg_label_name].begin(),
+                     actual_data[pg_label_name].end(),
                      std::back_inserter(actual_resource_map_str),
                      [this](const ResourceBundleMap &resource_map) {
                        return ShapeToString(resource_map);
@@ -306,10 +299,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
   }
 }
 
-TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequests) {
+TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
   auto node = Mocker::GenNodeInfo();
-  node->mutable_resources_total()->insert({"CPU", 2});
-  node->mutable_resources_total()->insert({"GPU", 1});
+  node->mutable_resources_total()->insert({"CPU", 1});
   node->set_instance_id("instance_1");
   // Adding a node.
   AddNode(node);
@@ -328,26 +320,24 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequests) {
         {Mocker::GenPlacementGroupTableData(pg,
                                             job_id,
                                             {{{"CPU", 1}}, {{"GPU", 1}}},
+                                            {"", ""},
                                             rpc::PlacementStrategy::STRICT_SPREAD,
                                             rpc::PlacementGroupTableData::PENDING)});
 
     auto reply = GetClusterResourceStateSync();
-    CheckGangResourceRequests(reply, {{pg.Binary(), {{{"CPU", 1}}, {{"GPU", 1}}}}});
+    CheckGangResourceRequests(
+        reply,
+        {{FormatPlacementGroupAffinityLabel(pg.Binary()), {{{"CPU", 1}}, {{"GPU", 1}}}}});
   }
+}
 
-  // A strict spread non-pending pg should not generate gang resource requests.
-  {
-    auto pg = PlacementGroupID::Of(job_id);
-    UpdatePlacementGroupLoad(
-        {Mocker::GenPlacementGroupTableData(pg,
-                                            job_id,
-                                            {{{"CPU", 2}}, {{"GPU", 2}}},
-                                            rpc::PlacementStrategy::STRICT_SPREAD,
-                                            rpc::PlacementGroupTableData::CREATED)});
-
-    auto reply = GetClusterResourceStateSync();
-    CheckGangResourceRequests(reply, {});
-  }
+TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
+  auto node = Mocker::GenNodeInfo();
+  node->set_instance_id("instance_1");
+  node->mutable_resources_total()->insert({"CPU", 1});
+  // Adding a node.
+  AddNode(node);
+  JobID job_id = JobID::FromInt(0);
 
   // A non strict spreading pending pg should not generate gang resource requests without
   // affinity.
@@ -357,19 +347,57 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequests) {
         {Mocker::GenPlacementGroupTableData(pg,
                                             job_id,
                                             {{{"CPU", 1}, {"GPU", 2}}},
+                                            {""},
                                             rpc::PlacementStrategy::PACK,
                                             rpc::PlacementGroupTableData::PENDING),
          Mocker::GenPlacementGroupTableData(pg,
                                             job_id,
                                             {{{"TPU", 1}}},
+                                            {""},
                                             rpc::PlacementStrategy::STRICT_PACK,
                                             rpc::PlacementGroupTableData::RESCHEDULING)});
 
     auto reply = GetClusterResourceStateSync();
     CheckGangResourceRequests(
         reply,
-        {{"no-pg-affinity",
+        {{"",
           {/* from first */ {{"CPU", 1}, {"GPU", 2}}, /* from second */ {{"TPU", 1}}}}});
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsRescheduling) {
+  auto node = Mocker::GenNodeInfo();
+  node->set_instance_id("instance_1");
+  node->mutable_resources_total()->insert({"CPU", 1});
+  // Adding a node.
+  AddNode(node);
+  JobID job_id = JobID::FromInt(0);
+  // A partially placed PG should not have unplaced bundles requests for strict spread
+  // PGs.
+  {
+    auto pg = PlacementGroupID::Of(job_id);
+    UpdatePlacementGroupLoad(
+        {Mocker::GenPlacementGroupTableData(
+             pg,
+             job_id,
+             {{{"CPU_failed_1", 1}}, {{"CPU_success_2", 2}}},
+             {"", node->node_id()},
+             rpc::PlacementStrategy::STRICT_SPREAD,
+             rpc::PlacementGroupTableData::RESCHEDULING),
+         Mocker::GenPlacementGroupTableData(pg,
+                                            job_id,
+                                            {{{"TPU", 1}}},
+                                            {""},
+                                            rpc::PlacementStrategy::STRICT_SPREAD,
+                                            rpc::PlacementGroupTableData::PENDING)});
+
+    auto reply = GetClusterResourceStateSync();
+
+    // CPU_success_2 should not be reported as needed.
+    CheckGangResourceRequests(
+        reply,
+        {{FormatPlacementGroupAffinityLabel(pg.Binary()),
+          {/* from first */ {{"CPU_failed_1", 1}}, /* from second */ {{"TPU", 1}}}}});
   }
 }
 

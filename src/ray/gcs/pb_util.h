@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
@@ -335,6 +336,12 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
     UNREACHABLE;
   }
   }
+}
+
+inline std::string FormatPlacementGroupAffinityLabel(const std::string &pg_id) {
+  std::stringstream ss;
+  ss << kPlacementGroupAntiAffinityLabelNamePrefix << pg_id;
+  return ss.str();
 }
 
 }  // namespace gcs

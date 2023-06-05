@@ -16,6 +16,7 @@
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
@@ -72,10 +73,9 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     auto gang_resource_req = reply->add_pending_gang_resource_requests();
     // For each placement group, if it's not pending/rescheduling, skip it since.
     // it's not part of the load.
-    if (!(pg_data.state() == rpc::PlacementGroupTableData::PENDING ||
-          pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING)) {
-      continue;
-    }
+    RAY_CHECK(pg_data.state() == rpc::PlacementGroupTableData::PENDING ||
+              pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING)
+        << "Placement group load should only include pending/rescheduling PGs. ";
 
     // Default no anti-affinity for PG.
     absl::optional<rpc::PlacementConstraint> anti_affinity_constraint = absl::nullopt;
@@ -87,13 +87,21 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     if (pg_data.strategy() == rpc::PlacementStrategy::STRICT_SPREAD) {
       anti_affinity_constraint = rpc::PlacementConstraint();
       anti_affinity_constraint->mutable_anti_affinity()->set_label_name(
-          kPlacementGroupAntiAffinityLabelName);
-      anti_affinity_constraint->mutable_anti_affinity()->set_label_value(
-          pg_data.placement_group_id());
+          FormatPlacementGroupAffinityLabel(pg_data.placement_group_id()));
+      anti_affinity_constraint->mutable_anti_affinity()->set_label_value("");
     }
 
     // Copy the PG's bundles to the request.
     for (const auto &bundle : pg_data.bundles()) {
+      if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
+        // We will be skipping **placed** bundle (which has node id associated with it).
+        // This is to avoid double counting the bundles that are already placed when
+        // reporting PG related load.
+        RAY_CHECK(pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING);
+        // NOTE: This bundle is placed in a PG, this must be a bundle that was lost due
+        // to node crashed.
+        continue;
+      }
       // Add the resources.
       auto resource_req = gang_resource_req->add_requests();
       resource_req->mutable_resources_bundle()->insert(bundle.unit_resources().begin(),

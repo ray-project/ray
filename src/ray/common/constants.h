@@ -64,7 +64,7 @@ constexpr char kRayVersion[] = "3.0.0.dev0";
 /// Name for cloud instance id env
 constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
 
-constexpr char kPlacementGroupAntiAffinityLabelName[] = "_PG";
+constexpr char kPlacementGroupAntiAffinityLabelNamePrefix[] = "_PG_{}";
 
 #if defined(__APPLE__)
 constexpr char kLibraryPathEnvName[] = "DYLD_LIBRARY_PATH";
