@@ -41,13 +41,14 @@ class TestDreamerV3(unittest.TestCase):
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).
-                batch_size_B=2,
+                batch_size_B=2,  # shared w/ model AND learner AND env runner
                 batch_length_T=16,
                 horizon_H=5,
+
                 # TODO (sven): Fix having to provide this.
                 #  Should be compiled automatically as `RLModuleConfig` by
-                #  AlgorithmConfig?
-                model={
+                #  AlgorithmConfig (see comment below)?
+                model_dict={
                     "batch_size_B": 2,
                     "batch_length_T": 16,
                     "horizon_H": 5,
@@ -67,6 +68,13 @@ class TestDreamerV3(unittest.TestCase):
             .debugging(log_level="INFO")
             .rl_module(_enable_rl_module_api=True)
         )
+
+        # TODO (sven): Add a `get_model_config` utility to AlgorithmConfig
+        #  that - for now - merges the user provided model_dict (which only
+        #  contains settings that only affect the model, e.g. model_size)
+        #  with the AlgorithmConfig-wide settings that are relevant for the model
+        #  (e.g. `batch_size_B`).
+        # config.get_model_config()
 
         num_iterations = 2
 
