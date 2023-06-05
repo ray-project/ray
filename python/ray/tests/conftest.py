@@ -34,6 +34,7 @@ from ray._private.test_utils import (
     enable_external_redis,
     redis_replicas,
     start_redis_instance,
+    find_available_port,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -171,16 +172,7 @@ def start_redis(db_dir):
     while True:
         is_need_restart = False
         # Setup external Redis and env var for initialization.
-        redis_ports = []
-        for _ in range(redis_replicas()):
-            # max port for redis cluster
-            port = 55536
-            while port >= 55535:
-                with socket.socket() as s:
-                    s.bind(("", 0))
-                    port = s.getsockname()[1]
-            print("Picking port", port)
-            redis_ports.append(port)
+        redis_ports = find_available_port(49159, 55536, redis_replicas())
 
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ

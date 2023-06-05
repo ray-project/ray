@@ -146,8 +146,8 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
 Status PythonGcsClient::Connect() {
-  auto arguments = PythonGrpcChannelArguments();
-  channel_ = rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
+  channel_ =
+      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
@@ -400,6 +400,12 @@ std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info) {
   return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
                                                  node_info.resources_total().end());
+}
+
+std::unordered_map<std::string, std::string> PythonGetNodeLabels(
+    const rpc::GcsNodeInfo &node_info) {
+  return std::unordered_map<std::string, std::string>(node_info.labels().begin(),
+                                                      node_info.labels().end());
 }
 
 }  // namespace gcs

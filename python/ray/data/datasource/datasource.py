@@ -8,11 +8,7 @@ import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _check_pyarrow_version
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-)
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -32,6 +28,9 @@ class Datasource:
 
     Datasource instances must be serializable, since ``create_reader()`` and
     ``write()`` are called in remote tasks.
+
+    For an example of subclassing ``Datasource``, read
+    :ref:`Implementing a Custom Datasource <custom_datasources>`.
     """
 
     def create_reader(self, **read_args) -> "Reader":

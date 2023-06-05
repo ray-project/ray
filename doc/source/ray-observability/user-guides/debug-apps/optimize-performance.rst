@@ -3,7 +3,7 @@
 Optimizing Performance
 ======================
 
-No Speedup
+No speedup
 ----------
 
 You just ran an application using Ray, but it wasn't as fast as you expected it
@@ -57,47 +57,38 @@ as well as some known problems. If you encounter other problems, please
 `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues
+
 .. _ray-core-timeline:
 
-Visualizing Tasks in the Ray Timeline
+Visualizing Tasks with Ray Timeline
 -------------------------------------
+View :ref:`how to use Ray Timeline in the Dashboard <dashboard-timeline>` for more details.
 
-The most important tool is the timeline visualization tool. To visualize tasks
-in the Ray timeline, you can dump the timeline as a JSON file by running ``ray
-timeline`` from the command line or ``ray.timeline`` from the Python API.
-
-To use the timeline, Ray profiling must be enabled by setting the
-``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine, and ``RAY_task_events_report_interval_ms`` must be larger than 0 (default 1000).
-
+Instead of using Dashboard UI to download the tracing file, you can also export the tracing file as a JSON file by running ``ray timeline`` from the command line or ``ray.timeline`` from the Python API.
 .. code-block:: python
+ray.timeline(filename="/tmp/timeline.json")
 
-  ray.timeline(filename="/tmp/timeline.json")
-
-Then open `chrome://tracing`_ in the Chrome web browser, and load
-``timeline.json``.
-
-.. _`chrome://tracing`: chrome://tracing
 
 .. _dashboard-profiling:
 
-Python CPU Profiling in the Dashboard
+Python CPU profiling in the Dashboard
 -------------------------------------
 
-The :ref:`ray-dashboard`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
+The :ref:`Ray dashboard <observability-getting-started>`  lets you profile Ray worker processes by clicking on the "Stack Trace" or "CPU Flame Graph"
 actions for active workers, actors, and jobs.
 
 .. image:: /images/profile.png
    :align: center
    :width: 80%
 
-Clicking "Stack Trace" will return the current stack trace sample using ``py-spy``. By default, only the Python stack
+Clicking "Stack Trace" returns the current stack trace sample using ``py-spy``. By default, only the Python stack
 trace is shown. To show native code frames, set the URL parameter ``native=1`` (only supported on Linux).
 
 .. image:: /images/stack.png
    :align: center
    :width: 60%
 
-Clicking "CPU Flame Graph" will take a number of stack trace samples and combine them into a flame graph visualization.
+Clicking "CPU Flame Graph" takes a number of stack trace samples and combine them into a flame graph visualization.
 This flame graph can be useful for understanding the CPU activity of the particular process. To adjust the duration
 of the flame graph, you can change the ``duration`` parameter in the URL. Similarly, you can change the ``native``
 parameter to enable native profiling.
@@ -107,7 +98,7 @@ parameter to enable native profiling.
    :width: 80%
 
 The profiling feature requires ``py-spy`` to be installed. If it is not installed, or if the ``py-spy`` binary does
-not have root permissions, the dashboard will prompt with instructions on how to setup ``py-spy`` correctly:
+not have root permissions, the Dashboard prompts with instructions on how to setup ``py-spy`` correctly:
 
 .. code-block::
 
@@ -119,7 +110,16 @@ not have root permissions, the dashboard will prompt with instructions on how to
 
     Alternatively, you can start Ray with passwordless sudo / root permissions.
 
-Profiling Using Python's CProfile
+.. note::
+   If you run Ray in a Docker container, you may run into permission errors when using py-spy. Follow the `py-spy documentation`_  to resolve it.
+   
+.. _`py-spy documentation`: https://github.com/benfred/py-spy#how-do-i-run-py-spy-in-docker
+
+
+
+.. _dashboard-cprofile:
+
+Profiling using Python's cProfile
 ---------------------------------
 
 You can use Python's native cProfile `profiling module`_ to profile the performance of your Ray application. Rather than tracking
@@ -320,6 +320,16 @@ Our example in total now takes only 1.5 seconds to run:
   20    0.001    0.000    0.001    0.000 worker.py:514(submit_task)
   ...
 
+GPU Profiling
+------------------------
+Ray doesn't provide native integration with GPU profiling tools. Try running GPU profilers like `Pytorch Profiler`_ without Ray to identify the issues.
+
+If you have related feature requests, `let us know`_.
+
+.. _`let us know`: https://github.com/ray-project/ray/issues
+.. _`Pytorch Profiler`: https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html
+
 Profiling for Developers
 ------------------------
-If you are developing Ray Core or debugging some system level failures, profiling the Ray Core could help. In this case, see :ref:`Profiling (Internal) <ray-core-internal-profiling>`.
+If you are developing Ray Core or debugging some system level failures, profiling the Ray Core could help. In this case, see :ref:`Profiling for Ray developers <ray-core-internal-profiling>`.
+

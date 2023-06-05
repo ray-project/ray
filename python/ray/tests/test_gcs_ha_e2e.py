@@ -1,7 +1,7 @@
 import pytest
 import sys
 import threading
-from time import sleep
+from time import sleep, time
 from ray._private.test_utils import wait_for_condition
 from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
@@ -77,10 +77,10 @@ redis = container(
 
 head_node_vol = volume()
 worker_node_vol = volume()
-
+head_node_container_name = "gcs" + str(int(time()))
 head_node = container(
     image="ray_ci:v1",
-    name="gcs",
+    name=head_node_container_name,
     network="{gcs_network.name}",
     command=[
         "ray",
@@ -112,7 +112,7 @@ worker_node = container(
         "ray",
         "start",
         "--address",
-        "gcs:6379",
+        f"{head_node_container_name}:6379",
         "--block",
         # Fix the port of raylet to make sure raylet restarts at the same
         # ip:port is treated as a different raylet.
@@ -169,7 +169,7 @@ class Counter:
         import os
         return {{"pid": os.getpid()}}
 
-serve.start(detached=True, dedicated_cpu=True)
+serve.start(detached=True)
 
 Counter.options(num_replicas={num_replicas}).deploy()
 """
@@ -194,7 +194,7 @@ assert len(pids) == {num_replicas}
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-def test_ray_server_basic(docker_cluster):
+def test_ray_serve_basic(docker_cluster):
     # This test covers the basic cases for gcs ha (serve ha)
     # - It starts the serve on worker nodes.
     # - Check the deployment is OK
@@ -242,6 +242,21 @@ def test_ray_server_basic(docker_cluster):
     t.join()
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
+    assert output.exit_code == 0
+
+    # Make sure the serve controller still runs on the head node after restart
+    check_controller_head_node_script = """
+import ray
+import requests
+from ray.serve.schema import ServeInstanceDetails
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+ray.init(address="auto")
+head_node_id = ray.get_runtime_context().get_node_id()
+serve_details = ServeInstanceDetails(
+    **requests.get("http://localhost:52365/api/serve/applications/").json())
+assert serve_details.controller_info.node_id == head_node_id
+"""
+    output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
     assert output.exit_code == 0
 
 

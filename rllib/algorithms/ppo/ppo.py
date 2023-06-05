@@ -13,6 +13,8 @@ import dataclasses
 import logging
 from typing import List, Optional, Type, Union, TYPE_CHECKING
 
+import numpy as np
+
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.pg import PGConfig
@@ -101,7 +103,9 @@ class PPOConfig(PGConfig):
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
+        self.use_kl_loss = True
         self.kl_coeff = 0.2
+        self.kl_target = 0.01
         self.sgd_minibatch_size = 128
         self.num_sgd_iter = 30
         self.shuffle_sequences = True
@@ -111,7 +115,6 @@ class PPOConfig(PGConfig):
         self.clip_param = 0.3
         self.vf_clip_param = 10.0
         self.grad_clip = None
-        self.kl_target = 0.01
 
         # Override some of PG/AlgorithmConfig's default values with PPO-specific values.
         self.num_rollout_workers = 2
@@ -134,6 +137,10 @@ class PPOConfig(PGConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+
+        # enable the rl module api by default
+        self.rl_module(_enable_rl_module_api=True)
+        self.training(_enable_learner_api=True)
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -180,13 +187,14 @@ class PPOConfig(PGConfig):
         base_hps = super().get_learner_hyperparameters()
         return PPOLearnerHyperparameters(
             use_critic=self.use_critic,
+            use_kl_loss=self.use_kl_loss,
             kl_coeff=self.kl_coeff,
+            kl_target=self.kl_target,
             vf_loss_coeff=self.vf_loss_coeff,
             entropy_coeff=self.entropy_coeff,
             entropy_coeff_schedule=self.entropy_coeff_schedule,
             clip_param=self.clip_param,
             vf_clip_param=self.vf_clip_param,
-            kl_target=self.kl_target,
             **dataclasses.asdict(base_hps),
         )
 
@@ -198,7 +206,9 @@ class PPOConfig(PGConfig):
         use_critic: Optional[bool] = NotProvided,
         use_gae: Optional[bool] = NotProvided,
         lambda_: Optional[float] = NotProvided,
+        use_kl_loss: Optional[bool] = NotProvided,
         kl_coeff: Optional[float] = NotProvided,
+        kl_target: Optional[float] = NotProvided,
         sgd_minibatch_size: Optional[int] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
         shuffle_sequences: Optional[bool] = NotProvided,
@@ -208,7 +218,6 @@ class PPOConfig(PGConfig):
         clip_param: Optional[float] = NotProvided,
         vf_clip_param: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
-        kl_target: Optional[float] = NotProvided,
         # Deprecated.
         vf_share_layers=DEPRECATED_VALUE,
         **kwargs,
@@ -225,7 +234,9 @@ class PPOConfig(PGConfig):
             use_gae: If true, use the Generalized Advantage Estimator (GAE)
                 with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
             lambda_: The GAE (lambda) parameter.
+            use_kl_loss: Whether to use the KL-term in the loss function.
             kl_coeff: Initial coefficient for KL divergence.
+            kl_target: Target value for KL divergence.
             sgd_minibatch_size: Total SGD batch size across all devices for SGD.
                 This defines the minibatch size within each epoch.
             num_sgd_iter: Number of SGD iterations in each outer loop (i.e., number of
@@ -241,7 +252,6 @@ class PPOConfig(PGConfig):
                 sensitive to the scale of the rewards. If your expected V is large,
                 increase this.
             grad_clip: If specified, clip the global norm of gradients by this amount.
-            kl_target: Target value for KL divergence.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -267,8 +277,12 @@ class PPOConfig(PGConfig):
             self.use_gae = use_gae
         if lambda_ is not NotProvided:
             self.lambda_ = lambda_
+        if use_kl_loss is not NotProvided:
+            self.use_kl_loss = use_kl_loss
         if kl_coeff is not NotProvided:
             self.kl_coeff = kl_coeff
+        if kl_target is not NotProvided:
+            self.kl_target = kl_target
         if sgd_minibatch_size is not NotProvided:
             self.sgd_minibatch_size = sgd_minibatch_size
         if num_sgd_iter is not NotProvided:
@@ -287,13 +301,15 @@ class PPOConfig(PGConfig):
             self.vf_clip_param = vf_clip_param
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
-        if kl_target is not NotProvided:
-            self.kl_target = kl_target
 
         return self
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
+        # Can not use Tf with learner api.
+        if self.framework_str == "tf":
+            self.rl_module(_enable_rl_module_api=False)
+            self.training(_enable_learner_api=False)
 
         # Call super's validation method.
         super().validate()
@@ -328,16 +344,20 @@ class PPOConfig(PGConfig):
                 "batch_mode=complete_episodes."
             )
 
-        # Check `entropy_coeff` for correctness.
-        if self.entropy_coeff < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0")
         # Entropy coeff schedule checking.
         if self._enable_learner_api:
+            if self.entropy_coeff_schedule is not None:
+                raise ValueError(
+                    "`entropy_coeff_schedule` is deprecated and must be None! Use the "
+                    "`entropy_coeff` setting to setup a schedule."
+                )
             Scheduler.validate(
-                self.entropy_coeff_schedule,
-                "entropy_coeff_schedule",
-                "entropy coefficient",
+                fixed_value_or_schedule=self.entropy_coeff,
+                setting_name="entropy_coeff",
+                description="entropy coefficient",
             )
+        if isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0")
 
 
 class UpdateKL:
@@ -476,10 +496,23 @@ class PPO(Algorithm):
                 self.workers.local_worker().set_weights(weights)
 
         if self.config._enable_learner_api:
-            kl_dict = {
-                pid: train_results[pid][LEARNER_RESULTS_KL_KEY]
-                for pid in policies_to_update
-            }
+
+            kl_dict = {}
+            if self.config.use_kl_loss:
+                for pid in policies_to_update:
+                    kl = train_results[pid][LEARNER_RESULTS_KL_KEY]
+                    kl_dict[pid] = kl
+                    if np.isnan(kl):
+                        logger.warning(
+                            f"KL divergence for Module {pid} is non-finite, this will "
+                            "likely destabilize your model and the training process. "
+                            "Action(s) in a specific state have near-zero probability. "
+                            "This can happen naturally in deterministic environments "
+                            "where the optimal policy has zero mass for a specific "
+                            "action. To fix this issue, consider setting `kl_coeff` to "
+                            "0.0 or increasing `entropy_coeff` in your config."
+                        )
+
             # triggers a special update method on RLOptimizer to update the KL values.
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=policies_to_update,
