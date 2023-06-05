@@ -340,6 +340,9 @@ def test_actor_task_with_repr_name(ray_start_with_dashboard):
     wait_for_condition(verify)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Release test not expected to work on non-linux."
+)
 def test_state_api_scale_smoke(shutdown_only):
     ray.init()
     release_test_file_path = (
