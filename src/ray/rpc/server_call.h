@@ -154,7 +154,7 @@ class ServerCallImpl : public ServerCall {
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       instrumented_io_context &io_service,
       std::string call_name,
-      ClusterID const &cluster_id,
+      const ClusterID &cluster_id,
       bool record_metrics)
       : state_(ServerCallState::PENDING),
         factory_(factory),
@@ -304,7 +304,7 @@ class ServerCallImpl : public ServerCall {
 
   /// ID of the cluster to check incoming RPC calls against.
   /// Check skipped if empty.
-  ClusterID const &cluster_id_;
+  const ClusterID &cluster_id_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
@@ -368,7 +368,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service,
       std::string call_name,
-      ClusterID const &cluster_id,
+      const ClusterID &cluster_id,
       int64_t max_active_rpcs,
       bool record_metrics)
       : service_(service),
@@ -429,7 +429,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// ID of the cluster to check incoming RPC calls against.
   /// Check skipped if empty.
-  ClusterID const cluster_id_;
+  const ClusterID cluster_id_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.

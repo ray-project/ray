@@ -159,11 +159,10 @@ void GrpcServer::RegisterService(GrpcService &service, bool token_auth) {
   services_.emplace_back(service.GetGrpcService());
 
   for (int i = 0; i < num_threads_; i++) {
-    service.InitServerCallFactories(cqs_[i],
-                                    &server_call_factories_,
-                                    token_auth && cluster_token_.valid()
-                                        ? *(&cluster_token_.get())
-                                        : ClusterID::Nil());
+    service.InitServerCallFactories(
+        cqs_[i],
+        &server_call_factories_,
+        token_auth && cluster_id_.valid() ? *(&cluster_id_.get()) : ClusterID::Nil());
   }
 }
 

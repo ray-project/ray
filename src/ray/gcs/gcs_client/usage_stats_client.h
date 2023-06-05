@@ -25,7 +25,7 @@ class UsageStatsClient {
  public:
   explicit UsageStatsClient(const std::string &gcs_address,
                             instrumented_io_context &io_service,
-                            ClusterID const &cluster_id);
+                            const ClusterID &cluster_id);
 
   /// C++ version of record_extra_usage_tag in usage_lib.py
   ///

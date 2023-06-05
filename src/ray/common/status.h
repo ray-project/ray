@@ -115,6 +115,7 @@ enum class StatusCode : char {
   ObjectUnknownOwner = 29,
   RpcError = 30,
   OutOfResource = 31,
+  // Meaning the ObjectRefStream reaches to the end of stream.
   ObjectRefEndOfStream = 32,
 };
 

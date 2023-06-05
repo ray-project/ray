@@ -87,25 +87,26 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
   // because current sync APIs just wrap async by blocking on future.
   // For an RPC, it is better not to wait for the response if it can
   // be helped.
-  cluster_token_promise_ = std::promise<ClusterID>();
+  cluster_id_promise_ = std::promise<ClusterID>();
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
-      io_service, cluster_token_promise_.get_future());
+      io_service, cluster_id_promise_.get_future());
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
   // Note: We need to initialize this so we can use the RPC.
   node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   if (cluster_id.IsNil()) {
-    gcs_rpc_client_->RegisterClient(
-        rpc::RegisterClientRequest(),
-        [this](const Status &status, const rpc::RegisterClientReply &reply) {
+    gcs_rpc_client_->GetClusterId(
+        rpc::GetClusterIdRequest(),
+        [this](const Status &status, const rpc::GetClusterIdReply &reply) {
+          RAY_CHECK(status.ok()) << "Failed to get Cluster ID!";
           auto cluster_id = ClusterID::FromBinary(reply.cluster_id());
           RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
-          this->cluster_token_promise_.set_value(cluster_id);
+          this->cluster_id_promise_.set_value(cluster_id);
         });
   } else {
-    cluster_token_promise_.set_value(cluster_id);
+    cluster_id_promise_.set_value(cluster_id);
   }
 
   resubscribe_func_ = [this]() {

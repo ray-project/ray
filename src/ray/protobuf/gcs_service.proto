@@ -177,9 +177,9 @@ service ActorInfoGcsService {
   rpc KillActorViaGcs(KillActorViaGcsRequest) returns (KillActorViaGcsReply);
 }
 
-message RegisterClientRequest {}
+message GetClusterIdRequest {}
 
-message RegisterClientReply {
+message GetClusterIdReply {
   GcsStatus status = 1;
   bytes cluster_id = 2;
 }
@@ -626,7 +626,7 @@ message GcsStatus {
 // Service for node info access.
 service NodeInfoGcsService {
   // Register a client to GCS Service. Must be called before any other RPC in GCSClient.
-  rpc RegisterClient(RegisterClientRequest) returns (RegisterClientReply);
+  rpc GetClusterId(GetClusterIdRequest) returns (GetClusterIdReply);
   // Register a node to GCS Service.
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
   // Drain a node from GCS Service.

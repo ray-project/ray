@@ -85,7 +85,7 @@ class TestGrpcService : public GrpcService {
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      ClusterID const &cluster_id) override {
+      const ClusterID &cluster_id) override {
     RPC_SERVICE_HANDLER(TestService, Ping, /*max_active_rpcs=*/1);
     RPC_SERVICE_HANDLER(TestService, PingTimeout, /*max_active_rpcs=*/1);
   }
@@ -211,6 +211,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   grpc_client_.reset();
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
+                                                   std::shared_future<ClusterID>(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
   grpc_client_.reset(new GrpcClient<TestService>(
@@ -244,6 +245,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   grpc_client_.reset();
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
+                                                   std::shared_future<ClusterID>(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
   grpc_client_.reset(new GrpcClient<TestService>(

@@ -84,6 +84,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
+  /// \param instrumented_io_context IO execution service.
+  /// \param cluster_id Optional cluster ID to provide to the client.
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service,
@@ -167,13 +169,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   virtual rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
  protected:
-  /// For testing purposes only. Get an auth-stamped context.
-  void StampContext(grpc::ClientContext &context) {
-    RAY_CHECK(client_call_manager_)
-        << "Cannot stamp context before initializing client call manager.";
-    client_call_manager_->StampContext(context);
-  }
-
   GcsClientOptions options_;
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
@@ -194,7 +189,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Same issue with capture-moving into a lambda that gets turned into an std::function.
   /// See gcs_server for explanation.
-  std::promise<ClusterID> cluster_token_promise_;
+  std::promise<ClusterID> cluster_id_promise_;
 
   std::unique_ptr<GcsSubscriber> gcs_subscriber_;
 
