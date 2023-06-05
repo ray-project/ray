@@ -86,7 +86,7 @@ class Test(dict):
         """
         if not self.is_byod_cluster():
             return None
-        return self["cluster"]["byod"]["type"]
+        return self["cluster"]["byod"].get("type", "cpu")
 
     def get_byod_pre_run_cmds(self) -> List[str]:
         """
