@@ -984,6 +984,11 @@ void TaskManager::RemoveFinishedTaskReferences(
       return_ids.push_back(dynamic_return_id);
     }
   }
+  if (spec.IsStreamingGenerator()) {
+    for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
+      return_ids.push_back(spec.StreamingGeneratorReturnId(i));
+    }
+  }
 
   std::vector<ObjectID> deleted;
   reference_counter_->UpdateFinishedTaskReferences(return_ids,
