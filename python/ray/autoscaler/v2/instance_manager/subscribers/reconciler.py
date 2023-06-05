@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 class InstanceReconciler(InstanceUpdatedSuscriber):
     """InstanceReconciler is responsible for reconciling the difference between
-    node provider and instance storage. It is also responsible for launching new
-    nodes and terminating failing nodes.
+    node provider and instance storage. It is also responsible for handling
+    failures.
     """
 
     def __init__(
