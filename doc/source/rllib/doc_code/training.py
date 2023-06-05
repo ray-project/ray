@@ -29,6 +29,7 @@ prep.transform(obs).shape
 # __query_action_dist_start__
 # Get a reference to the policy
 import numpy as np
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.ppo import PPOConfig
 
 algo = (
@@ -43,51 +44,76 @@ algo = (
 policy = algo.get_policy()
 # <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
 
-# Run a forward pass to get model output logits. Note that complex observations
-# must be preprocessed as in the above code block.
-logits, _ = policy.model({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
-# (<tf.Tensor: id=1274, shape=(1, 2), dtype=float32, numpy=...>, [])
+ppo_rl_module = policy.model
 
-# Compute action distribution given logits
-policy.dist_class
-# <class_object 'ray.rllib.models.tf.tf_action_dist.Categorical'>
-dist = policy.dist_class(logits, policy.model)
-# <ray.rllib.models.tf.tf_action_dist.Categorical object at 0x7fd02301d710>
+# Use forward_train or __call__ to get logits for an action distribution that can be
+# used during training and the value function evaluated at the given observation.
+
+out = ppo_rl_module({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
+logits = out[SampleBatch.ACTION_DIST_INPUTS]
+# <tf.Tensor: shape=(1, 2), dtype=float32, numpy=array([[...]], dtype=float32)>
+values = out[SampleBatch.VF_PREDS]
+# <tf.Tensor: shape=(1,), dtype=float32, numpy=array([...], dtype=float32)>
+
+dist_class = ppo_rl_module.get_train_action_dist_cls()
+# <class 'ray.rllib.models.tf.tf_distributions.TfCategorical'>
+dist = dist_class(logits=logits)
+# <ray.rllib.models.tf.tf_distributions.TfCategorical object at 0x1054d3880>
 
 # Query the distribution for samples, sample logps
 dist.sample()
-# <tf.Tensor: id=661, shape=(1,), dtype=int64, numpy=..>
+# <tf.Tensor: shape=(1,), dtype=int32, numpy=array([...], dtype=int32)>
 dist.logp([1])
-# <tf.Tensor: id=1298, shape=(1,), dtype=float32, numpy=...>
+# <tf.Tensor: shape=(1,), dtype=float32, numpy=array([...], dtype=float32)>
 
-# Get the estimated values for the most recent forward pass
-policy.model.value_function()
-# <tf.Tensor: id=670, shape=(1,), dtype=float32, numpy=...>
+# Use forward_exploration to get logits for an action distribution that can
+# be used for exploration and the value function evaluated at the given
+# observation
+out = ppo_rl_module.forward_exploration({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
+logits = out[SampleBatch.ACTION_DIST_INPUTS]
+# <tf.Tensor: shape=(1, 2), dtype=float32, numpy=array([[...]], dtype=float32)>
+values = out[SampleBatch.VF_PREDS]
+# <tf.Tensor: shape=(1,), dtype=float32, numpy=array([...], dtype=float32)>
 
-policy.model.base_model.summary()
+# Compute action distribution given logits
+dist_class = policy.model.get_exploration_action_dist_cls()
+# <class 'ray.rllib.models.tf.tf_distributions.TfCategorical'>
+dist = dist_class(logits=logits)
+# <ray.rllib.models.tf.tf_distributions.TfCategorical object at 0x1054d3880>
+
+# Query the distribution for samples, sample logps
+dist.sample()
+# <tf.Tensor: shape=(1,), dtype=int32, numpy=array([...], dtype=int32)>
+dist.logp([1])
+# <tf.Tensor: shape=(1,), dtype=float32, numpy=array([...], dtype=float32)>
+
+# use forward_inference to get logits for a deterministic action distribution
+out = ppo_rl_module.forward_inference({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
+loc = out[SampleBatch.ACTION_DIST_INPUTS]
+# <tf.Tensor: shape=(1, 2), dtype=float32, numpy=array([[...]], dtype=float32)>
+dist_class = ppo_rl_module.get_inference_action_dist_cls()
+# <class 'ray.rllib.models.tf.tf_distributions.TfDeterministic'>
+
+actions = dist_class(loc=logits).sample()
+
+ppo_rl_module.summary()
 """
-Model: "model"
-_____________________________________________________________________
-Layer (type)               Output Shape  Param #  Connected to
-=====================================================================
-observations (InputLayer)  [(None, 4)]   0
-_____________________________________________________________________
-fc_1 (Dense)               (None, 256)   1280     observations[0][0]
-_____________________________________________________________________
-fc_value_1 (Dense)         (None, 256)   1280     observations[0][0]
-_____________________________________________________________________
-fc_2 (Dense)               (None, 256)   65792    fc_1[0][0]
-_____________________________________________________________________
-fc_value_2 (Dense)         (None, 256)   65792    fc_value_1[0][0]
-_____________________________________________________________________
-fc_out (Dense)             (None, 2)     514      fc_2[0][0]
-_____________________________________________________________________
-value_out (Dense)          (None, 1)     257      fc_value_2[0][0]
-=====================================================================
+Model: "ppo_tf_rl_module"
+_________________________________________________________________
+ Layer (type)                Output Shape              Param #   
+=================================================================
+ tf_actor_critic_encoder (Tf  multiple                 134144    
+ ActorCriticEncoder)                                             
+                                                                 
+ tf_mlp_head (TfMLPHead)     multiple                  514       
+                                                                 
+ tf_mlp_head_1 (TfMLPHead)   multiple                  257       
+                                                                 
+=================================================================
 Total params: 134,915
 Trainable params: 134,915
 Non-trainable params: 0
-_____________________________________________________________________
+_________________________________________________________________
 """
 # __query_action_dist_end__
 

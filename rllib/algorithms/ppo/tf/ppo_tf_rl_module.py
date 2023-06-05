@@ -26,7 +26,8 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
 
         # Actions
         action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        loc = tf.math.argmax(tf.math.softmax(tf.math.exp(action_logits)), axis=1)
+        output[SampleBatch.ACTION_DIST_INPUTS] = loc
 
         return output
 
