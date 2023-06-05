@@ -351,11 +351,13 @@ class RuntimeContext(object):
         Returns:
             The handle of current actor.
         """
-        if self.get_actor_id() is None:
-            raise RuntimeError("This method is only available in an actor.")
         worker = self.worker
         worker.check_connected()
-        return worker.core_worker.get_actor_handle(self.actor_id)
+        actor_id = worker.actor_id
+        if actor_id.is_nil():
+            raise RuntimeError("This method is only available in an actor.")
+
+        return worker.core_worker.get_actor_handle(actor_id)
 
     @property
     def gcs_address(self):
