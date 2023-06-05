@@ -1,9 +1,15 @@
 import logging
+import math
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import List
 
+from ray.autoscaler._private.constants import (
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+    AUTOSCALER_MAX_LAUNCH_BATCH,
+)
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
     InstanceUpdatedSuscriber,
@@ -14,6 +20,21 @@ from ray.autoscaler.v2.instance_manager.ray_installer import RayInstaller
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RayInstallerConfig:
+    max_install_attempts: int = 3
+    install_retry_interval: int = 10
+    max_concurrent_installs: int = 50
+
+
+@dataclass
+class LaunchInstanceConfig:
+    max_concurrent_requests: int = math.ceil(
+        AUTOSCALER_MAX_CONCURRENT_LAUNCHES / float(AUTOSCALER_MAX_LAUNCH_BATCH)
+    )
+    max_nodes_per_request: int = AUTOSCALER_MAX_LAUNCH_BATCH
 
 
 class InstanceReconciler(InstanceUpdatedSuscriber):
@@ -28,17 +49,22 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         instance_storage: InstanceStorage,
         node_provider: NodeProvider,
         ray_installer: RayInstaller,
-        max_install_attempts: int = 3,
-        _install_retry_interval: int = 10,
+        installer_config: RayInstallerConfig = RayInstallerConfig(),
+        launch_instance_config: LaunchInstanceConfig = LaunchInstanceConfig(),
     ) -> None:
         self._head_node_ip = head_node_ip
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._ray_installer = ray_installer
+        self._installer_config = installer_config
+        self._launch_instance_config = launch_instance_config
         self._reconciler_executor = ThreadPoolExecutor(max_workers=1)
-        self._ray_installaion_executor = ThreadPoolExecutor(max_workers=50)
-        self._max_install_attempts = max_install_attempts
-        self._install_retry_interval = _install_retry_interval
+        self._ray_installation_executor = ThreadPoolExecutor(
+            max_workers=self._installer_config.max_concurrent_installs
+        )
+        self._launch_instance_executor = ThreadPoolExecutor(
+            max_workers=self.launch_instance_config.max_concurrent_requests
+        )
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         # TODO: we should do reconciliation based on events.
@@ -51,7 +77,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self._reconcile_with_node_provider()
 
     def _launch_new_instances(self):
-        queued_instances, storage_version = self._instance_storage.get_instances(
+        queued_instances, _ = self._instance_storage.get_instances(
             status_filter={Instance.QEUEUD}
         )
         if not queued_instances:
@@ -63,7 +89,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         for instance in queued_instances.values():
             instances_by_type[instance.instance_type].append(instance)
             instance_type_min_request_time[instance.instance_type] = min(
-                instance.timestamp_since_last_state_change,
+                instance.timestamp_since_last_modified,
                 instance_type_min_request_time.get(
                     instance.instance_type, float("inf")
                 ),
@@ -73,10 +99,11 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         picked_instance_type = sorted(
             instance_type_min_request_time.items(), key=lambda x: x[1]
         )[0][0]
-        self._launch_new_instances_by_type(
+
+        self._launch_instance_executor.submit(
+            self._launch_new_instances_by_type,
             picked_instance_type,
             instances_by_type[picked_instance_type],
-            storage_version,
         )
 
     def _launch_new_instances_by_type(
@@ -93,6 +120,11 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
                 logger.warn(f"Failed to update instance {instance}")
             instance.version = version
             instances_selected.append(instance)
+            if (
+                len(instances_selected)
+                >= self._launch_instance_config.max_nodes_per_request
+            ):
+                break
 
         if not instances_selected:
             return 0
@@ -144,7 +176,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
             ray_status_filter={Instance.RAY_STATUS_UNKOWN},
         )
         for instance in allocated_instance.values():
-            self._ray_installaion_executor.submit(
+            self._ray_installation_executor.submit(
                 self._install_ray_on_single_node, instance
             )
 
@@ -166,12 +198,12 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         # install with exponential backoff
         installed = False
         backoff_factor = 1
-        for _ in range(self._max_install_attempts):
+        for _ in range(self._installer_config.max_install_attempts):
             installed = self._ray_installer.install_ray(instance, self._head_node_ip)
             if installed:
                 break
             logger.warning("Failed to install ray, retrying...")
-            time.sleep(self._install_retry_interval * backoff_factor)
+            time.sleep(self._installer_config.install_retry_interval * backoff_factor)
             backoff_factor *= 2
 
         if not installed:
