@@ -367,9 +367,6 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
-    # This is needed or else the Ray Client tests run into a gRPC forking problem
-    # similar to https://github.com/grpc/grpc/issues/31885
-    - pip install pip install grpcio==1.50.0
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
@@ -420,9 +417,6 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    # This is needed or else the Ray Client tests run into a gRPC forking problem
-    # similar to https://github.com/grpc/grpc/issues/31885
-    - pip install pip install grpcio==1.50.0
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
       --test_env=TEST_EXTERNAL_REDIS=1
@@ -479,7 +473,6 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install "grpcio >= 1.28.1, <= 1.43.0"
     - ./ci/env/env_info.sh
     - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
       --config=asan-buildkite
