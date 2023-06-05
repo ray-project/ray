@@ -4,7 +4,6 @@ import sys
 import unittest
 
 import pytest  # noqa
-
 from ray._private.test_utils import load_test_config
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
@@ -48,7 +47,7 @@ class NodeProviderTest(unittest.TestCase):
             cloud_instance_id="0",
             internal_ip="172.0.0.0",
             external_ip="1.2.3.4",
-            status=Instance.INSTANCE_STATUS_UNSPECIFIED,
+            status=Instance.UNKNOWN,
         )
         self.assertEqual(len(self.base_provider.mock_nodes), 1)
         self.assertEqual(self.node_provider.get_non_terminated_nodes(), {"0": nodes[0]})
@@ -59,14 +58,14 @@ class NodeProviderTest(unittest.TestCase):
             cloud_instance_id="1",
             internal_ip="172.0.0.1",
             external_ip="1.2.3.4",
-            status=Instance.INSTANCE_STATUS_UNSPECIFIED,
+            status=Instance.UNKNOWN,
         )
         assert nodes1[1] == Instance(
             instance_type="worker_nodes",
             cloud_instance_id="2",
             internal_ip="172.0.0.2",
             external_ip="1.2.3.4",
-            status=Instance.INSTANCE_STATUS_UNSPECIFIED,
+            status=Instance.UNKNOWN,
         )
         self.assertEqual(
             self.node_provider.get_non_terminated_nodes(),

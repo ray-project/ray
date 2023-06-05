@@ -59,6 +59,7 @@ message Instance {
     ALLOCATION_FAILED = 4;
     STOPPING = 5;
     STOPPED = 6;
+    GARBAGE_COLLECTED = 7;
   }
 
   enum RayStatus {

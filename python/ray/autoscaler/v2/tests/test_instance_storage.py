@@ -4,7 +4,6 @@ import os
 import sys
 
 import pytest  # noqa
-
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
     InstanceUpdatedSuscriber,
@@ -22,9 +21,7 @@ class DummySubscriber(InstanceUpdatedSuscriber):
         self.events.extend(events)
 
 
-def create_instance(
-    instance_id, status=Instance.INSTANCE_STATUS_UNSPECIFIED, version=0
-):
+def create_instance(instance_id, status=Instance.UNKNOWN, version=0):
     return Instance(instance_id=instance_id, status=status, version=version)
 
 
@@ -46,8 +43,8 @@ def test_upsert():
     )
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
     ]
 
     instance1.version = 1
@@ -66,11 +63,11 @@ def test_upsert():
     )
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
     ]
 
-    instance2.status = Instance.IDLE
+    instance2.status = Instance.ALLOCATED
     assert (True, 2) == storage.batch_upsert_instances(
         [instance3, instance2],
         expected_storage_version=1,
@@ -89,10 +86,10 @@ def test_upsert():
     }
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance3", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.IDLE),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance3", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.ALLOCATED),
     ]
 
 
@@ -109,13 +106,13 @@ def test_update():
 
     assert (True, 1) == storage.upsert_instance(instance=instance1)
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
     ]
     assert (True, 2) == storage.upsert_instance(instance=instance2)
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
     ]
 
     assert (
@@ -139,8 +136,8 @@ def test_update():
     )
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
     ]
 
     assert (True, 3) == storage.upsert_instance(
@@ -157,9 +154,9 @@ def test_update():
     ) == storage.get_instances()
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
     ]
 
     assert (True, 4) == storage.upsert_instance(
@@ -176,10 +173,10 @@ def test_update():
     ) == storage.get_instances()
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
     ]
 
 
@@ -206,10 +203,10 @@ def test_delete():
     assert (True, 2) == storage.batch_delete_instances(instance_ids=["instance1"])
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance3", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance1", Instance.GARAGE_COLLECTED),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance3", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance1", Instance.GARBAGE_COLLECTED),
     ]
 
     assert (
@@ -232,9 +229,9 @@ def test_delete():
     ) == storage.get_instances()
 
     assert subscriber.events == [
-        InstanceUpdateEvent("instance1", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance2", Instance.INSTANCE_STATUS_UNSPECIFIED),
-        InstanceUpdateEvent("instance3", Instance.INSTANCE_STATUS_UNSPECIFIED),
+        InstanceUpdateEvent("instance1", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance2", Instance.UNKNOWN),
+        InstanceUpdateEvent("instance3", Instance.UNKNOWN),
         InstanceUpdateEvent("instance1", Instance.GARAGE_COLLECTED),
         InstanceUpdateEvent("instance2", Instance.GARAGE_COLLECTED),
     ]
@@ -246,8 +243,8 @@ def test_get_instances():
         storage=InMemoryStorage(),
     )
     instance1 = create_instance("instance1", version=1)
-    instance2 = create_instance("instance2", status=Instance.RUNNING, version=1)
-    instance3 = create_instance("instance3", status=Instance.IDLE, version=1)
+    instance2 = create_instance("instance2", status=Instance.ALLOCATED, version=1)
+    instance3 = create_instance("instance3", status=Instance.STOPPING, version=1)
 
     assert (True, 1) == storage.batch_upsert_instances(
         [copy.deepcopy(instance1), copy.deepcopy(instance2), copy.deepcopy(instance3)],
@@ -272,7 +269,7 @@ def test_get_instances():
     ) == storage.get_instances(instance_ids=["instance1", "instance2"])
 
     assert ({"instance2": instance2}, 1) == storage.get_instances(
-        instance_ids=["instance1", "instance2"], status_filter={Instance.RUNNING}
+        instance_ids=["instance1", "instance2"], status_filter={Instance.ALLOCATED}
     )
 
     assert (
@@ -280,7 +277,7 @@ def test_get_instances():
             "instance2": instance2,
         },
         1,
-    ) == storage.get_instances(status_filter={Instance.RUNNING})
+    ) == storage.get_instances(status_filter={Instance.ALLOCATED})
 
 
 if __name__ == "__main__":

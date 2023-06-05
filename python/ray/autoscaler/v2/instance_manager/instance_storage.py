@@ -156,7 +156,8 @@ class InstanceStorage:
             instance_ids: A list of instance ids to be retrieved. If empty, all
                 instances will be retrieved.
             status_filter: Only instances with the specified status will be returned.
-            ray_status_filter: Only instances with the specified ray status will be returned.
+            ray_status_filter: Only instances with the specified ray status will
+                be returned.
 
         Returns:
             Tuple[Dict[str, Instance], int]: A tuple of (instances, version).
