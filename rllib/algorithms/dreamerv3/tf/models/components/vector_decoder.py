@@ -7,7 +7,6 @@ from typing import Optional
 
 import gymnasium as gym
 import tensorflow as tf
-import tensorflow_probability as tfp
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
@@ -63,12 +62,12 @@ class VectorDecoder(tf.keras.Model):
         loc = self.mlp(out)
 
         # Create the Gaussian diag distribution.
-        #distribution = tfp.distributions.MultivariateNormalDiag(
+        # distribution = tfp.distributions.MultivariateNormalDiag(
         #    loc=loc,
         #    # Scale == 1.0.
         #    scale_diag=tf.ones_like(loc),
-        #)
-        #pred_obs = distribution.sample()
+        # )
+        # pred_obs = distribution.sample()
 
         # Always return both predicted observations (sample0 and distribution.
-        return loc  #pred_obs, distribution
+        return loc  # pred_obs, distribution

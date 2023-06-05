@@ -5,8 +5,7 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 # python run_regression_tests.py --dir [this file] --env ALE/[gym ID e.g. Pong-v5]
 
 config = (
-    DreamerV3Config()
-    .env(
+    DreamerV3Config().env(
         # [2]: "We follow the evaluation protocol of Machado et al. (2018) with 200M
         # environment steps, action repeat of 4, a time limit of 108,000 steps per
         # episode that correspond to 30 minutes of game play, no access to life

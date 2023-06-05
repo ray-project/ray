@@ -246,7 +246,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 module_id,
                 {
                     "DREAM_DATA_" + key[:-1] + "1": value[:, hps.batch_size_B]
-                    for key, value in dream_data.items() if key.endsin("H_BxT")
+                    for key, value in dream_data.items()
+                    if key.endsin("H_BxT")
                 },
             )
 
@@ -502,11 +503,15 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             module_id=module_id,
             hps=hps,
             value_targets_t0_to_Hm1_BxT=value_targets_t0_to_Hm1_BxT,
-            value_predictions_t0_to_Hm1_BxT=dream_data["values_dreamed_t0_to_H_BxT"][:-1],
+            value_predictions_t0_to_Hm1_BxT=dream_data["values_dreamed_t0_to_H_BxT"][
+                :-1
+            ],
         )
 
         # Actions actually taken in the dream.
-        actions_dreamed = tf.stop_gradient(dream_data["actions_dreamed_t0_to_H_BxT"])[:-1]
+        actions_dreamed = tf.stop_gradient(dream_data["actions_dreamed_t0_to_H_BxT"])[
+            :-1
+        ]
         dist_actions_t0_to_Hm1_B = dream_data[
             "actions_dreamed_distributions_t0_to_H_BxT"
         ][:-1]
@@ -561,7 +566,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         L_actor_H_B = L_actor_reinforce_term_H_B + L_actor_action_entropy_term_H_B
         # Mask out everything that goes beyond a predicted continue=False boundary.
-        L_actor_H_B *= tf.stop_gradient(dream_data["dream_loss_weights_t0_to_H_BxT"])[:-1]
+        L_actor_H_B *= tf.stop_gradient(dream_data["dream_loss_weights_t0_to_H_BxT"])[
+            :-1
+        ]
         L_actor = tf.reduce_mean(L_actor_H_B)
 
         self.register_metrics(
@@ -585,8 +592,12 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 module_id,
                 metrics_dict={
                     "ACTOR_L_total_H_BxT": L_actor_H_B,
-                    "ACTOR_logp_actions_dreamed_H_BxT": logp_actions_dreamed_t0_to_Hm1_B,
-                    "ACTOR_scaled_value_targets_H_BxT": scaled_value_targets_t0_to_Hm1_B,
+                    "ACTOR_logp_actions_dreamed_H_BxT": (
+                        logp_actions_dreamed_t0_to_Hm1_B
+                    ),
+                    "ACTOR_scaled_value_targets_H_BxT": (
+                        scaled_value_targets_t0_to_Hm1_B
+                    ),
                     "ACTOR_action_entropy_H_BxT": entropy_H_B,
                     # Individual loss terms.
                     "ACTOR_L_neglogp_reinforce_term_H_BxT": L_actor_reinforce_term_H_B,

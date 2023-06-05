@@ -1,5 +1,3 @@
-import dataclasses
-
 import gymnasium as gym
 
 from ray.rllib.core.models.catalog import Catalog

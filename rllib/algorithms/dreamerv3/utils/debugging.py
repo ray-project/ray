@@ -1,6 +1,6 @@
 import gymnasium as gym
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from gymnasium.envs.classic_control.cartpole import CartPoleEnv
 import tensorflow as tf
@@ -37,7 +37,9 @@ gym.register("CartPoleDebug-v0", CartPoleDebug)
 cartpole_env = gym.make("CartPoleDebug-v0", render_mode="rgb_array")
 cartpole_env.reset()
 
-frozenlake_env = gym.make("FrozenLake-v1", render_mode="rgb_array", is_slippery=False, map_name="4x4")#desc=["SF", "HG"])
+frozenlake_env = gym.make(
+    "FrozenLake-v1", render_mode="rgb_array", is_slippery=False, map_name="4x4"
+)  # desc=["SF", "HG"])
 frozenlake_env.reset()
 
 
@@ -67,10 +69,16 @@ def create_cartpole_dream_image(
     image = Image.fromarray(rgb_array)
     draw_obj = ImageDraw.Draw(image)
 
-    #fnt = ImageFont.load_default(size=40)
+    # fnt = ImageFont.load_default(size=40)
 
-    draw_obj.text((5, 6), f"Vt={dreamed_V:.2f} (Rt={value_target:.2f})", fill=(0, 0, 0))#, font=fnt.font, size=30)
-    draw_obj.text((5, 18), f"at={'<--' if dreamed_a == 0 else '-->'} ({dreamed_a})", fill=(0, 0, 0))
+    draw_obj.text(
+        (5, 6), f"Vt={dreamed_V:.2f} (Rt={value_target:.2f})", fill=(0, 0, 0)
+    )  # , font=fnt.font, size=30)
+    draw_obj.text(
+        (5, 18),
+        f"at={'<--' if dreamed_a == 0 else '-->'} ({dreamed_a})",
+        fill=(0, 0, 0),
+    )
     draw_obj.text((5, 30), f"rt+1={dreamed_r_tp1:.2f}", fill=(0, 0, 0))
     if dreamed_ri_tp1 is not None:
         draw_obj.text((5, 42), f"rit+1={dreamed_ri_tp1:.6f}", fill=(0, 0, 0))
@@ -107,10 +115,17 @@ def create_frozenlake_dream_image(
     image = Image.fromarray(rgb_array)
     draw_obj = ImageDraw.Draw(image)
 
-    #fnt = ImageFont.load_default(size=40)
-
-    draw_obj.text((5, 6), f"Vt={dreamed_V:.2f} (Rt={value_target:.2f})", fill=(0, 0, 0))#, font=fnt.font, size=30)
-    draw_obj.text((5, 18), f"at={'<--' if dreamed_a == 0 else 'v' if dreamed_a == 1 else '-->' if dreamed_a == 2 else '^'} ({dreamed_a})", fill=(0, 0, 0))
+    draw_obj.text((5, 6), f"Vt={dreamed_V:.2f} (Rt={value_target:.2f})", fill=(0, 0, 0))
+    action_arrow = (
+        "<--"
+        if dreamed_a == 0
+        else "v"
+        if dreamed_a == 1
+        else "-->"
+        if dreamed_a == 2
+        else "^"
+    )
+    draw_obj.text((5, 18), f"at={action_arrow} ({dreamed_a})", fill=(0, 0, 0))
     draw_obj.text((5, 30), f"rt+1={dreamed_r_tp1:.2f}", fill=(0, 0, 0))
     if dreamed_ri_tp1 is not None:
         draw_obj.text((5, 42), f"rit+1={dreamed_ri_tp1:.6f}", fill=(0, 0, 0))
@@ -135,7 +150,7 @@ if __name__ == "__main__":
         initial_h=0.0,
         value_target=8.0,
     )
-    #ImageFont.load("arial.pil")
+    # ImageFont.load("arial.pil")
     image = Image.fromarray(rgb_array)
     image.show()
 
@@ -149,7 +164,7 @@ if __name__ == "__main__":
         initial_h=0.1,
         value_target=8.0,
     )
-    #ImageFont.load("arial.pil")
+    # ImageFont.load("arial.pil")
     image = Image.fromarray(rgb_array)
     image.show()
 

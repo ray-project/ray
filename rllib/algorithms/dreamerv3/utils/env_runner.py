@@ -185,12 +185,15 @@ class DreamerV3EnvRunner(EnvRunner):
         else:
             # `_sample_episodes` returns only one list (with completed episodes)
             # return empty list for incomplete ones.
-            return self._sample_episodes(
-                num_episodes=num_episodes,
-                explore=explore,
-                random_actions=random_actions,
-                with_render_data=with_render_data,
-            ), []
+            return (
+                self._sample_episodes(
+                    num_episodes=num_episodes,
+                    explore=explore,
+                    random_actions=random_actions,
+                    with_render_data=with_render_data,
+                ),
+                [],
+            )
 
     def _sample_timesteps(
         self,
@@ -446,10 +449,12 @@ class DreamerV3EnvRunner(EnvRunner):
                     episode_reward += eps2.get_return()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
-            metrics.append(RolloutMetrics(
-                episode_length=episode_length,
-                episode_reward=episode_reward,
-            ))
+            metrics.append(
+                RolloutMetrics(
+                    episode_length=episode_length,
+                    episode_reward=episode_reward,
+                )
+            )
 
         self._done_episodes_for_metrics.clear()
         self._ts_since_last_metrics = 0
@@ -522,4 +527,3 @@ class ActionClip(gym.ActionWrapper):
 
     def action(self, action):
         return np.clip(action, self._low, self._high)
-

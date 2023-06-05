@@ -58,6 +58,7 @@ class DreamerV3Learner(Learner):
     Only implements the `additional_update_for_module()` method to define the logic
     for updating the critic EMA-copy after each training step.
     """
+
     @override(Learner)
     def compile_results(
         self,
@@ -78,9 +79,9 @@ class DreamerV3Learner(Learner):
         if self.hps.summarize_images_and_videos:
             for module_id, res in results.items():
                 if module_id in fwd_out:
-                    res["WORLD_MODEL_fwd_out_obs_distribution_means_BxT"] = (
-                        fwd_out[module_id]["obs_distribution_means_BxT"]
-                    )
+                    res["WORLD_MODEL_fwd_out_obs_distribution_means_BxT"] = fwd_out[
+                        module_id
+                    ]["obs_distribution_means_BxT"]
         return results
 
     @override(Learner)

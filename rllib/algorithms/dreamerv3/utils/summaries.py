@@ -36,7 +36,9 @@ def reconstruct_obs_from_h_and_z(
         z=np.reshape(z_t0_to_H, (T * B,) + z_t0_to_H.shape[2:]),
     )
     # Unfold time rank again.
-    reconstructed_obs_T_B = np.reshape(reconstructed_obs_distr_means_TxB, (T, B) + obs_dims_shape)
+    reconstructed_obs_T_B = np.reshape(
+        reconstructed_obs_distr_means_TxB, (T, B) + obs_dims_shape
+    )
     # Return inverse symlog'd (real env obs space) reconstructed observations.
     return reconstructed_obs_T_B
 
@@ -83,7 +85,9 @@ def summarize_dreamed_trajectory(
                         if "DISAGREE_intrinsic_rewards_H_BxT" in results
                         else None
                     ),
-                    dreamed_c_tp1=(dream_data["continues_dreamed_t0_to_H_BxT"][t + 1][b]),
+                    dreamed_c_tp1=(
+                        dream_data["continues_dreamed_t0_to_H_BxT"][t + 1][b]
+                    ),
                     value_target=results["VALUE_TARGETS_H_BxT"][t][b],
                     initial_h=dream_data["h_states_t0_to_H_BxT"][t][b],
                     as_tensor=True,
@@ -131,12 +135,12 @@ def summarize_predicted_vs_sampled_obs(
     predicted_observation_means_BxT = results[
         "WORLD_MODEL_fwd_out_obs_distribution_means_BxT"
     ]
-    #predicted_rewards_BxT = train_results[
+    # predicted_rewards_BxT = train_results[
     #    "WORLD_MODEL_fwd_out_rewards_BxT"
-    #]
-    #predicted_continues_BxT = train_results[
+    # ]
+    # predicted_continues_BxT = train_results[
     #    "WORLD_MODEL_fwd_out_continues_BxT"
-    #]
+    # ]
     _summarize_obs(
         results=results,
         computed_float_obs_B_T_dims=np.reshape(
@@ -148,27 +152,27 @@ def summarize_predicted_vs_sampled_obs(
         descr_obs=f"predicted_posterior_T{batch_length_T}",
         symlog_obs=symlog_obs,
     )
-    #predicted_rewards_BxT = inverse_symlog(predicted_rewards_BxT)
-    #_summarize_rewards(
+    # predicted_rewards_BxT = inverse_symlog(predicted_rewards_BxT)
+    # _summarize_rewards(
     #    results=results,
     #    computed_rewards=predicted_rewards_BxT,
     #    sampled_rewards=np.reshape(sample[SampleBatch.REWARDS], [-1]),
     #    descr_prefix="WORLD_MODEL",
     #    descr_reward="predicted_posterior",
-    #)
-    #results.update(
+    # )
+    # results.update(
     #    {
     #        "sampled_rewards": sample[SampleBatch.REWARDS],
     #        "WORLD_MODEL_predicted_posterior_rewards": predicted_rewards_BxT,
     #    }
-    #)
-    #_summarize_continues(
+    # )
+    # _summarize_continues(
     #    results=results,
     #    computed_continues=predicted_continues_BxT,
     #    sampled_continues=np.reshape(1.0 - sample["is_terminated"], [-1]),
     #    descr_prefix="WORLD_MODEL",
     #    descr_cont="predicted_posterior",
-    #)
+    # )
 
 
 def summarize_dreamed_eval_trajectory_vs_samples(
@@ -266,17 +270,17 @@ def _summarize_obs(
     # MSE is the mean over all feature dimensions.
     # Images: Flatten image dimensions (w, h, C); Vectors: Mean over all items, etc..
     # Then sum over time-axis and mean over batch-axis.
-    #mse_sampled_vs_computed_obs = np.square(
+    # mse_sampled_vs_computed_obs = np.square(
     #    computed_float_obs_B_T_dims - sampled_obs_B_T_dims.astype(np.float32)
-    #)
-    #mse_sampled_vs_computed_obs = np.mean(mse_sampled_vs_computed_obs)
-    #results.update(
+    # )
+    # mse_sampled_vs_computed_obs = np.mean(mse_sampled_vs_computed_obs)
+    # results.update(
     #    {
     #        f"{descr_prefix}sampled_vs_{descr_obs}_obs_mse": (
     #            mse_sampled_vs_computed_obs
     #        ),
     #    }
-    #)
+    # )
 
     # Videos: Create summary, comparing computed images with actual sampled ones.
     # 4=[B, T, w, h] grayscale image; 5=[B, T, w, h, C] RGB image.
@@ -290,11 +294,11 @@ def _summarize_obs(
         if not symlog_obs:
             computed_float_obs_B_T_dims = (computed_float_obs_B_T_dims + 1.0) * 128
             sampled_obs_B_T_dims = (sampled_obs_B_T_dims + 1.0) * 128
-            sampled_obs_B_T_dims = (
-                np.clip(sampled_obs_B_T_dims, 0.0, 255.0).astype(np.uint8)
+            sampled_obs_B_T_dims = np.clip(sampled_obs_B_T_dims, 0.0, 255.0).astype(
+                np.uint8
             )
-        computed_images = (
-            np.clip(computed_float_obs_B_T_dims, 0.0, 255.0).astype(np.uint8)
+        computed_images = np.clip(computed_float_obs_B_T_dims, 0.0, 255.0).astype(
+            np.uint8
         )
         # Concat sampled and computed images along the height axis (3) such that
         # real images show below respective predicted ones.
@@ -311,7 +315,7 @@ def _summarize_obs(
             {f"{descr_prefix}sampled_vs_{descr_obs}_videos": sampled_vs_computed_images}
         )
 
-    #return mse_sampled_vs_computed_obs
+    # return mse_sampled_vs_computed_obs
 
 
 def _summarize_rewards(

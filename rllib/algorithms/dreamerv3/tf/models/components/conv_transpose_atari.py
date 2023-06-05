@@ -11,7 +11,6 @@ from typing import Optional
 
 import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
 
 from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
 
@@ -150,12 +149,12 @@ class ConvTransposeAtari(tf.keras.Model):
         # independent (b/c diagonal co-variance matrix) variable).
         loc = tf.reshape(out, shape=(out_shape[0], -1))
 
-        #distribution = tfp.distributions.MultivariateNormalDiag(
+        # distribution = tfp.distributions.MultivariateNormalDiag(
         #    loc=loc,
         #    # Scale == 1.0.
         #    # [2]: "Distributions The image predictor outputs the mean of a diagonal
         #    # Gaussian likelihood with **unit variance** ..."
         #    scale_diag=tf.ones_like(loc),
-        #)
-        #pred_obs = distribution.sample()
-        return loc  #pred_obs, distribution
+        # )
+        # pred_obs = distribution.sample()
+        return loc  # pred_obs, distribution

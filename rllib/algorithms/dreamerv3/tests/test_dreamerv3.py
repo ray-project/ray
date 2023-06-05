@@ -27,7 +27,7 @@ class TestDreamerV3(unittest.TestCase):
             .framework(eager_tracing=True)
             .training(
                 # TODO (sven): Fix having to provide this.
-                #  Should be compiled by AlgorithmConfig?
+                #  Should be compiled as `RLModuleConfig` by AlgorithmConfig?
                 model={
                     "batch_size_B": 16,
                     "batch_length_T": 64,
@@ -73,15 +73,17 @@ class TestDreamerV3(unittest.TestCase):
                 action_space=gym.spaces.Discrete(6),
             )
             .framework("tf2", eager_tracing=False)
-            .training(model={
-                "batch_size_B": 16,
-                "batch_length_T": 64,
-                "horizon_H": 15,
-                "model_size": "XS",
-                "gamma": 0.997,
-                "training_ratio": 512,
-                "symlog_obs": True,
-            })
+            .training(
+                model={
+                    "batch_size_B": 16,
+                    "batch_length_T": 64,
+                    "horizon_H": 15,
+                    "model_size": "XS",
+                    "gamma": 0.997,
+                    "training_ratio": 512,
+                    "symlog_obs": True,
+                }
+            )
         )
         # Create our RLModule to compute actions with.
         policy_dict, _ = config.get_multi_agent_setup()

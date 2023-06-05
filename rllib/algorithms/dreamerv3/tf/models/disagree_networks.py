@@ -40,9 +40,7 @@ class DisagreeNetworks(tf.keras.Model):
                 )
             )
             self.representation_layers.append(
-                RepresentationLayer(
-                    model_size=self.model_size, name="disagree"
-                )
+                RepresentationLayer(model_size=self.model_size, name="disagree")
             )
 
     @tf.function

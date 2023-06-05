@@ -25,7 +25,6 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
-    summarize_dreamed_trajectory,
     summarize_predicted_vs_sampled_obs,
     summarize_sampling_and_replay_buffer,
 )
@@ -133,7 +132,6 @@ class DreamerV3Config(AlgorithmConfig):
         self.disagree_grad_clip_by_global_norm = 100.0
 
         # Reporting.
-        #self.summary_frequency_train_steps = 20
         self.summarize_individual_batch_item_stats = False
         self.summarize_dream_data = False
         self.summarize_images_and_videos = False
@@ -159,7 +157,6 @@ class DreamerV3Config(AlgorithmConfig):
         *,
         model_size: Optional[str] = NotProvided,
         training_ratio: Optional[float] = NotProvided,
-        #summary_frequency_train_steps: Optional[int] = NotProvided,
         gc_frequency_train_steps: Optional[int] = NotProvided,
         batch_size_B: Optional[int] = NotProvided,
         batch_length_T: Optional[int] = NotProvided,
@@ -188,11 +185,6 @@ class DreamerV3Config(AlgorithmConfig):
             training_ratio: The ratio of replayed steps (used for learning/updating the
                 model) over env steps (from the actual environment, not the dreamed
                 one).
-            #num_pretrain_iterations: How many iterations do we pre-train?
-            #summary_frequency_train_steps: Every how many training steps do we write
-            #    summary data (e.g. TensorBoard or WandB)? Note that this only affects
-            #    the more debug-relevant information and basic stats, such as total loss,
-            #    etc.. are logged at each training step.
             gc_frequency_train_steps: Every how many training steps do we collect
                 garbage?
             batch_size_B: The batch size (B) interpreted as number of rows (each of
@@ -243,8 +235,6 @@ class DreamerV3Config(AlgorithmConfig):
             self.model_size = model_size
         if training_ratio is not NotProvided:
             self.training_ratio = training_ratio
-        #if summary_frequency_train_steps is not NotProvided:
-        #    self.summary_frequency_train_steps = summary_frequency_train_steps
         if gc_frequency_train_steps is not NotProvided:
             self.gc_frequency_train_steps = gc_frequency_train_steps
         if batch_size_B is not NotProvided:
@@ -312,7 +302,9 @@ class DreamerV3Config(AlgorithmConfig):
         super().reporting(**kwargs)
 
         if summarize_individual_batch_item_stats is not NotProvided:
-            self.summarize_individual_batch_item_stats = summarize_individual_batch_item_stats
+            self.summarize_individual_batch_item_stats = (
+                summarize_individual_batch_item_stats
+            )
         if summarize_dream_data is not NotProvided:
             self.summarize_dream_data = summarize_dream_data
         if summarize_images_and_videos is not NotProvided:
@@ -408,10 +400,7 @@ class DreamerV3Config(AlgorithmConfig):
 
 
 class DreamerV3(Algorithm):
-    """Implementation of the model-based DreamerV3 RL algorithm described in [1].
-
-
-    """
+    """Implementation of the model-based DreamerV3 RL algorithm described in [1]."""
 
     @classmethod
     @override(Algorithm)
@@ -425,7 +414,9 @@ class DreamerV3(Algorithm):
         # Summarize (single-agent) RLModule once here.
         # TODO: use local worker instead of learner group's local Learner
         if self.config.framework_str == "tf2":
-            self.learner_group._learner.module[DEFAULT_POLICY_ID].dreamer_model.summary(expand_nested=True)
+            self.learner_group._learner.module[DEFAULT_POLICY_ID].dreamer_model.summary(
+                expand_nested=True
+            )
 
         # The vectorized gymnasium EnvRunner to collect samples of shape (B, T, ...).
         # self.env_runner = EnvRunner(model=None, config=self.config)
@@ -479,9 +470,8 @@ class DreamerV3(Algorithm):
                 ts_in_buffer = self.replay_buffer.get_num_timesteps()
                 if (
                     # More timesteps than BxT.
-                    ts_in_buffer >= (
-                        self.config.batch_size_B * self.config.batch_length_T
-                    )
+                    ts_in_buffer
+                    >= (self.config.batch_size_B * self.config.batch_length_T)
                     # And enough timesteps for the next train batch to not exceed
                     # the training_ratio.
                     and self._counters[NUM_ENV_STEPS_TRAINED]
@@ -556,11 +546,11 @@ class DreamerV3(Algorithm):
                     )
 
                 # TODO: Make this work with any renderable env.
-                #if env_runner.config.env in [
+                # if env_runner.config.env in [
                 #    "CartPoleDebug-v0",
                 #    "CartPole-v1",
                 #    "FrozenLake-v1",
-                #]:
+                # ]:
                 #    summarize_dreamed_trajectory(
                 #        # TODO (sven): DreamerV3 is single-agent only.
                 #        results=train_results[DEFAULT_POLICY_ID],

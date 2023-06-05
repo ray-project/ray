@@ -122,9 +122,7 @@ class WorldModel(tf.keras.Model):
         )
 
         # Dynamics (prior z-state) predictor: ht -> z^t
-        self.dynamics_predictor = DynamicsPredictor(
-            model_size=self.model_size
-        )
+        self.dynamics_predictor = DynamicsPredictor(model_size=self.model_size)
 
         # GRU for the RSSM: [at, ht, zt] -> ht+1
         self.num_gru_units = get_gru_units(
@@ -150,9 +148,7 @@ class WorldModel(tf.keras.Model):
         # Reward Predictor: [ht, zt] -> rt.
         self.reward_predictor = RewardPredictor(model_size=self.model_size)
         # Continue Predictor: [ht, zt] -> ct.
-        self.continue_predictor = ContinuePredictor(
-            model_size=self.model_size
-        )
+        self.continue_predictor = ContinuePredictor(model_size=self.model_size)
 
         # Decoder: [ht, zt] -> x^t.
         self.decoder = decoder

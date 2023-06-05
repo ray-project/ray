@@ -394,7 +394,9 @@ class DreamerModel(tf.keras.Model):
             "rewards_dreamed_t0_to_H_BxT": r_dreamed_H_B,
             "continues_dreamed_t0_to_H_BxT": c_dreamed_H_B,
             "actions_dreamed_t0_to_H_BxT": a_dreamed_H_B,
-            "actions_dreamed_distributions_t0_to_H_BxT": a_dreamed_distributions_t0_to_H,
+            "actions_dreamed_distributions_t0_to_H_BxT": (
+                a_dreamed_distributions_t0_to_H
+            ),
             "values_dreamed_t0_to_H_BxT": v_dreamed_H_B,
             "values_symlog_dreamed_logits_t0_to_HxBxT": v_symlog_dreamed_logits_HxB,
             "v_symlog_dreamed_ema_t0_to_H_BxT": v_symlog_dreamed_ema_H_B,

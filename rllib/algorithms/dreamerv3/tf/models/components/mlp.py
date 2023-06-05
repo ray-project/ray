@@ -52,9 +52,7 @@ class MLP(tf.keras.Model):
         """
         super().__init__(name=name or "mlp")
 
-        num_dense_layers = get_num_dense_layers(
-            model_size, override=num_dense_layers
-        )
+        num_dense_layers = get_num_dense_layers(model_size, override=num_dense_layers)
         dense_hidden_units = get_dense_hidden_units(
             model_size, override=dense_hidden_units
         )

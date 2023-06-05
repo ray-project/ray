@@ -12,7 +12,6 @@ _ALLOWED_MODEL_DIMS = [
     "micro",
     "mini",
     "XXS",
-
     # Regular sizes (listed in table B in [1]).
     "XS",
     "S",
