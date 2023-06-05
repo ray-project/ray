@@ -95,7 +95,8 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
 /// The API is not thread-safe.
 class ObjectRefStream {
  public:
-  ObjectRefStream(const ObjectID &generator_id) : generator_id_(generator_id) {}
+  ObjectRefStream(const ObjectID &generator_id)
+      : generator_id_(generator_id), generator_task_id_(generator_id.TaskId()) {}
 
   /// Asynchronously read object reference of the next index.
   ///
@@ -103,6 +104,8 @@ class ObjectRefStream {
   /// Nil ID is returned if the next index hasn't been written.
   /// \return KeyError if it reaches to EoF. Ok otherwise.
   Status TryReadNextItem(ObjectID *object_id_out);
+
+  ObjectID PeekNextItem();
 
   /// Insert the object id to the stream of an index item_index.
   ///
@@ -135,7 +138,7 @@ class ObjectRefStream {
   /// anymore.
   ///
   /// \param[in] The last item index that means the end of stream.
-  void MarkEndOfStream(int64_t item_index);
+  bool MarkEndOfStream(int64_t item_index, ObjectID *object_id_in_last_index);
 
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
   ///
@@ -143,7 +146,10 @@ class ObjectRefStream {
   std::vector<ObjectID> GetItemsUnconsumed() const;
 
  private:
+  ObjectID GetNextObjectRef(int64_t generator_index) const;
+
   const ObjectID generator_id_;
+  const TaskID generator_task_id_;
 
   /// The item_index -> object reference ids.
   absl::flat_hash_map<int64_t, ObjectID> item_index_to_refs_;
@@ -159,6 +165,7 @@ class ObjectRefStream {
   /// The next index of the stream.
   /// If next_index_ == end_of_stream_index_, that means it is the end of the stream.
   int64_t next_index_ = 0;
+  int64_t last_available_index_ = 0;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -327,6 +334,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Nil ID is returned if the next index hasn't been written.
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
+
+  ObjectID PeekObjectRefStream(const ObjectID &generator_id);
 
   /// Returns true if task can be retried.
   ///
@@ -668,12 +677,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param task_entry Task entry for the corresponding task attempt
   void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
 
-  Status TryReadObjectRefStreamInternal(const ObjectID &generator_id,
-                                        ObjectID *object_id_out)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  bool MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool MarkEndOfStream(const ObjectID &generator_id,
+                       int64_t end_of_stream_index,
+                       ObjectID *object_id_in_last_index) LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;

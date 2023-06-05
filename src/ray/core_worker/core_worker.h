@@ -384,6 +384,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
+  rpc::ObjectReference PeekObjectRefStream(const ObjectID &generator_id);
+
   /// Delete the ObjectRefStream of generator_id
   /// created by CreateObjectRefStream.
   ///

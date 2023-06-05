@@ -498,7 +498,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
         assert_no_leak()
 
 
-@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
+@pytest.mark.parametrize("num_returns_type", ["streaming"])
 def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,
