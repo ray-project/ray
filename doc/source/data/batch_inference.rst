@@ -199,7 +199,7 @@ See :ref:`below <batch_inference_examples>` for more in-depth examples for your 
 
 .. _batch_inference_examples:
 
-More Examples
+More examples
 -------------
 - :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>` 
 - :doc:`Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50 </data/examples/batch_inference_object_detection>`
@@ -207,7 +207,7 @@ More Examples
 
 .. _batch_inference_configuration:
 
-Configuration & Troubleshooting
+Configuration & troubleshooting
 -------------------------------
 
 .. _batch_inference_gpu:
@@ -368,7 +368,7 @@ Increasing batch size results in faster execution because inference is a vectori
 
 .. caution::
   The default ``batch_size`` of ``4096`` may be too large for datasets with large rows
-  (e.g. tables with many columns or a collection of large images).
+  (e.g., tables with many columns or a collection of large images).
 
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
