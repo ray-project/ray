@@ -211,6 +211,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   grpc_client_.reset();
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
+                                                   std::shared_future<ClusterID>(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
   grpc_client_.reset(new GrpcClient<TestService>(
@@ -244,6 +245,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   grpc_client_.reset();
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_,
+                                                   std::shared_future<ClusterID>(),
                                                    /*num_thread=*/1,
                                                    /*call_timeout_ms=*/100));
   grpc_client_.reset(new GrpcClient<TestService>(

@@ -204,7 +204,7 @@ class GcsServer {
   /// avoid copy-constructor, so move-capturing promise won't work.
   /// Can be fixed by using auto as parameter type instead of
   /// std::function in C++20.
-  std::promise<ClusterID> cluster_token_promise_;
+  std::promise<ClusterID> cluster_id_promise_;
 
   /// Gcs server configuration.
   const GcsServerConfig config_;

@@ -115,6 +115,13 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ResetServerCallExecutor();
   }
 
+  void StampContext(grpc::ClientContext &context) {
+    RAY_CHECK(gcs_client_->client_call_manager_)
+        << "Cannot stamp context before initializing client call manager.";
+    context.AddMetadata(kClusterIdKey,
+                        gcs_client_->client_call_manager_->cluster_id_.get().Hex());
+  }
+
   void RestartGcsServer() {
     RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
     gcs_server_->Stop();
@@ -145,7 +152,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage;
       grpc::ClientContext context;
       if (!in_memory) {
-        gcs_client_->StampContext(context);
+        StampContext(context);
       }
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
@@ -471,7 +478,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   *(request.mutable_raylet_address()->Add()) = "172.1.2.4:31293";
   {
     grpc::ClientContext context;
-    gcs_client_->StampContext(context);
+    StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
@@ -483,7 +490,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   ASSERT_TRUE(RegisterNode(*node_info1));
   {
     grpc::ClientContext context;
-    gcs_client_->StampContext(context);
+    StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());

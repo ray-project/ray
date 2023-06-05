@@ -276,9 +276,9 @@ class NodeInfoGcsServiceHandler {
  public:
   virtual ~NodeInfoGcsServiceHandler() = default;
 
-  virtual void HandleRegisterClient(rpc::RegisterClientRequest request,
-                                    rpc::RegisterClientReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetClusterId(rpc::GetClusterIdRequest request,
+                                  rpc::GetClusterIdReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRegisterNode(RegisterNodeRequest request,
                                   RegisterNodeReply *reply,
@@ -318,6 +318,7 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
+    NODE_INFO_SERVICE_RPC_HANDLER(GetClusterId);
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);

@@ -59,7 +59,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1",
-                  cluster_token_promise_.get_future(),
+                  cluster_id_promise_.get_future(),
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
@@ -152,22 +152,22 @@ void GcsServer::CacheAndSetClusterId() {
   kv_manager_->GetInstance().Get(
       kTokenNamespace, kClusterIdKey, [this](std::optional<std::string> token) mutable {
         if (!token.has_value()) {
-          ClusterID cluster_token = ClusterID::FromRandom();
-          RAY_LOG(DEBUG) << "No existing server token found. Generating new token: "
-                         << cluster_token.Hex();
+          ClusterID cluster_id = ClusterID::FromRandom();
+          RAY_LOG(INFO) << "No existing server token found. Generating new token: "
+                        << cluster_id.Hex();
           kv_manager_->GetInstance().Put(
               kTokenNamespace,
               kClusterIdKey,
-              cluster_token.Binary(),
+              cluster_id.Binary(),
               false,
-              [this, cluster_token](bool added_entry) mutable {
+              [this, cluster_id](bool added_entry) mutable {
                 RAY_CHECK(added_entry) << "Failed to persist new token!";
-                cluster_token_promise_.set_value(std::move(cluster_token));
+                cluster_id_promise_.set_value(std::move(cluster_id));
               });
         } else {
-          ClusterID cluster_token = ClusterID::FromBinary(token.value());
-          RAY_LOG(DEBUG) << "Found existing server token: " << cluster_token;
-          cluster_token_promise_.set_value(std::move(cluster_token));
+          ClusterID cluster_id = ClusterID::FromBinary(token.value());
+          RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
+          cluster_id_promise_.set_value(std::move(cluster_id));
         }
       });
 }
@@ -550,7 +550,7 @@ void GcsServer::InitFunctionManager() {
 
 void GcsServer::InitUsageStatsClient() {
   // Note: We pass in cluster_id here to avoid deadlock during server init.
-  // This can occur since main_service_ is not started, and so the RegisterClient RPC from
+  // This can occur since main_service_ is not started, and so the GetClusterId RPC from
   // GCS client inside the UsageStatsClient will not be answered by GCS server.
   usage_stats_client_ =
       std::make_unique<UsageStatsClient>("127.0.0.1:" + std::to_string(GetPort()),

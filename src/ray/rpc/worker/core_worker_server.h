@@ -43,6 +43,8 @@ namespace rpc {
       CoreWorkerService, UpdateObjectLocationBatch, -1)                                  \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
       CoreWorkerService, GetObjectLocationsOwner, -1)                                    \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
+      CoreWorkerService, ReportGeneratorItemReturns, -1)                                 \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, KillActor, -1)          \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, CancelTask, -1)         \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, RemoteCancelTask, -1)   \

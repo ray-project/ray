@@ -317,7 +317,7 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
   /// Register a client to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
-                             RegisterClient,
+                             GetClusterId,
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 

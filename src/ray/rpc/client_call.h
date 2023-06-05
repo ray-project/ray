@@ -28,6 +28,9 @@
 #include "ray/util/util.h"
 
 namespace ray {
+
+class GcsClientTest;
+class GcsClientTest_TestCheckAlive_Test;
 namespace rpc {
 
 /// Represents an outgoing gRPC request.
@@ -69,7 +72,7 @@ class ClientCallImpl : public ClientCall {
   ///
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback,
-                          ClusterID const *cluster_token,
+                          const ClusterID &cluster_id,
                           std::shared_ptr<StatsHandle> stats_handle,
                           int64_t timeout_ms = -1)
       : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
@@ -79,8 +82,8 @@ class ClientCallImpl : public ClientCall {
           std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms);
       context_.set_deadline(deadline);
     }
-    if (cluster_token) {
-      context_.AddMetadata(kClusterIdKey, cluster_token->Hex());
+    if (!cluster_id.IsNil()) {
+      context_.AddMetadata(kClusterIdKey, cluster_id.Hex());
     }
   }
 
@@ -196,10 +199,10 @@ class ClientCallManager {
             typename = typename std::enable_if_t<
                 std::is_convertible<T, std::shared_future<ClusterID>>::value>>
   explicit ClientCallManager(instrumented_io_context &main_service,
-                             T &&cluster_token_future = T(),
+                             T &&cluster_id_future = T(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
-      : cluster_token_(std::forward<T>(cluster_token_future)),
+      : cluster_id_(std::forward<T>(cluster_id_future)),
         main_service_(main_service),
         num_threads_(num_threads),
         shutdown_(false),
@@ -253,10 +256,10 @@ class ClientCallManager {
       method_timeout_ms = call_timeout_ms_;
     }
 
-    ClusterID const *maybe_cluster_token = nullptr;
+    const ClusterID maybe_cluster_id = ClusterID::Nil();
 
     auto call = std::make_shared<ClientCallImpl<Reply>>(
-        callback, maybe_cluster_token, std::move(stats_handle), method_timeout_ms);
+        callback, maybe_cluster_id, std::move(stats_handle), method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -274,14 +277,11 @@ class ClientCallManager {
     return call;
   }
 
-  // For testing purposes only.
-  void StampContext(grpc::ClientContext &context) {
-    RAY_CHECK(cluster_token_.valid()) << "Stamping context with unregistered client.";
-    context.AddMetadata(kClusterIdKey, cluster_token_.get().Hex());
-  }
-
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }
+
+  friend class ray::GcsClientTest;
+  FRIEND_TEST(ray::GcsClientTest, TestCheckAlive);
 
  private:
   /// This function runs in a background thread. It keeps polling events from the
@@ -331,8 +331,8 @@ class ClientCallManager {
     }
   }
 
-  /// UUID of this generation of the cluster.
-  std::shared_future<ClusterID> cluster_token_;
+  /// UUID of the cluster.
+  std::shared_future<ClusterID> cluster_id_;
 
   /// The main event loop, to which the callback functions will be posted.
   instrumented_io_context &main_service_;
