@@ -29,6 +29,7 @@ ppo-breakoutnoframeskip-v5:
             vf_share_layers: true
             conv_filters: [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]]
             conv_activation: relu
+            post_fcnet_hiddens: [256]
 
         min_time_s_per_iteration: 30
         lr: 0.0001

@@ -1,6 +1,7 @@
+from collections import UserDict
+
 import numpy as np
 import pandas as pd
-from collections import UserDict
 import pytest
 
 import ray
@@ -154,6 +155,7 @@ def test_nonstrict_compute(ray_start_10_cpus_shared, enable_nonstrict_mode):
 
 def test_nonstrict_schema(ray_start_10_cpus_shared, enable_nonstrict_mode):
     import pyarrow
+
     from ray.data._internal.pandas_block import PandasBlockSchema
 
     ds = ray.data.from_items([{"x": 2}])

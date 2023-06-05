@@ -108,6 +108,17 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
+    def get_worker_id(self) -> str:
+        """Get current worker ID for this worker or driver process.
+
+        Returns:
+            A worker id in hex format for this worker or driver process.
+        """
+        assert (
+            ray.is_initialized()
+        ), "Worker ID is not available because Ray has not been initialized."
+        return self.worker.worker_id.hex()
+
     @property
     @Deprecated(message="Use get_task_id() instead", warning=True)
     def task_id(self):
@@ -179,7 +190,7 @@ class RuntimeContext(object):
                 print(ray.get(get_task_id.remote()))
 
             .. testoutput::
-                :options: +SKIP
+                :options: +MOCK
 
                 16310a0f0a45af5c2746a0e6efb235c0962896a201000000
                 c2668a65bda616c1ffffffffffffffffffffffff01000000
@@ -373,8 +384,11 @@ _runtime_context = None
 
 @PublicAPI
 @client_mode_hook
-def get_runtime_context():
+def get_runtime_context() -> RuntimeContext:
     """Get the runtime context of the current driver/worker.
+
+    The obtained runtime context can be used to get the metadata
+    of the current task and actor.
 
     Example:
 
@@ -383,6 +397,12 @@ def get_runtime_context():
             import ray
             # Get the job id.
             ray.get_runtime_context().get_job_id()
+            # Get the actor id.
+            ray.get_runtime_context().get_actor_id()
+            # Get the task id.
+            ray.get_runtime_context().get_task_id()
+            # Get the worker id.
+            ray.get_runtime_context().get_worker_id()
 
     """
     global _runtime_context

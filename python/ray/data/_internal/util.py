@@ -2,26 +2,27 @@ import importlib
 import logging
 import os
 import pathlib
-from typing import Any, List, Union, Optional, TYPE_CHECKING
-from types import ModuleType
 import sys
 import urllib.parse
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 import numpy as np
 
 import ray
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data.context import DataContext
-from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
-    from ray.data.datasource import Reader
-    from ray.util.placement_group import PlacementGroup
-    import pyarrow
     import pandas
+    import pyarrow
+
     from ray.data._internal.compute import ComputeStrategy
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
+    from ray.data.datasource import Reader
+    from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
 
