@@ -537,7 +537,7 @@ def _lightning_train_loop_per_worker(config):
 
     # Convert dirpath to an absolute path under the trial directory
     ckpt_dirpath = model_checkpoint_config.get("dirpath", None)
-    if ckpt_dirpath and not os.path.isabs(ckpt_dirpath):
+    if ckpt_dirpath and not os.path.isabs(os.path.expanduser(ckpt_dirpath)):
         model_checkpoint_config["dirpath"] = os.path.join(
             session.get_trial_dir(), ckpt_dirpath
         )

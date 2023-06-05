@@ -111,7 +111,8 @@ def test_native_trainer_restore(ray_start_4_cpus_2_gpus):
 
 
 @pytest.mark.parametrize("resume_from_ckpt_path", [True, False])
-def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
+@pytest.mark.parametrize("dirpath", [None, "lightning/ckpts/dir", "/tmp/ckpts/dir"])
+def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path, dirpath):
     """Test restore for LightningTrainer from a failed/interrupted trail."""
     exp_name = "air_trainer_restore_test"
 
@@ -133,7 +134,7 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path):
         .trainer(max_epochs=max_epochs, accelerator="cpu")
         .fit_params(train_dataloaders=train_loader, val_dataloaders=val_loader)
         .checkpointing(
-            dirpath="lightning/ckpts/dir", monitor="loss", save_top_k=2
+            dirpath=dirpath, monitor="loss", save_top_k=2
         )  # Test AIR restoration with relative ckpt dirpath
     )
 

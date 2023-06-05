@@ -29,7 +29,7 @@ if __name__ == "__main__":
             logger=CSVLogger("logs", name="my_exp_name"),
         )
         .fit_params(datamodule=MNISTDataModule(batch_size=200))
-        .checkpointing(monitor="val_accuracy", mode="max")
+        .checkpointing(dirpath="my/ckpts/dir", monitor="val_accuracy", mode="max")
         .build()
     )
 
