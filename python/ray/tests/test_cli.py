@@ -85,7 +85,7 @@ def configure_lang():
 def cleanup_ray():
     """Shutdown all ray instances"""
     yield
-    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+    runner = CliRunner()
     runner.invoke(scripts.stop, ["--force"])
     ray.shutdown()
 
@@ -265,7 +265,7 @@ DOCKER_TEST_CONFIG_PATH = str(
 def test_enable_usage_stats(monkeypatch, tmp_path):
     tmp_usage_stats_config_path = tmp_path / "config.json"
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
-    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+    runner = CliRunner()
     runner.invoke(scripts.enable_usage_stats, [])
     assert '{"usage_stats": true}' == tmp_usage_stats_config_path.read_text()
 
@@ -273,14 +273,14 @@ def test_enable_usage_stats(monkeypatch, tmp_path):
 def test_disable_usage_stats(monkeypatch, tmp_path):
     tmp_usage_stats_config_path = tmp_path / "config.json"
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_usage_stats_config_path))
-    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+    runner = CliRunner()
     runner.invoke(scripts.disable_usage_stats, [])
     assert '{"usage_stats": false}' == tmp_usage_stats_config_path.read_text()
 
 
 def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
-    runner = CliRunner()
+    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
     temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
     result = runner.invoke(
         scripts.start,
@@ -403,7 +403,7 @@ def test_ray_start_head_block_and_signals(
     """Test `ray start` with `--block` as heads and workers and signal handles"""
 
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
-    runner = CliRunner()
+    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
 
     head_parent_conn, head_child_conn = mp.Pipe()
 
@@ -448,8 +448,9 @@ def test_ray_start_head_block_and_signals(
             )
 
     # Kill the GCS last should unblock the CLI
-    gcs_proc.kill()
-    gcs_proc.wait(10)
+    if gcs_proc:
+        gcs_proc.kill()
+        gcs_proc.wait(10)
 
     # NOTE(rickyyx): The wait here is needed for the `head_proc`
     # process to exit
@@ -723,7 +724,7 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
         return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
 
     with _setup_popen_mock(commands_mock):
-        runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+        runner = CliRunner()
         result = runner.invoke(
             scripts.up,
             [
@@ -765,7 +766,7 @@ def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
         return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
 
     with _setup_popen_mock(commands_mock):
-        runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+        runner = CliRunner()
         result = runner.invoke(
             scripts.up,
             [
@@ -806,7 +807,7 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
         return False
 
     with _setup_popen_mock(commands_mock, commands_verifier):
-        runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+        runner = CliRunner()
         result = runner.invoke(
             scripts.up,
             [
@@ -853,7 +854,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
         return PopenBehaviour(stdout=b"This is a test!")
 
     with _setup_popen_mock(commands_mock):
-        runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+        runner = CliRunner()
         result = runner.invoke(
             scripts.up,
             [
@@ -891,7 +892,7 @@ def test_ray_status(shutdown_only, monkeypatch):
     import ray
 
     address = ray.init(num_cpus=3).get("address")
-    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+    runner = CliRunner()
 
     def output_ready():
         result = runner.invoke(scripts.status)
@@ -924,7 +925,7 @@ def test_ray_status_multinode(ray_start_cluster):
     cluster = ray_start_cluster
     for _ in range(4):
         cluster.add_node(num_cpus=2)
-    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+    runner = CliRunner()
 
     def output_ready():
         result = runner.invoke(scripts.status)
@@ -953,7 +954,7 @@ def test_ray_cluster_dump(configure_lang, configure_aws, _unlink_test_ssh_key):
         return PopenBehaviour(stdout=b"This is a test!")
 
     with _setup_popen_mock(commands_mock):
-        runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+        runner = CliRunner()
         result = runner.invoke(
             scripts.up,
             [
