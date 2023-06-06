@@ -11,10 +11,12 @@ DOWNLOAD_DIR=python_downloads
 NODE_VERSION="14"
 PY_VERSIONS=("3.8.2"
              "3.9.1"
-             "3.10.4")
+             "3.10.4"
+             "3.11.1")
 PY_MMS=("3.8"
         "3.9"
-        "3.10")
+        "3.10"
+        "3.11")
 
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
