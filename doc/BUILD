@@ -316,8 +316,18 @@ doctest(
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
+            "source/data/batch_inference.rst"
         ]
     ),
     size = "large",
     tags = ["team:none"]
+)
+
+
+doctest(
+    files = glob(
+        include=["source/data/batch_inference.rst"],
+    ),
+    tags = ["team:data"],
+    gpu = True
 )
