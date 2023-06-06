@@ -50,10 +50,8 @@ message AffinityConstraint {
 // Represents a placement constraint to specify where a resource
 // request should be placed on.
 message PlacementConstraint {
-  oneof constraint {
-    AntiAffinityConstraint anti_affinity = 1;
-    AffinityConstraint affinity = 2;
-  }
+  optional AntiAffinityConstraint anti_affinity = 1;
+  optional AffinityConstraint affinity = 2;
 }
 
 message ResourceRequest {
