@@ -695,7 +695,10 @@ async def download_and_unpack_package(
                             "`pip install boto3` to fetch URIs in s3 "
                             "bucket. " + install_warning
                         )
-                    tp = {"client": boto3.client("s3")}
+                    s3_endpoint_url = os.environ.get(
+                        "S3_ENDPOINT_URL", None
+                    ) or os.environ.get("AWS_ENDPOINT_URL", None)
+                    tp = {"client": boto3.client("s3", endpoint_url=s3_endpoint_url)}
                 elif protocol == Protocol.GS:
                     try:
                         from google.cloud import storage  # noqa: F401
