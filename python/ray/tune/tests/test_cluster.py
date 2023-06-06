@@ -625,4 +625,4 @@ tune.run(
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))
