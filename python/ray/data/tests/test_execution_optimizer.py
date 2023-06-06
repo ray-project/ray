@@ -1376,35 +1376,35 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     ds = ray.data.range(100, parallelism=100).map(f1).limit(1).materialize()
     assert (
         str(ds._plan._logical_plan.dag)
-        == "Read[ReadRange] -> Limit[Limit[limit=1]] -> MapRows[Map(f1)]"
+        == "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]"
     )
     assert ds.take_all() == [{"id": 0}]
 
     # Test basic Limit -> Limit fusion.
     ds2 = ray.data.range(100).limit(5).limit(100).materialize()
-    assert (
-        str(ds2._plan._logical_plan.dag) == "Read[ReadRange] -> Limit[Limit[limit=5]]"
-    )
+    assert str(ds2._plan._logical_plan.dag) == "Read[ReadRange] -> Limit[limit=5]"
     assert ds2.take_all() == [{"id": i} for i in range(5)]
 
     ds2 = ray.data.range(100).limit(100).limit(5).materialize()
-    assert (
-        str(ds2._plan._logical_plan.dag) == "Read[ReadRange] -> Limit[Limit[limit=5]]"
-    )
+    assert str(ds2._plan._logical_plan.dag) == "Read[ReadRange] -> Limit[limit=5]"
+    assert ds2.take_all() == [{"id": i} for i in range(5)]
+
+    ds2 = ray.data.range(100).limit(50).limit(80).limit(5).limit(20).materialize()
+    assert str(ds2._plan._logical_plan.dag) == "Read[ReadRange] -> Limit[limit=5]"
     assert ds2.take_all() == [{"id": i} for i in range(5)]
 
     # Test limit pushdown and Limit -> Limit fusion together.
     ds3 = ray.data.range(100).limit(5).map(f1).limit(100).materialize()
     assert (
         str(ds3._plan._logical_plan.dag)
-        == "Read[ReadRange] -> Limit[Limit[limit=5]] -> MapRows[Map(f1)]"
+        == "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]"
     )
     assert ds3.take_all() == [{"id": i} for i in range(5)]
 
     ds3 = ray.data.range(100).limit(100).map(f1).limit(5).materialize()
     assert (
         str(ds3._plan._logical_plan.dag)
-        == "Read[ReadRange] -> Limit[Limit[limit=5]] -> MapRows[Map(f1)]"
+        == "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]"
     )
     assert ds3.take_all() == [{"id": i} for i in range(5)]
 
@@ -1412,14 +1412,14 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     ds4 = ray.data.range(100).sort("id").limit(5).materialize()
     assert (
         str(ds4._plan._logical_plan.dag)
-        == "Read[ReadRange] -> Sort[Sort] -> Limit[Limit[limit=5]]"
+        == "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5]"
     )
     assert ds4.take_all() == [{"id": i} for i in range(5)]
 
     ds4 = ray.data.range(100).sort("id").map(f1).limit(5).materialize()
     assert (
         str(ds4._plan._logical_plan.dag)
-        == "Read[ReadRange] -> Sort[Sort] -> Limit[Limit[limit=5]] -> MapRows[Map(f1)]"
+        == "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f1)]"
     )
     assert ds4.take_all() == [{"id": i} for i in range(5)]
 
@@ -1428,8 +1428,7 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     # Limit operators get pushed down in the logical plan optimization,
     # then fused together.
     assert str(ds5._plan._logical_plan.dag) == (
-        "Read[ReadRange] -> Limit[Limit[limit=1]] -> "
-        "MapRows[Map(f1)] -> MapRows[Map(f2)]"
+        "Read[ReadRange] -> Limit[limit=1] -> " "MapRows[Map(f1)] -> MapRows[Map(f2)]"
     )
     # Map operators only get fused in the optimized physical plan, not the logical plan.
     assert "Map(f1)->Map(f2)" in ds5.stats()
@@ -1447,8 +1446,8 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
         .materialize()
     )
     assert str(ds6._plan._logical_plan.dag) == (
-        "Read[ReadRange] -> Sort[Sort] -> Limit[Limit[limit=20]] -> "
-        "MapRows[Map(f1)] -> Sort[Sort] -> Limit[Limit[limit=5]] -> MapRows[Map(f2)]"
+        "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> "
+        "MapRows[Map(f1)] -> Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]"
     )
     assert ds6.take_all() == [{"id": i} for i in range(5)]
 

@@ -60,7 +60,7 @@ class MapOperator(OneToOneOperator, ABC):
         # Output metadata, added to on get_next().
         self._output_metadata: List[BlockMetadata] = []
 
-        super().__init__(input_op, name)
+        super().__init__(name, input_op)
 
     @classmethod
     def create(

@@ -205,4 +205,4 @@ class FlatMap(AbstractUDFMap):
 
     @property
     def can_modify_num_rows(self) -> bool:
-        return False
+        return True

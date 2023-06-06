@@ -172,10 +172,7 @@ class OperatorFusionRule(Rule):
                 return False
 
         # Only fuse if the ops' remote arguments are compatible.
-        if (
-            hasattr(up_logical_op, "_ray_remote_args")
-            and hasattr(down_logical_op, "_ray_remote_args")
-        ) and not _are_remote_args_compatible(
+        if not _are_remote_args_compatible(
             up_logical_op._ray_remote_args or {}, down_logical_op._ray_remote_args or {}
         ):
             return False

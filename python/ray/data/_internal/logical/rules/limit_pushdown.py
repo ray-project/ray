@@ -43,7 +43,7 @@ class LimitPushdownRule(Rule):
             # If we encounter a Limit op, move it upstream until it reaches:
             # - Read operator
             # - A non-AbstractOneToOne operator (e.g. AbstractAllToAll)
-            # - An Operator that could change the number of output rows
+            # - An AbstractOneToOne operator that could change the number of output rows
             if isinstance(current_op, Limit):
                 limit_op_copy = copy.copy(current_op)
 
