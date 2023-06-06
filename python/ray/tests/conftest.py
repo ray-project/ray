@@ -1201,3 +1201,110 @@ def random_ascii_file(request):
         fp.flush()
 
         yield fp
+
+
+@pytest.fixture
+def docker_cluster():
+    from pytest_docker_tools import container, fetch, network, volume
+    from pytest_docker_tools import wrappers
+    from http.client import HTTPConnection
+
+    class Container(wrappers.Container):
+        def ready(self):
+            self._container.reload()
+            if self.status == "exited":
+                from pytest_docker_tools.exceptions import ContainerFailed
+
+                raise ContainerFailed(
+                    self,
+                    f"Container {self.name} has already exited before "
+                    "we noticed it was ready",
+                )
+
+            if self.status != "running":
+                return False
+
+            networks = self._container.attrs["NetworkSettings"]["Networks"]
+            for (_, n) in networks.items():
+                if not n["IPAddress"]:
+                    return False
+
+            if "Ray runtime started" in super().logs():
+                return True
+            return False
+
+        def client(self):
+            port = self.ports["8000/tcp"][0]
+            return HTTPConnection(f"localhost:{port}")
+
+        def print_logs(self):
+            for (name, content) in self.get_files("/tmp"):
+                print(f"===== log start:  {name} ====")
+                print(content.decode())
+
+    gcs_network = network(driver="bridge")
+
+    redis_image = fetch(repository="redis:latest")
+
+    redis = container(
+        image=f"{redis_image.id}",
+        network=f"{gcs_network.name}",
+        command=("redis-server --save 60 1 --loglevel" " warning"),
+    )
+
+    head_node_vol = volume()
+    worker_node_vol = volume()
+    head_node_container_name = "gcs" + str(int(time.time()))
+    head_node = container(
+        image="ray_ci:v1",
+        name=head_node_container_name,
+        network=f"{gcs_network.name}",
+        command=[
+            "ray",
+            "start",
+            "--head",
+            "--block",
+            "--num-cpus",
+            "0",
+            # Fix the port of raylet to make sure raylet restarts at the same
+            # ip:port is treated as a different raylet.
+            "--node-manager-port",
+            "9379",
+        ],
+        volumes={f"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
+        environment={"RAY_REDIS_ADDRESS": f"{redis.ips.primary}:6379"},
+        wrapper_class=Container,
+        ports={
+            "8000/tcp": None,
+        },
+        # volumes={
+        #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
+        # },
+    )
+
+    worker_node = container(
+        image="ray_ci:v1",
+        network=f"{gcs_network.name}",
+        command=[
+            "ray",
+            "start",
+            "--address",
+            f"{head_node_container_name}:6379",
+            "--block",
+            # Fix the port of raylet to make sure raylet restarts at the same
+            # ip:port is treated as a different raylet.
+            "--node-manager-port",
+            "9379",
+        ],
+        volumes={f"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
+        environment={"RAY_REDIS_ADDRESS": f"{redis.ips.primary}:6379"},
+        wrapper_class=Container,
+        ports={
+            "8000/tcp": None,
+        },
+        # volumes={
+        #     "/tmp/ray/": {"bind": "/tmp/ray/", "mode": "rw"}
+        # },
+    )
+
+    yield (head_node, worker_node)
