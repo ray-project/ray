@@ -97,6 +97,7 @@ class DeploymentTargetState:
     ) -> "DeploymentTargetState":
         if deleting:
             num_replicas = 0
+            version = None
         else:
             # If autoscaling config is not none, num replicas should be decided based on
             # the autoscaling policy and passed in as autoscaled_num_replicas
@@ -104,12 +105,11 @@ class DeploymentTargetState:
                 num_replicas = info.autoscaled_num_replicas
             else:
                 num_replicas = info.deployment_config.num_replicas
-
-        version = DeploymentVersion(
-            info.version,
-            deployment_config=info.deployment_config,
-            ray_actor_options=info.replica_config.ray_actor_options,
-        )
+            version = DeploymentVersion(
+                info.version,
+                deployment_config=info.deployment_config,
+                ray_actor_options=info.replica_config.ray_actor_options,
+            )
 
         return cls(info, num_replicas, version, deleting)
 

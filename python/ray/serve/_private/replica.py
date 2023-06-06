@@ -32,7 +32,6 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
-    DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -397,7 +396,7 @@ class RayServeReplica:
         self.callable = _callable
         self.is_function = is_function
         self.version = version
-        self.deployment_config = version.deployment_config
+        self.deployment_config: DeploymentConfig = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
         self.delete_lock = asyncio.Lock()
         self.app_name = app_name
@@ -687,12 +686,7 @@ class RayServeReplica:
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            if self.deployment_config:
-                await asyncio.sleep(
-                    self.deployment_config.graceful_shutdown_wait_loop_s
-                )
-            else:
-                await asyncio.sleep(DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S)
+            await asyncio.sleep(self.deployment_config.graceful_shutdown_wait_loop_s)
             method_stat = self._get_handle_request_stats()
             # The handle_request method wasn't even invoked.
             if method_stat is None:
