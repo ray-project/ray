@@ -126,10 +126,9 @@ class Result:
     def _validate_trial_dir(trial_dir: str):
         """Check the validity of the local trial folder."""
 
+        # TODO(yunxuanx): Add more checks for cloud storage restoration
         if not os.path.exists(trial_dir):
             raise RuntimeError(f"Trial folder {trial_dir} doesn't exists!")
-
-        # TODO(yunxuanx): Add more checks for cloud storage restoration
 
     @classmethod
     def from_path(cls, path: str) -> "Result":
@@ -147,19 +146,18 @@ class Result:
         cls._validate_trial_dir(local_path)
         file_list = os.listdir(local_path)
 
-        # Restore reported metrics
+        # Restore metrics from result.json
         if EXPR_RESULT_FILE in file_list:
-            # Restore metrics from result.json
             with open(Path(local_path) / EXPR_RESULT_FILE, "r") as f:
                 json_list = [json.loads(line) for line in f if line]
                 metrics_df = pd.json_normalize(json_list, sep="/")
+        # Fallback to restore from progress.csv
         elif EXPR_PROGRESS_FILE in file_list:
-            # Fallback to load from progress.csv
             metrics_df = pd.read_csv(Path(local_path) / EXPR_PROGRESS_FILE)
         else:
             raise RuntimeError(
                 f"Failed to restore the Result object: Neither {EXPR_RESULT_FILE}"
-                " nor {EXPR_PROGRESS_FILE} exists in the trial folder!"
+                f" nor {EXPR_PROGRESS_FILE} exists in the trial folder!"
             )
 
         latest_metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
