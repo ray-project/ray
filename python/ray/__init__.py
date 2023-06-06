@@ -1,8 +1,10 @@
 # isort: skip_file
+from ray._private import log  # isort: skip # noqa: F401
 import logging
 import os
 import sys
 
+log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 
@@ -54,21 +56,6 @@ def _configure_system():
             os.path.abspath(os.path.dirname(__file__)), "pickle5_files"
         )
         sys.path.insert(0, pickle5_path)
-
-    # Check that grpc can actually be imported on Apple Silicon. Some package
-    # managers (such as `pip`) can't properly install the grpcio library yet,
-    # so provide a proactive error message if that's the case.
-    if platform.system() == "Darwin" and platform.machine() == "arm64":
-        try:
-            import grpc  # noqa: F401
-        except ImportError:
-            raise ImportError(
-                "Failed to import grpc on Apple Silicon. On Apple"
-                " Silicon machines, try `pip uninstall grpcio; conda "
-                "install grpcio`. Check out "
-                "https://docs.ray.io/en/master/ray-overview/installation.html"
-                "#m1-mac-apple-silicon-support for more details."
-            )
 
     # Importing psutil & setproctitle. Must be before ray._raylet is
     # initialized.
@@ -234,6 +221,7 @@ AUTO_INIT_APIS = {
     "kill",
     "put",
     "wait",
+    "get_runtime_context",
 }
 
 # Public APIs that should not automatically trigger ray.init().
@@ -250,7 +238,6 @@ NON_AUTO_INIT_APIS = {
     "client",
     "cluster_resources",
     "cpp_function",
-    "get_runtime_context",
     "init",
     "is_initialized",
     "java_actor_class",

@@ -34,6 +34,7 @@ from ray._private.test_utils import (
     enable_external_redis,
     redis_replicas,
     start_redis_instance,
+    find_available_port,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -171,16 +172,7 @@ def start_redis(db_dir):
     while True:
         is_need_restart = False
         # Setup external Redis and env var for initialization.
-        redis_ports = []
-        for _ in range(redis_replicas()):
-            # max port for redis cluster
-            port = 55536
-            while port >= 55535:
-                with socket.socket() as s:
-                    s.bind(("", 0))
-                    port = s.getsockname()[1]
-            print("Picking port", port)
-            redis_ports.append(port)
+        redis_ports = find_available_port(49159, 55536, redis_replicas())
 
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
@@ -540,6 +532,21 @@ def call_ray_start_context(request):
         raise
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
+    if out.find(redis_substring_prefix) == -1:
+        suggestion = ""
+        if (
+            not ray_constants.ENABLE_RAY_CLUSTER
+            and os.environ.get(ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR) != "1"
+        ):
+            suggestion = (
+                "Try setting the environment variable "
+                f"{ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1."
+            )
+        raise Exception(
+            "Ray didn't print `--address=<GCS address>` upon startup. "
+            + suggestion
+            + f"Here is the output:\n{out}"
+        )
     address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
     address = out[address_location:]
     address = address.split("'")[0]

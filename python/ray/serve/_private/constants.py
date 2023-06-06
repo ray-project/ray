@@ -104,6 +104,7 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
+DEFAULT_MAX_CONCURRENT_QUERIES = 100
 
 # HTTP Proxy health check period
 PROXY_HEALTH_CHECK_PERIOD_S = 10
@@ -123,12 +124,6 @@ HANDLE_METRIC_PUSH_INTERVAL_S = 10
 
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
-
-# Don't pin controller on the headnode
-# By default it's true.
-RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE = (
-    os.environ.get("RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE") != "0"
-)
 
 # Timeout for GCS RPC request
 RAY_GCS_RPC_TIMEOUT_S = 3.0
@@ -191,3 +186,9 @@ SERVE_LOG_RECORD_FORMAT = {
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
+
+# Feature flag to enable StreamingResponse support.
+# When turned on, *all* HTTP responses will use Ray streaming object refs.
+RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
+    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
+)

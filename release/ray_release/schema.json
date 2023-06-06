@@ -87,6 +87,9 @@
 				},
 				"cloud_name": {
 					"type": "string"
+				},
+				"byod": {
+					"$ref": "#/definitions/Byod"
 				}
 			},
 			"required": [
@@ -94,6 +97,25 @@
 				"cluster_env"
 			],
 			"title": "Cluster"
+		},
+		"Byod": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"type": {
+					"type": "string",
+					"enum": [
+						"cpu",
+						"gpu"
+					]
+				},
+				"pre_run_cmds": {
+					"type": "array"
+				}
+			},
+			"required": [
+			],
+			"title": "Byod"
 		},
 		"Run": {
 			"type": "object",

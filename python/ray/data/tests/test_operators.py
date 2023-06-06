@@ -1,21 +1,26 @@
 import collections
-import pandas as pd
 import random
-import pytest
-import numpy as np
-from typing import List, Iterable, Any
 import time
+from typing import Any, Iterable, List
 from unittest.mock import MagicMock
 
+import numpy as np
+import pandas as pd
+import pytest
+
 import ray
-from ray.data.block import Block
-from ray.data._internal.compute import TaskPoolStrategy, ActorPoolStrategy
+from ray._private.test_utils import wait_for_condition
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    PhysicalOperator,
     ExecutionOptions,
+    PhysicalOperator,
+    RefBundle,
+)
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
 )
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -25,13 +30,9 @@ from ray.data._internal.execution.operators.output_splitter import OutputSplitte
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.block import Block
 from ray.tests.conftest import *  # noqa
-from ray._private.test_utils import wait_for_condition
 
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):

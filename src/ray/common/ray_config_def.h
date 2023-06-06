@@ -215,7 +215,7 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 // The max gRPC message size (the gRPC internal default is 4MB). We use a higher
 // limit in Ray to avoid crashing with many small inlined task arguments.
 // Keep in sync with GCS_STORAGE_MAX_SIZE in packaging.py.
-RAY_CONFIG(int64_t, max_grpc_message_size, 500 * 1024 * 1024)
+RAY_CONFIG(int64_t, max_grpc_message_size, 512 * 1024 * 1024)
 
 // Retry timeout for trying to create a gRPC server. Only applies if the number
 // of retries is non zero.
@@ -484,10 +484,6 @@ RAY_CONFIG(uint64_t, task_events_max_buffer_size, 100 * 1000)
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
 RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
-
-/// Max number of dropped task attempt info to be sent in a single rpc call to
-/// GCS for task events in rpc::TaskEventsData
-RAY_CONFIG(uint64_t, task_events_drop_task_attempt_batch_size, 10 * 1000)
 
 /// Max number of profile events allowed for a single task when sent to GCS.
 /// NOTE: this limit only applies to the profile events per task in a single
