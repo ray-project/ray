@@ -222,6 +222,7 @@ To use GPUs for inference, make the following changes to your code:
 
 1. Update the class implementation to move the model and data to and from GPU.
 2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU. 
+3. Specify a `batch_size` for inference. For more details on how to configure the batch size, see `batch_inference_batch_size`_.
 
 The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
@@ -253,6 +254,9 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions = ds.map_batches(
                 HuggingFacePredictor, 
                 num_gpus=1,
+                # Specify the batch size for inference. 
+                # Increase this for larger datasets.
+                batch_size=1, 
                 # Set the ActorPool size to the number of GPUs in your cluster.
                 compute=ray.data.ActorPoolStrategy(size=2), 
                 )
@@ -296,6 +300,9 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions = ds.map_batches(
                 TorchPredictor, 
                 num_gpus=1,
+                # Specify the batch size for inference. 
+                # Increase this for larger datasets.
+                batch_size=1, 
                 # Set the ActorPool size to the number of GPUs in your cluster.
                 compute=ray.data.ActorPoolStrategy(size=2) 
                 )
@@ -336,6 +343,9 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions = ds.map_batches(
                 TFPredictor, 
                 num_gpus=1,
+                # Specify the batch size for inference. 
+                # Increase this for larger datasets.
+                batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
                 compute=ray.data.ActorPoolStrategy(size=2) 
                 )
@@ -429,8 +439,8 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
         )
     predictions.show(limit=1)
 
-How Ray Data compare to X for offline inference?
-------------------------------------------------
+How does Ray Data compare to X for offline inference?
+-----------------------------------------------------
 
 .. dropdown:: Batch Services: AWS Batch, GCP Batch
 
