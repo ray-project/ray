@@ -41,7 +41,7 @@ This section covers common options for improving ingest performance.
 Materializing your dataset
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Datasets are lazy and their execution is streamed, which means that on epoch, all preprocessing operations will be re-run. If this loading / preprocessing is expensive, you may benefit from :meth:`materializing <ray.data.Dataset.materialize>` your dataset in memory. This tells Ray Data to compute all the blocks of the dataset fully and pin them in Ray object store memory. This means that when iterating over the dataset repeatedly, the preprocessing operations do not need to be re-run, greatly improving performance. However, the trade-off is that if the preprocessed data is too large to fit into Ray object store memory, this could slow things down because data needs to be spilled to disk.
+Datasets are lazy and their execution is streamed, which means that on each epoch, all preprocessing operations will be re-run. If this loading / preprocessing is expensive, you may benefit from :meth:`materializing <ray.data.Dataset.materialize>` your dataset in memory. This tells Ray Data to compute all the blocks of the dataset fully and pin them in Ray object store memory. This means that when iterating over the dataset repeatedly, the preprocessing operations do not need to be re-run, greatly improving performance. However, the trade-off is that if the preprocessed data is too large to fit into Ray object store memory, this could slow things down because data needs to be spilled to disk.
 
 .. literalinclude:: doc_code/air_ingest_new.py
     :language: python
@@ -73,7 +73,7 @@ Other performance tips
 
 
 Custom data config (advanced)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------
 
 For use cases not covered by the default config class, you can also fully customize exactly how your input datasets are splitted. To do this, you need to define a custom ``DataConfig`` class (DeveloperAPI). The ``DataConfig`` class is responsible for that shared setup and splitting of data across nodes.
 
