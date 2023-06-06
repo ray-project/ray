@@ -1,7 +1,7 @@
 from typing import Iterator, List, Tuple
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
-from ray.data._internal.compute import CallableClass, get_compute, is_task_compute
+from ray.data._internal.compute import get_compute, is_task_compute
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -12,7 +12,6 @@ from ray.data._internal.execution.operators.actor_pool_map_operator import (
 )
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.one_to_one_operator import LimitOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -23,7 +22,6 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
 )
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block
 
@@ -43,10 +41,6 @@ class OperatorFusionRule(Rule):
         # Now that we have fused together all back-to-back map operators,
         # we fuse together MapOperator -> AllToAllOperator pairs.
         fused_dag = self._fuse_all_to_all_operators_in_dag(fused_dag)
-
-        # Fuse back-to-back limit operators:
-        # Limit(l1) -> Limit(l2) into Limit(min(l1, l2))
-        fused_dag = self._fuse_limit_operators_in_dag(fused_dag)
 
         return PhysicalPlan(fused_dag, self._op_map)
 
@@ -99,30 +93,6 @@ class OperatorFusionRule(Rule):
         ]
         return dag
 
-    def _fuse_limit_operators_in_dag(self, dag: PhysicalOperator) -> Limit:
-        """Starting at the given operator, traverses up the DAG of operators
-        and recursively fuses compatible Limit -> Limit operator pairs.
-        Returns the current (root) operator after completing upstream operator fusions.
-        """
-        upstream_ops = dag.input_dependencies
-        while (
-            len(upstream_ops) == 1
-            and isinstance(dag, LimitOperator)
-            and isinstance(upstream_ops[0], LimitOperator)
-            and self._can_fuse(dag, upstream_ops[0])
-        ):
-            # Fuse operator with its upstream op.
-            dag = self._get_fused_limit_operator(dag, upstream_ops[0])
-            upstream_ops = dag.input_dependencies
-
-        # Done fusing back-to-back map operators together here,
-        # move up the DAG to find the next map operators to fuse.
-        dag._input_dependencies = [
-            self._fuse_limit_operators_in_dag(upstream_op)
-            for upstream_op in upstream_ops
-        ]
-        return dag
-
     def _can_fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator) -> bool:
         """Returns whether the provided downstream operator can be fused with the given
         upstream operator.
@@ -154,7 +124,6 @@ class OperatorFusionRule(Rule):
                 isinstance(up_op, TaskPoolMapOperator)
                 and isinstance(down_op, AllToAllOperator)
             )
-            or (isinstance(down_op, LimitOperator) and isinstance(up_op, LimitOperator))
         ):
             return False
 
@@ -170,7 +139,6 @@ class OperatorFusionRule(Rule):
         # - AbstractMap -> AbstractMap
         # - AbstractMap -> RandomShuffle
         # - AbstractMap -> Repartition (shuffle=True)
-        # - Limit -> Limit
         if not (
             (
                 isinstance(up_logical_op, AbstractMap)
@@ -184,7 +152,6 @@ class OperatorFusionRule(Rule):
                 isinstance(up_logical_op, AbstractMap)
                 and isinstance(down_logical_op, Repartition)
             )
-            or (isinstance(up_logical_op, Limit) and isinstance(down_logical_op, Limit))
         ):
             return False
 
@@ -202,26 +169,6 @@ class OperatorFusionRule(Rule):
             if is_task_compute(down_logical_op._compute) and get_compute(
                 up_logical_op._compute
             ) != get_compute(down_logical_op._compute):
-                return False
-
-            # Fusing callable classes is only supported if they are the same function
-            # AND their construction arguments are the same. Note the Write can be
-            # compatible  with any UDF as Write itself doesn't have UDF.
-            # TODO(Clark): Support multiple callable classes instantiating
-            # in the same actor worker.
-            if (
-                isinstance(down_logical_op._fn, CallableClass)
-                and isinstance(up_logical_op._fn, CallableClass)
-                and (
-                    up_logical_op._fn != down_logical_op._fn
-                    or (
-                        up_logical_op._fn_constructor_args
-                        != down_logical_op._fn_constructor_args
-                        or up_logical_op._fn_constructor_kwargs
-                        != down_logical_op._fn_constructor_kwargs
-                    )
-                )
-            ):
                 return False
 
         # Only fuse if the ops' remote arguments are compatible.
@@ -401,24 +348,6 @@ class OperatorFusionRule(Rule):
         self._op_map[op] = logical_op
         # Return the fused physical operator.
         return op
-
-    def _get_fused_limit_operator(
-        self, down_op: LimitOperator, up_op: LimitOperator
-    ) -> LimitOperator:
-        assert self._can_fuse(down_op, up_op), (
-            "Current rule supports fusing Limit -> Limit"
-            f", but received: {type(up_op).__name__} -> {type(down_op).__name__}"
-        )
-
-        new_limit = min(down_op._limit, up_op._limit)
-        fused_physical_op = LimitOperator(new_limit, up_op.input_dependency)
-
-        up_logical_op = self._op_map.pop(up_op)
-        fused_logical_op = Limit(up_logical_op.input_dependencies[0], new_limit)
-        self._op_map[fused_physical_op] = fused_logical_op
-
-        # Return the fused physical operator.
-        return fused_physical_op
 
 
 def _are_remote_args_compatible(prev_args, next_args):

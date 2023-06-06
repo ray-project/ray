@@ -48,7 +48,7 @@ class Limit(AbstractOneToOne):
         limit: int,
     ):
         super().__init__(
-            "Limit",
+            f"Limit[limit={limit}]",
             input_op,
         )
         self._limit = limit
