@@ -4,6 +4,7 @@ import numpy as np
 import sys
 import time
 import gc
+import random
 
 from collections import Counter
 
@@ -23,6 +24,16 @@ RECONSTRUCTION_CONFIG = {
     "object_timeout_milliseconds": 200,
     "fetch_warn_timeout_milliseconds": 1000,
 }
+
+
+def assert_no_leak():
+    gc.collect()
+    core_worker = ray._private.worker.global_worker.core_worker
+    ref_counts = core_worker.get_all_reference_counts()
+    print(ref_counts)
+    for rc in ref_counts.values():
+        assert rc["local"] == 0
+        assert rc["submitted"] == 0
 
 
 class MockedWorker:
@@ -1098,83 +1109,69 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
                 assert ray.get(fetch.remote(ref)) == i
             "The worker died" in str(e.value)
 
-# SANG-TODO
-def test_reconstruction_e2e(monkeypatch, ray_start_cluster):
+
+def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster):
+    """
+    Test a workload that's like ray dataset + lineage reconstruction.
+    """
     with monkeypatch.context() as m:
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "CoreWorkerService.grpc_server."
-            "ReportGeneratorItemReturns=10000:1000000",
+            "CoreWorkerService.grpc_server." "ReportGeneratorItemReturns=10000:1000000",
         )
         cluster = ray_start_cluster
         # Head node with no resources.
         cluster.add_node(
             num_cpus=1,
+            resources={"head": 1},
             _system_config=RECONSTRUCTION_CONFIG,
             enable_object_reconstruction=True,
         )
         ray.init(address=cluster.address)
 
+        @ray.remote(num_returns="streaming", max_retries=-1)
+        def dynamic_generator(num_returns):
+            for i in range(num_returns):
+                time.sleep(0.1)
+                yield np.ones(1_000_000, dtype=np.int8) * i
+
+        @ray.remote(num_cpus=0, resources={"head": 1})
+        def driver():
+            unready = [dynamic_generator.remote(10) for _ in range(5)]
+            ready = []
+            while unready:
+                ready, unready = ray.wait(
+                    unready, num_returns=len(unready), timeout=0.1
+                )
+                for r in ready:
+                    try:
+                        ref = next(r)
+                        print(ref)
+                        ray.get(ref)
+                    except StopIteration:
+                        pass
+                    else:
+                        unready.append(r)
+            return None
+
+        ref = driver.remote()
+
         nodes = []
-        for _ in range(7):
+        for _ in range(4):
             nodes.append(cluster.add_node(num_cpus=1, object_store_memory=10**8))
         cluster.wait_for_nodes()
 
-        @ray.remote(num_returns="streaming", max_retries=2)
-        def dynamic_generator(num_returns):
-            for i in range(num_returns):
-                yield np.ones(1_000_000, dtype=np.int8) * i
+        for _ in range(10):
+            time.sleep(0.1)
+            node_to_kill = random.choices(nodes)[0]
+            nodes.remove(node_to_kill)
+            cluster.remove_node(node_to_kill, allow_graceful=False)
+            nodes.append(cluster.add_node(num_cpus=1, object_store_memory=10**8))
 
-        @ray.remote
-        def driver():
-            pass
+        result = ray.get(ref)
+        del ref
 
-        @ray.remote
-        def fetch(x):
-            return x[0]
-
-        # Test recovery of all dynamic objects through re-execution.
-        gen = ray.get(dynamic_generator.remote(10))
-        refs = []
-
-        for i in range(5):
-            refs.append(next(gen))
-
-        cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
-
-        for i, ref in enumerate(refs):
-            print("first trial.")
-            print("fetching ", i)
-            assert ray.get(fetch.remote(ref)) == i
-
-        # Try second retry.
-        cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
-
-        for i in range(4):
-            refs.append(next(gen))
-
-        for i, ref in enumerate(refs):
-            print("second trial")
-            print("fetching ", i)
-            assert ray.get(fetch.remote(ref)) == i
-
-        # third retry should fail.
-        cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
-
-        for i in range(1):
-            refs.append(next(gen))
-
-        for i, ref in enumerate(refs):
-            print("third trial")
-            print("fetching ", i)
-            with pytest.raises(ray.exceptions.RayTaskError) as e:
-                ray.get(fetch.remote(ref))
-            assert "the maximum number of task retries has been exceeded" in str(
-                e.value
-            )
+        assert_no_leak()
 
 
 if __name__ == "__main__":
