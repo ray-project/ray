@@ -1,8 +1,7 @@
 import math
 
-from ray.rllib.utils.nested_dict import NestedDict
 
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
+from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
@@ -43,7 +42,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     """
 
     def __init__(
-        self, batch: NestedDict, minibatch_size: int, num_iters: int = 1
+        self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1
     ) -> None:
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
@@ -51,15 +50,14 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._num_iters = num_iters
 
         # mapping from module_id to the start index of the batch
-        self._start = {mid: 0 for mid in batch.asdict().keys()}
+        self._start = {mid: 0 for mid in batch.policy_batches.keys()}
         # mapping from module_id to the number of epochs covered for each module_id
-        self._num_covered_epochs = {mid: 0 for mid in batch.asdict().keys()}
+        self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
 
     def __iter__(self):
         while min(self._num_covered_epochs.values()) < self._num_iters:
             minibatch = {}
-            for module_id, module_batch in self._batch.asdict().items():
-                module_batch = SampleBatch(module_batch)
+            for module_id, module_batch in self._batch.policy_batches.items():
 
                 if len(module_batch) == 0:
                     raise ValueError(

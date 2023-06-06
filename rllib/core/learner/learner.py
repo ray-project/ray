@@ -765,14 +765,14 @@ class Learner:
         """
 
     @abc.abstractmethod
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
-        """Converts a MultiAgentBatch to a NestedDict of Tensors on the correct device.
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:
+        """Converts the elements of a MultiAgentBatch to Tensors on the correct device.
 
         Args:
             batch: The MultiAgentBatch object to convert.
 
         Returns:
-            The resulting NestedDict with framework-specific tensor values placed
+            The resulting MultiAgentBatch with framework-specific tensor values placed
             on the correct device.
         """
 
