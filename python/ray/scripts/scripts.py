@@ -1803,7 +1803,11 @@ workers=$(
 for worker in $workers; do
     echo "Stack dump for $worker";
     pid=`echo $worker | awk '{print $2}'`;
-    sudo $pyspy dump --pid $pid --native;
+    case "$(uname -s)" in
+        Linux*) native=--native;;
+        *)      native=;;
+    esac
+    sudo $pyspy dump --pid $pid $native;
     echo;
 done
     """
