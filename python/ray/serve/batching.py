@@ -1,5 +1,6 @@
 import time
 import asyncio
+from enum import Enum
 from functools import wraps
 from dataclasses import dataclass
 from inspect import iscoroutinefunction, isasyncgenfunction
@@ -34,6 +35,11 @@ class _SingleRequest:
 class _GeneratorResult:
     result: Any
     next_future: asyncio.Future
+
+
+# Singleton enum used as token to indicate that generator in batch is finished
+class SENTINEL(Enum):
+    VALUE = 1
 
 
 def _batch_args_kwargs(
@@ -168,24 +174,35 @@ class _BatchQueue:
         is a generator.
         """
 
+        FINISHED_TOKEN = None
+
         try:
             futures = initial_futures
             async for results in func_generator:
                 self._validate_results(results, input_batch_length)
-                next_futures = [
-                    get_or_create_event_loop().create_future() for _ in futures
-                ]
-                for result, (future, next_future) in zip(
-                    results, zip(futures, next_futures)
-                ):
-                    future.set_result(_GeneratorResult(result, next_future))
+                next_futures = []
+                for result, future in zip(results, futures):
+                    if future is FINISHED_TOKEN:
+                        # This caller has already terminated.
+                        next_futures.append(FINISHED_TOKEN)
+                    elif result is SENTINEL.VALUE:
+                        # User's code returned SENTINEL.VALUE. No values left
+                        # for caller. Terminate iteration for caller.
+                        future.set_exception(StopAsyncIteration)
+                        next_futures.append(FINISHED_TOKEN)
+                    else:
+                        next_future = get_or_create_event_loop().create_future()
+                        future.set_result(_GeneratorResult(result, next_future))
+                        next_futures.append(next_future)
                 futures = next_futures
 
             for future in futures:
-                future.set_exception(StopAsyncIteration)
+                if future is not FINISHED_TOKEN:
+                    future.set_exception(StopAsyncIteration)
         except Exception as e:
             for future in futures:
-                future.set_exception(e)
+                if future is not FINISHED_TOKEN:
+                    future.set_exception(e)
 
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
