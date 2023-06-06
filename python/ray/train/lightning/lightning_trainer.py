@@ -461,8 +461,8 @@ class LightningTrainer(TorchTrainer):
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
-    working_dir = os.path.join(session.get_trial_dir(), "workers")
-    os.makedirs(working_dir, exists_ok=True)
+    working_dir = os.path.join(session.get_trial_dir(), "rank_all")
+    os.makedirs(working_dir, exist_ok=True)
     os.chdir(working_dir)
 
     if not config["lightning_config"]:
