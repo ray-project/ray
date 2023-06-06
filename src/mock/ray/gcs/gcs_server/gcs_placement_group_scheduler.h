@@ -38,6 +38,10 @@ class MockGcsPlacementGroupSchedulerInterface
               GetAndRemoveBundlesOnNode,
               (const NodeID &node_id),
               (override));
+  MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
+              GetBundlesOnNode,
+              (const NodeID &node_id),
+              (const, override));
   MOCK_METHOD(void,
               DestroyPlacementGroupBundleResourcesIfExists,
               (const PlacementGroupID &placement_group_id),
