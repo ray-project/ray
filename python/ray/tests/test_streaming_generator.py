@@ -1168,7 +1168,7 @@ def test_ray_datasetlike_mini_stress_test(monkeypatch, ray_start_cluster):
             cluster.remove_node(node_to_kill, allow_graceful=False)
             nodes.append(cluster.add_node(num_cpus=1, object_store_memory=10**8))
 
-        result = ray.get(ref)
+        ray.get(ref)
         del ref
 
         assert_no_leak()
