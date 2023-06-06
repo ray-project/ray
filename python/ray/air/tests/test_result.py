@@ -100,7 +100,7 @@ def test_result_restore(ray_start_4_cpus, tmpdir, mode):
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
     assert best_ckpt_b.to_dict()["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
 
-    with pytest.raises(RuntimeError, match="Failed to restore the Result object.*"):
+    with pytest.raises(RuntimeError, match="Invalid metric name.*"):
         result.get_best_checkpoint(metric="invalid_metric", mode="max")
 
     # Check if we properly restored errors
