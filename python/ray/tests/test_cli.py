@@ -403,7 +403,7 @@ def test_ray_start_head_block_and_signals(
     """Test `ray start` with `--block` as heads and workers and signal handles"""
 
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
-    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+    runner = CliRunner()
 
     head_parent_conn, head_child_conn = mp.Pipe()
 
@@ -449,7 +449,7 @@ def test_ray_start_head_block_and_signals(
 
     # Kill the GCS last should unblock the CLI
     gcs_proc.kill()
-    gcs_proc.wait(5)
+    gcs_proc.wait(10)
 
     # NOTE(rickyyx): The wait here is needed for the `head_proc`
     # process to exit
