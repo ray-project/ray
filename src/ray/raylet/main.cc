@@ -62,6 +62,7 @@ DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
+DEFINE_string(plugin_name, "", "The name for the plugin.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
 #ifdef __linux__
@@ -84,6 +85,8 @@ int main(int argc, char *argv[]) {
                                          /*log_dir=*/"");
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
+
+  RAY_LOG(INFO) << "yiweizh: Entering raylet main.cc";
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
@@ -113,12 +116,15 @@ int main(int argc, char *argv[]) {
   const std::string resource_dir = FLAGS_resource_dir;
   const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
+  const std::string plugin_name = FLAGS_plugin_name;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;
   const std::string session_name = FLAGS_session_name;
   const bool is_head_node = FLAGS_head;
   gflags::ShutDownCommandLineFlags();
+
+  RAY_LOG(INFO) << plugin_name;
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
@@ -238,6 +244,7 @@ int main(int argc, char *argv[]) {
           RAY_LOG(FATAL) << "Object store memory should be set.";
         }
         object_manager_config.object_store_memory = object_store_memory;
+        object_manager_config.plugin_name = plugin_name;
         object_manager_config.max_bytes_in_flight =
             RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;
@@ -319,3 +326,4 @@ int main(int argc, char *argv[]) {
   main_service.run();
 }
 #endif
+

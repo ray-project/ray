@@ -122,6 +122,9 @@ class RayParams:
 
     def __init__(
         self,
+        ## Adding my part
+        plugin_name: Optional[str] = None,
+
         redis_address: Optional[str] = None,
         gcs_address: Optional[str] = None,
         num_cpus: Optional[int] = None,
@@ -177,12 +180,15 @@ class RayParams:
         session_name: Optional[str] = None,
         webui: Optional[str] = None,
     ):
+        self.plugin_name = plugin_name
+        print("ray._private.parameter plugin_name {}".format(plugin_name))
         self.redis_address = redis_address
         self.gcs_address = gcs_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
         self.object_store_memory = object_store_memory
+        print("ray._private.parameter object_store_memory {}".format(object_store_memory))
         self.resources = resources
         self.redis_max_memory = redis_max_memory
         self.redis_port = redis_port
@@ -438,3 +444,4 @@ class RayParams:
                     port_range_str = f"from {min_port} to {max_port}"
                 ports[comp] = f"{len(port_list)} ports {port_range_str}"
         return ports
+

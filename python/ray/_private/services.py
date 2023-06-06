@@ -1356,6 +1356,7 @@ def start_raylet(
     resource_spec,
     plasma_directory: str,
     object_store_memory: int,
+    plugin_name: str,
     session_name: str,
     is_head_node: bool,
     min_worker_port: Optional[int] = None,
@@ -1602,12 +1603,13 @@ def start_raylet(
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
         f"--object_store_memory={object_store_memory}",
+        f"--plugin_name={plugin_name}",
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
     ]
-
+    print("yiweizh: " + "".join(command)) ## yiweizh
     if is_head_node:
         command.append("--head")
 
@@ -2018,3 +2020,4 @@ def start_ray_client_server(
         fate_share=fate_share,
     )
     return process_info
+

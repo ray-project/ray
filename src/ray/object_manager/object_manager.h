@@ -25,7 +25,8 @@
 #include <mutex>
 #include <random>
 #include <thread>
-
+#include <dlfcn.h>
+#include <iostream>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
@@ -76,6 +77,8 @@ struct ObjectManagerConfig {
   int rpc_service_threads_number;
   /// Initial memory allocation for store.
   int64_t object_store_memory = -1;
+  /// Plugin name (yiweizh)
+  std::string plugin_name;
   /// The directory for shared memory files.
   std::string plasma_directory;
   /// The directory for fallback allocation files.
@@ -99,6 +102,21 @@ class ObjectStoreRunner {
 
  private:
   std::thread store_thread_;
+};
+
+class PluginManager {
+ public:
+  static PluginManager& GetInstance() {
+    static PluginManager instance;
+    return instance;
+  }
+  void LoadObjectStorePlugin(const std::string plugin_name);
+  PluginManager() = default;
+  ~PluginManager() = default;
+
+ private:
+  PluginManager(const PluginManager&) = delete;
+  PluginManager& operator=(const PluginManager&) = delete;
 };
 
 class ObjectManagerInterface {
@@ -492,3 +510,4 @@ class ObjectManager : public ObjectManagerInterface,
 };
 
 }  // namespace ray
+

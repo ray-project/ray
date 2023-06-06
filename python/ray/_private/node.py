@@ -70,6 +70,8 @@ class Node:
                 new processes.
             default_worker: Whether it's running from a ray worker or not
         """
+        ##  my part
+        print("Entering ray._private.node.__init__")
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(
@@ -987,6 +989,7 @@ class Node:
         self,
         plasma_directory: str,
         object_store_memory: int,
+        plugin_name: str, ## yiweizh
         use_valgrind: bool = False,
         use_profiler: bool = False,
     ):
@@ -1016,6 +1019,7 @@ class Node:
             self.get_resource_spec(),
             plasma_directory,
             object_store_memory,
+            plugin_name,
             self.session_name,
             is_head_node=self.is_head(),
             min_worker_port=self._ray_params.min_worker_port,
@@ -1211,7 +1215,7 @@ class Node:
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-        self.start_raylet(plasma_directory, object_store_memory)
+        self.start_raylet(plasma_directory, object_store_memory, self._ray_params.plugin_name)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 
@@ -1580,3 +1584,4 @@ class Node:
                 "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
             )
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
+

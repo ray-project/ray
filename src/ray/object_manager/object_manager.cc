@@ -24,6 +24,29 @@ namespace asio = boost::asio;
 
 namespace ray {
 
+
+void PluginManager::LoadObjectStorePlugin(const std::string plugin_name) {
+  RAY_LOG(INFO) << " yiweizh: Calling LoadOBjectStorePlugin with name " << plugin_name;
+  void *handle = dlopen(plugin_name.c_str(), RTLD_NOW);
+  if (!handle) {
+      std::cerr << "Failed to load shared library: " << dlerror() << std::endl;
+      return;
+  }
+  
+  std::string (*PluginStart)() = reinterpret_cast<std::string (*)()>(dlsym(handle, "PluginStart"));
+  if (dlerror() != nullptr) {
+      std::cerr << dlerror() << std::endl;
+      dlclose(handle);
+      return;
+  }
+
+  //RAY_LOG(INFO) << PluginStart();
+  std::cout<< "Plugin output: "  << PluginStart() << std::endl;
+  dlclose(handle);
+
+  return;
+}
+
 ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
                                      SpillObjectsCallback spill_objects_callback,
                                      std::function<void()> object_store_full_callback,
@@ -108,6 +131,11 @@ ObjectManager::ObjectManager(
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
+  RAY_LOG(INFO) << "yiweizh: Starting ObjectManager with ID " << self_node_id;
+  RAY_LOG(INFO) << "yiweizh: Start to initialize PluginManager" ;
+
+  auto &plugin_manager_ = PluginManager::GetInstance();
+  plugin_manager_.LoadObjectStorePlugin(config_.plugin_name);
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
@@ -804,3 +832,4 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
 }
 
 }  // namespace ray
+

@@ -1118,6 +1118,8 @@ def init(
     num_cpus: Optional[int] = None,
     num_gpus: Optional[int] = None,
     resources: Optional[Dict[str, float]] = None,
+    ## my part
+    plugin_name: Optional[str] = None,
     object_store_memory: Optional[int] = None,
     local_mode: bool = False,
     ignore_reinit_error: bool = False,
@@ -1276,6 +1278,7 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    print("Entering ray._private.worker.init()")
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
 
@@ -1496,6 +1499,8 @@ def init(
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
             memory=_memory,
+            ## my part
+            plugin_name = plugin_name,
             object_store_memory=object_store_memory,
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
@@ -1528,6 +1533,12 @@ def init(
             raise ValueError(
                 "When connecting to an existing cluster, "
                 "resources must not be provided."
+            )
+        ## my part
+        if plugin_name is not None:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "plugin_name must not be provided."
             )
         if object_store_memory is not None:
             raise ValueError(
@@ -1616,7 +1627,7 @@ def init(
         logger.info(info_str)
 
     connect(
-        _global_node,
+        _global_node, ## A node
         _global_node.session_name,
         mode=driver_mode,
         log_to_driver=log_to_driver,
@@ -2177,6 +2188,8 @@ def connect(
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
+
+    print("Executing here")
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
@@ -3231,3 +3244,4 @@ def remote(
         return _make_remote(args[0], {})
     assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
     return functools.partial(_make_remote, options=kwargs)
+

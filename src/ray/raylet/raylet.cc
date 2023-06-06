@@ -79,6 +79,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
+
+  RAY_LOG(INFO) << "yiweizh: Initialize Raylet";
   self_node_info_.set_node_id(self_node_id_.Binary());
   self_node_info_.set_state(GcsNodeInfo::ALIVE);
   self_node_info_.set_node_manager_address(node_ip_address);
@@ -162,3 +164,4 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
 }  // namespace raylet
 
 }  // namespace ray
+
