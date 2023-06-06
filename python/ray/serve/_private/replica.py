@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -95,6 +96,7 @@ def create_replica_wrapper(name: str):
             detached: bool,
             app_name: str = None,
         ):
+            self._replica_tag = replica_tag
             configure_component_logger(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
@@ -159,7 +161,7 @@ def create_replica_wrapper(name: str):
             )
 
             # Indicates whether the replica has finished initializing.
-            self._init_finish_event = asyncio.Event()
+            self._initialized = False
 
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
@@ -200,13 +202,16 @@ def create_replica_wrapper(name: str):
                     controller_handle,
                     app_name,
                 )
-                self._init_finish_event.set()
+                self._initialized = True
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
             # or, alternatively, create an async get_replica() method?
             self.replica = None
             self._initialize_replica = initialize_replica
+
+            # Used to guard `initialize_replica` so that it isn't called twice.
+            self._replica_init_lock = asyncio.Lock()
 
         @ray.method(num_returns=2)
         async def handle_request(
@@ -318,16 +323,22 @@ def create_replica_wrapper(name: str):
                 get_component_logger_file_path(),
             )
 
-        async def is_initialized(
+        async def initialize_and_get_metadata(
             self,
             deployment_config: DeploymentConfig = None,
             _after: Optional[Any] = None,
-        ):
+        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             try:
-                await self._initialize_replica()
-                metadata = await self.reconfigure(deployment_config)
+                # Ensure that initialization is only performed once.
+                # When controller restarts, it will call this method again.
+                async with self._replica_init_lock:
+                    if not self._initialized:
+                        await self._initialize_replica()
+                    if deployment_config:
+                        await self.reconfigure(deployment_config)
+                metadata = await self._get_metadata()
 
                 # A new replica should not be considered healthy until it passes an
                 # initial health check. If an initial health check fails, consider
@@ -342,15 +353,13 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             try:
                 await self.replica.reconfigure(deployment_config)
-                return await self.get_metadata()
+                return await self._get_metadata()
             except Exception:
                 raise RuntimeError(traceback.format_exc()) from None
 
-        async def get_metadata(
+        async def _get_metadata(
             self,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            # Wait for replica initialization to finish
-            await self._init_finish_event.wait()
             return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
@@ -679,7 +688,12 @@ class RayServeReplica:
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            await asyncio.sleep(self.deployment_config.graceful_shutdown_wait_loop_s)
+            if self.deployment_config:
+                await asyncio.sleep(
+                    self.deployment_config.graceful_shutdown_wait_loop_s
+                )
+            else:
+                await asyncio.sleep(DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S)
             method_stat = self._get_handle_request_stats()
             # The handle_request method wasn't even invoked.
             if method_stat is None:
