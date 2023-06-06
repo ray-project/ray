@@ -564,6 +564,9 @@ class ActorReplicaWrapper:
                 # todo: The replica's userconfig whitch java client created
                 #  is different from the controller's userconfig
                 if not self._deployment_is_cross_language:
+                    # This should only update version if the replica is being recovered.
+                    # If this is checking on a replica that is newly started, this
+                    # should return a version that is identical to what's already stored
                     _, self._version = ray.get(self._ready_obj_ref)
 
                 (
