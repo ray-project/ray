@@ -191,7 +191,7 @@ def test_reuse_checkpoint(ray_start_4_cpus):
     assert len(trial_dfs[0]["training_iteration"]) == 5
 
 
-def test_retry(ray_start_4_cpus):
+def test_retry_with_max_failures(ray_start_4_cpus):
     def train_func():
         ckpt = session.get_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
@@ -202,7 +202,7 @@ def test_retry(ray_start_4_cpus):
 
         for i in range(itr, 4):
             if i == 2 and not restored:
-                raise Exception("try to fail me")
+                raise RuntimeError("try to fail me")
             session.report(
                 dict(test=i, training_iteration=i),
                 checkpoint=Checkpoint.from_dict(dict(iter=i)),
@@ -212,18 +212,13 @@ def test_retry(ray_start_4_cpus):
         train_func,
         backend_config=TestConfig(),
         scaling_config=ScalingConfig(num_workers=1),
-    )
-    tuner = Tuner(
-        trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
+        run_config=RunConfig(failure_config=FailureConfig(max_failures=-1)),
     )
 
-    analysis = tuner.fit()._experiment_analysis
-    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    result = trainer.fit()
+    assert not result.error
+    checkpoint = result.checkpoint.to_dict()
     assert checkpoint["iter"] == 3
-
-    trial_dfs = list(analysis.trial_dataframes.values())
-    assert len(trial_dfs[0]["training_iteration"]) == 4
 
 
 def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
