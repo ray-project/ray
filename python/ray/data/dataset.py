@@ -39,6 +39,7 @@ from ray.data._internal.compute import (
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -48,6 +49,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -3971,7 +3973,35 @@ class Dataset:
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
         copy._plan.execute(force_read=True)
-        return ray.data.from_arrow_refs(copy.get_internal_block_refs())
+
+        blocks = copy._plan._snapshot_blocks
+        blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
+        metadata = [t[1] for t in blocks_with_metadata]
+        # TODO(hchen): Here we generate the same number of blocks as
+        # the original Dataset. Because the old code path does this, and
+        # some unit tests implicily depend on this behavior.
+        # After we remove the old code path, we should consider merging
+        # some blocks for better perf.
+        ref_bundles = [
+            RefBundle(
+                blocks=[block_with_metadata],
+                owns_blocks=False,
+            )
+            for block_with_metadata in blocks_with_metadata
+        ]
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        output = MaterializedDataset(
+            ExecutionPlan(
+                blocks,
+                DatasetStats(stages={"FromMaterializedBlocks": metadata}, parent=None),
+                run_by_consumer=False,
+            ),
+            0,
+            True,
+            logical_plan,
+        )
+        output._plan.execute()  # This should be a no-op.
+        return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
