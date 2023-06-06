@@ -638,8 +638,10 @@ class BuildkiteSettingsTest(unittest.TestCase):
         test_concurrency(512, 0, "medium")
         test_concurrency(129, 0, "medium")
         test_concurrency(128, 0, "small")
-        test_concurrency(1, 0, "tiny")
+        test_concurrency(9, 0, "tiny")
         test_concurrency(32, 0, "tiny")
+        test_concurrency(8, 0, "minuscule")
+        test_concurrency(1, 0, "minuscule")
         test_concurrency(33, 0, "small")
 
     def testConcurrencyGroupSmokeTest(self):
