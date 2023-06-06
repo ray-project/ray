@@ -122,11 +122,13 @@ def test_function_import_without_importer_thread(shutdown_only):
 
 
 @pytest.mark.skipif(
-    sys.platform != "linux"
+    sys.platform != "linux",
     # Even though fork is supported on macOS, in practice
     # it has many problems, see
     # https://github.com/python/cpython/issues/84559
-    # In truth, fork should probably not be used on any platform.
+    # In truth, fork without exec should probably
+    # not even be used on linux. This pattern just has
+    # too many problems.
     reason="Fork only works on linux.",
 )
 def test_fork_support(shutdown_only):
