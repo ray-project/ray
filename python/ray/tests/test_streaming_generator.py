@@ -365,6 +365,65 @@ def test_generator_basic(shutdown_only):
 
 
 @pytest.mark.parametrize("crash_type", ["exception", "worker_crash"])
+def test_retry_exception_undeterministic(shutdown_only, crash_type):
+    """Test the case where the task retry is undeterministic
+        because of exceptions or worker failures.
+
+    By the protocol, when a generator task raised an exception
+    or system fails, it shouldn't hang and raise an exception.
+    """
+
+    @ray.remote
+    class SignalException:
+        def __init__(self):
+            self.crash_index = 2
+            self._sema = asyncio.Semaphore(value=1)
+
+        async def acquire(self):
+            await self._sema.acquire()
+
+        async def release(self):
+            self._sema.release()
+
+        async def locked(self):
+            return self._sema.locked()
+
+        def set_crash_index(self, i):
+            self.crash_index = i
+
+        def get_crash_index(self):
+            return self.crash_index
+
+    signal = SignalException.remote()
+
+    @ray.remote(num_returns="streaming", retry_exceptions=[ValueError], max_retries=1)
+    def f(signal):
+        ray.get(signal.acquire.remote())
+        crash_index = ray.get(signal.get_crash_index.remote())
+        for i in range(3):
+            if i == crash_index:
+                if crash_type == "exception":
+                    raise ValueError
+                else:
+                    sys.exit(15)
+            yield i
+
+    gen = f.remote(signal)
+    assert ray.get(next(gen)) == 0
+    assert ray.get(next(gen)) == 1
+    ray.get(signal.release.remote())
+    ray.get(signal.set_crash_index.remote(1))
+
+    # Should raise an exception.
+    if crash_type == "exception":
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(next(gen))
+    else:
+        with pytest.raises(ray.exceptions.WorkerCrashedError):
+            ray.get(next(gen))
+
+
+@pytest.mark.parametrize("crash_type", ["exception", "worker_crash"])
 def test_generator_streaming_no_leak_upon_failures(
     monkeypatch, shutdown_only, crash_type
 ):

@@ -739,19 +739,21 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (first_execution) {
       ObjectID last_ref_in_stream;
       // MarkEndOfStream should always succeed when it is the first execution.
-      RAY_CHECK(MarkEndOfStream(generator_id, reply.streaming_generator_return_ids_size(), &last_ref_in_stream));
+      RAY_CHECK(MarkEndOfStream(generator_id,
+                                reply.streaming_generator_return_ids_size(),
+                                &last_ref_in_stream));
       reference_counter_->OwnDynamicStreamingTaskReturnRef(last_ref_in_stream,
-                                                          generator_id);
+                                                           generator_id);
       RAY_CHECK_EQ(reply.return_objects_size(), 1);
       const auto &return_object = reply.return_objects(0);
       HandleTaskReturn(last_ref_in_stream,
-                      return_object,
-                      NodeID::FromBinary(worker_addr.raylet_id()),
-                      store_in_plasma_ids.count(last_ref_in_stream));
+                       return_object,
+                       NodeID::FromBinary(worker_addr.raylet_id()),
+                       store_in_plasma_ids.count(last_ref_in_stream));
     } else {
       // end of stream should have been already marked
       if (is_application_error) {
-        // It means the task has reexeucted, but in the second execution, it fails with
+        // It means the task has reexeucted, but in the n+ execution, it fails with
         // an application error. In this case, we should fail all the rest of
         // known streaming generator returns.
         for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
@@ -759,9 +761,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           RAY_CHECK_EQ(reply.return_objects_size(), 1UL);
           const auto &return_object = reply.return_objects(0);
           HandleTaskReturn(generator_return_id,
-                            return_object,
-                            NodeID::FromBinary(worker_addr.raylet_id()),
-                            store_in_plasma_ids.count(generator_return_id));
+                           return_object,
+                           NodeID::FromBinary(worker_addr.raylet_id()),
+                           store_in_plasma_ids.count(generator_return_id));
+        }
       }
     }
   }
