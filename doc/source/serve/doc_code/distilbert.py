@@ -1,11 +1,16 @@
 from contextlib import contextmanager
 
-# __example_code_start__
-from transformers import pipeline
-from fastapi import FastAPI
-from ray import serve
-import torch
+# This deployment might take longer to start. Setup longer timeouts and period.
+import os
 
+os.env["RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S"] = "999"
+os.env["RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S"] = "999"
+
+# __example_code_start__
+from transformers import pipeline  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from ray import serve  # noqa: E402
+import torch  # noqa: E402
 
 app = FastAPI()
 
