@@ -61,6 +61,10 @@
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
+    # Test examples with newer version of `transformers`
+    # TODO(amogkam): Remove when https://github.com/ray-project/ray/issues/36011 
+    # is resolved.
+    - pip install -U transformers
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-cpu python/ray/... doc/...
 
