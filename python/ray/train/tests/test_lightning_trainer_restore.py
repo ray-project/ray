@@ -175,6 +175,11 @@ def test_air_trainer_restore(ray_start_6_cpus, tmpdir, resume_from_ckpt_path, di
     assert result.metrics["iterations_since_restore"] == iterations_since_restore
     assert tmpdir / exp_name in result.log_dir.parents
 
+    # Check if the ckpt dir exists in the trial folder
+    # if dirpath and not os.path.isabs(dirpath):
+    #     trial_dir = Path(result.path)
+    #     assert (trial_dir / dirpath).exists()
+
 
 if __name__ == "__main__":
     import sys

@@ -461,6 +461,10 @@ class LightningTrainer(TorchTrainer):
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
+    working_dir = os.path.join(session.get_trial_dir(), "workers")
+    os.makedirs(working_dir, exists_ok=True)
+    os.chdir(working_dir)
+
     if not config["lightning_config"]:
         raise RuntimeError("'lightning_config' not specified in LightningTrainer!")
 
@@ -535,12 +539,12 @@ def _lightning_train_loop_per_worker(config):
     trainer_config["enable_checkpointing"] = True
     model_checkpoint_config["save_last"] = True
 
-    # Convert dirpath to an absolute path under the trial directory
-    ckpt_dirpath = model_checkpoint_config.get("dirpath", None)
-    if ckpt_dirpath and not os.path.isabs(os.path.expanduser(ckpt_dirpath)):
-        model_checkpoint_config["dirpath"] = os.path.join(
-            session.get_trial_dir(), ckpt_dirpath
-        )
+    # # Convert dirpath to an absolute path under the trial directory
+    # ckpt_dirpath = model_checkpoint_config.get("dirpath", None)
+    # if ckpt_dirpath and not os.path.isabs(os.path.expanduser(ckpt_dirpath)):
+    #     model_checkpoint_config["dirpath"] = os.path.join(
+    #         session.get_trial_dir(), ckpt_dirpath
+    #     )
 
     trainer_config["callbacks"] = trainer_config.get("callbacks", []) + [
         RayModelCheckpoint(**model_checkpoint_config)
