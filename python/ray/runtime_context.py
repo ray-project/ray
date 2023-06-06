@@ -401,8 +401,6 @@ def get_runtime_context() -> RuntimeContext:
             ray.get_runtime_context().get_actor_id()
             # Get the task id.
             ray.get_runtime_context().get_task_id()
-            # Get the worker id.
-            ray.get_runtime_context().get_worker_id()
 
     """
     global _runtime_context
