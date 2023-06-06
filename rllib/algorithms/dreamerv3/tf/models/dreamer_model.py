@@ -10,6 +10,9 @@ import numpy as np
 import tensorflow as tf
 
 from ray.rllib.algorithms.dreamerv3.tf.models.disagree_networks import DisagreeNetworks
+from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import ActorNetwork
+from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwork
+from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
 
 from ray.rllib.utils.tf_utils import inverse_symlog
 
@@ -18,9 +21,10 @@ class DreamerModel(tf.keras.Model):
     """The main tf-keras model containing all necessary components for DreamerV3.
 
     Includes:
-    - The world model (with encoder, decoder, sequence-model (RSSM), dynamics
-    (prior z-state generating) model, and "posterior" model) for producing dreamed
-    trajectories.
+    - The world model with encoder, decoder, sequence-model (RSSM), dynamics
+    (generates prior z-state), and "posterior" model (generates posterior z-state).
+    Predicts env dynamics and produces dreamed trajectories for actor- and critic
+    learning.
     - The actor network (policy).
     - The critic network for value function prediction.
     """
@@ -30,30 +34,27 @@ class DreamerModel(tf.keras.Model):
         *,
         model_size: str = "XS",
         action_space: gym.Space,
-        batch_size_B,
-        batch_length_T,
-        horizon_H,
-        world_model,
-        actor,
-        critic,
+        world_model: WorldModel,
+        actor: ActorNetwork,
+        critic: CriticNetwork,
         use_curiosity: bool = False,
         intrinsic_rewards_scale: float = 0.1,
     ):
-        """TODO
+        """Initializes a DreamerModel instance.
 
         Args:
              model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
              action_space: The action space the our environment used.
+             world_model: The WorldModel component.
+             actor: The ActorNetwork component.
+             critic: The CriticNetwork component.
         """
         super().__init__(name="dreamer_model")
 
         self.model_size = model_size
         self.action_space = action_space
         self.use_curiosity = use_curiosity
-        self.batch_size_B = batch_size_B
-        self.batch_length_T = batch_length_T
-        self.horizon_H = horizon_H
 
         self.world_model = world_model
         self.actor = actor

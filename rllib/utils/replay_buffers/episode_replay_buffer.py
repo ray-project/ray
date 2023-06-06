@@ -321,6 +321,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         """Returns number of timesteps that have been sampled in buffer's lifetime."""
         return self.sampled_timesteps
 
+    def get_added_timesteps(self) -> int:
+        """Returns number of timesteps that have been added in buffer's lifetime."""
+        return self._num_timesteps_added
+
     @override(ReplayBufferInterface)
     def get_state(self) -> Dict[str, Any]:
         return {
@@ -329,6 +333,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             "_num_episodes_evicted": self._num_episodes_evicted,
             "_indices": self._indices,
             "_num_timesteps": self._num_timesteps,
+            "_num_timesteps_added": self._num_timesteps_added,
             "sampled_timesteps": self.sampled_timesteps,
         }
 
@@ -341,6 +346,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         self._num_episodes_evicted = state["_num_episodes_evicted"]
         self._indices = state["_indices"]
         self._num_timesteps = state["_num_timesteps"]
+        self._num_timesteps_added = state["_num_timesteps_added"]
         self.sampled_timesteps = state["sampled_timesteps"]
 
 

@@ -110,7 +110,6 @@ class DreamerV3Config(AlgorithmConfig):
             "capacity": int(1e6),
         }
 
-        # self.num_pretrain_iterations = 0
         self.lr = None
         self.world_model_lr = 1e-4
         self.actor_lr = 3e-5
@@ -124,12 +123,10 @@ class DreamerV3Config(AlgorithmConfig):
         self.return_normalization_decay = 0.99  # [1] eq. 11 and 12.
         self.train_critic = True
         self.train_actor = True
-        self.use_curiosity = False
         self.intrinsic_rewards_scale = 0.1
         self.world_model_grad_clip_by_global_norm = 1000.0
         self.critic_grad_clip_by_global_norm = 100.0
         self.actor_grad_clip_by_global_norm = 100.0
-        self.disagree_grad_clip_by_global_norm = 100.0
 
         # Reporting.
         self.summarize_individual_batch_item_stats = False
@@ -167,12 +164,10 @@ class DreamerV3Config(AlgorithmConfig):
         return_normalization_decay: Optional[float] = NotProvided,
         train_critic: Optional[bool] = NotProvided,
         train_actor: Optional[bool] = NotProvided,
-        use_curiosity: Optional[bool] = NotProvided,
         intrinsic_rewards_scale: Optional[float] = NotProvided,
         world_model_grad_clip_by_global_norm: Optional[float] = NotProvided,
         critic_grad_clip_by_global_norm: Optional[float] = NotProvided,
         actor_grad_clip_by_global_norm: Optional[float] = NotProvided,
-        disagree_grad_clip_by_global_norm: Optional[float] = NotProvided,
         **kwargs,
     ) -> "DreamerV3Config":
         """Sets the training related configuration.
@@ -213,8 +208,6 @@ class DreamerV3Config(AlgorithmConfig):
                 must also be False (cannot train actor w/o training the critic).
             train_actor: Whether to train the actor network. If True, `train_critic`
                 must also be True (cannot train actor w/o training the critic).
-            use_curiosity: Whether to use the disagree-networks to compute intrinsic
-                rewards for the dreamed data that critic and actor learn from.
             intrinsic_rewards_scale: The factor to multiply intrinsic rewards with
                 before adding them to the extrinsic (environment) rewards.
             world_model_grad_clip_by_global_norm: World model grad clipping value
@@ -222,8 +215,6 @@ class DreamerV3Config(AlgorithmConfig):
             critic_grad_clip_by_global_norm: Critic grad clipping value
                 (by global norm).
             actor_grad_clip_by_global_norm: Actor grad clipping value (by global norm).
-            disagree_grad_clip_by_global_norm: Disagree net (curiosity) grad clipping
-                value (by global norm).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -255,8 +246,6 @@ class DreamerV3Config(AlgorithmConfig):
             self.train_critic = train_critic
         if train_actor is not NotProvided:
             self.train_actor = train_actor
-        if use_curiosity is not NotProvided:
-            self.use_curiosity = use_curiosity
         if intrinsic_rewards_scale is not NotProvided:
             self.intrinsic_rewards_scale = intrinsic_rewards_scale
         if world_model_grad_clip_by_global_norm is not NotProvided:
@@ -267,8 +256,6 @@ class DreamerV3Config(AlgorithmConfig):
             self.critic_grad_clip_by_global_norm = critic_grad_clip_by_global_norm
         if actor_grad_clip_by_global_norm is not NotProvided:
             self.actor_grad_clip_by_global_norm = actor_grad_clip_by_global_norm
-        if disagree_grad_clip_by_global_norm is not NotProvided:
-            self.disagree_grad_clip_by_global_norm = disagree_grad_clip_by_global_norm
 
         return self
 
@@ -357,7 +344,6 @@ class DreamerV3Config(AlgorithmConfig):
             train_actor=self.train_actor,
             train_critic=self.train_critic,
             world_model_lr=self.world_model_lr,
-            use_curiosity=self.use_curiosity,
             intrinsic_rewards_scale=self.intrinsic_rewards_scale,
             actor_lr=self.actor_lr,
             critic_lr=self.critic_lr,
@@ -574,8 +560,6 @@ class DreamerV3(Algorithm):
                     msg += f"L_actor={res['ACTOR_L_total']:.5f} "
                 if self.config.train_critic:
                     msg += f"L_critic={res['CRITIC_L_total']:.5f} "
-                if self.config.use_curiosity:
-                    msg += f"L_disagree={res['DISAGREE_L_total']:.5f} "
                 logger.info(msg)
 
                 sub_iter += 1
