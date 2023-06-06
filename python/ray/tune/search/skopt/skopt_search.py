@@ -75,9 +75,10 @@ class SkOptSearch(Searcher):
         convert_to_python: SkOpt outputs numpy primitives (e.g.
             ``np.int64``) instead of Python types. If this setting is set
             to ``True``, the values will be converted to Python primitives.
-        optimizer_kwargs: Parameters to pass to the SkOpt optimizer when it's
-            not set through `optimizer`. (See ``skopt.optimizer.Optimizer``
-            for details of Parameters)
+        optimizer_kwargs: These Parameters will only be passed to the SkOpt
+            optimizer only if the `optimizer` argument of `SkOptSearch` is
+            set to `None`. (See ``skopt.optimizer.Optimizer`` for details
+            of Parameters)
 
     Tune automatically converts search spaces to SkOpt's format:
 
