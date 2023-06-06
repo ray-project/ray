@@ -328,20 +328,6 @@ If you need node IP, use {py:obj}`ray.nodes` API to fetch all nodes and map the 
 
 :::
 
-:::{tab-item} Ray Worker
-Get the Worker ID.
-
-```python
-import ray
-# Initiate a driver.
-ray.init()
-
-@ray.remote
-def task():
-    # Get the ID of the Worker process where the task is running
-    worker_id = ray.get_runtime_context().get_worker_id
-```
-:::
 
 ::::
 
