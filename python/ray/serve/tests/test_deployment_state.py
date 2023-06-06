@@ -2382,6 +2382,7 @@ def test_add_and_remove_nodes_for_driver_deployment(
 class TestActorReplicaWrapper:
     def test_default_value(self):
         actor_replica = ActorReplicaWrapper(
+            version=deployment_version("1"),
             actor_name="test",
             detached=False,
             controller_name="test_controller",
@@ -2398,6 +2399,7 @@ class TestActorReplicaWrapper:
 
     def test_recover(self):
         actor_replica = ActorReplicaWrapper(
+            version=deployment_version("1"),
             actor_name="test",
             detached=False,
             controller_name="test_controller",

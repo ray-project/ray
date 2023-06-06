@@ -635,7 +635,7 @@ class RayServeReplica:
                 reconfigure_method = sync_to_async(
                     getattr(self.callable, RECONFIGURE_METHOD)
                 )
-                await reconfigure_method(self.deployment_config.user_config)
+                await reconfigure_method(user_config)
 
     async def handle_request(
         self, request: Query, *, asgi_sender: Optional[Send] = None

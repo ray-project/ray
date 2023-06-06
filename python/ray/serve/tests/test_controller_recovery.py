@@ -339,7 +339,7 @@ def test_recover_deleting_deployment(serve_instance):
 
         # Confirm replica is stopping
         replicas = ray.get(
-            serve_instance._controller._dump_replica_states_for_testing.remote("app_A")
+            serve_instance._controller._dump_replica_states_for_testing.remote("A")
         )
         assert replicas.count(states=[ReplicaState.STOPPING]) == 1
 
