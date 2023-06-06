@@ -1,7 +1,8 @@
-from contextlib import contextmanager
-
+import functools
 import os
 import tempfile
+from contextlib import contextmanager
+
 import ray
 
 STRICT_MODE = ray.data.DatasetContext.get_current().strict_mode
@@ -36,6 +37,7 @@ def gen_bin_files(n):
 
 
 def column_udf(col, udf):
+    @functools.wraps(udf)
     def wraps(row):
         return {col: udf(row[col])}
 

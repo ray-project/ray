@@ -39,7 +39,6 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
@@ -890,7 +889,9 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize error info pub/sub"""
-    s = GcsErrorSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s = ray._raylet.GcsErrorSubscriber(
+        address=ray._private.worker.global_worker.gcs_client.address
+    )
     s.subscribe()
     return s
 
@@ -908,7 +909,7 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
         if not error_data:
             # Timed out before any data is received.
             break
-        if error_type is None or error_type == error_data.type:
+        if error_type is None or error_type == error_data["type"]:
             msgs.append(error_data)
         else:
             time.sleep(0.01)
@@ -918,7 +919,9 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize log pub/sub"""
-    s = GcsLogSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s = ray._raylet.GcsLogSubscriber(
+        address=ray._private.worker.global_worker.gcs_client.address
+    )
     s.subscribe()
     return s
 

@@ -16,6 +16,8 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
     This is used by random_shuffle() and repartition().
     """
 
+    SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME = "Split Repartition"
+
     def __init__(
         self,
         random_shuffle: bool = False,

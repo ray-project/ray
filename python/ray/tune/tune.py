@@ -306,12 +306,7 @@ def run(
     storage_path: Optional[str] = None,
     search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
     scheduler: Optional[Union[TrialScheduler, str]] = None,
-    keep_checkpoints_num: Optional[int] = None,
-    checkpoint_score_attr: Optional[str] = None,
-    checkpoint_freq: int = 0,
-    checkpoint_at_end: bool = False,
-    checkpoint_keep_all_ranks: bool = False,
-    checkpoint_upload_from_workers: bool = False,
+    checkpoint_config: Optional[CheckpointConfig] = None,
     verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
     log_to_file: bool = False,
@@ -330,6 +325,12 @@ def run(
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
     # Deprecated
+    keep_checkpoints_num: Optional[int] = None,  # Deprecated (2.7)
+    checkpoint_score_attr: Optional[str] = None,  # Deprecated (2.7)
+    checkpoint_freq: int = 0,  # Deprecated (2.7)
+    checkpoint_at_end: bool = False,  # Deprecated (2.7)
+    checkpoint_keep_all_ranks: bool = False,  # Deprecated (2.7)
+    checkpoint_upload_from_workers: bool = False,  # Deprecated (2.7)
     trial_executor: Optional[RayTrialExecutor] = None,
     local_dir: Optional[str] = None,
     # == internal only ==
@@ -432,29 +433,12 @@ def run(
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
             ray.tune.schedulers for more options. You can also use the
             name of the scheduler.
-        keep_checkpoints_num: Number of checkpoints to keep. A value of
-            `None` keeps all checkpoints. Defaults to `None`. If set, need
-            to provide `checkpoint_score_attr`.
-        checkpoint_score_attr: Specifies by which attribute to rank the
-            best checkpoint. Default is increasing order. If attribute starts
-            with `min-` it will rank attribute in decreasing order, i.e.
-            `min-validation_loss`.
-        checkpoint_freq: How many training iterations between
-            checkpoints. A value of 0 (default) disables checkpointing.
-            This has no effect when using the Functional Training API.
-        checkpoint_at_end: Whether to checkpoint at the end of the
-            experiment regardless of the checkpoint_freq. Default is False.
-            This has no effect when using the Functional Training API.
-        checkpoint_keep_all_ranks: Whether to save checkpoints from all ranked
-            training workers.
-        checkpoint_upload_from_workers: Whether to upload checkpoint files
-            directly from distributed training workers.
-        verbose: 0, 1, 2, or 3. Verbosity mode.
-            0 = silent, 1 = only status updates, 2 = status and brief
-            results, 3 = status and detailed results. Defaults to 3.
+        verbose: 0, 1, or 2. Verbosity mode.
+            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
             If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
-            uses the new context-aware verbosity settings:
-            0 = silent, 1 = default, 2 = verbose.
+            uses the old verbosity settings:
+            0 = silent, 1 = only status updates, 2 = status and brief
+            results, 3 = status and detailed results.
         progress_reporter: Progress reporter for reporting
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
@@ -541,6 +525,12 @@ def run(
         _remote: Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
+        keep_checkpoints_num: Deprecated. use checkpoint_config instead.
+        checkpoint_score_attr: Deprecated. use checkpoint_config instead.
+        checkpoint_freq: Deprecated. use checkpoint_config instead.
+        checkpoint_at_end: Deprecated. use checkpoint_config instead.
+        checkpoint_keep_all_ranks: Deprecated. use checkpoint_config instead.
+        checkpoint_upload_from_workers: Deprecated. use checkpoint_config instead.
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -709,22 +699,68 @@ def run(
         local_path=local_path, remote_path=remote_path, sync_config=sync_config
     )
 
-    checkpoint_score_attr = checkpoint_score_attr or ""
-    if checkpoint_score_attr.startswith("min-"):
-        checkpoint_score_attr = checkpoint_score_attr[4:]
-        checkpoint_score_order = "min"
-    else:
-        checkpoint_score_order = "max"
+    checkpoint_config = checkpoint_config or CheckpointConfig()
 
-    checkpoint_config = CheckpointConfig(
-        num_to_keep=keep_checkpoints_num,
-        checkpoint_score_attribute=checkpoint_score_attr,
-        checkpoint_score_order=checkpoint_score_order,
-        checkpoint_frequency=checkpoint_freq,
-        checkpoint_at_end=checkpoint_at_end,
-        _checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
-        _checkpoint_upload_from_workers=checkpoint_upload_from_workers,
-    )
+    # For backward compatibility
+    # TODO(jungong): remove after 2.7 release.
+    if keep_checkpoints_num is not None:
+        warnings.warn(
+            "keep_checkpoints_num is deprecated and will be removed. "
+            "use checkpoint_config.num_to_keep instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.num_to_keep = keep_checkpoints_num
+    if checkpoint_score_attr is not None:
+        warnings.warn(
+            "checkpoint_score_attr is deprecated and will be removed. "
+            "use checkpoint_config.checkpoint_score_attribute instead.",
+            DeprecationWarning,
+        )
+
+        if checkpoint_score_attr.startswith("min-"):
+            warnings.warn(
+                "using min- and max- prefixes to specify checkpoint score "
+                "order is deprecated. Use CheckpointConfig.checkpoint_score_order "
+                "instead",
+                DeprecationWarning,
+            )
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
+            checkpoint_config.checkpoint_score_order = "min"
+        else:
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr
+            checkpoint_config.checkpoint_score_order = "max"
+
+        checkpoint_config.score_attr = checkpoint_score_attr
+    if checkpoint_freq > 0:
+        warnings.warn(
+            "checkpoint_freq is deprecated and will be removed. "
+            "use checkpoint_config.checkpoint_frequency instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.checkpoint_frequency = checkpoint_freq
+    if checkpoint_at_end:
+        warnings.warn(
+            "checkpoint_at_end is deprecated and will be removed. "
+            "use checkpoint_config.checkpoint_at_end instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config.checkpoint_at_end = checkpoint_at_end
+    if checkpoint_keep_all_ranks:
+        warnings.warn(
+            "checkpoint_keep_all_ranks is deprecated and will be removed. "
+            "use checkpoint_config._checkpoint_keep_all_ranks instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config._checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
+    if checkpoint_upload_from_workers:
+        warnings.warn(
+            "checkpoint_upload_from_workers is deprecated and will be removed. "
+            "use checkpoint_config._checkpoint_upload_from_workers instead.",
+            DeprecationWarning,
+        )
+        checkpoint_config._checkpoint_upload_from_workers = (
+            checkpoint_upload_from_workers
+        )
 
     if num_samples == -1:
         num_samples = sys.maxsize
