@@ -6,7 +6,7 @@ import pytest
 import ray
 from ray import tune
 from ray.air import Checkpoint, session
-from ray.air.config import FailureConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
