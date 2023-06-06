@@ -65,7 +65,7 @@ Get started
 
 This example uses the following script that runs two Tasks and creates two Actors.
 
-. testcode::
+.. testcode::
     :hide:
 
     import ray
