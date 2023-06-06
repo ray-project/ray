@@ -263,8 +263,9 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions.show(limit=1)
         
         .. testoutput::
+            :options: +MOCK
 
-            {'data': 'Complete this', 'output': "Complete this article through the web and check our FAQ.\n\nAre you a vegetarian? We'll"}
+            {'data': 'Complete this', 'output': 'Complete this poll. Which one do you think holds the most promise for you?\n\nThank you'}
         
 
     .. group-tab:: PyTorch
@@ -309,6 +310,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions.show(limit=1)
 
         .. testoutput::
+            :options: +MOCK
 
             {'output': array([0.5590901], dtype=float32)}
 
@@ -352,6 +354,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions.show(limit=1)
 
         .. testoutput::
+            :options: +MOCK
 
             {'output': array([0.625576], dtype=float32)}
 
