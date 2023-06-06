@@ -6,10 +6,13 @@ from collections import defaultdict
 from ray._private.test_utils import wait_for_condition
 
 import ray
+from ray.exceptions import RayTaskError
 from ray._private.test_utils import SignalActor
 from ray.util.state import list_actors
 
+
 from ray import serve
+from ray.serve._private.common import ApplicationStatus, ReplicaState
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_PROXY_NAME,
@@ -47,7 +50,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
 
     replica_version_hash = None
     for replica in deployment_dict["app_recover_start_from_replica_actor_names"]:
-        ref = replica.actor_handle.get_metadata.remote()
+        ref = replica.actor_handle._get_metadata.remote()
         _, version = ray.get(ref)
         if replica_version_hash is None:
             replica_version_hash = hash(version)
@@ -99,7 +102,7 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # Ensure recovered replica version has are the same
     for replica_name in recovered_replica_names:
         actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
-        ref = actor_handle.get_metadata.remote()
+        ref = actor_handle._get_metadata.remote()
         _, version = ray.get(ref)
         assert replica_version_hash == hash(
             version
@@ -247,6 +250,54 @@ def test_controller_recover_initializing_actor(serve_instance):
     client._wait_for_deployment_healthy(f"app_{V1.name}")
     # Make sure the actor before controller dead is staying alive.
     assert actor_tag == get_actor_info(f"app_{V1.name}")[0]
+
+
+def test_replica_deletion_after_controller_recover(serve_instance):
+    """Test that replicas are deleted when controller is recovered"""
+
+    signal = SignalActor.remote()
+    controller = serve.context._global_client._controller
+
+    @serve.deployment
+    class V1:
+        async def __call__(self):
+            await signal.wait.remote()
+            return f"1|{os.getpid()}"
+
+    handle = serve.run(V1.bind(), name="app")
+    _ = handle.remote()
+    serve.delete("app", _blocking=False)
+
+    def check_replica(replica_state=None):
+        try:
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote("app_V1")
+            )
+        except RayTaskError as ex:
+            # Deployment is not existed any more.
+            if isinstance(ex, KeyError):
+                return []
+            # Unexpected exception raised.
+            raise ex
+        if replica_state is None:
+            replica_state = list(ReplicaState)
+        else:
+            replica_state = [replica_state]
+        return replicas.get(replica_state)
+
+    # Make sure the replica is in STOPPING state.
+    wait_for_condition(lambda: len(check_replica(ReplicaState.STOPPING)) > 0)
+    ray.kill(serve.context._global_client._controller, no_restart=False)
+    # Make sure the replica is in STOPPING state.
+    wait_for_condition(lambda: len(check_replica(ReplicaState.STOPPING)) > 0)
+
+    # Unblock the request and the replica will be stopped.
+    signal.send.remote()
+    wait_for_condition(
+        lambda: serve_instance.get_serve_status("app").app_status.status
+        == ApplicationStatus.NOT_STARTED
+    )
+    wait_for_condition(lambda: len(check_replica()) == 0, timeout=30)
 
 
 if __name__ == "__main__":

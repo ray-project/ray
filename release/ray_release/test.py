@@ -70,6 +70,8 @@ class TestResult:
 class Test(dict):
     """A class represents a test to run on buildkite"""
 
+    KEY_GITHUB_ISSUE_NUMBER = "github_issue_number"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.test_results = None
@@ -86,7 +88,7 @@ class Test(dict):
         """
         if not self.is_byod_cluster():
             return None
-        return self["cluster"]["byod"]["type"]
+        return self["cluster"]["byod"].get("type", "cpu")
 
     def get_byod_pre_run_cmds(self) -> List[str]:
         """
@@ -101,6 +103,12 @@ class Test(dict):
         Returns the name of the test.
         """
         return self["name"]
+
+    def get_oncall(self) -> str:
+        """
+        Returns the oncall for the test.
+        """
+        return self["team"]
 
     def update_from_s3(self) -> None:
         """
