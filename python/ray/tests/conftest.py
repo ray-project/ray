@@ -1247,8 +1247,8 @@ def docker_cluster():
     redis_image = fetch(repository="redis:latest")
 
     redis = container(
-        image=f"{redis_image.id}",
-        network=f"{gcs_network.name}",
+        image="{redis_image.id}",
+        network="{gcs_network.name}",
         command=("redis-server --save 60 1 --loglevel" " warning"),
     )
 
@@ -1258,7 +1258,7 @@ def docker_cluster():
     head_node = container(
         image="ray_ci:v1",
         name=head_node_container_name,
-        network=f"{gcs_network.name}",
+        network="{gcs_network.name}",
         command=[
             "ray",
             "start",
@@ -1271,8 +1271,8 @@ def docker_cluster():
             "--node-manager-port",
             "9379",
         ],
-        volumes={f"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-        environment={"RAY_REDIS_ADDRESS": f"{redis.ips.primary}:6379"},
+        volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
+        environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
         wrapper_class=Container,
         ports={
             "8000/tcp": None,
@@ -1284,7 +1284,7 @@ def docker_cluster():
 
     worker_node = container(
         image="ray_ci:v1",
-        network=f"{gcs_network.name}",
+        network="{gcs_network.name}",
         command=[
             "ray",
             "start",
@@ -1296,8 +1296,8 @@ def docker_cluster():
             "--node-manager-port",
             "9379",
         ],
-        volumes={f"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
-        environment={"RAY_REDIS_ADDRESS": f"{redis.ips.primary}:6379"},
+        volumes={"{worker_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
+        environment={"RAY_REDIS_ADDRESS": "{redis.ips.primary}:6379"},
         wrapper_class=Container,
         ports={
             "8000/tcp": None,
