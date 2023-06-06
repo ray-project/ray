@@ -92,11 +92,6 @@ class HTTPProxyState:
             < PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
         ):
             self._consecutive_health_check_failures += 1
-            logger.info(
-                f"HTTP proxy {self._actor_name} failed the health check "
-                f"{self._consecutive_health_check_failures} times in a row, not marking"
-                " it unhealthy just yet."
-            )
             return
 
         # Reset self._consecutive_health_check_failures when status is set to HEALTHY.
@@ -107,10 +102,7 @@ class HTTPProxyState:
 
         # If all retries have been exhausted and setting the status to UNHEALTHY, log a
         # warning message to the user.
-        if (
-            self._consecutive_health_check_failures
-            >= PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-        ):
+        if status == HTTPProxyStatus.UNHEALTHY:
             logger.warning(
                 f"HTTP proxy {self._actor_name} failed the health check "
                 f"{self._consecutive_health_check_failures} times in a row, marking it "
