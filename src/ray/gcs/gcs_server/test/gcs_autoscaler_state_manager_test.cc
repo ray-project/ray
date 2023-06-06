@@ -45,7 +45,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
 
     gcs_placement_group_manager_ =
-        std::make_shared<gcs::MockGcsPlacementGroupManager>(*gcs_resource_manager_);
+        std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
 
     gcs_autoscaler_state_manager_.reset(
         new GcsAutoscalerStateManager(cluster_resource_manager_,
@@ -60,7 +60,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
-  std::shared_ptr<gcs::MockGcsPlacementGroupManager> gcs_placement_group_manager_;
+  std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
@@ -247,9 +247,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
     AddNode(node);
 
     // Mock the Placement Group.
-    EXPECT_CALL(*gcs_placement_group_manager_, GetBundlesOnNode(_))
-        .Times(1)
-        .WillOnce(Return(BundlesOnNodeMap()));
+    EXPECT_CALL(*gcs_placement_group_manager_, GetBundlesOnNode)
+        .WillRepeatedly(Return(BundlesOnNodeMap()));
 
     auto reply = GetClusterResourceStateSync();
     ASSERT_EQ(reply.node_states_size(), 1);

@@ -70,7 +70,7 @@ class MockGcsPlacementGroupManager : public GcsPlacementGroupManager {
   MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
               GetBundlesOnNode,
               (const NodeID &node_id),
-              (const));
+              (const, override));
 
   instrumented_io_context context_;
 };
