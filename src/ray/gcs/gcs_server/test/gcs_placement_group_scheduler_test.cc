@@ -1218,7 +1218,8 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
       std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(1)));
   scheduler_->Initialize(group_to_bundles);
 
-  auto bundles = scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node0->node_id()));
+  auto bundles =
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node0->node_id()));
   ASSERT_EQ(1, bundles.size());
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
   ASSERT_EQ(0, bundles[placement_group->GetPlacementGroupID()][0]);
