@@ -25,6 +25,6 @@ config = (
             "horizon_H": 15,
             "gamma": 0.997,
             "model_size": "XS",
-        }
+        },
     )
 )

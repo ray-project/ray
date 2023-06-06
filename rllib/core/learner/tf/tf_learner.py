@@ -375,7 +375,7 @@ class TfLearner(Learner):
             devices = tf.config.list_logical_devices("GPU")
             assert self._local_gpu_idx < len(devices), (
                 f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                " not available."
+                "not available."
             )
             local_gpu = [devices[self._local_gpu_idx].name]
             strategy = tf.distribute.MirroredStrategy(devices=local_gpu)

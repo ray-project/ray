@@ -17,7 +17,23 @@ config = (
     DreamerV3Config()
     # Use image observations.
     .environment(env_config={"from_pixels": True})
+    .resources(
+        num_learner_workers=1,
+        num_gpus_per_learner_worker=1,
+        num_cpus_for_local_worker=1,
+    )
     .rollouts(num_envs_per_worker=4, remote_worker_envs=True)
     # See Appendix A.
-    .training(model_size="S", training_ratio=512)
+    .training(
+        model_size="S",
+        training_ratio=512,
+        # TODO
+        model={
+            "batch_size_B": 16,
+            "batch_length_T": 64,
+            "horizon_H": 15,
+            "gamma": 0.997,
+            "model_size": "S",
+        },
+    )
 )
