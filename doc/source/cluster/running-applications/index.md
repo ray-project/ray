@@ -7,6 +7,5 @@ To get started, check out the [job submissions](jobs-quickstart) page.
 :maxdepth: '2'
 
 job-submission/index
-monitoring-and-observability
 autoscaling/reference
 ```

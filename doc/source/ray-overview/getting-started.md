@@ -676,7 +676,7 @@ pip install -U "ray[default]"
 ````
 Access the dashboard through the default URL, http://localhost:8265.
 
-```{button-ref}  ../ray-core/ray-dashboard
+```{button-ref}  observability-getting-started
 :color: primary
 :outline:
 :expand:
@@ -754,7 +754,7 @@ See the summarized statistics of Ray tasks using ``ray summary tasks``.
 
 ```
 
-```{button-ref}  ../ray-observability/state/state-api
+```{button-ref}  observability-programmatic
 :color: primary
 :outline:
 :expand:

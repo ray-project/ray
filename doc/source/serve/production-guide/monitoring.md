@@ -44,7 +44,7 @@ This page includes additional useful information like each actor's process ID (P
 To learn more about the Serve controller actor, the HTTP proxy actor(s), the deployment replicas, and how they all work together, check out the [Serve Architecture](serve-architecture) documentation.
 :::
 
-For a detailed overview of the Ray dashboard, see the [dashboard documentation](ray-dashboard).
+For a detailed overview of the Ray dashboard, see the [dashboard documentation](observability-getting-started).
 
 ## Ray logging
 
@@ -106,7 +106,7 @@ Log messages include the logging level, timestamp, deployment name, replica tag,
 
 Find a copy of these logs at `/tmp/ray/session_latest/logs/serve/`. You can parse these stored logs with a logging stack such as ELK or [Loki](serve-logging-loki) to be able to search by deployment or replica.
 
-Serve supports [Log Rotation](ray-log-rotation) of these logs through setting the environment variables `RAY_ROTATION_MAX_BYTES` and `RAY_ROTATION_BACKUP_COUNT`.
+Serve supports [Log Rotation](log-rotation) of these logs through setting the environment variables `RAY_ROTATION_MAX_BYTES` and `RAY_ROTATION_BACKUP_COUNT`.
 
 To silence the replica-level logs or otherwise configure logging, configure the `"ray.serve"` logger **inside the deployment constructor**:
 
@@ -124,7 +124,7 @@ class Silenced:
 This controls which logs are written to STDOUT or files on disk.
 In addition to the standard Python logger, Serve supports custom logging. Custom logging lets you control what messages are written to STDOUT/STDERR, files on disk, or both.
 
-For a detailed overview of logging in Ray, see [Ray Logging](ray-logging).
+For a detailed overview of logging in Ray, see [Ray Logging](configure-logging).
 
 (serve-logging-loki)=
 ### Filtering logs with Loki
@@ -221,7 +221,7 @@ You can use Loki to filter your Ray Serve logs and gather insights quicker.
 You can leverage built-in Ray Serve metrics to get a closer look at your application's performance.
 
 Ray Serve exposes important system metrics like the number of successful and
-failed requests through the [Ray metrics monitoring infrastructure](ray-metrics). By default, the metrics are exposed in Prometheus format on each node.
+failed requests through the [Ray metrics monitoring infrastructure](dash-metrics-view). By default, the metrics are exposed in Prometheus format on each node.
 
 :::{note}
 Different metrics are collected when Deployments are called
@@ -382,7 +382,7 @@ The emitted logs include:
 ray_my_counter{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
 ```
 
-See the [Ray Metrics documentation](ray-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+See the [Ray Metrics documentation](collect-metrics) for more details, including instructions for scraping these metrics using Prometheus.
 
 ## Exporting metrics into Arize
 Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.
