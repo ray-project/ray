@@ -283,13 +283,16 @@ class ActorReplicaWrapper:
         if self._version:
             return self._version.deployment_config
         else:
+            logger.warn(
+                "Replica has not finished recovering, using default deployment config."
+            )
             return DeploymentConfig.from_default()
 
     @property
     def max_concurrent_queries(self) -> int:
         """Maximum number of queries to assign to a replica concurrently. Will default
-        to 100 if controller hasn't yet recovered the replica version of the running
-        actor
+        to DEFAULT_MAX_CONCURRENT_QUERIES if controller hasn't yet recovered the replica
+        version of the running actor
         """
         return self.deployment_config.max_concurrent_queries
 
@@ -455,7 +458,8 @@ class ActorReplicaWrapper:
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+            replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
+            self._ready_obj_ref = replica_ready_check_func.remote(
                 deployment_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
@@ -519,7 +523,9 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote()
+            self._ready_obj_ref = (
+                self._actor_handle.initialize_and_get_metadata.remote()
+            )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
