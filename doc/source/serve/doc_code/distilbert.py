@@ -3,8 +3,8 @@ from contextlib import contextmanager
 # This deployment might take longer to start. Setup longer timeouts and period.
 import os
 
-os.env["RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S"] = "999"
-os.env["RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S"] = "999"
+os.environ["RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S"] = "999"
+os.environ["RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S"] = "999"
 
 # __example_code_start__
 from transformers import pipeline  # noqa: E402
