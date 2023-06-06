@@ -46,7 +46,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             model_size=model_size,
             action_space=self.config.action_space,
             batch_length_T=T,
-            # num_gru_units=self.model_config.num_gru_units,
             encoder=self.encoder,
             decoder=self.decoder,
             symlog_obs=symlog_obs,
@@ -65,11 +64,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             world_model=self.world_model,
             actor=self.actor,
             critic=self.critic,
-            # use_curiosity=use_curiosity,
-            # intrinsic_rewards_scale=intrinsic_rewards_scale,
-            batch_size_B=self.config.model_config_dict["batch_size_B"],
-            batch_length_T=T,
-            horizon_H=horizon_H,
         )
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 

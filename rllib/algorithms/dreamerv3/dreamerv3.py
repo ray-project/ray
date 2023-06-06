@@ -31,6 +31,7 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
@@ -136,6 +137,7 @@ class DreamerV3Config(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with DreamerV3-specific
         # values.
+        self.framework_str = "tf2"
         self.rollout_fragment_length = 1
         self.gamma = 0.997  # [1] eq. 7.
         # Do not use! Use `batch_size_B` and `batch_length_T` instead.
@@ -168,6 +170,7 @@ class DreamerV3Config(AlgorithmConfig):
         world_model_grad_clip_by_global_norm: Optional[float] = NotProvided,
         critic_grad_clip_by_global_norm: Optional[float] = NotProvided,
         actor_grad_clip_by_global_norm: Optional[float] = NotProvided,
+        replay_buffer_config: Optional[dict] = NotProvided,
         **kwargs,
     ) -> "DreamerV3Config":
         """Sets the training related configuration.
@@ -215,6 +218,16 @@ class DreamerV3Config(AlgorithmConfig):
             critic_grad_clip_by_global_norm: Critic grad clipping value
                 (by global norm).
             actor_grad_clip_by_global_norm: Actor grad clipping value (by global norm).
+            replay_buffer_config: Replay buffer config.
+                Only serves in DreamerV3 to set the capacity of the replay buffer.
+                Note though that in the paper ([1]) a size of 1M is used for all
+                benchmarks and there doesn't seem to be a good reason to change this
+                parameter.
+                Examples:
+                {
+                "type": "EpisodeReplayBuffer",
+                "capacity": 100000,
+                }
 
         Returns:
             This updated AlgorithmConfig object.
@@ -256,6 +269,17 @@ class DreamerV3Config(AlgorithmConfig):
             self.critic_grad_clip_by_global_norm = critic_grad_clip_by_global_norm
         if actor_grad_clip_by_global_norm is not NotProvided:
             self.actor_grad_clip_by_global_norm = actor_grad_clip_by_global_norm
+        if replay_buffer_config is not NotProvided:
+            # Override entire `replay_buffer_config` if `type` key changes.
+            # Update, if `type` key remains the same or is not specified.
+            new_replay_buffer_config = deep_update(
+                {"replay_buffer_config": self.replay_buffer_config},
+                {"replay_buffer_config": replay_buffer_config},
+                False,
+                ["replay_buffer_config"],
+                ["replay_buffer_config"],
+            )
+            self.replay_buffer_config = new_replay_buffer_config["replay_buffer_config"]
 
         return self
 
