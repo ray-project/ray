@@ -122,8 +122,12 @@ def test_function_import_without_importer_thread(shutdown_only):
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="Fork is only supported on *nix systems.",
+    sys.platform != "linux"
+    # Even though fork is supported on macOS, in practice
+    # it has many problems, see
+    # https://github.com/python/cpython/issues/84559
+    # In truth, fork should probably not be used on any platform.
+    reason="Fork only works on linux.",
 )
 def test_fork_support(shutdown_only):
     """Test that fork support works."""
