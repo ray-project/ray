@@ -618,6 +618,7 @@ class ActorReplicaWrapper:
 
         Returns the timeout after which to kill the actor.
         """
+        logger.info("running graceful_stop")
         try:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
@@ -905,7 +906,7 @@ class DeploymentReplica(VersionedReplica):
         logger.info(
             f"Stopping replica {self.replica_tag} for deployment "
             f"{self.deployment_name}.",
-            extra={"log_to_stderr": False},
+            extra={"log_to_stderr": True},
         )
         timeout_s = self._actor.graceful_stop()
         if not graceful:
@@ -1918,6 +1919,10 @@ class DeploymentState:
 
             deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
+            logger.info(
+                "Unexpected error trying to update deployment state:\n"
+                f"\n{traceback.format_exc()}"
+            )
             self._curr_status_info = DeploymentStatusInfo(
                 name=self._name,
                 status=DeploymentStatus.UNHEALTHY,
