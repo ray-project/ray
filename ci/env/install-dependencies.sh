@@ -431,10 +431,6 @@ install_pip_packages() {
       if [ -n "${TORCH_VERSION-}" ]; then
         case "${TORCH_VERSION-1.9.0}" in
           1.9.0) TORCHVISION_VERSION=0.10.0;;
-          1.8.1) TORCHVISION_VERSION=0.9.1;;
-          1.6) TORCHVISION_VERSION=0.7.0;;
-          1.5) TORCHVISION_VERSION=0.6.0;;
-          *) TORCHVISION_VERSION=0.5.0;;
         esac
         # Install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.

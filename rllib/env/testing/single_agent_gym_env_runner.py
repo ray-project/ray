@@ -209,6 +209,12 @@ class SingleAgentGymEnvRunner(EnvRunner):
                     )
                     # Add this finished episode to the list of completed ones.
                     done_episodes_to_return.append(episodes[i])
+
+                    # Also early-out if we reach the number of episodes within this
+                    # for-loop.
+                    if eps == num_episodes:
+                        break
+
                     # Start a new episode and set its initial observation to `o`.
                     episodes[i] = Episode(observations=[o])
                 else:
