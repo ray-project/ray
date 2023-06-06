@@ -369,6 +369,7 @@ def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
             elif s.dtype != elem.dtype:
                 elem = elem.astype(s.dtype)
 
+        # Gymnasium now uses np.int_64 as the dtype of a Discrete action space
         elif isinstance(s, int) or isinstance(s, np.int_):
             if isinstance(elem, float) and elem.is_integer():
                 elem = int(elem)
