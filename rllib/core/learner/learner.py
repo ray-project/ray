@@ -95,15 +95,15 @@ class FrameworkHyperparameters:
         torch_compile: Whether to use torch.compile() within the context of a given
             learner.
         what_to_compile: What to compile when using torch.compile(). Can be one of
-            ["complete_update", "forward_train"].
-            If "complete_update", the update step of the learner will be compiled. This
+            ["gradient_computation", "forward_train"].
+            If "gradient_computation", the update step of the learner will be compiled. This
             includes the forward pass of the RLModule, the loss computation, and the
             optimizer step.
             If "forward_train", only the forward methods (and therein the
             forward_train method) of the RLModule will be compiled.
             Either of the two may lead to different performance gains in different
             settings.
-            "complete_update" promises the highest performance gains, but may work
+            "gradient_computation" promises the highest performance gains, but may work
             in some settings. By compiling only forward_train, you may already get
             some speedups and avoid issues that arise from compiling the entire update.
         troch_compile_config: The TorchCompileConfig to use for compiling the RL
@@ -112,13 +112,13 @@ class FrameworkHyperparameters:
 
     eager_tracing: bool = False
     torch_compile: bool = False
-    what_to_compile: str = "complete_update"
+    what_to_compile: str = "forward_train"
     torch_compile_cfg: Optional["TorchCompileConfig"] = None
 
     def validate(self):
-        if self.what_to_compile not in ["complete_update", "forward_train"]:
+        if self.what_to_compile not in ["gradient_computation", "forward_train"]:
             raise ValueError(
-                "what_to_compile must be one of ['complete_update', 'forward_train']."
+                "what_to_compile must be one of ['gradient_computation', 'forward_train']."
             )
 
 
@@ -1171,6 +1171,7 @@ class Learner:
             tensor_minibatch = self._convert_batch_type(minibatch)
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
+
             (
                 fwd_out,
                 loss_per_module,

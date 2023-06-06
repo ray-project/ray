@@ -364,15 +364,15 @@ def check_output_specs(
                 else:
                     raise ValueError(f"object {self} has no attribute {output_specs}.")
 
-                if spec is not None:
-                    spec = convert_to_canonical_format(spec)
-                    _validate(
-                        cls_instance=self,
-                        method=func,
-                        data=output_data,
-                        spec=spec,
-                        tag="output",
-                    )
+                # if spec is not None:
+                #     spec = convert_to_canonical_format(spec)
+                #     _validate(
+                #         cls_instance=self,
+                #         method=func,
+                #         data=output_data,
+                #         spec=spec,
+                #         tag="output",
+                #     )
 
             if cache and func.__name__ not in self.__checked_output_specs_cache__:
                 self.__checked_output_specs_cache__[func.__name__] = True

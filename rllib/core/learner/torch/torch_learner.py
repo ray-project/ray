@@ -71,12 +71,12 @@ class TorchLearner(Learner):
         self._torch_compile_rlm = False
         self._torch_compile_update = False
         if self._framework_hyperparameters.torch_compile:
-            if self._framework_hyperparameters.what_to_compile == "complete_update":
+            if self._framework_hyperparameters.what_to_compile == "gradient_computation":
                 self._torch_compile_update = True
                 self._compiled_update_initialized = False
             else:
                 self._torch_compile_rlm = True
-
+        
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
@@ -98,19 +98,15 @@ class TorchLearner(Learner):
             lr_or_lr_schedule=hps.learning_rate,
         )
 
-    def _uncompiled_update(
+    def _uncompiled_compute_gradients(
         self,
         batch: NestedDict,
         **kwargs,
     ):
-        """Performs a single update given a batch of data."""
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
-
         gradients = self.compute_gradients(loss_per_module)
-        postprocessed_gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(postprocessed_gradients)
-        return fwd_out, loss_per_module, self._metrics
+        return fwd_out, loss_per_module, gradients
 
     @override(Learner)
     def compute_gradients(
@@ -196,7 +192,7 @@ class TorchLearner(Learner):
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch):
         batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
-        batch = NestedDict(batch)
+        # batch = NestedDict(batch)
         return batch
 
     @override(Learner)
@@ -220,8 +216,8 @@ class TorchLearner(Learner):
             torch._dynamo.reset()
             self._compiled_update_initialized = False
             torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
-            self._possibly_compiled_update = torch.compile(
-                self._uncompiled_update,
+            self._possibly_compiled_compute_gradients = torch.compile(
+                self._uncompiled_compute_gradients,
                 backend=torch_compile_cfg.torch_dynamo_backend,
                 mode=torch_compile_cfg.torch_dynamo_mode,
                 **torch_compile_cfg.kwargs,
@@ -248,8 +244,8 @@ class TorchLearner(Learner):
             torch._dynamo.reset()
             self._compiled_update_initialized = False
             torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
-            self._possibly_compiled_update = torch.compile(
-                self._uncompiled_update,
+            self._possibly_compiled_compute_gradients = torch.compile(
+                self._uncompiled_compute_gradients,
                 backend=torch_compile_cfg.torch_dynamo_backend,
                 mode=torch_compile_cfg.torch_dynamo_mode,
                 **torch_compile_cfg.kwargs,
@@ -294,8 +290,8 @@ class TorchLearner(Learner):
             torch._dynamo.reset()
             self._compiled_update_initialized = False
             torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
-            self._possibly_compiled_update = torch.compile(
-                self._uncompiled_update,
+            self._possibly_compiled_compute_gradients = torch.compile(
+                self._uncompiled_compute_gradients,
                 backend=torch_compile_cfg.torch_dynamo_backend,
                 mode=torch_compile_cfg.torch_dynamo_mode,
                 **torch_compile_cfg.kwargs,
@@ -313,23 +309,28 @@ class TorchLearner(Learner):
                             self._framework_hyperparameters.torch_compile_cfg
                         )
 
-            self._possibly_compiled_update = self._uncompiled_update
+            self._possibly_compiled_compute_gradients = self._uncompiled_compute_gradients
 
         self._make_modules_ddp_if_necessary()
 
     @override(Learner)
     def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
         # The first time we call _update after building the learner or adding/removing models, 
-        # we update with the uncompiled update method.
+        # we update with the uncompiled gradient computation method.
         # This makes it so that any variables that may be created during the first update
         # step are already there when compiling.
         # More specifically, this avoids errors that occur around using defaultdicts with
         # torch.compile().
+        batch = {pid: {k:v for k,v in b.items()} for pid, b in batch.items()}
         if self._torch_compile_update and not self._compiled_update_initialized:
             self._compiled_update_initialized = True
-            return self._uncompiled_update(batch)
+            fwd_out, loss_per_module, gradients = self._uncompiled_compute_gradients(batch)
         else:
-            return self._possibly_compiled_update(batch)
+            fwd_out, loss_per_module, gradients = self._possibly_compiled_compute_gradients(batch)
+        
+        postprocessed_gradients = self.postprocess_gradients(gradients)
+        self.apply_gradients(postprocessed_gradients)
+        return fwd_out, loss_per_module, self._metrics
 
     @OverrideToImplementCustomLogic
     def _make_modules_ddp_if_necessary(self) -> None:
