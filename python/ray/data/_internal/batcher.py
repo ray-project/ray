@@ -14,6 +14,12 @@ from ray.data.block import Block, BlockAccessor
 # https://github.com/apache/arrow/issues/35126 is resolved.
 MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = 2
 
+# Delay compaction until the shuffle buffer has reached this ratio over the min
+# shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
+# frequent compactions. Setting this to higher values increases memory usage but
+# reduces compaction frequency.
+SHUFFLE_BUFFER_COMPACTION_RATIO = 1.5
+
 
 class BatcherInterface:
     def add(self, block: Block):
@@ -275,10 +281,12 @@ class ShufflingBatcher(BatcherInterface):
         buffer_size = self._buffer_size()
 
         if not self._done_adding:
-            # If still adding blocks, ensure that removing a batch wouldn't cause the
-            # shuffle buffer to dip beneath its configured minimum size.
-            return buffer_size - self._batch_size >= self._buffer_min_size * 1.5
-            # TODO: ekl note 2 is marginally better, 1 is terrible (3x slower)
+            # Delay pulling of batches until the buffer is large enough in order to
+            # amortize compaction overhead.
+            return (
+                buffer_size - self._batch_size
+                >= self._buffer_min_size * SHUFFLE_BUFFER_COMPACTION_RATIO
+            )
         else:
             return buffer_size >= self._batch_size
 
@@ -295,8 +303,9 @@ class ShufflingBatcher(BatcherInterface):
         # The size of the concrete (materialized) shuffle buffer, adjusting
         # for the batch head position, which also serves as a counter of the number
         # of already-yielded rows from the current concrete shuffle buffer.
-        return (
-            BlockAccessor.for_block(self._shuffle_buffer).num_rows() - self._batch_head
+        return max(
+            0,
+            BlockAccessor.for_block(self._shuffle_buffer).num_rows() - self._batch_head,
         )
 
     def next_batch(self) -> Block:
@@ -310,7 +319,8 @@ class ShufflingBatcher(BatcherInterface):
         # as much as possible to amortize the concatenation overhead. Compaction is
         # only necessary when the materialized buffer size falls below the min size.
         if self._builder.num_rows() > 0 and (
-            self._done_adding or self._materialized_buffer_size() <= self._buffer_min_size
+            self._done_adding
+            or self._materialized_buffer_size() <= self._buffer_min_size
         ):
             if self._shuffle_buffer is not None:
                 if self._batch_head > 0:
