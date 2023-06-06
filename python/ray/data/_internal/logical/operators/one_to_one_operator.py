@@ -1,9 +1,6 @@
 from typing import Optional
 
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.logical.interfaces import LogicalOperator
-
-logger = DatasetLogger(__name__)
 
 
 class AbstractOneToOne(LogicalOperator):
@@ -22,9 +19,6 @@ class AbstractOneToOne(LogicalOperator):
                 inspecting the logical plan of a Dataset.
             input_op: The operator preceding this operator in the plan DAG. The outputs
                 of `input_op` will be the inputs to this operator.
-            num_outputs: The number of expected output bundles outputted by this
-                operator.
-            ray_remote_args: Args to provide to ray.remote.
         """
         super().__init__(name, [input_op] if input_op else [])
 

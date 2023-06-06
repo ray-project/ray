@@ -15,8 +15,11 @@ class LimitPushdownRule(Rule):
 
     When a limit operator is present, we apply the limit on the
     most upstream operator that supports it. Notably, we move the
-    Limit operator downstream from Read, AbstractAllToAll, or any
-    operator which could potentially change the number of output rows.
+    Limit operator downstream from Read op, any other non-OneToOne operator,
+    or any operator which could potentially change the number of output rows.
+
+    In addition, we also fuse consecutive Limit operators into a single
+    Limit operator, i.e. `Limit[n] -> Limit[m]` becomes `Limit[min(n, m)]`.
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
