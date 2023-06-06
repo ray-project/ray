@@ -21,7 +21,6 @@
 #include "ray/gcs/test/gcs_test_util.h"
 #include "src/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
