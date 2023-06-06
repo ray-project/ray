@@ -24,40 +24,36 @@ import "src/ray/protobuf/experimental/instance_manager.proto";
 // Following fields represents the Cluster Resources autoscaler interested
 // in.
 
-// Represents a placement constraint to specify how an associated resource
-// request should be placed with other entity, e.g.
-//  1. Other resource requests (e.g. gang scheduling)
-//  2. Nodes (e.g. specific instance type)
+// Represents an anti-affinity constraint. A bundle with this constraint
+// can't be allocated to a node that has a label with the same name and
+// value.
 //
-// For now, it only supports constraints generated from placment groups:
-//  - STRICT_SPREAD: bundles will have the same ANTI_AFFINITY constraint,
-//      [type=ANTI_AFFINITY, key=_PG, value=pg_id]
-//  - STRICT_PACK:
-//      [type=AFFINITY, key=_PG, value=pg_id]
+// This is now used to implement placement group anti-affinity, i.e.
+// strict-spread. The label_name is "_PG_<pg_id>",
+// and the label_value is empty string.
+message AntiAffinityConstraint {
+  string label_name = 1;
+  string label_value = 2;
+}
+
+// Represents an affinity constraint. A bundle with this constraint
+// should be allocated to node with the same label name and value.
 //
-// While speculative, this should be flexible enough to support other types of
-// constraints, where the key-value pair will be used to limit placement. e.g.
-//  - Placed on a cloud provider: [type=AFFINITY, key="Cloud", value=cloud_provider]
-//  - Certain instance type: [type=AFFINITY, key="Instance", value=instance_type]
-//  - With customized resources: [type=AFFINITY, key="MY_RESOURCE", value=""]
-//
-// Users of this (i.e. autoscaler) should be free enough to evaluate the constraint
-// and make decisions based on it.
+// This is now used to implement placement group affinity, i.e.
+// strict-pack. The label_name is "_PG_<pg_id>",
+// and the label_value is empty string.
+message AffinityConstraint {
+  string label_name = 1;
+  string label_value = 2;
+}
+
+// Represents a placement constraint to specify where a resource
+// request should be placed on.
 message PlacementConstraint {
-  // Constraint Type.
-  enum Type {
-    // When a resource request should not be placed with other resource requests.
-    ANTI_AFFINITY = 0;
-    // When a resource request should be placed with other resource requests.
-    AFFINITY = 1;
+  oneof constraint {
+    AntiAffinityConstraint anti_affinity = 1;
+    AffinityConstraint affinity = 2;
   }
-  Type type = 1;
-
-  // Constraint key. Different keys should define different constraint behaviour.
-  string key = 2;
-
-  // Constraint value.
-  string value = 3;
 }
 
 message ResourceRequest {

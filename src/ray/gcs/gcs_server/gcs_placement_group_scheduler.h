@@ -186,8 +186,8 @@ class LeaseStatusTracker {
   /// Return bundles that should be scheduled.
   ///
   /// \return List of bundle specification that are supposed to be scheduled.
-  [[nodiscard]] const std::vector<std::shared_ptr<const BundleSpecification>>
-      &GetBundlesToSchedule() const;
+  [[nodiscard]] const std::vector<std::shared_ptr<const BundleSpecification>> &
+  GetBundlesToSchedule() const;
 
   /// This method returns bundle locations that succeed to prepare resources.
   ///

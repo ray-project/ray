@@ -243,6 +243,39 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   }
 };
 
+TEST_F(GcsAutoscalerStateManagerTest, TestGenPlacementConstraintForPlacementGroup) {
+  auto pg = PlacementGroupID::Of(JobID::FromInt(0));
+  {
+    auto strict_spread_constraint = GenPlacementConstraintForPlacementGroup(
+        pg.Binary(), rpc::PlacementStrategy::STRICT_SPREAD);
+    ASSERT_TRUE(strict_spread_constraint.has_value());
+    ASSERT_TRUE(strict_spread_constraint->has_anti_affinity());
+    ASSERT_EQ(strict_spread_constraint->anti_affinity().label_name(),
+              FormatPlacementGroupLabelName(pg.Binary()));
+  }
+
+  {
+    auto strict_pack_constraint = GenPlacementConstraintForPlacementGroup(
+        pg.Binary(), rpc::PlacementStrategy::STRICT_PACK);
+    ASSERT_TRUE(strict_pack_constraint.has_value());
+    ASSERT_TRUE(strict_pack_constraint->has_affinity());
+    ASSERT_EQ(strict_pack_constraint->affinity().label_name(),
+              FormatPlacementGroupLabelName(pg.Binary()));
+  }
+
+  {
+    auto no_pg_constraint_for_pack = GenPlacementConstraintForPlacementGroup(
+        pg.Binary(), rpc::PlacementStrategy::PACK);
+    ASSERT_FALSE(no_pg_constraint_for_pack.has_value());
+  }
+
+  {
+    auto no_pg_constraint_for_spread = GenPlacementConstraintForPlacementGroup(
+        pg.Binary(), rpc::PlacementStrategy::SPREAD);
+    ASSERT_FALSE(no_pg_constraint_for_spread.has_value());
+  }
+}
+
 TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
   auto node = Mocker::GenNodeInfo();
 

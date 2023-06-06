@@ -352,17 +352,21 @@ inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
 inline absl::optional<rpc::autoscaler::PlacementConstraint>
 GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
                                         rpc::PlacementStrategy strategy) {
-  // Defaults to be overwritten.
-  rpc::autoscaler::PlacementConstraint::Type type =
-      rpc::autoscaler::PlacementConstraint::ANTI_AFFINITY;
+  rpc::autoscaler::PlacementConstraint pg_constraint;
+  // We are embedding the PG id into the key for the same reasons as we do for
+  // dynamic labels (a node will have multiple PGs thus having a common PG key
+  // is not enough).
+  const std::string name = FormatPlacementGroupLabelName(pg_id);
   switch (strategy) {
   case rpc::PlacementStrategy::STRICT_SPREAD: {
-    type = rpc::autoscaler::PlacementConstraint::ANTI_AFFINITY;
-    break;
+    pg_constraint.mutable_anti_affinity()->set_label_name(name);
+    pg_constraint.mutable_anti_affinity()->set_label_value("");
+    return pg_constraint;
   }
   case rpc::PlacementStrategy::STRICT_PACK: {
-    type = rpc::autoscaler::PlacementConstraint::AFFINITY;
-    break;
+    pg_constraint.mutable_affinity()->set_label_name(name);
+    pg_constraint.mutable_affinity()->set_label_value("");
+    return pg_constraint;
   }
   case rpc::PlacementStrategy::SPREAD:
   case rpc::PlacementStrategy::PACK: {
@@ -372,15 +376,7 @@ GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
     RAY_LOG(ERROR) << "Encountered unexpected strategy type: " << strategy;
   }
   }
-  auto pg_constraint = rpc::autoscaler::PlacementConstraint();
-  pg_constraint.set_type(type);
-  // We are embedding the PG id into the key for the same reasons as we do for
-  // dynamic labels (a node will have multiple PGs thus having a common PG key
-  // is not enough).
-  pg_constraint.set_key(FormatPlacementGroupLabelName(pg_id));
-  pg_constraint.set_value("");
-
-  return pg_constraint;
+  return absl::nullopt;
 }
 
 }  // namespace gcs
