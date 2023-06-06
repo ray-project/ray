@@ -97,7 +97,6 @@ class DeploymentTargetState:
     ) -> "DeploymentTargetState":
         if deleting:
             num_replicas = 0
-            version = None
         else:
             # If autoscaling config is not none, num replicas should be decided based on
             # the autoscaling policy and passed in as autoscaled_num_replicas
@@ -105,11 +104,12 @@ class DeploymentTargetState:
                 num_replicas = info.autoscaled_num_replicas
             else:
                 num_replicas = info.deployment_config.num_replicas
-            version = DeploymentVersion(
-                info.version,
-                deployment_config=info.deployment_config,
-                ray_actor_options=info.replica_config.ray_actor_options,
-            )
+
+        version = DeploymentVersion(
+            info.version,
+            deployment_config=info.deployment_config,
+            ray_actor_options=info.replica_config.ray_actor_options,
+        )
 
         return cls(info, num_replicas, version, deleting)
 
@@ -190,7 +190,7 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
-        version: Optional[DeploymentVersion],
+        version: DeploymentVersion,
         # Spread replicas to avoid correlated failures on a single node.
         # This is a soft spread, so if there is only space on a single node
         # the replicas will be placed there.
@@ -208,10 +208,12 @@ class ActorReplicaWrapper:
         self._ready_obj_ref: ObjectRef = None
 
         self._actor_resources: Dict[str, float] = None
-        # If the replica is being started, this will be non-null
-        # If the replica is being recovered, this will be None, and will be populated
-        # later after recover() check_ready()
-        self._version: Optional[DeploymentVersion] = version
+        # If the replica is being started, this will be the true version
+        # If the replica is being recovered, this will be the target
+        # version, which may be inconsistent with the actual replica
+        # version. If so, the actual version will be updated later after
+        # recover() and check_ready()
+        self._version: DeploymentVersion = version
         self._healthy: bool = True
         self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
@@ -269,8 +271,15 @@ class ActorReplicaWrapper:
         return self._actor_handle
 
     @property
-    def version(self) -> Optional[DeploymentVersion]:
-        """Replica version. This can be None during state recovery."""
+    def version(self) -> DeploymentVersion:
+        """Replica version. This can be incorrect during state recovery.
+
+        If the controller crashes and the deployment state is being
+        recovered, this will temporarily be the deployment-wide target
+        version, which may be inconsistent with the actual version
+        running on the replica actor. If so, the actual version will be
+        updated when the replica transitions from RECOVERING -> RUNNING
+        """
         return self._version
 
     @property
@@ -278,45 +287,36 @@ class ActorReplicaWrapper:
         """Deployment config. This can return an incorrect config during state recovery.
 
         If the controller hasn't yet recovered the up-to-date version from the running
-        replica actor, this property will return the default deployment config
+        replica actor, this property will return the target config for the overall
+        deployment.
         """
-        if self._version:
-            return self._version.deployment_config
-        else:
-            logger.warn(
-                "Replica has not finished recovering, using default deployment config."
-            )
-            return DeploymentConfig.from_default()
+        return self._version.deployment_config
 
     @property
     def max_concurrent_queries(self) -> int:
-        """Maximum number of queries to assign to a replica concurrently. Will default
-        to DEFAULT_MAX_CONCURRENT_QUERIES if controller hasn't yet recovered the replica
-        version of the running actor
+        """Maximum number of queries to assign to a replica concurrently.
+        Can return an incorrect value during state recovery.
         """
         return self.deployment_config.max_concurrent_queries
 
     @property
     def graceful_shutdown_timeout_s(self) -> float:
         """How long to wait for a replica to gracefully shut down before force-killing
-        it. Will default to DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S if controller hasn't
-        yet recovered the replica version of the running actor
+        it. Can return an incorrect value during state recovery.
         """
         return self.deployment_config.graceful_shutdown_timeout_s
 
     @property
     def health_check_period_s(self) -> float:
-        """Describes how often to schedule new health checks for replica actors. Will
-        default to DEFAULT_HEALTH_CHECK_PERIOD_S if controller hasn't yet recovered the
-        replica version of the running actor
+        """Describes how often to schedule new health checks for replica actors.
+        Can return an incorrect value during state recovery.
         """
         return self.deployment_config.health_check_period_s
 
     @property
     def health_check_timeout_s(self) -> float:
         """Length of time in seconds to wait for a health check to finish before marking
-        it as unhealthy. Will default to DEFAULT_HEALTH_CHECK_TIMEOUT_S if controller
-        hasn't yet recovered the replica version of the running actor
+        it as unhealthy. Can return an incorrect value during state recovery.
         """
         return self.deployment_config.health_check_timeout_s
 
@@ -624,6 +624,13 @@ class ActorReplicaWrapper:
             stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
+                try:
+                    ray.get(self._graceful_shutdown_ref)
+                except Exception:
+                    logger.warning(
+                        "Exception when trying to gracefully shutdown replica:\n"
+                        + traceback.format_exc()
+                    )
         except ValueError:
             # ValueError thrown from ray.get_actor means actor has already been deleted
             stopped = True
@@ -1199,7 +1206,7 @@ class DeploymentState:
                 self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
-                None,
+                self._target_state.version,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)

@@ -71,7 +71,7 @@ class MockReplicaActorWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
-        version: Optional[DeploymentVersion],
+        version: DeploymentVersion,
         scheduling_strategy="SPREAD",
     ):
         self._actor_name = actor_name
@@ -177,7 +177,6 @@ class MockReplicaActorWrapper:
     def recover(self):
         self.recovering = True
         self.started = False
-        self.version = None
 
     def check_ready(self) -> ReplicaStartupStatus:
         ready = self.ready
