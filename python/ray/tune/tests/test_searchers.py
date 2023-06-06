@@ -741,7 +741,15 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
     def testSkopt(self):
         from ray.tune.search.skopt import SkOptSearch
 
-        searcher = SkOptSearch(space=self.config, metric=self.metric_name, mode="max")
+        searcher = SkOptSearch(
+            space=self.config,
+            metric=self.metric_name,
+            mode="max",
+            optimizer_kwargs={
+                "base_estimator": "GP",
+                "acq_func": "gp_hedge",
+            },
+        )
         self._save(searcher)
 
         searcher = SkOptSearch()
