@@ -151,6 +151,7 @@ For more in-depth examples for your use case, see :ref:`batch_inference_examples
             predictions.show(limit=1)
 
         .. testoutput::
+            :options: +MOCK
 
             {'output': array([0.5590901], dtype=float32)}
 
@@ -195,6 +196,7 @@ For more in-depth examples for your use case, see :ref:`batch_inference_examples
             predictions.show(limit=1)
 
         .. testoutput::
+            :options: +MOCK
 
             {'output': array([0.625576], dtype=float32)}
 
