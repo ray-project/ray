@@ -339,6 +339,10 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
   }
 }
 
+inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
+  return kPlacementGroupConstraintKeyPrefix + pg_id;
+}
+
 /// Generate a placement constraint for placement group.
 ///
 /// \param pg_id The ID of placement group.
@@ -370,8 +374,11 @@ GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
   }
   auto pg_constraint = rpc::autoscaler::PlacementConstraint();
   pg_constraint.set_type(type);
-  pg_constraint.set_key(kPlacementGroupConstraintKey);
-  pg_constraint.set_value(pg_id);
+  // We are embedding the PG id into the key for the same reasons as we do for
+  // dynamic labels (a node will have multiple PGs thus having a common PG key
+  // is not enough).
+  pg_constraint.set_key(FormatPlacementGroupLabelName(pg_id));
+  pg_constraint.set_value("");
 
   return pg_constraint;
 }

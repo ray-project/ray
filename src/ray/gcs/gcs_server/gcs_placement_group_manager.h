@@ -326,6 +326,13 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param node_id The specified node id.
   void OnNodeAdd(const NodeID &node_id);
 
+  /// Get bundles on a node.
+  ///
+  /// \param node_id The specified node id.
+  /// \return A map from placement group id to bundles indices on the node.
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+      const NodeID &node_id) const;
+
   /// Clean placement group that belongs to the job id if necessary.
   ///
   /// This interface is a part of automatic lifecycle management for placement groups.
@@ -377,8 +384,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \return Pending placement groups.
   const absl::btree_multimap<
       int64_t,
-      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-      &GetPendingPlacementGroups() const;
+      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>> &
+  GetPendingPlacementGroups() const;
 
   /// Get a read only view of the infeasible placement groups.
   ///

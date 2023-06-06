@@ -22,6 +22,7 @@
 #include "src/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 // clang-format on
@@ -30,8 +31,10 @@ namespace ray {
 
 namespace gcs {
 using ::testing::_;
+using ::testing::Return;
 
 using ResourceBundleMap = std::unordered_map<std::string, double>;
+using BundlesOnNodeMap = absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>;
 
 // Test suite for AutoscalerState related functionality.
 class GcsAutoscalerStateManagerTest : public ::testing::Test {
@@ -41,8 +44,14 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         io_service_, cluster_resource_manager_, NodeID::FromRandom());
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
 
-    gcs_autoscaler_state_manager_.reset(new GcsAutoscalerStateManager(
-        cluster_resource_manager_, *gcs_resource_manager_, *gcs_node_manager_));
+    gcs_placement_group_manager_ =
+        std::make_shared<gcs::MockGcsPlacementGroupManager>(*gcs_resource_manager_);
+
+    gcs_autoscaler_state_manager_.reset(
+        new GcsAutoscalerStateManager(cluster_resource_manager_,
+                                      *gcs_resource_manager_,
+                                      *gcs_node_manager_,
+                                      *gcs_placement_group_manager_));
   }
 
  protected:
@@ -51,6 +60,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
+  std::shared_ptr<gcs::MockGcsPlacementGroupManager> gcs_placement_group_manager_;
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
@@ -235,6 +245,11 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
     node->mutable_resources_total()->insert({"GPU", 1});
     node->set_instance_id("instance_1");
     AddNode(node);
+
+    // Mock the Placement Group.
+    EXPECT_CALL(*gcs_placement_group_manager_, GetBundlesOnNode(_))
+        .Times(1)
+        .WillOnce(Return(BundlesOnNodeMap()));
 
     auto reply = GetClusterResourceStateSync();
     ASSERT_EQ(reply.node_states_size(), 1);

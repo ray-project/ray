@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
@@ -25,10 +26,12 @@ namespace gcs {
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     const ClusterResourceManager &cluster_resource_manager,
     const GcsResourceManager &gcs_resource_manager,
-    const GcsNodeManager &gcs_node_manager)
+    const GcsNodeManager &gcs_node_manager,
+    const GcsPlacementGroupManager &gcs_placement_group_manager)
     : cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
+      gcs_placement_group_manager_(gcs_placement_group_manager),
       last_cluster_resource_state_version_(0),
       last_seen_autoscaler_state_version_(0) {}
 
@@ -153,7 +156,13 @@ void GcsAutoscalerStateManager::GetNodeStates(
       const auto &total = node_resource_data.total.ToResourceMap();
       node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
-      // TODO(rickyx): support dynamic labels
+      // Add dynamic PG labels.
+      const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(
+          NodeID::FromBinary(gcs_node_info.node_id()));
+      for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
+        node_state_proto->mutable_dynamic_labels()->insert(
+            {FormatPlacementGroupLabelName(pg_id.Binary()), ""});
+      }
     }
   };
 

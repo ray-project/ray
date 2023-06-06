@@ -35,7 +35,7 @@ class MockGcsPlacementGroupSchedulerInterface
                PGSchedulingSuccessfulCallback success_callback),
               (override));
   MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
-              GetBundlesOnNode,
+              GetAndRemoveBundlesOnNode,
               (const NodeID &node_id),
               (override));
   MOCK_METHOD(void,
@@ -102,7 +102,7 @@ class MockGcsPlacementGroupScheduler : public GcsPlacementGroupScheduler {
               (const PlacementGroupID &placement_group_id),
               (override));
   MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
-              GetBundlesOnNode,
+              GetAndRemoveBundlesOnNode,
               (const NodeID &node_id),
               (override));
   MOCK_METHOD(

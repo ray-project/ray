@@ -46,8 +46,9 @@ import "src/ray/protobuf/experimental/instance_manager.proto";
 message PlacementConstraint {
   // Constraint Type.
   enum Type {
-    // When a resource request should not be placed on other
+    // When a resource request should not be placed with other resource requests.
     ANTI_AFFINITY = 0;
+    // When a resource request should be placed with other resource requests.
     AFFINITY = 1;
   }
   Type type = 1;
