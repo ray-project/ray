@@ -72,17 +72,15 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PYTHON_EXE=$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM
   PIP_CMD="$(dirname "$PYTHON_EXE")/pip$PY_MM"
 
-  if [ -z "${BUILDKITE}" ]; then
-    INST_PATH=python_downloads/$PY_INST
-    curl $MACPYTHON_URL/"$PY_VERSION"/"$PY_INST" > "$INST_PATH"
-    sudo installer -pkg "$INST_PATH" -target /
-    installer -pkg "$INST_PATH" -target /
+  INST_PATH=python_downloads/$PY_INST
+  curl $MACPYTHON_URL/"$PY_VERSION"/"$PY_INST" > "$INST_PATH"
+  sudo installer -pkg "$INST_PATH" -target /
+  installer -pkg "$INST_PATH" -target /
 
-    pushd /tmp
-      # Install latest version of pip to avoid brownouts.
-      curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
-    popd
-  fi
+  pushd /tmp
+    # Install latest version of pip to avoid brownouts.
+    curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
+  popd
 
   if [ -z "${TRAVIS_COMMIT}" ]; then
     TRAVIS_COMMIT=${BUILDKITE_COMMIT}
