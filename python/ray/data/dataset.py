@@ -4000,7 +4000,7 @@ class Dataset:
             True,
             logical_plan,
         )
-        output._plan.execute()  # This should be a no-op.
+        output._plan.execute()  # No-op that marks the plan as fully executed.
         return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
