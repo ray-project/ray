@@ -277,22 +277,27 @@ class ShufflingBatcher(BatcherInterface):
         if not self._done_adding:
             # If still adding blocks, ensure that removing a batch wouldn't cause the
             # shuffle buffer to dip beneath its configured minimum size.
-            return buffer_size - self._batch_size >= self._buffer_min_size
+            return buffer_size - self._batch_size >= self._buffer_min_size * 1.5
+            # TODO: ekl note 2 is marginally better, 1 is terrible (3x slower)
         else:
             return buffer_size >= self._batch_size
 
     def _buffer_size(self) -> int:
         """Return shuffle buffer size."""
         buffer_size = self._builder.num_rows()
-        if self._shuffle_buffer is not None:
-            # Include the size of the concrete (materialized) shuffle buffer, adjusting
-            # for the batch head position, which also serves as a counter of the number
-            # of already-yielded rows from the current concrete shuffle buffer.
-            buffer_size += (
-                BlockAccessor.for_block(self._shuffle_buffer).num_rows()
-                - self._batch_head
-            )
+        buffer_size += self._materialized_buffer_size()
         return buffer_size
+
+    def _materialized_buffer_size(self) -> int:
+        """Return materialized (compacted portion of) shuffle buffer size."""
+        if self._shuffle_buffer is None:
+            return 0
+        # The size of the concrete (materialized) shuffle buffer, adjusting
+        # for the batch head position, which also serves as a counter of the number
+        # of already-yielded rows from the current concrete shuffle buffer.
+        return (
+            BlockAccessor.for_block(self._shuffle_buffer).num_rows() - self._batch_head
+        )
 
     def next_batch(self) -> Block:
         """Get the next shuffled batch from the shuffle buffer.
@@ -301,13 +306,15 @@ class ShufflingBatcher(BatcherInterface):
             A batch represented as a Block.
         """
         assert self.has_batch() or (self._done_adding and self.has_any())
-        # Add rows in the builder to the shuffle buffer.
-        if self._builder.num_rows() > 0:
+        # Add rows in the builder to the shuffle buffer. Note that we delay compaction
+        # as much as possible to amortize the concatenation overhead. Compaction is
+        # only necessary when the materialized buffer size falls below the min size.
+        if self._builder.num_rows() > 0 and (
+            self._done_adding or self._materialized_buffer_size() <= self._buffer_min_size
+        ):
             if self._shuffle_buffer is not None:
                 if self._batch_head > 0:
                     # Compact the materialized shuffle buffer.
-                    # TODO(Clark): If alternating between adding blocks and fetching
-                    # shuffled batches, this aggressive compaction could be inefficient.
                     self._shuffle_buffer = BlockAccessor.for_block(
                         self._shuffle_buffer
                     ).take(self._shuffle_indices[self._batch_head :])
