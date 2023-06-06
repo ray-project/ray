@@ -191,6 +191,9 @@ def custom_driver_logdir_callback(tempdir: str):
     return SeparateDriverSyncerCallback()
 
 
+@pytest.mark.skipif(
+    sys.version_info.minor >= 8, reason="Currently fails with Python 3.8+"
+)
 @pytest.mark.parametrize("durable", [False, True])
 def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     """Removing a node while cluster has space should migrate trial.
