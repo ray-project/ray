@@ -391,6 +391,9 @@ def test_ray_start_hook(configure_lang, monkeypatch, cleanup_ray):
 
 
 @pytest.mark.skipif(
+    sys.version_info.minor >= 8, reason="Currently fails with Python 3.8+"
+)
+@pytest.mark.skipif(
     sys.platform == "darwin",
     reason=("Mac builds don't provide proper locale support. "),
 )

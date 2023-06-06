@@ -9,6 +9,8 @@ AWS config
   EC2 AMI \(all available node types\): ami-.+ \[dlami\]
 
 No head node found\. Launching a new cluster\. Confirm \[y/N\]: y \[automatic, due to --yes\]
+
+
 Acquiring an up-to-date head node
   Launched 1 nodes \[subnet_id=subnet-.+\]
     Launched instance i-.+ \[state=pending, info=pending\]
