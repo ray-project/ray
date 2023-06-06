@@ -383,6 +383,8 @@ async def test_batch_generator_sentinel():
 
     @serve.batch(max_batch_size=NUM_CALLERS, batch_wait_timeout_s=1000)
     async def sequential_terminator(ids: List[int]):
+        """Terminates callers one-after-another in order of call."""
+
         for num_finished_callers in range(1, NUM_CALLERS + 1):
             event.clear()
             responses = [SENTINEL.VALUE for _ in range(num_finished_callers)]
@@ -395,6 +397,9 @@ async def test_batch_generator_sentinel():
     for id, generator in zip(ids, generators):
         async for result in generator:
             assert result == id
+
+        # Each terminated caller frees the sequential_terminator to process
+        # another iteration.
         event.set()
 
 
