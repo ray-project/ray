@@ -15,5 +15,5 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 config = (
     DreamerV3Config()
     .environment("Pendulum-v1")
-    .training(model_dimension="XS", training_ratio=1024)
+    .training(model_size="XS", training_ratio=1024)
 )

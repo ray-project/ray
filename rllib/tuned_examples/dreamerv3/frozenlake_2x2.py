@@ -24,5 +24,5 @@ config = (
             "is_slippery": False,
         },
     )
-    .training(model_dimension="XS", training_ratio=1024)
+    .training(model_size="XS", training_ratio=1024)
 )

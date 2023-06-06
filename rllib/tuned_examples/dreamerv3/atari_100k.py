@@ -32,5 +32,5 @@ config = (
         }
     )
     # See Appendix A.
-    .training(model_dimension="S", training_ratio=1024)
+    .training(model_size="S", training_ratio=1024)
 )

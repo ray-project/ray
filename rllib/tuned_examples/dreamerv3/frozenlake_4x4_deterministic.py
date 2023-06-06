@@ -21,5 +21,5 @@ config = (
             "is_slippery": False,
         },
     )
-    .training(model_dimension="nano", training_ratio=1024)
+    .training(model_size="nano", training_ratio=1024)
 )

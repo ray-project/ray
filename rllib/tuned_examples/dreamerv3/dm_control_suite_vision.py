@@ -19,5 +19,5 @@ config = (
     .environment(env_config={"from_pixels": True})
     .rollouts(num_envs_per_worker=4, remote_worker_envs=True)
     # See Appendix A.
-    .training(model_dimension="S", training_ratio=512)
+    .training(model_size="S", training_ratio=512)
 )
