@@ -1,9 +1,9 @@
 import time
-import pytest
 
 import pyarrow as pa
+import pytest
 
-from ray.data._internal.batcher import ShufflingBatcher, Batcher
+from ray.data._internal.batcher import Batcher, ShufflingBatcher
 
 
 def gen_block(num_rows):

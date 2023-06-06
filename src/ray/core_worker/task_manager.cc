@@ -141,13 +141,13 @@ bool ObjectRefStream::MarkEndOfStream(int64_t item_index,
   if (end_of_stream_index_ != -1) {
     return false;
   }
-  // We don't allow marking end of stream twice.
-  RAY_CHECK_EQ(end_of_stream_index_, -1);
-  if (item_index == -1) {
-    end_of_stream_index_ = last_available_index_;
-  } else {
-    end_of_stream_index_ = item_index;
-  }
+  // ObjectRefStream should guarantee the last_available_index_
+  // will always have an object reference to avoid hang.
+  // That said, if there was already an index that's bigger than a given
+  // end of stream index, we should mark that as the end of stream.
+  // It can happen when a task is retried and return less values
+  // (e.g., the second retry is failed by an exception or worker failure).
+  end_of_stream_index_ = std::max(last_available_index_, item_index);
 
   auto end_of_stream_id = GetNextObjectRef(end_of_stream_index_);
   item_index_to_refs_.emplace(end_of_stream_index_, end_of_stream_id);
@@ -736,12 +736,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   if (spec.IsStreamingGenerator()) {
     // The return object for a generator task is always contains a generator id.
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
-    ObjectID last_ref_in_stream;
-    auto marked = MarkEndOfStream(
-        generator_id, reply.streaming_generator_return_ids_size(), &last_ref_in_stream);
-    if (marked) {
-      // MarkEndOfStream should be called only at the first execution.
-      RAY_CHECK(first_execution);
+    if (first_execution) {
+      ObjectID last_ref_in_stream;
+      // MarkEndOfStream should always succeed when it is the first execution.
+      RAY_CHECK(MarkEndOfStream(generator_id,
+                                reply.streaming_generator_return_ids_size(),
+                                &last_ref_in_stream));
       reference_counter_->OwnDynamicStreamingTaskReturnRef(last_ref_in_stream,
                                                            generator_id);
       RAY_CHECK_EQ(reply.return_objects_size(), 1);
@@ -750,6 +750,22 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                        return_object,
                        NodeID::FromBinary(worker_addr.raylet_id()),
                        store_in_plasma_ids.count(last_ref_in_stream));
+    } else {
+      // end of stream should have been already marked
+      if (is_application_error) {
+        // It means the task has reexeucted, but in the n+ execution, it fails with
+        // an application error. In this case, we should fail all the rest of
+        // known streaming generator returns.
+        for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
+          const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
+          RAY_CHECK_EQ(reply.return_objects_size(), 1UL);
+          const auto &return_object = reply.return_objects(0);
+          HandleTaskReturn(generator_return_id,
+                           return_object,
+                           NodeID::FromBinary(worker_addr.raylet_id()),
+                           store_in_plasma_ids.count(generator_return_id));
+        }
+      }
     }
   }
 
@@ -1109,8 +1125,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // Mark the end of stream and write the error to the last object reference.
     const auto generator_id = spec.ReturnId(0);
     ObjectID last_ref_in_stream;
-    auto marked = MarkEndOfStream(generator_id, /*item_index*/ -1, &last_ref_in_stream);
-    if (marked) {
+    if (MarkEndOfStream(generator_id, /*item_index*/ -1, &last_ref_in_stream)) {
       reference_counter_->OwnDynamicStreamingTaskReturnRef(last_ref_in_stream,
                                                            generator_id);
       if (store_in_plasma_ids.count(last_ref_in_stream)) {

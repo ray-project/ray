@@ -1,11 +1,12 @@
+from dataclasses import astuple, dataclass
+
 import pytest
-from dataclasses import dataclass, astuple
 
 import ray
-from ray.data.context import DataContext
 from ray.data._internal.util import _autodetect_parallelism
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @dataclass

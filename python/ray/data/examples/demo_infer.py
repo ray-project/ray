@@ -1,5 +1,6 @@
-import ray
 import time
+
+import ray
 
 ray.init(num_gpus=2)
 

@@ -367,6 +367,65 @@ def test_generator_basic(shutdown_only):
 
 
 @pytest.mark.parametrize("crash_type", ["exception", "worker_crash"])
+def test_retry_exception_undeterministic(shutdown_only, crash_type):
+    """Test the case where the task retry is undeterministic
+        because of exceptions or worker failures.
+
+    By the protocol, when a generator task raised an exception
+    or system fails, it shouldn't hang and raise an exception.
+    """
+
+    @ray.remote
+    class SignalException:
+        def __init__(self):
+            self.crash_index = 2
+            self._sema = asyncio.Semaphore(value=1)
+
+        async def acquire(self):
+            await self._sema.acquire()
+
+        async def release(self):
+            self._sema.release()
+
+        async def locked(self):
+            return self._sema.locked()
+
+        def set_crash_index(self, i):
+            self.crash_index = i
+
+        def get_crash_index(self):
+            return self.crash_index
+
+    signal = SignalException.remote()
+
+    @ray.remote(num_returns="streaming", retry_exceptions=[ValueError], max_retries=1)
+    def f(signal):
+        ray.get(signal.acquire.remote())
+        crash_index = ray.get(signal.get_crash_index.remote())
+        for i in range(3):
+            if i == crash_index:
+                if crash_type == "exception":
+                    raise ValueError
+                else:
+                    sys.exit(15)
+            yield i
+
+    gen = f.remote(signal)
+    assert ray.get(next(gen)) == 0
+    assert ray.get(next(gen)) == 1
+    ray.get(signal.release.remote())
+    ray.get(signal.set_crash_index.remote(1))
+
+    # Should raise an exception.
+    if crash_type == "exception":
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(next(gen))
+    else:
+        with pytest.raises(ray.exceptions.WorkerCrashedError):
+            ray.get(next(gen))
+
+
+@pytest.mark.parametrize("crash_type", ["exception", "worker_crash"])
 def test_generator_streaming_no_leak_upon_failures(
     monkeypatch, shutdown_only, crash_type
 ):
@@ -907,10 +966,168 @@ def test_reconstruction(monkeypatch, ray_start_cluster, delay):
         node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
         cluster.wait_for_nodes()
 
+    @ray.remote(num_returns="streaming", max_retries=2)
+    def dynamic_generator(num_returns):
+        for i in range(num_returns):
+            yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote
+    def fetch(x):
+        return x[0]
+
+    # Test recovery of all dynamic objects through re-execution.
+    gen = ray.get(dynamic_generator.remote(10))
+    refs = []
+
+    for i in range(5):
+        refs.append(next(gen))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    for i, ref in enumerate(refs):
+        print("first trial.")
+        print("fetching ", i)
+        assert ray.get(fetch.remote(ref)) == i
+
+    # Try second retry.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    for i in range(4):
+        refs.append(next(gen))
+
+    for i, ref in enumerate(refs):
+        print("second trial")
+        print("fetching ", i)
+        assert ray.get(fetch.remote(ref)) == i
+
+    # third retry should fail.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    for i in range(1):
+        refs.append(next(gen))
+
+    for i, ref in enumerate(refs):
+        print("third trial")
+        print("fetching ", i)
+        with pytest.raises(ray.exceptions.RayTaskError) as e:
+            ray.get(fetch.remote(ref))
+        assert "the maximum number of task retries has been exceeded" in str(e.value)
+
+
+@pytest.mark.parametrize("failure_type", ["exception", "crash"])
+def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
+    """Test the streaming generator retry fails in the second retry."""
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=RECONSTRUCTION_CONFIG,
+        enable_object_reconstruction=True,
+    )
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0)
+    class SignalActor:
+        def __init__(self):
+            self.crash = False
+
+        def set(self):
+            self.crash = True
+
+        def get(self):
+            return self.crash
+
+    signal = SignalActor.remote()
+    ray.get(signal.get.remote())
+
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_returns="streaming")
+    def dynamic_generator(num_returns, signal_actor):
+        for i in range(num_returns):
+            if i == 3:
+                should_crash = ray.get(signal_actor.get.remote())
+                if should_crash:
+                    if failure_type == "exception":
+                        raise Exception
+                    else:
+                        sys.exit(5)
+            time.sleep(1)
+            yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote
+    def fetch(x):
+        return x[0]
+
+    gen = ray.get(dynamic_generator.remote(10, signal))
+    refs = []
+
+    for i in range(5):
+        refs.append(next(gen))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    for i, ref in enumerate(refs):
+        print("first trial.")
+        print("fetching ", i)
+        assert ray.get(fetch.remote(ref)) == i
+
+    # Try second retry.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    signal.set.remote()
+
+    for ref in gen:
+        refs.append(ref)
+
+    for i, ref in enumerate(refs):
+        print("second trial")
+        print("fetching ", i)
+        print(ref)
+        if i < 3:
+            assert ray.get(fetch.remote(ref)) == i
+        else:
+            with pytest.raises(ray.exceptions.RayTaskError) as e:
+                assert ray.get(fetch.remote(ref)) == i
+            "The worker died" in str(e.value)
+
+# SANG-TODO
+def test_reconstruction_e2e(monkeypatch, ray_start_cluster):
+    with monkeypatch.context() as m:
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "CoreWorkerService.grpc_server."
+            "ReportGeneratorItemReturns=10000:1000000",
+        )
+        cluster = ray_start_cluster
+        # Head node with no resources.
+        cluster.add_node(
+            num_cpus=1,
+            _system_config=RECONSTRUCTION_CONFIG,
+            enable_object_reconstruction=True,
+        )
+        ray.init(address=cluster.address)
+
+        nodes = []
+        for _ in range(7):
+            nodes.append(cluster.add_node(num_cpus=1, object_store_memory=10**8))
+        cluster.wait_for_nodes()
+
         @ray.remote(num_returns="streaming", max_retries=2)
         def dynamic_generator(num_returns):
             for i in range(num_returns):
                 yield np.ones(1_000_000, dtype=np.int8) * i
+
+        @ray.remote
+        def driver():
+            pass
 
         @ray.remote
         def fetch(x):
@@ -958,92 +1175,6 @@ def test_reconstruction(monkeypatch, ray_start_cluster, delay):
             assert "the maximum number of task retries has been exceeded" in str(
                 e.value
             )
-
-
-@pytest.mark.parametrize("delay", [False, True])
-def test_reconstruction_retry_failed(monkeypatch, ray_start_cluster, delay):
-    """Test the streaming generator retry fails in the second retry."""
-    with monkeypatch.context() as m:
-        if delay:
-            m.setenv(
-                "RAY_testing_asio_delay_us",
-                "CoreWorkerService.grpc_server."
-                "ReportGeneratorItemReturns=10000:1000000",
-            )
-        cluster = ray_start_cluster
-        # Head node with no resources.
-        cluster.add_node(
-            num_cpus=0,
-            _system_config=RECONSTRUCTION_CONFIG,
-            enable_object_reconstruction=True,
-        )
-        ray.init(address=cluster.address)
-
-        @ray.remote(num_cpus=0)
-        class SignalActor:
-            def __init__(self):
-                self.crash = False
-
-            def set(self):
-                self.crash = True
-
-            def get(self):
-                return self.crash
-
-        signal = SignalActor.remote()
-        ray.get(signal.get.remote())
-
-        # Node to place the initial object.
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
-        cluster.wait_for_nodes()
-
-        @ray.remote(num_returns="streaming")
-        def dynamic_generator(num_returns, signal_actor):
-            for i in range(num_returns):
-                if i == 3:
-                    should_crash = ray.get(signal_actor.get.remote())
-                    if should_crash:
-                        sys.exit(5)
-                        # raise Exception
-                time.sleep(1)
-                yield np.ones(1_000_000, dtype=np.int8) * i
-
-        @ray.remote
-        def fetch(x):
-            return x[0]
-
-        gen = ray.get(dynamic_generator.remote(10, signal))
-        refs = []
-
-        for i in range(5):
-            refs.append(next(gen))
-
-        cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
-
-        for i, ref in enumerate(refs):
-            print("first trial.")
-            print("fetching ", i)
-            assert ray.get(fetch.remote(ref)) == i
-
-        # Try second retry.
-        cluster.remove_node(node_to_kill, allow_graceful=False)
-        node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
-
-        signal.set.remote()
-
-        for ref in gen:
-            refs.append(ref)
-
-        for i, ref in enumerate(refs):
-            print("second trial")
-            print("fetching ", i)
-            if i < 3:
-                assert ray.get(fetch.remote(ref)) == i
-            else:
-                with pytest.raises(ray.exceptions.RayTaskError) as e:
-                    assert ray.get(fetch.remote(ref)) == i
-                "The worker died" in str(e.value)
 
 
 if __name__ == "__main__":

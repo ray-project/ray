@@ -80,7 +80,3 @@ CHECKPOINT_METADATA_KEY = "checkpoint_metadata"
 
 # Key for AIR Checkpoint world rank in TrainingResult metadata
 CHECKPOINT_RANK_KEY = "checkpoint_rank"
-
-
-# Key for AIR Checkpoint that gets uploaded from distributed workers.
-CHECKPOINT_DISTRIBUTED_KEY = "distributed"
