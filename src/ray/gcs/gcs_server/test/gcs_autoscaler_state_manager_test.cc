@@ -87,6 +87,14 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     }
   }
 
+  void CheckNodeLabels(const rpc::autoscaler::NodeState &node_state,
+                       const std::unordered_map<std::string, std::string> &labels) {
+    ASSERT_EQ(node_state.dynamic_labels_size(), labels.size());
+    for (const auto &label : labels) {
+      ASSERT_EQ(node_state.dynamic_labels().at(label.first), label.second);
+    }
+  }
+
   rpc::autoscaler::GetClusterResourceStateReply GetClusterResourceStateSync() {
     rpc::autoscaler::GetClusterResourceStateRequest request;
     rpc::autoscaler::GetClusterResourceStateReply reply;
@@ -273,6 +281,36 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
     gcs_resource_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
     auto reply = GetClusterResourceStateSync();
     ASSERT_EQ(reply.node_states_size(), 0);
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {
+  /// Check if PGs are created on a node, the node status should include
+  /// the PG labels.
+  auto node = Mocker::GenNodeInfo();
+
+  // Adding a node.
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->mutable_resources_total()->insert({"GPU", 1});
+  node->set_instance_id("instance_1");
+  AddNode(node);
+
+  // Mock the PG manager to return bundles on a node.
+  {
+    auto pg1 = PlacementGroupID::Of(JobID::FromInt(0));
+    auto pg2 = PlacementGroupID::Of(JobID::FromInt(1));
+    EXPECT_CALL(*gcs_placement_group_manager_,
+                GetBundlesOnNode(NodeID::FromBinary(node->node_id())))
+        .WillRepeatedly(Return(BundlesOnNodeMap{
+            {pg1, {1, 2, 3}},
+            {pg2, {4, 5, 6}},
+        }));
+
+    auto reply = GetClusterResourceStateSync();
+    ASSERT_EQ(reply.node_states_size(), 1);
+    CheckNodeLabels(reply.node_states(0),
+                    {{FormatPlacementGroupLabelName(pg1.Binary()), ""},
+                     {FormatPlacementGroupLabelName(pg2.Binary()), ""}});
   }
 }
 
