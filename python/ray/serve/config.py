@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
@@ -199,7 +200,7 @@ class DeploymentConfig(BaseModel):
     @validator("max_concurrent_queries", always=True)
     def set_max_queries_by_mode(cls, v, values):  # noqa 805
         if v is None:
-            v = 100
+            v = DEFAULT_MAX_CONCURRENT_QUERIES
         else:
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
