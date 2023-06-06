@@ -305,13 +305,16 @@ class FileBasedDatasource(Datasource):
             if _block_udf is not None:
                 block = _block_udf(block)
 
-            with fs.open_output_stream(write_path, **open_stream_args) as f:
-                _write_block_to_file(
-                    f,
-                    BlockAccessor.for_block(block),
-                    writer_args_fn=write_args_fn,
-                    **write_args,
-                )
+            block = BlockAccessor.for_block(block)
+            # Skip write if the block is empty.
+            if block.num_rows() > 0:
+                with fs.open_output_stream(write_path, **open_stream_args) as f:
+                    _write_block_to_file(
+                        f,
+                        block,
+                        writer_args_fn=write_args_fn,
+                        **write_args,
+                    )
             # TODO: decide if we want to return richer object when the task
             # succeeds.
             return "ok"
