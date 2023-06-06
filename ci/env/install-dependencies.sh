@@ -428,12 +428,9 @@ install_pip_packages() {
   if [ -n "${TORCH_VERSION-}" ] || [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
       # If we require a custom torch version, use that
       if [ -n "${TORCH_VERSION-}" ]; then
-        case "${TORCH_VERSION-1.9.0}" in
-          1.9.0) TORCHVISION_VERSION=0.10.0;;
-        esac
         # Install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
+        pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
         # We won't add requirements_dl.txt as it would otherwise overwrite our custom
         # torch. Thus we have also have to install tensorflow manually.
         TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
