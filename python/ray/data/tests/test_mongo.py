@@ -4,7 +4,6 @@ import pytest
 
 import ray
 from ray.data.datasource import MongoDatasource
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -31,8 +30,8 @@ def start_mongo():
 
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
-    from pymongoarrow.api import Schema
     from pymongo.errors import ServerSelectionTimeoutError
+    from pymongoarrow.api import Schema
 
     client, mongo_url = start_mongo
     foo_db = "foo-db"

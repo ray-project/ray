@@ -1,27 +1,24 @@
 import collections
+from contextlib import nullcontext
 from typing import Any, Callable, Dict, Iterator, Optional, Tuple
 
 import ray
-from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, DataBatch
-from ray.data._internal.block_batching.interfaces import (
-    Batch,
-    BlockPrefetcher,
-)
+from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
     WaitBlockPrefetcher,
-    resolve_block_refs,
     blocks_to_batches,
-    format_batches,
     collate,
     extract_data_from_batch,
+    format_batches,
     make_async_gen,
+    resolve_block_refs,
 )
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats
+from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
-from contextlib import nullcontext
+from ray.types import ObjectRef
 
 
 def iter_batches(
@@ -282,6 +279,7 @@ def prefetch_batches_locally(
                 pass
         yield block_ref
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
+    prefetcher.stop()
 
 
 def restore_original_order(batch_iter: Iterator[Batch]) -> Iterator[Batch]:
