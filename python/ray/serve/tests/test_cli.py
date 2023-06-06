@@ -1333,5 +1333,40 @@ class TestRayReinitialization:
         assert expected_warning_message not in logs
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_request_timeout(ray_start_stop):
+    """Test running serve with request timeout http_options.
+
+    When serve run with config file having 0.5s as the `request_processing_timeout` in
+    the `http_options`. First case tests when the deployment runs longer than the 0.5s
+    timeout and returned task failed message. The second case is testing the deployment
+    runs shorter than the 0.5s timeout and it should return success message.
+    """
+    config_file_name = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "http_option_request_processing_timeout.yaml",
+    )
+    p = subprocess.Popen(["serve", "run", config_file_name])
+
+    # Ensure the http request is killed and failed when the deployment runs longer than
+    # the 0.5 request_processing_timeout set up in the config yaml
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.6").text
+        == "Task failed with 10 retries.",
+        retry_interval_ms=1000,
+    )
+
+    # Ensure the http request returned the correct response when the deployment runs
+    # shorter than the 0.5 request_processing_timeout set up in the config yaml
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.1").text
+        == "Task Succeeded!",
+    )
+
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
