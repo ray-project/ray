@@ -67,7 +67,9 @@ class PushManager {
   int64_t NumPushesInFlight() const { return push_info_.size(); };
 
   /// Return the number of push requests with remaining chunks. For testing only.
-  int64_t NumPendingPushRequest() const { return pending_push_requests_.size(); };
+  int64_t NumPendingPushRequest() const {
+    return push_requests_with_chunks_to_send_.size();
+  };
 
   /// Record the internal metrics.
   void RecordMetrics() const;
@@ -146,10 +148,13 @@ class PushManager {
   int64_t chunks_remaining_ = 0;
 
   /// Tracks all pushes with chunk transfers in flight.
-  absl::flat_hash_map<PushID, std::shared_ptr<PushState>> push_info_;
+  /// Note: the lifecycle of PushState's pointer in `push_info_` is longer than
+  /// that in `push_requests_with_chunks_to_send_`. Please ensure this, otherwise
+  /// pointers in `push_requests_with_chunks_to_send_` may become dangling.
+  absl::flat_hash_map<PushID, std::unique_ptr<PushState>> push_info_;
 
   /// The list of push requests with chunks waiting to be sent.
-  std::list<std::pair<PushID, std::shared_ptr<PushState>>> pending_push_requests_;
+  std::list<std::pair<PushID, PushState *>> push_requests_with_chunks_to_send_;
 };
 
 }  // namespace ray

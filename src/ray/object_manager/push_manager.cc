@@ -30,16 +30,18 @@ void PushManager::StartPush(const NodeID &dest_id,
   auto it = push_info_.find(push_id);
   if (it == push_info_.end()) {
     chunks_remaining_ += num_chunks;
-    auto push_state = std::make_shared<PushState>(num_chunks, send_chunk_fn);
-    push_info_[push_id] = push_state;
-    pending_push_requests_.push_back(std::make_pair(push_id, push_state));
+    auto push_state = std::make_unique<PushState>(num_chunks, send_chunk_fn);
+    push_requests_with_chunks_to_send_.push_back(
+        std::make_pair(push_id, push_state.get()));
+    push_info_[push_id] = std::move(push_state);
   } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
     if (it->second->NoChunkRemained()) {
       // if all the chunks have been sent, the push request needs to be re-added to
-      // `pending_push_requests_`.
-      pending_push_requests_.push_back(std::make_pair(push_id, it->second));
+      // `push_requests_with_chunks_to_send_`.
+      push_requests_with_chunks_to_send_.push_back(
+          std::make_pair(push_id, it->second.get()));
     }
     chunks_remaining_ += it->second->ResendAllChunks(send_chunk_fn);
   }
@@ -66,9 +68,9 @@ void PushManager::ScheduleRemainingPushes() {
   // consider tracking the number of chunks active per-push and balancing those.
   while (chunks_in_flight_ < max_chunks_in_flight_ && keep_looping) {
     // Loop over each active push and try to send another chunk.
-    auto it = pending_push_requests_.begin();
+    auto it = push_requests_with_chunks_to_send_.begin();
     keep_looping = false;
-    while (it != pending_push_requests_.end() &&
+    while (it != push_requests_with_chunks_to_send_.end() &&
            chunks_in_flight_ < max_chunks_in_flight_) {
       auto push_id = it->first;
       auto &info = it->second;
@@ -82,7 +84,7 @@ void PushManager::ScheduleRemainingPushes() {
                        << " max, remaining chunks: " << NumChunksRemaining();
       }
       if (info->NoChunkRemained()) {
-        it = pending_push_requests_.erase(it);
+        it = push_requests_with_chunks_to_send_.erase(it);
       } else {
         it++;
       }
