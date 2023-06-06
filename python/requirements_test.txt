@@ -110,6 +110,7 @@ segment-analytics-python==2.2.0
 httpcore==0.15.0
 backoff==1.10
 sympy==1.10.1; python_version <= '3.7'
+qpd==0.4.1
 
 # For test_basic.py::test_omp_threads_set
 threadpoolctl==3.1.0
