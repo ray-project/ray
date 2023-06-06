@@ -336,7 +336,9 @@ def create_replica_wrapper(name: str):
                     if not self._initialized:
                         await self._initialize_replica()
                     if deployment_config:
-                        await self.replica.reconfigure(deployment_config.user_config)
+                        await self.replica.update_user_config(
+                            deployment_config.user_config
+                        )
 
                 # A new replica should not be considered healthy until it passes
                 # an initial health check. If an initial health check fails,
@@ -350,7 +352,7 @@ def create_replica_wrapper(name: str):
             self, deployment_config: DeploymentConfig
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             try:
-                await self.replica.update_deployment_config(deployment_config)
+                await self.replica.reconfigure(deployment_config)
                 return await self._get_metadata()
             except Exception:
                 raise RuntimeError(traceback.format_exc()) from None
@@ -607,7 +609,7 @@ class RayServeReplica:
 
         return result, success
 
-    async def update_deployment_config(self, deployment_config: DeploymentConfig):
+    async def reconfigure(self, deployment_config: DeploymentConfig):
         old_user_config = self.deployment_config.user_config
         self.deployment_config = deployment_config
         self.version = DeploymentVersion.from_deployment_version(
@@ -615,9 +617,9 @@ class RayServeReplica:
         )
 
         if old_user_config != deployment_config.user_config:
-            await self.reconfigure(deployment_config.user_config)
+            await self.update_user_config(deployment_config.user_config)
 
-    async def reconfigure(self, user_config: Any):
+    async def update_user_config(self, user_config: Any):
         async with self.rwlock.writer_lock:
             if user_config is not None:
                 if self.is_function:

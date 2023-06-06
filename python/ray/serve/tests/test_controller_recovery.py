@@ -296,7 +296,8 @@ def test_replica_deletion_after_controller_recover(serve_instance):
     # Application should be removed soon after
     wait_for_condition(
         lambda: serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.NOT_STARTED, timeout=1
+        == ApplicationStatus.NOT_STARTED,
+        timeout=1,
     )
 
 
@@ -338,10 +339,10 @@ def test_recover_deleting_deployment(serve_instance):
         check |= status.name == "A" and status.status == "UPDATING"
 
         # Confirm replica is stopping
-        # replicas = ray.get(
-        #     serve_instance._controller._dump_replica_states_for_testing.remote("A")
-        # )
-        # assert replicas.count(states=[ReplicaState.STOPPING]) == 1
+        replicas = ray.get(
+            serve_instance._controller._dump_replica_states_for_testing.remote("A")
+        )
+        assert replicas.count(states=[ReplicaState.STOPPING]) == 1
 
         # Confirm delete task is still blocked
         finished, pending = ray.wait([delete_ref], timeout=0)
