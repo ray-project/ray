@@ -1635,11 +1635,11 @@ def _concat_values(*values, time_major=None) -> TensorType:
         time_major: Whether to concatenate along the first axis
             (time_major=False) or the second axis (time_major=True).
     """
-    if torch and isinstance(values[0], torch.Tensor):
+    if torch and torch.is_tensor(values[0]):
         return torch.cat(values, dim=1 if time_major else 0)
     elif isinstance(values[0], np.ndarray):
         return np.concatenate(values, axis=1 if time_major else 0)
-    elif tf and isinstance(values[0], tf.Tensor):
+    elif tf and tf.is_tensor(values[0]):
         return tf.concat(values, axis=1 if time_major else 0)
     elif isinstance(values[0], list):
         concatenated_list = []

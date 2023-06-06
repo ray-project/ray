@@ -42,8 +42,6 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .framework(args.framework, eager_tracing=True)
-        .training()
-        .rl_module()
         .environment("CartPole-v1")
         .resources(**RESOURCE_CONFIG[args.config])
     )
