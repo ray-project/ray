@@ -532,21 +532,6 @@ def call_ray_start_context(request):
         raise
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
-    if out.find(redis_substring_prefix) == -1:
-        suggestion = ""
-        if (
-            not ray_constants.ENABLE_RAY_CLUSTER
-            and os.environ.get(ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR) != "1"
-        ):
-            suggestion = (
-                "Try setting the environment variable "
-                f"{ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1."
-            )
-        raise Exception(
-            "Ray didn't print `--address=<GCS address>` upon startup. "
-            + suggestion
-            + f"Here is the output:\n{out}"
-        )
     address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
     address = out[address_location:]
     address = address.split("'")[0]
