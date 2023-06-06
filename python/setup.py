@@ -248,6 +248,8 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
+            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0",  # for windows
@@ -315,8 +317,6 @@ if setup_spec.type == SetupType.RAY:
         "click >= 7.0",
         "dataclasses; python_version < '3.7'",
         "filelock",
-        "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-        "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
