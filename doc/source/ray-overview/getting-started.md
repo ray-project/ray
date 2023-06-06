@@ -679,7 +679,7 @@ pip install "ray[default]"
 ```
 ````
 
-```{button-ref}  ../ray-core/ray-dashboard
+```{button-ref}  observability-getting-started
 :color: primary
 :outline:
 :expand:
@@ -757,7 +757,7 @@ See the summarized statistics of Ray tasks using ``ray summary tasks``.
 
 ```
 
-```{button-ref}  ../ray-observability/state/state-api
+```{button-ref}  observability-programmatic
 :color: primary
 :outline:
 :expand:
