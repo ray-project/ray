@@ -1,7 +1,10 @@
 from typing import Optional
 
 from ray_release.test import Test
-from ray_release.result import Result
+from ray_release.result import (
+    Result,
+    ResultStatus,
+)
 
 
 def handle_result(
@@ -11,7 +14,7 @@ def handle_result(
     test_name = test["name"]
 
     msg = ""
-    success = result.status == "finished"
+    success = result.status == ResultStatus.SUCCESS.value
     time_taken = result.results.get("time_taken", float("inf"))
     num_terminated = result.results.get("trial_states", {}).get("TERMINATED", 0)
     was_smoke_test = result.results.get("smoke_test", False)

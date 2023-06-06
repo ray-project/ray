@@ -18,7 +18,7 @@ torch, _ = try_import_torch()
 # Keep a set of all RLlib algos that support the RLModule API.
 # For these algos we need to disable the RLModule API in the config for the purpose of
 # this test. This test is made for the ModelV2 API which is not the same as RLModule.
-RLMODULE_SUPPORTED_ALGOS = {"PPO"}
+RLMODULE_SUPPORTED_ALGOS = {"APPO", "IMPALA", "PPO"}
 
 
 def export_test(
@@ -33,30 +33,25 @@ def export_test(
         config = config.rl_module(_enable_rl_module_api=False).training(
             _enable_learner_api=False
         )
-    config = config.to_dict()
-    config["framework"] = framework
+    config.framework(framework)
     # Switch on saving native DL-framework (tf, torch) model files.
-    config["export_native_model_files"] = True
+    config.checkpointing(export_native_model_files=True)
     if "DDPG" in alg_name or "SAC" in alg_name:
-        algo = cls(config=config, env="Pendulum-v1")
+        algo = config.build(env="Pendulum-v1")
         test_obs = np.array([[0.1, 0.2, 0.3]])
     else:
         if multi_agent:
-            config["multiagent"] = {
-                "policies": {"pol1", "pol2"},
-                "policy_mapping_fn": (
+            config.multi_agent(
+                policies={"pol1", "pol2"},
+                policy_mapping_fn=(
                     lambda agent_id, episode, worker, **kwargs: "pol1"
                     if agent_id == "agent1"
                     else "pol2"
                 ),
-            }
-            config["env"] = MultiAgentCartPole
-            config["env_config"] = {
-                "num_agents": 2,
-            }
+            ).environment(MultiAgentCartPole, env_config={"num_agents": 2})
         else:
-            config["env"] = "CartPole-v1"
-        algo = cls(config=config)
+            config.environment("CartPole-v1")
+        algo = config.build()
         test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
