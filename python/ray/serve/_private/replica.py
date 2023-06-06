@@ -391,6 +391,7 @@ class RayServeReplica:
         self.version = version
         self.deployment_config = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
+        self.delete_lock = asyncio.Lock()
         self.app_name = app_name
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
@@ -698,13 +699,17 @@ class RayServeReplica:
         # Explicitly call the del method to trigger clean up.
         # We set the del method to noop after successfully calling it so the
         # destructor is called only once.
-        try:
-            if hasattr(self.callable, "__del__"):
-                # Make sure to accept `async def __del__(self)` as well.
-                await sync_to_async(self.callable.__del__)()
-                setattr(self.callable, "__del__", lambda _: None)
-        except Exception as e:
-            logger.exception(f"Exception during graceful shutdown of replica: {e}")
-        finally:
-            if hasattr(self.callable, "__del__"):
-                del self.callable
+        async with self.delete_lock:
+            if not hasattr(self, "callable"):
+                return
+
+            try:
+                if hasattr(self.callable, "__del__"):
+                    # Make sure to accept `async def __del__(self)` as well.
+                    await sync_to_async(self.callable.__del__)()
+                    setattr(self.callable, "__del__", lambda _: None)
+            except Exception as e:
+                logger.exception(f"Exception during graceful shutdown of replica: {e}")
+            finally:
+                if hasattr(self.callable, "__del__"):
+                    del self.callable

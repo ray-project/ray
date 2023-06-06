@@ -281,6 +281,12 @@ def test_recover_deleting_deployment(serve_instance):
         status = serve_instance.get_all_deployment_statuses()[0]
         check |= status.name == "A" and status.status == "UPDATING"
 
+        # Confirm replica is stopping
+        replicas = ray.get(
+            serve_instance._controller._dump_replica_states_for_testing.remote("app_A")
+        )
+        assert replicas.count(states=[ReplicaState.STOPPING]) == 1
+
         # Confirm delete task is still blocked
         finished, pending = ray.wait([delete_ref], timeout=0)
         check |= pending and not finished
