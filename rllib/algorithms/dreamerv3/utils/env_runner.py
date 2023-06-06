@@ -85,7 +85,7 @@ class DreamerV3EnvRunner(EnvRunner):
             )
             gym.register(
                 "dmc_env-v0",
-                lambda from_pixels: DMCEnv(
+                lambda from_pixels=True: DMCEnv(
                     parts[1], parts[2], from_pixels=from_pixels, channels_first=False
                 ),
             )
