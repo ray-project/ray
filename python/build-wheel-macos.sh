@@ -37,6 +37,7 @@ NUMPY_VERSIONS=("1.14.5"
                 "1.14.5"
                 "1.19.3"
                 "1.22.0"
+                "1.24.3"
                 )
 
 ./ci/env/install-bazel.sh
