@@ -124,7 +124,7 @@ if __name__ == "__main__":
             exp["config"]["framework"] = args.framework
         # Override env setting if given on command line.
         if args.env is not None:
-            exp["config"]["env"] = args.env
+            exp["config"]["env"] = exp["env"] = args.env
 
         # Override the mean reward if specified. This is used by the ray ci
         # for overriding the episode reward mean for tf2 tests for off policy
