@@ -1,4 +1,5 @@
 from collections import deque
+import copy
 from typing import Any, Dict, List, Optional, Union
 import uuid
 
@@ -109,6 +110,15 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             episodes = [episodes]
 
         for eps in episodes:
+            # Make sure we don't change what's coming in from the user.
+            # TODO (sven): It'd probably be better to make sure in the EnvRunner to not
+            #  hold on to episodes (for metrics purposes only) that we are returning
+            #  back to the user from `EnvRunner.sample()`. Then we wouldn't have to
+            #  do any copying. Instead, either compile the metrics right away on the
+            #  EnvRunner OR compile metrics entirely on the Algorithm side (this is
+            #  actually preferred).
+            eps = copy.deepcopy(eps)
+
             self._num_timesteps += len(eps)
             self._num_timesteps_added += len(eps)
 

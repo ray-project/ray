@@ -48,7 +48,7 @@ class TestDreamerV3(unittest.TestCase):
                 # TODO (sven): Fix having to provide this.
                 #  Should be compiled automatically as `RLModuleConfig` by
                 #  AlgorithmConfig (see comment below)?
-                model_dict={
+                model={
                     "batch_size_B": 2,
                     "batch_length_T": 16,
                     "horizon_H": 5,
@@ -95,9 +95,9 @@ class TestDreamerV3(unittest.TestCase):
 
         # For Atari, these are the exact numbers from the repo ([3]).
         # However, for CartPole + size "S" and "M", the author's original code will not
-        # match on the world model count. This is due to the fact that the
-        # encoder/decoder nets use 5x1024 nodes regardless of the `model_size`
-        # settings (iff >="S").
+        # match on the world model count. This is due to the fact that the author uses
+        # encoder/decoder nets with 5x1024 nodes (which corresponds to XL) regardless of
+        # the `model_size` settings (iff >="S").
         expected_num_params_world_model = {
             "XS_cartpole": 2435076,
             "S_cartpole": 7493380,
