@@ -310,7 +310,7 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
-        self._record_stats()
+        # self._record_stats()
 
     @staticmethod
     def validate_ip_port(ip_port):
@@ -334,15 +334,7 @@ class Node:
         Raises:
             Exception: An exception is raised if there is a version mismatch.
         """
-        import ray._private.usage.usage_lib as ray_usage_lib
-
-        cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
-        if cluster_metadata is None:
-            cluster_metadata = ray_usage_lib.get_cluster_metadata(self.get_gcs_client())
-
-        if not cluster_metadata:
-            return
-        ray._private.utils.check_version_info(cluster_metadata)
+        pass
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -1105,10 +1097,6 @@ class Node:
         not reported unless usage report is enabled.
         Check `usage_stats_head.py` for more details.
         """
-        # Make sure the cluster metadata wasn't reported before.
-        import ray._private.usage.usage_lib as ray_usage_lib
-
-        ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
         # Make sure GCS is up.
         self.get_gcs_client().internal_kv_put(
             b"session_name",
@@ -1178,10 +1166,10 @@ class Node:
             include_dashboard = True
             raise_on_api_server_failure = True
 
-        self.start_api_server(
-            include_dashboard=include_dashboard,
-            raise_on_failure=raise_on_api_server_failure,
-        )
+        # self.start_api_server(
+        #     include_dashboard=include_dashboard,
+        #     raise_on_failure=raise_on_api_server_failure,
+        # )
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""

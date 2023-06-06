@@ -132,25 +132,25 @@ void AgentManager::StartAgent() {
                   << exit_code << ". ip " << reported_agent_ip_address_ << ". id "
                   << reported_agent_id_;
 
-    RAY_LOG(ERROR)
-        << "The raylet exited immediately because the Ray agent failed. "
-           "The raylet fate shares with the agent. This can happen because the "
-           "Ray agent was unexpectedly killed or failed. Agent can fail when\n"
-           "- The version of `grpcio` doesn't follow Ray's requirement. "
-           "Agent can segfault with the incorrect `grpcio` version. "
-           "Check the grpcio version `pip freeze | grep grpcio`.\n"
-           "- The agent failed to start because of unexpected error or port conflict. "
-           "Read the log `cat /tmp/ray/session_latest/logs/dashboard_agent.log`. "
-           "You can find the log file structure here "
-           "https://docs.ray.io/en/master/ray-observability/"
-           "ray-logging.html#logging-directory-structure.\n"
-           "- The agent is killed by the OS (e.g., out of memory).";
-    // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
-    RAY_CHECK(std::raise(SIGTERM) == 0) << "There was a failure while sending a "
-                                           "sigterm to itself. The process will not "
-                                           "gracefully shutdown.";
-    // If the process is not terminated within 10 seconds, forcefully kill itself.
-    delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
+    // RAY_LOG(ERROR)
+    //     << "The raylet exited immediately because the Ray agent failed. "
+    //        "The raylet fate shares with the agent. This can happen because the "
+    //        "Ray agent was unexpectedly killed or failed. Agent can fail when\n"
+    //        "- The version of `grpcio` doesn't follow Ray's requirement. "
+    //        "Agent can segfault with the incorrect `grpcio` version. "
+    //        "Check the grpcio version `pip freeze | grep grpcio`.\n"
+    //        "- The agent failed to start because of unexpected error or port conflict. "
+    //        "Read the log `cat /tmp/ray/session_latest/logs/dashboard_agent.log`. "
+    //        "You can find the log file structure here "
+    //        "https://docs.ray.io/en/master/ray-observability/"
+    //        "ray-logging.html#logging-directory-structure.\n"
+    //        "- The agent is killed by the OS (e.g., out of memory).";
+    // // Sending a SIGTERM to itself is equivalent to gracefully shutting down raylet.
+    // RAY_CHECK(std::raise(SIGTERM) == 0) << "There was a failure while sending a "
+    //                                        "sigterm to itself. The process will not "
+    //                                        "gracefully shutdown.";
+    // // If the process is not terminated within 10 seconds, forcefully kill itself.
+    // delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
   });
   monitor_thread.detach();
 }
