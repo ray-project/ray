@@ -246,10 +246,6 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
     node->set_instance_id("instance_1");
     AddNode(node);
 
-    // Mock the Placement Group.
-    EXPECT_CALL(*gcs_placement_group_manager_, GetBundlesOnNode)
-        .WillRepeatedly(Return(BundlesOnNodeMap()));
-
     auto reply = GetClusterResourceStateSync();
     ASSERT_EQ(reply.node_states_size(), 1);
     CheckNodeResources(reply.node_states(0),
