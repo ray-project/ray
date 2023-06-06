@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import time
@@ -255,14 +256,13 @@ def test_controller_recover_initializing_actor(serve_instance):
 def test_replica_deletion_after_controller_recover(serve_instance):
     """Test that replicas are deleted when controller is recovered"""
 
-    signal = SignalActor.remote()
     controller = serve.context._global_client._controller
 
-    @serve.deployment
+    @serve.deployment(graceful_shutdown_timeout_s=3)
     class V1:
         async def __call__(self):
-            await signal.wait.remote()
-            return f"1|{os.getpid()}"
+            while True:
+                await asyncio.sleep(0.1)
 
     handle = serve.run(V1.bind(), name="app")
     _ = handle.remote()
@@ -291,13 +291,13 @@ def test_replica_deletion_after_controller_recover(serve_instance):
     # Make sure the replica is in STOPPING state.
     wait_for_condition(lambda: len(check_replica(ReplicaState.STOPPING)) > 0)
 
-    # Unblock the request and the replica will be stopped.
-    signal.send.remote()
+    # The graceful shutdown timeout of 3 seconds should be used
+    wait_for_condition(lambda: len(check_replica()) == 0, timeout=4)
+    # Application should be removed soon after
     wait_for_condition(
         lambda: serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.NOT_STARTED
+        == ApplicationStatus.NOT_STARTED, timeout=1
     )
-    wait_for_condition(lambda: len(check_replica()) == 0, timeout=30)
 
 
 def test_recover_deleting_deployment(serve_instance):
