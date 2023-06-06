@@ -1894,6 +1894,40 @@
 
   alert: tune_tests
 
+
+- name: tune_cloud_long_running_cloud_storage
+  group: Tune cloud tests
+  working_dir: tune_tests/cloud_tests
+  frequency: nightly
+  team: ml
+
+  cluster:
+    cluster_env: app_config.yaml
+    cluster_compute: tpl_aws_1x4.yaml
+
+  run:
+    # 2.5 days
+    timeout: 216000
+    long_running: true
+    script: python workloads/long_running_cloud_storage.py s3://tune-cloud-tests/long_running_cloud_storage
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: tpl_gce_1x4.yaml
+      run:
+        # 2.5 days
+        timeout: 216000
+        long_running: true
+        script: python workloads/long_running_cloud_storage.py gs://tune-cloud-tests/long_running_cloud_storage
+        wait_for_nodes:
+          num_nodes: 1
+
+  alert: long_running_tests
+
 ########################
 # Tune scalability tests
 ########################
