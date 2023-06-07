@@ -161,6 +161,43 @@ TEST(TestPushManager, TestRetryDuplicates) {
   ASSERT_EQ(pm.NumPushesInFlight(), 0);
 }
 
+TEST(TestPushManager, TestResendWholeObject) {
+  std::vector<int> results;
+  results.resize(10);
+  auto node_id = NodeID::FromRandom();
+  auto obj_id = ObjectID::FromRandom();
+  PushManager pm(5);
+  pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 1; });
+  ASSERT_EQ(pm.NumChunksInFlight(), 5);
+  ASSERT_EQ(pm.NumChunksRemaining(), 10);
+  ASSERT_EQ(pm.NumPushesInFlight(), 1);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
+
+  for (int i = 0; i < 5; i++) {
+    pm.OnChunkComplete(node_id, obj_id);
+  }
+  // All chunks have been sent out
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
+  ASSERT_EQ(pm.NumChunksRemaining(), 5);
+
+  // resend this object, and it needs to be added to the traversal list.
+  pm.StartPush(node_id, obj_id, 10, [&](int64_t chunk_id) { results[chunk_id] = 2; });
+  ASSERT_EQ(pm.NumChunksInFlight(), 5);
+  ASSERT_EQ(pm.NumChunksRemaining(), 15);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
+  // we will resend all chunks by second push request.
+  for (int i = 0; i < 15; i++) {
+    pm.OnChunkComplete(node_id, obj_id);
+  }
+  for (int i = 0; i < 10; i++) {
+    ASSERT_EQ(results[i], 2);
+  }
+  ASSERT_EQ(pm.NumChunksInFlight(), 0);
+  ASSERT_EQ(pm.NumChunksRemaining(), 0);
+  ASSERT_EQ(pm.NumPushesInFlight(), 0);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
+}
+
 TEST(TestPushManager, TestMultipleTransfers) {
   std::vector<int> results1;
   results1.resize(10);
@@ -225,19 +262,19 @@ TEST(TestPushManager, TestPushMultipleObject) {
     ASSERT_FALSE(result[obj_id].contains(chunk_id));
     result[obj_id].insert(chunk_id);
   });
-  ASSERT_EQ(pm.NumPendingPushRequest(), 3);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 3);
   ASSERT_EQ(pm.NumChunksInFlight(), 3);
   ASSERT_EQ(pm.NumChunksRemaining(), 7);
   ASSERT_EQ(pm.NumPushesInFlight(), 3);
 
   pm.OnChunkComplete(node_id, obj_id_1);
-  ASSERT_EQ(pm.NumPendingPushRequest(), 2);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 2);
   pm.OnChunkComplete(node_id, obj_id_1);
-  ASSERT_EQ(pm.NumPendingPushRequest(), 1);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
   pm.OnChunkComplete(node_id, obj_id_1);
-  ASSERT_EQ(pm.NumPendingPushRequest(), 1);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 1);
   pm.OnChunkComplete(node_id, obj_id_1);
-  ASSERT_EQ(pm.NumPendingPushRequest(), 0);
+  ASSERT_EQ(pm.NumPushRequestsWithChunksToSend(), 0);
 
   pm.OnChunkComplete(node_id, obj_id_2);
   pm.OnChunkComplete(node_id, obj_id_3);

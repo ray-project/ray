@@ -37,7 +37,7 @@ void PushManager::StartPush(const NodeID &dest_id,
   } else {
     RAY_LOG(DEBUG) << "Duplicate push request " << push_id.first << ", " << push_id.second
                    << ", resending all the chunks.";
-    if (it->second->NoChunkRemained()) {
+    if (it->second->NoChunksToSend()) {
       // if all the chunks have been sent, the push request needs to be re-added to
       // `push_requests_with_chunks_to_send_`.
       push_requests_with_chunks_to_send_.push_back(
@@ -83,7 +83,7 @@ void PushManager::ScheduleRemainingPushes() {
                        << " / " << max_chunks_in_flight_
                        << " max, remaining chunks: " << NumChunksRemaining();
       }
-      if (info->NoChunkRemained()) {
+      if (info->NoChunksToSend()) {
         it = push_requests_with_chunks_to_send_.erase(it);
       } else {
         it++;

@@ -67,7 +67,7 @@ class PushManager {
   int64_t NumPushesInFlight() const { return push_info_.size(); };
 
   /// Return the number of push requests with remaining chunks. For testing only.
-  int64_t NumPendingPushRequest() const {
+  int64_t NumPushRequestsWithChunksToSend() const {
     return push_requests_with_chunks_to_send_.size();
   };
 
@@ -107,12 +107,12 @@ class PushManager {
     }
 
     /// whether all the chunks have been sent.
-    bool NoChunkRemained() { return num_chunks_to_send == 0; }
+    bool NoChunksToSend() { return num_chunks_to_send == 0; }
 
     /// Send one chunck. Return true if a new chunk is sent, false if no more chunk to
     /// send.
     bool SendOneChunk() {
-      if (NoChunkRemained()) {
+      if (NoChunksToSend()) {
         return false;
       }
       num_chunks_to_send--;
