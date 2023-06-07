@@ -43,7 +43,7 @@ class HTTPProxyState:
         self._ready_obj_ref = self._actor_handle.ready.remote()
         self._status = HTTPProxyStatus.STARTING
         self._health_check_obj_ref = None
-        self._last_health_check_time: float = 0
+        self._last_health_check_time: float = time.time()
         self._shutting_down = False
         self._consecutive_health_check_failures: int = 0
 
@@ -138,11 +138,6 @@ class HTTPProxyState:
         if self._shutting_down:
             return
 
-        # Start counting last health check time on the first update call so it doesn't
-        # include other initialization time
-        if self._last_health_check_time == 0:
-            self._last_health_check_time = time.time()
-
         if self._status == HTTPProxyStatus.STARTING:
             logger.info(f"in starting state, {time.time()}")
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
@@ -165,8 +160,8 @@ class HTTPProxyState:
             elif (
                 time.time() - self._last_health_check_time > PROXY_READY_CHECK_TIMEOUT_S
             ):
-                self._last_health_check_time = time.time()
-                self.try_update_status(HTTPProxyStatus.UNHEALTHY)
+                # Ready check hasn't returned and the timeout is up, consider it failed.
+                self.set_status(HTTPProxyStatus.UNHEALTHY)
                 logger.warning(
                     "Didn't receive ready check response for HTTP proxy "
                     f"{self._node_id} after {PROXY_READY_CHECK_TIMEOUT_S}s."
