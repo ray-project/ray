@@ -34,10 +34,17 @@ def test_context_saved_when_dataset_created(ray_start_regular_shared):
     def check2(d):
         d.take()
 
+    @ray.remote(num_cpus=0)
+    def check3(d):
+        list(d.streaming_split(1)[0].iter_batches())
+
     d1.context.execution_options.resource_limits.cpu = 0.1
     with pytest.raises(ValueError):
         ray.get(check2.remote(d1))
+    with pytest.raises(ValueError):
+        ray.get(check3.remote(d1))
     ray.get(check2.remote(d2))
+    ray.get(check3.remote(d2))
 
 
 def test_read(ray_start_regular_shared):

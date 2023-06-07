@@ -23,9 +23,15 @@ To start, install Ray Data:
 .. code-block:: bash
 
     pip install -U "ray[data]"
+<<<<<<< HEAD
 
 Using Ray Data for offline inference involves four basic steps:
 
+=======
+
+Using Ray Data for offline inference involves four basic steps:
+
+>>>>>>> a66a0f270333327249ba1a13306535ea34e4eb9a
 - **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different data sources and formats. For more details, see :ref:`Loading Data <loading_data>`.
 - **Step 2:** Define a Python class to load the pre-trained model. 
 - **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming-data>`.
@@ -288,6 +294,8 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             from typing import Dict
             import numpy as np
+            import tensorflow as tf
+            from tensorflow import keras
 
             import ray
             
@@ -295,9 +303,6 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             class TFPredictor:
                 def __init__(self):
-                    import tensorflow as tf
-                    from tensorflow import keras
-                    
                     # Move the neural network to GPU by specifying the GPU device.
                     with tf.device("GPU:0"):
                         input_layer = keras.Input(shape=(100,))
@@ -313,12 +318,16 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions = ds.map_batches(
                 TFPredictor, 
                 num_gpus=1,
+                # Specify the batch size for inference. 
+                # Increase this for larger datasets.
+                batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
                 compute=ray.data.ActorPoolStrategy(size=2) 
                 )
             predictions.show(limit=1)
 
         .. testoutput::
+            :options: +MOCK
 
             {'output': array([0.625576], dtype=float32)}
 
