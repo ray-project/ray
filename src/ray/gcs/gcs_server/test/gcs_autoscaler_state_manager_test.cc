@@ -75,6 +75,17 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     }
   }
 
+  void RequestClusterResourceConstraint(
+      const rpc::ClusterResourceConstraint &constraint) {
+    rpc::autoscaler::RequestClusterResourceConstraintRequest request;
+    request.mutable_cluster_resource_constraint()->CopyFrom(constraint);
+    rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+    auto send_reply_callback =
+        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+    gcs_autoscaler_state_manager_->HandleRequestClusterResourceConstraint(
+        request, &reply, send_reply_callback);
+  }
+
   rpc::autoscaler::GetClusterResourceStateReply GetClusterResourceStateSync() {
     rpc::autoscaler::GetClusterResourceStateRequest request;
     rpc::autoscaler::GetClusterResourceStateReply reply;
@@ -113,6 +124,10 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     for (const auto &resource : request.resources_bundle()) {
       m[resource.first] = resource.second;
     }
+    return ShapeToString(m);
+  }
+
+  std::string ShapeToString(const std::map<std::string, double> &m) {
     std::stringstream ss;
     for (const auto &resource : m) {
       ss << resource.first << ":" << resource.second << ",";
@@ -139,6 +154,12 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       ASSERT_EQ(actual_requests_by_count[req.first], req.second)
           << "Request: " << req.first;
     }
+  }
+
+  void CheckResourceRequest(const rpc::autoscaler::ResourceRequest &request,
+                            const std::map<std::string, double> &expected_resources) {
+    ASSERT_EQ(request.resources_bundle().size(), expected_resources.size());
+    ASSERT_EQ(ShapeToString(request), ShapeToString(expected_resources));
   }
 };
 
@@ -218,6 +239,36 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
     RemoveNode(NodeID::FromBinary(node->node_id()));
     auto reply = GetClusterResourceStateSync();
     ASSERT_EQ(reply.pending_resource_requests_size(), 0);
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
+  // Get empty cluster resources constraint.
+  {
+    auto reply = GetClusterResourceStateSync();
+    ASSERT_EQ(reply.cluster_resource_constraints_size(), 0);
+  }
+
+  // Generate one constraint.
+  {
+    RequestClusterResourceConstraint(
+        Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}));
+    auto reply = GetClusterResourceStateSync();
+    ASSERT_EQ(reply.cluster_resource_constraints_size(), 1);
+    ASSERT_EQ(reply.cluster_resource_constraints(0).min_bundles_size(), 1);
+    CheckResourceRequest(reply.cluster_resource_constraints(0).min_bundles(0),
+                         {{"CPU", 2}, {"GPU", 1}});
+  }
+
+  // Override it
+  {
+    RequestClusterResourceConstraint(
+        Mocker::GenClusterResourcesConstraint({{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}));
+    auto reply = GetClusterResourceStateSync();
+    ASSERT_EQ(reply.cluster_resource_constraints_size(), 1);
+    ASSERT_EQ(reply.cluster_resource_constraints(0).min_bundles_size(), 1);
+    CheckResourceRequest(reply.cluster_resource_constraints(0).min_bundles(0),
+                         {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
   }
 }
 

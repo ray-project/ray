@@ -182,6 +182,11 @@ def request_resources(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
     )
 
+    if ray._config.enable_autoscaler_v2():
+        from ray.autoscaler.v2.sdk import request_cluster_resources
+
+        request_cluster_resources(to_request)
+
 
 def create_or_update_cluster(
     config_file: str,

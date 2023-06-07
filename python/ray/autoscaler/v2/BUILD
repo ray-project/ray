@@ -5,6 +5,13 @@
 # --------------------------------------------------------------------
 load("//bazel:python.bzl", "py_test_module_list")
 
+
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"],
+    deps = ["//python/ray/tests:conftest"],
+)
+
 py_test(
     name = "test_instance_storage",
     size = "small",
@@ -45,4 +52,13 @@ py_test(
     srcs = ["tests/test_ray_installer.py"],
     tags = ["team:core"],
     deps = ["//:ray_lib",],
+)
+
+
+py_test(
+    name = "test_sdk",
+    size = "small",
+    srcs = ["tests/test_sdk.py"],
+    tags = ["team:core"],
+    deps = ["//:ray_lib", ":conftest"],
 )
