@@ -15,7 +15,7 @@ show you how achieve several tasks.
     loading-data
     transforming-data
     consuming-data
-    batch_inference
     working-with-tensors
     data-internals
     performance-tips
+    batch_inference
