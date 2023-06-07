@@ -682,6 +682,7 @@ class RayServeReplica:
                     latency_ms=latency_ms,
                 )
             )
+
             return result
 
     async def prepare_for_shutdown(self):

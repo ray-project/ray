@@ -40,8 +40,7 @@ class RequestMetadata:
     endpoint: str
     call_method: str = "__call__"
 
-    # This flag will be set to true if the input argument is manually pickled
-    # and it needs to be deserialized by the replica.
+    # This flag is set if the request is made from the HTTP proxy to a replica.
     is_http_request: bool = False
 
     # HTTP route path of the request.
