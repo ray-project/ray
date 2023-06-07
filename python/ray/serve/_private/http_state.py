@@ -139,11 +139,9 @@ class HTTPProxyState:
             return
 
         if self._status == HTTPProxyStatus.STARTING:
-            logger.info(f"in starting state, {time.time()}")
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
             if finished:
                 try:
-                    logger.info(f"update to healthy, {time.time()}")
                     worker_id, log_file_path = json.loads(ray.get(finished[0]))
                     self.try_update_status(HTTPProxyStatus.HEALTHY)
                     self.update_actor_details(
