@@ -292,7 +292,7 @@ Multi-node clusters are untested. To get started with local Ray development:
 
    * ``pip install ray``
 
-#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs.
+#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio requires special compilation flags, which pypi does _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs.
 
    * ``pip uninstall grpcio; conda install grpcio=1.43.0 -c conda-forge``
 
