@@ -333,29 +333,29 @@ def test_recover_deleting_deployment(serve_instance):
     print("Started task to delete deployment `A`")
 
     def deployment_deleting():
-        check = True
         # Confirm deployment is in updating state
         status = serve_instance.get_all_deployment_statuses()[0]
-        check |= status.name == "A" and status.status == "UPDATING"
+        if not (status.name == "A" and status.status == "UPDATING"):
+            return False
 
         # Confirm replica is stopping
         replicas = ray.get(
             serve_instance._controller._dump_replica_states_for_testing.remote("A")
         )
-        assert replicas.count(states=[ReplicaState.STOPPING]) == 1
+        if replicas.count(states=[ReplicaState.STOPPING]) != 1:
+            return False
 
         # Confirm delete task is still blocked
         finished, pending = ray.wait([delete_ref], timeout=0)
-        check |= pending and not finished
-        return check
+        return pending and not finished
 
     def check_deleted():
-        check = True
         deployment_statuses = serve_instance.get_all_deployment_statuses()
-        check |= len(deployment_statuses) == 0
+        if len(deployment_statuses) != 0:
+            return False
+
         finished, pending = ray.wait([delete_ref], timeout=0)
-        check |= finished and not pending
-        return check
+        return finished and not pending
 
     wait_for_condition(deployment_deleting)
     for _ in range(10):
