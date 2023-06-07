@@ -36,6 +36,7 @@ from ray.serve._private.constants import (
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
     ASGIHTTPSender,
     ASGIHTTPQueueSender,
     RawASGIResponse,
@@ -173,9 +174,12 @@ def create_replica_wrapper(name: str):
                     _callable = deployment_def
                 else:
                     # This allows deployments to define an async __init__
-                    # method (required for FastAPI).
+                    # method (mostly used for testing).
                     _callable = deployment_def.__new__(deployment_def)
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
+
+                    if isinstance(_callable, ASGIAppReplicaWrapper):
+                        await _callable._run_asgi_lifespan_startup()
 
                 # Setting the context again to update the servable_object.
                 ray.serve.context._set_internal_replica_context(
@@ -247,10 +251,12 @@ def create_replica_wrapper(name: str):
                 self.replica.handle_request(query, asgi_sender=asgi_queue_sender)
             )
 
-            done = []
-            while handle_request_task not in done:
+            while True:
+                wait_for_message_task = self._event_loop.create_task(
+                    asgi_queue_sender.wait_for_message()
+                )
                 done, _ = await asyncio.wait(
-                    [handle_request_task, asgi_queue_sender.wait_for_message()],
+                    [handle_request_task, wait_for_message_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 # Consume and yield all available messages in the queue.
@@ -258,6 +264,15 @@ def create_replica_wrapper(name: str):
                 # we use vanilla pickle because it's faster than cloudpickle and we
                 # know it's safe for these messages containing primitive types.
                 yield pickle.dumps(asgi_queue_sender.get_messages_nowait())
+
+                # Exit once `handle_request` has finished. In this case, all messages
+                # must have already been sent.
+                # Cancel the `wait_for_message_task` to avoid innocuous error messages.
+                if handle_request_task in done:
+                    if not wait_for_message_task.done():
+                        wait_for_message_task.cancel()
+
+                    break
 
             e = handle_request_task.exception()
             if e is not None:
@@ -297,7 +312,7 @@ def create_replica_wrapper(name: str):
             return (
                 os.getpid(),
                 ray.get_runtime_context().get_actor_id(),
-                ray._private.worker.global_worker.worker_id.hex(),
+                ray.get_runtime_context().get_worker_id(),
                 ray.get_runtime_context().get_node_id(),
                 ray.util.get_node_ip_address(),
                 get_component_logger_file_path(),
@@ -527,7 +542,7 @@ class RayServeReplica:
 
         # Check if the callable is our ASGI wrapper (i.e., the user used
         # `@serve.ingress`).
-        callable_is_asgi_wrapper = hasattr(self.callable, "_is_serve_asgi_wrapper")
+        callable_is_asgi_wrapper = isinstance(self.callable, ASGIAppReplicaWrapper)
         if asgi_sender is not None and callable_is_asgi_wrapper:
             kwargs["asgi_sender"] = asgi_sender
 

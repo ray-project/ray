@@ -2,13 +2,12 @@ from typing import Any, Callable, List, Tuple, TypeVar, Union
 
 import numpy as np
 
-from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+from ray.data._internal.progress_bar import ProgressBar
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
-
 
 T = TypeVar("T")
 
@@ -39,6 +38,8 @@ class SortTaskSpec(ExchangeTaskSpec):
     consists of items in a certain range. It then merges the sorted blocks into one
     sorted block and becomes part of the new, sorted block.
     """
+
+    SORT_SAMPLE_SUB_PROGRESS_BAR_NAME = "Sort Sample"
 
     def __init__(
         self,
@@ -99,7 +100,9 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_results = [
             sample_block.remote(block, n_samples, key) for block in blocks
         ]
-        sample_bar = ProgressBar("Sort Sample", len(sample_results))
+        sample_bar = ProgressBar(
+            SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME, len(sample_results)
+        )
         samples = sample_bar.fetch_until_complete(sample_results)
         sample_bar.close()
         del sample_results

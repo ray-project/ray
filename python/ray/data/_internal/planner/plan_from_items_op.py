@@ -3,10 +3,7 @@ from typing import List
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import (
-    PhysicalOperator,
-    RefBundle,
-)
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.from_items_operator import FromItems
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
