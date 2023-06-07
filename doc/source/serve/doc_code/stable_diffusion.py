@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 
 # __example_code_start__
+
 from io import BytesIO
 from fastapi import FastAPI
 from fastapi.responses import Response

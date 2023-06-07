@@ -163,8 +163,8 @@ class HTTPProxyState:
             elif (
                 time.time() - self._last_health_check_time > PROXY_READY_CHECK_TIMEOUT_S
             ):
-                # Ready check hasn't returned and the timeout is up, consider it failed.
-                self.set_status(HTTPProxyStatus.UNHEALTHY)
+                self._last_health_check_time = time.time()
+                self.try_update_status(HTTPProxyStatus.UNHEALTHY)
                 logger.warning(
                     "Didn't receive ready check response for HTTP proxy "
                     f"{self._node_id} after {PROXY_READY_CHECK_TIMEOUT_S}s."

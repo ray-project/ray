@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from ray import serve
 import torch
 
+
 app = FastAPI()
 
 
