@@ -49,6 +49,10 @@ class GcsFunctionManager {
     kv_.Del("fun", "IsolatedExports:" + job_id_hex + ":", true, nullptr);
     kv_.Del("fun", "RemoteFunction:" + job_id_hex + ":", true, nullptr);
     kv_.Del("fun", "ActorClass:" + job_id_hex + ":", true, nullptr);
+    kv_.Del("fun",
+            std::string(kWorkerSetupHookKeyName) + ":" + job_id_hex + ":",
+            true,
+            nullptr);
   }
 
   // Handler for internal KV
