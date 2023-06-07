@@ -18,9 +18,18 @@ class MockIssue:
     def __init__(self, number: int):
         self.number = number
 
+    def edit(self, *args, **kwargs):
+        return self
+
+    def create_comment(self, *args, **kwargs):
+        return self
+
 
 class MockRepo:
     def create_issue(self, *args, **kwargs):
+        return MockIssue(10)
+
+    def get_issue(self, *args, **kwargs):
         return MockIssue(10)
 
 
@@ -79,6 +88,27 @@ def test_move_from_passing_to_failing():
     sm.move()
     assert test.get_state() == TestState.CONSITENTLY_FAILING
     assert test[Test.KEY_GITHUB_ISSUE_NUMBER] == 10
+
+
+def test_move_from_failing_to_passing():
+    test = Test(name="test", team="devprod")
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+    ]
+    sm = TestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.CONSITENTLY_FAILING
+    assert test[Test.KEY_GITHUB_ISSUE_NUMBER] == 10
+    test.test_results.insert(
+        0,
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    )
+    sm = TestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.PASSING
+    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
+    assert test.get(Test.KEY_BISECT_BUILD_NUMBER) is None
 
 
 if __name__ == "__main__":
