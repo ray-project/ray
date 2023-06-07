@@ -9,32 +9,9 @@ End-to-end: Offline Batch Inference
 
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications.
 
+For an overview on why you should use Ray Data for offline batch inference, and how it compares to alternatives, see the :ref:`Ray Data Overview <data_overview>`.
+
 .. figure:: images/batch_inference.png
-
-
-Why choose Ray Data for offline inference?
-------------------------------------------
-
-.. dropdown:: Faster and cheaper for modern deep learning applications
-
-    Ray Data is designed for deep learning applications that involve both CPU preprocessing and GPU inference. Ray Data streams working data from CPU preprocessing tasks to GPU inferencing tasks, allowing you to utilize both sets of resources concurrently.
-
-    By using Ray Data, your GPUs are no longer idle during CPU computation, reducing overall cost of the batch inference job.
-
-.. dropdown:: Cloud, framework, and data format agnostic
-
-    Ray Data has no restrictions on cloud provider, ML framework, or data format.
-    
-    Through the :ref:`Ray cluster launcher <cluster-index>`, you can start a Ray cluster on AWS, GCP, or Azure clouds. You can use any ML framework of your choice, including PyTorch, HuggingFace, or Tensorflow. Ray Data also does not require a particular file format, and supports a :ref:`wide variety of formats <loading_data>` including CSV, Parquet, and raw images.
-
-.. dropdown:: Out of the box scaling
-
-    Ray Data is built on Ray, so it easily scales to many machines. Code that works on one machine also runs on a large cluster without any changes.
-
-.. dropdown:: Python first
-
-    With Ray Data, you can express your inference job directly in Python instead of
-    YAML or other formats, allowing for faster iterations, easier debugging, and a native developer experience.
 
 
 .. _batch_inference_quickstart:
@@ -221,8 +198,8 @@ Using GPUs for inference
 To use GPUs for inference, make the following changes to your code:
 
 1. Update the class implementation to move the model and data to and from GPU.
-2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU. 
-3. Specify a `batch_size` for inference. For more details on how to configure the batch size, see `batch_inference_batch_size`_.
+2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU.
+3. Specify a `batch_size` for inference. For more details on how to configure the batch size, see `batch_inference_batch_size`_. 
 
 The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
@@ -303,7 +280,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                 num_gpus=1,
                 # Specify the batch size for inference. 
                 # Increase this for larger datasets.
-                batch_size=1, 
+                batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
                 compute=ray.data.ActorPoolStrategy(size=2) 
                 )
@@ -440,31 +417,3 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
         compute=ray.data.ActorPoolStrategy(size=12) 
         )
     predictions.show(limit=1)
-
-How does Ray Data compare to X for offline inference?
------------------------------------------------------
-
-.. dropdown:: Batch Services: AWS Batch, GCP Batch
-
-    Cloud providers such as AWS, GCP, and Azure provide batch services to manage compute infrastructure for you. Each service uses the same process: you provide the code, and the service runs your code on each node in a cluster. However, while infrastructure management is necessary, it is often not enough. These services have limitations, such as a lack of software libraries to address optimized parallelization, efficient data transfer, and easy debugging. These solutions are suitable only for experienced users who can write their own optimized batch inference code.
-
-    Ray Data abstracts away not only the infrastructure management, but also the sharding your dataset, the parallelization of the inference over these shards, and the transfer of data from storage to CPU to GPU.
-
-
-.. dropdown:: Online inference solutions: Bento ML, Sagemaker Batch Transform
-
-    Solutions like `Bento ML <https://www.bentoml.com/>`_, `Sagemaker Batch Transform <https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html>`_, or :ref:`Ray Serve <rayserve>` provide APIs to make it easy to write performant inference code and can abstract away infrastructure complexities. But they are designed for online inference rather than offline batch inference, which are two different problems with different sets of requirements. These solutions introduce additional complexity like HTTP, and cannot effectively handle large datasets leading inference service providers like `Bento ML to integrating with Apache Spark <https://modelserving.com/blog/unifying-real-time-and-batch-inference-with-bentoml-and-spark>`_ for offline inference.
-
-    Ray Data is built for offline batch jobs, without all the extra complexities of starting servers or sending HTTP requests.
-
-    For a more detailed performance comparison between Ray Data and Sagemaker Batch Transform, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
-
-.. dropdown:: Distributed Data Processing Frameworks: Apache Spark
-
-    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
-
-    For a more detailed performance comarison between Ray Data and Apache Spark, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
-
-Case studies
-------------
-- `Sewer AI speeds up object detection on videos 3x using Ray Data <https://www.anyscale.com/blog/inspecting-sewer-line-safety-using-thousands-of-hours-of-video>`_

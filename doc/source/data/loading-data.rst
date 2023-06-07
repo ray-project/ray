@@ -3,12 +3,13 @@
 ====================
 Loading Data
 ====================
-
 :class:`Datasets <ray.data.Dataset>` can be created from:
 
 * generated synthetic data,
 * local and distributed in-memory data, and
-* local and external storage systems (local disk, cloud storage, HDFS, etc.).
+* local and external storage systems (local disk, cloud storage, HDFS, etc.)..
+
+For an exhaustive list of supported sources, read the :ref:`Input/Output API reference <input-output>`.
 
 .. _dataset_generate_data:
 
