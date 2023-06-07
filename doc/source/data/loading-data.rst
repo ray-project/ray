@@ -25,8 +25,8 @@ the ``local://`` schema. Paths can point to files or directories.
 
 .. tip::
 
-    If your files are accessible on every node, exclude ``local://`` to optimize
-    reads.
+    If your files are accessible on every node, exclude ``local://`` to parallelize the
+    read tasks across the cluster.
 
 .. tab-set::
 
