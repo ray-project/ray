@@ -178,7 +178,6 @@ class ImportThread:
         else:
             assert False, "This code should be unreachable."
 
-
     def _internal_kv_multiget(self, key, fields):
         vals = self.gcs_client.internal_kv_get(
             key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE

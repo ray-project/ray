@@ -417,15 +417,12 @@ class Worker:
         node (ray._private.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
-        cached_functions_to_run: A list of functions to run on all of
-            the workers that should be exported as soon as connect is called.
     """
 
     def __init__(self):
         """Initialize a Worker object."""
         self.node = None
         self.mode = None
-        self.cached_functions_to_run: list = []
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
@@ -2058,7 +2055,6 @@ def connect(
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
-    assert worker.cached_functions_to_run is not None, error_message
 
     # Enable nice stack traces on SIGSEGV etc.
     try:
@@ -2284,21 +2280,6 @@ def connect(
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
-    if mode == SCRIPT_MODE:
-        # TODO(rkn): Here we first export functions to run, then remote
-        # functions. The order matters. For example, one of the functions to
-        # run may set the Python path, which is needed to import a module used
-        # to define a remote function. We may want to change the order to
-        # simply be the order in which the exports were defined on the driver.
-        # In addition, we will need to retain the ability to decide what the
-        # first few exports are (mostly to set the Python path). Additionally,
-        # note that the first exports to be defined on the driver will be the
-        # ones defined in separate modules that are imported by the driver.
-        # Export cached functions_to_run.
-        for function in worker.cached_functions_to_run:
-            worker.run_function_on_all_workers(function)
-    worker.cached_functions_to_run = None
-
     # Setup tracing here
     tracing_hook_val = worker.gcs_client.internal_kv_get(
         b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING
@@ -2346,7 +2327,6 @@ def disconnect(exiting_interpreter=False):
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
-    worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
     try:
         ray_actor = ray.actor
