@@ -17,7 +17,7 @@ show you how achieve several tasks.
     inspecting-data
     iterating-over-data
     saving-data
-    batch_inference
     working-with-tensors
     data-internals
     performance-tips
+    batch_inference
