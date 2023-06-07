@@ -6,7 +6,8 @@ import pytest
 import ray
 from ray import tune
 from ray.air import Checkpoint, session
-from ray.air.config import RunConfig, ScalingConfig
+from ray.air.constants import TRAINING_ITERATION
+from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
@@ -189,6 +190,41 @@ def test_reuse_checkpoint(ray_start_4_cpus):
     analysis = tuner.fit()._experiment_analysis
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 5
+
+
+def test_retry_with_max_failures(ray_start_4_cpus):
+    """Tests trainer retry with max_failures > 0 when integrating with Tune."""
+
+    def train_func():
+        ckpt = session.get_checkpoint()
+        restored = bool(ckpt)  # Does a previous checkpoint exist?
+        itr = 0
+        if ckpt:
+            ckpt = ckpt.to_dict()
+            itr = ckpt["iter"] + 1
+
+        for i in range(itr, 4):
+            if i == 2 and not restored:
+                raise Exception("try to fail me")
+            session.report(
+                dict(test=i, training_iteration=i),
+                checkpoint=Checkpoint.from_dict(dict(iter=i)),
+            )
+
+    trainer = DataParallelTrainer(
+        train_func,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    tuner = Tuner(
+        trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
+    )
+
+    result_grid = tuner.fit()
+    checkpoint = result_grid[0].checkpoint.to_dict()
+    assert checkpoint["iter"] == 3
+    df = result_grid[0].metrics_dataframe
+    assert len(df[TRAINING_ITERATION]) == 4
 
 
 def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
