@@ -568,9 +568,9 @@ class RayServeReplica:
                 request_item.metadata.http_arg_is_pickled
                 and len(inspect.signature(runner_method).parameters) == 0
             ):
-                request_args, request_kwargs = tuple(), {}
+                args, kwargs = tuple(), {}
 
-            result = await method_to_call(*request_args, **request_kwargs)
+            result = await method_to_call(*args, **kwargs)
 
             # Streaming HTTP codepath: always send response over ASGI interface.
             if asgi_sender is not None:
