@@ -345,7 +345,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.model.get_initial_state(),
+            self.rl_module.get_initial_state(),
         )
         is_first = np.ones((self.num_envs,), dtype=np.float32)
 

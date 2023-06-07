@@ -794,7 +794,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # intermediates.shape=[2-16, BxT]
 
         # Loop through reversed timesteps (axis=1) from T+1 to t=2.
-        for t in reversed(range(len(discount))):
+        for t in reversed(range(discount.shape[0])):
             Rs.append(intermediates[t] + discount[t] * hps.gae_lambda * Rs[-1])
 
         # Reverse along time axis and cut the last entry (value estimate at very end
@@ -837,21 +837,32 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         Per_R_5 = tfp.stats.percentile(value_targets_H_B, 5)
         Per_R_95 = tfp.stats.percentile(value_targets_H_B, 95)
 
-        # Update EMAs stored in actor network.
-        # Initial values: Just set.
-        if tf.math.is_nan(actor.ema_value_target_pct5):
-            actor.ema_value_target_pct5.assign(Per_R_5)
-            actor.ema_value_target_pct95.assign(Per_R_95)
-        # Later update (something already stored in EMA variable): Update EMA.
-        else:
-            actor.ema_value_target_pct5.assign(
+        # Update EMA values for 5 and 95 percentile, stored as tf variables under actor
+        # network.
+        # 5 percentile
+        new_val_pct5 = tf.where(
+            tf.math.is_nan(actor.ema_value_target_pct5),
+            # is NaN: Initial values: Just set.
+            Per_R_5,
+            # Later update (something already stored in EMA variable): Update EMA.
+            (
                 hps.return_normalization_decay * actor.ema_value_target_pct5
                 + (1.0 - hps.return_normalization_decay) * Per_R_5
-            )
-            actor.ema_value_target_pct95.assign(
+            ),
+        )
+        actor.ema_value_target_pct5.assign(new_val_pct5)
+        # 95 percentile
+        new_val_pct95 = tf.where(
+            tf.math.is_nan(actor.ema_value_target_pct95),
+            # is NaN: Initial values: Just set.
+            Per_R_95,
+            # Later update (something already stored in EMA variable): Update EMA.
+            (
                 hps.return_normalization_decay * actor.ema_value_target_pct95
                 + (1.0 - hps.return_normalization_decay) * Per_R_95
-            )
+            ),
+        )
+        actor.ema_value_target_pct95.assign(new_val_pct95)
 
         # [1] eq. 11 (first term).
         # Danijar's code: TODO: describe ...

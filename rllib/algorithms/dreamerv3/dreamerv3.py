@@ -358,7 +358,7 @@ class DreamerV3Config(AlgorithmConfig):
         return DreamerV3LearnerHyperparameters(
             model_size=self.model_size,
             training_ratio=self.training_ratio,
-            batch_size_B=self.batch_size_B,
+            batch_size_B=self.batch_size_B // self.num_learner_workers,#TODO: make sure batch_size is compatible with num learners
             batch_length_T=self.batch_length_T,
             horizon_H=self.horizon_H,
             gamma=self.gamma,
@@ -421,16 +421,11 @@ class DreamerV3(Algorithm):
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
-        # Summarize (single-agent) RLModule once here.
-        # TODO: use local worker instead of learner group's local Learner
+        # Summarize (single-agent) RLModule (only once) here.
         if self.config.framework_str == "tf2":
-            self.learner_group._learner.module[DEFAULT_POLICY_ID].dreamer_model.summary(
+            self.workers.local_worker().rl_module.dreamer_model.summary(
                 expand_nested=True
             )
-
-        # The vectorized gymnasium EnvRunner to collect samples of shape (B, T, ...).
-        # self.env_runner = EnvRunner(model=None, config=self.config)
-        # env_runner_evaluation = EnvRunnerV2(model=None, config=self.config)
 
         # Create a replay buffer for storing actual env samples.
         self.replay_buffer = EpisodeReplayBuffer(

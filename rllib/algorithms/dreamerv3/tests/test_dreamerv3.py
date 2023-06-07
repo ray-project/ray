@@ -41,7 +41,7 @@ class TestDreamerV3(unittest.TestCase):
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).
-                batch_size_B=2,  # shared w/ model AND learner AND env runner
+                batch_size_B=2 * 2,  # shared w/ model AND learner AND env runner
                 batch_length_T=16,
                 horizon_H=5,
 
@@ -49,18 +49,16 @@ class TestDreamerV3(unittest.TestCase):
                 #  Should be compiled automatically as `RLModuleConfig` by
                 #  AlgorithmConfig (see comment below)?
                 model={
-                    "batch_size_B": 2,
                     "batch_length_T": 16,
                     "horizon_H": 5,
                     "model_size": "nano",  # Use a tiny model for testing.
                     "gamma": 0.997,
-                    "training_ratio": 512,
                     "symlog_obs": True,
                 },
                 _enable_learner_api=True,
             )
             .resources(
-                num_learner_workers=0,
+                num_learner_workers=2,  # Try with 2 Learners.
                 num_cpus_per_learner_worker=1,
                 num_gpus_per_learner_worker=0,
                 num_gpus=0,
@@ -138,11 +136,9 @@ class TestDreamerV3(unittest.TestCase):
             .framework("tf2", eager_tracing=True)
             .training(
                 model={
-                    "batch_size_B": 2,
                     "batch_length_T": 16,
                     "horizon_H": 5,
                     "gamma": 0.997,
-                    "training_ratio": 512,
                     "symlog_obs": True,
                 }
             )
