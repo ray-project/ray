@@ -3976,7 +3976,6 @@ class Dataset:
 
         blocks = copy._plan._snapshot_blocks
         blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
-        metadata = [t[1] for t in blocks_with_metadata]
         # TODO(hchen): Here we generate the same number of blocks as
         # the original Dataset. Because the old code path does this, and
         # some unit tests implicily depend on this behavior.
@@ -3996,8 +3995,8 @@ class Dataset:
                 copy._plan.stats(),
                 run_by_consumer=False,
             ),
-            0,
-            True,
+            copy._epoch,
+            copy._lazy,
             logical_plan,
         )
         output._plan.execute()  # No-op that marks the plan as fully executed.
