@@ -80,9 +80,6 @@ documentation, sorted alphabetically.
         .. doctest::
 
             >>> import ray
-            >>> # Dataset is executed by streaming executor by default, which doesn't
-            >>> # preserve the order, so we explicitly set it here.
-            >>> ray.data.context.DataContext.get_current().execution_options.preserve_order = True
             >>> dataset = ray.data.range(10)
             >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
             {'id': array([0, 1, 2, 3, 4])}
