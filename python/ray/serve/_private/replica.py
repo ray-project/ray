@@ -581,6 +581,8 @@ class RayServeReplica:
             ):
                 request_args, request_kwargs = tuple(), {}
 
+            print("METHOD:", method_to_call)
+            print("ARGS:", request_args)
             result = await method_to_call(*request_args, **request_kwargs)
             if request_metadata.is_http_request:
                 # For the FastAPI codepath, the response has already been sent over the
