@@ -109,7 +109,6 @@ parts:
               - file: data/examples/custom-datasource
           - file: data/faq
           - file: data/api/api
-          - file: data/glossary
 
       - file: train/train
         title: Ray Train
