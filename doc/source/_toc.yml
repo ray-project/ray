@@ -90,6 +90,8 @@ parts:
       - file: data/data
         title: Ray Data
         sections:
+          - file: data/overview
+            title: Overview
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
