@@ -581,19 +581,8 @@ class RayServeReplica:
             ):
                 request_args, request_kwargs = tuple(), {}
 
-            print("METHOD:", method_to_call)
-            print("ARGS:", request_args)
             result = await method_to_call(*request_args, **request_kwargs)
-            if request_metadata.is_http_request:
-                # For the FastAPI codepath, the response has already been sent over the
-                # ASGI interace and result should always be `None`.
-                if isinstance(self.callable, ASGIAppReplicaWrapper):
-                    assert result is None
-                # For the vanilla deployment codepath, always send the result over ASGI.
-                else:
-                    await self.send_user_result_over_asgi(result, scope, send, receive)
 
-            self.request_counter.inc(tags={"route": request_metadata.route})
         except Exception as e:
             logger.exception(f"Request failed due to {type(e).__name__}:")
             success = False
@@ -606,6 +595,22 @@ class RayServeReplica:
             if method_to_call is not None:
                 function_name = method_to_call.__name__
             result = wrap_to_ray_error(function_name, e)
+            if request_metadata.is_http_request:
+                error_message = f"Unexpected error, traceback: {result}."
+                result = starlette.responses.Response(error_message, status_code=500)
+
+        if request_metadata.is_http_request:
+            # For the FastAPI codepath, the response has already been sent over the
+            # ASGI interace and result should always be `None`.
+            if isinstance(self.callable, ASGIAppReplicaWrapper):
+                assert result is None
+            # For the vanilla deployment codepath, always send the result over ASGI.
+            else:
+                await self.send_user_result_over_asgi(result, scope, send, receive)
+
+        if success:
+            self.request_counter.inc(tags={"route": request_metadata.route})
+        else:
             self.error_counter.inc(tags={"route": request_metadata.route})
 
         return result, success
