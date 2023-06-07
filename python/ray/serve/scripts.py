@@ -522,11 +522,11 @@ def config(address: str, name: Optional[str]):
             'to use "serve config".'
         )
         if name not in serve_details.applications:
-            cli_logger.error(config_unavailable_msg)
+            print(config_unavailable_msg)
         else:
             app_config = serve_details.applications.get(name).deployed_app_config
             if app_config is None:
-                cli_logger.error(config_unavailable_msg)
+                print(config_unavailable_msg)
             else:
                 config = app_config.dict(exclude_unset=True)
                 print(yaml.safe_dump(config, sort_keys=False), end="")

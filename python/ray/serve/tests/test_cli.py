@@ -18,7 +18,6 @@ import ray
 from ray import serve
 from ray.util.state import list_actors
 from ray._private.test_utils import wait_for_condition
-from ray.serve.schema import ServeApplicationSchema
 from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
@@ -176,8 +175,8 @@ def test_deploy_with_http_options(ray_start_stop):
     )
 
     # Config should contain matching host and port options
-    info_response = subprocess.check_output(["serve", "config"])
-    info = yaml.safe_load(info_response)
+    config_response = subprocess.check_output(["serve", "config"])
+    info = yaml.safe_load(config_response)
 
     assert config == info
 
@@ -706,11 +705,11 @@ def test_shutdown(ray_start_stop):
         wait_for_condition(lambda: num_live_deployments() == 2, timeout=15)
         print("Deployment successful. Deployments are live.")
 
-        # `serve config` and `serve status` should print non-empty schemas
+        # `serve config` should not print error
         config_response = subprocess.check_output(["serve", "config"])
-        config = yaml.safe_load(config_response)
-        assert ServeApplicationSchema.get_empty_schema_dict() != config
+        assert b"Config unavailable" not in config_response
 
+        # `serve status` should not print error
         status_response = subprocess.check_output(["serve", "status"])
         status = yaml.safe_load(status_response)
         assert "There are no applications running on this cluster." != status
@@ -719,13 +718,15 @@ def test_shutdown(ray_start_stop):
         print("Deleting Serve app.")
         subprocess.check_output(["serve", "shutdown", "-y"])
 
-        # `serve config` and `serve status` should print empty schemas
         def serve_config_empty():
+            """`serve config` should print error."""
+
             config_response = subprocess.check_output(["serve", "config"])
-            config = yaml.safe_load(config_response)
-            return ServeApplicationSchema.get_empty_schema_dict() == config
+            return b"Config unavailable" in config_response
 
         def serve_status_empty():
+            """`serve status` should print error."""
+
             status_response = subprocess.check_output(["serve", "status"])
             status = yaml.safe_load(status_response)
             return "There are no applications running on this cluster." == status
