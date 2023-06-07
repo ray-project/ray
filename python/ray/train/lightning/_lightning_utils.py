@@ -4,6 +4,7 @@ from ray.air.constants import MODEL_KEY
 from ray.data.dataset import DataIterator
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 
+import os
 import logging
 import shutil
 import torch
@@ -111,6 +112,7 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
             rank=self.global_rank,
         )
 
+
 class RayEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
 
@@ -186,9 +188,19 @@ class RayModelCheckpoint(ModelCheckpoint):
     creates an AIR checkpoint whenever a lightning checkpoint is saved.
     """
 
-    def setup(self, *args, **kwargs) -> None:
-        super().setup(*args, **kwargs)
+    def setup(
+        self,
+        trainer: "pl.Trainer",
+        pl_module: "pl.LightningModule",
+        stage: Optional[str] = None,
+    ) -> None:
+        super().setup(trainer, pl_module, stage)
         self.is_checkpoint_step = False
+
+        if isinstance(trainer.strategy, DeepSpeedStrategy):
+            self.is_report_rank = session.get_local_rank() == 0
+        else:
+            self.is_report_rank = trainer.global_rank == 0
 
     def _session_report(self, trainer: "pl.Trainer", stage: str):
         """Report latest metrics dict and checkpoint to AIR training session.
@@ -208,18 +220,28 @@ class RayModelCheckpoint(ModelCheckpoint):
             if isinstance(v, torch.Tensor):
                 metrics[k] = v.item()
 
-        # Report latest saved checkpoint
-        # Note that AIR only takes the checkpoint of rank 0.
-        # Save a dummy checkpoint on the other workers to avoid blocking.
-        with tempfile.TemporaryDirectory() as tmpdir:
-            if trainer.global_rank == 0:
-                shutil.copy(self.last_model_path, f"{tmpdir}/{MODEL_KEY}")
-                checkpoint = LightningCheckpoint.from_directory(path=tmpdir)
-            else:
-                checkpoint = LightningCheckpoint.from_dict(
-                    {"rank": session.get_world_rank()}
-                )
+        # Ensures all workers already finish writing their checkpoints.
+        trainer.strategy.barrier()
+
+        # Create and report the latest checkpoint
+        # Step 1: Move the last ckpt to a tmp directory.
+        # Step 2: Create a directory-based AIR checkpoint.
+        # Step 3: Report the checkpoint to AIR session.
+        # Step 4: Move the ckpt back to the original directory.
+        ckpt_dir = os.path.dirname(self.last_model_path)
+        with tempfile.TemporaryDirectory(dir=ckpt_dir) as tmpdir:
+            tmp_model_path = f"{tmpdir}/{MODEL_KEY}"
+
+            if self.is_report_rank:
+                shutil.move(self.last_model_path, tmp_model_path)
+
+            # Only the report_rank worker creates the actual checkpoints.
+            # Other workers create placeholder checkpoints to prevent blocking.
+            checkpoint = LightningCheckpoint.from_directory(path=tmpdir)
             session.report(metrics=metrics, checkpoint=checkpoint)
+
+            if self.is_report_rank:
+                shutil.move(tmp_model_path, self.last_model_path)
 
         self.is_checkpoint_step = False
 
