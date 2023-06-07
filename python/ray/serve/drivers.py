@@ -11,7 +11,7 @@ import starlette
 from fastapi import Depends, FastAPI
 
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.http_util import ASGIHTTPSender
+from ray.serve._private.http_util import BufferedASGISender
 from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.exceptions import RayServeException
 from ray import serve
@@ -82,7 +82,7 @@ class DAGDriver:
     async def __call__(self, request: starlette.requests.Request):
         # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
         # generate FastAPI on the fly, we should find a way to unify the two.
-        sender = ASGIHTTPSender()
+        sender = BufferedASGISender()
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
 
