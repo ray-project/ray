@@ -513,7 +513,6 @@ class _TuneControllerBase:
                     # Keep trial ID on resume
                     trial_to_add.error_filename = None
                     trial_to_add.pickled_error_filename = None
-                    trial_to_add.num_failures_after_restore = 0
                     trial_to_add.set_status(Trial.PENDING)
                     trial_to_add.restore_path = trial.checkpoint.dir_or_data
                 elif restart_errored:

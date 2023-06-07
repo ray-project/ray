@@ -350,7 +350,6 @@ def test_num_errors_terminated(tmpdir):
     for i in [4, 6, 8]:
         trials[i].status = Trial.ERROR
         trials[i].error_filename = error_filename
-        trials[i].num_failures_after_restore = 1
 
     for i in [3, 5]:
         trials[i].status = Trial.TERMINATED

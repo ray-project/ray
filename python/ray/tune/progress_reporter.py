@@ -1148,7 +1148,7 @@ def _trial_errors_str(
         error_table = []
         print_failure_info = False
         for trial in failed[:max_rows]:
-            if trial.num_failures_after_restore == 0:
+            if trial.status == Trial.TERMINATED:
                 # If a trial eventually succeeded after restore,
                 # we still want to print the errors, but print a note
                 # indicating that the trial eventually succeeded.

@@ -518,7 +518,6 @@ class Trial:
         self.restore_path = restore_path
         self.restoring_from = None
         self.num_failures = 0
-        self.num_failures_after_restore = 0
         # Reset after each successful restore.
         self.num_restore_failures = 0
 
@@ -923,12 +922,10 @@ class Trial:
                 # Restore was unsuccessful, try again without checkpoint.
                 self.clear_checkpoint()
                 self.num_failures += 1
-                self.num_failures_after_restore += 1
             else:
                 self.num_restore_failures += 1
         else:
             self.num_failures += 1
-            self.num_failures_after_restore += 1
 
         if self.local_path:
             self.error_filename = EXPR_ERROR_FILE
@@ -1000,7 +997,6 @@ class Trial:
         self.last_result.setdefault("config", self.config)
         self.restoring_from = None
         self.num_restore_failures = 0
-        self.num_failures_after_restore = 0
         self.invalidate_json_state()
 
     def should_recover(self):
