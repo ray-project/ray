@@ -14,6 +14,7 @@ RAY_REPO = "ray-project/ray"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
 MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
+CONTINUOUS_FAILURE_TO_JAIL = 5  # Number of continuous failures before jailing
 BUILDKITE_ORGANIZATION = "ray-project"
 BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 
@@ -68,7 +69,13 @@ class TestStateMachine:
                 return TestState.PASSING
 
         if current_state == TestState.CONSITENTLY_FAILING:
+            if self._consistently_failing_to_jailed():
+                return TestState.JAILED
             if self._consistently_failing_to_passing():
+                return TestState.PASSING
+
+        if current_state == TestState.JAILED:
+            if self._jailed_to_passing():
                 return TestState.PASSING
 
         return current_state
@@ -90,6 +97,25 @@ class TestStateMachine:
             self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
         elif change == (TestState.PASSING, TestState.FAILING):
             self._trigger_bisect()
+        elif change == (TestState.CONSITENTLY_FAILING, TestState.JAILED):
+            self._jail_test()
+        elif change == (TestState.JAILED, TestState.PASSING):
+            self._close_github_issue()
+            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
+
+    def _jail_test(self) -> None:
+        """
+        Notify github issue owner that the test is jailed
+        """
+        github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        if not github_issue_number:
+            return
+        issue = self.ray_repo.get_issue(github_issue_number)
+        issue.create_comment("Test has been failing for far too long. Jailing.")
+        labels = ["P1", "jailed-test"] + [label.name for label in issue.get_labels()]
+        if "P0" in labels:
+            labels.remove("P0")
+        issue.edit(labels=labels)
 
     def _bisect_rate_limit_exceeded(self) -> bool:
         """
@@ -181,6 +207,9 @@ class TestStateMachine:
         issue.edit(state="closed")
         self.test.pop(Test.KEY_GITHUB_ISSUE_NUMBER, None)
 
+    def _jailed_to_passing(self) -> bool:
+        return len(self.test_results) > 0 and self.test_results[0].is_passing()
+
     def _passing_to_failing(self) -> bool:
         return (
             len(self.test_results) > 0
@@ -205,3 +234,9 @@ class TestStateMachine:
 
     def _consistently_failing_to_passing(self) -> bool:
         return self._failing_to_passing()
+
+    def _consistently_failing_to_jailed(self) -> bool:
+        return len(self.test_results) >= CONTINUOUS_FAILURE_TO_JAIL and all(
+            result.is_failing()
+            for result in self.test_results[:CONTINUOUS_FAILURE_TO_JAIL]
+        )
