@@ -67,6 +67,10 @@ class TestStateMachine:
             if self._failing_to_passing():
                 return TestState.PASSING
 
+        if current_state == TestState.CONSITENTLY_FAILING:
+            if self._consistently_failing_to_passing():
+                return TestState.PASSING
+
         return current_state
 
     def _move_hook(self, from_state: TestState, to_state: TestState) -> None:
@@ -81,6 +85,9 @@ class TestStateMachine:
             self._create_github_issue()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.PASSING):
             self._close_github_issue()
+            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
+        elif change == (TestState.FAILING, TestState.PASSING):
+            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
         elif change == (TestState.PASSING, TestState.FAILING):
             self._trigger_bisect()
 
@@ -143,8 +150,13 @@ class TestStateMachine:
         self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
 
     def _close_github_issue(self) -> None:
-        # TODO(can): implement this
-        pass
+        github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        if not github_issue_number:
+            return
+        issue = self.ray_repo.get_issue(github_issue_number)
+        issue.create_comment(f"Test passed on latest run: {self.test_results[0].url}")
+        issue.edit(state="closed")
+        self.test.pop(Test.KEY_GITHUB_ISSUE_NUMBER, None)
 
     def _passing_to_failing(self) -> bool:
         return (
@@ -165,3 +177,6 @@ class TestStateMachine:
 
     def _failing_to_consistently_failing(self) -> bool:
         return self._passing_to_consistently_failing()
+
+    def _consistently_failing_to_passing(self) -> bool:
+        return self._failing_to_passing()
