@@ -87,4 +87,3 @@ Ray Data Glossary
 
         To determine a dataset's schema, call
         :meth:`Dataset.schema() <ray.data.Dataset.schema>`.
-.
