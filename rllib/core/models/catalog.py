@@ -8,7 +8,7 @@ import tree
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 from ray.rllib.core.models.base import Encoder
-from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
@@ -23,93 +23,6 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-
-
-def _multi_action_dist_partial_helper(
-    catalog_cls: "Catalog", action_space: gym.Space, framework: str
-) -> Distribution:
-    """Helper method to get a partial of a MultiActionDistribution.
-
-    This is useful for when we want to create MultiActionDistributions from
-    logits only (!) later, but know the action space now already.
-
-    Args:
-        catalog_cls: The ModelCatalog class to use.
-        action_space: The action space to get the child distribution classes for.
-        framework: The framework to use.
-
-    Returns:
-        A partial of the TorchMultiActionDistribution class.
-    """
-    action_space_struct = get_base_struct_from_space(action_space)
-    flat_action_space = flatten_space(action_space)
-    child_distribution_cls_struct = tree.map_structure(
-        lambda s: catalog_cls.get_dist_cls_from_action_space(
-            action_space=s,
-            framework=framework,
-        ),
-        action_space_struct,
-    )
-    flat_distribution_clses = tree.flatten(child_distribution_cls_struct)
-
-    logit_lens = [
-        int(dist_cls.required_input_dim(space))
-        for dist_cls, space in zip(flat_distribution_clses, flat_action_space)
-    ]
-
-    if framework == "torch":
-        from ray.rllib.models.torch.torch_distributions import (
-            TorchMultiDistribution,
-        )
-
-        multi_action_dist_cls = TorchMultiDistribution
-    elif framework == "tf2":
-        from ray.rllib.models.tf.tf_distributions import TfMultiDistribution
-
-        multi_action_dist_cls = TfMultiDistribution
-    else:
-        raise ValueError(f"Unsupported framework: {framework}")
-
-    partial_dist_cls = multi_action_dist_cls.get_partial_dist_cls(
-        space=action_space,
-        child_distribution_cls_struct=child_distribution_cls_struct,
-        input_lens=logit_lens,
-    )
-    return partial_dist_cls
-
-
-def _multi_categorical_dist_partial_helper(
-    action_space: gym.Space, framework: str
-) -> Distribution:
-    """Helper method to get a partial of a MultiCategorical Distribution.
-
-    This is useful for when we want to create MultiCategorical Distribution from
-    logits only (!) later, but know the action space now already.
-
-    Args:
-        action_space: The action space to get the child distribution classes for.
-        framework: The framework to use.
-
-    Returns:
-        A partial of the MultiCategorical class.
-    """
-
-    if framework == "torch":
-        from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
-
-        multi_categorical_dist_cls = TorchMultiCategorical
-    elif framework == "tf2":
-        from ray.rllib.models.tf.tf_distributions import TfMultiCategorical
-
-        multi_categorical_dist_cls = TfMultiCategorical
-    else:
-        raise ValueError(f"Unsupported framework: {framework}")
-
-    partial_dist_cls = multi_categorical_dist_cls.get_partial_dist_cls(
-        space=action_space, input_lens=list(action_space.nvec)
-    )
-
-    return partial_dist_cls
 
 
 class Catalog:
@@ -156,6 +69,10 @@ class Catalog:
         out = my_head(torch.Tensor([[1]]))
     """
 
+    # TODO (Sven): Add `framework` arg to c'tor and remove this arg from `build`
+    #  methods. This way, we can already know in the c'tor of Catalog, what the exact
+    #  action distibution objects are and thus what the output dims for e.g. a pi-head
+    #  will be.
     def __init__(
         self,
         observation_space: gym.Space,
@@ -175,7 +92,6 @@ class Catalog:
             view_requirements: The view requirements of Models to produce. This is
                 needed for a Model that encodes a complex temporal mix of
                 observations, actions or rewards.
-
         """
         self.observation_space = observation_space
         self.action_space = action_space
@@ -329,8 +245,6 @@ class Catalog:
                 hidden_dim=model_config_dict["lstm_cell_size"],
                 batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
-                output_dims=[model_config_dict["lstm_cell_size"]],
-                output_activation=output_activation,
                 view_requirements_dict=view_requirements,
                 get_tokenizer_config=cls.get_tokenizer_config,
             )
@@ -351,8 +265,8 @@ class Catalog:
                     input_dims=[observation_space.shape[0]],
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
-                    output_dims=[encoder_latent_dim],
-                    output_activation=output_activation,
+                    output_layer_dim=encoder_latent_dim,
+                    output_layer_activation=output_activation,
                 )
 
             # input_space is a 3D Box
@@ -371,14 +285,6 @@ class Catalog:
                     cnn_use_layernorm=model_config_dict.get(
                         "conv_use_layernorm", False
                     ),
-                    output_dims=[encoder_latent_dim],
-                    # TODO (sven): Setting this to None here helps with the existing
-                    #  APPO Pong benchmark (actually, leaving this at default=tanh does
-                    #  NOT learn at all!).
-                    #  We need to remove the last Dense layer from CNNEncoder in general
-                    #  AND establish proper ModelConfig objects (instead of hacking
-                    #  everything with the old default model config dict).
-                    output_activation=None,
                 )
             # input_space is a 2D Box
             elif (
@@ -593,3 +499,90 @@ class Catalog:
             cls = get_preprocessor(observation_space)
             prep = cls(observation_space, options)
             return prep
+
+
+def _multi_action_dist_partial_helper(
+    catalog_cls: "Catalog", action_space: gym.Space, framework: str
+) -> Distribution:
+    """Helper method to get a partial of a MultiActionDistribution.
+
+    This is useful for when we want to create MultiActionDistributions from
+    logits only (!) later, but know the action space now already.
+
+    Args:
+        catalog_cls: The ModelCatalog class to use.
+        action_space: The action space to get the child distribution classes for.
+        framework: The framework to use.
+
+    Returns:
+        A partial of the TorchMultiActionDistribution class.
+    """
+    action_space_struct = get_base_struct_from_space(action_space)
+    flat_action_space = flatten_space(action_space)
+    child_distribution_cls_struct = tree.map_structure(
+        lambda s: catalog_cls.get_dist_cls_from_action_space(
+            action_space=s,
+            framework=framework,
+        ),
+        action_space_struct,
+    )
+    flat_distribution_clses = tree.flatten(child_distribution_cls_struct)
+
+    logit_lens = [
+        int(dist_cls.required_input_dim(space))
+        for dist_cls, space in zip(flat_distribution_clses, flat_action_space)
+    ]
+
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import (
+            TorchMultiDistribution,
+        )
+
+        multi_action_dist_cls = TorchMultiDistribution
+    elif framework == "tf2":
+        from ray.rllib.models.tf.tf_distributions import TfMultiDistribution
+
+        multi_action_dist_cls = TfMultiDistribution
+    else:
+        raise ValueError(f"Unsupported framework: {framework}")
+
+    partial_dist_cls = multi_action_dist_cls.get_partial_dist_cls(
+        space=action_space,
+        child_distribution_cls_struct=child_distribution_cls_struct,
+        input_lens=logit_lens,
+    )
+    return partial_dist_cls
+
+
+def _multi_categorical_dist_partial_helper(
+    action_space: gym.Space, framework: str
+) -> Distribution:
+    """Helper method to get a partial of a MultiCategorical Distribution.
+
+    This is useful for when we want to create MultiCategorical Distribution from
+    logits only (!) later, but know the action space now already.
+
+    Args:
+        action_space: The action space to get the child distribution classes for.
+        framework: The framework to use.
+
+    Returns:
+        A partial of the MultiCategorical class.
+    """
+
+    if framework == "torch":
+        from ray.rllib.models.torch.torch_distributions import TorchMultiCategorical
+
+        multi_categorical_dist_cls = TorchMultiCategorical
+    elif framework == "tf2":
+        from ray.rllib.models.tf.tf_distributions import TfMultiCategorical
+
+        multi_categorical_dist_cls = TfMultiCategorical
+    else:
+        raise ValueError(f"Unsupported framework: {framework}")
+
+    partial_dist_cls = multi_categorical_dist_cls.get_partial_dist_cls(
+        space=action_space, input_lens=list(action_space.nvec)
+    )
+
+    return partial_dist_cls

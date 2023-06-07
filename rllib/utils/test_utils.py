@@ -670,7 +670,7 @@ def check_train_results(train_results: ResultDict):
 
     is_multi_agent = (
         AlgorithmConfig()
-        .update_from_dict(train_results["config"]["multiagent"])
+        .update_from_dict({"policies": train_results["config"]["policies"]})
         .is_multi_agent()
     )
 
@@ -1214,7 +1214,7 @@ class ModelChecker:
         # We will pass an observation filled with this one random value through
         # all DL networks (after they have been set to fixed-weights) to compare
         # the computed outputs.
-        self.random_fill_input_value = np.random.uniform(-0.1, 0.1)
+        self.random_fill_input_value = np.random.uniform(-0.01, 0.01)
 
         # Dict of models to check against each other.
         self.models = {}
@@ -1267,7 +1267,7 @@ class ModelChecker:
             )
         return outputs
 
-    def check(self, rtol=None):
+    def check(self):
         """Compares all added Models with each other and possibly raises errors."""
 
         main_key = next(iter(self.models.keys()))
@@ -1279,7 +1279,7 @@ class ModelChecker:
         # Compare dummy outputs by exact values given that all nets received the
         # same input and all nets have the same (dummy) weight values.
         for v in self.output_values.values():
-            check(v, self.output_values[main_key], rtol=rtol or 0.002)
+            check(v, self.output_values[main_key], atol=0.0005)
 
 
 def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.ndarray:

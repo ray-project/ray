@@ -91,7 +91,7 @@ def test_dedup_logs_multiple_processes():
         "pid": 200,
         "lines": ["good bye id=999, 0xfa\x1b[32m [repeated 2x across cluster]\x1b[0m"],
     } in out4
-    assert {"ip": "node2", "pid": 200, "lines": ["something else"]} in out4
+    assert {"ip": "node2", "pid": 200, "lines": ["extra message"]} in out4
 
     # Nothing to flush.
     end = dedup.flush()
