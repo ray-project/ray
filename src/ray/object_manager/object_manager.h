@@ -25,8 +25,6 @@
 #include <mutex>
 #include <random>
 #include <thread>
-#include <dlfcn.h>
-#include <iostream>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
@@ -46,6 +44,8 @@
 #include "ray/rpc/object_manager/object_manager_server.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
+#include "ray/object_manager/plugin_manager.h"
+
 
 namespace ray {
 
@@ -102,21 +102,6 @@ class ObjectStoreRunner {
 
  private:
   std::thread store_thread_;
-};
-
-class PluginManager {
- public:
-  static PluginManager& GetInstance() {
-    static PluginManager instance;
-    return instance;
-  }
-  void LoadObjectStorePlugin(const std::string plugin_name);
-  PluginManager() = default;
-  ~PluginManager() = default;
-
- private:
-  PluginManager(const PluginManager&) = delete;
-  PluginManager& operator=(const PluginManager&) = delete;
 };
 
 class ObjectManagerInterface {
