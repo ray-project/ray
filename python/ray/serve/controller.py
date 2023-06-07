@@ -719,7 +719,7 @@ class ServeController:
             http_options=HTTPOptionsSchema(
                 host=http_config.host,
                 port=http_config.port,
-                request_processing_timeout=http_config.request_processing_timeout,
+                requset_timeout_s=http_config.requset_timeout_s,
             ),
             http_proxies=self.http_state.get_http_proxy_details()
             if self.http_state
