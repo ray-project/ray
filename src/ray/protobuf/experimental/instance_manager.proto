@@ -22,6 +22,7 @@ enum RayNodeKind {
   HEAD = 1;
   WORKER = 2;
 }
+
 // A node type that's available for the cluster.
 message InstanceType {
   // the name of the instance type. e.g. "m4.large"
