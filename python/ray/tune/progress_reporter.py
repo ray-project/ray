@@ -1146,30 +1146,13 @@ def _trial_errors_str(
                 )
             )
         error_table = []
-        print_failure_info = False
         for trial in failed[:max_rows]:
-            if trial.status == Trial.TERMINATED:
-                # If a trial eventually succeeded after restore,
-                # we still want to print the errors, but print a note
-                # indicating that the trial eventually succeeded.
-                num_failures = f"{trial.num_failures}*"
-                print_failure_info = True
-            else:
-                num_failures = f"{trial.num_failures}"
-            row = [str(trial), num_failures, trial.error_file]
+            row = [str(trial), trial.num_failures, trial.error_file]
             error_table.append(row)
         columns = ["Trial name", "# failures", "error file"]
         messages.append(
-            tabulate(
-                error_table,
-                headers=columns,
-                tablefmt=fmt,
-                showindex=False,
-                colalign=("left", "right", "left"),
-            )
+            tabulate(error_table, headers=columns, tablefmt=fmt, showindex=False)
         )
-        if print_failure_info:
-            messages.append("* The trial terminated successfully after retrying.")
     delim = "<br>" if fmt == "html" else "\n"
     return delim.join(messages)
 
