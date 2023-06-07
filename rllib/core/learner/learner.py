@@ -1143,7 +1143,7 @@ class Learner:
             batch_iter = MiniBatchDummyIterator
 
         results = []
-        # Convert minibatch into a tensor batch (NestedDict) on the correct device
+        # Convert input batch into a tensor batch (MultiAgentBatch) on the correct device
         # (e.g. GPU). We move the batch already here to avoid having to move every
         # single minibatch that is created in the `batch_iter` below.
         batch = self._convert_batch_type(batch)
