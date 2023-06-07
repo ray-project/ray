@@ -15,7 +15,7 @@ of applications and troubleshoot issues.
 
 
 Set up Dashboard
-------
+------------------
 
 To access the dashboard, use `ray[default]`, `ray[air]`, or :ref:`other installation commands <installation>` that include the Ray Dashboard component. For example:
 
