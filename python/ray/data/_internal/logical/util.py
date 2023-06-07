@@ -29,10 +29,14 @@ _op_name_white_list = [
     "ReadBinary",
     "ReadCustom",
     # From
-    "FromArrow",
     "FromItems",
-    "FromNumpy",
-    "FromPandas",
+    "FromPandasRefs",
+    "FromHuggingFace",
+    "FromDask",
+    "FromModin",
+    "FromMars",
+    "FromNumpyRefs",
+    "FromArrowRefs",
     # Write
     "WriteParquet",
     "WriteJSON",
