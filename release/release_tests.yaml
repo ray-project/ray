@@ -3679,7 +3679,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf2
+    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=tf2
 
   alert: default
 
@@ -3708,7 +3708,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=torch
 
   alert: default
 
@@ -4170,7 +4170,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf2
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/new_stack --framework=tf2
 
   alert: default
 
@@ -4199,7 +4199,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/new_stack --framework=torch
 
   alert: default
 
