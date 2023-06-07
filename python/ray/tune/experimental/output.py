@@ -184,6 +184,10 @@ def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
     return trials_by_state
 
 
+def _get_trials_with_error(trials: List[Trial]) -> List[Trial]:
+    return [t for t in trials if t.error_file]
+
+
 def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
     """Try to infer the metrics to print out.
 
@@ -766,6 +770,34 @@ class TuneTerminalReporter(TuneReporterBase):
             print(", ".join(more_infos))
         print()
 
+        trials_with_error = _get_trials_with_error(trials)
+        if not trials_with_error:
+            return
+
+        print(f"Number of errored trials: {len(trials_with_error)}")
+        header = ["Trial name", "# failures", "error file"]
+        table_data = [
+            [
+                str(trial),
+                str(trial.num_failures)
+                + ("" if trial.num_failures_after_restore else "*"),
+                trial.error_file,
+            ]
+            for trial in trials_with_error
+        ]
+        print(
+            tabulate(
+                table_data,
+                headers=header,
+                tablefmt=AIR_TABULATE_TABLEFMT,
+                showindex=False,
+                colalign=("left", "right", "left"),
+            )
+        )
+        if any(trial.num_failures_after_restore == 0 for trial in trials_with_error):
+            print("* The trial terminated successfully after retrying.")
+        print()
+
 
 class TuneRichReporter(TuneReporterBase):
     _wrap_headers = True
@@ -776,8 +808,15 @@ class TuneRichReporter(TuneReporterBase):
         num_samples: int,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
+        config: Optional[Dict] = None,
     ):
-        super().__init__(verbosity, num_samples, metric, mode)
+        super().__init__(
+            verbosity=verbosity,
+            num_samples=num_samples,
+            metric=metric,
+            mode=mode,
+            config=config,
+        )
         self._live = None
 
     # since sticky table, we can afford to do that more often.
