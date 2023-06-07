@@ -1,5 +1,5 @@
 import random
-from typing import List, Optional
+from typing import Optional
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
