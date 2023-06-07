@@ -509,6 +509,15 @@ py_test(
 )
 
 py_test(
+    name = "test_websockets",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
+)
+
+py_test(
     name = "test_controller_recovery",
     size = "medium",
     srcs = serve_tests_srcs,

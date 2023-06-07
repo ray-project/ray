@@ -599,14 +599,12 @@ class RayServeReplica:
                 error_message = f"Unexpected error, traceback: {result}."
                 result = starlette.responses.Response(error_message, status_code=500)
 
-        if request_metadata.is_http_request:
-            # For the FastAPI codepath, the response has already been sent over the
-            # ASGI interace and result should always be `None`.
-            if isinstance(self.callable, ASGIAppReplicaWrapper):
-                assert result is None
-            # For the vanilla deployment codepath, always send the result over ASGI.
-            else:
-                await self.send_user_result_over_asgi(result, scope, send, receive)
+        if request_metadata.is_http_request and not isinstance(
+            self.callable, ASGIAppReplicaWrapper
+        ):
+            # For the FastAPI codepath, the response has already been sent over the ASGI
+            # interface, but for the vanilla deployment codepath we need to send it.
+            await self.send_user_result_over_asgi(result, scope, send, receive)
 
         if success:
             self.request_counter.inc(tags={"route": request_metadata.route})
