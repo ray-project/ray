@@ -675,7 +675,7 @@ def check_train_results(train_results: ResultDict):
 
     is_multi_agent = (
         AlgorithmConfig()
-        .update_from_dict(train_results["config"]["multiagent"])
+        .update_from_dict({"policies": train_results["config"]["policies"]})
         .is_multi_agent()
     )
 
@@ -1152,10 +1152,18 @@ def check_reproducibilty(
             check(results1["hist_stats"], results2["hist_stats"])
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            check(
-                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-            )
+            # As well as training behavior (minibatch sequence during SGD
+            # iterations).
+            if algo_config._enable_learner_api:
+                check(
+                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                )
+            else:
+                check(
+                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                )
 
 
 def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
@@ -1211,7 +1219,7 @@ class ModelChecker:
         # We will pass an observation filled with this one random value through
         # all DL networks (after they have been set to fixed-weights) to compare
         # the computed outputs.
-        self.random_fill_input_value = np.random.uniform(-0.1, 0.1)
+        self.random_fill_input_value = np.random.uniform(-0.01, 0.01)
 
         # Dict of models to check against each other.
         self.models = {}
@@ -1264,7 +1272,7 @@ class ModelChecker:
             )
         return outputs
 
-    def check(self, rtol=None):
+    def check(self):
         """Compares all added Models with each other and possibly raises errors."""
 
         main_key = next(iter(self.models.keys()))
@@ -1276,7 +1284,7 @@ class ModelChecker:
         # Compare dummy outputs by exact values given that all nets received the
         # same input and all nets have the same (dummy) weight values.
         for v in self.output_values.values():
-            check(v, self.output_values[main_key], rtol=rtol or 0.002)
+            check(v, self.output_values[main_key], atol=0.0005)
 
 
 def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.ndarray:
@@ -1406,7 +1414,7 @@ def check_supported_spaces(
     config: "AlgorithmConfig",
     train: bool = True,
     check_bounds: bool = False,
-    frameworks: set = None,
+    frameworks: Optional[Tuple[str]] = None,
     use_gpu: bool = False,
 ):
     """Checks whether the given algorithm supports different action and obs spaces.
@@ -1485,8 +1493,7 @@ def check_supported_spaces(
         "dict",
     ]
 
-    # TODO(Artur): Add back tf2 once we CNNs there
-    rlmodule_supported_frameworks = {"torch"}
+    rlmodule_supported_frameworks = ("torch", "tf2")
 
     # The action spaces that we test RLModules with
     rlmodule_supported_action_spaces = ["discrete", "continuous"]
@@ -1580,11 +1587,13 @@ def check_supported_spaces(
         print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
     if not frameworks:
-        frameworks = {"tf2", "torch", "tf"}
+        frameworks = ("tf2", "tf", "torch")
 
     if config._enable_rl_module_api:
         # Only test the frameworks that are supported by RLModules.
-        frameworks = frameworks.intersection(rlmodule_supported_frameworks)
+        frameworks = tuple(
+            fw for fw in frameworks if fw in rlmodule_supported_frameworks
+        )
 
     _do_check_remote = ray.remote(_do_check)
     _do_check_remote = _do_check_remote.options(num_gpus=1 if use_gpu else 0)

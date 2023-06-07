@@ -41,7 +41,6 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
@@ -71,6 +70,7 @@ _PYARROW_VERSION = None
 
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
+_CALLED_FREQ_LOCK = threading.Lock()
 
 
 def get_user_temp_dir():
@@ -1301,6 +1301,8 @@ def init_grpc_channel(
     except ImportError:
         from grpc.experimental import aio as aiogrpc
 
+    from ray._private.tls_utils import load_certs_from_env
+
     grpc_module = aiogrpc if asynchronous else grpc
 
     options = options or []
@@ -1614,7 +1616,7 @@ def split_address(address: str) -> Tuple[str, str]:
 
     Examples:
         >>> split_address("ray://my_cluster")
-        ("ray", "my_cluster")
+        ('ray', 'my_cluster')
     """
     if "://" not in address:
         raise ValueError("Address must contain '://'")
@@ -1894,3 +1896,30 @@ def update_envs(env_vars: Dict[str, str]):
             os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
         else:
             os.environ[key] = value
+
+
+def parse_node_labels_json(
+    labels_json: str, cli_logger, cf, command_arg="--labels"
+) -> Dict[str, str]:
+    try:
+        labels = json.loads(labels_json)
+        if not isinstance(labels, dict):
+            raise ValueError(
+                "The format after deserialization is not a key-value pair map"
+            )
+        for key, value in labels.items():
+            if not isinstance(key, str):
+                raise ValueError("The key is not string type.")
+            if not isinstance(value, str):
+                raise ValueError(f'The value of the "{key}" is not string type')
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(command_arg),
+            str(e),
+        )
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", ' '"region": "us"}}\''),
+        )
+    return labels

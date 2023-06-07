@@ -82,8 +82,18 @@ class NodeProviderConfig(object):
             config = node_specific_config[config_name]
         return config
 
+    def get_node_resources(self, instance_type_name: str) -> Dict[str, float]:
+        return copy.deepcopy(
+            self._node_configs["available_node_types"][instance_type_name].get(
+                "resources", {}
+            )
+        )
+
     def get_config(self, config_name, default=None) -> Any:
         return self._node_configs.get(config_name, default)
+
+    def get_raw_config_mutable(self) -> Dict[str, Any]:
+        return self._node_configs
 
     @property
     def restart_only(self) -> bool:

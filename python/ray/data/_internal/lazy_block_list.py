@@ -4,9 +4,9 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
 from ray.data._internal.util import _split_list
 from ray.data.block import (
@@ -593,7 +593,10 @@ class LazyBlockList(BlockList):
             self._stats_actor = _get_or_create_stats_actor()
         stats_actor = self._stats_actor
         if not self._execution_started:
-            stats_actor.record_start.remote(self._stats_uuid)
+            # NOTE: We should wait for `record_start` to finish here.
+            # Otherwise, `record_task` may arrive before `record_start`, and
+            # the stats will be lost.
+            ray.get(stats_actor.record_start.remote(self._stats_uuid))
             self._execution_started = True
         task = self._tasks[task_idx]
         context = DataContext.get_current()

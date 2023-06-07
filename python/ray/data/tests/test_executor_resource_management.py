@@ -1,17 +1,13 @@
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import (
-    ExecutionResources,
-    ExecutionOptions,
-)
-from ray.data._internal.compute import TaskPoolStrategy, ActorPoolStrategy
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.execution.interfaces import ExecutionOptions, ExecutionResources
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.tests.test_operators import _mul2_transform
 from ray.data.tests.conftest import *  # noqa
-
+from ray.data.tests.test_operators import _mul2_transform
 
 SMALL_STR = "hello" * 120
 

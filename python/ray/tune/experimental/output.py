@@ -359,6 +359,7 @@ def _get_trial_table_data(
     param_keys: List[str],
     metric_keys: List[str],
     all_rows: bool = False,
+    wrap_headers: bool = False,
 ) -> _TrialTableData:
     """Generate a table showing the current progress of tuning trials.
 
@@ -369,6 +370,7 @@ def _get_trial_table_data(
             Including both default and user defined.
             Will only be shown if at least one trial is having the key.
         all_rows: Force to show all rows.
+        wrap_headers: If True, header columns can be wrapped with ``\n``.
 
     Returns:
         Trial table data, including header and trial table per each status.
@@ -390,11 +392,11 @@ def _get_trial_table_data(
 
     # get header from metric keys
     formatted_metric_columns = [
-        _max_len(k, max_len=max_column_length, wrap=True) for k in metric_keys
+        _max_len(k, max_len=max_column_length, wrap=wrap_headers) for k in metric_keys
     ]
 
     formatted_param_columns = [
-        _max_len(k, max_len=max_column_length, wrap=True) for k in param_keys
+        _max_len(k, max_len=max_column_length, wrap=wrap_headers) for k in param_keys
     ]
 
     metric_header = [
@@ -485,17 +487,31 @@ def _get_dict_as_table_data(
         return upper + lower
 
 
-# Copied/adjusted from tabulate
-AIR_TABULATE_TABLEFMT = TableFormat(
-    lineabove=Line("╭", "─", "─", "╮"),
-    linebelowheader=Line("├", "─", "─", "┤"),
-    linebetweenrows=None,
-    linebelow=Line("╰", "─", "─", "╯"),
-    headerrow=DataRow("│", " ", "│"),
-    datarow=DataRow("│", " ", "│"),
-    padding=1,
-    with_header_hide=None,
-)
+if sys.stdout and sys.stdout.encoding and sys.stdout.encoding.startswith("utf"):
+    # Copied/adjusted from tabulate
+    AIR_TABULATE_TABLEFMT = TableFormat(
+        lineabove=Line("╭", "─", "─", "╮"),
+        linebelowheader=Line("├", "─", "─", "┤"),
+        linebetweenrows=None,
+        linebelow=Line("╰", "─", "─", "╯"),
+        headerrow=DataRow("│", " ", "│"),
+        datarow=DataRow("│", " ", "│"),
+        padding=1,
+        with_header_hide=None,
+    )
+else:
+    # For non-utf output, use ascii-compatible characters.
+    # This prevents errors e.g. when legacy windows encoding is used.
+    AIR_TABULATE_TABLEFMT = TableFormat(
+        lineabove=Line("+", "-", "-", "+"),
+        linebelowheader=Line("+", "-", "-", "+"),
+        linebetweenrows=None,
+        linebelow=Line("+", "-", "-", "+"),
+        headerrow=DataRow("|", " ", "|"),
+        datarow=DataRow("|", " ", "|"),
+        padding=1,
+        with_header_hide=None,
+    )
 
 
 def _print_dict_as_table(
@@ -619,6 +635,7 @@ def _detect_reporter(
 
 class TuneReporterBase(ProgressReporter):
     _heartbeat_threshold = AirVerbosity.DEFAULT
+    _wrap_headers = False
 
     def __init__(
         self,
@@ -674,6 +691,7 @@ class TuneReporterBase(ProgressReporter):
             param_keys=self._inferred_params,
             metric_keys=all_metrics,
             all_rows=force_full_output,
+            wrap_headers=self._wrap_headers,
         )
         return result, trial_table_data
 
@@ -750,6 +768,8 @@ class TuneTerminalReporter(TuneReporterBase):
 
 
 class TuneRichReporter(TuneReporterBase):
+    _wrap_headers = True
+
     def __init__(
         self,
         verbosity: AirVerbosity,

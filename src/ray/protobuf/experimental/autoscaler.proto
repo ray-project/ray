@@ -65,14 +65,9 @@ message GangResourceRequest {
 // Cluster resource constraint represents minimial cluster size requirement,
 // this is issued through ray.autoscaler.sdk.request_resources.
 message ClusterResourceConstraint {
-  // If not empty, the cluster should have the capacity (total resource) to
-  // fit the min_resources.
-  map<string, double> min_resources = 1;
   // If not emtpy, the cluster should have the capacity (total resource) to fit
   // the min_bundles.
-  repeated ResourceRequest min_bundles = 2;
-  // Id of the job who issued this constraint.
-  string job_id = 3;
+  repeated ResourceRequest min_bundles = 1;
 }
 
 message NodeState {
@@ -90,8 +85,8 @@ message NodeState {
     // Node is already drained, and ready to be removed.
     DRAINED = 5;
   }
-  // The node id internal to Ray.
-  string node_id = 11;
+  // The node id internal to Ray in binary format.
+  bytes node_id = 11;
 
   // The instance id that the node is running on.
   // This is passed in when the node is registered.
@@ -165,15 +160,29 @@ message ReportAutoscalingStateRequest {
   repeated Instance instances = 3;
   // infeasible resource requests.
   repeated ResourceRequest infeasible_resource_requests = 4;
-  repeated ClusterResourceConstraint infeasible_gange_resource_requests = 5;
+  repeated GangResourceRequest infeasible_gange_resource_requests = 5;
+  // NOTE: we currently only support one cluster resource constraint. But keeping
+  // the repeated field for future extension where a per-job cluster constraint might
+  // be applicable.
   repeated ClusterResourceConstraint infeasible_cluster_resource_constraints = 6;
 }
 
 message ReportAutoscalingStateReply {}
+
+message RequestClusterResourceConstraintRequest {
+  // The requested minimal resource bundles constraints.
+  ClusterResourceConstraint cluster_resource_constraint = 1;
+}
+
+message RequestClusterResourceConstraintReply {}
 
 service AutoscalerStateService {
   rpc GetClusterResourceState(GetClusterResourceStateRequest)
       returns (GetClusterResourceStateReply);
   rpc ReportAutoscalingState(ReportAutoscalingStateRequest)
       returns (ReportAutoscalingStateReply);
+  // Request additional cluster resources constraints. This is the RPC call made
+  // when users call ray.autoscaler.sdk.request_resources.
+  rpc RequestClusterResourceConstraint(RequestClusterResourceConstraintRequest)
+      returns (RequestClusterResourceConstraintReply);
 }

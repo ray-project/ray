@@ -4,7 +4,9 @@ import pytest
 
 from ray_release.test import (
     Test,
-    DOCKER_REPO,
+    DATAPLANE_ECR,
+    DATAPLANE_ECR_REPO,
+    DATAPLANE_ECR_ML_REPO,
 )
 
 
@@ -19,16 +21,21 @@ def _stub_test(val: dict) -> Test:
     return test
 
 
+def test_is_byod_cluster():
+    assert not _stub_test({}).is_byod_cluster()
+    assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
+    assert _stub_test({"cluster": {"byod": {"type": "gpu"}}}).is_byod_cluster()
+
+
 def test_get_python_version():
     assert _stub_test({}).get_python_version() == "3.7"
     assert _stub_test({"python": "3.8"}).get_python_version() == "3.8"
 
 
 def test_get_ray_image():
-    os.environ.pop("BUILDKITE_COMMIT", None)
-    assert (
-        _stub_test({"python": "3.8"}).get_ray_image() == "rayproject/ray:nightly-py38"
-    )
+    os.environ["BUILDKITE_BRANCH"] = "master"
+    os.environ["BUILDKITE_COMMIT"] = "1234567890"
+    assert _stub_test({"python": "3.8"}).get_ray_image() == "rayproject/ray:123456-py38"
     assert (
         _stub_test(
             {
@@ -40,19 +47,32 @@ def test_get_ray_image():
                 },
             }
         ).get_ray_image()
-        == "rayproject/ray-ml:nightly-py38-gpu"
+        == "rayproject/ray-ml:123456-py38-gpu"
     )
-    os.environ["BUILDKITE_COMMIT"] = "1234567890"
-    # TODO(can): re-enable this test once we have a custom image
-    # assert Test().get_ray_image() == "rayproject/ray:123456-py37"
+    os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
+    assert _stub_test({}).get_ray_image() == "rayproject/ray:1.0.0.123456-py37"
 
 
 def test_get_anyscale_byod_image():
-    os.environ.pop("BUILDKITE_COMMIT", None)
-    assert _stub_test({}).get_anyscale_byod_image() == f"{DOCKER_REPO}:ray-nightly-py37"
+    os.environ["BUILDKITE_BRANCH"] = "master"
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
-    # TODO(can): re-enable this test once we have a custom image
-    # assert Test().get_anyscale_byod_image() == "anyscale/ray:123456-py37"
+    assert (
+        _stub_test({}).get_anyscale_byod_image()
+        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_REPO}:123456-py37"
+    )
+    assert (
+        _stub_test(
+            {
+                "python": "3.8",
+                "cluster": {
+                    "byod": {
+                        "type": "gpu",
+                    }
+                },
+            }
+        ).get_anyscale_byod_image()
+        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
+    )
 
 
 if __name__ == "__main__":

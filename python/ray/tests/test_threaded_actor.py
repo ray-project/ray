@@ -286,7 +286,7 @@ def test_threaded_actor_integration_test_stress(
     for error in errors:
         print(error)
         assert (
-            "You can ignore this message if" not in error.error_message
+            "You can ignore this message if" not in error["error_message"]
         ), "Resource deadlock warning shouldn't be printed, but it did."
 
 

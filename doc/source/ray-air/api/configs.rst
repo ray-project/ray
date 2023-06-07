@@ -15,7 +15,6 @@ Ray AIR Configurations
 
     air.RunConfig
     air.ScalingConfig
-    air.DatasetConfig
     air.CheckpointConfig
     air.FailureConfig
 
