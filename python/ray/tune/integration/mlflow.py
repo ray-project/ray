@@ -1,20 +1,21 @@
-from ray.air.integrations.mlflow import MLflowLoggerCallback as _MLflowLoggerCallback
+# DEPRECATED: Remove whole file in 2.5.
 
 import logging
 from typing import Callable, Dict, Optional
 
-import ray
-from ray.air._internal.mlflow import _MLflowLoggerUtil
-from ray.tune.trainable import Trainable
+from ray.air.integrations.mlflow import MLflowLoggerCallback as _MLflowLoggerCallback
 from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
 callback_deprecation_message = (
-    "`ray.tune.integration.mlflow.MLflowLoggerCallback` "
-    "is deprecated and will be removed in "
-    "the future. Please use `ray.air.integrations.mlflow.MLflowLoggerCallback` "
-    "instead."
+    "`ray.tune.integration.mlflow.MLflowLoggerCallback` is deprecated. "
+    "Please use `ray.air.integrations.mlflow.MLflowLoggerCallback` instead."
+)
+
+mixin_deprecation_message = (
+    "The `mlflow_mixin`/`MLflowTrainableMixin` is deprecated. "
+    "Use `ray.air.integrations.mlflow.setup_mlflow` instead."
 )
 
 
@@ -28,12 +29,10 @@ class MLflowLoggerCallback(_MLflowLoggerCallback):
         tags: Optional[Dict] = None,
         save_artifact: bool = False,
     ):
-        logger.warning(callback_deprecation_message)
-        super().__init__(
-            tracking_uri, registry_uri, experiment_name, tags, save_artifact
-        )
+        raise DeprecationWarning(callback_deprecation_message)
 
 
+@Deprecated(message=mixin_deprecation_message)
 def mlflow_mixin(func: Callable):
     """mlflow_mixin
 
@@ -131,79 +130,10 @@ def mlflow_mixin(func: Callable):
         tuner.fit()
 
     """
-    if ray.util.client.ray.is_connected():
-        logger.warning(
-            "When using mlflow_mixin with Ray Client, "
-            "it is recommended to use a remote tracking "
-            "server. If you are using a MLflow tracking server "
-            "backed by the local filesystem, then it must be "
-            "setup on the server side and not on the client "
-            "side."
-        )
-    if hasattr(func, "__mixins__"):
-        func.__mixins__ = func.__mixins__ + (MLflowTrainableMixin,)
-    else:
-        func.__mixins__ = (MLflowTrainableMixin,)
-    return func
+    raise DeprecationWarning(mixin_deprecation_message)
 
 
+@Deprecated(message=mixin_deprecation_message)
 class MLflowTrainableMixin:
     def __init__(self, config: Dict, *args, **kwargs):
-        self.mlflow_util = _MLflowLoggerUtil()
-
-        if not isinstance(self, Trainable):
-            raise ValueError(
-                "The `MLflowTrainableMixin` can only be used as a mixin "
-                "for `tune.Trainable` classes. Please make sure your "
-                "class inherits from both. For example: "
-                "`class YourTrainable(MLflowTrainableMixin)`."
-            )
-
-        super().__init__(config, *args, **kwargs)
-        _config = config.copy()
-        try:
-            mlflow_config = _config.pop("mlflow").copy()
-        except KeyError as e:
-            raise ValueError(
-                "MLflow mixin specified but no configuration has been passed. "
-                "Make sure to include a `mlflow` key in your `config` dict "
-                "containing at least a `tracking_uri` and either "
-                "`experiment_name` or `experiment_id` specification."
-            ) from e
-
-        tracking_uri = mlflow_config.pop("tracking_uri", None)
-        if tracking_uri is None:
-            raise ValueError(
-                "MLflow mixin specified but no "
-                "tracking_uri has been "
-                "passed in. Make sure to include a `mlflow` "
-                "key in your `config` dict containing at "
-                "least a `tracking_uri`"
-            )
-
-        # Set the tracking token if one is passed in.
-        tracking_token = mlflow_config.pop("token", None)
-
-        experiment_id = mlflow_config.pop("experiment_id", None)
-
-        experiment_name = mlflow_config.pop("experiment_name", None)
-
-        # This initialization happens in each of the Trainables/workers.
-        # So we have to set `create_experiment_if_not_exists` to False.
-        # Otherwise there might be race conditions when each worker tries to
-        # create the same experiment.
-        # For the mixin, the experiment must be created beforehand.
-        self.mlflow_util.setup_mlflow(
-            tracking_uri=tracking_uri,
-            experiment_id=experiment_id,
-            experiment_name=experiment_name,
-            tracking_token=tracking_token,
-            create_experiment_if_not_exists=False,
-        )
-
-        run_name = self.trial_name + "_" + self.trial_id
-        run_name = run_name.replace("/", "_")
-        self.mlflow_util.start_run(set_active=True, run_name=run_name)
-
-    def stop(self):
-        self.mlflow_util.end_run()
+        raise DeprecationWarning(mixin_deprecation_message)

@@ -251,8 +251,11 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingIdInsertOrDieTest) {
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingInitClusterTest) {
   int num_nodes = 10;
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) { return true; });
+      io_context, scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) {
+        return true;
+      });
   AssertPredefinedNodeResources();
 
   initCluster(resource_scheduler, num_nodes);
@@ -263,9 +266,11 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingInitClusterTest) {
 TEST_F(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest) {
   int num_nodes = 4;
   int64_t remove_id = 2;
-
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) { return true; });
+      io_context, scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) {
+        return true;
+      });
 
   initCluster(resource_scheduler, num_nodes);
   resource_scheduler.GetClusterResourceManager().RemoveNode(
@@ -277,8 +282,11 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingDeleteClusterNodeTest) {
 TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
   int num_nodes = 4;
   int64_t update_id = 2;
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) { return true; });
+      io_context, scheduling::NodeID(num_nodes + 1), NodeResources(), [](auto) {
+        return true;
+      });
 
   initCluster(resource_scheduler, num_nodes);
 
@@ -291,8 +299,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingModifyClusterNodeTest) {
 TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
   absl::flat_hash_map<std::string, double> resource_total({{"CPU", 10}});
   auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      local_node_id, resource_total, is_node_available_fn_);
+      io_context, local_node_id, resource_total, is_node_available_fn_);
   AssertPredefinedNodeResources();
   auto remote_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
@@ -310,6 +319,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
                                                              false,
                                                              false,
                                                              false,
+                                                             std::string(),
                                                              &violations,
                                                              &is_infeasible);
   ASSERT_EQ(node_id_1, remote_node_id);
@@ -322,6 +332,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
                                                              false,
                                                              false,
                                                              false,
+                                                             std::string(),
                                                              &violations,
                                                              &is_infeasible);
   ASSERT_EQ(node_id_2, local_node_id);
@@ -334,6 +345,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
                                                              false,
                                                              false,
                                                              false,
+                                                             std::string(),
                                                              &violations,
                                                              &is_infeasible);
   ASSERT_TRUE(node_id_3.IsNil());
@@ -346,6 +358,7 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
                                                              false,
                                                              false,
                                                              false,
+                                                             std::string(),
                                                              &violations,
                                                              &is_infeasible);
   ASSERT_EQ(node_id_4, local_node_id);
@@ -354,8 +367,9 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
 TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
   absl::flat_hash_map<std::string, double> resource_total({{"CPU", 10}});
   auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      local_node_id, resource_total, is_node_available_fn_);
+      io_context, local_node_id, resource_total, is_node_available_fn_);
   AssertPredefinedNodeResources();
   auto remote_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
@@ -371,6 +385,7 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
                                                              false,
                                                              false,
                                                              false,
+                                                             std::string(),
                                                              &violations,
                                                              &is_infeasible);
   absl::flat_hash_map<std::string, double> resource_available({{"CPU", 9}});
@@ -381,10 +396,51 @@ TEST_F(ClusterResourceSchedulerTest, SpreadSchedulingStrategyTest) {
                                                              false,
                                                              false,
                                                              false,
+                                                             std::string(),
                                                              &violations,
                                                              &is_infeasible);
   ASSERT_EQ((std::set<scheduling::NodeID>{node_id_1, node_id_2}),
             (std::set<scheduling::NodeID>{local_node_id, remote_node_id}));
+}
+
+TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
+  absl::flat_hash_map<std::string, double> resource_total({{"CPU", 10}});
+  auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(
+      io_context, local_node_id, resource_total, is_node_available_fn_);
+  AssertPredefinedNodeResources();
+  auto remote_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
+      remote_node_id, resource_total, resource_total);
+
+  absl::flat_hash_map<std::string, double> resource_request({{"CPU", 5}});
+  int64_t violations;
+  bool is_infeasible;
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  // Select node with the remote node preferred.
+  auto node_id_1 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             remote_node_id.Binary(),
+                                                             &violations,
+                                                             &is_infeasible);
+
+  // If no preferred node specified, then still prefer the local one.
+  auto node_id_2 = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
+
+  ASSERT_EQ((std::set<scheduling::NodeID>{node_id_1, node_id_2}),
+            (std::set<scheduling::NodeID>{remote_node_id, local_node_id}));
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
@@ -394,8 +450,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
                                                       {ResourceID::GPU(), 3},
                                                       {ResourceID("custom1"), 5},
                                                       {ResourceID("custom2"), 5}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(1), node_resources, is_node_available_fn_);
+      io_context, scheduling::NodeID(1), node_resources, is_node_available_fn_);
   AssertPredefinedNodeResources();
 
   {
@@ -408,8 +465,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
     bool is_infeasible;
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
-    auto node_id = resource_scheduler.GetBestSchedulableNode(
-        resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
+    auto node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
     ASSERT_EQ(node_id.ToInt(), 1);
     ASSERT_TRUE(violations == 0);
 
@@ -436,7 +498,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest) {
   absl::flat_hash_map<std::string, double> initial_resources = {
       {ray::kCPU_ResourceLabel, 1}, {"custom1", 1}};
   std::string name = NodeID::FromRandom().Binary();
-  ClusterResourceScheduler resource_scheduler(scheduling::NodeID(name),
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(io_context,
+                                              scheduling::NodeID(name),
                                               initial_resources,
                                               is_node_available_fn_,
                                               nullptr,
@@ -461,8 +525,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, SchedulingAddOrUpdateNodeTest) {
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(0), NodeResources(), [](auto) { return true; });
+      io_context, scheduling::NodeID(0), NodeResources(), [](auto) { return true; });
   NodeResources nr, nr_out;
   int64_t node_id = 1;
 
@@ -508,8 +573,9 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
   // Create cluster resources containing local node.
   NodeResources node_resources = CreateNodeResources(
       {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 5}, {ResourceID("custom1"), 10}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(0), node_resources, is_node_available_fn_);
+      io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
   auto node_id = NodeID::FromRandom();
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
@@ -527,8 +593,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 11}});
     int64_t violations;
     bool is_infeasible;
-    auto node_id = resource_scheduler.GetBestSchedulableNode(
-        resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
+    auto node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
     ASSERT_TRUE(node_id.IsNil());
   }
 
@@ -537,8 +608,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
     ResourceRequest resource_request = CreateResourceRequest({{ResourceID::CPU(), 5}});
     int64_t violations;
     bool is_infeasible;
-    auto node_id = resource_scheduler.GetBestSchedulableNode(
-        resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
+    auto node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
     ASSERT_TRUE(!node_id.IsNil());
     ASSERT_TRUE(violations == 0);
   }
@@ -548,8 +624,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
         {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 2}, {ResourceID("custom1"), 11}});
     int64_t violations;
     bool is_infeasible;
-    auto node_id = resource_scheduler.GetBestSchedulableNode(
-        resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
+    auto node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
     ASSERT_TRUE(node_id.IsNil());
   }
   // Custom resources, no constraint violation.
@@ -558,8 +639,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
         {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 2}, {ResourceID("custom1"), 5}});
     int64_t violations;
     bool is_infeasible;
-    auto node_id = resource_scheduler.GetBestSchedulableNode(
-        resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
+    auto node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
     ASSERT_TRUE(!node_id.IsNil());
     ASSERT_TRUE(violations == 0);
   }
@@ -571,8 +657,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
                                {ResourceID("custom100"), 5}});
     int64_t violations;
     bool is_infeasible;
-    auto node_id = resource_scheduler.GetBestSchedulableNode(
-        resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
+    auto node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
     ASSERT_TRUE(node_id.IsNil());
   }
   // Placement hints, no constraint violation.
@@ -581,8 +672,13 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingResourceRequestTest) {
         {{ResourceID::CPU(), 5}, {ResourceID::Memory(), 2}, {ResourceID("custom1"), 5}});
     int64_t violations;
     bool is_infeasible;
-    auto node_id = resource_scheduler.GetBestSchedulableNode(
-        resource_request, scheduling_strategy, false, false, &violations, &is_infeasible);
+    auto node_id = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                             scheduling_strategy,
+                                                             false,
+                                                             false,
+                                                             std::string(),
+                                                             &violations,
+                                                             &is_infeasible);
     ASSERT_TRUE(!node_id.IsNil());
     ASSERT_TRUE(violations == 0);
   }
@@ -595,8 +691,9 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesWithCpuUnitTest) 
                                                       {ResourceID::Memory(), 4},
                                                       {ResourceID::GPU(), 5},
                                                       {ResourceID("custom1"), 8}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(0), node_resources, is_node_available_fn_);
+      io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
   TaskResourceInstances available_cluster_resources =
       resource_scheduler.GetLocalResourceManager()
@@ -622,8 +719,9 @@ TEST_F(ClusterResourceSchedulerTest, GetLocalAvailableResourcesTest) {
                                                       {ResourceID::Memory(), 4},
                                                       {ResourceID::GPU(), 5},
                                                       {ResourceID("custom1"), 8}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(0), node_resources, is_node_available_fn_);
+      io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
   TaskResourceInstances available_cluster_resources =
       resource_scheduler.GetLocalResourceManager()
@@ -656,8 +754,9 @@ TEST_F(ClusterResourceSchedulerTest, GetCPUInstancesDoubleTest) {
 
 TEST_F(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest) {
   NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 3}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler cluster(
-      scheduling::NodeID(0), node_resources, is_node_available_fn_);
+      io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
   std::vector<FixedPoint> total = {6., 6., 6.};
   std::vector<FixedPoint> available = {3., 2., 5.};
@@ -687,8 +786,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
   {
     NodeResources node_resources = CreateNodeResources(
         {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 4}, {ResourceID::GPU(), 5}});
+    instrumented_io_context io_context;
     ClusterResourceScheduler resource_scheduler(
-        scheduling::NodeID(0), node_resources, is_node_available_fn_);
+        io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
     ResourceRequest resource_request = CreateResourceRequest(
         {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
@@ -716,8 +816,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
   {
     NodeResources node_resources = CreateNodeResources(
         {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 4}, {ResourceID::GPU(), 5}});
+    instrumented_io_context io_context;
     ClusterResourceScheduler resource_scheduler(
-        scheduling::NodeID(0), node_resources, is_node_available_fn_);
+        io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
     ResourceRequest resource_request = CreateResourceRequest(
         {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
@@ -743,8 +844,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
                                                         {ResourceID::GPU(), 5},
                                                         {ResourceID("custom1"), 4},
                                                         {ResourceID("custom2"), 4}});
+    instrumented_io_context io_context;
     ClusterResourceScheduler resource_scheduler(
-        scheduling::NodeID(0), node_resources, is_node_available_fn_);
+        io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
     ResourceRequest resource_request =
         CreateResourceRequest({{ResourceID::CPU(), 3},
@@ -777,8 +879,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
                                                         {ResourceID::GPU(), 5},
                                                         {ResourceID("custom1"), 4},
                                                         {ResourceID("custom2"), 4}});
+    instrumented_io_context io_context;
     ClusterResourceScheduler resource_scheduler(
-        scheduling::NodeID(0), node_resources, is_node_available_fn_);
+        io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
     ResourceRequest resource_request =
         CreateResourceRequest({{ResourceID::CPU(), 3},
@@ -809,8 +912,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesAllocationFailureTest)
                                                       {ResourceID("custom1"), 4},
                                                       {ResourceID("custom2"), 4},
                                                       {ResourceID("custom3"), 4}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(0), node_resources, is_node_available_fn_);
+      io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
   ResourceRequest resource_request = CreateResourceRequest({{ResourceID("custom1"), 3},
                                                             {ResourceID("custom3"), 3},
@@ -838,8 +942,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
                                                         {ResourceID::GPU(), 5},
                                                         {ResourceID("custom1"), 4},
                                                         {ResourceID("custom2"), 4}});
+    instrumented_io_context io_context;
     ClusterResourceScheduler resource_scheduler(
-        scheduling::NodeID(0), node_resources, is_node_available_fn_);
+        io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
     ResourceRequest resource_request =
         CreateResourceRequest({{ResourceID::CPU(), 2},
@@ -870,7 +975,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
-  ClusterResourceScheduler resource_scheduler(scheduling::NodeID("local"),
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(io_context,
+                                              scheduling::NodeID("local"),
                                               absl::flat_hash_map<std::string, double>{},
                                               is_node_available_fn_);
   absl::flat_hash_map<std::string, double> resource;
@@ -888,6 +995,7 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
                                                       false,
                                                       false,
                                                       false,
+                                                      std::string(),
                                                       &violations,
                                                       &is_infeasible));
   EXPECT_CALL(*gcs_client_->mock_node_accessor, Get(node_id, ::testing::_))
@@ -899,6 +1007,7 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
                                           false,
                                           false,
                                           false,
+                                          std::string(),
                                           &violations,
                                           &is_infeasible)
                   .IsNil());
@@ -906,12 +1015,13 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
 
 TEST_F(ClusterResourceSchedulerTest, TaskGPUResourceInstancesTest) {
   {
+    instrumented_io_context io_context;
     NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 1},
                                                         {ResourceID::Memory(), 1},
                                                         {ResourceID::GPU(), 4},
                                                         {ResourceID("custom1"), 8}});
     ClusterResourceScheduler resource_scheduler(
-        scheduling::NodeID(0), node_resources, is_node_available_fn_);
+        io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
     std::vector<double> allocate_gpu_instances{0.5, 0.5, 0.5, 0.5};
     resource_scheduler.GetLocalResourceManager().SubtractResourceInstances(
@@ -977,8 +1087,9 @@ TEST_F(ClusterResourceSchedulerTest,
                                                         {ResourceID::Memory(), 1},
                                                         {ResourceID::GPU(), 4},
                                                         {ResourceID("custom1"), 8}});
+    instrumented_io_context io_context;
     ClusterResourceScheduler resource_scheduler(
-        scheduling::NodeID(0), node_resources, is_node_available_fn_);
+        io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
     {
       std::vector<double> allocate_gpu_instances{0.5, 0.5, 2, 0.5};
@@ -1029,8 +1140,9 @@ TEST_F(ClusterResourceSchedulerTest,
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   NodeResources node_resources = CreateNodeResources(
       {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 4}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(0), node_resources, is_node_available_fn_);
+      io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
   ResourceRequest resource_request = CreateResourceRequest(
       {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
@@ -1052,8 +1164,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
   NodeResources node_resources = CreateNodeResources(
       {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 4}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(0), node_resources, is_node_available_fn_);
+      io_context, scheduling::NodeID(0), node_resources, is_node_available_fn_);
 
   ResourceRequest resource_request = CreateResourceRequest(
       {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
@@ -1074,7 +1187,9 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
 
 TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
   absl::flat_hash_map<std::string, double> resource_spec({{"CPU", 1}});
-  ClusterResourceScheduler resource_scheduler(scheduling::NodeID("local"),
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(io_context,
+                                              scheduling::NodeID("local"),
                                               absl::flat_hash_map<std::string, double>{},
                                               is_node_available_fn_);
   for (int i = 0; i < 100; i++) {
@@ -1093,6 +1208,7 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
                                           false,
                                           false,
                                           false,
+                                          std::string(),
                                           &total_violations,
                                           &is_infeasible)
                   .IsNil());
@@ -1108,6 +1224,7 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
                                                       false,
                                                       false,
                                                       false,
+                                                      std::string(),
                                                       &total_violations,
                                                       &is_infeasible));
 
@@ -1122,6 +1239,7 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
                                                       false,
                                                       false,
                                                       false,
+                                                      std::string(),
                                                       &total_violations,
                                                       &is_infeasible));
 }
@@ -1133,8 +1251,9 @@ TEST_F(ClusterResourceSchedulerTest, ResourceUsageReportTest) {
 
   absl::flat_hash_map<std::string, double> initial_resources(
       {{"CPU", 1}, {"GPU", 2}, {"memory", 3}, {"1", 1}, {"2", 2}, {"3", 3}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID("0"), initial_resources, is_node_available_fn_);
+      io_context, scheduling::NodeID("0"), initial_resources, is_node_available_fn_);
   NodeResources other_node_resources = CreateNodeResources({{ResourceID::CPU(), 1},
                                                             {ResourceID::Memory(), 1},
                                                             {ResourceID::GPU(), 1},
@@ -1216,8 +1335,9 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
        {"object_store_memory", 1000 * 1024 * 1024}});
   int64_t used_object_store_memory = 250 * 1024 * 1024;
   int64_t *ptr = &used_object_store_memory;
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID("0"), initial_resources, is_node_available_fn_, [&] {
+      io_context, scheduling::NodeID("0"), initial_resources, is_node_available_fn_, [&] {
         return *ptr;
       });
   NodeResources other_node_resources = CreateNodeResources({{ResourceID::CPU(), 1},
@@ -1306,8 +1426,9 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
 
 TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
   absl::flat_hash_map<std::string, double> initial_resources({{"CPU", 1}});
+  instrumented_io_context io_service;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID("local"), initial_resources, is_node_available_fn_);
+      io_service, scheduling::NodeID("local"), initial_resources, is_node_available_fn_);
   auto remote = scheduling::NodeID(NodeID::FromRandom().Binary());
   resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
       remote, {{"CPU", 2.}}, {{"CPU", 2.}});
@@ -1339,19 +1460,29 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
       resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
           remote, {{"CPU", 2.}}, {{"CPU", num_slots_available}});
       for (int j = 0; j < num_slots_available; j++) {
-        ASSERT_EQ(
-            remote,
-            resource_scheduler.GetBestSchedulableNode(
-                task_spec, scheduling_strategy, false, false, true, &t, &is_infeasible));
+        ASSERT_EQ(remote,
+                  resource_scheduler.GetBestSchedulableNode(task_spec,
+                                                            scheduling_strategy,
+                                                            false,
+                                                            false,
+                                                            true,
+                                                            std::string(),
+                                                            &t,
+                                                            &is_infeasible));
         // Allocate remote resources.
         ASSERT_TRUE(resource_scheduler.AllocateRemoteTaskResources(remote, task_spec));
       }
       // Our local view says there are not enough resources on the remote node to
       // schedule another task.
-      ASSERT_EQ(
-          resource_scheduler.GetBestSchedulableNode(
-              task_spec, scheduling_strategy, false, false, true, &t, &is_infeasible),
-          scheduling::NodeID::Nil());
+      ASSERT_EQ(resource_scheduler.GetBestSchedulableNode(task_spec,
+                                                          scheduling_strategy,
+                                                          false,
+                                                          false,
+                                                          true,
+                                                          std::string(),
+                                                          &t,
+                                                          &is_infeasible),
+                scheduling::NodeID::Nil());
       ASSERT_FALSE(
           resource_scheduler.GetLocalResourceManager().AllocateLocalTaskResources(
               task_spec, task_allocation));
@@ -1361,8 +1492,9 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
 }
 
 TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID("local"), {{"CPU", 2}}, is_node_available_fn_);
+      io_context, scheduling::NodeID("local"), {{"CPU", 2}}, is_node_available_fn_);
 
   absl::flat_hash_map<std::string, double> resource_request = {{"CPU", 1},
                                                                {"custom123", 2}};
@@ -1371,38 +1503,69 @@ TEST_F(ClusterResourceSchedulerTest, DynamicResourceTest) {
   rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
 
-  auto result = resource_scheduler.GetBestSchedulableNode(
-      resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
+  auto result = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                          scheduling_strategy,
+                                                          false,
+                                                          false,
+                                                          false,
+                                                          std::string(),
+                                                          &t,
+                                                          &is_infeasible);
   ASSERT_TRUE(result.IsNil());
 
   resource_scheduler.GetLocalResourceManager().AddLocalResourceInstances(
       scheduling::ResourceID("custom123"), {0., 1.0, 1.0});
 
-  result = resource_scheduler.GetBestSchedulableNode(
-      resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                     scheduling_strategy,
+                                                     false,
+                                                     false,
+                                                     false,
+                                                     std::string(),
+                                                     &t,
+                                                     &is_infeasible);
   ASSERT_FALSE(result.IsNil()) << resource_scheduler.DebugString();
 
   resource_request["custom123"] = 3;
-  result = resource_scheduler.GetBestSchedulableNode(
-      resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                     scheduling_strategy,
+                                                     false,
+                                                     false,
+                                                     false,
+                                                     std::string(),
+                                                     &t,
+                                                     &is_infeasible);
   ASSERT_TRUE(result.IsNil());
 
   resource_scheduler.GetLocalResourceManager().AddLocalResourceInstances(
       scheduling::ResourceID("custom123"), {1.0});
-  result = resource_scheduler.GetBestSchedulableNode(
-      resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                     scheduling_strategy,
+                                                     false,
+                                                     false,
+                                                     false,
+                                                     std::string(),
+                                                     &t,
+                                                     &is_infeasible);
   ASSERT_FALSE(result.IsNil());
 
   resource_scheduler.GetLocalResourceManager().DeleteLocalResource(
       scheduling::ResourceID("custom123"));
-  result = resource_scheduler.GetBestSchedulableNode(
-      resource_request, scheduling_strategy, false, false, false, &t, &is_infeasible);
+  result = resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                     scheduling_strategy,
+                                                     false,
+                                                     false,
+                                                     false,
+                                                     std::string(),
+                                                     &t,
+                                                     &is_infeasible);
   ASSERT_TRUE(result.IsNil());
 }
 
 TEST_F(ClusterResourceSchedulerTest, AvailableResourceEmptyTest) {
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID("local"), {{"custom123", 5}}, is_node_available_fn_);
+      io_context, scheduling::NodeID("local"), {{"custom123", 5}}, is_node_available_fn_);
   std::shared_ptr<TaskResourceInstances> resource_instances =
       std::make_shared<TaskResourceInstances>();
   absl::flat_hash_map<std::string, double> resource_request = {{"custom123", 5}};
@@ -1416,8 +1579,9 @@ TEST_F(ClusterResourceSchedulerTest, AvailableResourceEmptyTest) {
 
 TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
   absl::flat_hash_map<std::string, double> resource_spec({{"CPU", 1}});
+  instrumented_io_context io_context;
   ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID("local"), resource_spec, is_node_available_fn_);
+      io_context, scheduling::NodeID("local"), resource_spec, is_node_available_fn_);
   std::vector<scheduling::NodeID> node_ids;
   for (int i = 0; i < 100; i++) {
     node_ids.emplace_back(NodeID::FromRandom().Binary());
@@ -1436,6 +1600,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
                                                       false,
                                                       false,
                                                       /*force_spillback=*/false,
+                                                      std::string(),
                                                       &total_violations,
                                                       &is_infeasible),
             scheduling::NodeID("local"));
@@ -1446,6 +1611,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
                                                       false,
                                                       false,
                                                       /*force_spillback=*/true,
+                                                      std::string(),
                                                       &total_violations,
                                                       &is_infeasible),
             scheduling::NodeID::Nil());
@@ -1457,6 +1623,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
                                                       false,
                                                       false,
                                                       /*force_spillback=*/true,
+                                                      std::string(),
                                                       &total_violations,
                                                       &is_infeasible),
             scheduling::NodeID::Nil());
@@ -1467,6 +1634,7 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
                                                       false,
                                                       false,
                                                       /*force_spillback=*/true,
+                                                      std::string(),
                                                       &total_violations,
                                                       &is_infeasible),
             node_ids[51]);
@@ -1474,8 +1642,11 @@ TEST_F(ClusterResourceSchedulerTest, TestForceSpillback) {
 
 TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
   SetUnitInstanceResourceIds({ResourceID("FPGA")});
-  ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID("local"), {{"CPU", 4}, {"FPGA", 2}}, is_node_available_fn_);
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(io_context,
+                                              scheduling::NodeID("local"),
+                                              {{"CPU", 4}, {"FPGA", 2}},
+                                              is_node_available_fn_);
 
   auto fpga_resource_id = ResourceID("FPGA");
 
@@ -1502,7 +1673,9 @@ TEST_F(ClusterResourceSchedulerTest, CustomResourceInstanceTest) {
 
 TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) {
   SetUnitInstanceResourceIds({ResourceID("GPU")});
-  ClusterResourceScheduler resource_scheduler(scheduling::NodeID("local"),
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(io_context,
+                                              scheduling::NodeID("local"),
                                               {{"CPU", 4}, {"memory", 4}, {"GPU", 2}},
                                               is_node_available_fn_);
   std::shared_ptr<TaskResourceInstances> cluster_resources =
@@ -1522,6 +1695,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   cluster_instance_resources->Set(ResourceID::Memory(), {4.});
   cluster_instance_resources->Set(ResourceID::GPU(), {1., 1.});
   ClusterResourceScheduler resource_scheduler_cpu_instance(
+      io_context,
       scheduling::NodeID("local"),
       {{"CPU", 4}, {"memory", 4}, {"GPU", 2}},
       is_node_available_fn_);
@@ -1542,8 +1716,11 @@ TEST_F(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest) {
       CreateResourceRequest(AddPlacementGroupConstraint(
           {{"CPU", 1}, {"memory", 100}}, bundle_1.first, bundle_1.second));
   NodeResources node_resources = NodeResources(bundle_resource_request);
-  ClusterResourceScheduler resource_scheduler(
-      scheduling::NodeID(node_1.Binary()), node_resources, is_node_available_fn_);
+  instrumented_io_context io_service;
+  ClusterResourceScheduler resource_scheduler(io_service,
+                                              scheduling::NodeID(node_1.Binary()),
+                                              node_resources,
+                                              is_node_available_fn_);
   ResourceRequest bundle_resource_request_2 =
       CreateResourceRequest(AddPlacementGroupConstraint(
           {{"CPU", 1}, {"memory", 100}}, bundle_2.first, bundle_2.second));
@@ -1574,6 +1751,7 @@ TEST_F(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest) {
                                                         scheduling_strategy,
                                                         true,
                                                         false,
+                                                        std::string(),
                                                         &violations,
                                                         &is_infeasible),
               except_node_id);

@@ -5,7 +5,7 @@ Adapted from VTraceTFPolicy to use the PPO surrogate loss.
 Keep in sync with changes to VTraceTFPolicy.
 """
 
-import gym
+import gymnasium as gym
 import numpy as np
 import logging
 from typing import Any, Dict, List, Optional, Type, Union
@@ -54,8 +54,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-# We need this builder function because we want to share the same
-# custom logics between TF1 dynamic and TF2 eager policies.
+# TODO (sven): Deprecate once APPO and IMPALA fully on RLModules/Learner APIs.
 class APPOTorchPolicy(
     VTraceOptimizer,
     LearningRateSchedule,
@@ -70,9 +69,15 @@ class APPOTorchPolicy(
     def __init__(self, observation_space, action_space, config):
         config = dict(ray.rllib.algorithms.appo.appo.APPOConfig().to_dict(), **config)
 
-        # Although this is a no-op, we call __init__ here to make it clear
-        # that base.__init__ will use the make_model() call.
-        VTraceOptimizer.__init__(self)
+        # If Learner API is used, we don't need any loss-specific mixins.
+        # However, we also would like to avoid creating special Policy-subclasses
+        # for this as the entire Policy concept will soon not be used anymore with
+        # the new Learner- and RLModule APIs.
+        if not config.get("_enable_learner_api", False):
+            # Although this is a no-op, we call __init__ here to make it clear
+            # that base.__init__ will use the make_model() call.
+            VTraceOptimizer.__init__(self)
+
         LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
 
         TorchPolicyV2.__init__(
@@ -89,7 +94,6 @@ class APPOTorchPolicy(
         ValueNetworkMixin.__init__(self, config)
         KLCoeffMixin.__init__(self, config)
 
-        # TODO: Don't require users to call this manually.
         self._initialize_loss_from_dummy_batch()
 
         # Initiate TargetNetwork ops after loss initialization.
@@ -144,7 +148,7 @@ class APPOTorchPolicy(
             )
 
         actions = train_batch[SampleBatch.ACTIONS]
-        dones = train_batch[SampleBatch.DONES]
+        dones = train_batch[SampleBatch.TERMINATEDS]
         rewards = train_batch[SampleBatch.REWARDS]
         behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 

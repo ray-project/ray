@@ -1,6 +1,7 @@
 import logging
 import os
-from ray._private.utils import get_or_create_event_loop
+import ray
+
 import requests
 import shutil
 import sys
@@ -9,9 +10,9 @@ import time
 from pathlib import Path
 from functools import partial
 import pytest
-import psutil
 import yaml
 
+from ray._private.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -22,6 +23,8 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_for_condition,
     run_string_as_driver_nonblocking,
+    get_current_unused_port,
+    async_wait_for_condition_async_predicate,
 )
 from ray.dashboard.modules.job.common import JobSubmitRequest
 from ray.dashboard.modules.job.utils import (
@@ -30,7 +33,7 @@ from ray.dashboard.modules.job.utils import (
 )
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
-from ray.experimental.state.api import list_nodes
+from ray.util.state import list_nodes
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
@@ -43,26 +46,6 @@ logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 EVENT_LOOP = get_or_create_event_loop()
-
-
-@pytest.fixture
-def make_sure_dashboard_http_port_unused():
-    for process in psutil.process_iter():
-        should_kill = False
-        try:
-            for conn in process.connections():
-                if conn.laddr.port == DEFAULT_DASHBOARD_AGENT_LISTEN_PORT:
-                    should_kill = True
-                    break
-        except Exception:
-            continue
-        if should_kill:
-            try:
-                process.kill()
-                process.wait()
-            except Exception:
-                pass
-    yield
 
 
 @pytest.fixture
@@ -537,6 +520,66 @@ wait_for_condition(
     print(out_str, err_str)
     assert "(raylet)" not in out_str
     assert "(raylet)" not in err_str
+
+
+@pytest.mark.asyncio
+async def test_non_default_dashboard_agent_http_port(tmp_path):
+    """Test that we can connect to the dashboard agent with a non-default
+    http port.
+    """
+    import subprocess
+
+    cmd = (
+        "ray start --head " f"--dashboard-agent-listen-port {get_current_unused_port()}"
+    )
+    subprocess.check_output(cmd, shell=True)
+
+    try:
+        # We will need to wait for the ray to be started in the subprocess.
+        address_info = ray.init("auto", ignore_reinit_error=True).address_info
+
+        ip, _ = address_info["webui_url"].split(":")
+        dashboard_agent_listen_port = address_info["dashboard_agent_listen_port"]
+        agent_address = f"{ip}:{dashboard_agent_listen_port}"
+        print("agent address = ", agent_address)
+
+        agent_client = JobAgentSubmissionClient(format_web_url(agent_address))
+        head_client = JobSubmissionClient(format_web_url(address_info["webui_url"]))
+
+        assert wait_until_server_available(agent_address)
+
+        # Submit a job through the agent.
+        runtime_env = RuntimeEnv().to_dict()
+        request = validate_request_type(
+            {
+                "runtime_env": runtime_env,
+                "entrypoint": "echo hello",
+            },
+            JobSubmitRequest,
+        )
+        submit_result = await agent_client.submit_job_internal(request)
+        job_id = submit_result.submission_id
+
+        async def verify():
+            # Wait for job finished.
+            wait_for_condition(
+                partial(
+                    _check_job,
+                    client=head_client,
+                    job_id=job_id,
+                    status=JobStatus.SUCCEEDED,
+                ),
+                timeout=10,
+            )
+
+            resp = await agent_client.get_job_logs_internal(job_id)
+            assert "hello" in resp.logs, resp.logs
+
+            return True
+
+        await async_wait_for_condition_async_predicate(verify, retry_interval_ms=2000)
+    finally:
+        subprocess.check_output("ray stop --force", shell=True)
 
 
 if __name__ == "__main__":

@@ -70,8 +70,10 @@ class ObjectRef {
     }
 
     SubReference(id_);
-    SubReference(rhs.id_);
     CopyAndAddReference(id_, rhs.id_);
+    // Rvalues need to be sub after add. Otherwise, the reference_count will become 0 and
+    // be deleted. Cause information such as owner to be deleted.
+    SubReference(rhs.id_);
     rhs.id_ = {};
     return *this;
   }

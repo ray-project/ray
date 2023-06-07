@@ -1,15 +1,16 @@
 import asyncio
 import binascii
+from collections import defaultdict
 import contextlib
 import errno
 import functools
-import hashlib
 import importlib
 import inspect
 import json
 import logging
 import multiprocessing
 import os
+import platform
 import re
 import signal
 import subprocess
@@ -18,15 +19,21 @@ import tempfile
 import threading
 import time
 from urllib.parse import urlencode, unquote, urlparse, parse_qsl, urlunparse
-import uuid
 import warnings
 from inspect import signature
 from pathlib import Path
 from subprocess import list2cmdline
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Union
-
-import grpc
-import numpy as np
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    Coroutine,
+    List,
+)
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -34,19 +41,12 @@ from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.tls_utils import load_certs_from_env
-from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
-
-try:
-    from grpc import aio as aiogrpc
-except ImportError:
-    from grpc.experimental import aio as aiogrpc
 
 
 pwd = None
@@ -67,6 +67,10 @@ win32_AssignProcessToJobObject = None
 
 ENV_DISABLE_DOCKER_CPU_WARNING = "RAY_DISABLE_DOCKER_CPU_WARNING" in os.environ
 _PYARROW_VERSION = None
+
+# This global variable is used for testing only
+_CALLED_FREQ = defaultdict(lambda: 0)
+_CALLED_FREQ_LOCK = threading.Lock()
 
 
 def get_user_temp_dir():
@@ -129,14 +133,6 @@ def read_ray_address(temp_dir: Optional[str] = None) -> str:
         return f.read().strip()
 
 
-def _random_string():
-    id_hash = hashlib.shake_128()
-    id_hash.update(uuid.uuid4().bytes)
-    id_bytes = id_hash.digest(ray_constants.ID_SIZE)
-    assert len(id_bytes) == ray_constants.ID_SIZE
-    return id_bytes
-
-
 def format_error_message(exception_message: str, task_exception: bool = False):
     """Improve the formatting of an exception thrown by a remote function.
 
@@ -178,32 +174,12 @@ def push_error_to_driver(
     worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
-def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct an ErrorTableData object.
-
-    Args:
-        job_id: The ID of the job that the error should go to. If this is
-            nil, then the error will go to all drivers.
-        error_type: The type of the error.
-        message: The error message.
-        timestamp: The time of the error.
-
-    Returns:
-        The ErrorTableData object.
-    """
-    data = ErrorTableData()
-    data.job_id = job_id.binary()
-    data.type = error_type
-    data.error_message = message
-    data.timestamp = timestamp
-    return data
-
-
 def publish_error_to_driver(
     error_type: str,
     message: str,
     gcs_publisher,
     job_id=None,
+    num_retries=None,
 ):
     """Push an error message to the driver to be printed in the background.
 
@@ -223,37 +199,12 @@ def publish_error_to_driver(
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    error_data = construct_error_message(job_id, error_type, message, time.time())
     try:
-        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+        gcs_publisher.publish_error(
+            job_id.hex().encode(), error_type, message, job_id, num_retries
+        )
     except Exception:
-        logger.exception(f"Failed to publish error {error_data}")
-
-
-def random_string():
-    """Generate a random string to use as an ID.
-
-    Note that users may seed numpy, which could cause this function to generate
-    duplicate IDs. Therefore, we need to seed numpy ourselves, but we can't
-    interfere with the state of the user's random number generator, so we
-    extract the state of the random number generator and reset it after we are
-    done.
-
-    TODO(rkn): If we want to later guarantee that these are generated in a
-    deterministic manner, then we will need to make some changes here.
-
-    Returns:
-        A random byte string of length ray_constants.ID_SIZE.
-    """
-    # Get the state of the numpy random number generator.
-    numpy_state = np.random.get_state()
-    # Try to use true randomness.
-    np.random.seed(None)
-    # Generate the random ID.
-    random_id = np.random.bytes(ray_constants.ID_SIZE)
-    # Reset the state of the numpy random number generator.
-    np.random.set_state(numpy_state)
-    return random_id
+        logger.exception(f"Failed to publish error: {message} [type {error_type}]")
 
 
 def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
@@ -273,10 +224,7 @@ def decode(byte_str: str, allow_none: bool = False, encode_type: str = "utf-8"):
 
     if not isinstance(byte_str, bytes):
         raise ValueError(f"The argument {byte_str} must be a bytes object.")
-    if sys.version_info >= (3, 0):
-        return byte_str.decode(encode_type)
-    else:
-        return byte_str
+    return byte_str.decode(encode_type)
 
 
 def ensure_str(s, encoding="utf-8", errors="strict"):
@@ -302,8 +250,7 @@ def binary_to_task_id(binary_task_id):
 
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)
-    if sys.version_info >= (3, 0):
-        hex_identifier = hex_identifier.decode()
+    hex_identifier = hex_identifier.decode()
     return hex_identifier
 
 
@@ -1247,7 +1194,8 @@ def import_attr(full_path: str):
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = (sys.version_info.major, sys.version_info.minor),
+    architecture: Optional[str] = None,
 ) -> str:
     """Returns the filename used for the nightly Ray wheel.
 
@@ -1256,28 +1204,41 @@ def get_wheel_filename(
             "darwin", "linux", "win32"
         ray_version: The Ray version as returned by ray.__version__ or
             `ray --version`.  Examples: "3.0.0.dev0"
-        py_version (str):
-            The major and minor Python versions concatenated.  Examples: "36",
-            "37", "38", "39"
+        py_version: The Python version as returned by sys.version_info. A
+            tuple of (major, minor). Examples: (3, 8)
+        architecture: Architecture, e.g. ``x86_64`` or ``aarch64``. If None, will
+            be determined by calling ``platform.processor()``.
+
     Returns:
         The wheel file name.  Examples:
             ray-3.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ["36", "37", "38", "39"], py_version
+    assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
+
+    py_version_str = "".join(map(str, py_version))
+    if py_version_str in ["37", "38", "39"]:
+        darwin_os_string = "macosx_10_15_x86_64"
+    else:
+        darwin_os_string = "macosx_10_15_universal2"
+
+    architecture = architecture or platform.processor()
+
+    if architecture == "aarch64":
+        linux_os_string = "manylinux2014_aarch64"
+    else:
+        linux_os_string = "manylinux2014_x86_64"
 
     os_strings = {
-        "darwin": "macosx_10_15_x86_64"
-        if py_version in ["38", "39"]
-        else "macosx_10_15_intel",
-        "linux": "manylinux2014_x86_64",
+        "darwin": darwin_os_string,
+        "linux": linux_os_string,
         "win32": "win_amd64",
     }
 
     assert sys_platform in os_strings, sys_platform
 
     wheel_filename = (
-        f"ray-{ray_version}-cp{py_version}-"
-        f"cp{py_version}{'m' if py_version in ['36', '37'] else ''}"
+        f"ray-{ray_version}-cp{py_version_str}-"
+        f"cp{py_version_str}{'m' if py_version_str in ['37'] else ''}"
         f"-{os_strings[sys_platform]}.whl"
     )
 
@@ -1288,7 +1249,7 @@ def get_master_wheel_url(
     ray_commit: str = ray.__commit__,
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel from a specific commit."""
     filename = get_wheel_filename(
@@ -1304,7 +1265,7 @@ def get_release_wheel_url(
     ray_commit: str = ray.__commit__,
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
-    py_version: str = f"{sys.version_info.major}{sys.version_info.minor}",
+    py_version: Tuple[int, int] = sys.version_info[:2],
 ) -> str:
     """Return the URL for the wheel for a specific release."""
     filename = get_wheel_filename(
@@ -1333,7 +1294,27 @@ def init_grpc_channel(
     options: Optional[Sequence[Tuple[str, Any]]] = None,
     asynchronous: bool = False,
 ):
+    import grpc
+
+    try:
+        from grpc import aio as aiogrpc
+    except ImportError:
+        from grpc.experimental import aio as aiogrpc
+
+    from ray._private.tls_utils import load_certs_from_env
+
     grpc_module = aiogrpc if asynchronous else grpc
+
+    options = options or []
+    options_dict = dict(options)
+    options_dict["grpc.keepalive_time_ms"] = options_dict.get(
+        "grpc.keepalive_time_ms", ray._config.grpc_client_keepalive_time_ms()
+    )
+    options_dict["grpc.keepalive_timeout_ms"] = options_dict.get(
+        "grpc.keepalive_timeout_ms", ray._config.grpc_client_keepalive_timeout_ms()
+    )
+    options = options_dict.items()
+
     if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
         server_cert_chain, private_key, ca_cert = load_certs_from_env()
         credentials = grpc.ssl_channel_credentials(
@@ -1375,9 +1356,9 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_keys(prefix, namespace)
         except Exception as e:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1409,9 +1390,9 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
         try:
             result = gcs_client.internal_kv_get(key, namespace)
         except Exception as e:
-            if isinstance(e, grpc.RpcError) and e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+            if isinstance(e, ray.exceptions.RpcError) and e.rpc_code in (
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1466,10 +1447,10 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
             return gcs_client.internal_kv_put(
                 key, value, overwrite=True, namespace=namespace
             )
-        except grpc.RpcError as e:
-            if e.code() in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
+        except ray.exceptions.RpcError as e:
+            if e.rpc_code in (
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
                 logger.warning(
                     f"Unable to connect to GCS at {gcs_client.address}. "
@@ -1481,7 +1462,7 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
                 logger.exception("Internal KV Put failed")
             time.sleep(2)
             error = e
-    # Reraise the last grpc.RpcError.
+    # Reraise the last error.
     raise error
 
 
@@ -1635,7 +1616,7 @@ def split_address(address: str) -> Tuple[str, str]:
 
     Examples:
         >>> split_address("ray://my_cluster")
-        ("ray", "my_cluster")
+        ('ray', 'my_cluster')
     """
     if "://" not in address:
         raise ValueError("Address must contain '://'")
@@ -1800,9 +1781,7 @@ class DeferSigint(contextlib.AbstractContextManager):
         if threading.current_thread() == threading.main_thread():
             return cls()
         else:
-            # TODO(Clark): Use contextlib.nullcontext() once Python 3.6 support is
-            # dropped.
-            return contextlib.suppress()
+            return contextlib.nullcontext()
 
     def _set_task_cancelled(self, signum, frame):
         """SIGINT handler that defers the signal."""
@@ -1851,3 +1830,96 @@ class DeferSigint(contextlib.AbstractContextManager):
             # If exception was raised in context, returning False will cause it to be
             # reraised.
             return False
+
+
+background_tasks = set()
+
+
+def run_background_task(coroutine: Coroutine) -> asyncio.Task:
+    """Schedule a task reliably to the event loop.
+
+    This API is used when you don't want to cache the reference of `asyncio.Task`.
+    For example,
+
+    ```
+    get_event_loop().create_task(coroutine(*args))
+    ```
+
+    The above code doesn't guarantee to schedule the coroutine to the event loops
+
+    When using create_task in a  "fire and forget" way, we should keep the references
+    alive for the reliable execution. This API is used to fire and forget
+    asynchronous execution.
+
+    https://docs.python.org/3/library/asyncio-task.html#creating-tasks
+    """
+    task = get_or_create_event_loop().create_task(coroutine)
+    # Add task to the set. This creates a strong reference.
+    background_tasks.add(task)
+
+    # To prevent keeping references to finished tasks forever,
+    # make each task remove its own reference from the set after
+    # completion:
+    task.add_done_callback(background_tasks.discard)
+    return task
+
+
+def try_import_each_module(module_names_to_import: List[str]) -> None:
+    """
+    Make a best-effort attempt to import each named Python module.
+    This is used by the Python default_worker.py to preload modules.
+    """
+    for module_to_preload in module_names_to_import:
+        try:
+            importlib.import_module(module_to_preload)
+        except ImportError:
+            logger.exception(f'Failed to preload the module "{module_to_preload}"')
+
+
+def update_envs(env_vars: Dict[str, str]):
+    """
+    When updating the environment variable, if there is ${X},
+    it will be replaced with the current environment variable.
+    """
+    if not env_vars:
+        return
+
+    replaceable_keys = [
+        "PATH",
+        "LD_LIBRARY_PATH",
+        "DYLD_LIBRARY_PATH",
+        "LD_PRELOAD",
+    ]
+
+    for key, value in env_vars.items():
+        if key in replaceable_keys:
+            os.environ[key] = value.replace("${" + key + "}", os.environ.get(key, ""))
+        else:
+            os.environ[key] = value
+
+
+def parse_node_labels_json(
+    labels_json: str, cli_logger, cf, command_arg="--labels"
+) -> Dict[str, str]:
+    try:
+        labels = json.loads(labels_json)
+        if not isinstance(labels, dict):
+            raise ValueError(
+                "The format after deserialization is not a key-value pair map"
+            )
+        for key, value in labels.items():
+            if not isinstance(key, str):
+                raise ValueError("The key is not string type.")
+            if not isinstance(value, str):
+                raise ValueError(f'The value of the "{key}" is not string type')
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(command_arg),
+            str(e),
+        )
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", ' '"region": "us"}}\''),
+        )
+    return labels

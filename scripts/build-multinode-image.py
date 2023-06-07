@@ -1,1 +1,0 @@
-../ci/build/build-multinode-image.py

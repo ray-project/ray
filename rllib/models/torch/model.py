@@ -51,8 +51,8 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         config: The config used to construct the model
 
     Required Attributes:
-        input_spec: SpecDict: Denotes the input keys and shapes passed to `unroll`
-        output_spec: SpecDict: Denotes the output keys and shapes returned from
+        input_specs: SpecDict: Denotes the input keys and shapes passed to `unroll`
+        output_specs: SpecDict: Denotes the output keys and shapes returned from
             `unroll`
         prev_state_spec: SpecDict: Denotes the keys and shapes for the input
             recurrent states to the model
@@ -95,13 +95,13 @@ class TorchRecurrentModel(RecurrentModel, nn.Module, TorchModelIO):
         ...         self.project = nn.Linear(recurrent_size, output_size)
         ...
         ...     @property
-        ...     def input_spec(self):
+        ...     def input_specs(self):
         ...         return SpecDict(
         ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
         ...         )
         ...
         ...     @property
-        ...     def output_spec(self):
+        ...     def output_specs(self):
         ...         return SpecDict(
         ...             {"logits": "batch time logits"}, logits=self.config.output_size
         ...         )
@@ -162,8 +162,8 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         config: The config used to construct the model
 
     Required Attributes:
-        input_spec: SpecDict: Denotes the input keys and shapes passed to `_forward`
-        output_spec: SpecDict: Denotes the output keys and shapes returned from
+        input_specs: SpecDict: Denotes the input keys and shapes passed to `_forward`
+        output_specs: SpecDict: Denotes the output keys and shapes returned from
             `_forward`
 
     Required Overrides:
@@ -197,13 +197,13 @@ class TorchModel(Model, nn.Module, TorchModelIO):
         ...         )
         ...
         ...     @property
-        ...     def input_spec(self):
+        ...     def input_specs(self):
         ...         return SpecDict(
         ...             {"obs": "batch time hidden"}, hidden=self.config.input_size
         ...         )
         ...
         ...     @property
-        ...     def output_spec(self):
+        ...     def output_specs(self):
         ...         return SpecDict(
         ...             {"logits": "batch time logits"}, logits=self.config.output_size
         ...         )

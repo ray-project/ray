@@ -56,7 +56,7 @@ class TorchTrainer(DataParallelTrainer):
             # Get dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Session returns the Ray Dataset shard for the given key.
+            # Session returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Get the total number of workers executing training.
@@ -93,9 +93,43 @@ class TorchTrainer(DataParallelTrainer):
     To save a model to use for the ``TorchPredictor``, you must save it under the
     "model" kwarg in ``Checkpoint`` passed to ``session.report()``.
 
-    Example:
+    .. note::
+        When you wrap the ``model`` with ``prepare_model``, the keys of its
+        ``state_dict`` are prefixed by ``module.``. For example,
+        ``layer1.0.bn1.bias`` becomes ``module.layer1.0.bn1.bias``.
+        However, when saving ``model`` through ``session.report()``
+        all ``module.`` prefixes are stripped.
+        As a result, when you load from a saved checkpoint, make sure that
+        you first load ``state_dict`` to the model
+        before calling ``prepare_model``.
+        Otherwise, you will run into errors like
+        ``Error(s) in loading state_dict for DistributedDataParallel:
+        Missing key(s) in state_dict: "module.conv1.weight", ...``. See snippet below.
 
         .. testcode::
+
+            from torchvision.models import resnet18
+            from ray.air import session
+            from ray.air.checkpoint import Checkpoint
+            import ray.train as train
+
+            def train_func():
+                ...
+                model = resnet18()
+                model = train.torch.prepare_model(model)
+                for epoch in range(3):
+                    ...
+                    ckpt = Checkpoint.from_dict({
+                        "epoch": epoch,
+                        "model": model.state_dict(),
+                        # "model": model.module.state_dict(),
+                        # ** The above two are equivalent **
+                    })
+                    session.report({"foo": "bar"}, ckpt)
+
+    Example:
+
+        .. code-block:: python
 
             import torch
             import torch.nn as nn
@@ -107,6 +141,9 @@ class TorchTrainer(DataParallelTrainer):
             from ray.air.config import ScalingConfig
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig
+
+            # If using GPUs, set this to True.
+            use_gpu = False
 
             # Define NN layers archicture, epochs, and number of workers
             input_size = 1
@@ -176,9 +213,7 @@ class TorchTrainer(DataParallelTrainer):
             )
 
             # Define scaling and run configs
-            # If using GPUs, use the below scaling config instead.
-            # scaling_config = ScalingConfig(num_workers=3, use_gpu=True)
-            scaling_config = ScalingConfig(num_workers=num_workers)
+            scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
             run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
 
             trainer = TorchTrainer(
@@ -192,13 +227,7 @@ class TorchTrainer(DataParallelTrainer):
             best_checkpoint_loss = result.metrics['loss']
 
             # Assert loss is less 0.09
-            assert best_checkpoint_loss <= 0.09
-
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
-
-        ...
+            assert best_checkpoint_loss <= 0.09   # doctest: +SKIP
 
     Args:
 
@@ -212,7 +241,7 @@ class TorchTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed

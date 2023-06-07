@@ -1,45 +1,62 @@
-import { makeStyles } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
-import dayjs from "dayjs";
-import React from "react";
-import { DurationText } from "../../common/DurationText";
+import { Box, makeStyles } from "@material-ui/core";
+import React, { useRef, useState } from "react";
+import { CollapsibleSection } from "../../common/CollapsibleSection";
+import { Section } from "../../common/Section";
+import {
+  NodeStatusCard,
+  ResourceStatusCard,
+} from "../../components/AutoscalerStatusCards";
 import Loading from "../../components/Loading";
-import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
-import { MainNavPageInfo } from "../layout/mainNavContext";
-
+import { NestedJobProgressLink } from "../../type/job";
+import ActorList from "../actor/ActorList";
+import { NodeCountCard } from "../overview/cards/NodeCountCard";
+import PlacementGroupList from "../state/PlacementGroup";
+import TaskList from "../state/task";
+import { useRayStatus } from "./hook/useClusterStatus";
 import { useJobDetail } from "./hook/useJobDetail";
-import { useJobProgress } from "./hook/useJobProgress";
-import { JobTaskNameProgressTable } from "./JobTaskNameProgressTable";
-import { TaskProgressBar } from "./TaskProgressBar";
+import { JobMetadataSection } from "./JobDetailInfoPage";
+import { JobDriverLogs } from "./JobDriverLogs";
+import { JobProgressBar } from "./JobProgressBar";
+import { TaskTimeline } from "./TaskTimeline";
 
 const useStyle = makeStyles((theme) => ({
   root: {
     padding: theme.spacing(2),
+    backgroundColor: "white",
   },
-  taskProgressTable: {
-    marginTop: theme.spacing(2),
+  section: {
+    marginBottom: theme.spacing(4),
+  },
+  autoscalerSection: {
+    flexWrap: "wrap",
+    [theme.breakpoints.up("md")]: {
+      flexWrap: "nowrap",
+    },
+  },
+  nodeCountCard: {
+    flex: "1 0 500px",
   },
 }));
 
-const JobDetailPage = () => {
+export const JobDetailChartsPage = () => {
   const classes = useStyle();
-  const { job, msg, params } = useJobDetail();
-  const jobId = params.id;
-  const { progress, error, driverExists } = useJobProgress(jobId);
+  const { job, msg, isLoading, params } = useJobDetail();
+
+  const [taskListFilter, setTaskListFilter] = useState<string>();
+  const [taskTableExpanded, setTaskTableExpanded] = useState(false);
+  const taskTableRef = useRef<HTMLDivElement>(null);
+
+  const [actorListFilter, setActorListFilter] = useState<string>();
+  const [actorTableExpanded, setActorTableExpanded] = useState(false);
+  const actorTableRef = useRef<HTMLDivElement>(null);
+  const { cluster_status } = useRayStatus();
 
   if (!job) {
     return (
       <div className={classes.root}>
-        <MainNavPageInfo
-          pageInfo={{
-            title: "Job details",
-            id: "job-detail",
-            path: undefined,
-          }}
-        />
-        <Loading loading={msg.startsWith("Loading")} />
+        <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
@@ -49,132 +66,151 @@ const JobDetailPage = () => {
     );
   }
 
-  const tasksSectionContents = (() => {
-    if (!driverExists) {
-      return <TaskProgressBar />;
+  const handleClickLink = (link: NestedJobProgressLink) => {
+    if (link.type === "task") {
+      setTaskListFilter(link.id);
+      if (!taskTableExpanded) {
+        setTaskTableExpanded(true);
+        setTimeout(() => {
+          // Wait a few ms to give the collapsible view some time to render.
+          taskTableRef.current?.scrollIntoView();
+        }, 50);
+      } else {
+        taskTableRef.current?.scrollIntoView();
+      }
+    } else if (link.type === "actor") {
+      setActorListFilter(link.id);
+      if (!actorTableExpanded) {
+        setActorTableExpanded(true);
+        setTimeout(() => {
+          // Wait a few ms to give the collapsible view some time to render.
+          actorTableRef.current?.scrollIntoView();
+        }, 50);
+      } else {
+        actorTableRef.current?.scrollIntoView();
+      }
     }
-    const { status } = job;
-    if (!progress || error) {
-      return (
-        <Alert severity="warning">
-          No tasks visualizations because prometheus is not detected. Please
-          make sure prometheus is running and refresh this page. See:{" "}
-          <a
-            href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
-            target="_blank"
-            rel="noreferrer"
-          >
-            https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
-          </a>
-          .
-          <br />
-          If you are hosting prometheus on a separate machine or using a
-          non-default port, please set the RAY_PROMETHEUS_HOST env var to point
-          to your prometheus server when launching ray.
-        </Alert>
-      );
-    }
-    if (status === "SUCCEEDED" || status === "FAILED") {
-      return (
-        <React.Fragment>
-          <TaskProgressBar {...progress} showAsComplete />
-          <JobTaskNameProgressTable
-            className={classes.taskProgressTable}
-            jobId={jobId}
-          />
-        </React.Fragment>
-      );
-    } else {
-      return (
-        <React.Fragment>
-          <TaskProgressBar {...progress} />
-          <JobTaskNameProgressTable
-            className={classes.taskProgressTable}
-            jobId={jobId}
-          />
-        </React.Fragment>
-      );
-    }
-  })();
+  };
+
+  const handleTaskListFilterChange = () => {
+    setTaskListFilter(undefined);
+  };
+
+  const handleActorListFilterChange = () => {
+    setActorListFilter(undefined);
+  };
 
   return (
     <div className={classes.root}>
-      <MainNavPageInfo
-        pageInfo={{
-          title: job.job_id ?? "Job details",
-          id: "job-detail",
-          path: job.job_id ? `/new/jobs/${job.job_id}` : undefined,
-        }}
-      />
-      <TitleCard title={`JOB - ${params.id}`}>
-        <MetadataSection
-          metadataList={[
-            {
-              label: "Entrypoint",
-              content: job.entrypoint
-                ? {
-                    value: job.entrypoint,
-                    copyableValue: job.entrypoint,
-                  }
-                : { value: "-" },
-            },
-            {
-              label: "Status",
-              content: <StatusChip type="job" status={job.status} />,
-            },
-            {
-              label: "Job ID",
-              content: job.job_id
-                ? {
-                    value: job.job_id,
-                    copyableValue: job.job_id,
-                  }
-                : { value: "-" },
-            },
-            {
-              label: "Submission ID",
-              content: job.submission_id
-                ? {
-                    value: job.submission_id,
-                    copyableValue: job.submission_id,
-                  }
-                : {
-                    value: "-",
-                  },
-            },
-            {
-              label: "Duration",
-              content: job.start_time ? (
-                <DurationText
-                  startTime={job.start_time}
-                  endTime={job.end_time}
-                />
-              ) : (
-                <React.Fragment>-</React.Fragment>
-              ),
-            },
-            {
-              label: "Started at",
-              content: {
-                value: job.start_time
-                  ? dayjs(Number(job.start_time)).format("YYYY/MM/DD HH:mm:ss")
-                  : "-",
-              },
-            },
-            {
-              label: "Ended at",
-              content: {
-                value: job.end_time
-                  ? dayjs(Number(job.end_time)).format("YYYY/MM/DD HH:mm:ss")
-                  : "-",
-              },
-            },
-          ]}
-        />
-      </TitleCard>
-      <TitleCard title="Tasks">{tasksSectionContents}</TitleCard>
+      <JobMetadataSection job={job} />
+
+      <CollapsibleSection
+        title="Tasks/actor overview (beta)"
+        startExpanded
+        className={classes.section}
+      >
+        <Section>
+          <JobProgressBar
+            jobId={job.job_id ? job.job_id : undefined}
+            job={job}
+            onClickLink={handleClickLink}
+          />
+        </Section>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Logs"
+        startExpanded
+        className={classes.section}
+      >
+        <Section noTopPadding>
+          <JobDriverLogs job={job} />
+        </Section>
+      </CollapsibleSection>
+
+      {job.job_id && (
+        <CollapsibleSection
+          title="Task Timeline (beta)"
+          startExpanded
+          className={classes.section}
+        >
+          <Section>
+            <TaskTimeline jobId={job.job_id} />
+          </Section>
+        </CollapsibleSection>
+      )}
+
+      <CollapsibleSection
+        title="Cluster status and autoscaler"
+        startExpanded
+        className={classes.section}
+      >
+        <Box
+          display="flex"
+          flexDirection="row"
+          gridGap={24}
+          alignItems="stretch"
+          className={classes.autoscalerSection}
+        >
+          <NodeCountCard className={classes.nodeCountCard} />
+          <Section flex="1 1 500px">
+            <NodeStatusCard cluster_status={cluster_status} />
+          </Section>
+          <Section flex="1 1 500px">
+            <ResourceStatusCard cluster_status={cluster_status} />
+          </Section>
+        </Box>
+      </CollapsibleSection>
+
+      {job.job_id && (
+        <React.Fragment>
+          <CollapsibleSection
+            ref={taskTableRef}
+            title="Task Table"
+            expanded={taskTableExpanded}
+            onExpandButtonClick={() => {
+              setTaskTableExpanded(!taskTableExpanded);
+            }}
+            className={classes.section}
+          >
+            <Section>
+              <TaskList
+                jobId={job.job_id}
+                filterToTaskId={taskListFilter}
+                onFilterChange={handleTaskListFilterChange}
+              />
+            </Section>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            ref={actorTableRef}
+            title="Actor Table"
+            expanded={actorTableExpanded}
+            onExpandButtonClick={() => {
+              setActorTableExpanded(!actorTableExpanded);
+            }}
+            className={classes.section}
+          >
+            <Section>
+              <ActorList
+                jobId={job.job_id}
+                filterToActorId={actorListFilter}
+                onFilterChange={handleActorListFilterChange}
+                detailPathPrefix="actors"
+              />
+            </Section>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="Placement Group Table"
+            className={classes.section}
+          >
+            <Section>
+              <PlacementGroupList jobId={job.job_id} />
+            </Section>
+          </CollapsibleSection>
+        </React.Fragment>
+      )}
     </div>
   );
 };
-
-export default JobDetailPage;

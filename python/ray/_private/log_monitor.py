@@ -11,11 +11,9 @@ import time
 import traceback
 from typing import Callable, List, Set
 
-import ray._private.gcs_pubsub as gcs_pubsub
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
@@ -24,7 +22,7 @@ from ray._private.ray_logging import setup_component_logger
 logger = logging.getLogger(__name__)
 
 # The groups are job id, and pid.
-JOB_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
+WORKER_LOG_PATTERN = re.compile(".*worker.*-([0-9a-f]+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
@@ -73,13 +71,17 @@ class LogFileInfo:
         would have different inodes, such as log rotation or file syncing
         semantics.
         """
-        open_inode = None
-        if self.file_handle and not self.file_handle.closed:
-            open_inode = os.fstat(self.file_handle.fileno()).st_ino
-        new_inode = os.stat(self.filename).st_ino
-        if open_inode != new_inode:
-            self.file_handle = open(self.filename, "rb")
-            self.file_handle.seek(self.file_position)
+        try:
+            open_inode = None
+            if self.file_handle and not self.file_handle.closed:
+                open_inode = os.fstat(self.file_handle.fileno()).st_ino
+
+            new_inode = os.stat(self.filename).st_ino
+            if open_inode != new_inode:
+                self.file_handle = open(self.filename, "rb")
+                self.file_handle.seek(self.file_position)
+        except Exception:
+            logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
 
     def __repr__(self):
         return (
@@ -131,7 +133,7 @@ class LogMonitor:
     def __init__(
         self,
         logs_dir,
-        gcs_publisher: gcs_pubsub.GcsPublisher,
+        gcs_publisher,
         is_proc_alive_fn: Callable[[int], bool],
         max_files_open: int = ray_constants.LOG_MONITOR_MAX_OPEN_FILES,
     ):
@@ -214,13 +216,12 @@ class LogMonitor:
             + runtime_env_setup_paths
         ):
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
-                job_match = JOB_LOG_PATTERN.match(file_path)
-                if job_match:
-                    job_id = job_match.group(1)
-                    worker_pid = int(job_match.group(2))
+                worker_match = WORKER_LOG_PATTERN.match(file_path)
+                if worker_match:
+                    worker_pid = int(worker_match.group(2))
                 else:
-                    job_id = None
                     worker_pid = None
+                job_id = None
 
                 # Perform existence check first because most file will not be
                 # including runtime_env. This saves some cpu cycle.
@@ -361,6 +362,17 @@ class LogMonitor:
                         file_info.task_name = next_line.split(
                             ray_constants.LOG_PREFIX_TASK_NAME, 1
                         )[1]
+                    elif next_line.startswith(ray_constants.LOG_PREFIX_JOB_ID):
+                        file_info.job_id = next_line.split(
+                            ray_constants.LOG_PREFIX_JOB_ID, 1
+                        )[1]
+                    elif next_line.startswith(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_START
+                    ) or next_line.startswith(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END
+                    ):
+                        # Ignore these magic tokens for task logs.
+                        pass
                     elif next_line.startswith(
                         "Windows fatal exception: access violation"
                     ):
@@ -386,13 +398,15 @@ class LogMonitor:
                     raise
 
             if file_info.file_position == 0:
-                if "/raylet" in file_info.filename:
+                # make filename windows-agnostic
+                filename = file_info.filename.replace("\\", "/")
+                if "/raylet" in filename:
                     file_info.worker_pid = "raylet"
-                elif "/gcs_server" in file_info.filename:
+                elif "/gcs_server" in filename:
                     file_info.worker_pid = "gcs_server"
-                elif "/monitor" in file_info.filename:
+                elif "/monitor" in filename:
                     file_info.worker_pid = "autoscaler"
-                elif "/runtime_env" in file_info.filename:
+                elif "/runtime_env" in filename:
                     file_info.worker_pid = "runtime_env"
 
             # Record the current position in the file.
@@ -438,6 +452,17 @@ class LogMonitor:
             # for logs to avoid using too much CPU.
             if not anything_published:
                 time.sleep(0.1)
+
+
+def is_proc_alive(pid):
+    # Import locally to make sure the bundled version is used if needed
+    import psutil
+
+    try:
+        return psutil.Process(pid).is_running()
+    except psutil.NoSuchProcess:
+        # The process does not exist.
+        return False
 
 
 if __name__ == "__main__":
@@ -504,23 +529,15 @@ if __name__ == "__main__":
         backup_count=args.logging_rotate_backup_count,
     )
 
-    def is_proc_alive(pid):
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
-            # If OSError is raised, the process is not alive.
-            return False
-
     log_monitor = LogMonitor(
-        args.logs_dir, gcs_pubsub.GcsPublisher(address=args.gcs_address), is_proc_alive
+        args.logs_dir, ray._raylet.GcsPublisher(address=args.gcs_address), is_proc_alive
     )
 
     try:
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        gcs_publisher = GcsPublisher(address=args.gcs_address)
+        gcs_publisher = ray._raylet.GcsPublisher(address=args.gcs_address)
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
             f"The log monitor on node {platform.node()} "

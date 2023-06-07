@@ -5,8 +5,10 @@ ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || ech
 
 arg1="${1-}"
 
-achitecture="${HOSTTYPE}"
+BAZELISK_VERSION="v1.16.0"
+
 platform="unknown"
+
 case "${OSTYPE}" in
   msys)
     echo "Platform is Windows."
@@ -26,6 +28,9 @@ case "${OSTYPE}" in
     exit 1
 esac
 
+architecture="${HOSTTYPE}"
+echo "Architecture is $architecture"
+
 if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
   # Sanity check: Verify we have symlinks where we expect them, or Bazel can produce weird "missing input file" errors.
   # This is most likely to occur on Windows, where symlinks are sometimes disabled by default.
@@ -44,34 +49,53 @@ if [ "${BAZEL_CONFIG_ONLY-}" != "1" ]; then
     fi
   )
 
-  export PATH=/opt/python/cp36-cp36m/bin:$PATH
-  python="$(command -v python3 || command -v python || echo python)"
-  version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
   if [ "${OSTYPE}" = "msys" ]; then
     target="${MINGW_DIR-/usr}/bin/bazel.exe"
     mkdir -p "${target%/*}"
-    curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-${platform}-${achitecture}.exe"
+    curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-amd64"
   else
-    target="./install.sh"
-    curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
-    chmod +x "${target}"
+    # Buildkite mac instances
     if [[ -n "${BUILDKITE-}" ]] && [ "${platform}" = "darwin" ]; then
-      "${target}" --user
+      mkdir -p "$HOME/bin"
       # Add bazel to the path.
       # shellcheck disable=SC2016
-      printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshrc
+      printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshenv
       # shellcheck disable=SC1090
-      source ~/.zshrc
+      source ~/.zshenv
+      INSTALL_USER=1
+    # Buildkite linux instance
     elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
-      "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
+      INSTALL_USER=0
+    # User
     else
-      "${target}" --user > /dev/null
+      mkdir -p "$HOME/bin"
+      INSTALL_USER=1
       export PATH=$PATH:"$HOME/bin"
     fi
-    which bazel
-    rm -f "${target}"
+
+    if [ "${architecture}" = "aarch64" ] || [ "${architecture}" = "arm64" ]; then
+      # architecture is "aarch64", but the bazel tag is "arm64"
+      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-arm64"
+    elif [ "${architecture}" = "x86_64" ]; then
+      url="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-${platform}-amd64"
+    else
+      echo "Could not found matching bazelisk URL for platform ${platform} and architecture ${architecture}"
+      exit 1
+    fi
+
+    if [ "$INSTALL_USER" = "1" ]; then
+      target="$HOME/bin/bazel"
+      curl -f -s -L -R -o "${target}" "${url}"
+      chmod +x "${target}"
+    else
+      target="/bin/bazel"
+      sudo curl -f -s -L -R -o "${target}" "${url}"
+      sudo chmod +x "${target}"
+    fi
   fi
 fi
+
+bazel --version
 
 # clear bazelrc
 echo > ~/.bazelrc
@@ -91,10 +115,16 @@ if [ "${TRAVIS-}" = true ]; then
   # it under 'build' here avoid conflicts with other --config options.
   echo "build --jobs=50" >> ~/.bazelrc
 fi
+
+if [ "${BUILDKITE-}" = "true" ]; then
+  cp "${ROOT_DIR}"/../../.bazeliskrc ~/.bazeliskrc
+fi
+
 if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --config=ci-github" >> ~/.bazelrc
   echo "build --jobs="$(($(nproc)+2)) >> ~/.bazelrc
 fi
+
 if [ "${CI-}" = true ]; then
 
   # Ask bazel to anounounce the config it finds in bazelrcs, which makes

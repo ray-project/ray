@@ -1,5 +1,5 @@
+import gymnasium as gym
 import queue
-import gym
 import threading
 import uuid
 from typing import Callable, Tuple, Optional, TYPE_CHECKING
@@ -13,6 +13,7 @@ from ray.rllib.utils.typing import (
     EnvType,
     MultiEnvDict,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
@@ -53,15 +54,13 @@ class ExternalEnv(threading.Thread):
         self,
         action_space: gym.Space,
         observation_space: gym.Space,
-        max_concurrent: int = 100,
+        max_concurrent: int = None,
     ):
         """Initializes an ExternalEnv instance.
 
         Args:
             action_space: Action space of the env.
             observation_space: Observation space of the env.
-            max_concurrent: Max number of active episodes to allow at
-                once. Exceeding this limit raises an error.
         """
 
         threading.Thread.__init__(self)
@@ -72,7 +71,14 @@ class ExternalEnv(threading.Thread):
         self._episodes = {}
         self._finished = set()
         self._results_avail_condition = threading.Condition()
-        self._max_concurrent_episodes = max_concurrent
+        if max_concurrent is not None:
+            deprecation_warning(
+                "The `max_concurrent` argument has been deprecated. Please configure"
+                "the number of episodes using the `rollout_fragment_length` and"
+                "`batch_mode` arguments. Please raise an issue on the Ray Github if "
+                "these arguments do not support your expected use case for ExternalEnv",
+                error=True,
+            )
 
     @PublicAPI
     def run(self):
@@ -261,13 +267,15 @@ class _ExternalEnvEpisode:
             self.new_observation_dict = None
             self.new_action_dict = None
             self.cur_reward_dict = {}
-            self.cur_done_dict = {"__all__": False}
+            self.cur_terminated_dict = {"__all__": False}
+            self.cur_truncated_dict = {"__all__": False}
             self.cur_info_dict = {}
         else:
             self.new_observation = None
             self.new_action = None
             self.cur_reward = 0.0
-            self.cur_done = False
+            self.cur_terminated = False
+            self.cur_truncated = False
             self.cur_info = {}
 
     def get_data(self):
@@ -296,10 +304,15 @@ class _ExternalEnvEpisode:
     def done(self, observation):
         if self.multiagent:
             self.new_observation_dict = observation
-            self.cur_done_dict = {"__all__": True}
+            self.cur_terminated_dict = {"__all__": True}
+            # TODO(sven): External env API does not currently support truncated,
+            #  but we should deprecate external Env anyways in favor of a client-only
+            #  approach.
+            self.cur_truncated_dict = {"__all__": False}
         else:
             self.new_observation = observation
-            self.cur_done = True
+            self.cur_terminated = True
+            self.cur_truncated = False
         self._send()
 
     def _send(self):
@@ -310,7 +323,8 @@ class _ExternalEnvEpisode:
             item = {
                 "obs": self.new_observation_dict,
                 "reward": self.cur_reward_dict,
-                "done": self.cur_done_dict,
+                "terminated": self.cur_terminated_dict,
+                "truncated": self.cur_truncated_dict,
                 "info": self.cur_info_dict,
             }
             if self.new_action_dict is not None:
@@ -322,7 +336,8 @@ class _ExternalEnvEpisode:
             item = {
                 "obs": self.new_observation,
                 "reward": self.cur_reward,
-                "done": self.cur_done,
+                "terminated": self.cur_terminated,
+                "truncated": self.cur_truncated,
                 "info": self.cur_info,
             }
             if self.new_action is not None:
@@ -368,11 +383,6 @@ class ExternalEnvWrapper(BaseEnv):
                 results = self._poll()
                 if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
-        limit = self.external_env._max_concurrent_episodes
-        assert len(results[0]) < limit, (
-            "Too many concurrent episodes, were some leaked? This "
-            "ExternalEnv was created with max_concurrent={}".format(limit)
-        )
         return results
 
     @override(BaseEnv)
@@ -390,19 +400,37 @@ class ExternalEnvWrapper(BaseEnv):
 
     def _poll(
         self,
-    ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
+    ) -> Tuple[
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+        MultiEnvDict,
+    ]:
         from ray.rllib.env.base_env import with_dummy_agent_id
 
-        all_obs, all_rewards, all_dones, all_infos = {}, {}, {}, {}
+        all_obs, all_rewards, all_terminateds, all_truncateds, all_infos = (
+            {},
+            {},
+            {},
+            {},
+            {},
+        )
         off_policy_actions = {}
         for eid, episode in self.external_env._episodes.copy().items():
             data = episode.get_data()
-            cur_done = (
-                episode.cur_done_dict["__all__"]
+            cur_terminated = (
+                episode.cur_terminated_dict["__all__"]
                 if self.multiagent
-                else episode.cur_done
+                else episode.cur_terminated
             )
-            if cur_done:
+            cur_truncated = (
+                episode.cur_truncated_dict["__all__"]
+                if self.multiagent
+                else episode.cur_truncated
+            )
+            if cur_terminated or cur_truncated:
                 del self.external_env._episodes[eid]
             if data:
                 if self.prep:
@@ -410,7 +438,8 @@ class ExternalEnvWrapper(BaseEnv):
                 else:
                     all_obs[eid] = data["obs"]
                 all_rewards[eid] = data["reward"]
-                all_dones[eid] = data["done"]
+                all_terminateds[eid] = data["terminated"]
+                all_truncateds[eid] = data["truncated"]
                 all_infos[eid] = data["info"]
                 if "off_policy_action" in data:
                     off_policy_actions[eid] = data["off_policy_action"]
@@ -425,14 +454,23 @@ class ExternalEnvWrapper(BaseEnv):
                             d[eid][agent_id] = zero_val
 
                     fix(all_rewards, 0.0)
-                    fix(all_dones, False)
+                    fix(all_terminateds, False)
+                    fix(all_truncateds, False)
                     fix(all_infos, {})
-            return (all_obs, all_rewards, all_dones, all_infos, off_policy_actions)
+            return (
+                all_obs,
+                all_rewards,
+                all_terminateds,
+                all_truncateds,
+                all_infos,
+                off_policy_actions,
+            )
         else:
             return (
                 with_dummy_agent_id(all_obs),
                 with_dummy_agent_id(all_rewards),
-                with_dummy_agent_id(all_dones, "__all__"),
+                with_dummy_agent_id(all_terminateds, "__all__"),
+                with_dummy_agent_id(all_truncateds, "__all__"),
                 with_dummy_agent_id(all_infos),
                 with_dummy_agent_id(off_policy_actions),
             )

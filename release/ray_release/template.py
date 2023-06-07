@@ -7,12 +7,12 @@ from typing import Optional, Dict, TYPE_CHECKING
 import jinja2
 import yaml
 
+from ray_release.bazel import bazel_runfile
 from ray_release.config import (
-    RELEASE_PACKAGE_DIR,
     parse_python_version,
-    DEFAULT_PYTHON_VERSION,
     get_test_cloud_id,
 )
+from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.util import python_version_str
 
@@ -23,15 +23,6 @@ if TYPE_CHECKING:
 DEFAULT_ENV = {
     "DATESTAMP": str(datetime.datetime.now().strftime("%Y%m%d")),
     "TIMESTAMP": str(int(datetime.datetime.now().timestamp())),
-    "EXPIRATION_1D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_2D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=2)).strftime("%Y-%m-%d")
-    ),
-    "EXPIRATION_3D": str(
-        (datetime.datetime.now() + datetime.timedelta(days=3)).strftime("%Y-%m-%d")
-    ),
 }
 
 
@@ -82,7 +73,7 @@ def load_and_render_yaml_template(
     if not template_path:
         return None
 
-    if not os.path.exists(template_path):
+    if not os.path.isfile(template_path):
         raise ReleaseTestConfigError(
             f"Cannot load yaml template from {template_path}: Path not found."
         )
@@ -107,11 +98,14 @@ def render_yaml_template(template: str, env: Optional[Dict] = None):
         ) from e
 
 
-def load_test_cluster_env(test: "Test", ray_wheels_url: str) -> Optional[Dict]:
+def get_cluster_env_path(test: "Test") -> str:
+    working_dir = test.get("working_dir", "")
     cluster_env_file = test["cluster"]["cluster_env"]
-    cluster_env_path = os.path.join(
-        RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_env_file
-    )
+    return bazel_runfile("release", working_dir, cluster_env_file)
+
+
+def load_test_cluster_env(test: "Test", ray_wheels_url: str) -> Optional[Dict]:
+    cluster_env_path = get_cluster_env_path(test)
 
     env = populate_cluster_env_variables(test, ray_wheels_url=ray_wheels_url)
 
@@ -148,12 +142,10 @@ def populate_cluster_env_variables(test: "Test", ray_wheels_url: str) -> Dict:
 
 def load_test_cluster_compute(test: "Test") -> Optional[Dict]:
     cluster_compute_file = test["cluster"]["cluster_compute"]
-    cluster_compute_path = os.path.join(
-        RELEASE_PACKAGE_DIR, test.get("working_dir", ""), cluster_compute_file
-    )
+    working_dir = test.get("working_dir", "")
+    f = bazel_runfile("release", working_dir, cluster_compute_file)
     env = populate_cluster_compute_variables(test)
-
-    return load_and_render_yaml_template(cluster_compute_path, env=env)
+    return load_and_render_yaml_template(f, env=env)
 
 
 def populate_cluster_compute_variables(test: "Test") -> Dict:

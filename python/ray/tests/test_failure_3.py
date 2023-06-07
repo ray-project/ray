@@ -2,15 +2,20 @@ import os
 import sys
 import signal
 import threading
+import json
+from pathlib import Path
 
 import ray
 import numpy as np
 import pytest
+import psutil
 import time
 
 from ray._private.test_utils import (
     SignalActor,
     wait_for_pid_to_exit,
+    wait_for_condition,
+    run_string_as_driver_nonblocking,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -345,6 +350,105 @@ def test_actor_failure_no_wait(ray_start_regular, tmp_path):
     with pytest.raises(ray.exceptions.RayActorError):
         # Make sure it'll return within 1s
         ray.get(t)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_no_worker_child_process_leaks(ray_start_cluster, tmp_path):
+    """
+    Verify that processes created by Ray tasks and actors are
+    cleaned up after a Ctrl+C is sent to the driver. This is done by
+    creating an actor and task that each spawn a number of child
+    processes, sending a SIGINT to the driver process, and
+    verifying that all child processes are killed.
+
+    The driver script uses a temporary JSON file to communicate
+    the list of PIDs that are children of the Ray worker
+    processes.
+    """
+
+    output_file_path = tmp_path / "leaked_pids.json"
+    ray_start_cluster.add_node()
+    driver_script = f"""
+import ray
+import json
+import multiprocessing
+import shutil
+import time
+import os
+
+@ray.remote
+class Actor:
+    def create_leaked_child_process(self, num_to_leak):
+        print("Creating leaked process", os.getpid())
+
+        pids = []
+        for _ in range(num_to_leak):
+            proc = multiprocessing.Process(
+                target=time.sleep,
+                args=(1000,),
+                daemon=True,
+            )
+            proc.start()
+            pids.append(proc.pid)
+
+        return pids
+
+@ray.remote
+def task():
+    print("Creating leaked process", os.getpid())
+    proc = multiprocessing.Process(
+        target=time.sleep,
+        args=(1000,),
+        daemon=True,
+    )
+    proc.start()
+
+    return proc.pid
+
+num_to_leak_per_type = 10
+
+actor = Actor.remote()
+actor_leaked_pids = ray.get(actor.create_leaked_child_process.remote(
+    num_to_leak=num_to_leak_per_type,
+))
+
+task_leaked_pids = ray.get([task.remote() for _ in range(num_to_leak_per_type)])
+leaked_pids = actor_leaked_pids + task_leaked_pids
+
+final_file = "{output_file_path}"
+tmp_file = final_file + ".tmp"
+with open(tmp_file, "w") as f:
+    json.dump(leaked_pids, f)
+shutil.move(tmp_file, final_file)
+
+while True:
+    print(os.getpid())
+    time.sleep(1)
+    """
+
+    driver_proc = run_string_as_driver_nonblocking(driver_script)
+
+    # Wait for the json file containing the child PIDS
+    # to be present.
+    wait_for_condition(
+        condition_predictor=lambda: Path(output_file_path).exists(),
+        timeout=30,
+    )
+
+    # Load the PIDs of the child processes.
+    with open(output_file_path, "r") as f:
+        pids = json.load(f)
+
+    # Validate all children of the worker processes are in a sleeping state.
+    processes = [psutil.Process(pid) for pid in pids]
+    assert all([proc.status() == psutil.STATUS_SLEEPING for proc in processes])
+
+    # Valdiate children of worker process die after SIGINT.
+    driver_proc.send_signal(signal.SIGINT)
+    wait_for_condition(
+        condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
+        timeout=30,
+    )
 
 
 if __name__ == "__main__":

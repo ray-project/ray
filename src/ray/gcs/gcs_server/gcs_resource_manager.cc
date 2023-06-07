@@ -142,6 +142,11 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
   }
 }
 
+const absl::flat_hash_map<NodeID, rpc::ResourcesData>
+    &GcsResourceManager::NodeResourceReportView() const {
+  return node_resource_usages_;
+}
+
 void GcsResourceManager::HandleReportResourceUsage(
     rpc::ReportResourceUsageRequest request,
     rpc::ReportResourceUsageReply *reply,
@@ -152,10 +157,26 @@ void GcsResourceManager::HandleReportResourceUsage(
   ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
 }
 
+// TODO(rickyx): We could update the cluster resource manager when we update the load
+// so that we will no longer need node_resource_usages_.
+std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+GcsResourceManager::GetAggregatedResourceLoad() const {
+  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+      aggregate_load;
+  if (node_resource_usages_.empty()) {
+    return aggregate_load;
+  }
+  for (const auto &usage : node_resource_usages_) {
+    // Aggregate the load reported by each raylet.
+    FillAggregateLoad(usage.second, &aggregate_load);
+  }
+  return aggregate_load;
+}
+
 void GcsResourceManager::FillAggregateLoad(
     const rpc::ResourcesData &resources_data,
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-        *aggregate_load) {
+        *aggregate_load) const {
   auto load = resources_data.resource_load_by_shape();
   for (const auto &demand : load.resource_demands()) {
     auto &aggregate_demand = (*aggregate_load)[demand.shape()];
@@ -217,6 +238,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     reply->mutable_resource_usage_data()->CopyFrom(batch);
   }
 
+  RAY_DCHECK(static_cast<size_t>(reply->resource_usage_data().batch().size()) ==
+             num_alive_nodes_);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
@@ -225,7 +248,10 @@ void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
                                                  const rpc::ResourcesData &resources) {
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
-    node_resource_usages_[node_id].CopyFrom(resources);
+    // It will only happen when the node has been deleted.
+    // If the node is not registered to GCS,
+    // we are guaranteed that no resource usage will be reported.
+    return;
   } else {
     if (resources.resources_total_size() > 0) {
       (*iter->second.mutable_resources_total()) = resources.resources_total();
@@ -274,11 +300,13 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   data.set_node_id(node.node_id());
   data.set_node_manager_address(node.node_manager_address());
   node_resource_usages_.emplace(NodeID::FromBinary(node.node_id()), std::move(data));
+  num_alive_nodes_++;
 }
 
 void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
   node_resource_usages_.erase(node_id);
   cluster_resource_manager_.RemoveNode(scheduling::NodeID(node_id.Binary()));
+  num_alive_nodes_--;
 }
 
 void GcsResourceManager::UpdatePlacementGroupLoad(

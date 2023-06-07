@@ -99,6 +99,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         @staticmethod
         CRayStatus NotFound()
 
+        @staticmethod
+        CRayStatus ObjectRefEndOfStream()
+
         c_bool ok()
         c_bool IsOutOfMemory()
         c_bool IsKeyError()
@@ -113,12 +116,18 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsTimedOut()
         c_bool IsInterrupted()
         c_bool ShouldExitWorker()
+        c_bool IsObjectNotFound()
         c_bool IsNotFound()
+        c_bool IsObjectUnknownOwner()
+        c_bool IsRpcError()
+        c_bool IsOutOfResource()
+        c_bool IsObjectRefEndOfStream()
 
         c_string ToString()
         c_string CodeAsString()
         StatusCode code()
         c_string message()
+        int rpc_code()
 
     # We can later add more of the common status factory methods as needed
     cdef CRayStatus RayStatus_OK "Status::OK"()
@@ -149,6 +158,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CWorkerType "ray::core::WorkerType":
         pass
+    cdef cppclass CWorkerExitType "ray::rpc::WorkerExitType":
+        pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
@@ -166,6 +177,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CNodeAffinitySchedulingStrategy()
         void set_node_id(const c_string& node_id)
         void set_soft(c_bool soft)
+        void set_spill_on_unavailable(c_bool spill_on_unavailable)
     cdef cppclass CSchedulingStrategy "ray::rpc::SchedulingStrategy":
         CSchedulingStrategy()
         void clear_scheduling_strategy()
@@ -198,6 +210,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::core::WorkerType::SPILL_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::core::WorkerType::RESTORE_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_USER_ERROR "ray::rpc::WorkerExitType::USER_ERROR"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_SYSTEM_ERROR "ray::rpc::WorkerExitType::SYSTEM_ERROR"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -302,11 +316,161 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
+    cdef enum CGrpcStatusCode "grpc::StatusCode":
+        UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
+        UNKNOWN "grpc::StatusCode::UNKNOWN",
+
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
 
+    cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
+        CPythonGcsClient(const CGcsClientOptions &options)
+
+        CRayStatus Connect()
+
+        CRayStatus InternalKVGet(
+            const c_string &ns, const c_string &key,
+            int64_t timeout_ms, c_string &value)
+        CRayStatus InternalKVMultiGet(
+            const c_string &ns, const c_vector[c_string] &keys,
+            int64_t timeout_ms, unordered_map[c_string, c_string] &result)
+        CRayStatus InternalKVPut(
+            const c_string &ns, const c_string &key, const c_string &value,
+            c_bool overwrite, int64_t timeout_ms, c_bool &added)
+        CRayStatus InternalKVDel(
+            const c_string &ns, const c_string &key, c_bool del_by_prefix,
+            int64_t timeout_ms, int &deleted_num)
+        CRayStatus InternalKVKeys(
+            const c_string &ns, const c_string &prefix,
+            int64_t timeout_ms, c_vector[c_string] &value)
+        CRayStatus InternalKVExists(
+            const c_string &ns, const c_string &key,
+            int64_t timeout_ms, c_bool &exists)
+
+        CRayStatus PinRuntimeEnvUri(
+            const c_string &uri, int expiration_s, int64_t timeout_ms)
+        CRayStatus GetAllNodeInfo(
+            int64_t timeout_ms, c_vector[CGcsNodeInfo]& result)
+        CRayStatus GetAllJobInfo(
+            int64_t timeout_ms, c_vector[CJobTableData]& result)
+
+cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+    unordered_map[c_string, double] PythonGetResourcesTotal(
+        const CGcsNodeInfo& node_info)
+
+cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
+
+    cdef cppclass CPythonGcsPublisher "ray::gcs::PythonGcsPublisher":
+
+        CPythonGcsPublisher(const c_string& gcs_address)
+
+        CRayStatus Connect()
+
+        CRayStatus PublishError(
+            const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
+
+        CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
+
+        CRayStatus PublishFunctionKey(const CPythonFunction& python_function)
+
+    cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
+
+        CPythonGcsSubscriber(
+            const c_string& gcs_address, int gcs_port, CChannelType channel_type,
+            const c_string& subscriber_id, const c_string& worker_id)
+
+        CRayStatus Subscribe()
+
+        int64_t last_batch_size()
+
+        CRayStatus PollError(
+            c_string* key_id, int64_t timeout_ms, CErrorTableData* data)
+
+        CRayStatus PollLogs(
+            c_string* key_id, int64_t timeout_ms, CLogBatch* data)
+
+        CRayStatus PollFunctionKey(
+            c_string* key_id, int64_t timeout_ms, CPythonFunction* data)
+
+        CRayStatus PollActor(
+            c_string* key_id, int64_t timeout_ms, CActorTableData* data)
+
+        CRayStatus Close()
+
+cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
+    c_vector[c_string] PythonGetLogBatchLines(const CLogBatch& log_batch)
+
+cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
+    unordered_map[c_string, c_string] PythonGetNodeLabels(
+        const CGcsNodeInfo& node_info)
+
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
+    cdef enum CChannelType "ray::rpc::ChannelType":
+        RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",
+        RAY_LOG_CHANNEL "ray::rpc::ChannelType::RAY_LOG_CHANNEL",
+        RAY_PYTHON_FUNCTION_CHANNEL \
+            "ray::rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL",
+        GCS_ACTOR_CHANNEL "ray::rpc::ChannelType::GCS_ACTOR_CHANNEL",
+
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
+        c_string ray_namespace() const
+        const c_string &SerializeAsString()
+
+    cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
+        c_string node_id() const
+        c_string node_name() const
+        int state() const
+        c_string node_manager_address() const
+        c_string node_manager_hostname() const
+        int node_manager_port() const
+        int object_manager_port() const
+        c_string object_store_socket_name() const
+        c_string raylet_socket_name() const
+        int metrics_export_port() const
+        void ParseFromString(const c_string &serialized)
+
+    cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
+        ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
+
+    cdef cppclass CJobTableData "ray::rpc::JobTableData":
+        c_string job_id() const
+        c_bool is_dead() const
+        CJobConfig config() const
+
+    cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
+        void set_key(const c_string &key)
+        c_string key() const
+
+    cdef cppclass CErrorTableData "ray::rpc::ErrorTableData":
+        c_string job_id() const
+        c_string type() const
+        c_string error_message() const
+        double timestamp() const
+
+        void set_job_id(const c_string &job_id)
+        void set_type(const c_string &type)
+        void set_error_message(const c_string &error_message)
+        void set_timestamp(double timestamp)
+
+    cdef cppclass CLogBatch "ray::rpc::LogBatch":
+        c_string ip() const
+        c_string pid() const
+        c_string job_id() const
+        c_bool is_error() const
+        c_string actor_name() const
+        c_string task_name() const
+
+        void set_ip(const c_string &ip)
+        void set_pid(const c_string &pid)
+        void set_job_id(const c_string &job_id)
+        void set_is_error(c_bool is_error)
+        void add_lines(const c_string &line)
+        void set_actor_name(const c_string &actor_name)
+        void set_task_name(const c_string &task_name)
+
+    cdef cppclass CActorTableData "ray::rpc::ActorTableData":
+        CAddress address() const
+        void ParseFromString(const c_string &serialized)
         const c_string &SerializeAsString()
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
@@ -319,3 +483,8 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
         c_string GetName() const
         uint32_t GetMaxConcurrency() const
         c_vector[CFunctionDescriptor] GetFunctionDescriptors() const
+
+cdef extern from "ray/common/constants.h" nogil:
+    cdef const char[] kWorkerSetupHookKeyName
+    cdef int kResourceUnitScaling
+    cdef int kStreamingGeneratorReturn

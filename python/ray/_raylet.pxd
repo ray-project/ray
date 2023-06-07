@@ -39,7 +39,8 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.unique_ids cimport (
     CObjectID,
-    CActorID
+    CActorID,
+    CTaskID,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -67,7 +68,8 @@ cdef extern from "Python.h":
 
     # You can find the cpython definition in Include/cpython/pystate.h#L59
     ctypedef struct CPyThreadState "PyThreadState":
-        int recursion_depth
+        int recursion_limit
+        int recursion_remaining
 
     # From Include/ceveal.h#67
     int Py_GetRecursionLimit()
@@ -141,6 +143,7 @@ cdef class CoreWorker:
     cdef store_task_outputs(
             self,
             worker, outputs,
+            const CAddress &caller_address,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             CObjectID ref_generator_id=*)
     cdef yield_current_fiber(self, CFiberEvent &fiber_event)
@@ -152,6 +155,13 @@ cdef class CoreWorker:
     cdef python_scheduling_strategy_to_c(
         self, python_scheduling_strategy,
         CSchedulingStrategy *c_scheduling_strategy)
+    cdef CObjectID allocate_dynamic_return_id_for_generator(
+            self,
+            const CAddress &owner_address,
+            const CTaskID &task_id,
+            return_size,
+            generator_index,
+            is_async_actor)
 
 cdef class FunctionDescriptor:
     cdef:

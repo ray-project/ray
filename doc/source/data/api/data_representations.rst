@@ -1,56 +1,48 @@
 .. _data-representations:
 
-Data Representations
-====================
+Data Representations (internal)
+===============================
+
+.. currentmodule:: ray.data
 
 .. _block-api:
 
 Block API
 ---------
 
-.. autoclass:: ray.data.block.Block
+.. autosummary::
+   :toctree: doc/
 
-.. autoclass:: ray.data.block.BlockExecStats
-    :members:
-
-.. autoclass:: ray.data.block.BlockMetadata
-    :members:
-
-.. autoclass:: ray.data.block.BlockAccessor
-    :members:
-
+   block.Block
+   block.BlockExecStats
+   block.BlockMetadata
+   block.BlockAccessor
 
 Batch API
 ---------
 
-.. autoclass:: ray.data.block.DataBatch
+.. autosummary::
+   :toctree: doc/
 
-Row API
---------
-
-.. autoclass:: ray.data.row.TableRow
-    :members:
-
+   block.DataBatch
 
 .. _dataset-tensor-extension-api:
 
 Tensor Column Extension API
 ---------------------------
 
-.. autoclass:: ray.data.extensions.tensor_extension.TensorDtype
-    :members:
+.. autosummary::
+   :toctree: doc/
 
-.. autoclass:: ray.data.extensions.tensor_extension.TensorArray
-    :members:
+   extensions.tensor_extension.create_ragged_ndarray
 
-.. autoclass:: ray.data.extensions.tensor_extension.ArrowTensorType
-    :members:
+.. autosummary::
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary.rst
 
-.. autoclass:: ray.data.extensions.tensor_extension.ArrowTensorArray
-    :members:
-
-.. autoclass:: ray.data.extensions.tensor_extension.ArrowVariableShapedTensorType
-    :members:
-
-.. autoclass:: ray.data.extensions.tensor_extension.ArrowVariableShapedTensorArray
-    :members:
+   extensions.tensor_extension.TensorDtype
+   extensions.tensor_extension.TensorArray
+   extensions.tensor_extension.ArrowTensorType
+   extensions.tensor_extension.ArrowTensorArray
+   extensions.tensor_extension.ArrowVariableShapedTensorType
+   extensions.tensor_extension.ArrowVariableShapedTensorArray

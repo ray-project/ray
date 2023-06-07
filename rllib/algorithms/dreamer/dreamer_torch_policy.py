@@ -5,7 +5,6 @@ from typing import (
 )
 
 import logging
-import ray
 import numpy as np
 from typing import Dict, Optional
 
@@ -32,9 +31,6 @@ logger = logging.getLogger(__name__)
 
 class DreamerTorchPolicy(TorchPolicyV2):
     def __init__(self, observation_space, action_space, config):
-
-        config = dict(ray.rllib.algorithms.dreamer.DreamerConfig().to_dict(), **config)
-
         TorchPolicyV2.__init__(
             self,
             observation_space,
@@ -169,7 +165,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
         ] = None,
         episode: Optional["Episode"] = None,
     ) -> SampleBatch:
-        """Batch format should be in the form of (s_t, a_(t-1), r_(t-1))
+        """Batch format should be in the form of (s_t, a_(t-1), r_t)
         When t=0, the resetted obs is paired with action and reward of 0.
         """
         obs = sample_batch[SampleBatch.OBS]
@@ -230,7 +226,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
         if timestep <= policy.config["prefill_timesteps"]:
             logp = None
             # Random action in space [-1.0, 1.0]
-            eps = torch.rand(1, model.action_space.shape[0], device=obs.device)
+            eps = torch.rand(bsize, model.action_space.shape[0], device=obs.device)
             action = 2.0 * eps - 1.0
             state_batches = model.get_initial_state()
             # batchify the intial states to match the batch size of the obs tensor
@@ -248,7 +244,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
 
         policy.global_timestep += policy.config["env_config"]["frame_skip"]
 
-        return action, logp, state_batches
+        return action, logp, None, state_batches
 
     def make_model(self):
 

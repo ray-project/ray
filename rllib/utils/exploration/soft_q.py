@@ -1,4 +1,4 @@
-from gym.spaces import Discrete, MultiDiscrete, Space
+from gymnasium.spaces import Discrete, MultiDiscrete, Space
 from typing import Union, Optional
 
 from ray.rllib.utils.annotations import PublicAPI

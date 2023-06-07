@@ -3,7 +3,9 @@ import copy
 import json
 import logging
 import os
+import psutil
 import random
+import signal
 import string
 import subprocess
 import sys
@@ -18,14 +20,20 @@ from ray.util.scheduling_strategies import (
 )
 import ray
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.utils import run_background_task
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
-from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
+from ray.dashboard.consts import (
+    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
+    DEFAULT_JOB_START_TIMEOUT_SECONDS,
+    RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+)
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
     JOB_ACTOR_NAME_TEMPLATE,
+    JOB_LOGS_PATH_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
     JobInfoStorageClient,
@@ -79,7 +87,6 @@ class JobLogStorageClient:
     Disk storage for stdout / stderr of driver script logs.
     """
 
-    JOB_LOGS_PATH = "job-driver-{job_id}.log"
     # Number of last N lines to put in job message upon failure.
     NUM_LOG_LINES_ON_ERROR = 10
     # Maximum number of characters to print out of the logs to avoid
@@ -126,7 +133,7 @@ class JobLogStorageClient:
         """
         return os.path.join(
             ray._private.worker._global_node.get_logs_dir_path(),
-            self.JOB_LOGS_PATH.format(job_id=job_id),
+            JOB_LOGS_PATH_TEMPLATE.format(submission_id=job_id),
         )
 
 
@@ -140,7 +147,9 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
+    DEFAULT_RAY_JOB_STOP_WAIT_TIME_S = 3
     SUBPROCESS_POLL_PERIOD_S = 0.1
+    VALID_STOP_SIGNALS = ["SIGINT", "SIGTERM"]
 
     def __init__(
         self,
@@ -188,6 +197,7 @@ class JobSupervisor:
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
         curr_runtime_env["env_vars"] = env_vars
         return curr_runtime_env
 
@@ -222,6 +232,14 @@ class JobSupervisor:
                 start_new_session=True,
                 stdout=logs_file,
                 stderr=subprocess.STDOUT,
+                # Ray intentionally blocks SIGINT in all processes, so if the user wants
+                # to stop job through SIGINT, we need to unblock it in the child process
+                preexec_fn=lambda: signal.pthread_sigmask(
+                    signal.SIG_UNBLOCK, {signal.SIGINT}
+                )
+                if sys.platform != "win32"
+                and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
+                else None,
             )
             parent_pid = os.getpid()
             child_pid = child_process.pid
@@ -303,21 +321,33 @@ class JobSupervisor:
             "PYTHONUNBUFFERED": "1",
         }
 
-    async def _polling(self, child_process) -> int:
-        try:
-            while child_process is not None:
-                return_code = child_process.poll()
-                if return_code is not None:
-                    # subprocess finished with return code
-                    return return_code
-                else:
-                    # still running, yield control, 0.1s by default
-                    await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
-        except Exception:
-            if child_process:
-                # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                child_process.kill()
-            return 1
+    async def _polling(self, child_process: subprocess.Popen) -> int:
+        while child_process is not None:
+            return_code = child_process.poll()
+            if return_code is not None:
+                # subprocess finished with return code
+                return return_code
+            else:
+                # still running, yield control, 0.1s by default
+                await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
+
+    async def _poll_all(self, processes: List[psutil.Process]):
+        """Poll processes until all are completed."""
+        while True:
+            (_, alive) = psutil.wait_procs(processes, timeout=0)
+            if len(alive) == 0:
+                return
+            else:
+                await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
+
+    def _kill_processes(self, processes: List[psutil.Process], sig: signal.Signals):
+        """Ensure each process is already finished or send a kill signal."""
+        for proc in processes:
+            try:
+                os.kill(proc.pid, sig)
+            except ProcessLookupError:
+                # Process is already dead
+                pass
 
     async def run(
         self,
@@ -326,7 +356,7 @@ class JobSupervisor:
         resources_specified: bool = False,
     ):
         """
-        Stop and start both happen asynchrously, coordinated by asyncio event
+        Stop and start both happen asynchronously, coordinated by asyncio event
         and coroutine, respectively.
 
         1) Sets job status as running
@@ -334,8 +364,21 @@ class JobSupervisor:
             variables.
         3) Handle concurrent events of driver execution and
         """
-        curr_status = await self._job_info_client.get_status(self._job_id)
-        assert curr_status == JobStatus.PENDING, "Run should only be called once."
+        curr_info = await self._job_info_client.get_info(self._job_id)
+        if curr_info is None:
+            raise RuntimeError(f"Status could not be retrieved for job {self._job_id}.")
+        curr_status = curr_info.status
+        curr_message = curr_info.message
+        if curr_status == JobStatus.RUNNING:
+            raise RuntimeError(
+                f"Job {self._job_id} is already in RUNNING state. "
+                f"JobSupervisor.run() should only be called once. "
+            )
+        if curr_status != JobStatus.PENDING:
+            raise RuntimeError(
+                f"Job {self._job_id} is not in PENDING state. "
+                f"Current status is {curr_status} with message {curr_message}."
+            )
 
         if _start_signal_actor:
             # Block in PENDING state until start signal received.
@@ -368,6 +411,7 @@ class JobSupervisor:
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
             child_process = self._exec_entrypoint(log_path)
+            child_pid = child_process.pid
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
@@ -379,8 +423,41 @@ class JobSupervisor:
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
                 elif sys.platform != "win32":
-                    # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
-                    child_process.kill()
+                    stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
+                    if stop_signal not in self.VALID_STOP_SIGNALS:
+                        logger.warning(
+                            f"{stop_signal} not a valid stop signal. Terminating "
+                            "job with SIGTERM."
+                        )
+                        stop_signal = "SIGTERM"
+
+                    job_process = psutil.Process(child_pid)
+                    proc_to_kill = [job_process] + job_process.children(recursive=True)
+
+                    # Send stop signal and wait for job to terminate gracefully,
+                    # otherwise SIGKILL job forcefully after timeout.
+                    self._kill_processes(proc_to_kill, getattr(signal, stop_signal))
+                    try:
+                        stop_job_wait_time = int(
+                            os.environ.get(
+                                "RAY_JOB_STOP_WAIT_TIME_S",
+                                self.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S,
+                            )
+                        )
+                        poll_job_stop_task = create_task(self._poll_all(proc_to_kill))
+                        await asyncio.wait_for(poll_job_stop_task, stop_job_wait_time)
+                        logger.info(
+                            f"Job {self._job_id} has been terminated gracefully "
+                            f"with {stop_signal}."
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"Attempt to gracefully terminate job {self._job_id} "
+                            f"through {stop_signal} has timed out after "
+                            f"{stop_job_wait_time} seconds. Job is now being "
+                            "force-killed with SIGKILL."
+                        )
+                        self._kill_processes(proc_to_kill, signal.SIGKILL)
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -453,7 +530,7 @@ class JobManager:
         except Exception:
             self.event_logger = None
 
-        create_task(self._recover_running_jobs())
+        run_background_task(self._recover_running_jobs())
 
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
@@ -464,7 +541,7 @@ class JobManager:
         all_jobs = await self._job_info_client.get_all_jobs()
         for job_id, job_info in all_jobs.items():
             if not job_info.status.is_terminal():
-                create_task(self._monitor_job(job_id))
+                run_background_task(self._monitor_job(job_id))
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:
@@ -496,22 +573,90 @@ class JobManager:
     async def _monitor_job_internal(
         self, job_id: str, job_supervisor: Optional[ActorHandle] = None
     ):
-        is_alive = True
-        if job_supervisor is None:
-            job_supervisor = self._get_actor_for_job(job_id)
+        timeout = float(
+            os.environ.get(
+                RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
+                DEFAULT_JOB_START_TIMEOUT_SECONDS,
+            )
+        )
 
-            if job_supervisor is None:
-                logger.error(f"Failed to get job supervisor for job {job_id}.")
-                await self._job_info_client.put_status(
-                    job_id,
-                    JobStatus.FAILED,
-                    message="Unexpected error occurred: Failed to get job supervisor.",
-                )
-                is_alive = False
+        is_alive = True
 
         while is_alive:
             try:
+                job_status = await self._job_info_client.get_status(job_id)
+                if job_status == JobStatus.PENDING:
+                    # Compare the current time with the job start time.
+                    # If the job is still pending, we will set the status
+                    # to FAILED.
+                    job_info = await self._job_info_client.get_info(job_id)
+
+                    if time.time() - job_info.start_time / 1000 > timeout:
+                        err_msg = (
+                            "Job supervisor actor failed to start within "
+                            f"{timeout} seconds. This timeout can be "
+                            f"configured by setting the environment "
+                            f"variable {RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR}."
+                        )
+                        resources_specified = (
+                            (
+                                job_info.entrypoint_num_cpus is not None
+                                and job_info.entrypoint_num_cpus > 0
+                            )
+                            or (
+                                job_info.entrypoint_num_gpus is not None
+                                and job_info.entrypoint_num_gpus > 0
+                            )
+                            or (
+                                job_info.entrypoint_resources is not None
+                                and len(job_info.entrypoint_resources) > 0
+                            )
+                        )
+                        if resources_specified:
+                            err_msg += (
+                                " This may be because the job entrypoint's specified "
+                                "resources (entrypoint_num_cpus, entrypoint_num_gpus, "
+                                "entrypoint_resources) aren't available on the cluster."
+                                " Try checking the cluster's available resources with "
+                                "`ray status` and specifying fewer resources for the "
+                                "job entrypoint."
+                            )
+                        await self._job_info_client.put_status(
+                            job_id,
+                            JobStatus.FAILED,
+                            message=err_msg,
+                        )
+                        is_alive = False
+                        logger.error(err_msg)
+                        continue
+
+                if job_supervisor is None:
+                    job_supervisor = self._get_actor_for_job(job_id)
+
+                if job_supervisor is None:
+                    if job_status == JobStatus.PENDING:
+                        # Maybe the job supervisor actor is not created yet.
+                        # We will wait for the next loop.
+                        continue
+                    else:
+                        # The job supervisor actor is not created, but the job
+                        # status is not PENDING. This means the job supervisor
+                        # actor is not created due to some unexpected errors.
+                        # We will set the job status to FAILED.
+                        logger.error(f"Failed to get job supervisor for job {job_id}.")
+                        await self._job_info_client.put_status(
+                            job_id,
+                            JobStatus.FAILED,
+                            message=(
+                                "Unexpected error occurred: "
+                                "Failed to get job supervisor."
+                            ),
+                        )
+                        is_alive = False
+                        continue
+
                 await job_supervisor.ping.remote()
+
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
                 is_alive = False
@@ -573,21 +718,6 @@ class JobManager:
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
 
-    def _get_current_node_resource_key(self) -> str:
-        """Get the Ray resource key for current node.
-
-        It can be used for actor placement.
-        """
-        current_node_id = ray.get_runtime_context().node_id.hex()
-        for node in ray.nodes():
-            if node["NodeID"] == current_node_id:
-                # Found the node.
-                for key in node["Resources"].keys():
-                    if key.startswith("node:"):
-                        return key
-        else:
-            raise ValueError("Cannot find the node dictionary for current node.")
-
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
 
@@ -626,6 +756,8 @@ class JobManager:
         env_vars = runtime_env.get("env_vars")
         if env_vars is None:
             env_vars = {}
+
+        env_vars[ray_constants.RAY_WORKER_NICENESS] = "0"
 
         if not resources_specified:
             # Don't set CUDA_VISIBLE_DEVICES for the supervisor actor so the
@@ -743,8 +875,6 @@ class JobManager:
             entrypoint_num_gpus = 0
         if submission_id is None:
             submission_id = generate_job_id()
-        elif await self._job_info_client.get_status(submission_id) is not None:
-            raise RuntimeError(f"Job {submission_id} already exists.")
 
         logger.info(f"Starting job with submission_id: {submission_id}")
         job_info = JobInfo(
@@ -757,7 +887,14 @@ class JobManager:
             entrypoint_num_gpus=entrypoint_num_gpus,
             entrypoint_resources=entrypoint_resources,
         )
-        await self._job_info_client.put_info(submission_id, job_info)
+        new_key_added = await self._job_info_client.put_info(
+            submission_id, job_info, overwrite=False
+        )
+        if not new_key_added:
+            raise ValueError(
+                f"Job with submission_id {submission_id} already exists. "
+                "Please use a different submission_id."
+            )
 
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
@@ -796,7 +933,9 @@ class JobManager:
 
             # Monitor the job in the background so we can detect errors without
             # requiring a client to poll.
-            create_task(self._monitor_job(submission_id, job_supervisor=supervisor))
+            run_background_task(
+                self._monitor_job(submission_id, job_supervisor=supervisor)
+            )
         except Exception as e:
             await self._job_info_client.put_status(
                 submission_id,

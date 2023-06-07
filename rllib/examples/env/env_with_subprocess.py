@@ -1,6 +1,6 @@
 import atexit
-import gym
-from gym.spaces import Discrete
+import gymnasium as gym
+from gymnasium.spaces import Discrete
 import os
 import subprocess
 
@@ -35,8 +35,8 @@ class EnvWithSubprocess(gym.Env):
         else:
             os.unlink(self.UNIQUE_FILE_3)
 
-    def reset(self):
-        return 0
+    def reset(self, *, seed=None, options=None):
+        return 0, {}
 
     def step(self, action):
-        return 0, 0, True, {}
+        return 0, 0, True, False, {}

@@ -2,7 +2,7 @@
    RLlib Trainers.
    This env follows RecSim obs and action APIs.
 """
-import gym
+import gymnasium as gym
 import numpy as np
 from typing import Optional
 
@@ -105,7 +105,7 @@ class ParametricRecSys(gym.Env):
     def _get_embedding(self):
         return np.random.uniform(-1, 1, size=(self.embedding_size,)).astype(np.float32)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         # Reset the current user's time budget.
         self.current_user_budget = self.user_time_budget
 
@@ -121,7 +121,7 @@ class ParametricRecSys(gym.Env):
         else:
             self.current_user = self._get_embedding()
 
-        return self._get_obs()
+        return self._get_obs(), {}
 
     def step(self, action):
         # Action is the suggested slate (indices of the docs in the
@@ -154,7 +154,7 @@ class ParametricRecSys(gym.Env):
             reward = (1 - regret) * 100
             # If anything clicked, deduct from the current user's time budget.
             self.current_user_budget -= 1.0
-        done = self.current_user_budget <= 0.0
+        done = truncated = self.current_user_budget <= 0.0
 
         # Compile response.
         response = tuple(
@@ -165,7 +165,7 @@ class ParametricRecSys(gym.Env):
             for idx in range(len(user_doc_overlaps) - 1)
         )
 
-        return self._get_obs(response=response), reward, done, {}
+        return self._get_obs(response=response), reward, done, truncated, {}
 
     def _get_obs(self, response=None):
         # Sample D docs from infinity or our pre-existing docs.
@@ -207,14 +207,14 @@ if __name__ == "__main__":
         num_docs_in_db=100,
         num_users_in_db=1,
     )
-    obs = env.reset()
+    obs, info = env.reset()
     num_episodes = 0
     episode_rewards = []
     episode_reward = 0.0
 
     while num_episodes < 100:
         action = env.action_space.sample()
-        obs, reward, done, _ = env.step(action)
+        obs, reward, done, truncated, _ = env.step(action)
 
         episode_reward += reward
         if done:

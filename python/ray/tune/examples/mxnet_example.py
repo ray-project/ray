@@ -85,19 +85,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
-
-    if args.server_address and not args.smoke_test:
-        import ray
-
-        ray.init(f"ray://{args.server_address}")
 
     if args.smoke_test:
         results = tune_mnist_mxnet(num_samples=1, num_epochs=1)

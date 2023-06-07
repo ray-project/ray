@@ -21,7 +21,6 @@ hopper_cql:
           fcnet_hiddens: [256, 256, 256]
         tau: 0.005
         target_entropy: auto
-        no_done_at_end: false
         n_step: 1
         rollout_fragment_length: 1
         replay_buffer_config:

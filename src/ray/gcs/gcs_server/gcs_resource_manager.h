@@ -13,6 +13,8 @@
 // limitations under the License.
 #pragma once
 
+#include <gtest/gtest_prod.h>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
@@ -27,6 +29,9 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
+
+class GcsMonitorServerTest;
+
 using raylet::ClusterTaskManager;
 namespace gcs {
 /// Ideally, the logic related to resource calculation should be moved from
@@ -133,6 +138,15 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param data The resource loads reported by raylet.
   void UpdateResourceLoads(const rpc::ResourcesData &data);
 
+  /// Returns the mapping from node id to latest resource report.
+  ///
+  /// \returns The mapping from node id to latest resource report.
+  const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
+
+  /// Get aggregated resource load of all nodes.
+  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
+  GetAggregatedResourceLoad() const;
+
  private:
   /// Aggregate nodes' pending task info.
   ///
@@ -140,7 +154,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \param aggregate_load[out] The aggregate pending task info (across the cluster).
   void FillAggregateLoad(const rpc::ResourcesData &resources_data,
                          std::unordered_map<google::protobuf::Map<std::string, double>,
-                                            rpc::ResourceDemand> *aggregate_load);
+                                            rpc::ResourceDemand> *aggregate_load) const;
 
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
@@ -167,6 +181,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   ClusterResourceManager &cluster_resource_manager_;
   NodeID local_node_id_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  /// Num of alive nodes in the cluster.
+  size_t num_alive_nodes_ = 0;
+
+  friend GcsMonitorServerTest;
 };
 
 }  // namespace gcs

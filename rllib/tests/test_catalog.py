@@ -1,5 +1,5 @@
 from functools import partial
-from gym.spaces import Box, Dict, Discrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, Tuple
 import numpy as np
 import unittest
 

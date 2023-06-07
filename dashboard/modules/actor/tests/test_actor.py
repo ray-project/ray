@@ -7,7 +7,6 @@ import pytest
 import requests
 
 import ray
-import ray._private.gcs_pubsub as gcs_pubsub
 import ray.dashboard.utils as dashboard_utils
 from ray._private.test_utils import format_web_url, wait_until_server_available
 from ray.dashboard.modules.actor import actor_consts
@@ -32,6 +31,9 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             import os
 
             return os.getpid()
+
+        def __repr__(self) -> str:
+            return "Foo1"
 
     @ray.remote(num_cpus=0, resources={"infeasible_actor": 1})
     class InfeasibleActor:
@@ -76,6 +78,7 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
             assert actor_response["requiredResources"] == {}
             assert actor_response["endTime"] == 0
             assert actor_response["exitDetail"] == "-"
+            assert actor_response["reprName"] == "Foo1"
             for a in actors.values():
                 # "exitDetail always exits from the response"
                 assert "exitDetail" in a
@@ -122,7 +125,7 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"])
     address_info = ray_start_with_dashboard
 
-    sub = gcs_pubsub.GcsActorSubscriber(address=address_info["gcs_address"])
+    sub = ray._raylet._TestOnly_GcsActorSubscriber(address=address_info["gcs_address"])
     sub.subscribe()
 
     @ray.remote

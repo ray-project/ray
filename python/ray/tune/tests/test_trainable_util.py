@@ -5,11 +5,11 @@ import pytest
 import sys
 import shutil
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import ray
 import ray._private.utils
-import ray.cloudpickle as cloudpickle
 from ray.tune.utils.util import wait_for_gpu
 from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
 from ray.tune.trainable.util import TrainableUtil
@@ -52,7 +52,7 @@ class TrainableUtilTest(unittest.TestCase):
 
         name = "AnalysisTest"
         ray.init(local_mode=True)
-        ray.tune.run(tune_one, local_dir=self.checkpoint_dir, name=name)
+        ray.tune.run(tune_one, storage_path=self.checkpoint_dir, name=name)
 
         a = ray.tune.ExperimentAnalysis(
             os.path.join(self.checkpoint_dir, name),
@@ -61,7 +61,7 @@ class TrainableUtilTest(unittest.TestCase):
         )
         df = a.dataframe()
         checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0])._local_path
-        assert checkpoint_dir.endswith("/checkpoint_000001/")
+        assert Path(checkpoint_dir).stem == "checkpoint_000001"
 
     def testFindCheckpointDir(self):
         checkpoint_path = os.path.join(self.checkpoint_dir, "0/my/nested/chkpt")
@@ -72,24 +72,6 @@ class TrainableUtilTest(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             parent = os.path.dirname(found_dir)
             TrainableUtil.find_checkpoint_dir(parent)
-
-    def testPickleCheckpoint(self):
-        for i in range(5):
-            path = os.path.join(self.checkpoint_dir, str(i))
-            with open(path, "w") as f:
-                f.write(str(i))
-
-        checkpoint_path = os.path.join(self.checkpoint_dir, "0")
-
-        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
-        loaded = cloudpickle.loads(data_dict)
-
-        checkpoint_name = os.path.basename(checkpoint_path)
-        self.assertEqual(loaded["checkpoint_name"], checkpoint_name)
-
-        for i in range(5):
-            path = os.path.join(self.checkpoint_dir, str(i))
-            self.assertEqual(loaded["data"][str(i)], open(path, "rb").read())
 
 
 class FlattenDictTest(unittest.TestCase):
@@ -187,6 +169,12 @@ class UnflattenDictTest(unittest.TestCase):
             {"0/a/0/b": 1, "0/a/1": 2, "1/0": 3, "1/1": 4, "1/2/c": 5, "2": 6}
         )
         assert result == [{"a": [{"b": 1}, 2]}, [3, 4, {"c": 5}], 6]
+
+    def test_unflatten_noop(self):
+        """Unflattening an already unflattened dict should be a noop."""
+        unflattened = {"a": 1, "b": {"c": {"d": [1, 2]}, "e": 3}, "f": {"g": 3}}
+        assert unflattened == unflatten_dict(unflattened)
+        assert unflattened == unflatten_list_dict(unflattened)
 
     def test_raises_error_on_key_conflict(self):
         """Ensure that an informative exception is raised on key conflict."""

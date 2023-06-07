@@ -1,12 +1,10 @@
 import inspect
-import os
-from typing import TYPE_CHECKING, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
 import warnings
 
 from composer.trainer import Trainer
 from composer.loggers.logger_destination import LoggerDestination
 
-from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.mosaic._mosaic_utils import RayLogger
@@ -110,7 +108,7 @@ class MosaicTrainer(TorchTrainer):
             ``composer.Trainer`` object and takes in configuration
             dictionary (``config``) as an argument. This dictionary is based on
             ``trainer_init_config`` and is modified for Ray - Composer integration.
-        datasets: Any Ray Datasets to use for training. At the moment, we do not support
+        datasets: Any Datasets to use for training. At the moment, we do not support
             passing datasets to the trainer and using the dataset shards in the trainer
             loop. Instead, configure and load the datasets inside
             ``trainer_init_per_worker`` function
@@ -154,16 +152,15 @@ class MosaicTrainer(TorchTrainer):
         self._validate_datasets(datasets)
         self._validate_trainer_init_config(trainer_init_config)
 
-        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
-        if "_trainer_init_per_worker" in trainer_init_config:
-            raise ValueError(
-                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
-            )
-        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
+        if resume_from_checkpoint:
+            # TODO(ml-team): Reenable after Mosaic checkpointing is supported
+            raise NotImplementedError
 
         super().__init__(
             train_loop_per_worker=_mosaic_train_loop_per_worker,
-            train_loop_config=trainer_init_config,
+            train_loop_config=self._create_trainer_init_config(
+                trainer_init_per_worker, trainer_init_config
+            ),
             torch_config=torch_config,
             scaling_config=scaling_config,
             dataset_config=dataset_config,
@@ -172,6 +169,25 @@ class MosaicTrainer(TorchTrainer):
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+    @classmethod
+    def _create_trainer_init_config(
+        cls,
+        trainer_init_per_worker: Callable[[Optional[Dict]], Trainer],
+        trainer_init_config: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        trainer_init_config = trainer_init_config.copy() if trainer_init_config else {}
+        if "_trainer_init_per_worker" in trainer_init_config:
+            raise ValueError(
+                "'_trainer_init_per_worker' is a reserved key in `trainer_init_config`."
+            )
+        trainer_init_config["_trainer_init_per_worker"] = trainer_init_per_worker
+        return trainer_init_config
+
+    @classmethod
+    def restore(cls: Type["MosaicTrainer"], **kwargs) -> "MosaicTrainer":
+        # TODO(ml-team): Reenable after Mosaic checkpointing is supported
+        raise NotImplementedError
 
     def _validate_trainer_init_per_worker(
         self, trainer_init_per_worker: Callable, fn_name: str
@@ -203,12 +219,6 @@ class MosaicTrainer(TorchTrainer):
 def _mosaic_train_loop_per_worker(config):
     """Per-worker training loop for Mosaic Composers."""
     trainer_init_per_worker = config.pop("_trainer_init_per_worker")
-
-    os.environ["RANK"] = str(session.get_world_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
-    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
-    os.environ["LOCAL_WORLD_SIZE"] = str(session.get_local_world_size())
-    os.environ["NODE_RANK"] = str(session.get_node_rank())
 
     # Replace Composer's Loggers with RayLogger
     ray_logger = RayLogger(keys=config.pop("log_keys", []))

@@ -3,6 +3,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Hashable,
     List,
     Optional,
     Tuple,
@@ -12,7 +13,7 @@ from typing import (
 )
 
 import numpy as np
-import gym
+import gymnasium as gym
 
 from ray.rllib.utils.annotations import ExperimentalAPI
 
@@ -23,20 +24,27 @@ if TYPE_CHECKING:
     from ray.rllib.policy.policy import PolicySpec
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
-    from ray.rllib.utils import try_import_tf, try_import_torch
+    from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
 
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
+    jax, _ = try_import_jax()
+    jnp = None
+    if jax is not None:
+        jnp = jax.numpy
 
 # Represents a generic tensor type.
 # This could be an np.ndarray, tf.Tensor, or a torch.Tensor.
-TensorType = Union[np.array, "tf.Tensor", "torch.Tensor"]
+TensorType = Union[np.array, "jnp.ndarray", "tf.Tensor", "torch.Tensor"]
 
 # Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
 TensorStructType = Union[TensorType, dict, tuple]
 
 # A shape of a tensor.
 TensorShape = Union[Tuple[int], List[int]]
+
+# A neural network
+NetworkType = Union["torch.nn.Module", "tf.keras.Module"]
 
 # Represents a fully filled out config of a Algorithm class.
 # Note: Policy config dicts are usually the same as AlgorithmConfigDict, but
@@ -80,7 +88,7 @@ AgentID = Any
 # Represents a generic identifier for a policy (e.g., "pol1").
 PolicyID = str
 
-# Type of the config["multiagent"]["policies"] dict for multi-agent training.
+# Type of the config.policies dict for multi-agent training.
 MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 
 # State dict of a Policy, mapping strings (e.g. "weights") to some state
@@ -109,7 +117,8 @@ EnvObsType = Any
 # Represents an action passed to the env.
 EnvActionType = Any
 
-# Info dictionary returned by calling step() on gym envs. Commonly empty dict.
+# Info dictionary returned by calling `reset()` or `step()` on `gymnasium.Env`
+# instances. Might be an empty dict.
 EnvInfoDict = dict
 
 # Represents a File object
@@ -123,7 +132,15 @@ ViewRequirementsDict = Dict[str, "ViewRequirement"]
 ResultDict = dict
 
 # A tf or torch local optimizer object.
-LocalOptimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
+LocalOptimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
+Optimizer = LocalOptimizer
+Param = Union["torch.Tensor", "tf.Variable"]
+ParamRef = Hashable
+ParamDict = Dict[ParamRef, Param]
+
+# A single learning rate or a learning rate schedule (list of sub-lists, each of
+# the format: [ts (int), lr_to_reach_by_ts (float)]).
+LearningRateOrSchedule = Union[float, List[List[Union[int, float]]]]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,
@@ -172,7 +189,8 @@ class AgentConnectorDataType:
         env_id: ID of the environment.
         agent_id: ID to help identify the agent from which the data is received.
         data: A payload (``data``). With RLlib's default sampler, the payload
-            is a dictionary of arbitrary data columns (obs, rewards, dones, etc).
+            is a dictionary of arbitrary data columns (obs, rewards, terminateds,
+            truncateds, etc).
     """
 
     def __init__(self, env_id: str, agent_id: str, data: Any):

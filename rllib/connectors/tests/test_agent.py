@@ -1,11 +1,10 @@
-import tree
-import gym
+import gymnasium as gym
+from gymnasium.spaces import Box
 import numpy as np
+import tree  # pip install dm_tree
 import unittest
-from gym.spaces import Box
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.connectors.agent.clip_reward import ClipRewardAgentConnector
 from ray.rllib.connectors.agent.lambdas import FlattenDataAgentConnector
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
@@ -470,11 +469,20 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         )
 
         env = gym.make("CartPole-v1")
-        policy = PPOTorchPolicy(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            config=config.to_dict(),
-        )
+        policy = config.build().get_policy()
+
+        REQUIRED_KEYS = {
+            SampleBatch.OBS,
+            SampleBatch.NEXT_OBS,
+            SampleBatch.REWARDS,
+            SampleBatch.TERMINATEDS,
+            SampleBatch.TRUNCATEDS,
+            SampleBatch.INFOS,
+            SampleBatch.ACTIONS,
+        }
+        policy.view_requirements = {
+            k: v for k, v in policy.view_requirements.items() if k in REQUIRED_KEYS
+        }
 
         # create a connector context
         ctx = ConnectorContext(
@@ -502,7 +510,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
 
         # simulate a rollout
         n_steps = 10
-        obs = env.reset()
+        obs, info = env.reset()
         env_out = AgentConnectorDataType(
             0, 1, {SampleBatch.NEXT_OBS: obs, SampleBatch.T: -1}
         )
@@ -521,11 +529,12 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             )
             action = policy_output[0]
 
-            next_obs, rewards, dones, info = env.step(action)
+            next_obs, rewards, terminateds, truncateds, info = env.step(action)
             env_out_dict = {
                 SampleBatch.NEXT_OBS: next_obs,
                 SampleBatch.REWARDS: rewards,
-                SampleBatch.DONES: dones,
+                SampleBatch.TERMINATEDS: terminateds,
+                SampleBatch.TRUNCATEDS: truncateds,
                 SampleBatch.INFOS: info,
                 SampleBatch.ACTIONS: action,
                 # state_out

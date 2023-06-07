@@ -1,4 +1,4 @@
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
@@ -13,7 +13,7 @@ class LogReporter(Reporter):
             f"{result.last_logs}\n"
         )
 
-        logger.info(
+        msg = (
             f"Got the following metadata: \n"
             f"  name:    {test['name']}\n"
             f"  status:  {result.status}\n"
@@ -22,8 +22,13 @@ class LogReporter(Reporter):
             f"\n"
             f"  buildkite_url: {format_link(result.buildkite_url)}\n"
             f"  wheels_url:    {format_link(result.wheels_url)}\n"
-            f"  cluster_url:   {format_link(result.cluster_url)}\n"
         )
+        if result.cluster_url:
+            msg += f"  cluster_url:   {format_link(result.cluster_url)}\n"
+        if result.job_url:
+            msg += f"  job_url:   {format_link(result.job_url)}\n"
+
+        logger.info(msg)
 
         results = result.results
         if results:

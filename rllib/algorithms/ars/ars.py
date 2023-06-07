@@ -21,7 +21,6 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
@@ -109,11 +108,20 @@ class ARSConfig(AlgorithmConfig):
         # (would break ARSPolicy's compute_single_action method) and to not do
         # obs-filtering.
         self.evaluation(
-            evaluation_config={
-                "num_envs_per_worker": 1,
-                "observation_filter": "NoFilter",
-            }
+            evaluation_config=AlgorithmConfig.overrides(
+                num_envs_per_worker=1,
+                observation_filter="NoFilter",
+            )
         )
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -349,6 +357,10 @@ class Worker(FaultAwareApply):
             eval_lengths=eval_lengths,
         )
 
+    def stop(self):
+        """Releases all resources used by this RolloutWorker."""
+        pass
+
 
 def get_policy_class(config: AlgorithmConfig):
     if config.framework_str == "torch":
@@ -386,7 +398,7 @@ class ARS(Algorithm):
 
         self._policy_class = get_policy_class(self.config)
         self.policy = self._policy_class(
-            env.observation_space, env.action_space, self.config.to_dict()
+            env.observation_space, env.action_space, self.config
         )
         self.optimizer = optimizers.SGD(self.policy, self.config.sgd_stepsize)
 
@@ -527,12 +539,16 @@ class ARS(Algorithm):
             "episodes_this_iter": noisy_lengths.size,
             "episodes_so_far": self.episodes_so_far,
         }
-        result = dict(
-            episode_reward_mean=np.mean(self.reward_list[-self.report_length :]),
-            episode_len_mean=eval_lengths.mean(),
-            timesteps_this_iter=noisy_lengths.sum(),
-            info=info,
-        )
+
+        reward_mean = np.mean(self.reward_list[-self.report_length :])
+        result = {
+            "sampler_results": {
+                "episode_reward_mean": reward_mean,
+                "episode_len_mean": eval_lengths.mean(),
+            },
+            "timesteps_this_iter": noisy_lengths.sum(),
+            "info": info,
+        }
 
         return result
 
@@ -605,20 +621,3 @@ class ARS(Algorithm):
         FilterManager.synchronize(
             {DEFAULT_POLICY_ID: self.policy.observation_filter}, self.workers
         )
-
-
-# Deprecated: Use ray.rllib.algorithms.ars.ARSConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(ARSConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.ars.ars.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ars.ars.ARSConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

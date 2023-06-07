@@ -24,6 +24,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -41,6 +42,7 @@ struct Mocker {
       std::unordered_map<std::string, double> required_placement_resources =
           std::unordered_map<std::string, double>()) {
     TaskSpecBuilder builder;
+    static rpc::JobConfig kJobConfig;
     auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     auto task_id = TaskID::ForActorCreationTask(actor_id);
     FunctionDescriptor function_descriptor;
@@ -50,16 +52,19 @@ struct Mocker {
                               Language::PYTHON,
                               function_descriptor,
                               job_id,
+                              kJobConfig,
                               TaskID::Nil(),
                               0,
                               TaskID::Nil(),
                               owner_address,
                               1,
                               false,
+                              false,
                               required_resources,
                               required_placement_resources,
                               "",
-                              0);
+                              0,
+                              TaskID::Nil());
     rpc::SchedulingStrategy scheduling_strategy;
     scheduling_strategy.mutable_default_scheduling_strategy();
     builder.SetActorCreationTaskSpec(actor_id,
@@ -197,6 +202,7 @@ struct Mocker {
     node->set_node_manager_port(port);
     node->set_node_manager_address(address);
     node->set_node_name(node_name);
+    node->set_instance_id("instance_x");
     return node;
   }
 
@@ -221,13 +227,6 @@ struct Mocker {
     return actor_table_data;
   }
 
-  static std::shared_ptr<rpc::ProfileTableData> GenProfileTableData(
-      const NodeID &node_id) {
-    auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
-    profile_table_data->set_component_id(node_id.Binary());
-    return profile_table_data;
-  }
-
   static std::shared_ptr<rpc::ErrorTableData> GenErrorTableData(const JobID &job_id) {
     auto error_table_data = std::make_shared<rpc::ErrorTableData>();
     error_table_data->set_job_id(job_id.Binary());
@@ -241,7 +240,9 @@ struct Mocker {
   }
 
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
-      const JobID &job_id, const std::string &ray_namespace) {
+      const JobID &job_id,
+      const std::string &ray_namespace,
+      const std::optional<std::string> &submission_id = std::nullopt) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
 
@@ -249,9 +250,88 @@ struct Mocker {
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->mutable_config()->CopyFrom(*job_config_data);
 
+    if (submission_id.has_value()) {
+      job_table_data->mutable_config()->mutable_metadata()->insert(
+          {"job_submission_id", submission_id.value()});
+    }
+
     auto add_job_request = std::make_shared<rpc::AddJobRequest>();
     add_job_request->mutable_data()->CopyFrom(*job_table_data);
     return add_job_request;
+  }
+
+  static rpc::TaskEventData GenTaskEventsData(
+      const std::vector<rpc::TaskEvents> &task_events,
+      int32_t num_profile_task_events_dropped = 0,
+      int32_t num_status_task_events_dropped = 0) {
+    rpc::TaskEventData data;
+    for (auto &events : task_events) {
+      auto new_events = data.add_events_by_task();
+      new_events->CopyFrom(events);
+    }
+    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
+    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
+
+    return data;
+  }
+
+  static rpc::ResourceDemand GenResourceDemand(
+      const absl::flat_hash_map<std::string, double> &resource_demands,
+      int64_t num_ready_queued,
+      int64_t num_infeasible,
+      int64_t num_backlog) {
+    rpc::ResourceDemand resource_demand;
+    for (const auto &resource : resource_demands) {
+      (*resource_demand.mutable_shape())[resource.first] = resource.second;
+    }
+    resource_demand.set_num_ready_requests_queued(num_ready_queued);
+    resource_demand.set_num_infeasible_requests_queued(num_infeasible);
+    resource_demand.set_backlog_size(num_backlog);
+    return resource_demand;
+  }
+
+  static void FillResourcesData(
+      rpc::ResourcesData &resources_data,
+      const NodeID &node_id,
+      const absl::flat_hash_map<std::string, double> &available_resources,
+      const absl::flat_hash_map<std::string, double> &total_resources,
+      bool available_resources_changed) {
+    resources_data.set_node_id(node_id.Binary());
+    for (const auto &resource : available_resources) {
+      (*resources_data.mutable_resources_available())[resource.first] = resource.second;
+    }
+    for (const auto &resource : total_resources) {
+      (*resources_data.mutable_resources_total())[resource.first] = resource.second;
+    }
+    resources_data.set_resources_available_changed(available_resources_changed);
+  }
+
+  static void FillResourcesData(rpc::ResourcesData &data,
+                                const std::string &node_id,
+                                std::vector<rpc::ResourceDemand> demands,
+                                bool resource_load_changed = true) {
+    auto load_by_shape = data.mutable_resource_load_by_shape();
+    auto agg_load = data.mutable_resource_load();
+    for (const auto &demand : demands) {
+      load_by_shape->add_resource_demands()->CopyFrom(demand);
+      for (const auto &resource : demand.shape()) {
+        (*agg_load)[resource.first] +=
+            (resource.second * (demand.num_ready_requests_queued() +
+                                demand.num_infeasible_requests_queued()));
+      }
+    }
+    data.set_resource_load_changed(resource_load_changed);
+    data.set_node_id(node_id);
+  }
+
+  static rpc::autoscaler::ClusterResourceConstraint GenClusterResourcesConstraint(
+      const std::vector<std::unordered_map<std::string, double>> &request_resources) {
+    rpc::autoscaler::ClusterResourceConstraint constraint;
+    for (const auto &resource : request_resources) {
+      auto bundle = constraint.add_min_bundles();
+      bundle->mutable_resources_bundle()->insert(resource.begin(), resource.end());
+    }
+    return constraint;
   }
 };
 

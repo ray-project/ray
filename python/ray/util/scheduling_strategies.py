@@ -55,13 +55,14 @@ class NodeAffinitySchedulingStrategy:
             or be scheduled somewhere else if soft is True.
     """
 
-    def __init__(self, node_id: str, soft: bool):
+    def __init__(self, node_id: str, soft: bool, _spill_on_unavailable: bool = False):
         # This will be removed once we standardize on node id being hex string.
         if not isinstance(node_id, str):
             node_id = node_id.hex()
 
         self.node_id = node_id
         self.soft = soft
+        self._spill_on_unavailable = _spill_on_unavailable
 
 
 SchedulingStrategyT = Union[

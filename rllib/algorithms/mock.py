@@ -1,5 +1,7 @@
 import os
 import pickle
+import time
+
 import numpy as np
 
 from ray.tune import result as tune_result
@@ -8,7 +10,7 @@ from ray.rllib.utils.annotations import override
 
 
 class _MockTrainer(Algorithm):
-    """Mock trainer for use in tests"""
+    """Mock trainer for use in tests."""
 
     @classmethod
     @override(Algorithm)
@@ -22,12 +24,13 @@ class _MockTrainer(Algorithm):
                     "persistent_error": False,
                     "test_variable": 1,
                     "user_checkpoint_freq": 0,
+                    "sleep": 0,
                 }
             )
         )
 
     @classmethod
-    def default_resource_request(cls, config):
+    def default_resource_request(cls, config: AlgorithmConfig):
         return None
 
     @override(Algorithm)
@@ -46,6 +49,8 @@ class _MockTrainer(Algorithm):
             and (self.config.persistent_error or not self.restored)
         ):
             raise Exception("mock error")
+        if self.config.sleep:
+            time.sleep(self.config.sleep)
         result = dict(
             episode_reward_mean=10, episode_len_mean=10, timesteps_this_iter=10, info={}
         )

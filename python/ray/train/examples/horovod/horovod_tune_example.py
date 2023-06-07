@@ -125,22 +125,10 @@ if __name__ == "__main__":
         "--smoke-test", action="store_true", help=("Finish quickly for testing.")
     )
     parser.add_argument("--num-workers", type=int, default=2)
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
         ray.init(num_cpus=3)
-    elif args.server_address:
-        ray.init(f"ray://{args.server_address}")
-
-    # import ray
-    # ray.init(address="auto")  # assumes ray is started with ray up
 
     tune_horovod(
         num_workers=args.num_workers,

@@ -1,25 +1,20 @@
 import os
+import pytest
 import shutil
 import sys
 import tempfile
 import time
+from typing import Type, Callable, Optional
 import unittest
-from typing import Type, Callable
 from unittest.mock import patch
 
 from ray_release.alerts.handle import result_to_handle_map
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
 from ray_release.command_runner.command_runner import CommandRunner
-from ray_release.config import (
-    Test,
-    DEFAULT_COMMAND_TIMEOUT,
-    DEFAULT_WAIT_FOR_NODES_TIMEOUT,
-)
+from ray_release.test import Test
 from ray_release.exception import (
     ReleaseTestConfigError,
-    LocalEnvSetupError,
-    ClusterComputeCreateError,
     ClusterEnvBuildError,
     ClusterEnvBuildTimeout,
     ClusterEnvCreateError,
@@ -33,7 +28,7 @@ from ray_release.exception import (
     PrepareCommandTimeout,
     TestCommandError,
     TestCommandTimeout,
-    ResultsError,
+    FetchResultError,
     LogsError,
     ResultsAlert,
     ClusterNodesWaitTimeout,
@@ -43,7 +38,6 @@ from ray_release.glue import (
     run_release_test,
     type_str_to_command_runner,
     command_runner_to_cluster_manager,
-    command_runner_to_file_manager,
 )
 from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
@@ -72,8 +66,6 @@ class MockReturn:
         return object.__getattribute__(self, item)
 
 
-@patch("ray_release.glue.reinstall_anyscale_dependencies", lambda: None)
-@patch("ray_release.glue.get_pip_packages", lambda: ["pip-packages"])
 class GlueTest(unittest.TestCase):
     def writeClusterEnv(self, content: str):
         with open(os.path.join(self.tempdir, "cluster_env.yaml"), "wt") as fp:
@@ -90,6 +82,7 @@ class GlueTest(unittest.TestCase):
         self.sdk.returns["get_project"] = APIDict(
             result=APIDict(name="unit_test_project")
         )
+        self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
         self.writeClusterEnv("{'env': true}")
         self.writeClusterCompute("{'compute': true}")
@@ -135,7 +128,9 @@ class GlueTest(unittest.TestCase):
                 self,
                 cluster_manager: ClusterManager,
                 file_manager: FileManager,
-                working_dir: str,
+                working_dir,
+                sdk=None,
+                artifact_path: Optional[str] = None,
             ):
                 super(MockCommandRunner, self).__init__(
                     cluster_manager, file_manager, this_tempdir
@@ -152,11 +147,10 @@ class GlueTest(unittest.TestCase):
         def mock_alerter(test: Test, result: Result):
             return self.mock_alert_return
 
-        result_to_handle_map["unit_test_alerter"] = mock_alerter
+        result_to_handle_map["unit_test_alerter"] = (mock_alerter, False)
 
         type_str_to_command_runner["unit_test"] = MockCommandRunner
         command_runner_to_cluster_manager[MockCommandRunner] = MockClusterManager
-        command_runner_to_file_manager[MockCommandRunner] = MockFileManager
 
         self.test = Test(
             name="unit_test_end_to_end",
@@ -171,7 +165,6 @@ class GlueTest(unittest.TestCase):
                 cluster_env="cluster_env.yaml", cluster_compute="cluster_compute.yaml"
             ),
             alert="unit_test_alerter",
-            driver_setup="driver_fail.sh",
         )
         self.anyscale_project = "prj_unit12345678"
         self.ray_wheels_url = "http://mock.wheels/"
@@ -181,16 +174,6 @@ class GlueTest(unittest.TestCase):
 
     def _succeed_until(self, until: str):
         # These commands should succeed
-        self.command_runner_return["prepare_local_env"] = None
-
-        if until == "local_env":
-            return
-
-        self.test["driver_setup"] = "driver_succeed.sh"
-
-        if until == "driver_setup":
-            return
-
         self.cluster_manager_return["cluster_compute_id"] = "valid"
         self.cluster_manager_return["create_cluster_compute"] = None
 
@@ -239,7 +222,7 @@ class GlueTest(unittest.TestCase):
         if until == "fetch_results":
             return
 
-        self.command_runner_return["get_last_logs"] = "Lorem ipsum"
+        self.command_runner_return["get_last_logs_ex"] = "Lorem ipsum"
 
         if until == "get_last_logs":
             return
@@ -312,93 +295,6 @@ class GlueTest(unittest.TestCase):
             self._run(result)
 
         self.assertEqual(result.return_code, ExitCode.CONFIG_ERROR.value)
-
-    def testAutomaticClusterEnvVariables(self):
-        result = Result()
-
-        self._succeed_until("local_env")
-
-        with self.assertRaises(LocalEnvSetupError):
-            self._run(result)
-
-        cluster_manager = self.instances["cluster_manager"]
-
-        command_timeout = self.test["run"].get("timeout", DEFAULT_COMMAND_TIMEOUT)
-        wait_timeout = self.test["run"]["wait_for_nodes"].get(
-            "timeout", DEFAULT_WAIT_FOR_NODES_TIMEOUT
-        )
-
-        expected_idle_termination_minutes = int(command_timeout / 60 + 10)
-        expected_maximum_uptime_minutes = int(
-            expected_idle_termination_minutes + wait_timeout + 10
-        )
-
-        self.assertEqual(
-            cluster_manager.cluster_compute["idle_termination_minutes"],
-            expected_idle_termination_minutes,
-        )
-        self.assertEqual(
-            cluster_manager.cluster_compute["maximum_uptime_minutes"],
-            expected_maximum_uptime_minutes,
-        )
-
-    def testInvalidPrepareLocalEnv(self):
-        result = Result()
-
-        self.command_runner_return["prepare_local_env"] = _fail_on_call(
-            LocalEnvSetupError
-        )
-        with self.assertRaises(LocalEnvSetupError):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.LOCAL_ENV_SETUP_ERROR.value)
-
-    def testDriverSetupFails(self):
-        result = Result()
-
-        self._succeed_until("local_env")
-
-        with self.assertRaises(LocalEnvSetupError):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.LOCAL_ENV_SETUP_ERROR.value)
-
-    def testInvalidClusterIdOverride(self):
-        result = Result()
-
-        self._succeed_until("driver_setup")
-
-        self.sdk.returns["get_cluster_environment"] = None
-
-        with self.assertRaises(ClusterEnvCreateError):
-            self._run(result, cluster_env_id="existing")
-
-        self.sdk.returns["get_cluster_environment"] = APIDict(
-            result=APIDict(config_json={"overridden": True})
-        )
-
-        with self.assertRaises(Exception) as cm:  # Fail somewhere else
-            self._run(result, cluster_env_id="existing")
-            self.assertNotIsInstance(cm.exception, ClusterEnvCreateError)
-
-    def testBuildConfigFailsClusterCompute(self):
-        result = Result()
-
-        self._succeed_until("driver_setup")
-
-        # These commands should succeed
-        self.command_runner_return["prepare_local_env"] = None
-
-        # Fails because API response faulty
-        with self.assertRaisesRegex(ClusterComputeCreateError, "Unexpected"):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
-
-        # Fails for random cluster compute reason
-        self.cluster_manager_return["create_cluster_compute"] = _fail_on_call(
-            ClusterComputeCreateError, "Known"
-        )
-        with self.assertRaisesRegex(ClusterComputeCreateError, "Known"):
-            self._run(result)
-        self.assertEqual(result.return_code, ExitCode.CLUSTER_RESOURCE_ERROR.value)
 
     def testBuildConfigFailsClusterEnv(self):
         result = Result()
@@ -582,14 +478,34 @@ class GlueTest(unittest.TestCase):
 
         self._succeed_until("test_command")
 
-        self.command_runner_return["fetch_results"] = _fail_on_call(ResultsError)
+        self.command_runner_return["fetch_results"] = _fail_on_call(FetchResultError)
         with self.assertLogs(logger, "ERROR") as cm:
             self._run(result)
             self.assertTrue(any("Could not fetch results" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
-        self.assertEqual(result.status, "finished")
+        self.assertEqual(result.status, "success")
 
         # Ensure cluster was terminated
+        self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
+
+    def testFetchResultFailsReqNonEmptyResult(self):
+        # set `require_result` bit.
+        new_handler = (result_to_handle_map["unit_test_alerter"], True)
+        result_to_handle_map["unit_test_alerter"] = new_handler
+
+        result = Result()
+
+        self._succeed_until("test_command")
+
+        self.command_runner_return["fetch_results"] = _fail_on_call(FetchResultError)
+        with self.assertRaisesRegex(FetchResultError, "Fail"):
+            with self.assertLogs(logger, "ERROR") as cm:
+                self._run(result)
+                self.assertTrue(any("Could not fetch results" in o for o in cm.output))
+        self.assertEqual(result.return_code, ExitCode.FETCH_RESULT_ERROR.value)
+        self.assertEqual(result.status, "infra_error")
+
+        # Ensure cluster was terminated, no matter what
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
     def testLastLogsFails(self):
@@ -597,14 +513,13 @@ class GlueTest(unittest.TestCase):
 
         self._succeed_until("fetch_results")
 
-        self.command_runner_return["get_last_logs"] = _fail_on_call(LogsError)
+        self.command_runner_return["get_last_logs_ex"] = _fail_on_call(LogsError)
 
         with self.assertLogs(logger, "ERROR") as cm:
             self._run(result)
             self.assertTrue(any("Error fetching logs" in o for o in cm.output))
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
-        self.assertEqual(result.status, "finished")
-        self.assertIn("No logs", result.last_logs)
+        self.assertEqual(result.status, "success")
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
@@ -631,7 +546,7 @@ class GlueTest(unittest.TestCase):
         self._succeed_until("complete")
 
         class FailReporter(Reporter):
-            def report_result(self, test: Test, result: Result):
+            def report_result_ex(self, test: Test, result: Result):
                 raise RuntimeError
 
         with self.assertLogs(logger, "ERROR") as cm:
@@ -639,13 +554,11 @@ class GlueTest(unittest.TestCase):
             self.assertTrue(any("Error reporting results" in o for o in cm.output))
 
         self.assertEqual(result.return_code, ExitCode.SUCCESS.value)
-        self.assertEqual(result.status, "finished")
+        self.assertEqual(result.status, "success")
 
         # Ensure cluster was terminated
         self.assertGreaterEqual(self.sdk.call_counter["terminate_cluster"], 1)
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import unittest
 
 import ray

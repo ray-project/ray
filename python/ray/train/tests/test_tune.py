@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray import tune
 from ray.air import Checkpoint, session
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -20,17 +21,10 @@ from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+from ray.tune.impl.tuner_internal import _TUNER_PKL
 
 
-@pytest.fixture
-def propagate_logs():
-    logger = logging.getLogger("ray")
-    logger.propagate = True
-    yield
-    logger.propagate = False
-
-
-@pytest.fixture
+@pytest.fixture(scope="module")
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4)
     yield address_info
@@ -192,13 +186,15 @@ def test_reuse_checkpoint(ray_start_4_cpus):
     tuner = Tuner(
         trainer,
         param_space={"train_loop_config": {"max_iter": 10}},
-    ).restore(trial.local_dir)
+    ).restore(trial.local_dir, trainable=trainer)
     analysis = tuner.fit()._experiment_analysis
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 5
 
 
-def test_retry(ray_start_4_cpus):
+def test_retry_with_max_failures(ray_start_4_cpus):
+    """Tests trainer retry with max_failures > 0 when integrating with Tune."""
+
     def train_func():
         ckpt = session.get_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
@@ -224,13 +220,11 @@ def test_retry(ray_start_4_cpus):
         trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
     )
 
-    analysis = tuner.fit()._experiment_analysis
-    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    result_grid = tuner.fit()
+    checkpoint = result_grid[0].checkpoint.to_dict()
     assert checkpoint["iter"] == 3
-
-    trial_dfs = list(analysis.trial_dataframes.values())
-    assert len(trial_dfs[0]["training_iteration"]) == 4
+    df = result_grid[0].metrics_dataframe
+    assert len(df[TRAINING_ITERATION]) == 4
 
 
 def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
@@ -250,7 +244,10 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     def train_func(config):
         dataset = session.get_dataset_shard("train")
         assert session.get_world_size() == 2
-        assert dataset.count() == 10
+        rows = 0
+        for _ in dataset.iter_rows():
+            rows += 1
+        assert rows == 10
 
     trainer = DataParallelTrainer(
         # Training function can be modified
@@ -265,18 +262,62 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     )
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
-        with pytest.warns() as warn_record:
-            tuner = Tuner.restore(
-                str(tmpdir / "restore_new_trainer"),
-                overwrite_trainable=trainer,
-                resume_errored=True,
-            )
-        # Should warn about the RunConfig being ignored
-        assert "RunConfig" in str(warn_record[0].message)
-        assert "The trainable will be overwritten" in caplog.text
+        tuner = Tuner.restore(
+            str(tmpdir / "restore_new_trainer"),
+            trainable=trainer,
+            resume_errored=True,
+        )
+        assert "they will be ignored in the resumed run" in caplog.text
 
     results = tuner.fit()
     assert not results.errors
+
+
+@pytest.mark.parametrize("in_trainer", [True, False])
+@pytest.mark.parametrize("in_tuner", [True, False])
+def test_run_config_in_trainer_and_tuner(
+    propagate_logs, tmp_path, caplog, in_trainer, in_tuner
+):
+    trainer_run_config = (
+        RunConfig(name="trainer", local_dir=str(tmp_path)) if in_trainer else None
+    )
+    tuner_run_config = (
+        RunConfig(name="tuner", local_dir=str(tmp_path)) if in_tuner else None
+    )
+    trainer = DataParallelTrainer(
+        lambda config: None,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=trainer_run_config,
+    )
+    with caplog.at_level(logging.INFO, logger="ray.tune.impl.tuner_internal"):
+        tuner = Tuner(trainer, run_config=tuner_run_config)
+
+    both_msg = (
+        "`RunConfig` was passed to both the `Tuner` and the `DataParallelTrainer`"
+    )
+    if in_trainer and in_tuner:
+        assert list((tmp_path / "tuner").glob(_TUNER_PKL))
+        assert both_msg in caplog.text
+    elif in_trainer and not in_tuner:
+        assert list((tmp_path / "trainer").glob(_TUNER_PKL))
+        assert both_msg not in caplog.text
+    elif not in_trainer and in_tuner:
+        assert list((tmp_path / "tuner").glob(_TUNER_PKL))
+        assert both_msg not in caplog.text
+    else:
+        assert tuner._local_tuner.get_run_config() == RunConfig()
+        assert both_msg not in caplog.text
+
+
+def test_run_config_in_param_space():
+    trainer = DataParallelTrainer(
+        lambda config: None,
+        backend_config=TestConfig(),
+        scaling_config=ScalingConfig(num_workers=1),
+    )
+    with pytest.raises(ValueError):
+        Tuner(trainer, param_space={"run_config": RunConfig(name="ignored")})
 
 
 if __name__ == "__main__":

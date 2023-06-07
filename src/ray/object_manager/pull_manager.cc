@@ -475,6 +475,9 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   if (!direct_restore_url.empty()) {
     // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);
+    // Avoid restore failure by the object already exists.
+    // Details: https://github.com/ray-project/ray/issues/31390
+    cancel_pull_request_(object_id);
     restore_spilled_object_(object_id,
                             request.object_size,
                             direct_restore_url,

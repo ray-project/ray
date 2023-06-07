@@ -17,15 +17,64 @@ const basicTheme: ThemeOptions = {
       '"Segoe UI Symbol"',
     ].join(","),
     h1: {
-      fontSize: "2rem",
+      fontSize: "1.5rem",
+      fontWeight: 500,
+    },
+    h2: {
+      fontSize: "1.25rem",
+      fontWeight: 500,
+    },
+    h3: {
+      fontSize: "1rem",
+      fontWeight: 500,
+    },
+    h4: {
+      fontSize: "1rem",
     },
     body1: {
       fontSize: "0.75rem",
+    },
+    body2: {
+      fontSize: "14px",
+      lineHeight: "20px",
+    },
+    caption: {
+      fontSize: "0.75rem",
+      lineHeight: "16px",
     },
   },
   props: {
     MuiPaper: {
       elevation: 0,
+    },
+  },
+  overrides: {
+    MuiCssBaseline: {
+      "@global": {
+        a: {
+          color: "#036DCF",
+        },
+      },
+    },
+    MuiTooltip: {
+      tooltip: {
+        fontSize: "0.75rem",
+        fontWeight: 400,
+        boxShadow: "0px 3px 14px 2px rgba(3, 28, 74, 0.12)",
+        padding: 8,
+      },
+      tooltipPlacementRight: {
+        margin: "0 8px",
+        "@media (min-width: 600px)": {
+          margin: "0 8px",
+        },
+      },
+    },
+    MuiPaper: {
+      outlined: {
+        borderColor: "#D2DCE6",
+        borderRadius: 8,
+      },
     },
   },
 };
@@ -34,7 +83,7 @@ export const lightTheme = createTheme({
   ...basicTheme,
   palette: {
     primary: {
-      main: "#538DF9",
+      main: "#036DCF",
     },
     secondary: lightBlue,
     success: {

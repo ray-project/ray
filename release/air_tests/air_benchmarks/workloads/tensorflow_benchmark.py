@@ -66,14 +66,14 @@ def train_func(use_ray: bool, config: dict):
         )
 
     if use_ray:
-        from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
+        from ray.air.integrations.keras import ReportCheckpointCallback
 
-        class CustomReportCallback(TrainCheckpointReportCallback):
+        class CustomReportCallback(ReportCheckpointCallback):
             def _handle(self, logs: dict, when: str = None):
                 logs["local_time_taken"] = time.monotonic() - local_start_time
                 super()._handle(logs, when)
 
-        callbacks = [CustomReportCallback(frequency=0)]
+        callbacks = [CustomReportCallback(checkpoint_on="test_end")]
     else:
         callbacks = []
 
@@ -310,7 +310,7 @@ def run(
                     config=config,
                 )
             except Exception as e:
-                if i > +2:
+                if i >= 2:
                     raise RuntimeError("Vanilla TF run failed 3 times") from e
                 print("Vanilla TF run failed:", e)
                 continue
@@ -338,6 +338,7 @@ def run(
         times_ray.append(time_ray)
         times_local_ray.append(time_local_ray)
         losses_ray.append(loss_ray)
+
         times_vanilla.append(time_vanilla)
         times_local_vanilla.append(time_local_vanilla)
         losses_vanilla.append(loss_vanilla)

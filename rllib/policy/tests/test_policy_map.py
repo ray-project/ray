@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import numpy as np
 import time
 import unittest
@@ -20,7 +20,15 @@ class TestPolicyMap(unittest.TestCase):
         ray.shutdown()
 
     def test_policy_map(self):
-        config = PPOConfig().framework("tf2", eager_tracing=True)
+        # This is testing policy map which is something that will be deprecated in
+        # favor of MultiAgentRLModules in the future. So we'll disable the RLModule API
+        # for this test for now.
+        config = (
+            PPOConfig()
+            .framework("tf2", eager_tracing=True)
+            .rl_module(_enable_rl_module_api=False)
+            .training(_enable_learner_api=False)
+        )
         obs_space = gym.spaces.Box(-1.0, 1.0, (4,), dtype=np.float32)
         dummy_obs = obs_space.sample()
         act_space = gym.spaces.Discrete(10000)
@@ -80,6 +88,32 @@ class TestPolicyMap(unittest.TestCase):
 
             time_total = time.time() - start
             print(f"Random access (swapping={use_swapping} took {time_total}sec.")
+
+        # Delete some policy entirely that is in the deque
+        policy_id = next(iter(policy_map._deque))
+        del policy_map[policy_id]
+        self.assertEqual(len(policy_map._deque), capacity - 1)
+        self.assertTrue(policy_id not in policy_map._deque)
+        self.assertEqual(len(policy_map.cache), capacity - 1)
+        self.assertTrue(policy_id not in policy_map._deque)
+        self.assertEqual(len(policy_map._valid_keys), num_policies - 1)
+        self.assertTrue(policy_id not in policy_map._deque)
+
+        # Add another policy and see if data structures behave as expected
+        config.training(lr=(i + 1) * 0.00001)
+        policy = cls(
+            observation_space=obs_space,
+            action_space=act_space,
+            config=config.to_dict(),
+        )
+        policy_id = f"pol{num_policies + 1}"
+        policy_map[policy_id] = policy
+        self.assertEqual(len(policy_map._deque), capacity)
+        self.assertTrue(policy_id in policy_map._deque)
+        self.assertEqual(len(policy_map.cache), capacity)
+        self.assertTrue(policy_id in policy_map._deque)
+        self.assertEqual(len(policy_map._valid_keys), num_policies)
+        self.assertTrue(policy_id in policy_map._deque)
 
 
 if __name__ == "__main__":

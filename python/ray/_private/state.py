@@ -5,11 +5,11 @@ from collections import defaultdict
 from google.protobuf.json_format import MessageToDict
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.resource_spec import NODE_ID_PREFIX
+from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import binary_to_hex, decode, hex_to_binary
 from ray._raylet import GlobalStateAccessor
+from ray.core.generated import common_pb2
 from ray.core.generated import gcs_pb2
 from ray.util.annotations import DeveloperAPI
 
@@ -92,13 +92,13 @@ class GlobalState:
             if actor_info is None:
                 return {}
             else:
-                actor_table_data = gcs_utils.ActorTableData.FromString(actor_info)
+                actor_table_data = gcs_pb2.ActorTableData.FromString(actor_info)
                 return self._gen_actor_info(actor_table_data)
         else:
             actor_table = self.global_state_accessor.get_actor_table()
             results = {}
             for i in range(len(actor_table)):
-                actor_table_data = gcs_utils.ActorTableData.FromString(actor_table[i])
+                actor_table_data = gcs_pb2.ActorTableData.FromString(actor_table[i])
                 results[
                     binary_to_hex(actor_table_data.actor_id)
                 ] = self._gen_actor_info(actor_table_data)
@@ -147,32 +147,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        node_table = self.global_state_accessor.get_node_table()
-
-        results = []
-        for node_info_item in node_table:
-            item = gcs_utils.GcsNodeInfo.FromString(node_info_item)
-            node_info = {
-                "NodeID": ray._private.utils.binary_to_hex(item.node_id),
-                "Alive": item.state
-                == gcs_utils.GcsNodeInfo.GcsNodeState.Value("ALIVE"),
-                "NodeManagerAddress": item.node_manager_address,
-                "NodeManagerHostname": item.node_manager_hostname,
-                "NodeManagerPort": item.node_manager_port,
-                "ObjectManagerPort": item.object_manager_port,
-                "ObjectStoreSocketName": item.object_store_socket_name,
-                "RayletSocketName": item.raylet_socket_name,
-                "MetricsExportPort": item.metrics_export_port,
-                "NodeName": item.node_name,
-            }
-            node_info["alive"] = node_info["Alive"]
-            node_info["Resources"] = (
-                {key: value for key, value in item.resources_total.items()}
-                if node_info["Alive"]
-                else {}
-            )
-            results.append(node_info)
-        return results
+        return self.global_state_accessor.get_node_table()
 
     def job_table(self):
         """Fetch and parse the gcs job table.
@@ -192,7 +167,7 @@ class GlobalState:
 
         results = []
         for i in range(len(job_table)):
-            entry = gcs_utils.JobTableData.FromString(job_table[i])
+            entry = gcs_pb2.JobTableData.FromString(job_table[i])
             job_info = {}
             job_info["JobID"] = entry.job_id.hex()
             job_info["DriverIPAddress"] = entry.driver_ip_address
@@ -216,25 +191,46 @@ class GlobalState:
 
         return ray.JobID.from_int(self.global_state_accessor.get_next_job_id())
 
-    def profile_table(self):
+    def profile_events(self):
+        """Retrieve and return task profiling events from GCS.
+
+        Return:
+            Profiling events by component id (e.g. worker id).
+            {
+                <component_id>: [
+                    {
+                        event_type: <event name> ,
+                        component_id: <i.e. worker id>,
+                        node_ip_address: <on which node profiling was done>,
+                        component_type: <i.e. worker/driver>,
+                        start_time: <unix timestamp in seconds>,
+                        end_time: <unix timestamp in seconds>,
+                        extra_data: <e.g. stack trace when error raised>,
+                    }
+                ]
+            }
+        """
         self._check_connected()
 
         result = defaultdict(list)
-        profile_table = self.global_state_accessor.get_profile_table()
-        for i in range(len(profile_table)):
-            profile = gcs_utils.ProfileTableData.FromString(profile_table[i])
+        task_events = self.global_state_accessor.get_task_events()
+        for i in range(len(task_events)):
+            event = common_pb2.TaskEvents.FromString(task_events[i])
+            profile = event.profile_events
+            if not profile:
+                continue
 
             component_type = profile.component_type
             component_id = binary_to_hex(profile.component_id)
             node_ip_address = profile.node_ip_address
 
-            for event in profile.profile_events:
+            for event in profile.events:
                 try:
                     extra_data = json.loads(event.extra_data)
                 except ValueError:
                     extra_data = {}
                 profile_event = {
-                    "event_type": event.event_type,
+                    "event_type": event.event_name,
                     "component_id": component_id,
                     "node_ip_address": node_ip_address,
                     "component_type": component_type,
@@ -256,7 +252,7 @@ class GlobalState:
         if placement_group_info is None:
             return None
         else:
-            placement_group_table_data = gcs_utils.PlacementGroupTableData.FromString(
+            placement_group_table_data = gcs_pb2.PlacementGroupTableData.FromString(
                 placement_group_info
             )
             return self._gen_placement_group_info(placement_group_table_data)
@@ -274,7 +270,7 @@ class GlobalState:
             if placement_group_info is None:
                 return {}
             else:
-                placement_group_info = gcs_utils.PlacementGroupTableData.FromString(
+                placement_group_info = gcs_pb2.PlacementGroupTableData.FromString(
                     placement_group_info
                 )
                 return self._gen_placement_group_info(placement_group_info)
@@ -284,8 +280,8 @@ class GlobalState:
             )
             results = {}
             for placement_group_info in placement_group_table:
-                placement_group_table_data = (
-                    gcs_utils.PlacementGroupTableData.FromString(placement_group_info)
+                placement_group_table_data = gcs_pb2.PlacementGroupTableData.FromString(
+                    placement_group_info
                 )
                 placement_group_id = binary_to_hex(
                     placement_group_table_data.placement_group_id
@@ -301,10 +297,12 @@ class GlobalState:
         from ray.core.generated.common_pb2 import PlacementStrategy
 
         def get_state(state):
-            if state == gcs_utils.PlacementGroupTableData.PENDING:
+            if state == gcs_pb2.PlacementGroupTableData.PENDING:
                 return "PENDING"
-            elif state == gcs_utils.PlacementGroupTableData.CREATED:
+            elif state == gcs_pb2.PlacementGroupTableData.CREATED:
                 return "CREATED"
+            elif state == gcs_pb2.PlacementGroupTableData.RESCHEDULING:
+                return "RESCHEDULING"
             else:
                 return "REMOVED"
 
@@ -333,6 +331,10 @@ class GlobalState:
                 bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
+            "bundles_to_node_id": {
+                bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
+                for bundle in placement_group_info.bundles
+            },
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
             "stats": {
@@ -348,9 +350,9 @@ class GlobalState:
             },
         }
 
-    def _seconds_to_microseconds(self, time_in_seconds):
-        """A helper function for converting seconds to microseconds."""
-        time_in_microseconds = 10**6 * time_in_seconds
+    def _nanoseconds_to_microseconds(self, time_in_nanoseconds):
+        """A helper function for converting nanoseconds to microseconds."""
+        time_in_microseconds = time_in_nanoseconds / 1000
         return time_in_microseconds
 
     # Colors are specified at
@@ -441,10 +443,10 @@ class GlobalState:
 
         time.sleep(1)
 
-        profile_table = self.profile_table()
+        profile_events = self.profile_events()
         all_events = []
 
-        for component_id_hex, component_events in profile_table.items():
+        for component_id_hex, component_events in profile_events.items():
             # Only consider workers and drivers.
             component_type = component_events[0]["component_type"]
             if component_type not in ["worker", "driver"]:
@@ -462,9 +464,9 @@ class GlobalState:
                     # The identifier for the row that the event appears in.
                     "tid": event["component_type"] + ":" + event["component_id"],
                     # The start time in microseconds.
-                    "ts": self._seconds_to_microseconds(event["start_time"]),
+                    "ts": self._nanoseconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
-                    "dur": self._seconds_to_microseconds(
+                    "dur": self._nanoseconds_to_microseconds(
                         event["end_time"] - event["start_time"]
                     ),
                     # What is this?
@@ -487,7 +489,8 @@ class GlobalState:
         if not all_events:
             logger.warning(
                 "No profiling events found. Ray profiling must be enabled "
-                "by setting RAY_PROFILING=1."
+                "by setting RAY_PROFILING=1, and make sure "
+                "RAY_task_events_report_interval_ms is a positive value (default 1000)."
             )
 
         if filename is not None:
@@ -522,7 +525,7 @@ class GlobalState:
 
         all_events = []
 
-        for key, items in self.profile_table().items():
+        for key, items in self.profile_events().items():
             # Only consider object manager events.
             if items[0]["component_type"] != "object_manager":
                 continue
@@ -558,9 +561,9 @@ class GlobalState:
                     # The identifier for the row that the event appears in.
                     "tid": node_id_to_address[remote_node_id],
                     # The start time in microseconds.
-                    "ts": self._seconds_to_microseconds(event["start_time"]),
+                    "ts": self._nanoseconds_to_microseconds(event["start_time"]),
                     # The duration in microseconds.
-                    "dur": self._seconds_to_microseconds(
+                    "dur": self._nanoseconds_to_microseconds(
                         event["end_time"] - event["start_time"]
                     ),
                     # What is this?
@@ -599,10 +602,10 @@ class GlobalState:
         worker_table = self.global_state_accessor.get_worker_table()
         workers_data = {}
         for i in range(len(worker_table)):
-            worker_table_data = gcs_utils.WorkerTableData.FromString(worker_table[i])
+            worker_table_data = gcs_pb2.WorkerTableData.FromString(worker_table[i])
             if (
                 worker_table_data.is_alive
-                and worker_table_data.worker_type == gcs_utils.WORKER
+                and worker_table_data.worker_type == common_pb2.WORKER
             ):
                 worker_id = binary_to_hex(worker_table_data.worker_address.worker_id)
                 worker_info = worker_table_data.worker_info
@@ -626,14 +629,14 @@ class GlobalState:
 
         Args:
             worker_id: ID of this worker. Type is bytes.
-            worker_type: Type of this worker. Value is gcs_utils.DRIVER or
-                gcs_utils.WORKER.
+            worker_type: Type of this worker. Value is common_pb2.DRIVER or
+                common_pb2.WORKER.
             worker_info: Info of this worker. Type is dict{str: str}.
 
         Returns:
              Is operation success
         """
-        worker_data = gcs_utils.WorkerTableData()
+        worker_data = gcs_pb2.WorkerTableData()
         worker_data.is_alive = True
         worker_data.worker_address.worker_id = worker_id
         worker_data.worker_type = worker_type
@@ -677,7 +680,7 @@ class GlobalState:
             self.global_state_accessor.get_all_available_resources()
         )
         for available_resource in all_available_resources:
-            message = gcs_utils.AvailableResources.FromString(available_resource)
+            message = gcs_pb2.AvailableResources.FromString(available_resource)
             # Calculate available resources for this node.
             dynamic_resources = {}
             for resource_id, capacity in message.resources_available.items():
@@ -727,10 +730,9 @@ class GlobalState:
     def get_node_to_connect_for_driver(self, node_ip_address):
         """Get the node to connect for a Ray driver."""
         self._check_connected()
-        node_info_str = self.global_state_accessor.get_node_to_connect_for_driver(
+        return self.global_state_accessor.get_node_to_connect_for_driver(
             node_ip_address
         )
-        return gcs_utils.GcsNodeInfo.FromString(node_info_str)
 
 
 state = GlobalState()
@@ -761,7 +763,7 @@ def next_job_id():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -806,7 +808,7 @@ def node_ids():
     node_ids = []
     for node in nodes():
         for k, v in node["Resources"].items():
-            if k.startswith(NODE_ID_PREFIX):
+            if k.startswith(NODE_ID_PREFIX) and k != HEAD_NODE_RESOURCE_NAME:
                 node_ids.append(k)
     return node_ids
 
@@ -825,12 +827,13 @@ def actors(actor_id=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
-    variable prior to starting Ray.
+    variable prior to starting Ray, and RAY_task_events_report_interval_ms set
+    to be positive (default 1000)
 
     To view this information as a timeline, simply dump it as a json file by
     passing in "filename" or using using json.dump, and then load go to
@@ -867,7 +870,7 @@ def object_transfer_timeline(filename=None):
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -882,7 +885,7 @@ def cluster_resources():
 
 
 @DeveloperAPI
-@client_mode_hook(auto_init=False)
+@client_mode_hook
 def available_resources():
     """Get the current available cluster resources.
 

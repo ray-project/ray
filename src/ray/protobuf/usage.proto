@@ -1,0 +1,153 @@
+// Copyright 2017 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.usage;
+
+// This file defines your custom TagKey to record custom usage stats.
+//
+// Steps to record custom usage stats:
+// 1. Define your key in the TagKey enum (this means the key cannot be dynamic).
+// 2. Call `ray._private.usage.usage_lib.record_extra_usage_tag(k, v)` in your code.
+// 3. One of @pcmoritz, @thomasdesr should review and approve the data
+// collection. In particular, please make sure values are not fully dynamic
+// (no user-defined data like their file name, etc!)
+
+enum TagKey {
+  // Test only.
+  _TEST1 = 0;
+  _TEST2 = 1;
+
+  // RLlib
+  // The deep learning framework ("tf", "torch", etc.).
+  RLLIB_FRAMEWORK = 2;
+  // The algorithm name (only built-in algorithms).
+  RLLIB_ALGORITHM = 3;
+  // The number of workers as a string.
+  RLLIB_NUM_WORKERS = 4;
+
+  // Serve
+  // The public Python API version ("v1", "v2").
+  SERVE_API_VERSION = 5;
+  // The total number of running serve deployments as a string.
+  SERVE_NUM_DEPLOYMENTS = 6;
+  // The GCS storage type, which could be memory or redis.
+  GCS_STORAGE = 7;
+  // The total number of running serve deployments that use a GPU as a string.
+  SERVE_NUM_GPU_DEPLOYMENTS = 8;
+  // Whether or not a FastAPI deployment was used ("1" if used).
+  SERVE_FASTAPI_USED = 9;
+  // Whether or not a DAGDriver was used ("1" if used).
+  SERVE_DAG_DRIVER_USED = 10;
+  // Whether or not an HTTP adapter was used in a DAGDriver ("1" if used).
+  SERVE_HTTP_ADAPTER_USED = 11;
+  // Whether or not a gRPCIngress was used ("1" if used).
+  SERVE_GRPC_INGRESS_USED = 12;
+  // The Serve REST API version ("v1", "v2").
+  SERVE_REST_API_VERSION = 13;
+  // The number of serve apps running in the cluster as a string.
+  SERVE_NUM_APPS = 14;
+  // Whether num_replicas changed as a lightweight config update
+  SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED = 15;
+  // Whether user_config changed as a lightweight config update
+  SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED = 16;
+  // Whether autoscaling_config changed as a lightweight config update
+  SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED = 17;
+
+  // Ray Core State API
+  // NOTE(rickyxx): Currently only setting "1" for tracking existence of
+  // invocations only.
+  CORE_STATE_API_LIST_ACTORS = 100;
+  CORE_STATE_API_LIST_TASKS = 101;
+  CORE_STATE_API_LIST_JOBS = 102;
+  CORE_STATE_API_LIST_NODES = 103;
+  CORE_STATE_API_LIST_PLACEMENT_GROUPS = 104;
+  CORE_STATE_API_LIST_WORKERS = 105;
+  CORE_STATE_API_LIST_OBJECTS = 106;
+  CORE_STATE_API_LIST_RUNTIME_ENVS = 107;
+  CORE_STATE_API_LIST_CLUSTER_EVENTS = 108;
+  CORE_STATE_API_LIST_LOGS = 109;
+  CORE_STATE_API_GET_LOG = 110;
+  CORE_STATE_API_SUMMARIZE_TASKS = 111;
+  CORE_STATE_API_SUMMARIZE_ACTORS = 112;
+  CORE_STATE_API_SUMMARIZE_OBJECTS = 113;
+
+  // Dashboard
+  // {True, False}
+  // True if the dashboard page has been ever opened.
+  DASHBOARD_USED = 200;
+  // Whether a user is running ray with some third party metrics
+  // services (Ex: "True", "False")
+  DASHBOARD_METRICS_PROMETHEUS_ENABLED = 201;
+  DASHBOARD_METRICS_GRAFANA_ENABLED = 202;
+
+  // Core
+  // Total number of placement groups created.
+  PG_NUM_CREATED = 300;
+  // Total number of actors created.
+  ACTOR_NUM_CREATED = 301;
+  // The count(int) of worker crash with exit type 'system error' since
+  // the cluster started, emitted from GCS
+  WORKER_CRASH_SYSTEM_ERROR = 302;
+  // The count(int) of worker crash with exit type 'out-of-memory' since
+  // the cluster started, emitted from GCS
+  WORKER_CRASH_OOM = 303;
+  // If {true, false} setting of timeout =0 in `ray.get``, i.e. ray.get(..., timeout=0)
+  // This is to track usage of the buggy behavior that will be fixed.
+  // See https://github.com/ray-project/ray/issues/28465 for more details.
+  RAY_GET_TIMEOUT_ZERO = 304;
+  // Total number of tasks created.
+  NUM_ACTOR_CREATION_TASKS = 305;
+  NUM_ACTOR_TASKS = 306;
+  NUM_NORMAL_TASKS = 307;
+  NUM_DRIVERS = 308;
+  // State api import usage.
+  EXPERIMENTAL_STATE_API_IMPORT = 309;
+
+  // Data
+  // Logical operators, stored in JSON format with operator name and count.
+  // Example: {"MapBatches": 2, "Filter": 1}
+  DATA_LOGICAL_OPS = 400;
+
+  // AIR
+  // Name of AIR trainer, or "Custom" if user-defined.
+  // Example: "TorchTrainer"
+  AIR_TRAINER = 500;
+  // Name of Tune search algorithm or "Custom" if user-defined.
+  // Example: "TuneBOHB", "BasicVariantGenerator"
+  TUNE_SEARCHER = 501;
+  // Name of Tune scheduler algorithm or "Custom" if user-defined.
+  // Example: "FIFOScheduler"
+  TUNE_SCHEDULER = 502;
+  // Ray AIR environment variable usage stored in JSON list format
+  // This lists which of the environment variables exposed by the AIR libraries
+  // are provided by the user.
+  // Ex: ["RAY_AIR_LOCAL_CACHE_DIR", "TUNE_FALLBACK_TO_LATEST_CHECKPOINT"]
+  AIR_ENV_VARS = 503;
+  // Fully user-controlled experiment tracking integrations ("1" if used)
+  // NOTE: These tags + the callback metrics can be aggregated to extract
+  // total experiment tracking integration usage.
+  AIR_SETUP_WANDB_INTEGRATION_USED = 504;
+  AIR_SETUP_MLFLOW_INTEGRATION_USED = 505;
+  // Built-in callbacks, stored in JSON format with callback name -> count.
+  // Ex: {"WandbLoggerCallback": 1, "MLflowLoggerCallback": 1}
+  AIR_CALLBACKS = 506;
+  // Storage configuration for AIR experiment
+  AIR_STORAGE_CONFIGURATION = 507;
+  // AIR entrypoint
+  // One of: "Trainer.fit", "Tuner.fit", "tune.run", "tune.run_experiments"
+  AIR_ENTRYPOINT = 508;
+}

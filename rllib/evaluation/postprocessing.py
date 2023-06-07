@@ -2,10 +2,14 @@ import numpy as np
 import scipy.signal
 from typing import Dict, Optional
 
+from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import AgentID
 
 
@@ -19,7 +23,7 @@ class Postprocessing:
 
 @DeveloperAPI
 def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
-    """Rewrites `batch` to encode n-step rewards, dones, and next-obs.
+    """Rewrites `batch` to encode n-step rewards, terminateds, truncateds, and next-obs.
 
     Observations and actions remain unaffected. At the end of the trajectory,
     n is truncated to fit in the traj length.
@@ -41,13 +45,13 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
         4: o4 r4 d4 o4'=o5
     """
 
-    assert not any(
-        batch[SampleBatch.DONES][:-1]
-    ), "Unexpected done in middle of trajectory!"
+    assert (
+        batch.is_single_trajectory()
+    ), "Unexpected terminated|truncated in middle of trajectory!"
 
     len_ = len(batch)
 
-    # Shift NEXT_OBS and DONES.
+    # Shift NEXT_OBS, TERMINATEDS, and TRUNCATEDS.
     batch[SampleBatch.NEXT_OBS] = np.concatenate(
         [
             batch[SampleBatch.OBS][n_step:],
@@ -55,13 +59,22 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
         ],
         axis=0,
     )
-    batch[SampleBatch.DONES] = np.concatenate(
+    batch[SampleBatch.TERMINATEDS] = np.concatenate(
         [
-            batch[SampleBatch.DONES][n_step - 1 :],
-            np.tile(batch[SampleBatch.DONES][-1], min(n_step - 1, len_)),
+            batch[SampleBatch.TERMINATEDS][n_step - 1 :],
+            np.tile(batch[SampleBatch.TERMINATEDS][-1], min(n_step - 1, len_)),
         ],
         axis=0,
     )
+    # Only fix `truncateds`, if present in the batch.
+    if SampleBatch.TRUNCATEDS in batch:
+        batch[SampleBatch.TRUNCATEDS] = np.concatenate(
+            [
+                batch[SampleBatch.TRUNCATEDS][n_step - 1 :],
+                np.tile(batch[SampleBatch.TRUNCATEDS][-1], min(n_step - 1, len_)),
+            ],
+            axis=0,
+        )
 
     # Change rewards in place.
     for i in range(len_):
@@ -100,6 +113,7 @@ def compute_advantages(
         SampleBatch.VF_PREDS in rollout or not use_critic
     ), "use_critic=True but values not found"
     assert use_critic or not use_gae, "Can't use gae without using a value function"
+    last_r = convert_to_numpy(last_r)
 
     if use_gae:
         vpred_t = np.concatenate([rollout[SampleBatch.VF_PREDS], np.array([last_r])])
@@ -167,7 +181,7 @@ def compute_gae_for_sample_batch(
     """
 
     # Trajectory is actually complete -> last r=0.0.
-    if sample_batch[SampleBatch.DONES][-1]:
+    if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
@@ -178,7 +192,30 @@ def compute_gae_for_sample_batch(
         input_dict = sample_batch.get_single_step_input_dict(
             policy.model.view_requirements, index="last"
         )
-        last_r = policy._value(**input_dict)
+
+        if policy.config.get("_enable_rl_module_api"):
+            # Note: During sampling you are using the parameters at the beginning of
+            # the sampling process. If I'll be using this advantages during training
+            # should it not be the latest parameters during training for this to be
+            # correct? Does this mean that I need to preserve the trajectory
+            # information during training and compute the advantages inside the loss
+            # function?
+            # TODO (Kourosh): Another thing we need to figure out is which end point
+            #  to call here (why forward_exploration)? What if this method is getting
+            #  called inside the learner loop or via another abstraction like
+            #  RLSampler.postprocess_trajectory() which is non-batched cpu/gpu task
+            #  running across different processes for different trajectories?
+            #  This implementation right now will compute even the action_dist which
+            #  will not be needed but takes time to compute.
+            if policy.framework == "torch":
+                input_dict = convert_to_torch_tensor(input_dict, device=policy.device)
+            # TODO (sven): Fix this once we support RNNs on the new stack.
+            input_dict[STATE_IN] = input_dict[SampleBatch.SEQ_LENS] = None
+            input_dict = NestedDict(input_dict)
+            fwd_out = policy.model.forward_exploration(input_dict)
+            last_r = fwd_out[SampleBatch.VF_PREDS][-1]
+        else:
+            last_r = policy._value(**input_dict)
 
     # Adds the policy logits, VF preds, and advantages to the batch,
     # using GAE ("generalized advantage estimation") or not.

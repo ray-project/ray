@@ -77,14 +77,6 @@ message ReportOCMetricsRequest {
 
 message ReportOCMetricsReply {}
 
-// Resource usage reported by the node reporter.
-message NodeResourceUsage {
-  // Node resource usage in serialized json.
-  // TODO: add schema for the subfields, e.g.
-  // https://github.com/ray-project/ray/blob/e54d3117a40c20ca5441d38ffc72b908bc1b0609/dashboard/modules/reporter/reporter_agent.py#L330-L347
-  string json = 1;
-}
-
 // Service for communicating with the reporter agent module on a remote node.
 service ReporterService {
   // Get the profiling stats.
@@ -108,6 +100,12 @@ message StreamLogRequest {
   // if keep_alive is true, this indicates how frequently to poll the
   // log file for new lines
   optional float interval = 4;
+  // Start offset to stream from in the log. None indicates to start
+  // from the beginning of the file or depending on the value of lines
+  // to tail (`lines`) if it is not -1.
+  optional int32 start_offset = 5;
+  // End offset to stream from in the log. None indicates end of file.
+  optional int32 end_offset = 6;
 }
 
 message StreamLogReply {

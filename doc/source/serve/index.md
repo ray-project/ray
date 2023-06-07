@@ -4,7 +4,7 @@
 
 (rayserve)=
 
-# Serve: Scalable and Programmable Serving
+# Ray Serve: Scalable and Programmable Serving
 
 :::{tip}
 [Get in touch with us](https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU) if you're using or considering using Ray Serve.
@@ -19,7 +19,7 @@
 (rayserve-overview)=
 
 Ray Serve is a scalable model serving library for building online inference APIs.
-Serve is framework agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like PyTorch, Tensorflow, and Keras, to Scikit-Learn models, to arbitrary Python business logic.
+Serve is framework-agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like PyTorch, Tensorflow, and Keras, to Scikit-Learn models, to arbitrary Python business logic.
 
 Serve is particularly well suited for [model composition](serve-model-composition), enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code.
 
@@ -32,46 +32,58 @@ Install Ray Serve and its dependencies:
 ```bash
 pip install "ray[serve]"
 ```
-
-In this quick-start example we will define a simple "hello world" deployment, deploy it behind HTTP locally, and query it.
+Define a simple "hello world" application, run it locally, and query it over HTTP.
 
 ```{literalinclude} doc_code/quickstart.py
 :language: python
 ```
 
-:::{tabbed} More examples
+::::{tab-set} 
+
+:::{tab-item} More examples
+
 For more examples, select from the tabs.
+
 :::
 
-:::{tabbed} Model composition
+::::
 
-In this example, we demonstrate how you can use Serve's model composition API to express a complex computation graph and deploy it as a Serve application.
+::::{tab-set}
 
-```{literalinclude} doc_code/quickstart_graph.py
+:::{tab-item} Model composition
+
+Use Serve's model composition API to combine multiple deployments into a single application.
+
+```{literalinclude} doc_code/quickstart_composed.py
 :language: python
 ```
+
 :::
 
-:::{tabbed} FastAPI integration
+:::{tab-item} FastAPI integration
 
-In this example we will use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to make use of more advanced HTTP functionality.
+Use Serve's [FastAPI](https://fastapi.tiangolo.com/) integration to elegantly handle HTTP parsing and validation.
 
 ```{literalinclude} doc_code/fastapi_example.py
 :language: python
 ```
+
 :::
 
-:::{tabbed} Hugging Face model
+:::{tab-item} Hugging Face Transformers model
 
 To run this example, install the following: ``pip install transformers``
 
-In this example we will serve a pre-trained [Hugging Face transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
+Serve a pre-trained [Hugging Face Transformers](https://huggingface.co/docs/transformers/index) model using Ray Serve.
 The model we'll use is a sentiment analysis model: it will take a text string as input and return if the text was "POSITIVE" or "NEGATIVE."
 
 ```{literalinclude} doc_code/transformers_example.py
 :language: python
 ```
+
 :::
+
+::::
 
 ## Why choose Serve?
 
@@ -97,7 +109,7 @@ In many cases each model may use a different architecture or framework and requi
 Many other solutions support defining a static graph in YAML or some other configuration language.
 This can be limiting and hard to work with.
 Ray Serve, on the other hand, supports multi-model composition using a programmable API where calls to different models look just like function calls.
-The models can use different resources and run across different machines in the cluster, but to the developer it's just like writing a regular program (see {ref}`serve-model-composition` for more details).
+The models can use different resources and run across different machines in the cluster, but you can write it like a regular program (see {ref}`serve-model-composition` for more details).
 
 :::
 
@@ -148,13 +160,20 @@ Serve supports arbitrary Python code and therefore integrates well with the MLOp
 
 :::
 
+:::{dropdown} LLM developer
+:animate: fade-in-slide-down
+
+Serve enables you to rapidly prototype, develop, and deploy scalable LLM applications to production. Many large language model (LLM) applications combine prompt preprocessing, vector database lookups, LLM API calls, and response validation. Because Serve supports any arbitrary Python code, you can write all these steps as a single Python module, enabling rapid development and easy testing. You can then quickly deploy your Ray Serve LLM application to production, and each application step can independently autoscale to efficiently accommodate user traffic without wasting resources.
+
+:::
+
 
 ## How does Serve compare to ...
 
 :::{dropdown} TFServing, TorchServe, ONNXRuntime
 :animate: fade-in-slide-down
 
-Ray Serve is *framework agnostic*, so you can use it alongside any other Python framework or library.
+Ray Serve is *framework-agnostic*, so you can use it alongside any other Python framework or library.
 We believe data scientists should not be bound to a particular machine learning framework.
 They should be empowered to use the best tool available for the job.
 
@@ -210,83 +229,106 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
 
 
 ```{eval-rst}
-.. panels::
-    :container: text-center
-    :column: col-lg-6 px-2 py-2
-    :card:
+.. grid:: 1 2 2 2
+    :gutter: 1
+    :class-container: container pb-3
 
-    **Getting Started**
-    ^^^
-
-    Start with our quick start tutorials for :ref:`deploying a single model locally <getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-deployment>` .
-
-    +++
-    .. link-button:: getting-started
-        :type: ref
-        :text: Get Started with Ray Serve
-        :classes: btn-outline-info btn-block
-    ---
-
-    **Key Concepts**
-    ^^^
-
-    Understand the key concepts behind Ray Serve.
-    Learn about :ref:`Deployments <serve-key-concepts-deployment>`, :ref:`how to query them <serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph <serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
-
-    +++
-    .. link-button:: serve-key-concepts
-        :type: ref
-        :text: Learn Key Concepts
-        :classes: btn-outline-info btn-block
-    ---
-
-    **User Guides**
-    ^^^
-    Learn best practices for common patterns like :ref:`scaling and resource allocation <serve-scaling-and-resource-allocation>` and :ref:`model composition <serve-model-composition>`.
-    Learn how to :ref:`develop Serve applications locally <serve-dev-workflow>` and :ref:`go to production <serve-in-production>`.
-
-    +++
-    .. link-button:: serve-user-guides
-        :type: ref
-        :text: Start Using Ray Serve
-        :classes: btn-outline-info btn-block
-    ---
-
-    **Examples**
-    ^^^
-
-    Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow <serve-ml-models-tutorial>`, :ref:`Scikit-Learn <serve-ml-models-tutorial>`, and :ref:`RLlib <serve-rllib-tutorial>`.
-
-    +++
-    .. link-button:: serve-examples
-        :type: ref
-        :text: Serve Examples
-        :classes: btn-outline-info btn-block
-    ---
-
-    **API Reference**
-    ^^^
-
-    Get more in-depth information about the Ray Serve API.
-
-    +++
-    .. link-button:: serve-api
-        :type: ref
-        :text: Read the API Reference
-        :classes: btn-outline-info btn-block
-
-    ---
-
-    **Serve Architecture**
-    ^^^
-
-    Understand how each component in Ray Serve works.
-
-    +++
-    .. link-button:: serve-architecture
-        :type: ref
-        :text: Understand Serve Architecture
-        :classes: btn-outline-info btn-block
+    .. grid-item-card::
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+        
+        **Getting Started**
+        ^^^
+        
+        Start with our quick start tutorials for :ref:`deploying a single model locally <getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-application>` .
+        
+        +++
+        .. button-ref:: getting-started
+            :color: primary
+            :outline:
+            :expand:
+        
+            Get Started with Ray Serve    
+    
+    .. grid-item-card::
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+        
+        **Key Concepts**
+        ^^^
+        
+        Understand the key concepts behind Ray Serve.
+        Learn about :ref:`Deployments <serve-key-concepts-deployment>`, :ref:`how to query them <serve-key-concepts-query-deployment>`, and the :ref:`Deployment Graph <serve-key-concepts-deployment-graph>` API for composing models into a graph structure.
+        
+        +++
+        .. button-ref:: serve-key-concepts
+            :color: primary
+            :outline:
+            :expand:
+        
+            Learn Key Concepts
+    
+    .. grid-item-card::
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+        
+        **User Guides**
+        ^^^
+        Learn best practices for common patterns like :ref:`scaling and resource allocation <serve-scaling-and-resource-allocation>` and :ref:`model composition <serve-model-composition>`.
+        Learn how to :ref:`develop Serve applications locally <serve-dev-workflow>` and :ref:`go to production <serve-in-production>`.
+        
+        +++
+        .. button-ref:: serve-user-guides
+            :color: primary
+            :outline:
+            :expand:
+        
+            Start Using Ray Serve
+        
+    .. grid-item-card::
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+        
+        **Examples**
+        ^^^
+        
+        Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow <serve-ml-models-tutorial>`, :ref:`Scikit-Learn <serve-ml-models-tutorial>`, and :ref:`RLlib <serve-rllib-tutorial>`.
+        
+        +++
+        .. button-ref:: serve-examples
+            :color: primary
+            :outline:
+            :expand:
+        
+            Serve Examples
+        
+    .. grid-item-card::
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+        
+        **API Reference**
+        ^^^
+        
+        Get more in-depth information about the Ray Serve API.
+        
+        +++
+        .. button-ref:: serve-api
+            :color: primary
+            :outline:
+            :expand:
+        
+            Read the API Reference
+        
+    .. grid-item-card::
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+            
+        **Serve Architecture**
+        ^^^
+        
+        Understand how each component in Ray Serve works.
+        
+        +++
+        .. button-ref:: serve-architecture
+            :color: primary
+            :outline:
+            :expand:
+        
+            Understand Serve Architecture
 ```
 
 For more, see the following blog posts about Ray Serve:

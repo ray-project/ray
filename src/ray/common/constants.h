@@ -17,6 +17,13 @@
 #include <limits.h>
 #include <stdint.h>
 
+/// The precision of fractional resource quantity.
+constexpr int kResourceUnitScaling = 10000;
+
+constexpr char kWorkerSetupHookKeyName[] = "FunctionsToRun";
+
+constexpr int kStreamingGeneratorReturn = -2;
+
 /// Length of Ray full-length IDs in bytes.
 constexpr size_t kUniqueIDSize = 28;
 
@@ -53,3 +60,14 @@ constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
+
+/// Name for cloud instance id env
+constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
+
+#if defined(__APPLE__)
+constexpr char kLibraryPathEnvName[] = "DYLD_LIBRARY_PATH";
+#elif defined(_WIN32)
+constexpr char kLibraryPathEnvName[] = "PATH";
+#else
+constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
+#endif

@@ -20,6 +20,9 @@
 
 namespace ray {
 namespace core {
+namespace {
+const rpc::JobConfig kDefaultJobConfig{};
+}
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
@@ -144,6 +147,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
     : worker_type_(worker_type),
       worker_id_(worker_id),
       current_job_id_(job_id),
+      job_config_(),
       current_actor_id_(ActorID::Nil()),
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
@@ -152,10 +156,16 @@ WorkerContext::WorkerContext(WorkerType worker_type,
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
-                                          ? TaskID::ForDriverTask(job_id)
-                                          : TaskID::Nil(),
-                                      /*attempt_number=*/0);
+  if (worker_type_ == WorkerType::DRIVER) {
+    RAY_CHECK(!current_job_id_.IsNil());
+    GetThreadContext().SetCurrentTaskId(TaskID::ForDriverTask(job_id),
+                                        /*attempt_number=*/0);
+    // Driver runs in the main thread.
+    {
+      absl::WriterMutexLock lock(&mutex_);
+      main_thread_or_actor_creation_task_id_ = TaskID::ForDriverTask(job_id);
+    }
+  }
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
@@ -172,15 +182,32 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
-int64_t WorkerContext::GetTaskDepth() const {
-  auto task_spec = GetCurrentTask();
-  if (task_spec) {
-    return task_spec->GetDepth();
+void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
+                                           const rpc::JobConfig &job_config) {
+  absl::WriterMutexLock lock(&mutex_);
+  if (current_job_id_.IsNil()) {
+    current_job_id_ = job_id;
   }
-  return 0;
+  if (!job_config_.has_value()) {
+    job_config_ = job_config;
+  }
+  RAY_CHECK(current_job_id_ == job_id);
 }
 
-const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
+int64_t WorkerContext::GetTaskDepth() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return task_depth_;
+}
+
+JobID WorkerContext::GetCurrentJobID() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return current_job_id_;
+}
+
+rpc::JobConfig WorkerContext::GetCurrentJobConfig() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return job_config_.has_value() ? job_config_.value() : kDefaultJobConfig;
+}
 
 const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
@@ -239,9 +266,15 @@ void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mu
   current_actor_id_ = actor_id;
 }
 
+void WorkerContext::SetTaskDepth(int64_t depth) { task_depth_ = depth; }
+
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
-  absl::WriterMutexLock lock(&mutex_);
   GetThreadContext().SetCurrentTask(task_spec);
+  absl::WriterMutexLock lock(&mutex_);
+  SetTaskDepth(task_spec.GetDepth());
+  if (CurrentThreadIsMain()) {
+    main_thread_or_actor_creation_task_id_ = task_spec.TaskId();
+  }
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
@@ -289,6 +322,11 @@ bool WorkerContext::CurrentThreadIsMain() const {
   return boost::this_thread::get_id() == main_thread_id_;
 }
 
+const TaskID WorkerContext::GetMainThreadOrActorCreationTaskID() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return main_thread_or_actor_creation_task_id_;
+}
+
 bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
   // Check if we need to release resources when we block:
   //  - Driver doesn't acquire resources and thus doesn't need to release.
@@ -325,13 +363,38 @@ bool WorkerContext::CurrentActorDetached() const {
   return is_detached_actor_;
 }
 
+const ObjectID WorkerContext::GetGeneratorReturnId(
+    const TaskID &task_id, std::optional<ObjectIDIndexType> put_index) {
+  TaskID current_task_id;
+  // We only allow to specify both task id and put index or not specifying both.
+  RAY_CHECK((task_id.IsNil() && !put_index.has_value()) ||
+            (!task_id.IsNil() || put_index.has_value()));
+  if (task_id.IsNil()) {
+    const auto &task_spec = GetCurrentTask();
+    current_task_id = task_spec->TaskId();
+  } else {
+    current_task_id = task_id;
+  }
+
+  ObjectIDIndexType current_put_index;
+  if (!put_index.has_value()) {
+    current_put_index = GetNextPutIndex();
+  } else {
+    current_put_index = put_index.value();
+  }
+
+  return ObjectID::FromIndex(current_task_id, current_put_index);
+}
+
 WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK(!current_job_id_.IsNil())
+        << "can't access thread context when job_id is not assigned";
     thread_context_ = std::make_unique<WorkerThreadContext>(current_job_id_);
   }
 
   return *thread_context_;
 }
-
 }  // namespace core
 }  // namespace ray

@@ -1,6 +1,6 @@
-from typing import List
-from gym.spaces import Box
+from gymnasium.spaces import Box
 import numpy as np
+from typing import List
 
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import Policy
@@ -42,6 +42,12 @@ class EpisodeEnvAwareLSTMPolicy(RandomPolicy):
                         space=state_space
                     )
 
+            def compile(self, *args, **kwargs):
+                """Dummy method for compatibility with TorchRLModule.
+
+                This is hit when RolloutWorker tries to compile TorchRLModule."""
+                pass
+
         self.model = _fake_model(self.state_space, self.action_space)
 
         self.view_requirements = dict(
@@ -53,7 +59,8 @@ class EpisodeEnvAwareLSTMPolicy(RandomPolicy):
                 ),
                 SampleBatch.ACTIONS: ViewRequirement(space=self.action_space),
                 SampleBatch.REWARDS: ViewRequirement(),
-                SampleBatch.DONES: ViewRequirement(),
+                SampleBatch.TERMINATEDS: ViewRequirement(),
+                SampleBatch.TRUNCATEDS: ViewRequirement(),
                 SampleBatch.UNROLL_ID: ViewRequirement(),
             },
             **self.model.view_requirements
@@ -131,6 +138,12 @@ class EpisodeEnvAwareAttentionPolicy(RandomPolicy):
                         space=state_space, used_for_compute_actions=False
                     ),
                 }
+
+            def compile(self, *args, **kwargs):
+                """Dummy method for compatibility with TorchRLModule.
+
+                This is hit when RolloutWorker tries to compile TorchRLModule."""
+                pass
 
             # We need to provide at least an initial state if we want agent collector
             # to build episodes with state_in_ and state_out_

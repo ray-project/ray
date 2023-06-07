@@ -1,15 +1,26 @@
 import asyncio
 import os
-from ray.serve.deployment_graph import RayServeDAGHandle
+from typing import Optional
 
+from fastapi import FastAPI
 import requests
+from pydantic import BaseModel, ValidationError
 import pytest
 import starlette.responses
 
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve.application import Application
+from ray.serve.built_application import BuiltApplication
+from ray.serve.deployment import Application
+from ray.serve.deployment_graph import RayServeDAGHandle
+from ray.serve.drivers import DAGDriver
+from ray.serve.exceptions import RayServeException
+from ray.serve._private.api import call_app_builder_with_args_if_necessary
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 
 
 @serve.deployment()
@@ -379,21 +390,17 @@ def test_shutdown_destructor(serve_instance):
 def test_run_get_ingress_app(serve_instance):
     """Check that serve.run() with an app returns the ingress."""
 
-    @serve.deployment(route_prefix=None)
-    def f():
-        return "got f"
-
     @serve.deployment(route_prefix="/g")
     def g():
         return "got g"
 
-    app = Application([f, g])
+    app = BuiltApplication([g])
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_deployments(["f", "g"])
+    serve_instance.delete_deployments(["g"])
 
-    no_ingress_app = Application([f.options(route_prefix="/f"), g])
+    no_ingress_app = BuiltApplication([g.options(route_prefix=None)])
     ingress_handle = serve.run(no_ingress_app)
     assert ingress_handle is None
 
@@ -418,27 +425,6 @@ def test_run_get_ingress_node(serve_instance):
     ingress_handle = serve.run(dag)
 
     assert ray.get(ingress_handle.remote()) == "got f"
-
-
-def test_run_delete_old_deployments(serve_instance):
-    """Check that serve.run() can remove all old deployments"""
-
-    @serve.deployment(name="f", route_prefix="/test1")
-    def f():
-        return "got f"
-
-    @serve.deployment(name="g", route_prefix="/test2")
-    def g():
-        return "got g"
-
-    ingress_handle = serve.run(f.bind())
-    assert ray.get(ingress_handle.remote()) == "got f"
-
-    ingress_handle = serve.run(g.bind())
-    assert ray.get(ingress_handle.remote()) == "got g"
-
-    assert "g" in serve.list_deployments()
-    assert "f" not in serve.list_deployments()
 
 
 class TestSetOptions:
@@ -474,6 +460,391 @@ class TestSetOptions:
 
         with pytest.raises(ValueError):
             f.set_options(max_concurrent_queries=-4)
+
+
+def test_deploy_application(serve_instance):
+    """Test deploy multiple applications"""
+
+    @serve.deployment
+    def f():
+        return "got f"
+
+    @serve.deployment
+    def g():
+        return "got g"
+
+    @serve.deployment(route_prefix="/my_prefix")
+    def h():
+        return "got h"
+
+    @serve.deployment
+    class Model1:
+        def __call__(self):
+            return "got model1"
+
+    app = FastAPI()
+
+    @serve.deployment(route_prefix="/hello")
+    @serve.ingress(app)
+    class MyFastAPIDeployment:
+        @app.get("/")
+        def root(self):
+            return "Hello, world!"
+
+    # Test function deployment with app name
+    f_handle = serve.run(f.bind(), name="app_f")
+    assert ray.get(f_handle.remote()) == "got f"
+    assert requests.get("http://127.0.0.1:8000/").text == "got f"
+
+    # Test function deployment with app name and route_prefix
+    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
+    assert ray.get(g_handle.remote()) == "got g"
+    assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
+
+    # Test function deployment with app name and route_prefix set in deployment
+    # decorator
+    h_handle = serve.run(h.bind(), name="app_h")
+    assert ray.get(h_handle.remote()) == "got h"
+    assert requests.get("http://127.0.0.1:8000/my_prefix").text == "got h"
+
+    # Test deployment graph
+    graph_handle = serve.run(
+        DAGDriver.bind(Model1.bind()), name="graph", route_prefix="/my_graph"
+    )
+    assert ray.get(graph_handle.predict.remote()) == "got model1"
+    assert requests.get("http://127.0.0.1:8000/my_graph").text == '"got model1"'
+
+    # Test FastAPI
+    serve.run(MyFastAPIDeployment.bind(), name="FastAPI")
+    assert requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
+
+
+def test_delete_application(serve_instance):
+    """Test delete single application"""
+
+    @serve.deployment
+    def f():
+        return "got f"
+
+    @serve.deployment
+    def g():
+        return "got g"
+
+    f_handle = serve.run(f.bind(), name="app_f")
+    g_handle = serve.run(g.bind(), name="app_g", route_prefix="/app_g")
+    assert ray.get(f_handle.remote()) == "got f"
+    assert requests.get("http://127.0.0.1:8000/").text == "got f"
+
+    serve.delete("app_f")
+    assert "Path '/' not found" in requests.get("http://127.0.0.1:8000/").text
+
+    # delete again, no exception & crash expected.
+    serve.delete("app_f")
+
+    # make sure no affect to app_g
+    assert ray.get(g_handle.remote()) == "got g"
+    assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
+
+
+def test_deployment_name_with_app_name(serve_instance):
+    """Test replica name with app name as prefix"""
+
+    controller = serve_instance._controller
+
+    @serve.deployment
+    def g():
+        return "got g"
+
+    serve.run(g.bind())
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert (
+        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}g"
+        in deployment_info
+    )
+
+    @serve.deployment
+    def f():
+        return "got f"
+
+    serve.run(f.bind(), route_prefix="/f", name="app1")
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "app1_f" in deployment_info
+
+
+def test_deploy_application_with_same_name(serve_instance):
+    """Test deploying two applications with the same name."""
+
+    controller = serve_instance._controller
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "got model"
+
+    handle = serve.run(Model.bind(), name="app")
+    assert ray.get(handle.remote()) == "got model"
+    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "app_Model" in deployment_info
+
+    # After deploying a new app with the same name, no Model replicas should be running
+    @serve.deployment
+    class Model1:
+        def __call__(self):
+            return "got model1"
+
+    handle = serve.run(Model1.bind(), name="app")
+    assert ray.get(handle.remote()) == "got model1"
+    assert requests.get("http://127.0.0.1:8000/").text == "got model1"
+    deployment_info = ray.get(controller._all_running_replicas.remote())
+    assert "app_Model1" in deployment_info
+    assert "app_Model" not in deployment_info or deployment_info["app_Model"] == []
+
+    # Redeploy with same app to update route prefix
+    handle = serve.run(Model1.bind(), name="app", route_prefix="/my_app")
+    assert requests.get("http://127.0.0.1:8000/my_app").text == "got model1"
+    assert requests.get("http://127.0.0.1:8000/").status_code == 404
+
+
+def test_deploy_application_with_route_prefix_conflict(serve_instance):
+    """Test route_prefix conflicts with different apps."""
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            return "got model"
+
+    handle = serve.run(Model.bind(), name="app")
+    assert ray.get(handle.remote()) == "got model"
+    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+
+    # Second app with the same route_prefix fails to be deployed
+    @serve.deployment
+    class Model1:
+        def __call__(self):
+            return "got model1"
+
+    with pytest.raises(RayServeException):
+        handle = serve.run(Model1.bind(), name="app1")
+
+    # Update the route prefix
+    handle = serve.run(Model1.bind(), name="app1", route_prefix="/model1")
+    assert ray.get(handle.remote()) == "got model1"
+    assert requests.get("http://127.0.0.1:8000/model1").text == "got model1"
+
+    # The "app" application should still work properly
+    assert requests.get("http://127.0.0.1:8000/").text == "got model"
+
+
+@pytest.mark.parametrize(
+    "ingress_route,app_route",
+    [
+        ("/hello", "/"),
+        ("/hello", "/override"),
+        ("/", "/override"),
+        (None, "/override"),
+        ("/hello", None),
+        (None, None),
+    ],
+)
+def test_application_route_prefix_override(serve_instance, ingress_route, app_route):
+    """
+    Set route prefix in serve.run to a non-None value, check it overrides correctly.
+    """
+
+    @serve.deployment
+    def f():
+        return "hello"
+
+    node = f.options(route_prefix=ingress_route).bind()
+    serve.run(node, route_prefix=app_route)
+    if app_route is None:
+        routes = requests.get("http://localhost:8000/-/routes").json()
+        assert len(routes) == 0
+    else:
+        assert requests.get(f"http://localhost:8000{app_route}").text == "hello"
+
+
+@pytest.mark.parametrize("ingress_route", ["/hello", "/"])
+def test_application_route_prefix_override1(serve_instance, ingress_route):
+    """
+    Don't set route prefix in serve.run, check it always uses the ingress deployment
+    route.
+    """
+
+    @serve.deployment
+    def f():
+        return "hello"
+
+    node = f.options(route_prefix=ingress_route).bind()
+    serve.run(node)
+    if ingress_route is None:
+        routes = requests.get("http://localhost:8000/-/routes").json()
+        assert len(routes) == 0
+    else:
+        assert requests.get(f"http://localhost:8000{ingress_route}").text == "hello"
+
+
+def test_invalid_driver_deployment_class():
+    """Test invalid driver deployment class"""
+
+    @serve.deployment(is_driver_deployment=True)
+    def f():
+        pass
+
+    with pytest.raises(ValueError):
+        f.options(num_replicas=2)
+    with pytest.raises(ValueError):
+        f.options(autoscaling_config={"min_replicas": "1"})
+
+
+class TestAppBuilder:
+    @serve.deployment
+    class A:
+        pass
+
+    @serve.deployment
+    def f():
+        pass
+
+    class TypedArgs(BaseModel):
+        message: str
+        num_replicas: Optional[int]
+
+    def test_prebuilt_app(self):
+        a = self.A.bind()
+        assert call_app_builder_with_args_if_necessary(a, {}) == a
+
+        f = self.f.bind()
+        assert call_app_builder_with_args_if_necessary(f, {}) == f
+
+        with pytest.raises(
+            ValueError,
+            match="Arguments can only be passed to an application builder function",
+        ):
+            call_app_builder_with_args_if_necessary(f, {"key": "val"})
+
+    def test_invalid_builder(self):
+        class ThisShouldBeAFunction:
+            pass
+
+        with pytest.raises(
+            TypeError,
+            match=(
+                "Expected a built Serve application "
+                "or an application builder function"
+            ),
+        ):
+            call_app_builder_with_args_if_necessary(ThisShouldBeAFunction, {})
+
+    def test_invalid_signature(self):
+        def builder_with_two_args(args1, args2):
+            return self.f.bind()
+
+        with pytest.raises(
+            TypeError,
+            match="Application builder functions should take exactly one parameter",
+        ):
+            call_app_builder_with_args_if_necessary(builder_with_two_args, {})
+
+    def test_builder_returns_bad_type(self):
+        def return_none(args):
+            self.f.bind()
+
+        with pytest.raises(
+            TypeError,
+            match="Application builder functions must return a",
+        ):
+            call_app_builder_with_args_if_necessary(return_none, {})
+
+        def return_unbound_deployment(args):
+            return self.f
+
+        with pytest.raises(
+            TypeError,
+            match="Application builder functions must return a",
+        ):
+            call_app_builder_with_args_if_necessary(return_unbound_deployment, {})
+
+    def test_basic_no_args(self):
+        def build_function(args):
+            return self.A.bind()
+
+        assert isinstance(
+            call_app_builder_with_args_if_necessary(build_function, {}), Application
+        )
+
+        def build_class(args):
+            return self.f.bind()
+
+        assert isinstance(
+            call_app_builder_with_args_if_necessary(build_class, {}), Application
+        )
+
+    def test_args_dict(self):
+        args_dict = {"message": "hiya", "num_replicas": "3"}
+
+        def build(args):
+            assert len(args) == 2
+            assert args["message"] == "hiya"
+            assert args["num_replicas"] == "3"
+            return self.A.options(num_replicas=int(args["num_replicas"])).bind(
+                args["message"]
+            )
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+    def test_args_typed(self):
+        args_dict = {"message": "hiya", "num_replicas": "3"}
+
+        def build(args: self.TypedArgs):
+            assert isinstance(args, self.TypedArgs)
+            assert args.message == "hiya"
+            assert args.num_replicas == 3
+            return self.A.options(num_replicas=args.num_replicas).bind(args.message)
+
+        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        assert isinstance(app, Application)
+
+        # Sanity check that pydantic validation works.
+
+        # 1) Check that validation permits a missing optional field.
+        def check_missing_optional(args: self.TypedArgs):
+            assert args.message == "hiya"
+            assert args.num_replicas is None
+            return self.A.bind()
+
+        app = call_app_builder_with_args_if_necessary(
+            check_missing_optional, {"message": "hiya"}
+        )
+        assert isinstance(app, Application)
+
+        # 2) Check that validation rejects a missing required field.
+        def check_missing_required(args: self.TypedArgs):
+            assert False, "Shouldn't get here because validation failed."
+
+        with pytest.raises(ValidationError, match="field required"):
+            call_app_builder_with_args_if_necessary(
+                check_missing_required, {"num_replicas": "10"}
+            )
+
+
+def test_no_slash_route_prefix(serve_instance):
+    """Test serve run with no slash route_prefix.
+
+    This test ensure when serve runs with no prefix slash in route_prefix, it will throw
+    good error message.
+    """
+
+    @serve.deployment
+    def f():
+        pass
+
+    with pytest.raises(
+        ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
+    ):
+        serve.run(f.bind(), route_prefix="no_slash")
 
 
 if __name__ == "__main__":

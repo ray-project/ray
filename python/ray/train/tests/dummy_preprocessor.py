@@ -4,6 +4,8 @@ from ray.data.preprocessor import Preprocessor
 
 
 class DummyPreprocessor(Preprocessor):
+    _is_fittable = False
+
     def __init__(self, transform=lambda b: b):
         self.id = uuid.uuid4()
         self.transform = transform

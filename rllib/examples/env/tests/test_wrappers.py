@@ -42,7 +42,7 @@ def test_add_RewardUncertaintyEnvClassWrapper():
                 policy_id: random.randint(0, env.NUM_ACTIONS - 1)
                 for policy_id in env.players_ids
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
             print("reward", reward)
             all_rewards.append(reward[env.player_red_id])
             all_rewards.append(reward[env.player_blue_id])

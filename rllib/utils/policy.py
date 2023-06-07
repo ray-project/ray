@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 import logging
 import numpy as np
 import re
@@ -86,7 +86,7 @@ def create_policy_for_framework(
     session_creator: Optional[Callable[[], "tf1.Session"]] = None,
     seed: Optional[int] = None,
 ):
-    """Frame specific policy creation logics.
+    """Framework-specific policy creation logics.
 
     Args:
         policy_id: Policy ID.
@@ -102,6 +102,9 @@ def create_policy_for_framework(
 
     if isinstance(merged_config, AlgorithmConfig):
         merged_config = merged_config.to_dict()
+
+    # add policy_id to merged_config
+    merged_config["__policy_id"] = policy_id
 
     framework = merged_config.get("framework", "tf")
     # Tf.
@@ -178,9 +181,12 @@ def local_policy_inference(
     env_id: str,
     agent_id: str,
     obs: TensorStructType,
-    reward: float = None,
-    done: bool = None,
-    info: Mapping = None,
+    reward: Optional[float] = None,
+    terminated: Optional[bool] = None,
+    truncated: Optional[bool] = None,
+    info: Optional[Mapping] = None,
+    explore: bool = None,
+    timestep: Optional[int] = None,
 ) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
@@ -203,10 +209,17 @@ def local_policy_inference(
             may be left empty. Some policies have ViewRequirements that require this.
             This can be set to zero at the first inference step - for example after
             calling gmy.Env.reset.
-        done: Done that is potentially used during inference. If not required,
-            may be left empty. Some policies have ViewRequirements that require this.
+        terminated: `Terminated` flag that is potentially used during inference. If not
+            required, may be left None. Some policies have ViewRequirements that
+            require this extra information.
+        truncated: `Truncated` flag that is potentially used during inference. If not
+            required, may be left None. Some policies have ViewRequirements that
+            require this extra information.
         info: Info that is potentially used durin inference. If not required,
             may be left empty. Some policies have ViewRequirements that require this.
+        explore: Whether to pick an exploitation or exploration action
+            (default: None -> use self.config["explore"]).
+        timestep: The current (sampling) time step.
 
     Returns:
         List of outputs from policy forward pass.
@@ -226,8 +239,10 @@ def local_policy_inference(
     input_dict = {SampleBatch.NEXT_OBS: obs}
     if reward is not None:
         input_dict[SampleBatch.REWARDS] = reward
-    if done is not None:
-        input_dict[SampleBatch.DONES] = done
+    if terminated is not None:
+        input_dict[SampleBatch.TERMINATEDS] = terminated
+    if truncated is not None:
+        input_dict[SampleBatch.TRUNCATEDS] = truncated
     if info is not None:
         input_dict[SampleBatch.INFOS] = info
 
@@ -237,7 +252,11 @@ def local_policy_inference(
     ac_outputs: List[AgentConnectorsOutput] = policy.agent_connectors(acd_list)
     outputs = []
     for ac in ac_outputs:
-        policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+        policy_output = policy.compute_actions_from_input_dict(
+            ac.data.sample_batch,
+            explore=explore,
+            timestep=timestep,
+        )
 
         # Note (Kourosh): policy output is batched, the AgentConnectorDataType should
         # not be batched during inference. This is the assumption made in AgentCollector

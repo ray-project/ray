@@ -5,8 +5,9 @@ from botocore.config import Config
 
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.logger import logger
+from ray_release.log_aggregator import LogAggregator
 
 
 class DBReporter(Reporter):
@@ -15,6 +16,9 @@ class DBReporter(Reporter):
 
     def report_result(self, test: Test, result: Result):
         logger.info("Persisting result to the databricks delta lake...")
+
+        # Prometheus metrics are saved as buildkite artifacts
+        # and can be obtained using buildkite API.
 
         result_json = {
             "_table": "release_test_result",
@@ -26,15 +30,20 @@ class DBReporter(Reporter):
             "team": test.get("team", ""),
             "frequency": test.get("frequency", ""),
             "cluster_url": result.cluster_url or "",
+            "job_id": result.job_id or "",
+            "job_url": result.job_url or "",
+            "cluster_id": result.cluster_id or "",
             "wheel_url": result.wheels_url or "",
             "buildkite_url": result.buildkite_url or "",
+            "buildkite_job_id": result.buildkite_job_id or "",
             "runtime": result.runtime or -1.0,
             "stable": result.stable,
             "return_code": result.return_code,
             "smoke_test": result.smoke_test,
-            # Todo: Activate again once we thinned these out a bit or find another
-            # way to reduce the size.
-            "prometheus_metrics": {},  # result.prometheus_metrics or {},
+            "extra_tags": result.extra_tags or {},
+            "crash_pattern": LogAggregator(
+                result.last_logs or ""
+            ).compute_crash_pattern(),
         }
 
         logger.debug(f"Result json: {json.dumps(result_json)}")

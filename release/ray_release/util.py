@@ -2,6 +2,8 @@ import collections
 import hashlib
 import json
 import os
+import random
+import string
 import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -23,6 +25,13 @@ class DeferredEnvVar:
 
 
 ANYSCALE_HOST = DeferredEnvVar("ANYSCALE_HOST", "https://console.anyscale.com")
+S3_CLOUD_STORAGE = "s3"
+GS_CLOUD_STORAGE = "gs"
+GS_BUCKET = "anyscale-oss-dev-bucket"
+ERROR_LOG_PATTERNS = [
+    "ERROR",
+    "Traceback (most recent call last)",
+]
 
 
 def deep_update(d, u) -> Dict:
@@ -57,7 +66,7 @@ def format_link(link: str) -> str:
     # Use ANSI escape code to allow link to be clickable
     # https://buildkite.com/docs/pipelines/links-and-images
     # -in-log-output
-    if os.environ.get("BUILDKITE_COMMIT"):
+    if os.environ.get("BUILDKITE_COMMIT") and link:
         return "\033]1339;url='" + link + "'\a\n"
     # Else, no buildkite:
     return link
@@ -71,11 +80,11 @@ def anyscale_project_url(project_id: str) -> str:
     )
 
 
-def anyscale_cluster_url(project_id: str, session_id: str) -> str:
+def anyscale_cluster_url(project_id: str, cluster_id: str) -> str:
     return (
         f"{ANYSCALE_HOST}"
         f"/o/anyscale-internal/projects/{project_id}"
-        f"/clusters/{session_id}"
+        f"/clusters/{cluster_id}"
     )
 
 
@@ -93,6 +102,10 @@ def anyscale_cluster_env_build_url(build_id: str) -> str:
         f"/o/anyscale-internal/configurations/app-config-details"
         f"/{build_id}"
     )
+
+
+def anyscale_job_url(job_id: str) -> str:
+    return f"{ANYSCALE_HOST}/o/anyscale-internal/jobs/{job_id}"
 
 
 _anyscale_sdk = None
@@ -121,7 +134,7 @@ def exponential_backoff_retry(
             retry_cnt += 1
             if retry_cnt > max_retries:
                 raise
-            logger.info(
+            logger.exception(
                 f"Retry function call failed due to {e} "
                 f"in {retry_delay_s} seconds..."
             )
@@ -135,10 +148,8 @@ def run_bash_script(bash_script: str) -> None:
 
 def reinstall_anyscale_dependencies() -> None:
     logger.info("Re-installing `anyscale` package")
-
-    # Copy anyscale pin to requirements.txt and requirements_buildkite.txt
     subprocess.check_output(
-        "pip install -U anyscale==0.5.51",
+        "pip install -U anyscale",
         shell=True,
         text=True,
     )
@@ -153,3 +164,19 @@ def get_pip_packages() -> List[str]:
 def python_version_str(python_version: Tuple[int, int]) -> str:
     """From (X, Y) to XY"""
     return "".join([str(x) for x in python_version])
+
+
+def generate_tmp_cloud_storage_path() -> str:
+    return "".join(random.choice(string.ascii_lowercase) for i in range(10))
+
+
+def join_cloud_storage_paths(*paths: str):
+    paths = list(paths)
+    if len(paths) > 1:
+        for i in range(1, len(paths)):
+            while paths[i][0] == "/":
+                paths[i] = paths[i][1:]
+    joined_path = os.path.join(*paths)
+    while joined_path[-1] == "/":
+        joined_path = joined_path[:-1]
+    return joined_path

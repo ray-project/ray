@@ -1,5 +1,5 @@
 import sys
-import unittest
+import pytest
 
 from ray_release.alerts import (
     handle,
@@ -9,40 +9,41 @@ from ray_release.alerts import (
     # tune_tests,
     # xgboost_tests,
 )
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.exception import ReleaseTestConfigError, ResultsAlert
-from ray_release.result import Result
+from ray_release.result import (
+    Result,
+    ResultStatus,
+)
 
 
-class AlertsTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.test = Test(name="unit_alert_test", alert="default")
-
-    def testHandleAlert(self):
-        # Unknown test suite
-        with self.assertRaises(ReleaseTestConfigError):
-            handle.handle_result(
-                Test(name="unit_alert_test", alert="invalid"), Result(status="finished")
-            )
-
-        # Alert raised
-        with self.assertRaises(ResultsAlert):
-            handle.handle_result(
-                Test(name="unit_alert_test", alert="default"),
-                Result(status="unsuccessful"),
-            )
-
-        # Everything fine
+def test_handle_alert():
+    # Unknown test suite
+    with pytest.raises(ReleaseTestConfigError):
         handle.handle_result(
-            Test(name="unit_alert_test", alert="default"), Result(status="finished")
+            Test(name="unit_alert_test", alert="invalid"),
+            Result(status=ResultStatus.SUCCESS.value),
         )
 
-    def testDefaultAlert(self):
-        self.assertTrue(default.handle_result(self.test, Result(status="timeout")))
-        self.assertFalse(default.handle_result(self.test, Result(status="finished")))
+    # Alert raised
+    with pytest.raises(ResultsAlert):
+        handle.handle_result(
+            Test(name="unit_alert_test", alert="default"),
+            Result(status="unsuccessful"),
+        )
+
+    # Everything fine
+    handle.handle_result(
+        Test(name="unit_alert_test", alert="default"),
+        Result(status=ResultStatus.SUCCESS.value),
+    )
+
+
+def test_default_alert():
+    test = Test(name="unit_alert_test", alert="default")
+    assert default.handle_result(test, Result(status="timeout"))
+    assert not default.handle_result(test, Result(status=ResultStatus.SUCCESS.value))
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

@@ -45,17 +45,22 @@ class GcsRedisFailureDetector {
   /// Start detecting redis.
   void Start();
 
+  /// Stop detecting redis.
+  void Stop();
+
  protected:
   /// Check that if redis is inactive.
   void DetectRedis();
 
  private:
+  instrumented_io_context &io_service_;
+
   /// A redis context is used to ping redis.
   /// TODO(ffbin): We will use redis client later.
   std::shared_ptr<RedisContext> redis_context_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::unique_ptr<PeriodicalRunner> periodical_runner_;
 
   /// A function is called when redis is detected to be unavailable.
   std::function<void()> callback_;

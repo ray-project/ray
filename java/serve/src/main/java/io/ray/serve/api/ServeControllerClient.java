@@ -193,14 +193,14 @@ public class ServeControllerClient {
                 "Waiting for deployment {} to be HEALTHY, but deployment doesn't exist.", name));
       }
 
-      if (status.getStatus() == DeploymentStatus.HEALTHY) {
+      if (status.getStatus() == DeploymentStatus.DEPLOYMENT_STATUS_HEALTHY) {
         isTimeout = false;
         break;
-      } else if (status.getStatus() == DeploymentStatus.UNHEALTHY) {
+      } else if (status.getStatus() == DeploymentStatus.DEPLOYMENT_STATUS_UNHEALTHY) {
         throw new RayServeException(
             LogUtil.format("Deployment {} is UNHEALTHY: {}", name, status.getMessage()));
       } else {
-        Preconditions.checkState(status.getStatus() == DeploymentStatus.UPDATING);
+        Preconditions.checkState(status.getStatus() == DeploymentStatus.DEPLOYMENT_STATUS_UPDATING);
       }
 
       LOGGER.debug("Waiting for {} to be healthy, current status: {}.", name, status.getStatus());
@@ -369,19 +369,13 @@ public class ServeControllerClient {
   }
 
   private DeploymentStatusInfo getDeploymentStatus(String name) {
-    StatusOverview statusOverview = getServeStatus();
-    if (statusOverview == null
-        || statusOverview.getDeploymentStatuses() == null
-        || statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList() == null) {
-      return null;
-    }
-    for (DeploymentStatusInfo deploymentStatusInfo :
-        statusOverview.getDeploymentStatuses().getDeploymentStatusInfosList()) {
-      if (StringUtils.equals(name, deploymentStatusInfo.getName())) {
-        return deploymentStatusInfo;
-      }
-    }
-    return null;
+    return ServeProtoUtil.bytesToProto(
+        (byte[])
+            ((PyActorHandle) controller)
+                .task(PyActorMethod.of("get_deployment_status"), name)
+                .remote()
+                .get(),
+        DeploymentStatusInfo::parseFrom);
   }
 
   public BaseActorHandle getController() {

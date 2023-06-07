@@ -32,15 +32,24 @@ from ray.rllib.utils.deprecation import deprecation_warning
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
-    choices=["jax", "tf2", "tf", "torch"],
-    default="tf",
-    help="The deep learning framework to use.",
+    type=str,
+    choices=["torch", "tf2", "tf"],
+    default=None,
+    help="The deep learning framework to use. If not provided, try using the one "
+    "specified in the file, otherwise, use RLlib's default: `torch`.",
 )
 parser.add_argument(
     "--dir",
     type=str,
     required=True,
     help="The directory or file in which to find all tests.",
+)
+parser.add_argument(
+    "--env",
+    type=str,
+    default=None,
+    help="An optional env override setting. If not provided, try using the one "
+    "specified in the file.",
 )
 parser.add_argument("--num-cpus", type=int, default=None)
 parser.add_argument(
@@ -108,13 +117,22 @@ if __name__ == "__main__":
         ), "Error, can only run a single experiment per file!"
 
         exp = list(experiments.values())[0]
-        exp["config"]["framework"] = args.framework
+
+        # Override framework setting with the command line one, if provided.
+        # Otherwise, will use framework setting in file (or default: torch).
+        if args.framework is not None:
+            exp["config"]["framework"] = args.framework
+        # Override env setting if given on command line.
+        if args.env is not None:
+            exp["config"]["env"] = args.env
 
         # Override the mean reward if specified. This is used by the ray ci
         # for overriding the episode reward mean for tf2 tests for off policy
         # long learning tests such as sac and ddpg on the pendulum environment.
         if args.override_mean_reward != 0.0:
-            exp["stop"]["episode_reward_mean"] = args.override_mean_reward
+            exp["stop"][
+                "sampler_results/episode_reward_mean"
+            ] = args.override_mean_reward
 
         # QMIX does not support tf yet -> skip.
         if exp["run"] == "QMIX" and args.framework != "torch":
@@ -158,9 +176,17 @@ if __name__ == "__main__":
                 # we evaluate against an actual environment.
                 check_eval = exp["config"].get("evaluation_interval", None) is not None
                 reward_mean = (
-                    t.last_result["evaluation"]["episode_reward_mean"]
+                    t.last_result["evaluation"]["sampler_results"][
+                        "episode_reward_mean"
+                    ]
                     if check_eval
-                    else t.last_result["episode_reward_mean"]
+                    else (
+                        # Some algos don't store sampler results under `sampler_results`
+                        # e.g. ARS. Need to keep this logic around for now.
+                        t.last_result["sampler_results"]["episode_reward_mean"]
+                        if "sampler_results" in t.last_result
+                        else t.last_result["episode_reward_mean"]
+                    )
                 )
 
                 # If we are using evaluation workers, we may have
@@ -168,12 +194,14 @@ if __name__ == "__main__":
                 # not, use `episode_reward_mean`.
                 if check_eval:
                     min_reward = t.stopping_criterion.get(
-                        "evaluation/episode_reward_mean",
-                        t.stopping_criterion.get("episode_reward_mean"),
+                        "evaluation/sampler_results/episode_reward_mean",
+                        t.stopping_criterion.get("sampler_results/episode_reward_mean"),
                     )
                 # Otherwise, expect `episode_reward_mean` to be set.
                 else:
-                    min_reward = t.stopping_criterion.get("episode_reward_mean")
+                    min_reward = t.stopping_criterion.get(
+                        "sampler_results/episode_reward_mean"
+                    )
 
                 # If min reward not defined, always pass.
                 if min_reward is None or reward_mean >= min_reward:

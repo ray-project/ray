@@ -62,7 +62,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client,
-               int metrics_export_port)
+               int metrics_export_port,
+               bool is_head_node)
     : main_service_(main_service),
       self_node_id_(
           !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
@@ -91,6 +92,13 @@ Raylet::Raylet(instrumented_io_context &main_service,
   auto resource_map = node_manager_config.resource_config.ToResourceMap();
   self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
                                                     resource_map.end());
+  self_node_info_.set_start_time_ms(current_sys_time_ms());
+  self_node_info_.set_is_head_node(is_head_node);
+  // Read from env
+  auto instance_id = std::getenv(kNodeCloudInstanceIdEnv);
+  self_node_info_.set_instance_id(instance_id ? instance_id : "");
+  self_node_info_.mutable_labels()->insert(node_manager_config.labels.begin(),
+                                           node_manager_config.labels.end());
 }
 
 Raylet::~Raylet() {}
@@ -117,7 +125,7 @@ ray::Status Raylet::RegisterGcs() {
                   << ":" << self_node_info_.node_manager_port()
                   << " object_manager address: " << self_node_info_.node_manager_address()
                   << ":" << self_node_info_.object_manager_port()
-                  << " hostname: " << self_node_info_.node_manager_address();
+                  << " hostname: " << self_node_info_.node_manager_hostname();
     RAY_CHECK_OK(node_manager_.RegisterGcs());
   };
 

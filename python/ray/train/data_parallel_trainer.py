@@ -1,27 +1,28 @@
+import copy
 import inspect
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Type, Union
-from tabulate import tabulate
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
 from ray import tune
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air._internal.checkpointing import save_preprocessor_to_dir
+from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
-from ray.train._internal.dataset_spec import DataParallelIngestSpec
+from ray.train.data_config import DataConfig, _LegacyDataConfigWrapper
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI
 from ray.widgets import Template
-from ray.widgets.util import ensure_notebook_deps
+from ray.widgets.util import repr_with_fallback
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -39,14 +40,15 @@ class _DataParallelCheckpointManager(TuneCheckpointManager):
     ):
         self.preprocessor = preprocessor
         super(_DataParallelCheckpointManager, self).__init__(
-            run_dir=run_dir, checkpoint_strategy=checkpoint_strategy
+            run_dir=run_dir,
+            checkpoint_strategy=checkpoint_strategy,
         )
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        if isinstance(checkpoint.dir_or_data, dict):
-            checkpoint.dir_or_data[PREPROCESSOR_KEY] = self.preprocessor
-        else:
-            save_preprocessor_to_dir(self.preprocessor, checkpoint.dir_or_data)
+        air_checkpoint: Checkpoint = checkpoint.dir_or_data
+        checkpoint.dir_or_data = add_preprocessor_to_checkpoint(
+            air_checkpoint, self.preprocessor
+        )
         super(_DataParallelCheckpointManager, self)._process_persistent_checkpoint(
             checkpoint=checkpoint
         )
@@ -99,7 +101,7 @@ class DataParallelTrainer(BaseTrainer):
             # Returns dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Returns the Ray Dataset shard for the given key.
+            # Returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
@@ -114,7 +116,7 @@ class DataParallelTrainer(BaseTrainer):
     Any returns from the ``train_loop_per_worker`` will be discarded and not
     used or persisted anywhere.
 
-    **How do I use ``DataParallelTrainer`` or any of its subclasses?**
+    **How do I use DataParallelTrainer or any of its subclasses?**
 
     Example:
 
@@ -136,7 +138,7 @@ class DataParallelTrainer(BaseTrainer):
         )
         result = trainer.fit()
 
-    **How do I develop on top of ``DataParallelTrainer``?**
+    **How do I develop on top of DataParallelTrainer?**
 
     In many cases, using DataParallelTrainer directly is sufficient to execute
     functions on multiple actors.
@@ -210,7 +212,7 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Configuration for dataset ingest. This is merged with the
             default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -236,10 +238,12 @@ class DataParallelTrainer(BaseTrainer):
         "placement_strategy",
     ]
 
-    _dataset_config = {
-        TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
-        WILDCARD_KEY: DatasetConfig(split=False),
-    }
+    # For backwards compatibility with the legacy dataset config API.
+    _dataset_config = None
+
+    _fields_for_tuner_param_space = BaseTrainer._fields_for_tuner_param_space + [
+        "train_loop_config"
+    ]
 
     def __init__(
         self,
@@ -248,28 +252,62 @@ class DataParallelTrainer(BaseTrainer):
         train_loop_config: Optional[Dict] = None,
         backend_config: Optional[BackendConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
-        if not ray.is_initialized():
-            ray.init()
-
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
+
+        if isinstance(dataset_config, dict) or self._dataset_config or preprocessor:
+            # Warn about deprecated cases (will raise error in future).
+            if isinstance(dataset_config, dict):
+                logger.warning(
+                    "The dict form of `dataset_config` is deprecated. Use the "
+                    "DataConfig class instead. Support for this will be dropped "
+                    "in a future release."
+                )
+            # If using the new API, hard-disallow deprecated features.
+            if isinstance(dataset_config, DataConfig):
+                if self._dataset_config:
+                    raise ValueError(
+                        "The DataConfig class is not compatible with the "
+                        "Trainer._dataset_config field. Remove `_dataset_config` "
+                        "from your trainer subclass to use DataConfig."
+                    )
+                elif preprocessor:
+                    raise ValueError(
+                        "The DataConfig class is not compatible with the "
+                        "Trainer preprocessor arg. Remove the `preprocessor` arg "
+                        "to use DataConfig."
+                    )
+            if self._dataset_config is None:
+                base_dataset_config = {
+                    TRAIN_DATASET_KEY: DatasetConfig(fit=True, split=True),
+                    WILDCARD_KEY: DatasetConfig(split=False),
+                }
+            else:
+                base_dataset_config = self._dataset_config
+            self._data_config = _LegacyDataConfigWrapper(
+                base_dataset_config, dataset_config, datasets
+            )
+        elif isinstance(dataset_config, DataConfig):
+            self._data_config = dataset_config
+        elif dataset_config is None:
+            self._data_config = DataConfig()
+        else:
+            raise ValueError(
+                "`dataset_config` must be an instance of ray.train.DataConfig, "
+                f"was: {dataset_config}"
+            )
 
         backend_config = (
             backend_config if backend_config is not None else BackendConfig()
         )
         self._backend_config = backend_config
-        self._dataset_config = DatasetConfig.validated(
-            DatasetConfig.merge(self._dataset_config, dataset_config), datasets
-        )
-        self._ingest_spec = DataParallelIngestSpec(
-            dataset_config=self._dataset_config,
-        )
 
         super(DataParallelTrainer, self).__init__(
             scaling_config=scaling_config,
@@ -277,6 +315,47 @@ class DataParallelTrainer(BaseTrainer):
             datasets=datasets,
             preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
+        )
+
+    @classmethod
+    def restore(
+        cls: Type["DataParallelTrainer"],
+        path: str,
+        train_loop_per_worker: Optional[
+            Union[Callable[[], None], Callable[[Dict], None]]
+        ] = None,
+        train_loop_config: Optional[Dict] = None,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        preprocessor: Optional["Preprocessor"] = None,
+        scaling_config: Optional[ScalingConfig] = None,
+    ) -> "DataParallelTrainer":
+        """Restores a DataParallelTrainer from a previously interrupted/failed run.
+
+        Args:
+            train_loop_per_worker: Optionally re-specified train loop function.
+                This should be used to re-specify a function that is not
+                restorable in a new Ray cluster (e.g., it holds onto outdated
+                object references). This should be the same training loop
+                that was passed to the original trainer constructor.
+            train_loop_config: Optionally re-specified train config.
+                This should similarly be used if the original `train_loop_config`
+                contained outdated object references, and it should not be modified
+                from what was originally passed in.
+
+        See :meth:`BaseTrainer.restore() <ray.train.trainer.BaseTrainer.restore>`
+        for descriptions of the other arguments.
+
+        Returns:
+            DataParallelTrainer: A restored instance of the `DataParallelTrainer`
+            subclass that is calling this method.
+        """
+        return super(DataParallelTrainer, cls).restore(
+            path=path,
+            train_loop_per_worker=train_loop_per_worker,
+            train_loop_config=train_loop_config,
+            datasets=datasets,
+            preprocessor=preprocessor,
+            scaling_config=scaling_config,
         )
 
     def _validate_attributes(self):
@@ -289,8 +368,8 @@ class DataParallelTrainer(BaseTrainer):
     def preprocess_datasets(self) -> None:
         # Evaluate all datasets.
         self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-        self.datasets = self._ingest_spec.preprocess_datasets(
-            self.preprocessor, self.datasets
+        self.datasets = self._data_config._legacy_preprocessing(
+            self.datasets, self.preprocessor
         )
 
     def _validate_train_loop_per_worker(
@@ -357,6 +436,7 @@ class DataParallelTrainer(BaseTrainer):
             id=session.get_trial_id(),
             resources=session.get_trial_resources(),
             logdir=session.get_trial_dir(),
+            driver_ip=ray.util.get_node_ip_address(),
             experiment_name=session.get_experiment_name(),
         )
 
@@ -368,6 +448,7 @@ class DataParallelTrainer(BaseTrainer):
             num_gpus_per_worker=scaling_config.num_gpus_per_worker,
             additional_resources_per_worker=additional_resources_per_worker,
             max_retries=0,
+            checkpoint_config=self.run_config.checkpoint_config,
         )
 
         checkpoint_manager = self._checkpoint_manager_cls(
@@ -377,14 +458,27 @@ class DataParallelTrainer(BaseTrainer):
         # Start the remote actors.
         backend_executor.start(initialization_hook=None)
 
+        # Disable TrainingIterator's CheckpointManager from handling
+        # checkpoints itself by setting num_to_keep to None.
+        # This is important because otherwise Trainer's CheckpointManager
+        # may delete a checkpoint prematurely, before the next checkpoint
+        # has been fully handled by Tune.
+        # TODO(jungong, justinvyu) : Trainer should not own a
+        # CheckpointManager.
+        checkpoint_strategy = copy.deepcopy(self.run_config.checkpoint_config)
+        checkpoint_strategy.num_to_keep = None
+        checkpoint_strategy.checkpoint_score_attribute = None
+
         training_iterator = self._training_iterator_cls(
             backend_executor=backend_executor,
             backend_config=self._backend_config,
             train_func=train_loop_per_worker,
-            dataset_spec=self._ingest_spec,
+            datasets=self.datasets,
+            data_config=self._data_config,
             checkpoint_manager=checkpoint_manager,
             checkpoint=self.resume_from_checkpoint,
-            checkpoint_strategy=None,
+            checkpoint_strategy=checkpoint_strategy,
+            storage_path=self.run_config.storage_path,
         )
 
         self._report(training_iterator)
@@ -392,47 +486,70 @@ class DataParallelTrainer(BaseTrainer):
         # Shutdown workers.
         backend_executor.shutdown()
 
-    def get_dataset_config(self) -> Dict[str, DatasetConfig]:
+    def get_dataset_config(self) -> DataConfig:
         """Return a copy of this Trainer's final dataset configs.
 
         Returns:
             The merged default + user-supplied dataset config.
         """
-        return self._dataset_config.copy()
+        if isinstance(self._data_config, _LegacyDataConfigWrapper):
+            return self._data_config._dataset_config
+        else:
+            return self._data_config
 
-    @ensure_notebook_deps(
-        ["tabulate", None],
-        ["ipywidgets", "8"],
-    )
-    def _ipython_display_(self):
+    @repr_with_fallback(["ipywidgets", "8"])
+    def _repr_mimebundle_(self, **kwargs):
+        """Return a mimebundle with an ipywidget repr and a simple text repr.
+
+        Depending on the frontend where the data is being displayed,
+        different mimetypes will be used from this bundle.
+        See https://ipython.readthedocs.io/en/stable/config/integrating.html
+        for information about this method, and
+        https://ipywidgets.readthedocs.io/en/latest/embedding.html
+        for more information about the jupyter widget mimetype.
+
+        Returns:
+            A mimebundle containing an ipywidget repr and a simple text repr.
+        """
         from ipywidgets import HTML, VBox, Tab, Layout
-        from IPython.display import display
 
         title = HTML(f"<h2>{self.__class__.__name__}</h2>")
 
-        children = [
-            self._datasets_repr_() if self.datasets else None,
-            HTML(self._dataset_config_repr_html_()) if self._dataset_config else None,
-            HTML(self._train_loop_config_repr_html_())
-            if self._train_loop_config
-            else None,
-            HTML(self.scaling_config._repr_html_()) if self.scaling_config else None,
-            HTML(self.run_config._repr_html_()) if self.run_config else None,
-            HTML(self._backend_config._repr_html_()) if self._backend_config else None,
-        ]
+        children = []
+        titles = []
 
-        tab = Tab(
-            children,
-            titles=[
-                "Datasets",
-                "Dataset Config",
-                "Train Loop Config",
-                "Scaling Config",
-                "Run Config",
-                "Backend Config",
-            ],
+        if self.datasets:
+            children.append(self._datasets_repr_())
+            titles.append("Datasets")
+
+            children.append(HTML(self._data_config_repr_html_()))
+            titles.append("Data Config")
+
+        if self._train_loop_config:
+            children.append(HTML(self._train_loop_config_repr_html_()))
+            titles.append("Train Loop Config")
+
+        if self.scaling_config:
+            children.append(HTML(self.scaling_config._repr_html_()))
+            titles.append("Scaling Config")
+
+        if self.run_config:
+            children.append(HTML(self.run_config._repr_html_()))
+            titles.append("Run Config")
+
+        if self._backend_config:
+            children.append(HTML(self._backend_config._repr_html_()))
+            titles.append("Backend Config")
+
+        tab = Tab(children, titles=titles)
+        widget = VBox([title, tab], layout=Layout(width="100%"))
+        bundle = widget._repr_mimebundle_(**kwargs)
+        bundle.update(
+            {
+                "text/plain": repr(self),
+            }
         )
-        display(VBox([title, tab], layout=Layout(width="100%")))
+        return bundle
 
     def _train_loop_config_repr_html_(self) -> str:
         if self._train_loop_config:
@@ -460,17 +577,11 @@ class DataParallelTrainer(BaseTrainer):
         else:
             return ""
 
-    def _dataset_config_repr_html_(self) -> str:
-        content = []
-        if self._dataset_config:
-            for name, config in self._dataset_config.items():
-                content.append(
-                    config._repr_html_(title=f"DatasetConfig - <code>{name}</code>")
-                )
-
+    def _data_config_repr_html_(self) -> str:
+        # TODO make this rendering nicer.
+        content = [str(self._data_config)]
         return Template("rendered_html_common.html.j2").render(content=content)
 
-    @ensure_notebook_deps(["ipywidgets", "8"])
     def _datasets_repr_(self) -> str:
         from ipywidgets import HTML, VBox, Layout
 

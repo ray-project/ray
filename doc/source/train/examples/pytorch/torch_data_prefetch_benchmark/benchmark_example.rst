@@ -1,7 +1,9 @@
 :orphan:
 
-Torch Data Prefetching Benchmark
-================================
+.. _train_benchmark:
+
+Torch Data Prefetching Benchmark for Ray Train
+==============================================
 
 We provide a benchmark example to show how the auto pipeline for host to device data transfer speeds up training on GPUs.
 This functionality can be easily enabled by setting ``auto_transfer=True`` in :func:`train.torch.prepare_data_loader`.
@@ -11,7 +13,7 @@ This functionality can be easily enabled by setting ``auto_transfer=True`` in :f
     from torch.utils.data import DataLoader
     from ray import train
 
-    ...
+
 
     data_loader = DataLoader(my_dataset, batch_size)
     train_loader = train.torch.prepare_data_loader(

@@ -3,7 +3,7 @@
 Pattern: Using ray.wait to limit the number of pending tasks
 ============================================================
 
-In this pattern, we use :ref:`ray.wait() <ray-wait-ref>` to limit the number of pending tasks.
+In this pattern, we use :func:`ray.wait() <ray.wait>` to limit the number of pending tasks.
 
 If we continuously submit tasks faster than their process time, we will accumulate tasks in the pending task queue, which can eventually cause OOM.
 With ``ray.wait()``, we can apply backpressure and limit the number of pending tasks so that the pending task queue won't grow indefinitely and cause OOM.

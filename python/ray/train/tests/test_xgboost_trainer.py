@@ -25,6 +25,14 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+
+
 scale_config = ScalingConfig(num_workers=2)
 
 data_raw = load_breast_cancer()
@@ -107,7 +115,7 @@ def test_resume_from_checkpoint(ray_start_4_cpus, tmpdir):
         scaling_config=scale_config,
         label_column="target",
         params=params,
-        num_boost_round=5,
+        num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         resume_from_checkpoint=resume_from,
     )
@@ -197,7 +205,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
     assert preprocessor.fitted_
 
 
-def test_tune(ray_start_4_cpus):
+def test_tune(ray_start_8_cpus):
     train_dataset = ray.data.from_pandas(train_df)
     valid_dataset = ray.data.from_pandas(test_df)
     trainer = XGBoostTrainer(
@@ -235,6 +243,27 @@ def test_validation(ray_start_4_cpus):
             dmatrix_params={"data": {}},
             datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         )
+
+
+def test_distributed_data_loading(ray_start_4_cpus):
+    """Checks that XGBoostTrainer does distributed data loading for Datasets."""
+
+    class DummyXGBoostTrainer(XGBoostTrainer):
+        def _train(self, params, dtrain, **kwargs):
+            assert dtrain.distributed
+            return super()._train(params=params, dtrain=dtrain, **kwargs)
+
+    train_dataset = ray.data.from_pandas(train_df)
+
+    trainer = DummyXGBoostTrainer(
+        scaling_config=ScalingConfig(num_workers=2),
+        label_column="target",
+        params=params,
+        datasets={TRAIN_DATASET_KEY: train_dataset},
+    )
+
+    assert trainer.dmatrix_params[TRAIN_DATASET_KEY]["distributed"]
+    trainer.fit()
 
 
 if __name__ == "__main__":

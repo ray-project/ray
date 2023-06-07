@@ -39,7 +39,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -116,10 +116,10 @@ def run_heuristic_vs_learned(args, use_lstm=False, algorithm="PG"):
                 "always_same": PolicySpec(policy_class=AlwaysSameHeuristic),
                 "beat_last": PolicySpec(policy_class=BeatLastHeuristic),
                 "learned": PolicySpec(
-                    config={
-                        "model": {"use_lstm": use_lstm},
-                        "framework": args.framework,
-                    }
+                    config=AlgorithmConfig.overrides(
+                        model={"use_lstm": use_lstm},
+                        framework_str=args.framework,
+                    )
                 ),
             },
             policy_mapping_fn=select_policy,

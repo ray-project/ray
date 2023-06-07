@@ -1,8 +1,18 @@
 import { get } from "lodash";
 import { useState } from "react";
 
-export const useFilter = <KeyType extends string>() => {
+export const useFilter = <KeyType extends string>({
+  overrideFilters,
+  onFilterChange,
+}:
+  | {
+      overrideFilters?: { key: KeyType; val: string }[];
+      onFilterChange?: () => void;
+    }
+  | undefined = {}) => {
   const [filters, setFilters] = useState<{ key: KeyType; val: string }[]>([]);
+  const finalFilters =
+    overrideFilters !== undefined ? overrideFilters : filters;
   const changeFilter = (key: KeyType, val: string) => {
     const f = filters.find((e) => e.key === key);
     if (f) {
@@ -11,11 +21,15 @@ export const useFilter = <KeyType extends string>() => {
       filters.push({ key, val });
     }
     setFilters([...filters]);
+    onFilterChange?.();
   };
   const filterFunc = (instance: { [key: string]: any }) => {
-    return filters.every(
-      (f) => !f.val || get(instance, f.key, "").toString().includes(f.val),
-    );
+    return finalFilters.every((f) => {
+      const instance_val = get(instance, f.key, "");
+      return (
+        !f.val || (instance_val && instance_val.toString().includes(f.val))
+      );
+    });
   };
 
   return {

@@ -12,6 +12,7 @@ from pydantic import (
     NonNegativeInt,
     PositiveInt,
     validator,
+    Field,
 )
 
 from ray import cloudpickle
@@ -22,8 +23,9 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
 )
-from ray.serve._private.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
@@ -32,6 +34,7 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray._private import ray_option_utils
 from ray._private.utils import resources_from_ray_options
+from ray._private.serialization import pickle_dumps
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -44,7 +47,7 @@ class AutoscalingConfig(BaseModel):
     min_replicas: NonNegativeInt = 1
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
-    target_num_ongoing_requests_per_replica: NonNegativeInt = 1
+    target_num_ongoing_requests_per_replica: PositiveFloat = 1.0
 
     # Private options below.
 
@@ -140,21 +143,37 @@ class DeploymentConfig(BaseModel):
             The names of options manually configured by the user.
     """
 
-    num_replicas: NonNegativeInt = 1
-    max_concurrent_queries: Optional[int] = None
-    user_config: Any = None
-
-    graceful_shutdown_timeout_s: NonNegativeFloat = (
-        DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S  # noqa: E501
+    num_replicas: NonNegativeInt = Field(
+        default=1, update_type=DeploymentOptionUpdateType.LightWeight
     )
-    graceful_shutdown_wait_loop_s: NonNegativeFloat = (
-        DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S  # noqa: E501
+    max_concurrent_queries: Optional[int] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsReconfigure
+    )
+    user_config: Any = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
-    health_check_period_s: PositiveFloat = DEFAULT_HEALTH_CHECK_PERIOD_S
-    health_check_timeout_s: PositiveFloat = DEFAULT_HEALTH_CHECK_TIMEOUT_S
+    graceful_shutdown_timeout_s: NonNegativeFloat = Field(
+        default=DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    graceful_shutdown_wait_loop_s: NonNegativeFloat = Field(
+        default=DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
 
-    autoscaling_config: Optional[AutoscalingConfig] = None
+    health_check_period_s: PositiveFloat = Field(
+        default=DEFAULT_HEALTH_CHECK_PERIOD_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    health_check_timeout_s: PositiveFloat = Field(
+        default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+
+    autoscaling_config: Optional[AutoscalingConfig] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.LightWeight
+    )
 
     # This flag is used to let replica know they are deplyed from
     # a different language.
@@ -164,7 +183,10 @@ class DeploymentConfig(BaseModel):
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
-    version: Optional[str] = None
+    version: Optional[str] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
@@ -178,7 +200,7 @@ class DeploymentConfig(BaseModel):
     @validator("max_concurrent_queries", always=True)
     def set_max_queries_by_mode(cls, v, values):  # noqa 805
         if v is None:
-            v = 100
+            v = DEFAULT_MAX_CONCURRENT_QUERIES
         else:
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
@@ -390,9 +412,12 @@ class ReplicaConfig:
 
         config = cls(
             deployment_def_name,
-            cloudpickle.dumps(deployment_def),
-            cloudpickle.dumps(init_args),
-            cloudpickle.dumps(init_kwargs),
+            pickle_dumps(
+                deployment_def,
+                f"Could not serialize the deployment {repr(deployment_def)}",
+            ),
+            pickle_dumps(init_args, "Could not serialize the deployment init args"),
+            pickle_dumps(init_kwargs, "Could not serialize the deployment init kwargs"),
             ray_actor_options,
         )
 
@@ -514,6 +539,7 @@ class ReplicaConfig:
         return self.to_proto().SerializeToString()
 
 
+# Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
 @DeveloperAPI
 class DeploymentMode(str, Enum):
     NoServer = "NoServer"

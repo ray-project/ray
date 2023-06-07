@@ -26,7 +26,7 @@ export const useNodeList = () => {
   const onSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRefresh(event.target.checked);
   };
-  const { data } = useSWR(
+  const { data, isLoading } = useSWR(
     "useNodeList",
     async () => {
       const { data } = await getNodeList();
@@ -62,6 +62,7 @@ export const useNodeList = () => {
       filter.every((f) => node[f.key] && node[f.key].includes(f.val)),
     ),
     msg,
+    isLoading,
     isRefreshing,
     onSwitchChange,
     changeFilter,

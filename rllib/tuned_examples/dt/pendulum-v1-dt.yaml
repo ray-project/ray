@@ -3,7 +3,7 @@ pendulum_dt:
     run: DT
     stop:
         # We could make this higher, but given that we have 4 cpus for our tests, we will have to settle for -300.
-        evaluation/episode_reward_mean: -300
+        evaluation/sampler_results/episode_reward_mean: -300
         timesteps_total: 20000000
     config:
         input: 'dataset'

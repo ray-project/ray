@@ -9,8 +9,14 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.test_utils import make_global_state_accessor, wait_for_condition
+from ray._private.test_utils import (
+    make_global_state_accessor,
+    wait_for_condition,
+    get_metric_check_condition,
+    MetricSamplePattern,
+)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
@@ -249,7 +255,6 @@ def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_clien
 def test_node_affinity_scheduling_strategy(
     monkeypatch, ray_start_cluster, connect_to_client
 ):
-    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
     ray.init(address=cluster.address)
@@ -434,6 +439,39 @@ def test_node_affinity_scheduling_strategy(
             ray.get(actor.get_node_id.remote())
 
 
+def test_node_affinity_scheduling_strategy_spill_on_unavailable(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=3)
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def get_node_id_task(sleep_s=0):
+        time.sleep(sleep_s)
+        return ray.get_runtime_context().get_node_id()
+
+    target_node_id = ray.get(get_node_id_task.remote())
+
+    _ = [
+        get_node_id_task.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                target_node_id, soft=False
+            )
+        ).remote(1000)
+        for _ in range(3)
+    ]
+
+    soft_ref = get_node_id_task.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            target_node_id, soft=True, _spill_on_unavailable=True
+        )
+    ).remote()
+
+    soft_node_id = ray.get(soft_ref, timeout=3)
+    assert target_node_id != soft_node_id
+
+
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
@@ -453,7 +491,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 
         @ray.remote
         def get_node_id():
-            return ray.get_runtime_context().node_id.hex()
+            return ray.get_runtime_context().get_node_id()
 
         worker_node_ids = {
             ray.get(get_node_id.options(resources={f"foo:{i}": 1}).remote())
@@ -467,12 +505,12 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
             internal_kv._internal_kv_put("test_task1", "task1")
             while internal_kv._internal_kv_exists("test_task1"):
                 time.sleep(0.1)
-            return ray.get_runtime_context().node_id.hex()
+            return ray.get_runtime_context().get_node_id()
 
         @ray.remote
         def task2():
             internal_kv._internal_kv_put("test_task2", "task2")
-            return ray.get_runtime_context().node_id.hex()
+            return ray.get_runtime_context().get_node_id()
 
         locations = []
         locations.append(task1.remote())
@@ -494,7 +532,7 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
         @ray.remote(num_cpus=1)
         class Actor:
             def ping(self):
-                return ray.get_runtime_context().node_id.hex()
+                return ray.get_runtime_context().get_node_id()
 
         actors = []
         locations = []
@@ -513,7 +551,6 @@ def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
 def test_demand_report_for_node_affinity_scheduling_strategy(
     monkeypatch, shutdown_only
 ):
-    monkeypatch.setenv("RAY_num_heartbeats_timeout", "4")
     from ray.cluster_utils import AutoscalingCluster
 
     cluster = AutoscalingCluster(
@@ -537,7 +574,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     @ray.remote(num_cpus=1)
     def f(sleep_s):
         time.sleep(sleep_s)
-        return ray.get_runtime_context().node_id
+        return ray.get_runtime_context().get_node_id()
 
     worker_node_id = ray.get(f.remote(0))
 
@@ -682,13 +719,13 @@ def test_data_locality_spilled_objects(
     def f():
         return (
             np.zeros(50 * 1024 * 1024, dtype=np.uint8),
-            ray.runtime_context.get_runtime_context().node_id,
+            ray.runtime_context.get_runtime_context().get_node_id(),
         )
 
     @ray.remote
     def check_locality(x):
         _, node_id = x
-        assert node_id == ray.runtime_context.get_runtime_context().node_id
+        assert node_id == ray.runtime_context.get_runtime_context().get_node_id()
 
     # Check locality works when dependent task is already submitted by the time
     # the upstream task finishes.
@@ -702,6 +739,47 @@ def test_data_locality_spilled_objects(
         task = check_locality.remote(x)
         print(i, x, task)
         ray.get(task)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Metrics flake on Windows.")
+def test_workload_placement_metrics(ray_start_regular):
+    @ray.remote(num_cpus=1)
+    def task():
+        pass
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ready(self):
+            return True
+
+    t = task.remote()
+    ray.get(t)
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+    del a
+    pg = placement_group(bundles=[{"CPU": 1}], strategy="SPREAD")
+    ray.get(pg.ready())
+
+    placement_metric_condition = get_metric_check_condition(
+        [
+            MetricSamplePattern(
+                name="ray_scheduler_placement_time_s_bucket",
+                value=1.0,
+                partial_label_match={"WorkloadType": "Actor"},
+            ),
+            MetricSamplePattern(
+                name="ray_scheduler_placement_time_s_bucket",
+                value=1.0,
+                partial_label_match={"WorkloadType": "Task"},
+            ),
+            MetricSamplePattern(
+                name="ray_scheduler_placement_time_s_bucket",
+                value=1.0,
+                partial_label_match={"WorkloadType": "PlacementGroup"},
+            ),
+        ],
+    )
+    wait_for_condition(placement_metric_condition, timeout=60)
 
 
 if __name__ == "__main__":

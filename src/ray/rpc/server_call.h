@@ -28,6 +28,19 @@
 namespace ray {
 namespace rpc {
 
+/// Get the thread pool for the gRPC server.
+/// This pool is shared across gRPC servers.
+boost::asio::thread_pool &GetServerCallExecutor();
+
+/// Drain the executor.
+void DrainServerCallExecutor();
+
+/// Reset the server call executor.
+/// Testing only. After you drain the executor
+/// you need to regenerate the executor
+/// because they are global.
+void ResetServerCallExecutor();
+
 /// Represents the callback function to be called when a `ServiceHandler` finishes
 /// handling a request.
 /// \param status The status would be returned to client.
@@ -200,11 +213,8 @@ class ServerCallImpl : public ServerCall {
           // is async and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
           send_reply_failure_callback_ = std::move(failure);
-
-          // When the handler is done with the request, tell gRPC to finish this request.
-          // Must send reply at the bottom of this callback, once we invoke this funciton,
-          // this server call might be deleted
-          SendReply(status);
+          boost::asio::post(GetServerCallExecutor(),
+                            [this, status]() { SendReply(status); });
         });
   }
 
@@ -241,8 +251,12 @@ class ServerCallImpl : public ServerCall {
           (end_time - start_time_) / 1000000.0, call_name_);
     }
   }
+
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
+    if (io_service_.stopped()) {
+      return;
+    }
     state_ = ServerCallState::SENDING_REPLY;
     response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }

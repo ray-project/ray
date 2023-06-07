@@ -3,10 +3,9 @@ import threading
 import traceback
 from collections import defaultdict
 
-import grpc
-
 import ray
 import ray._private.profiling as profiling
+from ray import JobID
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
 
@@ -34,7 +33,7 @@ class ImportThread:
         self.gcs_client = worker.gcs_client
         self.subscriber = worker.gcs_function_key_subscriber
         self.subscriber.subscribe()
-        self.exception_type = grpc.RpcError
+        self.exception_type = ray.exceptions.RpcError
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
         self.t = None
@@ -42,26 +41,30 @@ class ImportThread:
         self.num_imported = 0
         # Protect writes to self.num_imported.
         self._lock = threading.Lock()
-        # Try to load all FunctionsToRun so that these functions will be
-        # run before accepting tasks.
-        self._do_importing()
+        # Protect start and join of import thread.
+        self._thread_spawn_lock = threading.Lock()
 
     def start(self):
         """Start the import thread."""
-        self.t = threading.Thread(target=self._run, name="ray_import_thread")
-        # Making the thread a daemon causes it to exit
-        # when the main thread exits.
-        self.t.daemon = True
-        self.t.start()
+        with self._thread_spawn_lock:
+            if self.t is not None:
+                return
+            self.t = threading.Thread(target=self._run, name="ray_import_thread")
+            # Making the thread a daemon causes it to exit
+            # when the main thread exits.
+            self.t.daemon = True
+            self.t.start()
 
     def join_import_thread(self):
         """Wait for the thread to exit."""
-        if self.t:
-            self.t.join()
+        with self._thread_spawn_lock:
+            if self.t:
+                self.t.join()
 
     def _run(self):
         try:
-            self._do_importing()
+            if not self.threads_stopped.is_set():
+                self._do_importing()
             while True:
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
@@ -79,10 +82,14 @@ class ImportThread:
             self.subscriber.close()
 
     def _do_importing(self):
+        job_id = self.worker.current_job_id
+        if job_id == JobID.nil():
+            return
+
         while True:
             with self._lock:
                 export_key = ray._private.function_manager.make_export_key(
-                    self.num_imported + 1, self.worker.current_job_id
+                    self.num_imported + 1, job_id
                 )
                 key = self.gcs_client.internal_kv_get(
                     export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE

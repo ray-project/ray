@@ -1,5 +1,5 @@
 import functools
-import gym
+import gymnasium as gym
 from math import log
 import numpy as np
 import tree  # pip install dm_tree
@@ -182,7 +182,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
             high_ = np.max(action_space.high)
             assert np.all(action_space.low == low_)
             assert np.all(action_space.high == high_)
-            np.prod(action_space.shape, dtype=np.int32) * (high_ - low_ + 1)
+            return np.prod(action_space.shape, dtype=np.int32) * (high_ - low_ + 1)
         # MultiDiscrete space.
         else:
             # `nvec` is already integer. No need to cast.
@@ -622,7 +622,7 @@ class TorchDirichlet(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
-        self.last_sample = nn.functional.softmax(self.dist.concentration)
+        self.last_sample = nn.functional.softmax(self.dist.concentration, dim=-1)
         return self.last_sample
 
     @override(ActionDistribution)
@@ -637,10 +637,6 @@ class TorchDirichlet(TorchDistributionWrapper):
     @override(ActionDistribution)
     def entropy(self):
         return self.dist.entropy()
-
-    @override(ActionDistribution)
-    def kl(self, other):
-        return self.dist.kl_divergence(other.dist)
 
     @staticmethod
     @override(ActionDistribution)

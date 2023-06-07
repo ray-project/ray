@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 
+if [ "$1" == "3.11" ]; then
+    # TODO: fix build wheels unsupported tags in the future
+    echo "'set -xe' not working for Python 3.11"
+else
+    set -xe
+fi
+
 # Python version can be specified as 3.7, 3.8, 3.9, etc..
 if [ -z "$1" ]; then
     PYTHON_VERSION=${PYTHON-3.7}
 else
-    if [ "$1" = "3.6" ]; then
-        PYTHON_VERSION="3.6"
-    elif [ "$1" = "3.7" ]; then
+    if [ "$1" = "3.7" ]; then
         PYTHON_VERSION="3.7"
     elif [ "$1" = "3.8" ]; then
         PYTHON_VERSION="3.8"
@@ -14,6 +19,8 @@ else
         PYTHON_VERSION="3.9"
     elif [ "$1" = "3.10" ]; then
         PYTHON_VERSION="3.10"
+    elif [ "$1" = "3.11" ]; then
+        PYTHON_VERSION="3.11"
     else
         echo "Unsupported Python version."
         exit 1

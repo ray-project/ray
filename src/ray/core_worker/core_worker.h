@@ -28,10 +28,11 @@
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/object_recovery_manager.h"
-#include "ray/core_worker/profiling.h"
+#include "ray/core_worker/profile_event.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -87,6 +88,7 @@ class TaskCounter {
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
                    {"Name", func_name},
                    {"IsRetry", is_retry_label},
+                   {"JobId", job_id_},
                    {"Source", "executor"}});
               // Negate the metrics recorded from the submitter process for these tasks.
               ray::stats::STATS_tasks.Record(
@@ -94,6 +96,7 @@ class TaskCounter {
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
                    {"Name", func_name},
                    {"IsRetry", is_retry_label},
+                   {"JobId", job_id_},
                    {"Source", "executor"}});
               // Record sub-state for get.
               ray::stats::STATS_tasks.Record(
@@ -101,6 +104,7 @@ class TaskCounter {
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
                    {"Name", func_name},
                    {"IsRetry", is_retry_label},
+                   {"JobId", job_id_},
                    {"Source", "executor"}});
               // Record sub-state for wait.
               ray::stats::STATS_tasks.Record(
@@ -108,6 +112,7 @@ class TaskCounter {
                   {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
                    {"Name", func_name},
                    {"IsRetry", is_retry_label},
+                   {"JobId", job_id_},
                    {"Source", "executor"}});
             });
   }
@@ -115,6 +120,11 @@ class TaskCounter {
   void BecomeActor(const std::string &actor_name) {
     absl::MutexLock l(&mu_);
     actor_name_ = actor_name;
+  }
+
+  void SetJobId(const JobID &job_id) {
+    absl::MutexLock l(&mu_);
+    job_id_ = job_id.Hex();
   }
 
   bool IsActor() EXCLUSIVE_LOCKS_REQUIRED(&mu_) { return actor_name_.size() > 0; }
@@ -133,20 +143,26 @@ class TaskCounter {
       } else if (num_tasks_running_ > 0) {
         running = 1.0;
       }
-      ray::stats::STATS_actors.Record(
-          -(running + in_get + in_wait),
-          {{"State", "ALIVE"}, {"Name", actor_name_}, {"Source", "executor"}});
-      ray::stats::STATS_actors.Record(
-          running,
-          {{"State", "RUNNING_TASK"}, {"Name", actor_name_}, {"Source", "executor"}});
+      ray::stats::STATS_actors.Record(-(running + in_get + in_wait),
+                                      {{"State", "ALIVE"},
+                                       {"Name", actor_name_},
+                                       {"Source", "executor"},
+                                       {"JobId", job_id_}});
+      ray::stats::STATS_actors.Record(running,
+                                      {{"State", "RUNNING_TASK"},
+                                       {"Name", actor_name_},
+                                       {"Source", "executor"},
+                                       {"JobId", job_id_}});
       ray::stats::STATS_actors.Record(in_get,
                                       {{"State", "RUNNING_IN_RAY_GET"},
                                        {"Name", actor_name_},
-                                       {"Source", "executor"}});
+                                       {"Source", "executor"},
+                                       {"JobId", job_id_}});
       ray::stats::STATS_actors.Record(in_wait,
                                       {{"State", "RUNNING_IN_RAY_WAIT"},
                                        {"Name", actor_name_},
-                                       {"Source", "executor"}});
+                                       {"Source", "executor"},
+                                       {"JobId", job_id_}});
     }
   }
 
@@ -172,6 +188,9 @@ class TaskCounter {
                        rpc::TaskStatus status,
                        bool is_retry) {
     absl::MutexLock l(&mu_);
+    // Add a no-op increment to counter_ so that
+    // it will invoke a callback upon RecordMetrics.
+    counter_.Increment({func_name, TaskStatusType::kRunning, is_retry}, 0);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Increment({func_name, is_retry});
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
@@ -185,6 +204,9 @@ class TaskCounter {
                          rpc::TaskStatus status,
                          bool is_retry) {
     absl::MutexLock l(&mu_);
+    // Add a no-op decrement to counter_ so that
+    // it will invoke a callback upon RecordMetrics.
+    counter_.Decrement({func_name, TaskStatusType::kRunning, is_retry}, 0);
     if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
       running_in_get_counter_.Decrement({func_name, is_retry});
     } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
@@ -228,6 +250,7 @@ class TaskCounter {
   CounterMap<std::pair<std::string, bool>> running_in_get_counter_ GUARDED_BY(&mu_);
   CounterMap<std::pair<std::string, bool>> running_in_wait_counter_ GUARDED_BY(&mu_);
 
+  std::string job_id_ GUARDED_BY(&mu_) = "";
   // Used for actor state tracking.
   std::string actor_name_ GUARDED_BY(&mu_) = "";
   int64_t num_tasks_running_ GUARDED_BY(&mu_) = 0;
@@ -325,11 +348,51 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
-  const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+  int64_t GetCurrentTaskAttemptNumber() const {
+    return worker_context_.GetCurrentTask() != nullptr
+               ? worker_context_.GetCurrentTask()->AttemptNumber()
+               : 0;
+  }
+
+  JobID GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
   const int64_t GetTaskDepth() const { return worker_context_.GetTaskDepth(); }
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
+
+  /// Create the ObjectRefStream of generator_id.
+  ///
+  /// It is a pass-through method. See TaskManager::CreateObjectRefStream
+  /// for details.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  void CreateObjectRefStream(const ObjectID &generator_id);
+
+  /// Read the next index of a ObjectRefStream of generator_id.
+  /// This API always return immediately.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \param[out] object_ref_out The ObjectReference
+  /// that the caller can convert to its own ObjectRef.
+  /// The current process is always the owner of the
+  /// generated ObjectReference. It will be Nil() if there's
+  /// no next item.
+  /// \return Status ObjectRefEndOfStream if the stream reaches to EoF.
+  /// OK otherwise.
+  Status TryReadObjectRefStream(const ObjectID &generator_id,
+                                rpc::ObjectReference *object_ref_out);
+
+  /// Delete the ObjectRefStream of generator_id
+  /// created by CreateObjectRefStream.
+  ///
+  /// It is a pass-through method. See TaskManager::DelObjectRefStream
+  /// for details.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  void DelObjectRefStream(const ObjectID &generator_id);
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const {
     return worker_context_.GetCurrentPlacementGroupId();
@@ -351,6 +414,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetActorTitle(const std::string &title);
 
+  /// Sets the actor's repr name.
+  ///
+  /// This is set explicitly rather than included as part of actor creation task spec
+  /// because it's only available after running the creation task as it might depend on
+  /// fields to be be initialized during actor creation task. The repr name will be
+  /// included as part of actor creation task reply (PushTaskReply) to GCS.
+  ///
+  /// \param repr_name Actor repr name.
+  void SetActorReprName(const std::string &repr_name);
+
   void SetCallerCreationTimestamp();
 
   /// Increase the reference count for this object ID.
@@ -370,6 +443,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     // TOOD(ilr): better way of keeping an object from being deleted
+    // TODO(sang): This seems bad... We should delete the memory store
+    // properly from reference counter.
     if (!options_.is_local_mode) {
       memory_store_->Delete(deleted);
     }
@@ -390,7 +465,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// us, or the caller previously added the ownership information (via
   /// RegisterOwnershipInfoAndResolveFuture).
   /// \param[out] The RPC address of the worker that owns this object.
-  rpc::Address GetOwnerAddress(const ObjectID &object_id) const;
+  Status GetOwnerAddress(const ObjectID &object_id, rpc::Address *owner_address) const;
+
+  /// Get the RPC address of the worker that owns the given object. If the
+  /// object has no owner, then we terminate the process.
+  ///
+  /// \param[in] object_id The object ID. The object must either be owned by
+  /// us, or the caller previously added the ownership information (via
+  /// RegisterOwnershipInfoAndResolveFuture).
+  /// \param[out] The RPC address of the worker that owns this object.
+  rpc::Address GetOwnerAddressOrDie(const ObjectID &object_id) const;
 
   /// Get the RPC address of the worker that owns the given object.
   ///
@@ -417,9 +501,30 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
   /// \param[out] serialized_object_status The serialized object status protobuf.
-  void GetOwnershipInfo(const ObjectID &object_id,
-                        rpc::Address *owner_address,
-                        std::string *serialized_object_status);
+  Status GetOwnershipInfo(const ObjectID &object_id,
+                          rpc::Address *owner_address,
+                          std::string *serialized_object_status);
+
+  /// Get the owner information of an object. This should be
+  /// called when serializing an object ID, and the returned information should
+  /// be stored with the serialized object ID. If the ownership of the object
+  /// cannot be established, then we terminate the process.
+  ///
+  /// This can only be called on object IDs that we created via task
+  /// submission, ray.put, or object IDs that we deserialized. It cannot be
+  /// called on object IDs that were created randomly, e.g.,
+  /// ObjectID::FromRandom.
+  ///
+  /// Postcondition: Get(object_id) is valid.
+  ///
+  /// \param[in] object_id The object ID to serialize.
+  /// appended to the serialized object ID.
+  /// \param[out] owner_address The address of the object's owner. This should
+  /// be appended to the serialized object ID.
+  /// \param[out] serialized_object_status The serialized object status protobuf.
+  void GetOwnershipInfoOrDie(const ObjectID &object_id,
+                             rpc::Address *owner_address,
+                             std::string *serialized_object_status);
 
   /// Add a reference to an ObjectID that was deserialized by the language
   /// frontend. This will also start the process to resolve the future.
@@ -604,11 +709,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Delete a list of objects from the plasma object store.
   ///
+  /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
+  /// for objects we do not own.
+  ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
   /// \return Status.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only);
+
+  /// Delete a list of objects from the plasma object store; called by Delete().
+  ///
+  /// \param[in] object_ids IDs of the objects to delete.
+  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
+  /// the cluster.
+  /// \return Status.
+  Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
 
   /// Get the locations of a list objects. Locations that failed to be retrieved
   /// will be returned as nullptrs.
@@ -623,6 +739,48 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Trigger garbage collection on each worker in the cluster.
   void TriggerGlobalGC();
+
+  /// Report the task caller at caller_address that the intermediate
+  /// task return. It means if this API is used, the caller will be notified
+  /// the task return before the current task is terminated. The caller must
+  /// implement HandleReportGeneratorItemReturns API endpoint
+  /// to handle the intermediate result report.
+  /// This API makes sense only for a generator task
+  /// (task that can return multiple intermediate
+  /// result before the task terminates).
+  ///
+  /// NOTE: The API doesn't guarantee the ordering of the report. The
+  /// caller is supposed to reorder the report based on the item_index.
+  ///
+  /// \param[in] dynamic_return_object A intermediate ray object to report
+  /// to the caller before the task terminates. This object must have been
+  /// created dynamically from this worker via AllocateReturnObject.
+  /// If the Object ID is nil, it means it is the end of the task return.
+  /// In this case, the caller is responsible for setting finished = true,
+  /// otherwise it will panic.
+  /// \param[in] generator_id The return object ref ID from a current generator
+  /// task.
+  /// \param[in] caller_address The address of the caller of the current task
+  /// that created a generator_id.
+  /// \param[in] item_index The index of the task return. It is used to reorder the
+  /// report from the caller side.
+  /// \param[in] finished True indicates there's going to be no more intermediate
+  /// task return. When finished is provided dynamic_return_object's key must be
+  /// pair<nil, empty_pointer>
+  Status ReportGeneratorItemReturns(
+      const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+      const ObjectID &generator_id,
+      const rpc::Address &caller_address,
+      int64_t item_index,
+      bool finished);
+
+  /// Implements gRPC server handler.
+  /// If an executor can generator task return before the task is finished,
+  /// it invokes this endpoint via ReportGeneratorItemReturns RPC.
+  void HandleReportGeneratorItemReturns(
+      rpc::ReportGeneratorItemReturnsRequest request,
+      rpc::ReportGeneratorItemReturnsReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get a string describing object store memory usage for debugging purposes.
   ///
@@ -732,12 +890,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
-  /// \return ObjectRefs returned by this task.
-  std::optional<std::vector<rpc::ObjectReference>> SubmitActorTask(
-      const ActorID &actor_id,
-      const RayFunction &function,
-      const std::vector<std::unique_ptr<TaskArg>> &args,
-      const TaskOptions &task_options);
+  /// \param[out] task_returns The object returned by this task
+  ///
+  /// \return Status of this submission
+  Status SubmitActorTask(const ActorID &actor_id,
+                         const RayFunction &function,
+                         const std::vector<std::unique_ptr<TaskArg>> &args,
+                         const TaskOptions &task_options,
+                         std::vector<rpc::ObjectReference> &task_returns);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
   ///
@@ -799,8 +959,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType GetResourceIDs() const;
 
-  /// Create a profile event with a reference to the core worker's profiler.
-  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
+  /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(
+
+      const std::string &event_name);
 
   int64_t GetNumTasksSubmitted() const {
     return direct_task_submitter_->GetNumTasksSubmitted();
@@ -866,8 +1028,26 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the caller. This is in contrast to static allocation, where the caller
   /// decides at task invocation time how many returns the task should have.
   ///
-  /// \param[out] The ObjectID that the caller should use to store the object.
-  ObjectID AllocateDynamicReturnId();
+  /// NOTE: Normally task_id and put_index it not necessary to be specified
+  /// because we can obtain them from the global worker context. However,
+  /// when the async actor uses this API, it cannot find the correct
+  /// worker context due to the implementation limitation.
+  /// In this case, the caller is responsible for providing the correct
+  /// task ID and index.
+  /// See https://github.com/ray-project/ray/issues/10324 for the further details.
+  ///
+  /// \param[in] owner_address The address of the owner who will own this
+  /// dynamically generated object.
+  /// \param[in] task_id The task id of the dynamically generated return ID.
+  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// worker context.
+  /// \param[in] put_index The equivalent of the return value of
+  /// WorkerContext::GetNextPutIndex.
+  /// If std::nullopt is specified, it will deduce the put index from the
+  /// current worker context.
+  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
+                                   const TaskID &task_id = TaskID::Nil(),
+                                   std::optional<ObjectIDIndexType> put_index = -1);
 
   /// Get a handle to an actor.
   ///
@@ -987,6 +1167,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      rpc::LocalGCReply *reply,
                      rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Delete objects explicitly.
+  void HandleDeleteObjects(rpc::DeleteObjectsRequest request,
+                           rpc::DeleteObjectsReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
   // Spill objects to external storage.
   void HandleSpillObjects(rpc::SpillObjectsRequest request,
                           rpc::SpillObjectsReply *reply,
@@ -1037,16 +1222,54 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 void *python_future);
 
   // Get serialized job configuration.
-  const rpc::JobConfig &GetJobConfig() const;
+  rpc::JobConfig GetJobConfig() const;
 
   /// Return true if the core worker is in the exit process.
   bool IsExiting() const;
+
+  /// Mark this worker is exiting.
+  void SetIsExiting();
 
   /// Retrieve the current statistics about tasks being received and executing.
   /// \return an unordered_map mapping function name to list of (num_received,
   /// num_executing, num_executed). It is a std map instead of absl due to its
   /// interface with language bindings.
   std::unordered_map<std::string, std::vector<int64_t>> GetActorCallStats() const;
+
+  /// Add task log info for a task when it starts executing.
+  ///
+  /// It's an no-op in local mode.
+  ///
+  /// \param stdout_path Path to stdout log file.
+  /// \param stderr_path Path to stderr log file.
+  /// \param stdout_start_offset Start offset of the stdout for this task.
+  /// \param stderr_start_offset Start offset of the stderr for this task.
+  void RecordTaskLogStart(const std::string &stdout_path,
+                          const std::string &stderr_path,
+                          int64_t stdout_start_offset,
+                          int64_t stderr_start_offset) const;
+
+  /// Add task log info for a task when it finishes executing.
+  ///
+  /// It's an no-op in local mode.
+  ///
+  /// \param stdout_end_offset End offset of the stdout for this task.
+  /// \param stderr_end_offset End offset of the stderr for this task.
+  void RecordTaskLogEnd(int64_t stdout_end_offset, int64_t stderr_end_offset) const;
+
+  /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
+  /// exit when it drains all tasks and cleans all owned objects.
+  /// After this method is called, all the tasks in the queue will not be
+  /// executed.
+  ///
+  /// \param exit_type The reason why this worker process is disconnected.
+  /// \param exit_detail The detailed reason for a given exit.
+  /// \param creation_task_exception_pb_bytes It is given when the worker is
+  /// disconnected because the actor is failed due to its exception in its init method.
+  void Exit(const rpc::WorkerExitType exit_type,
+            const std::string &detail,
+            const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
+                nullptr);
 
  private:
   static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
@@ -1061,7 +1284,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
-      const std::string &serialized_runtime_env_info);
+      const std::string &serialized_runtime_env_info) const;
 
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder,
@@ -1080,7 +1303,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
-      const std::string &concurrency_group_name = "");
+      const TaskID &main_thread_current_task_id,
+      const std::string &concurrency_group_name = "",
+      bool include_job_config = false);
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1090,26 +1315,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
-  /// (WORKER mode only) Gracefully exit the worker. `Graceful` means the worker will
-  /// exit when it drains all tasks and cleans all owned objects.
-  ///
-  /// \param exit_type The reason why this worker process is disconnected.
-  /// \param exit_detail The detailed reason for a given exit.
-  /// \param creation_task_exception_pb_bytes It is given when the worker is
-  /// disconnected because the actor is failed due to its exception in its init method.
-  void Exit(const rpc::WorkerExitType exit_type,
-            const std::string &detail,
-            const std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes =
-                nullptr);
-
   /// Forcefully exit the worker. `Force` means it will exit actor without draining
   /// or cleaning any resources.
   /// \param exit_type The reason why this worker process is disconnected.
   /// \param exit_detail The detailed reason for a given exit.
   void ForceExit(const rpc::WorkerExitType exit_type, const std::string &detail);
 
+  /// Forcefully kill child processes. User code running in actors or tasks
+  /// can spawn processes that don't get terminated. If those processes
+  /// own resources (such as GPU memory), then those resources will become
+  /// unavailable until the process is killed.
+  /// This is called during shutdown of the process.
+  void KillChildProcs();
+
   /// Register this worker or driver to GCS.
-  void RegisterToGcs();
+  void RegisterToGcs(int64_t worker_launch_time_ms, int64_t worker_launched_time_ms);
 
   /// (WORKER mode only) Check if the raylet has failed. If so, shutdown.
   void ExitIfParentRayletDies();
@@ -1119,6 +1339,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Record metric for executed and owned tasks. Will be run periodically.
   void RecordMetrics();
+
+  /// Check if there is an owner of the object from the ReferenceCounter.
+  bool HasOwner(const ObjectID &object_id) const;
 
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id,
@@ -1165,6 +1388,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///                     objects whose IDs we passed to the task in its
   ///                     arguments and recursively, any object IDs that were
   ///                     contained in those objects.
+  /// \param results[out] is_retryable_error Whether the task failed with a retryable
+  ///                     error.
+  /// \param results[out] application_error The error message if the
+  ///                     task failed during execution or cancelled.
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
@@ -1174,7 +1401,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
           *dynamic_return_objects,
       ReferenceCounter::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
-      bool *is_application_error);
+      std::string *application_error);
 
   /// Put an object in the local plasma store.
   Status PutInLocalPlasmaStore(const RayObject &object,
@@ -1393,6 +1620,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // A class to subscribe object status from other raylets/workers.
   std::unique_ptr<pubsub::Subscriber> object_info_subscriber_;
 
+  // Rate limit the concurrent pending lease requests for submitting
+  // tasks.
+  std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
+
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
@@ -1427,14 +1658,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Actor title that consists of class name, args, kwargs for actor construction.
   std::string actor_title_ GUARDED_BY(mutex_);
 
+  /// Actor repr name if overrides by the user, empty string if not.
+  std::string actor_repr_name_ GUARDED_BY(mutex_) = "";
+
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;
 
   /// Number of executed tasks.
   std::atomic<int64_t> num_executed_tasks_;
-
-  /// Profiler including a background thread that pushes profiling events to the GCS.
-  std::shared_ptr<worker::Profiler> profiler_;
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
@@ -1480,21 +1711,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                       ObjectID object_id,
                       void *py_future);
 
-  /// we are shutting down and not running further tasks.
-  /// when exiting_ is set to true HandlePushTask becomes no-op.
-  std::atomic<bool> exiting_ = false;
+  /// The detail reason why the core worker has exited.
+  /// If this value is set, it means the exit process has begun.
+  std::optional<std::string> exiting_detail_ GUARDED_BY(mutex_);
 
   std::atomic<bool> is_shutdown_ = false;
 
   int64_t max_direct_call_object_size_;
 
   friend class CoreWorkerTest;
-
-  std::unique_ptr<rpc::JobConfig> job_config_;
-
-  std::shared_ptr<json> job_runtime_env_;
-
-  std::shared_ptr<rpc::RuntimeEnvInfo> job_runtime_env_info_;
 
   TaskCounter task_counter_;
 
@@ -1503,7 +1728,23 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the checking and increasing of backpressure pending calls counter
   /// is not atomic, which may lead to under counting or over counting.
   absl::Mutex actor_task_mutex_;
+
+  /// A shared pointer between various components that emitting task state events.
+  /// e.g. CoreWorker, TaskManager.
+  std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
 };
 
+// Lease request rate-limiter based on cluster node size.
+// It returns max(num_nodes_in_cluster, min_concurrent_lease_limit)
+class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
+ public:
+  explicit ClusterSizeBasedLeaseRequestRateLimiter(size_t min_concurrent_lease_limit);
+  size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override;
+  void OnNodeChanges(const rpc::GcsNodeInfo &data);
+
+ private:
+  const size_t kMinConcurrentLeaseCap;
+  std::atomic<size_t> num_alive_nodes_;
+};
 }  // namespace core
 }  // namespace ray

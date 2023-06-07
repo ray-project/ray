@@ -6,9 +6,11 @@ ARG BASE_IMAGE
 ARG AUTOSCALER="autoscaler"
 ENV TZ=America/Los_Angeles
 
+ARG HOSTTYPE=${HOSTTYPE:-x86_64}
+
 ENV PATH "/root/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.7.7
+ARG PYTHON_VERSION=3.7.16
 
 RUN apt-get update -y \
     && apt-get install -y sudo tzdata \
@@ -30,7 +32,7 @@ RUN apt-get update -y && sudo apt-get upgrade -y \
         gnupg; fi) \
         unzip \
     && wget \
-        --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh" \
+        --quiet "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${HOSTTYPE}.sh" \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
     && $HOME/anaconda3/bin/conda init \
@@ -41,7 +43,7 @@ RUN apt-get update -y && sudo apt-get upgrade -y \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
-        cython==0.29.26 \
+        cython==0.29.32 \
         numpy==1.15.4 \
         psutil \
     # To avoid the following error on Jenkins:

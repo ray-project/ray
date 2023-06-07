@@ -63,26 +63,28 @@ Depending on the model and dataset, you may want to tune:
 
 The following shows some example code on how to specify the ``param_space``.
 
-.. tabbed:: XGBoost
+.. tab-set::
 
-    .. literalinclude:: doc_code/tuner.py
-        :language: python
-        :start-after: __xgboost_start__
-        :end-before: __xgboost_end__
+    .. tab-item:: XGBoost
 
-.. tabbed:: Pytorch
+        .. literalinclude:: doc_code/tuner.py
+            :language: python
+            :start-after: __xgboost_start__
+            :end-before: __xgboost_end__
 
-    .. literalinclude:: doc_code/tuner.py
-        :language: python
-        :start-after: __torch_start__
-        :end-before: __torch_end__
+    .. tab-item:: Pytorch
+
+        .. literalinclude:: doc_code/tuner.py
+            :language: python
+            :start-after: __torch_start__
+            :end-before: __torch_end__
 
 Read more about :ref:`Tune search spaces here <tune-search-space-tutorial>`.
 
 You can use a Tuner to tune most arguments and configurations in Ray AIR, including but
 not limited to:
 
-- Ray Datasets
+- Ray Data
 - Preprocessors
 - Scaling configurations
 - and other hyperparameters.
@@ -93,6 +95,7 @@ There are a couple gotchas about parameter specification when using Tuners with 
 - Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner ``param_space``.
 - **Exception:** all arguments of the :class:`RunConfig <ray.air.config.RunConfig>` and :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` are inherently un-tunable.
 
+See :doc:`/tune/tutorials/tune_get_data_in_and_out` for an example.
 
 How to configure a Tuner?
 -------------------------

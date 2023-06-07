@@ -19,7 +19,7 @@ def test_reset():
     env_all = [init_env(max_steps, env_class) for env_class in ENVS]
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -52,7 +52,7 @@ def test_step():
     env_all = [init_env(max_steps, env_class) for env_class in ENVS]
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -60,7 +60,7 @@ def test_step():
             policy_id: random.randint(0, env.NUM_ACTIONS - 1)
             for policy_id in env.players_ids
         }
-        obs, reward, done, info = env.step(actions)
+        obs, reward, done, truncated, info = env.step(actions)
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=1)
         assert not done["__all__"]
@@ -72,7 +72,7 @@ def test_multiple_steps():
     n_steps = int(max_steps * 0.75)
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -81,7 +81,7 @@ def test_multiple_steps():
                 policy_id: random.randint(0, env.NUM_ACTIONS - 1)
                 for policy_id in env.players_ids
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
             check_obs(obs, env)
             assert_logger_buffer_size_two_players(env, n_steps=step_i)
             assert not done["__all__"]
@@ -93,7 +93,7 @@ def test_multiple_episodes():
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -104,12 +104,12 @@ def test_multiple_episodes():
                 policy_id: random.randint(0, env.NUM_ACTIONS - 1)
                 for policy_id in env.players_ids
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
             check_obs(obs, env)
             assert_logger_buffer_size_two_players(env, n_steps=step_i)
             assert not done["__all__"] or (step_i == max_steps and done["__all__"])
             if done["__all__"]:
-                obs = env.reset()
+                obs, info = env.reset()
                 check_obs(obs, env)
                 step_i = 0
 
@@ -122,7 +122,7 @@ def assert_info(n_steps, p_row_act, p_col_act, env, max_steps, CC, DD, CD, DC):
             "player_row": p_row_act[step_i - 1],
             "player_col": p_col_act[step_i - 1],
         }
-        obs, reward, done, info = env.step(actions)
+        obs, reward, done, truncated, info = env.step(actions)
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=step_i)
         assert not done["__all__"] or (step_i == max_steps and done["__all__"])
@@ -137,7 +137,7 @@ def assert_info(n_steps, p_row_act, p_col_act, env, max_steps, CC, DD, CD, DC):
             assert info["player_row"]["DC"] == DC
             assert info["player_col"]["DC"] == DC
 
-            obs = env.reset()
+            obs, info = env.reset()
             check_obs(obs, env)
             assert_logger_buffer_size_two_players(env, n_steps=0)
             step_i = 0
@@ -151,7 +151,7 @@ def test_logged_info_full_CC():
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -176,7 +176,7 @@ def test_logged_info_full_DD():
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -201,7 +201,7 @@ def test_logged_info_full_CD():
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -226,7 +226,7 @@ def test_logged_info_full_DC():
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -251,7 +251,7 @@ def test_logged_info_mix_CC_DD():
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -276,7 +276,7 @@ def test_logged_info_mix_CD_CD():
     n_steps = int(max_steps * 8.25)
 
     for env in env_all:
-        obs = env.reset()
+        obs, info = env.reset()
         check_obs(obs, env)
         assert_logger_buffer_size_two_players(env, n_steps=0)
 
@@ -301,7 +301,7 @@ def test_observations_are_invariant_to_the_player_trained():
     n_steps = 4
 
     for env in env_all:
-        _ = env.reset()
+        _, _ = env.reset()
         step_i = 0
         for _ in range(n_steps):
             step_i += 1
@@ -309,7 +309,7 @@ def test_observations_are_invariant_to_the_player_trained():
                 "player_row": p_row_act[step_i - 1],
                 "player_col": p_col_act[step_i - 1],
             }
-            obs, reward, done, info = env.step(actions)
+            obs, reward, done, truncated, info = env.step(actions)
             # assert observations are symmetrical respective to the actions
             if step_i == 1:
                 assert obs[env.players_ids[0]] == obs[env.players_ids[1]]

@@ -1,7 +1,6 @@
 import click
 import json
 import ray
-from ray._private.ray_constants import LOG_PREFIX_ACTOR_NAME
 from ray._private.state_api_test_utils import (
     STATE_LIST_LIMIT,
     StateAPIMetric,
@@ -16,7 +15,7 @@ import asyncio
 import time
 import os
 
-from ray.experimental.state.api import (
+from ray.util.state import (
     get_log,
     list_actors,
     list_objects,
@@ -44,22 +43,28 @@ class SignalActor:
 
 
 def invoke_state_api_n(*args, **kwargs):
-    NUM_API_CALL_SAMPLES = 10
-    for _ in range(NUM_API_CALL_SAMPLES):
-        invoke_state_api(*args, **kwargs)
+    def verify():
+        NUM_API_CALL_SAMPLES = 10
+        for _ in range(NUM_API_CALL_SAMPLES):
+            invoke_state_api(*args, **kwargs)
+        return True
+
+    test_utils.wait_for_condition(verify, retry_interval_ms=2000, timeout=30)
 
 
 def test_many_tasks(num_tasks: int):
     if num_tasks == 0:
         print("Skipping test with no tasks")
         return
+
     # No running tasks
-    invoke_state_api(
+    invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
+        err_msg="Expect 0 running tasks.",
     )
 
     # Task definition adopted from:
@@ -68,7 +73,11 @@ def test_many_tasks(num_tasks: int):
 
     SAMPLES = 100
 
-    @ray.remote
+    # `num_cpus` required obtained from 1 / (num_tasks /num_total_cpus)
+    #  where num_total_cpus obtained from cluster_compute in `release_tests.yaml`
+    # 1 / (10k/45 * 7) ~= 0.03, taking a smaller value to make sure all tasks could be
+    # running at the same time.
+    @ray.remote(num_cpus=0.02)
     def pi4_sample(signal):
         in_count = 0
         for _ in range(SAMPLES):
@@ -87,9 +96,10 @@ def test_many_tasks(num_tasks: int):
     invoke_state_api_n(
         lambda res: len(res) == num_tasks,
         list_tasks,
-        filters=[("name", "=", "pi4_sample")],
+        filters=[("name", "=", "pi4_sample"), ("state", "!=", "FINISHED")],
         key_suffix=f"{num_tasks}",
         limit=STATE_LIST_LIMIT,
+        err_msg=f"Expect {num_tasks} non finished tasks.",
     )
 
     print("Waiting for tasks to finish...")
@@ -98,12 +108,13 @@ def test_many_tasks(num_tasks: int):
 
     # Clean up
     # All compute tasks done other than the signal actor
-    invoke_state_api(
+    invoke_state_api_n(
         lambda res: len(res) == 0,
         list_tasks,
-        filters=[("name", "=", "pi4_sample"), ("scheduling_state", "=", "RUNNING")],
+        filters=[("name", "=", "pi4_sample"), ("state", "=", "RUNNING")],
         key_suffix="0",
         limit=STATE_LIST_LIMIT,
+        err_msg="Expect 0 running tasks",
     )
 
     del signal
@@ -214,7 +225,7 @@ def test_many_objects(num_objects, num_actors):
         list_objects,
         filters=[
             ("reference_type", "=", "LOCAL_REFERENCE"),
-            ("type", "=", "Worker"),
+            ("type", "=", "WORKER"),
         ],
         key_suffix=f"{num_objects}",
         limit=STATE_LIST_LIMIT,
@@ -239,8 +250,6 @@ def test_large_log_file(log_file_size_byte: int):
     class LogActor:
         def write_log(self, log_file_size_byte: int):
             ctx = hashlib.md5()
-            prefix = f"{LOG_PREFIX_ACTOR_NAME}LogActor\n"
-            ctx.update(prefix.encode())
             while log_file_size_byte > 0:
                 n = min(log_file_size_byte, 4 * MiB)
                 chunk = "".join(random.choices(string.ascii_letters, k=n))
@@ -249,12 +258,12 @@ def test_large_log_file(log_file_size_byte: int):
                 log_file_size_byte -= n
 
             sys.stdout.flush()
-            return ctx.hexdigest(), ray.get_runtime_context().node_id.hex()
+            return ctx.hexdigest(), ray.get_runtime_context().get_node_id()
 
     actor = LogActor.remote()
-    expected_hash, node_id = ray.get(
-        actor.write_log.remote(log_file_size_byte=log_file_size_byte)
-    )
+
+    task = actor.write_log.remote(log_file_size_byte=log_file_size_byte)
+    expected_hash, node_id = ray.get(task)
     assert expected_hash is not None, "Empty checksum from the log actor"
     assert node_id is not None, "Empty node id from the log actor"
 
@@ -263,7 +272,7 @@ def test_large_log_file(log_file_size_byte: int):
 
     time_taken = 0
     t_start = time.perf_counter()
-    for s in get_log(actor_id=actor._actor_id.hex(), tail=-1):
+    for s in get_log(task_id=task.task_id().hex(), tail=1000000000):
         t_end = time.perf_counter()
         time_taken += t_end - t_start
         # Not including this time

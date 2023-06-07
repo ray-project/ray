@@ -2,7 +2,7 @@
 
 from typing import Dict, Tuple
 
-import gym
+import gymnasium as gym
 import ray
 from ray.rllib.algorithms.dqn.dqn_tf_policy import (
     PRIO_WEIGHTS,
@@ -125,7 +125,7 @@ def r2d2_loss(policy: Policy, model, _, train_batch: SampleBatch) -> TensorType:
     )
 
     actions = train_batch[SampleBatch.ACTIONS].long()
-    dones = train_batch[SampleBatch.DONES].float()
+    dones = train_batch[SampleBatch.TERMINATEDS].float()
     rewards = train_batch[SampleBatch.REWARDS]
     weights = train_batch[PRIO_WEIGHTS]
 
@@ -250,13 +250,13 @@ class ComputeTDErrorMixin:
 
     def __init__(self):
         def compute_td_error(
-            obs_t, act_t, rew_t, obs_tp1, done_mask, importance_weights
+            obs_t, act_t, rew_t, obs_tp1, terminateds_mask, importance_weights
         ):
             input_dict = self._lazy_tensor_dict({SampleBatch.CUR_OBS: obs_t})
             input_dict[SampleBatch.ACTIONS] = act_t
             input_dict[SampleBatch.REWARDS] = rew_t
             input_dict[SampleBatch.NEXT_OBS] = obs_tp1
-            input_dict[SampleBatch.DONES] = done_mask
+            input_dict[SampleBatch.TERMINATEDS] = terminateds_mask
             input_dict[PRIO_WEIGHTS] = importance_weights
 
             # Do forward pass on loss to update td error attribute
@@ -314,7 +314,7 @@ R2D2TorchPolicy = build_policy_class(
     name="R2D2TorchPolicy",
     framework="torch",
     loss_fn=r2d2_loss,
-    get_default_config=lambda: ray.rllib.algorithms.r2d2.r2d2.R2D2_DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.r2d2.r2d2.R2D2Config(),
     make_model_and_action_dist=build_r2d2_model_and_distribution,
     action_distribution_fn=get_distribution_inputs_and_class,
     stats_fn=build_q_stats,

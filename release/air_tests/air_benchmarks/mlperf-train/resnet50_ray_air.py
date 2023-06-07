@@ -12,6 +12,9 @@ from ray.air import session
 from ray.train.tensorflow import prepare_dataset_shard, TensorflowTrainer
 from ray.air.config import ScalingConfig
 from ray.data.preprocessors import BatchMapper
+from ray import tune
+from ray.tune import Tuner
+
 
 from tf_utils import (
     DEFAULT_IMAGE_SIZE,
@@ -104,7 +107,9 @@ def train_loop_for_worker(config):
         if online_processing:
             # Apply online preprocessing on the decoded images, cropping and
             # flipping.
-            dataset = dataset.map_batches(crop_and_flip_image_batch)
+            dataset = dataset.map_batches(
+                crop_and_flip_image_batch, batch_format="pandas"
+            )
 
         def to_tensor_iterator():
             num_steps = 0
@@ -449,6 +454,21 @@ if __name__ == "__main__":
             "Default value taken from MLPerf reference implementation."
         ),
     )
+    parser.add_argument(
+        "--trainer-resources-cpu",
+        default=1,
+        type=int,
+        help=("CPU resources requested per AIR trainer instance. Defaults to 1."),
+    )
+    parser.add_argument(
+        "--tune-trials",
+        default=0,
+        type=int,
+        help=(
+            "Number of Tune trials to run. Defaults to 0, "
+            "which disables Tune and executes a Trainer instance directly."
+        ),
+    )
     parser.add_argument("--output-file", default="out.csv", type=str)
     parser.add_argument("--use-gpu", action="store_true")
     parser.add_argument("--online-processing", action="store_true")
@@ -506,7 +526,7 @@ if __name__ == "__main__":
             logger.info("Using Ray Datasets loader")
 
             # Enable block splitting to support larger file sizes w/o OOM.
-            ctx = ray.data.context.DatasetContext.get_current()
+            ctx = ray.data.context.DataContext.get_current()
             ctx.block_splitting_enabled = True
 
             datasets["train"] = build_dataset(
@@ -530,17 +550,40 @@ if __name__ == "__main__":
 
     trainer = TensorflowTrainer(
         train_loop_for_worker,
-        scaling_config=ScalingConfig(num_workers=1, use_gpu=args.use_gpu),
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            use_gpu=args.use_gpu,
+            trainer_resources={"CPU": args.trainer_resources_cpu},
+        ),
         datasets=datasets,
         preprocessor=preprocessor,
         train_loop_config=train_loop_config,
     )
+
+    tuner = None
+    if args.tune_trials > 0:
+        tuner = Tuner(
+            trainer,
+            param_space={
+                "train_loop_config": {
+                    "random_var": tune.grid_search(range(1, args.tune_trials + 1))
+                }
+            },
+            tune_config=tune.TuneConfig(
+                metric="time_total_s", mode="max", num_samples=1
+            ),
+        )
+
     result = {}
     exc = None
     start_time_s = time.perf_counter()
     ray_spill_stats_start = get_ray_spilled_and_restored_mb()
     try:
-        result = trainer.fit()
+        if tuner:
+            result_grid = tuner.fit()
+            result = result_grid.get_best_result()
+        else:
+            result = trainer.fit()
         result = result.metrics
     except Exception as e:
         exc = e

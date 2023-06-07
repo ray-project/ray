@@ -29,36 +29,13 @@ def _setup_logger():
 
 
 def _register_all():
-    from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.algorithms.registry import ALGORITHMS, _get_algorithm_class
-    from ray.rllib.connectors.registry import _register_all_connectors
-    from ray.rllib.contrib.registry import CONTRIBUTED_ALGORITHMS
 
-    _register_all_connectors()
-
-    for key, get_trainable_class_and_config in list(ALGORITHMS.items()) + list(
-        CONTRIBUTED_ALGORITHMS.items()
-    ):
+    for key, get_trainable_class_and_config in ALGORITHMS.items():
         register_trainable(key, get_trainable_class_and_config()[0])
 
     for key in ["__fake", "__sigmoid_fake_data", "__parameter_tuning"]:
         register_trainable(key, _get_algorithm_class(key))
-
-    def _see_contrib(name):
-        """Returns dummy agent class warning algo is in contrib/."""
-
-        class _SeeContrib(Algorithm):
-            def setup(self, config):
-                raise NameError("Please run `contrib/{}` instead.".format(name))
-
-        return _SeeContrib
-
-    # Also register the aliases minus contrib/ to give a good error message.
-    for key in list(CONTRIBUTED_ALGORITHMS.keys()):
-        assert key.startswith("contrib/")
-        alias = key.split("/", 1)[1]
-        if alias not in ALGORITHMS:
-            register_trainable(alias, _see_contrib(alias))
 
 
 _setup_logger()

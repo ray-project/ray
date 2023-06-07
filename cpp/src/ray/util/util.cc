@@ -17,6 +17,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/asio.hpp>
 
+#include "ray/common/constants.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -43,5 +44,14 @@ std::string GetNodeIpAddress(const std::string &address) {
     return "";
   }
 }
+
+std::string getLibraryPathEnv() {
+  auto path_env_p = std::getenv(kLibraryPathEnvName);
+  if (path_env_p != nullptr && strlen(path_env_p) != 0) {
+    return std::string(path_env_p);
+  }
+  return {};
+}
+
 }  // namespace internal
 }  // namespace ray

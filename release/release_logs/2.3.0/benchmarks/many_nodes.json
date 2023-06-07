@@ -1,0 +1,38 @@
+{
+    "_dashboard_memory_usage_mb": 259.821568,
+    "_dashboard_test_success": true,
+    "_peak_memory": 1.91,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n291\t0.73GiB\t/home/ray/anaconda3/lib/python3.7/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n464\t0.22GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/dashboa\n3871\t0.21GiB\tpython distributed/test_many_tasks.py --num-tasks=1000\n43\t0.1GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/anyscale session web_terminal_server --deploy\n764\t0.08GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.7/site-packages/ray/dashboard/agen\n4156\t0.07GiB\tray::StateAPIGeneratorActor.start\n4093\t0.07GiB\tray::DashboardTester.run\n40\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-notebook --NotebookApp.token=agh0_Ckc\n4006\t0.06GiB\tray::MemoryMonitorActor.run\n391\t0.05GiB\t/home/ray/anaconda3/bin/python -m ray.util.client.server --address=172.31.103.29:9031 --host=0.0.0.0",
+    "num_tasks": 1000,
+    "perf_metrics": [
+        {
+            "perf_metric_name": "tasks_per_second",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 221.7103038870812
+        },
+        {
+            "perf_metric_name": "used_cpus_by_deadline",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 250.0
+        },
+        {
+            "perf_metric_name": "dashboard_p50_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 3.287
+        },
+        {
+            "perf_metric_name": "dashboard_p95_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 40.367
+        },
+        {
+            "perf_metric_name": "dashboard_p99_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 133.659
+        }
+    ],
+    "success": "1",
+    "tasks_per_second": 221.7103038870812,
+    "time": 304.51039028167725,
+    "used_cpus": 250.0
+}

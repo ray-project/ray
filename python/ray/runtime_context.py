@@ -17,6 +17,9 @@ class RuntimeContext(object):
         assert worker is not None
         self.worker = worker
 
+    @Deprecated(
+        message="Use get_xxx_id() methods to get relevant ids instead", warning=True
+    )
     def get(self) -> Dict[str, Any]:
         """Get a dictionary of the current context.
 
@@ -36,8 +39,8 @@ class RuntimeContext(object):
 
         return context
 
-    @Deprecated(message="Use get_job_id() instead.")
     @property
+    @Deprecated(message="Use get_job_id() instead", warning=True)
     def job_id(self):
         """Get current job ID for this worker or driver.
 
@@ -72,8 +75,8 @@ class RuntimeContext(object):
         job_id = self.worker.current_job_id
         return job_id.hex()
 
-    @Deprecated(message="Use get_node_id() instead.")
     @property
+    @Deprecated(message="Use get_node_id() instead", warning=True)
     def node_id(self):
         """Get current node ID for this worker or driver.
 
@@ -105,8 +108,19 @@ class RuntimeContext(object):
         node_id = self.worker.current_node_id
         return node_id.hex()
 
-    @Deprecated(message="Use get_task_id() instead")
+    def get_worker_id(self) -> str:
+        """Get current worker ID for this worker or driver process.
+
+        Returns:
+            A worker id in hex format for this worker or driver process.
+        """
+        assert (
+            ray.is_initialized()
+        ), "Worker ID is not available because Ray has not been initialized."
+        return self.worker.worker_id.hex()
+
     @property
+    @Deprecated(message="Use get_task_id() instead", warning=True)
     def task_id(self):
         """Get current task ID for this worker or driver.
 
@@ -115,22 +129,26 @@ class RuntimeContext(object):
 
         Example:
 
-            >>> import ray
-            >>> @ray.remote
-            ... class Actor:
-            ...     def ready(self):
-            ...         return True
-            >>>
-            >>> @ray.remote # doctest: +SKIP
-            ... def f():
-            ...     return True
-            >>> # All the below code will generate different task ids.
-            >>> # Task ids are available for actor creation.
-            >>> a = Actor.remote() # doctest: +SKIP
-            >>> # Task ids are available for actor tasks.
-            >>> a.ready.remote() # doctest: +SKIP
-            >>> # Task ids are available for normal tasks.
-            >>> f.remote() # doctest: +SKIP
+            .. testcode::
+
+                import ray
+
+                @ray.remote
+                class Actor:
+                    def ready(self):
+                        return True
+
+                @ray.remote
+                def f():
+                    return True
+
+                # All the below code generates different task ids.
+                # Task ids are available for actor creation.
+                a = Actor.remote()
+                # Task ids are available for actor tasks.
+                a.ready.remote()
+                # Task ids are available for normal tasks.
+                f.remote()
 
         Returns:
             The current worker's task id. None if there's no task id.
@@ -151,22 +169,31 @@ class RuntimeContext(object):
 
         Example:
 
-            >>> import ray
-            >>> @ray.remote
-            ... class Actor:
-            ...     def ready(self):
-            ...         return True
-            >>>
-            >>> @ray.remote # doctest: +SKIP
-            ... def f():
-            ...     return True
-            >>> # All the below code will generate different task ids.
-            >>> # Task ids are available for actor creation.
-            >>> a = Actor.remote() # doctest: +SKIP
-            >>> # Task ids are available for actor tasks.
-            >>> a.ready.remote() # doctest: +SKIP
-            >>> # Task ids are available for normal tasks.
-            >>> f.remote() # doctest: +SKIP
+            .. testcode::
+
+                import ray
+
+                @ray.remote
+                class Actor:
+                    def get_task_id(self):
+                        return ray.get_runtime_context().get_task_id()
+
+                @ray.remote
+                def get_task_id():
+                    return ray.get_runtime_context().get_task_id()
+
+                # All the below code generates different task ids.
+                a = Actor.remote()
+                # Task ids are available for actor tasks.
+                print(ray.get(a.get_task_id.remote()))
+                # Task ids are available for normal tasks.
+                print(ray.get(get_task_id.remote()))
+
+            .. testoutput::
+                :options: +MOCK
+
+                16310a0f0a45af5c2746a0e6efb235c0962896a201000000
+                c2668a65bda616c1ffffffffffffffffffffffff01000000
 
         Returns:
             The current worker's task id in hex. None if there's no task id.
@@ -181,8 +208,8 @@ class RuntimeContext(object):
         task_id = self.worker.current_task_id
         return task_id.hex() if not task_id.is_nil() else None
 
-    @Deprecated(message="Use get_actor_id() instead")
     @property
+    @Deprecated(message="Use get_actor_id() instead", warning=True)
     def actor_id(self):
         """Get the current actor ID in this worker.
 
@@ -243,8 +270,8 @@ class RuntimeContext(object):
         actor_info = ray._private.state.actors(self.actor_id.hex())
         return actor_info and actor_info["NumRestarts"] != 0
 
-    @Deprecated(message="Use get_placement_group_id() instead")
     @property
+    @Deprecated(message="Use get_placement_group_id() instead", warning=True)
     def current_placement_group_id(self):
         """Get the current Placement group ID of this worker.
 
@@ -324,11 +351,13 @@ class RuntimeContext(object):
         Returns:
             The handle of current actor.
         """
-        if self.actor_id is None:
-            raise RuntimeError("This method is only available in an actor.")
         worker = self.worker
         worker.check_connected()
-        return worker.core_worker.get_actor_handle(self.actor_id)
+        actor_id = worker.actor_id
+        if actor_id.is_nil():
+            raise RuntimeError("This method is only available in an actor.")
+
+        return worker.core_worker.get_actor_handle(actor_id)
 
     @property
     def gcs_address(self):
@@ -356,17 +385,24 @@ _runtime_context = None
 
 
 @PublicAPI
-@client_mode_hook(auto_init=False)
-def get_runtime_context():
+@client_mode_hook
+def get_runtime_context() -> RuntimeContext:
     """Get the runtime context of the current driver/worker.
+
+    The obtained runtime context can be used to get the metadata
+    of the current task and actor.
 
     Example:
 
-        >>> import ray
-        >>> # Get the job id.
-        >>> ray.get_runtime_context().job_id # doctest: +SKIP
-        >>> # Get all the metadata.
-        >>> ray.get_runtime_context().get() # doctest: +SKIP
+        .. testcode::
+
+            import ray
+            # Get the job id.
+            ray.get_runtime_context().get_job_id()
+            # Get the actor id.
+            ray.get_runtime_context().get_actor_id()
+            # Get the task id.
+            ray.get_runtime_context().get_task_id()
 
     """
     global _runtime_context

@@ -86,6 +86,42 @@ def test_zero_cpu_default_actor():
         cluster.shutdown()
 
 
+def test_autoscaler_cpu_task_gpu_node_up():
+    """Validates that CPU tasks can trigger GPU upscaling.
+    See https://github.com/ray-project/ray/pull/31202.
+    """
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "gpu_node_type": {
+                "resources": {
+                    "CPU": 1,
+                    "GPU": 1,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+    )
+
+    try:
+        cluster.start()
+        ray.init("auto")
+
+        @ray.remote(num_cpus=1)
+        def task():
+            return True
+
+        # Make sure the task can be scheduled.
+        # Since the head has 0 CPUs, this requires upscaling a GPU worker.
+        ray.get(task.remote(), timeout=30)
+        ray.shutdown()
+
+    finally:
+        cluster.shutdown()
+
+
 if __name__ == "__main__":
     import os
     import sys

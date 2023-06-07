@@ -14,6 +14,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
+from ray.util.state import list_workers
 
 
 @pytest.mark.parametrize(
@@ -323,6 +324,9 @@ def has_client_deprecation_warn(warning: Warning, expected_replacement: str) -> 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="pip not supported in Windows runtime envs."
 )
+@pytest.mark.filterwarnings(
+    "default:Starting a connection through `ray.client` will be deprecated"
+)
 def test_client_deprecation_warn():
     """
     Tests that calling ray.client directly raises a deprecation warning with
@@ -417,6 +421,28 @@ def test_client_deprecation_warn():
     # cleanup
     server.stop(0)
     subprocess.check_output("ray stop --force", shell=True)
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --num-cpus=2 --min-worker-port=0 --max-worker-port=0 "
+        "--port 0 --ray-client-server-port=50056"
+    ],
+    indirect=True,
+)
+def test_task_use_prestarted_worker(call_ray_start):
+    ray.init("ray://localhost:50056")
+
+    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
+
+    @ray.remote(num_cpus=2)
+    def f():
+        return 42
+
+    assert ray.get(f.remote()) == 42
+
+    assert len(list_workers(filters=[("worker_type", "!=", "DRIVER")])) == 2
 
 
 if __name__ == "__main__":

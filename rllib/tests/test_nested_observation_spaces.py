@@ -1,6 +1,5 @@
-from gym import spaces
-from gym.envs.registration import EnvSpec
-import gym
+from gymnasium import spaces
+import gymnasium as gym
 import numpy as np
 import pickle
 import unittest
@@ -93,48 +92,51 @@ class NestedDictEnv(gym.Env):
     def __init__(self):
         self.action_space = spaces.Discrete(2)
         self.observation_space = DICT_SPACE
-        self._spec = EnvSpec("NestedDictEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return DICT_SAMPLES[0]
+        return DICT_SAMPLES[0], {}
 
     def step(self, action):
         self.steps += 1
-        return DICT_SAMPLES[self.steps], 1, self.steps >= 5, {}
+        terminated = False
+        truncated = self.steps >= 5
+        return DICT_SAMPLES[self.steps], 1, terminated, truncated, {}
 
 
 class NestedTupleEnv(gym.Env):
     def __init__(self):
         self.action_space = spaces.Discrete(2)
         self.observation_space = TUPLE_SPACE
-        self._spec = EnvSpec("NestedTupleEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return TUPLE_SAMPLES[0]
+        return TUPLE_SAMPLES[0], {}
 
     def step(self, action):
         self.steps += 1
-        return TUPLE_SAMPLES[self.steps], 1, self.steps >= 5, {}
+        terminated = False
+        truncated = self.steps >= 5
+        return TUPLE_SAMPLES[self.steps], 1, terminated, truncated, {}
 
 
 class RepeatedSpaceEnv(gym.Env):
     def __init__(self):
         self.action_space = spaces.Discrete(2)
         self.observation_space = REPEATED_SPACE
-        self._spec = EnvSpec("RepeatedSpaceEnv-v0")
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         self.steps = 0
-        return REPEATED_SAMPLES[0]
+        return REPEATED_SAMPLES[0], {}
 
     def step(self, action):
         self.steps += 1
-        return REPEATED_SAMPLES[self.steps], 1, self.steps >= 5, {}
+        terminated = False
+        truncated = self.steps >= 5
+        return REPEATED_SAMPLES[self.steps], 1, terminated, truncated, {}
 
 
 class NestedMultiAgentEnv(MultiAgentEnv):
@@ -149,11 +151,11 @@ class NestedMultiAgentEnv(MultiAgentEnv):
         self._agent_ids = {"dict_agent", "tuple_agent"}
         self.steps = 0
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         return {
             "dict_agent": DICT_SAMPLES[0],
             "tuple_agent": TUPLE_SAMPLES[0],
-        }
+        }, {}
 
     def step(self, actions):
         self.steps += 1
@@ -165,12 +167,13 @@ class NestedMultiAgentEnv(MultiAgentEnv):
             "dict_agent": 0,
             "tuple_agent": 0,
         }
-        dones = {"__all__": self.steps >= 5}
+        terminateds = {"__all__": self.steps >= 5}
+        truncateds = {"__all__": self.steps >= 5}
         infos = {
             "dict_agent": {},
             "tuple_agent": {},
         }
-        return obs, rew, dones, infos
+        return obs, rew, terminateds, truncateds, infos
 
 
 class InvalidModel(TorchModelV2):
@@ -508,17 +511,17 @@ class TestNestedObservationSpaces(unittest.TestCase):
                         None,
                         TUPLE_SPACE,
                         act_space,
-                        {"model": {"custom_model": "tuple_spy"}},
+                        PGConfig.overrides(model={"custom_model": "tuple_spy"}),
                     ),
                     "dict_policy": (
                         None,
                         DICT_SPACE,
                         act_space,
-                        {"model": {"custom_model": "dict_spy"}},
+                        PGConfig.overrides(model={"custom_model": "dict_spy"}),
                     ),
                 },
                 policy_mapping_fn=(
-                    lambda agent_id, **kwargs: {
+                    lambda agent_id, episode, worker, **kwargs: {
                         "tuple_agent": "tuple_policy",
                         "dict_agent": "dict_policy",
                     }[agent_id]

@@ -1,7 +1,7 @@
 Anti-pattern: Fetching too many objects at once with ray.get causes failure
 ===========================================================================
 
-**TLDR:** Avoid calling :ref:`ray.get() <ray-get-ref>` on too many objects since this will lead to heap out-of-memory or object store out-of-space. Instead fetch and process one batch at a time.
+**TLDR:** Avoid calling :func:`ray.get() <ray.get>` on too many objects since this will lead to heap out-of-memory or object store out-of-space. Instead fetch and process one batch at a time.
 
 If you have a large number of tasks that you want to run in parallel, trying to do ``ray.get()`` on all of them at once could lead to failure with heap out-of-memory or object store out-of-space since Ray needs to fetch all the objects to the caller at the same time.
 Instead you should get and process the results one batch at a time. Once a batch is processed, Ray will evict objects in that batch to make space for future batches.

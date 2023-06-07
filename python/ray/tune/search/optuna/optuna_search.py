@@ -6,7 +6,8 @@ import warnings
 from packaging import version
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search.sample import (
     Categorical,
     Domain,
@@ -120,6 +121,8 @@ class OptunaSearch(Searcher):
             draw hyperparameter configurations. Defaults to ``MOTPESampler``
             for multi-objective optimization with Optuna<2.9.0, and
             ``TPESampler`` in every other case.
+            See https://optuna.readthedocs.io/en/stable/reference/samplers/index.html
+            for available Optuna samplers.
 
             .. warning::
                 Please note that with Optuna 2.10.0 and earlier
@@ -602,27 +605,15 @@ class OptunaSearch(Searcher):
         self._ot_study.add_trial(trial)
 
     def save(self, checkpoint_path: str):
-        save_object = (
-            self._sampler,
-            self._ot_trials,
-            self._ot_study,
-            self._points_to_evaluate,
-            self._evaluated_rewards,
-        )
+        save_object = self.__dict__.copy()
         with open(checkpoint_path, "wb") as outputFile:
             pickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
         with open(checkpoint_path, "rb") as inputFile:
             save_object = pickle.load(inputFile)
-        if len(save_object) == 5:
-            (
-                self._sampler,
-                self._ot_trials,
-                self._ot_study,
-                self._points_to_evaluate,
-                self._evaluated_rewards,
-            ) = save_object
+        if isinstance(save_object, dict):
+            self.__dict__.update(save_object)
         else:
             # Backwards compatibility
             (
@@ -630,6 +621,7 @@ class OptunaSearch(Searcher):
                 self._ot_trials,
                 self._ot_study,
                 self._points_to_evaluate,
+                self._evaluated_rewards,
             ) = save_object
 
     @staticmethod

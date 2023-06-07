@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 from typing import Callable, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib.models.modelv2 import ModelV2

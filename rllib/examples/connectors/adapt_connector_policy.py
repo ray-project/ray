@@ -2,15 +2,19 @@
 and adapt/use it with a different version of the environment.
 """
 
-import argparse
-import gym
+import gymnasium as gym
 import numpy as np
-from pathlib import Path
+import os
+import tempfile
 from typing import Dict
 
 from ray.rllib.connectors.connector import ConnectorContext
 from ray.rllib.connectors.action.lambdas import register_lambda_action_connector
 from ray.rllib.connectors.agent.lambdas import register_lambda_agent_connector
+from ray.rllib.examples.connectors.prepare_checkpoint import (
+    # For demo purpose only. Would normally not need this.
+    create_appo_cartpole_checkpoint,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.policy import local_policy_inference
@@ -19,23 +23,6 @@ from ray.rllib.utils.typing import (
     StateBatches,
     TensorStructType,
 )
-
-
-parser = argparse.ArgumentParser()
-# A policy checkpoint that works with this example script can be found at:
-# rllib/tests/data/checkpoints/APPO_CartPole-v1_checkpoint-6-07092022
-parser.add_argument(
-    "--checkpoint_file",
-    help="Path to an RLlib checkpoint file, relative to //ray/rllib/ folder.",
-)
-parser.add_argument(
-    "--policy_id",
-    default="default_policy",
-    help="ID of policy to load.",
-)
-args = parser.parse_args()
-
-assert args.checkpoint_file, "Must specify flag --checkpoint_file."
 
 
 # __sphinx_doc_begin__
@@ -53,13 +40,14 @@ class MyCartPole(gym.Env):
     def step(self, actions):
         # Take the first action.
         action = actions[0]
-        obs, reward, done, info = self._env.step(action)
+        obs, reward, done, truncated, info = self._env.step(action)
         # Fake additional data points to the obs.
         obs = np.hstack((obs, [8.0, 6.0]))
-        return obs, reward, done, info
+        return obs, reward, done, truncated, info
 
-    def reset(self):
-        return np.hstack((self._env.reset(), [8.0, 6.0]))
+    def reset(self, *, seed=None, options=None):
+        obs, info = self._env.reset()
+        return np.hstack((obs, [8.0, 6.0])), info
 
 
 # Custom agent connector to drop the last 2 feature values.
@@ -89,13 +77,12 @@ V1ToV2ActionConnector = register_lambda_action_connector(
 )
 
 
-def run(checkpoint_path):
+def run(checkpoint_path, policy_id):
     # Restore policy.
-    policies = Policy.from_checkpoint(
+    policy = Policy.from_checkpoint(
         checkpoint=checkpoint_path,
-        policy_ids=[args.policy_id],
+        policy_ids=[policy_id],
     )
-    policy = policies[args.policy_id]
 
     # Adapt policy trained for standard CartPole to the new env.
     ctx: ConnectorContext = ConnectorContext.from_policy(policy)
@@ -112,7 +99,7 @@ def run(checkpoint_path):
 
     # Run CartPole.
     env = MyCartPole()
-    obs = env.reset()
+    obs, info = env.reset()
     done = False
     step = 0
     while not done:
@@ -124,14 +111,24 @@ def run(checkpoint_path):
         actions, _, _ = policy_outputs[0]
         print(f"step {step}", obs, actions)
 
-        obs, _, done, _ = env.step(actions)
+        obs, _, done, _, _ = env.step(actions)
 
 
 # __sphinx_doc_end__
 
 
 if __name__ == "__main__":
-    checkpoint_path = str(
-        Path(__file__).parent.parent.parent.absolute().joinpath(args.checkpoint_file)
-    )
-    run(checkpoint_path)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        policy_id = "default_policy"
+
+        # Note, this is just for demo purpose.
+        # Normally, you would use a policy checkpoint from a real training run.
+        create_appo_cartpole_checkpoint(tmpdir)
+        policy_checkpoint_path = os.path.join(
+            tmpdir,
+            "checkpoint_000000",
+            "policies",
+            policy_id,
+        )
+
+        run(policy_checkpoint_path, policy_id)

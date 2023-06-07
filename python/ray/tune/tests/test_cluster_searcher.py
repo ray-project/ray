@@ -18,7 +18,11 @@ def _start_new_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 1,
-            "_system_config": {"num_heartbeats_timeout": 10},
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 1000,
+                "health_check_failure_threshold": 10,
+            },
         },
     )
     return cluster
@@ -35,6 +39,13 @@ def start_connected_cluster():
     cluster.shutdown()
 
 
+@pytest.mark.skipif(
+    os.environ.get("TUNE_NEW_EXECUTION") != "0",
+    reason=(
+        "This test uses the TrialRunner directly and needs to be rewritten "
+        "for the new execution backend."
+    ),
+)
 @pytest.mark.parametrize("searcher", ["hyperopt", "skopt", "bayesopt"])
 def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir, searcher):
     """Tests restoration of HyperOptSearch experiment on cluster shutdown

@@ -5,7 +5,7 @@ import abc
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
-import gym
+import gymnasium as gym
 
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.typing import (

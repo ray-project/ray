@@ -1,12 +1,8 @@
-from typing import Tuple, List
-from ray.data._internal.block_list import BlockList
+from typing import List, Tuple
 
-from ray.data._internal.split import _split_at_indices, _calculate_blocks_rows
-from ray.data.block import (
-    Block,
-    BlockPartition,
-    BlockMetadata,
-)
+from ray.data._internal.block_list import BlockList
+from ray.data._internal.split import _calculate_blocks_rows, _split_at_indices
+from ray.data.block import Block, BlockMetadata, BlockPartition
 from ray.types import ObjectRef
 
 
@@ -152,7 +148,11 @@ def _split_leftovers(
         prev = split_indices[i]
     split_result: Tuple[
         List[List[ObjectRef[Block]]], List[List[BlockMetadata]]
-    ] = _split_at_indices(leftovers, split_indices)
+    ] = _split_at_indices(
+        leftovers.get_blocks_with_metadata(),
+        split_indices,
+        leftovers._owned_by_consumer,
+    )
     return [list(zip(block_refs, meta)) for block_refs, meta in zip(*split_result)][
         :num_splits
     ]

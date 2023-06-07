@@ -21,17 +21,20 @@ make develop && open _build/html/index.html
 
 > **_NOTE:_**  The above command is for development. To reproduce build failures from the
 > CI, you should use `make html` which is the same as `make develop` but treats warnings as errors.
+> Additionally, note that `make develop` uses the `FAST` environment variable to skip some
+> expensive parts of the build process. In particular, it will aggressively prune the
+> left-hand side navigation, but leave the documents itself intact.
 
-## Building just one sub-project
+## Building just one subproject
 
-Often your changes in documentation just concern one sub-project, such as Tune or Train.
-To build just this one sub-project, and ignore the rest
+Often your changes in documentation just concern one subproject, such as Tune or Train.
+To build just this one subproject, and ignore the rest
 (leading to build warnings due to broken references etc.), run the following command:
 
 ```shell
 DOC_LIB=<project> sphinx-build -b html -d _build/doctrees  source _build/html
 ```
-where `<project>` is the name of the sub-project and can be any of the docs projects in the `source/`
+where `<project>` is the name of the subproject and can be any of the docs projects in the `source/`
 directory either called `tune`, `rllib`, `train`, `cluster`, `serve`, `data` or the ones starting
 with `ray-`, e.g. `ray-observability`.
 
@@ -133,4 +136,4 @@ Please note that the parsing is extremely simple (regex replace) and will not su
 
 ## Testing changes locally
 
-If you want to run the preprocessing locally on a specific file (to eg. see how it will render after docs have been built), run `source/preprocess_github_markdown.py PATH_TO_MARKDOWN_FILE PATH_TO_PREPROCESSED_MARKDOWN_FILE`. Make sure to also edit `EXTERNAL_MARKDOWN_FILES` in `source/custom_directives.py` so that your file does not get overwriten by one downloaded form GitHub.
+If you want to run the preprocessing locally on a specific file (to eg. see how it will render after docs have been built), run `source/preprocess_github_markdown.py PATH_TO_MARKDOWN_FILE PATH_TO_PREPROCESSED_MARKDOWN_FILE`. Make sure to also edit `EXTERNAL_MARKDOWN_FILES` in `source/custom_directives.py` so that your file does not get overwritten by one downloaded from GitHub.

@@ -1,45 +1,41 @@
-User Guides
-===========
+.. _train-userguides:
 
-.. panels::
-    :container: container pb-4 full-width
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+Ray Train User Guides
+=====================
 
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    +++
-    .. link-button:: config_guide
-        :type: ref
-        :text: Configurations User Guide
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
+        .. button-ref:: config_guide
 
-    +++
-    .. link-button:: dl_guide
-        :type: ref
-        :text: Deep Learning User Guide
-        :classes: btn-link btn-block stretched-link
+            Configurations User Guide
 
+    .. grid-item-card::
+        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
+        .. button-ref:: dl_guide
 
-    +++
-    .. link-button:: gbdt
-        :type: ref
-        :text: XGBoost / LightGBM User Guide
-        :classes: btn-link btn-block stretched-link
+            Deep Learning User Guide
 
-    ---
-    :img-top: /ray-overview/images/ray_svg_logo.svg
+    .. grid-item-card::
+        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: architecture
-        :type: ref
-        :text: Ray Train Architecture
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: gbdt
+
+            XGBoost / LightGBM User Guide
+
+    .. grid-item-card::
+        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: architecture
+
+            Ray Train Architecture
 

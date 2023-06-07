@@ -189,6 +189,7 @@ message ClusterInfoType {
     RUNTIME_CONTEXT = 4;
     TIMELINE = 5;
     PING = 6;
+    DASHBOARD_URL = 7;
   }
 }
 

@@ -3,7 +3,7 @@ import os
 import unittest
 from typing import Dict
 
-import gym
+import gymnasium as gym
 import numpy as np
 
 import ray
@@ -83,7 +83,7 @@ class TestDT(unittest.TestCase):
                 evaluation_duration=10,
                 evaluation_duration_unit="episodes",
                 evaluation_parallel_to_training=False,
-                evaluation_config={"input": "sampler", "explore": False},
+                evaluation_config=DTConfig.overrides(input_="sampler", explore=False),
             )
             .rollouts(
                 num_rollout_workers=0,
@@ -116,13 +116,13 @@ class TestDT(unittest.TestCase):
             # do example inference rollout
             env = gym.make("Pendulum-v1")
 
-            obs = env.reset()
+            obs, _ = env.reset()
             input_dict = algo.get_initial_input_dict(obs)
 
             for _ in range(200):
                 action, _, extra = algo.compute_single_action(input_dict=input_dict)
-                obs, reward, done, _ = env.step(action)
-                if done:
+                obs, reward, terminated, truncated, _ = env.step(action)
+                if terminated or truncated:
                     break
                 else:
                     input_dict = algo.get_next_input_dict(

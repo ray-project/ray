@@ -24,7 +24,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-from gym import core, spaces
+from gymnasium import core, spaces
 
 try:
     from dm_env import specs
@@ -46,7 +46,7 @@ from ray.rllib.utils.annotations import PublicAPI
 def _spec_to_box(spec):
     def extract_min_max(s):
         assert s.dtype == np.float64 or s.dtype == np.float32
-        dim = np.int(np.prod(s.shape))
+        dim = np.int_(np.prod(s.shape))
         if type(s) == specs.Array:
             bound = np.inf * np.ones(dim, dtype=np.float32)
             return -bound, bound
@@ -163,7 +163,7 @@ class DMCEnv(core.Env):
                 obs = obs / 255.0 - 0.5
         else:
             obs = _flatten_obs(time_step.observation)
-        return obs
+        return obs.astype(np.float32)
 
     def _convert_action(self, action):
         action = action.astype(np.float64)
@@ -190,25 +190,27 @@ class DMCEnv(core.Env):
         assert self._norm_action_space.contains(action)
         action = self._convert_action(action)
         assert self._true_action_space.contains(action)
-        reward = 0
+        reward = 0.0
         extra = {"internal_state": self._env.physics.get_state().copy()}
 
+        terminated = truncated = False
         for _ in range(self._frame_skip):
             time_step = self._env.step(action)
-            reward += time_step.reward or 0
-            done = time_step.last()
-            if done:
+            reward += time_step.reward or 0.0
+            terminated = False
+            truncated = time_step.last()
+            if terminated or truncated:
                 break
         obs = self._get_obs(time_step)
         self.current_state = _flatten_obs(time_step.observation)
         extra["discount"] = time_step.discount
-        return obs, reward, done, extra
+        return obs, reward, terminated, truncated, extra
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
         time_step = self._env.reset()
         self.current_state = _flatten_obs(time_step.observation)
         obs = self._get_obs(time_step)
-        return obs
+        return obs, {}
 
     def render(self, mode="rgb_array", height=None, width=None, camera_id=0):
         assert mode == "rgb_array", "only support for rgb_array mode"

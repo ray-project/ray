@@ -11,8 +11,7 @@ from ray_release.exception import (
     CommandTimeout,
     LocalEnvSetupError,
     LogsError,
-    RemoteEnvSetupError,
-    ResultsError,
+    FetchResultError,
 )
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
@@ -31,6 +30,7 @@ class JobRunner(CommandRunner):
         file_manager: FileManager,
         working_dir: str,
         sdk: Optional["AnyscaleSDK"] = None,
+        artifact_path: Optional[str] = None,
     ):
         super(JobRunner, self).__init__(
             cluster_manager=cluster_manager,
@@ -43,6 +43,9 @@ class JobRunner(CommandRunner):
         self.last_command_scd_id = None
 
     def prepare_local_env(self, ray_wheels_url: Optional[str] = None):
+        if not os.environ.get("BUILDKITE"):
+            return
+
         # Install matching Ray for job submission
         try:
             install_matching_ray_locally(
@@ -51,30 +54,18 @@ class JobRunner(CommandRunner):
         except Exception as e:
             raise LocalEnvSetupError(f"Error setting up local environment: {e}") from e
 
+    def _copy_script_to_working_dir(self, script_name):
+        script = os.path.join(os.path.dirname(__file__), f"_{script_name}")
+        if os.path.exists(script_name):
+            os.unlink(script_name)
+        os.link(script, script_name)
+
     def prepare_remote_env(self):
-        # Copy wait script to working dir
-        wait_script = os.path.join(os.path.dirname(__file__), "_wait_cluster.py")
-        # Copy wait script to working dir
-        if os.path.exists("wait_cluster.py"):
-            os.unlink("wait_cluster.py")
-        os.link(wait_script, "wait_cluster.py")
+        self._copy_script_to_working_dir("wait_cluster.py")
+        self._copy_script_to_working_dir("prometheus_metrics.py")
 
-        # Copy prometheus metrics script to working dir
-        metrics_script = os.path.join(
-            os.path.dirname(__file__), "_prometheus_metrics.py"
-        )
-        # Copy prometheus metrics script to working dir
-        if os.path.exists("prometheus_metrics.py"):
-            os.unlink("prometheus_metrics.py")
-        os.link(metrics_script, "prometheus_metrics.py")
-
-        try:
-            self.file_manager.upload()
-        except Exception as e:
-            logger.exception(e)
-            raise RemoteEnvSetupError(
-                f"Error setting up remote environment: {e}"
-            ) from e
+        # Do not upload the files here. Instead, we use the job runtime environment
+        # to automatically upload the local working dir.
 
     def wait_for_nodes(self, num_nodes: int, timeout: float = 900):
         # Wait script should be uploaded already. Kick off command
@@ -94,7 +85,11 @@ class JobRunner(CommandRunner):
         )
 
     def run_command(
-        self, command: str, env: Optional[Dict] = None, timeout: float = 3600.0
+        self,
+        command: str,
+        env: Optional[Dict] = None,
+        timeout: float = 3600.0,
+        raise_on_timeout: bool = True,
     ) -> float:
         full_env = self.get_full_command_env(env)
 
@@ -115,7 +110,7 @@ class JobRunner(CommandRunner):
         )
 
         status_code, time_taken = self.job_manager.run_and_wait(
-            full_command, full_env, timeout=timeout
+            full_command, full_env, working_dir=".", timeout=int(timeout)
         )
 
         if status_code != 0:
@@ -123,7 +118,7 @@ class JobRunner(CommandRunner):
 
         return time_taken
 
-    def get_last_logs(self, scd_id: Optional[str] = None):
+    def get_last_logs_ex(self, scd_id: Optional[str] = None):
         try:
             return self.job_manager.get_last_logs()
         except Exception as e:
@@ -141,10 +136,13 @@ class JobRunner(CommandRunner):
             os.unlink(tmpfile)
             return data
         except Exception as e:
-            raise ResultsError(f"Could not fetch results from session: {e}") from e
+            raise FetchResultError(f"Could not fetch results from session: {e}") from e
 
     def fetch_results(self) -> Dict[str, Any]:
-        return self._fetch_json(self.result_output_json)
+        return self._fetch_json(self._RESULT_OUTPUT_JSON)
 
     def fetch_metrics(self) -> Dict[str, Any]:
-        return self._fetch_json(self.metrics_output_json)
+        return self._fetch_json(self._METRICS_OUTPUT_JSON)
+
+    def fetch_artifact(self):
+        raise NotImplementedError

@@ -12,7 +12,7 @@ import urllib.parse
 import warnings
 import shutil
 from datetime import datetime
-from typing import Optional, Set
+from typing import Optional, Set, List, Tuple
 
 import click
 import psutil
@@ -21,7 +21,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.utils import parse_resources_json
+from ray._private.utils import parse_resources_json, parse_node_labels_json
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
@@ -45,12 +45,6 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import PublicAPI
 
-from ray.experimental.state.state_cli import (
-    ray_get,
-    ray_list,
-    logs_state_cli_group,
-    summary_state_cli_group,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -404,10 +398,10 @@ def debug(address):
 @click.option(
     "--dashboard-host",
     required=False,
-    default="localhost",
+    default=ray_constants.DEFAULT_DASHBOARD_IP,
     help="the host to bind the dashboard server to, either localhost "
-    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this"
-    "is localhost.",
+    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
+    "is 127.0.0.1",
 )
 @click.option(
     "--dashboard-port",
@@ -429,6 +423,12 @@ def debug(address):
     type=int,
     default=None,
     help="the port for dashboard agents to listen for grpc on.",
+)
+@click.option(
+    "--dashboard-grpc-port",
+    type=int,
+    default=None,
+    help="The port for the dashboard head to listen for grpc on.",
 )
 @click.option(
     "--block",
@@ -466,9 +466,9 @@ def debug(address):
 )
 @click.option(
     "--temp-dir",
-    hidden=True,
     default=None,
-    help="manually specify the root temporary dir of the Ray process",
+    help="manually specify the root temporary dir of the Ray process, only "
+    "works when --head is specified",
 )
 @click.option(
     "--storage",
@@ -515,7 +515,7 @@ def debug(address):
     "--ray-debugger-external",
     is_flag=True,
     default=False,
-    help="Make the Ray debugger available externally to the node. This is only"
+    help="Make the Ray debugger available externally to the node. This is only "
     "safe to activate if the node is behind a firewall.",
 )
 @click.option(
@@ -523,6 +523,14 @@ def debug(address):
     is_flag=True,
     default=False,
     help="If True, the usage stats collection will be disabled.",
+)
+@click.option(
+    "--labels",
+    required=False,
+    hidden=True,
+    default="{}",
+    type=str,
+    help="a JSON serialized dictionary mapping label name to label value.",
 )
 @add_click_logging_options
 @PublicAPI
@@ -552,6 +560,7 @@ def start(
     dashboard_port,
     dashboard_agent_listen_port,
     dashboard_agent_grpc_port,
+    dashboard_grpc_port,
     block,
     plasma_directory,
     autoscaling_config,
@@ -567,6 +576,7 @@ def start(
     tracing_startup_hook,
     ray_debugger_external,
     disable_usage_stats,
+    labels,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -577,7 +587,6 @@ def start(
             cf.bold("--gcs-server-port"),
             cf.bold("--port"),
         )
-
     # Whether the original arguments include node_ip_address.
     include_node_ip_address = False
     if node_ip_address is not None:
@@ -585,6 +594,7 @@ def start(
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
+    labels_dict = parse_node_labels_json(labels, cli_logger, cf)
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -600,6 +610,14 @@ def start(
             DeprecationWarning,
             stacklevel=2,
         )
+    if temp_dir and not head:
+        cli_logger.warning(
+            f"`--temp-dir={temp_dir}` option will be ignored. "
+            "`--head` is a required flag to use `--temp-dir`. "
+            "temp_dir is only configurable from a head node. "
+            "All the worker nodes will use the same temp_dir as a head node. "
+        )
+        temp_dir = None
 
     redirect_output = None if not no_redirect_output else True
     ray_params = ray._private.parameter.RayParams(
@@ -630,12 +648,14 @@ def start(
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         metrics_agent_port=dashboard_agent_grpc_port,
+        dashboard_grpc_port=dashboard_grpc_port,
         _system_config=system_config,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        labels=labels_dict,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -741,87 +761,94 @@ def start(
         cli_logger.success("-" * len(startup_msg))
         cli_logger.newline()
         with cli_logger.group("Next steps"):
-            cli_logger.print("To connect to this Ray runtime from another node, run")
-            # NOTE(kfstorm): Java driver rely on this line to get the address
-            # of the cluster. Please be careful when updating this line.
-            cli_logger.print(
-                cf.bold("  ray start --address='{}'"),
-                bootstrap_address,
-            )
-            if bootstrap_address.startswith("127.0.0.1:"):
+            dashboard_url = node.address_info["webui_url"]
+            if ray_constants.ENABLE_RAY_CLUSTER:
+                cli_logger.print("To add another node to this Ray cluster, run")
+                # NOTE(kfstorm): Java driver rely on this line to get the address
+                # of the cluster. Please be careful when updating this line.
                 cli_logger.print(
-                    "This Ray runtime only accepts connections from local host."
+                    cf.bold(" {} ray start --address='{}'"),
+                    f" {ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1"
+                    if ray_constants.IS_WINDOWS_OR_OSX
+                    else "",
+                    bootstrap_address,
                 )
-                cli_logger.print(
-                    "To accept connections from remote hosts, "
-                    "specify a public ip when starting"
-                )
-                cli_logger.print(
-                    "the head node: ray start --head --node-ip-address=<public-ip>."
-                )
+
             cli_logger.newline()
-            cli_logger.print("Alternatively, use the following Python code:")
+            cli_logger.print("To connect to this Ray cluster:")
             with cli_logger.indented():
                 cli_logger.print("{} ray", cf.magenta("import"))
-                # Note: In the case of joining an existing cluster using
-                # `address="auto"`, the _node_ip_address parameter is
-                # unnecessary.
                 cli_logger.print(
-                    "ray{}init(address{}{}{})",
+                    "ray{}init({})",
                     cf.magenta("."),
-                    cf.magenta("="),
-                    cf.yellow("'auto'"),
-                    ", _node_ip_address{}{}".format(
+                    "_node_ip_address{}{}".format(
                         cf.magenta("="), cf.yellow("'" + node_ip_address + "'")
                     )
                     if include_node_ip_address
                     else "",
                 )
-            cli_logger.newline()
-            cli_logger.print(
-                "To connect to this Ray runtime from outside of "
-                "the cluster, for example to"
-            )
-            cli_logger.print(
-                "connect to a remote cluster from your laptop "
-                "directly, use the following"
-            )
-            cli_logger.print("Python code:")
-            with cli_logger.indented():
-                cli_logger.print("{} ray", cf.magenta("import"))
-                cli_logger.print(
-                    "ray{}init(address{}{})",
-                    cf.magenta("."),
-                    cf.magenta("="),
-                    cf.yellow(
-                        "'ray://<head_node_ip_address>:" f"{ray_client_server_port}'"
-                    ),
-                )
-            cli_logger.newline()
-            cli_logger.print("To see the status of the cluster, use")
-            cli_logger.print("  {}".format(cf.bold("ray status")))
-            dashboard_url = node.address_info["webui_url"]
+
             if dashboard_url:
+                cli_logger.newline()
+                cli_logger.print("To submit a Ray job using the Ray Jobs CLI:")
+                cli_logger.print(
+                    cf.bold(
+                        "  RAY_ADDRESS='http://{}' ray job submit "
+                        "--working-dir . "
+                        "-- python my_script.py"
+                    ),
+                    dashboard_url,
+                )
+                cli_logger.newline()
+                cli_logger.print(
+                    "See https://docs.ray.io/en/latest/cluster/running-applications"
+                    "/job-submission/index.html "
+                )
+                cli_logger.print(
+                    "for more information on submitting Ray jobs to the Ray cluster."
+                )
+
+            cli_logger.newline()
+            cli_logger.print("To terminate the Ray runtime, run")
+            cli_logger.print(cf.bold("  ray stop"))
+
+            cli_logger.newline()
+            cli_logger.print("To view the status of the cluster, use")
+            cli_logger.print("  {}".format(cf.bold("ray status")))
+
+            if dashboard_url:
+                cli_logger.newline()
                 cli_logger.print("To monitor and debug Ray, view the dashboard at ")
                 cli_logger.print(
                     "  {}".format(
                         cf.bold(dashboard_url),
                     )
                 )
-            cli_logger.newline()
-            cli_logger.print(
-                cf.underlined(
-                    "If connection fails, check your "
-                    "firewall settings and "
-                    "network configuration."
+
+                cli_logger.newline()
+                cli_logger.print(
+                    cf.underlined(
+                        "If connection to the dashboard fails, check your "
+                        "firewall settings and "
+                        "network configuration."
+                    )
                 )
-            )
-            cli_logger.newline()
-            cli_logger.print("To terminate the Ray runtime, run")
-            cli_logger.print(cf.bold("  ray stop"))
         ray_params.gcs_address = bootstrap_address
     else:
         # Start worker node.
+        if not ray_constants.ENABLE_RAY_CLUSTER:
+            cli_logger.abort(
+                "Multi-node Ray clusters are not supported on Windows and OSX. "
+                "Restart the Ray cluster with the environment variable `{}=1` "
+                "to proceed anyway.",
+                cf.bold(ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR),
+            )
+            raise Exception(
+                "Multi-node Ray clusters are not supported on Windows and OSX. "
+                "Restart the Ray cluster with the environment variable "
+                f"`{ray_constants.ENABLE_RAY_CLUSTERS_ENV_VAR}=1` to proceed "
+                "anyway.",
+            )
 
         # Ensure `--address` flag is specified.
         if address is None:
@@ -894,6 +921,9 @@ def start(
         cli_logger.print(cf.bold("  ray stop"))
         cli_logger.flush()
 
+    assert ray_params.gcs_address is not None
+    ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
+
     if block:
         cli_logger.newline()
         with cli_logger.group(cf.bold("--block")):
@@ -948,9 +978,6 @@ def start(
                 os._exit(1)
         # not-reachable
 
-    assert ray_params.gcs_address is not None
-    ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
-
 
 @cli.command()
 @click.option(
@@ -962,111 +989,164 @@ def start(
 @click.option(
     "-g",
     "--grace-period",
-    default=10,
+    default=16,
     help=(
-        "The time ray waits for processes to be properly terminated. "
+        "The time in seconds ray waits for processes to be properly terminated. "
         "If processes are not terminated within the grace period, "
-        "they are forcefully terminated after the grace period."
+        "they are forcefully terminated after the grace period. "
     ),
 )
 @add_click_logging_options
 @PublicAPI
-def stop(force, grace_period):
+def stop(force: bool, grace_period: int):
     """Stop Ray processes manually on the local machine."""
-
-    # Note that raylet needs to exit before object store, otherwise
-    # it cannot exit gracefully.
     is_linux = sys.platform.startswith("linux")
-    processes_to_kill = RAY_PROCESSES
+    total_procs_found = 0
+    total_procs_stopped = 0
+    procs_not_gracefully_killed = []
 
-    process_infos = []
-    for proc in psutil.process_iter(["name", "cmdline"]):
-        try:
-            process_infos.append((proc, proc.name(), proc.cmdline()))
-        except psutil.Error:
-            pass
+    def kill_procs(
+        force: bool, grace_period: int, processes_to_kill: List[str]
+    ) -> Tuple[int, int, List[psutil.Process]]:
+        """Find all processes from `processes_to_kill` and terminate them.
 
-    stopped = []
-    for keyword, filter_by_cmd in processes_to_kill:
-        if filter_by_cmd and is_linux and len(keyword) > 15:
-            # getting here is an internal bug, so we do not use cli_logger
-            msg = (
-                "The filter string should not be more than {} "
-                "characters. Actual length: {}. Filter: {}"
-            ).format(15, len(keyword), keyword)
-            raise ValueError(msg)
+        Unless `force` is specified, it gracefully kills processes. If
+        processes are not cleaned within `grace_period`, it force kill all
+        remaining processes.
 
-        found = []
-        for candidate in process_infos:
-            proc, proc_cmd, proc_args = candidate
-            corpus = proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
-            if keyword in corpus:
-                found.append(candidate)
-        for proc, proc_cmd, proc_args in found:
-            proc_string = str(subprocess.list2cmdline(proc_args))
+        Returns:
+            total_procs_found: Total number of processes found from
+                `processes_to_kill` is added.
+            total_procs_stopped: Total number of processes gracefully
+                stopped from `processes_to_kill` is added.
+            procs_not_gracefully_killed: If processes are not killed
+                gracefully, they are added here.
+        """
+        process_infos = []
+        for proc in psutil.process_iter(["name", "cmdline"]):
             try:
-                if force:
-                    proc.kill()
-                else:
-                    # TODO(mehrdadn): On Windows, this is forceful termination.
-                    # We don't want CTRL_BREAK_EVENT, because that would
-                    # terminate the entire process group. What to do?
-                    proc.terminate()
+                process_infos.append((proc, proc.name(), proc.cmdline()))
+            except psutil.Error:
+                pass
 
-                if force:
-                    cli_logger.verbose(
-                        "Killed `{}` {} ",
-                        cf.bold(proc_string),
-                        cf.dimmed("(via SIGKILL)"),
-                    )
-                else:
-                    cli_logger.verbose(
-                        "Send termination request to `{}` {}",
-                        cf.bold(proc_string),
-                        cf.dimmed("(via SIGTERM)"),
-                    )
+        stopped = []
+        for keyword, filter_by_cmd in processes_to_kill:
+            if filter_by_cmd and is_linux and len(keyword) > 15:
+                # getting here is an internal bug, so we do not use cli_logger
+                msg = (
+                    "The filter string should not be more than {} "
+                    "characters. Actual length: {}. Filter: {}"
+                ).format(15, len(keyword), keyword)
+                raise ValueError(msg)
 
-                stopped.append(proc)
-            except psutil.NoSuchProcess:
-                cli_logger.verbose(
-                    "Attempted to stop `{}`, but process was already dead.",
-                    cf.bold(proc_string),
+            found = []
+            for candidate in process_infos:
+                proc, proc_cmd, proc_args = candidate
+                corpus = (
+                    proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
                 )
-            except (psutil.Error, OSError) as ex:
-                cli_logger.error(
-                    "Could not terminate `{}` due to {}", cf.bold(proc_string), str(ex)
-                )
+                if keyword in corpus:
+                    found.append(candidate)
+            for proc, proc_cmd, proc_args in found:
+                proc_string = str(subprocess.list2cmdline(proc_args))
+                try:
+                    if force:
+                        proc.kill()
+                    else:
+                        # TODO(mehrdadn): On Windows, this is forceful termination.
+                        # We don't want CTRL_BREAK_EVENT, because that would
+                        # terminate the entire process group. What to do?
+                        proc.terminate()
 
-    # Wait for the processes to actually stop.
-    # Dedup processes.
-    stopped, alive = psutil.wait_procs(stopped, timeout=0)
-    procs_to_kill = stopped + alive
-    total_found = len(procs_to_kill)
+                    if force:
+                        cli_logger.verbose(
+                            "Killed `{}` {} ",
+                            cf.bold(proc_string),
+                            cf.dimmed("(via SIGKILL)"),
+                        )
+                    else:
+                        cli_logger.verbose(
+                            "Send termination request to `{}` {}",
+                            cf.bold(proc_string),
+                            cf.dimmed("(via SIGTERM)"),
+                        )
 
-    # Wait for grace period to terminate processes.
-    gone_procs = set()
+                    stopped.append(proc)
+                except psutil.NoSuchProcess:
+                    cli_logger.verbose(
+                        "Attempted to stop `{}`, but process was already dead.",
+                        cf.bold(proc_string),
+                    )
+                except (psutil.Error, OSError) as ex:
+                    cli_logger.error(
+                        "Could not terminate `{}` due to {}",
+                        cf.bold(proc_string),
+                        str(ex),
+                    )
 
-    def on_terminate(proc):
-        gone_procs.add(proc)
-        cli_logger.print(f"{len(gone_procs)}/{total_found} stopped.", end="\r")
+        # Wait for the processes to actually stop.
+        # Dedup processes.
+        stopped, alive = psutil.wait_procs(stopped, timeout=0)
+        procs_to_kill = stopped + alive
+        total_found = len(procs_to_kill)
 
-    stopped, alive = psutil.wait_procs(
-        procs_to_kill, timeout=grace_period, callback=on_terminate
+        # Wait for grace period to terminate processes.
+        gone_procs = set()
+
+        def on_terminate(proc):
+            gone_procs.add(proc)
+            cli_logger.print(f"{len(gone_procs)}/{total_found} stopped.", end="\r")
+
+        stopped, alive = psutil.wait_procs(
+            procs_to_kill, timeout=grace_period, callback=on_terminate
+        )
+        total_stopped = len(stopped)
+
+        # For processes that are not killed within the grace period,
+        # we send force termination signals.
+        for proc in alive:
+            proc.kill()
+        # Wait a little bit to make sure processes are killed forcefully.
+        psutil.wait_procs(alive, timeout=2)
+        return total_found, total_stopped, alive
+
+    # GCS should exit after all other processes exit.
+    # Otherwise, some of processes may exit with an unexpected
+    # exit code which breaks ray start --block.
+    processes_to_kill = RAY_PROCESSES
+    gcs = processes_to_kill[0]
+    assert gcs[0] == "gcs_server"
+
+    grace_period_to_kill_gcs = int(grace_period / 2)
+    grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
+
+    # Kill evertyhing except GCS.
+    found, stopped, alive = kill_procs(
+        force, grace_period_to_kill_components, processes_to_kill[1:]
     )
-    total_stopped = len(stopped)
+    total_procs_found += found
+    total_procs_stopped += stopped
+    procs_not_gracefully_killed.extend(alive)
+
+    # Kill GCS.
+    found, stopped, alive = kill_procs(force, grace_period_to_kill_gcs, [gcs])
+    total_procs_found += found
+    total_procs_stopped += stopped
+    procs_not_gracefully_killed.extend(alive)
 
     # Print the termination result.
-    if total_found == 0:
+    if total_procs_found == 0:
         cli_logger.print("Did not find any active Ray processes.")
     else:
-        if total_stopped == total_found:
-            cli_logger.success("Stopped all {} Ray processes.", total_stopped)
+        if total_procs_stopped == total_procs_found:
+            cli_logger.success("Stopped all {} Ray processes.", total_procs_stopped)
         else:
             cli_logger.warning(
-                f"Stopped only {total_stopped} out of {total_found} Ray processes "
-                f"within the grace period {grace_period} seconds. "
+                f"Stopped only {total_procs_stopped} out of {total_procs_found} "
+                f"Ray processes within the grace period {grace_period} seconds. "
                 f"Set `{cf.bold('-v')}` to see more details. "
-                f"Remaining processes {alive} will be forcefully terminated.",
+                f"Remaining processes {procs_not_gracefully_killed} "
+                "will be forcefully terminated.",
             )
             cli_logger.warning(
                 f"You can also use `{cf.bold('--force')}` to forcefully terminate "
@@ -1074,12 +1154,6 @@ def stop(force, grace_period):
                 "proper termination."
             )
 
-    # For processes that are not killed within the grace period,
-    # we send force termination signals.
-    for proc in alive:
-        proc.kill()
-    # Wait a little bit to make sure processes are killed forcefully.
-    psutil.wait_procs(alive, timeout=2)
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
@@ -1729,7 +1803,11 @@ workers=$(
 for worker in $workers; do
     echo "Stack dump for $worker";
     pid=`echo $worker | awk '{print $2}'`;
-    sudo $pyspy dump --pid $pid --native;
+    case "$(uname -s)" in
+        Linux*) native=--native;;
+        *)      native=;;
+    esac
+    sudo $pyspy dump --pid $pid $native;
     echo;
 done
     """
@@ -1872,7 +1950,7 @@ def status(address: str, redis_password: str, verbose: bool):
     if not ray._private.gcs_utils.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
-    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    gcs_client = ray._raylet.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DEBUG_AUTOSCALING_STATUS
@@ -2176,7 +2254,7 @@ def healthcheck(address, redis_password, component, skip_version_check):
             pass
         sys.exit(1)
 
-    gcs_client = ray._private.gcs_utils.GcsClient(address=address)
+    gcs_client = ray._raylet.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     report_str = ray.experimental.internal_kv._internal_kv_get(
         component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK
@@ -2361,10 +2439,22 @@ cli.add_command(install_nightly)
 cli.add_command(cpp)
 cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
-cli.add_command(ray_list, name="list")
-cli.add_command(ray_get, name="get")
-add_command_alias(summary_state_cli_group, name="summary", hidden=False)
-add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+
+try:
+    from ray.util.state.state_cli import (
+        ray_get,
+        ray_list,
+        logs_state_cli_group,
+        summary_state_cli_group,
+    )
+
+    cli.add_command(ray_list, name="list")
+    cli.add_command(ray_get, name="get")
+    add_command_alias(summary_state_cli_group, name="summary", hidden=False)
+    add_command_alias(logs_state_cli_group, name="logs", hidden=False)
+except ImportError as e:
+    logger.debug(f"Integrating ray state command line tool failed: {e}")
+
 
 try:
     from ray.dashboard.modules.job.cli import job_cli_group

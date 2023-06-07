@@ -2,6 +2,7 @@
 
 import logging
 import os
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,16 @@ def env_integer(key, default):
 
 def env_bool(key, default):
     if key in os.environ:
-        return True if os.environ[key].lower() == "true" else False
+        return (
+            True
+            if os.environ[key].lower() == "true" or os.environ[key] == "1"
+            else False
+        )
     return default
+
+
+def env_set_by_user(key):
+    return key in os.environ
 
 
 # Whether event logging to driver is enabled. Set to 0 to disable.
@@ -73,6 +82,9 @@ RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
 # the local working_dir and py_modules to be uploaded, or these files might get
 # garbage collected before the job starts.
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_DEFAULT = 10 * 60
+# If set to 1, then `.gitignore` files will not be parsed and loaded into "excludes"
+# when using a local working_dir or py_modules.
+RAY_RUNTIME_ENV_IGNORE_GITIGNORE = "RAY_RUNTIME_ENV_IGNORE_GITIGNORE"
 RAY_STORAGE_ENVIRONMENT_VARIABLE = "RAY_STORAGE"
 # Hook for running a user-specified runtime-env hook. This hook will be called
 # unconditionally given the runtime_env dict passed for ray.init. It must return
@@ -213,6 +225,22 @@ PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
 MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
 LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
+# Enable log deduplication.
+RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
+
+# How many seconds of messages to buffer for log deduplication.
+RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+
+# Regex for log messages to never deduplicate, or None. This takes precedence over
+# the skip regex below. A default pattern is set for testing.
+TESTING_NEVER_DEDUP_TOKEN = "__ray_testing_never_deduplicate__"
+RAY_DEDUP_LOGS_ALLOW_REGEX = os.environ.get(
+    "RAY_DEDUP_LOGS_ALLOW_REGEX", TESTING_NEVER_DEDUP_TOKEN
+)
+
+# Regex for log messages to always skip / suppress, or None.
+RAY_DEDUP_LOGS_SKIP_REGEX = os.environ.get("RAY_DEDUP_LOGS_SKIP_REGEX")
+
 WORKER_PROCESS_TYPE_IDLE_WORKER = "ray::IDLE"
 WORKER_PROCESS_TYPE_SPILL_WORKER_NAME = "SpillWorker"
 WORKER_PROCESS_TYPE_RESTORE_WORKER_NAME = "RestoreWorker"
@@ -254,6 +282,12 @@ LOG_PREFIX_INFO_MESSAGE = ":info_message:"
 LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 # Task names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_TASK_NAME = ":task_name:"
+# Job ids are recorded in the logs with this magic token as a prefix.
+LOG_PREFIX_JOB_ID = ":job_id:"
+# Task attempts magic token marked the beginning of the task logs
+LOG_PREFIX_TASK_ATTEMPT_START = ":task_attempt_start:"
+# Task attempts magic token marked the beginning of the task logs
+LOG_PREFIX_TASK_ATTEMPT_END = ":task_attempt_end:"
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
@@ -280,15 +314,16 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
-# The default password to prevent redis port scanning attack.
-# Hex for ray.
-REDIS_DEFAULT_PASSWORD = "5241590000000000"
+REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
 
 # The Mach kernel page size in bytes.
 MACH_PAGE_SIZE_BYTES = 4096
+
+# The max number of bytes for task execution error message.
+MAX_APPLICATION_ERROR_LEN = 500
 
 # Max 64 bit integer value, which is needed to ensure against overflow
 # in C++ when passing integer values cross-language.
@@ -347,6 +382,7 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor
 # tasks.
@@ -355,6 +391,8 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
+# Please keep this in sync with the definition kRayInternalNamespacePrefix
+# in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 
 
@@ -363,3 +401,39 @@ def gcs_actor_scheduling_enabled():
 
 
 DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
+
+# Supported Python versions for runtime env's "conda" field. Ray downloads
+# Ray wheels into the conda environment, so the Ray wheels for these Python
+# versions must be available online.
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+
+# Whether to enable Ray clusters (in addition to local Ray).
+# Ray clusters are not explicitly supported for Windows and OSX.
+IS_WINDOWS_OR_OSX = sys.platform == "darwin" or sys.platform == "win32"
+ENABLE_RAY_CLUSTERS_ENV_VAR = "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER"
+ENABLE_RAY_CLUSTER = env_bool(
+    ENABLE_RAY_CLUSTERS_ENV_VAR,
+    not IS_WINDOWS_OR_OSX,
+)
+
+SESSION_LATEST = "session_latest"
+NUM_PORT_RETRIES = 40
+NUM_REDIS_GET_RETRIES = int(os.environ.get("RAY_NUM_REDIS_GET_RETRIES", "20"))
+
+# The allowed cached ports in Ray. Refer to Port configuration for more details:
+# https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations
+RAY_ALLOWED_CACHED_PORTS = {
+    "metrics_agent_port",
+    "metrics_export_port",
+    "dashboard_agent_listen_port",
+    "gcs_server_port",  # the `port` option for gcs port.
+}
+
+# Turn this on if actor task log's offsets are expected to be recorded.
+# With this enabled, actor tasks' log could be queried with task id.
+RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
+    "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
+)
+
+WORKER_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_SETUP_HOOK_ENV_VAR"
+RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = "RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT"

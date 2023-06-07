@@ -36,6 +36,33 @@ TEST(ContainerUtilTest, TestMapFindOrDie) {
   }
 }
 
+TEST(ContainerUtilTest, RemoveElementsLastElement) {
+  std::deque<int> queue{1, 2, 3, 4};
+  std::function<bool(int)> even = [](int value) { return value % 2 == 0; };
+  remove_elements(even, queue);
+
+  std::deque<int> expected{1, 3};
+  ASSERT_EQ(queue, expected);
+}
+
+TEST(ContainerUtilTest, RemoveElementsExcludeLastElement) {
+  std::deque<int> queue{1, 2, 3};
+  std::function<bool(int)> even = [](int value) { return value % 2 == 0; };
+  remove_elements(even, queue);
+
+  std::deque<int> expected{1, 3};
+  ASSERT_EQ(queue, expected);
+}
+
+TEST(ContainerUtilTest, RemoveElementsEmptyContainer) {
+  std::deque<int> queue{};
+  std::function<bool(int)> even = [](int value) { return value % 2 == 0; };
+  remove_elements(even, queue);
+
+  std::deque<int> expected{};
+  ASSERT_EQ(queue, expected);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

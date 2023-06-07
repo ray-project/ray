@@ -34,6 +34,8 @@ class PeriodicalRunner {
 
   ~PeriodicalRunner();
 
+  void Clear();
+
   void RunFnPeriodically(std::function<void()> fn,
                          uint64_t period_ms,
                          const std::string name = "UNKNOWN") LOCKS_EXCLUDED(mutex_);
@@ -52,6 +54,7 @@ class PeriodicalRunner {
   instrumented_io_context &io_service_;
   mutable absl::Mutex mutex_;
   std::vector<std::shared_ptr<boost::asio::deadline_timer>> timers_ GUARDED_BY(mutex_);
+  std::shared_ptr<bool> stopped_;
 };
 
 }  // namespace ray

@@ -14,8 +14,8 @@ distributed training communication is done with Torch's ``DistributedDataParalle
 
 Take a look at the :ref:`Pytorch <pytorch-training-parity>` and :ref:`Tensorflow <tf-training-parity>` benchmarks to check performance parity.
 
-How do I set resources?
------------------------
+How do I set training resources in Ray Train?
+---------------------------------------------
 
 By default, each worker will reserve 1 CPU resource, and an additional 1 GPU resource if ``use_gpu=True``.
 
@@ -27,9 +27,9 @@ you can initialize the ``Trainer`` with ``resources_per_worker`` specified in ``
    currently assume each worker is allocated exactly 1 GPU. The partial GPU and multi GPU use-cases
    can still be run with Ray Train today without these functions.
 
+My multi-node PyTorch GPU training is hanging or giving me obscure NCCL errors. What do I do?
+---------------------------------------------------------------------------------------------
 
-My multi-node  PyTorch GPU training is hanging or giving me obscure NCCL errors. What do I do?
-----------------------------------------------------------------------------------------------
 If you are on a multi-node GPU training setup and training is hanging, or you get errors like
 `RuntimeError: NCCL error in: /pytorch/torch/lib/c10d/ProcessGroupNCCL.cpp:911, unhandled system error`
 it could be that there is some networking misconfiguration in your cluster.
@@ -81,11 +81,11 @@ To resolve these issues, you can do the following:
 3. Set this as the value for the `NCCL_SOCKET_IFNAME` environment variable. You must do this via Ray runtime environments so that it
    gets propagated to all training workers.
 
-.. code-block:: python
+.. testcode::
+
+    import ray
 
     # Add this at the top of your Ray application.
     runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens5"}}
-    ray.init(runtime_env=runtime_env)
-
-
+    ray.init(runtime_env=runtime_env, ignore_reinit_error=True)
 

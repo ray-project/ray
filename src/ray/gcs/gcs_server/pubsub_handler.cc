@@ -40,6 +40,7 @@ void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
         nullptr);
     return;
   }
+  RAY_LOG(DEBUG) << "received publish request: " << request.DebugString();
   for (const auto &msg : request.pub_messages()) {
     gcs_publisher_->GetPublisher()->Publish(msg);
   }
@@ -63,6 +64,8 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
   }
   rpc::PubsubLongPollingRequest pubsub_req;
   pubsub_req.set_subscriber_id(request.subscriber_id());
+  pubsub_req.set_publisher_id(request.publisher_id());
+  pubsub_req.set_max_processed_sequence_id(request.max_processed_sequence_id());
   auto pubsub_reply = std::make_shared<rpc::PubsubLongPollingReply>();
   auto pubsub_reply_ptr = pubsub_reply.get();
   gcs_publisher_->GetPublisher()->ConnectToSubscriber(
@@ -74,6 +77,7 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
                                                std::function<void()> success_cb,
                                                std::function<void()> failure_cb) {
         reply->mutable_pub_messages()->Swap(pubsub_reply->mutable_pub_messages());
+        reply->set_publisher_id(std::move(*pubsub_reply->mutable_publisher_id()));
         reply_cb(std::move(status), std::move(success_cb), std::move(failure_cb));
       });
 }
@@ -94,17 +98,31 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     return;
   }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
+
+  // If the sender_id field is not set, subscriber_id will be used instead.
+  auto sender_id = request.sender_id();
+  if (sender_id.empty()) {
+    sender_id = request.subscriber_id();
+  }
+
+  auto iter = sender_to_subscribers_.find(sender_id);
+  if (iter == sender_to_subscribers_.end()) {
+    iter = sender_to_subscribers_.insert({sender_id, {}}).first;
+  }
+
   for (const auto &command : request.commands()) {
     if (command.has_unsubscribe_message()) {
       gcs_publisher_->GetPublisher()->UnregisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
+      iter->second.erase(subscriber_id);
     } else if (command.has_subscribe_message()) {
       gcs_publisher_->GetPublisher()->RegisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
+      iter->second.insert(subscriber_id);
     } else {
       RAY_LOG(FATAL) << "Invalid command has received, "
                      << static_cast<int>(command.command_message_one_of_case())
@@ -112,6 +130,17 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     }
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void InternalPubSubHandler::RemoveSubscriberFrom(const std::string &sender_id) {
+  auto iter = sender_to_subscribers_.find(sender_id);
+  if (iter == sender_to_subscribers_.end()) {
+    return;
+  }
+  for (auto &subscriber_id : iter->second) {
+    gcs_publisher_->GetPublisher()->UnregisterSubscriber(subscriber_id);
+  }
+  sender_to_subscribers_.erase(iter);
 }
 
 void InternalPubSubHandler::Stop() {

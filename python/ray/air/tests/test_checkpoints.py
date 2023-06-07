@@ -1,18 +1,25 @@
+import logging
 import os
 import pickle
 import re
 import shutil
 import tempfile
 import unittest
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 import pytest
+import boto3
 
 import ray
 from ray.air._internal.remote_storage import _ensure_directory, delete_at_uri
+from ray.air._internal.uri_utils import URI
+from ray.air._internal.util import _copy_dir_ignore_conflicts
 from ray.air.checkpoint import _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY, Checkpoint
 from ray.air.constants import MAX_REPR_LENGTH, PREPROCESSOR_KEY
 from ray.data import Preprocessor
+from ray._private.test_utils import simulate_storage
 
 
 class DummyPreprocessor(Preprocessor):
@@ -47,6 +54,10 @@ class OtherStubCheckpoint(Checkpoint):
     pass
 
 
+class OtherStubCheckpointWithAttrs(Checkpoint):
+    _SERIALIZED_ATTRS = StubCheckpoint._SERIALIZED_ATTRS
+
+
 def test_from_checkpoint():
     checkpoint = Checkpoint.from_dict({"spam": "ham"})
     assert type(StubCheckpoint.from_checkpoint(checkpoint)) is StubCheckpoint
@@ -55,6 +66,13 @@ def test_from_checkpoint():
     checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
     checkpoint.foo = "bar"
     assert StubCheckpoint.from_checkpoint(checkpoint).foo == "bar"
+
+    # Check that attributes persist if the new checkpoint
+    # has them as well.
+    # Check that attributes persist if same checkpoint type.
+    checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+    checkpoint.foo = "bar"
+    assert OtherStubCheckpointWithAttrs.from_checkpoint(checkpoint).foo == "bar"
 
 
 class TestCheckpointTypeCasting:
@@ -126,6 +144,49 @@ class TestCheckpointSerializedAttrs:
         recovered_checkpoint = StubCheckpoint.from_directory(checkpoint.to_directory())
 
         assert recovered_checkpoint.foo == "bar"
+
+    def test_directory_move_instead_of_copy(self):
+        checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
+        assert "foo" in checkpoint._SERIALIZED_ATTRS
+        checkpoint.foo = "bar"
+
+        path = checkpoint.to_directory()
+        recovered_checkpoint = StubCheckpoint.from_directory(path)
+        tmpdir = tempfile.mkdtemp()
+        new_path = recovered_checkpoint._move_directory(tmpdir)
+        new_recovered_checkpoint = StubCheckpoint.from_directory(new_path)
+
+        assert recovered_checkpoint._local_path == tmpdir
+        assert new_recovered_checkpoint.foo == "bar"
+        assert not list(Path(path).glob("*"))
+
+    def test_copy_dir_ignore_conflicts(self):
+        tmpdir = Path(tempfile.mkdtemp())
+
+        src_dir = tmpdir / "src"
+        dst_dir = tmpdir / "dst"
+
+        src_dir.mkdir()
+        dst_dir.mkdir()
+
+        (src_dir / "foo.txt").touch()
+        (src_dir / "bar.txt").touch()
+        (src_dir / "a").mkdir()
+        (src_dir / "a" / "a.txt").touch()
+        (src_dir / "b").mkdir()
+        (src_dir / "b" / "b.txt").touch()
+
+        # Has a file conflict.
+        (dst_dir / "foo.txt").touch()
+        # Has a directory conflict.
+        (dst_dir / "a").mkdir()
+
+        _copy_dir_ignore_conflicts(src_dir, dst_dir)
+
+        assert (dst_dir / "foo.txt").exists()
+        assert (dst_dir / "bar.txt").exists()
+        assert (dst_dir / "a" / "a.txt").exists()
+        assert (dst_dir / "b" / "b.txt").exists()
 
     def test_uri(self):
         checkpoint = StubCheckpoint.from_dict({"spam": "ham"})
@@ -491,7 +552,7 @@ class CheckpointsConversionTest(unittest.TestCase):
 
         with checkpoint.as_directory() as checkpoint_dir:
             assert os.path.exists(checkpoint_dir)
-            assert checkpoint_dir.endswith(checkpoint._uuid.hex)
+            assert Path(checkpoint_dir).stem.endswith(checkpoint._uuid.hex)
 
         assert not os.path.exists(checkpoint_dir)
 
@@ -701,6 +762,72 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             preprocessor = checkpoint.get_preprocessor()
             assert preprocessor.multiplier == 1
 
+    def testDictCheckpointSetPreprocessor(self):
+        preprocessor = DummyPreprocessor(1)
+        data = {"metric": 5}
+        checkpoint = Checkpoint.from_dict(data)
+        checkpoint.set_preprocessor(preprocessor)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor.multiplier == 1
+
+        # Check that we can set it to None
+        checkpoint.set_preprocessor(None)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor is None
+
+    def testDictCheckpointSetPreprocessorAsDir(self):
+        preprocessor = DummyPreprocessor(1)
+        data = {"metric": 5}
+        checkpoint = Checkpoint.from_dict(data)
+        checkpoint.set_preprocessor(preprocessor)
+        checkpoint_path = checkpoint.to_directory()
+        checkpoint = Checkpoint.from_directory(checkpoint_path)
+        preprocessor = checkpoint.get_preprocessor()
+        assert preprocessor.multiplier == 1
+
+    def testDirCheckpointSetPreprocessor(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            preprocessor = DummyPreprocessor(1)
+            data = {"metric": 5}
+            checkpoint_dir = os.path.join(tmpdir, "existing_checkpoint")
+            os.mkdir(checkpoint_dir, 0o755)
+            with open(os.path.join(checkpoint_dir, "test_data.pkl"), "wb") as fp:
+                pickle.dump(data, fp)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            checkpoint.set_preprocessor(preprocessor)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
+            # Also check that loading from dir works
+            new_checkpoint_dir = os.path.join(tmpdir, "new_checkpoint")
+            checkpoint.to_directory(new_checkpoint_dir)
+            checkpoint = Checkpoint.from_directory(new_checkpoint_dir)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
+    def testDirCheckpointSetPreprocessorAsDict(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            preprocessor = DummyPreprocessor(1)
+            data = {"metric": 5}
+            checkpoint_dir = os.path.join(tmpdir, "existing_checkpoint")
+            os.mkdir(checkpoint_dir, 0o755)
+            with open(os.path.join(checkpoint_dir, "test_data.pkl"), "wb") as fp:
+                pickle.dump(data, fp)
+            checkpoint = Checkpoint.from_directory(checkpoint_dir)
+            checkpoint.set_preprocessor(preprocessor)
+            checkpoint_dict = checkpoint.to_dict()
+            checkpoint = checkpoint.from_dict(checkpoint_dict)
+            preprocessor = checkpoint.get_preprocessor()
+            assert preprocessor.multiplier == 1
+
+    def testObjectRefCheckpointSetPreprocessor(self):
+        ckpt = Checkpoint.from_dict({"x": 1})
+        ckpt = ray.get(ray.put(ckpt))
+        preprocessor = DummyPreprocessor(1)
+        ckpt.set_preprocessor(preprocessor)
+
+        assert ckpt.get_preprocessor() == preprocessor
+
     def testAttrPath(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint = Checkpoint.from_directory(tmpdir)
@@ -722,6 +849,80 @@ class PreprocessorCheckpointTest(unittest.TestCase):
             orig_checkpoint.to_uri("memory://some/location")
         )
         self.assertEqual(checkpoint.uri, "memory://some/location")
+
+
+class URITestCheckpoint(Checkpoint):
+    def _to_directory(self, path: str, move_instead_of_copy: bool = False) -> None:
+        super()._to_directory(path, move_instead_of_copy)
+        # Drop a marker file with the current pid.
+        # Only one file should be created, as only one task should
+        # download the data, with the rest waiting.
+        with open(Path(path, f"_pid_marker_{os.getpid()}"), "w"):
+            pass
+
+
+@contextmanager
+def mock_s3_bucket_uri():
+    port = 5002
+    region = "us-west-2"
+    with simulate_storage("s3", port=port, region=region) as s3_uri:
+        s3 = boto3.client(
+            "s3", region_name=region, endpoint_url=f"http://localhost:{port}"
+        )
+        # Bucket name will be autogenerated/unique per test
+        bucket_name = URI(s3_uri).name
+        s3.create_bucket(
+            Bucket=bucket_name,
+            CreateBucketConfiguration={"LocationConstraint": region},
+        )
+        # Disable server HTTP request logging
+        logging.getLogger("werkzeug").setLevel(logging.WARNING)
+        yield URI(s3_uri)
+        logging.getLogger("werkzeug").setLevel(logging.INFO)
+
+
+@ray.remote
+def download_uri_checkpoint(checkpoint: URITestCheckpoint):
+    with checkpoint.as_directory() as dir:
+        dir = Path(dir)
+        all_pid_marker_files = list(dir.glob("_pid_marker_*"))
+        # There should be only one file, as only one task should
+        # download.
+        assert len(all_pid_marker_files) == 1
+        assert (dir / "mock.file").exists()
+
+
+class TestCheckpointURIConstantUUID(unittest.TestCase):
+    def setUp(self) -> None:
+        ray.shutdown()
+        ray.init(num_cpus=4)
+
+    def tearDown(self) -> None:
+        ray.shutdown()
+
+    def testCheckpointURIConstantUUID(self):
+        """Test that multiple workers using the same URI checkpoint
+        share the local directory, and that only one worker downloads
+        the data."""
+        with mock_s3_bucket_uri() as base_uri, tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint_dir = Path(tmpdir, "checkpoint")
+            os.makedirs(checkpoint_dir)
+            with open(checkpoint_dir / "mock.file", "w"):
+                pass
+            checkpoint_uri = str(base_uri / "model")
+            uri = Checkpoint.from_directory(checkpoint_dir).to_uri(checkpoint_uri)
+
+            # Check that two separate checkpoints have the same uuid
+            checkpoint = URITestCheckpoint.from_uri(uri)
+            checkpoint2 = URITestCheckpoint.from_uri(uri)
+            assert checkpoint._uuid == checkpoint2._uuid
+
+            # Create a separate checkpoint for each task
+            tasks = [
+                download_uri_checkpoint.remote(URITestCheckpoint.from_uri(uri))
+                for _ in range(4)
+            ]
+            ray.get(tasks)
 
 
 if __name__ == "__main__":

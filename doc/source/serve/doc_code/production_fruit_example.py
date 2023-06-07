@@ -9,8 +9,7 @@ from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.http_adapters import json_request
 
 # These imports are used only for type hints:
-from typing import Dict, List
-from starlette.requests import Request
+from typing import Dict
 
 
 @serve.deployment(num_replicas=2)
@@ -86,10 +85,6 @@ class PearStand:
 
     def check_price(self, amount: float) -> float:
         return self.price * amount
-
-
-async def json_resolver(request: Request) -> List:
-    return await request.json()
 
 
 with InputNode() as query:
@@ -170,7 +165,7 @@ config1 = {
         {"name": "DAGDriver", "ray_actor_options": {"num_cpus": 0.1}},
     ],
 }
-client.deploy_app(ServeApplicationSchema.parse_obj(config1))
+client.deploy_apps(ServeApplicationSchema.parse_obj(config1))
 wait_for_condition(
     lambda: requests.post("http://localhost:8000/", json=["MANGO", 1]).json() == 3,
     timeout=15,
@@ -203,7 +198,7 @@ config2 = {
         {"name": "DAGDriver", "ray_actor_options": {"num_cpus": 0.1}},
     ],
 }
-client.deploy_app(ServeApplicationSchema.parse_obj(config2))
+client.deploy_apps(ServeApplicationSchema.parse_obj(config2))
 wait_for_condition(
     lambda: requests.post("http://localhost:8000/", json=["MANGO", 1]).json() == 0,
     timeout=15,

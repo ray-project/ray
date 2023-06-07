@@ -125,6 +125,26 @@ TEST_P(GlobalStateAccessorTest, TestJobTable) {
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
 }
 
+// Test GetAllJobInfo where some jobs were submitted by the Ray Job API (i.d. they have
+// job_submission_id set).
+TEST_P(GlobalStateAccessorTest, TestJobTableWithSubmissionId) {
+  int job_count = 100;
+  ASSERT_EQ(global_state_->GetAllJobInfo().size(), 0);
+  for (int index = 0; index < job_count; ++index) {
+    auto job_id = JobID::FromInt(index);
+    auto job_table_data = Mocker::GenJobTableData(job_id);
+    if (index % 2 == 0) {
+      (*job_table_data->mutable_config()->mutable_metadata())["job_submission_id"] =
+          std::to_string(index);
+    }
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
+        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+    promise.get_future().get();
+  }
+  ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
+}
+
 TEST_P(GlobalStateAccessorTest, TestNodeTable) {
   int node_count = 100;
   ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 0);
@@ -222,22 +242,6 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
   ASSERT_EQ(resources_data.resources_available_size(), 1);
   ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
-}
-
-TEST_P(GlobalStateAccessorTest, TestProfileTable) {
-  int profile_count = RayConfig::instance().maximum_profile_table_rows_count() + 1;
-  ASSERT_EQ(global_state_->GetAllProfileInfo().size(), 0);
-  for (int index = 0; index < profile_count; ++index) {
-    auto node_id = NodeID::FromRandom();
-    auto profile_table_data = Mocker::GenProfileTableData(node_id);
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(
-        profile_table_data,
-        [&promise](Status status) { promise.set_value(status.ok()); }));
-    WaitReady(promise.get_future(), timeout_ms_);
-  }
-  ASSERT_EQ(global_state_->GetAllProfileInfo().size(),
-            RayConfig::instance().maximum_profile_table_rows_count());
 }
 
 TEST_P(GlobalStateAccessorTest, TestWorkerTable) {

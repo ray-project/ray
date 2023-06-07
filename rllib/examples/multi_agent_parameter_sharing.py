@@ -1,15 +1,18 @@
 from ray import air, tune
 from ray.tune.registry import register_env
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
-from pettingzoo.sisl import waterworld_v3
+from pettingzoo.sisl import waterworld_v4
 
+# TODO (Kourosh): Noticed that the env is broken and throws an error in this test.
+# The error is ValueError: Input vector should be 1-D. (Could be pettingzoo version
+# issue)
 # Based on code from github.com/parametersharingmadrl/parametersharingmadrl
 
 if __name__ == "__main__":
     # RDQN - Rainbow DQN
     # ADQN - Apex DQN
 
-    register_env("waterworld", lambda _: PettingZooEnv(waterworld_v3.env()))
+    register_env("waterworld", lambda _: PettingZooEnv(waterworld_v4.env()))
 
     tune.Tuner(
         "APEX_DDPG",
@@ -40,15 +43,13 @@ if __name__ == "__main__":
             "target_network_update_freq": 50000,
             "min_sample_timesteps_per_iteration": 25000,
             # Method specific.
-            "multiagent": {
-                # We only have one policy (calling it "shared").
-                # Class, obs/act-spaces, and config will be derived
-                # automatically.
-                "policies": {"shared_policy"},
-                # Always use "shared" policy.
-                "policy_mapping_fn": (
-                    lambda agent_id, episode, **kwargs: "shared_policy"
-                ),
-            },
+            # We only have one policy (calling it "shared").
+            # Class, obs/act-spaces, and config will be derived
+            # automatically.
+            "policies": {"shared_policy"},
+            # Always use "shared" policy.
+            "policy_mapping_fn": (
+                lambda agent_id, episode, worker, **kwargs: "shared_policy"
+            ),
         },
     ).fit()

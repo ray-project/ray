@@ -6,8 +6,9 @@ import functools
 import logging
 import os
 import threading
+from typing import Dict, List, Optional, Tuple, Union
+
 import tree  # pip install dm_tree
-from typing import Dict, List, Optional, Tuple
 
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -30,7 +31,12 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, TensorType
+from ray.rllib.utils.typing import (
+    LocalOptimizer,
+    ModelGradients,
+    TensorType,
+    TensorStructType,
+)
 from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
@@ -171,13 +177,37 @@ def _traced_eager_policy(eager_policy_cls):
 
             # Create a traced version of `self._compute_actions_helper`.
             if self._traced_compute_actions_helper is False and not self._no_tracing:
-                self._compute_actions_helper = _convert_eager_inputs(
-                    tf.function(
-                        super(TracedEagerPolicy, self)._compute_actions_helper,
-                        autograph=False,
-                        experimental_relax_shapes=True,
+                if self.config.get("_enable_rl_module_api"):
+                    self._compute_actions_helper_rl_module_explore = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_explore,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
                     )
-                )
+                    self._compute_actions_helper_rl_module_inference = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_inference,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
+                    )
+                else:
+                    self._compute_actions_helper = _convert_eager_inputs(
+                        tf.function(
+                            super(TracedEagerPolicy, self)._compute_actions_helper,
+                            autograph=False,
+                            reduce_retracing=True,
+                        )
+                    )
                 self._traced_compute_actions_helper = True
 
             # Now that the helper method is traced, call super's
@@ -201,7 +231,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._learn_on_batch_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_learn_on_batch_helper = True
@@ -221,7 +251,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_compute_gradients_helper = True
@@ -241,7 +271,7 @@ def _traced_eager_policy(eager_policy_cls):
                     tf.function(
                         super(TracedEagerPolicy, self)._apply_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=True,
+                        reduce_retracing=True,
                     )
                 )
                 self._traced_apply_gradients_helper = True
@@ -374,9 +404,6 @@ def _build_eager_tf_policy(
             )
             self._max_seq_len = config["model"]["max_seq_len"]
 
-            if get_default_config:
-                config = dict(get_default_config(), **config)
-
             if validate_spaces:
                 validate_spaces(self, observation_space, action_space, config)
 
@@ -431,7 +458,7 @@ def _build_eager_tf_policy(
             else:
                 optimizers = tf.keras.optimizers.Adam(config["lr"])
             optimizers = force_list(optimizers)
-            if getattr(self, "exploration", None):
+            if self.exploration:
                 optimizers = self.exploration.get_exploration_optimizer(optimizers)
 
             # The list of local (tf) optimizers (one per loss term).
@@ -503,16 +530,16 @@ def _build_eager_tf_policy(
         @override(Policy)
         def compute_actions(
             self,
-            obs_batch,
-            state_batches=None,
-            prev_action_batch=None,
-            prev_reward_batch=None,
-            info_batch=None,
-            episodes=None,
-            explore=None,
-            timestep=None,
+            obs_batch: Union[List[TensorStructType], TensorStructType],
+            state_batches: Optional[List[TensorType]] = None,
+            prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
+            prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
+            info_batch: Optional[Dict[str, list]] = None,
+            episodes: Optional[List["Episode"]] = None,
+            explore: Optional[bool] = None,
+            timestep: Optional[int] = None,
             **kwargs,
-        ):
+        ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             # Create input dict to simply pass the entire call to
             # self.compute_actions_from_input_dict().
             input_dict = SampleBatch(
@@ -549,6 +576,7 @@ def _build_eager_tf_policy(
             prev_action_batch=None,
             prev_reward_batch=None,
             actions_normalized=True,
+            **kwargs,
         ):
             if action_sampler_fn and action_distribution_fn is None:
                 raise ValueError(
@@ -571,8 +599,9 @@ def _build_eager_tf_policy(
                     prev_reward_batch
                 )
 
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(explore=False)
+            if self.exploration:
+                # Exploration hook before each forward pass.
+                self.exploration.before_compute_actions(explore=False)
 
             # Action dist class and inputs are generated via custom function.
             if action_distribution_fn:
@@ -720,7 +749,10 @@ def _build_eager_tf_policy(
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
-            state["_exploration_state"] = self.exploration.get_state()
+            if not self.config.get("_enable_rl_module_api", False) and self.exploration:
+                # This is not compatible with RLModules, which have a method
+                # `forward_exploration` to specify custom exploration behavior.
+                state["_exploration_state"] = self.exploration.get_state()
             return state
 
         @override(Policy)
@@ -758,7 +790,7 @@ def _build_eager_tf_policy(
             within this TfModelV2 class that is-a tf.keras.Model. This base model
             will be used here for the export.
             TODO (kourosh): This restriction will be resolved once we move Policy and
-             ModelV2 to the new RLTrainer/RLModule APIs.
+            ModelV2 to the new Learner/RLModule APIs.
 
             Args:
                 export_dir: Local writable directory.

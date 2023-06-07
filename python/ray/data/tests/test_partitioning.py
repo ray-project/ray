@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Union
 
 import pandas as pd
 import pyarrow as pa
-from pyarrow.fs import FileType
 import pytest
+from pyarrow.fs import FileType
 from pytest_lazyfixture import lazy_fixture
 
 import ray
@@ -14,9 +14,9 @@ from ray.data.block import Block
 from ray.data.dataset import Dataset
 from ray.data.datasource import (
     FileBasedDatasource,
-    PathPartitionParser,
-    PathPartitionEncoder,
     PartitionStyle,
+    PathPartitionEncoder,
+    PathPartitionParser,
 )
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
@@ -116,7 +116,10 @@ class TestReadHivePartitionedFiles:
         with pytest.raises(ValueError):
             # `read_csv` should error because `month` is a field in both the CSV and
             # the path, and the data is different.
-            read_csv(path, partitioning=Partitioning("hive"), block_type=block_type)
+            ds = read_csv(
+                path, partitioning=Partitioning("hive"), block_type=block_type
+            )
+            ds.schema()
 
     @pytest.mark.parametrize("data", [[1, 1, 1], [1, None, 1]])
     def test_read_files_with_legally_conflicting_key(
@@ -226,7 +229,7 @@ class TestReadDirPartitionedFiles:
                     "dir", field_names=["year", "country"], base_dir=tmp_path
                 ),
                 block_type=block_type,
-            )
+            ).schema()
 
     @pytest.mark.parametrize(
         "relative_path", ["1970/data.csv", "1970/us/94704/data.csv"]
@@ -244,7 +247,7 @@ class TestReadDirPartitionedFiles:
                     "dir", field_names=["year", "country"], base_dir=tmp_path
                 ),
                 block_type=block_type,
-            )
+            ).schema()
 
     def test_read_files_with_conflicting_key(
         self, tmp_path, block_type, ray_start_regular_shared
@@ -260,7 +263,7 @@ class TestReadDirPartitionedFiles:
                     "dir", field_names=["month"], base_dir=tmp_path
                 ),
                 block_type=block_type,
-            )
+            ).schema()
 
     @pytest.mark.parametrize("data", [[1, 1, 1], [1, None, 1]])
     def test_read_files_with_legally_conflicting_key(

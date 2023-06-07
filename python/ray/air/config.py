@@ -1,5 +1,10 @@
+import copy
+import logging
+import os
+import warnings
 from collections import defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,9 +17,12 @@ from typing import (
     Tuple,
 )
 
+from ray._private.storage import _get_storage_uri
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
+from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
     from ray.data import Dataset
@@ -23,6 +31,7 @@ if TYPE_CHECKING:
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
     from ray.tune.syncer import SyncConfig
+    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -34,6 +43,9 @@ SampleRange = Union["Domain", Dict[str, List]]
 
 MAX = "max"
 MIN = "min"
+
+
+logger = logging.getLogger(__name__)
 
 
 def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> str:
@@ -97,7 +109,7 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
-        _max_cpu_fraction_per_node: (Experimental) The max fraction of CPUs per node
+        _max_cpu_fraction_per_node: [Experimental] The max fraction of CPUs per node
             that Train will use for scheduling training actors. The remaining CPUs
             can be used for dataset tasks. It is highly recommended that you set this
             to less than 1.0 (e.g., 0.8) when passing datasets to trainers, to avoid
@@ -282,7 +294,10 @@ class ScalingConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@Deprecated(
+    message="Use `ray.train.DataConfig` instead of DatasetConfig to "
+    "configure data ingest for training."
+)
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
@@ -307,15 +322,15 @@ class DatasetConfig:
         transform: Whether to transform the dataset with the fitted preprocessor.
             This must be enabled at least for the dataset that is fit.
             True by default.
-        use_stream_api: Whether the dataset should be streamed into memory using
-            pipelined reads. When enabled, get_dataset_shard() returns DatasetPipeline
-            instead of Dataset. The amount of memory to use is controlled
-            by `stream_window_size`. False by default.
-        stream_window_size: Configure the streaming window size in bytes.
-            A good value is something like 20% of object store memory.
-            If set to -1, then an infinite window size will be used (similar to
-            bulk ingest). This only has an effect if use_stream_api is set.
-            Set to 1.0 GiB by default.
+        max_object_store_memory_fraction [Experimental]: The maximum fraction
+            of Ray's shared-memory object store to use for the dataset. The
+            default value is -1, meaning that the preprocessed dataset should
+            be cached, which may cause spilling if its size is larger than the
+            object store's capacity. Pipelined ingest (all other values, 0 or
+            higher) is experimental. Note that the absolute memory capacity
+            used is based on the object store capacity at invocation time; this
+            does not currently cover autoscaling cases where the size of the
+            cluster may change.
         global_shuffle: Whether to enable global shuffle (per pipeline window
             in streaming mode). Note that this is an expensive all-to-all operation,
             and most likely you want to use local shuffle instead.
@@ -326,6 +341,13 @@ class DatasetConfig:
             The main purpose of this is to prevent data fetching hotspots in the
             cluster when running many parallel workers / trials on the same data.
             We recommend enabling it always. True by default.
+        per_epoch_preprocessor [Experimental]: A preprocessor to re-apply on
+            each pass of the dataset. The main use case for this is to apply a
+            random transform on a training dataset on each epoch. The
+            per-epoch preprocessor will be applied *after* all other
+            preprocessors and in parallel with the dataset consumer.
+        use_stream_api: Deprecated. Use max_object_store_memory_fraction instead.
+        stream_window_size: Deprecated. Use max_object_store_memory_fraction instead.
     """
 
     # TODO(ekl) could we unify DataParallelTrainer and Trainer so the same data ingest
@@ -335,10 +357,13 @@ class DatasetConfig:
     split: Optional[bool] = None
     required: Optional[bool] = None
     transform: Optional[bool] = None
-    use_stream_api: Optional[bool] = None
-    stream_window_size: Optional[float] = None
+    max_object_store_memory_fraction: Optional[float] = None
     global_shuffle: Optional[bool] = None
     randomize_block_order: Optional[bool] = None
+    per_epoch_preprocessor: Optional["Preprocessor"] = None
+    # Deprecated.
+    use_stream_api: Optional[int] = None
+    stream_window_size: Optional[int] = None
 
     def __repr__(self):
         return _repr_dataclass(self)
@@ -348,21 +373,32 @@ class DatasetConfig:
             title = type(self).__name__
         return make_table_html_repr(obj=self, title=title)
 
+    def __post_init__(self):
+        if self.use_stream_api is not None or self.stream_window_size is not None:
+            raise DeprecationWarning(
+                "DatasetConfig.use_stream_api and DatasetConfig.stream_window_size "
+                "have been removed as of Ray 2.3. Instead, use "
+                "DatasetConfig.max_object_store_memory_fraction with a value "
+                "0 or greater "
+                "(https://docs.ray.io/en/latest/ray-air/package-ref.html"
+                "#ray.air.config.DatasetConfig)."
+            )
+
     def fill_defaults(self) -> "DatasetConfig":
         """Return a copy of this config with all default values filled in."""
         return DatasetConfig(
             fit=self.fit or False,
             split=self.split or False,
             required=self.required or False,
-            use_stream_api=self.use_stream_api or False,
-            stream_window_size=self.stream_window_size
-            if self.stream_window_size is not None
-            else 1024 * 1024 * 1024,
+            max_object_store_memory_fraction=self.max_object_store_memory_fraction
+            if self.max_object_store_memory_fraction is not None
+            else -1,
             global_shuffle=self.global_shuffle or False,
             transform=self.transform if self.transform is not None else True,
             randomize_block_order=self.randomize_block_order
             if self.randomize_block_order is not None
             else True,
+            per_epoch_preprocessor=self.per_epoch_preprocessor,
         )
 
     @staticmethod
@@ -391,12 +427,13 @@ class DatasetConfig:
 
     @staticmethod
     def validated(
-        config: Dict[str, "DatasetConfig"], datasets: Dict[str, "Dataset"]
+        config: Dict[str, "DatasetConfig"], datasets: Optional[Dict[str, "Dataset"]]
     ) -> Dict[str, "DatasetConfig"]:
         """Validate the given config and datasets are usable.
 
         Returns dict of validated configs with defaults filled out.
         """
+        datasets = datasets or {}
         has_wildcard = WILDCARD_KEY in config
         fittable = set()
         result = {k: v.fill_defaults() for k, v in config.items()}
@@ -413,6 +450,38 @@ class DatasetConfig:
                     raise ValueError(
                         f"The required dataset `{k}` was not found in {datasets}."
                     )
+            if not isinstance(v.max_object_store_memory_fraction, (float, int)):
+                raise ValueError(
+                    f"Error configuring dataset `{k}`: "
+                    "max_object_store_memory_fraction "
+                    "must be None or a float with value -1 or >=0, but got "
+                    f"{v.max_object_store_memory_fraction}."
+                )
+            if not (
+                v.max_object_store_memory_fraction == -1
+                or v.max_object_store_memory_fraction >= 0
+            ):
+                raise ValueError(
+                    f"Error configuring dataset `{k}`: "
+                    "max_object_store_memory_fraction "
+                    "must be None or a float with value -1 or >=0, but got "
+                    f"{v.max_object_store_memory_fraction}."
+                )
+            if v.per_epoch_preprocessor is not None:
+                if not isinstance(v.per_epoch_preprocessor, Preprocessor):
+                    raise ValueError(
+                        "`per_epoch_preprocessor` must be a ray.data.Preprocessor "
+                        f"but got {v.per_epoch_preprocessor}."
+                    )
+                if (
+                    v.per_epoch_preprocessor.fit_status()
+                    != Preprocessor.FitStatus.NOT_FITTABLE
+                ):
+                    raise ValueError(
+                        "`per_epoch_preprocessor` currently does not support "
+                        "fittable ray.data.Preprocessors."
+                    )
+
         if len(fittable) > 1:
             raise ValueError(
                 f"More than one dataset was specified to be fit: {fittable}"
@@ -433,18 +502,18 @@ class DatasetConfig:
             split=self.split if other.split is None else other.split,
             required=self.required if other.required is None else other.required,
             transform=self.transform if other.transform is None else other.transform,
-            use_stream_api=self.use_stream_api
-            if other.use_stream_api is None
-            else other.use_stream_api,
-            stream_window_size=self.stream_window_size
-            if other.stream_window_size is None
-            else other.stream_window_size,
+            max_object_store_memory_fraction=self.max_object_store_memory_fraction
+            if other.max_object_store_memory_fraction is None
+            else other.max_object_store_memory_fraction,
             global_shuffle=self.global_shuffle
             if other.global_shuffle is None
             else other.global_shuffle,
             randomize_block_order=self.randomize_block_order
             if other.randomize_block_order is None
             else other.randomize_block_order,
+            per_epoch_preprocessor=self.per_epoch_preprocessor
+            if other.per_epoch_preprocessor is None
+            else other.per_epoch_preprocessor,
         )
         return new_config
 
@@ -486,14 +555,6 @@ class FailureConfig:
         return _repr_dataclass(self)
 
     def _repr_html_(self):
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         return Template("scrollableTable.html.j2").render(
             table=tabulate(
                 {
@@ -544,14 +605,24 @@ class CheckpointConfig:
             This attribute is only supported by trainers that don't take in
             custom training loops. Defaults to True for trainers that support it
             and False for generic function trainables.
-
+        _checkpoint_keep_all_ranks: If True, will save checkpoints from all ranked
+            training workers. If False, only checkpoint from rank 0 worker is kept.
+            NOTE: This API is experimental and subject to change between minor
+            releases.
+        _checkpoint_upload_from_workers: If True, distributed workers
+            will upload their checkpoints to cloud directly. This is to avoid the
+            need for transferring large checkpoint files to the training worker
+            group coordinator for persistence. NOTE: This API is experimental and
+            subject to change between minor releases.
     """
 
     num_to_keep: Optional[int] = None
     checkpoint_score_attribute: Optional[str] = None
-    checkpoint_score_order: str = MAX
-    checkpoint_frequency: int = 0
+    checkpoint_score_order: Optional[str] = MAX
+    checkpoint_frequency: Optional[int] = 0
     checkpoint_at_end: Optional[bool] = None
+    _checkpoint_keep_all_ranks: Optional[bool] = False
+    _checkpoint_upload_from_workers: Optional[bool] = False
 
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep <= 0:
@@ -574,14 +645,6 @@ class CheckpointConfig:
         return _repr_dataclass(self)
 
     def _repr_html_(self) -> str:
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         if self.num_to_keep is None:
             num_to_keep_repr = "All"
         else:
@@ -648,8 +711,10 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        local_dir: Local dir to save training results to.
-            Defaults to ``~/ray_results``.
+        storage_path: Path to store results at. Can be a local directory or
+            a destination on cloud storage. If Ray storage is set up,
+            defaults to the storage location. Otherwise, this defaults to
+            the local ``~/ray_results`` directory.
         stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
             for more info. Stoppers should be serializable.
         callbacks: Callbacks to invoke.
@@ -665,9 +730,12 @@ class RunConfig:
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
-        verbose: 0, 1, 2, or 3. Verbosity mode.
+        verbose: 0, 1, or 2. Verbosity mode.
+            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
+            If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
+            uses the old verbosity settings:
             0 = silent, 1 = only status updates, 2 = status and brief
-            results, 3 = status and detailed results. Defaults to 2.
+            results, 3 = status and detailed results.
         log_to_file: Log stdout and stderr to files in
             trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
@@ -680,18 +748,23 @@ class RunConfig:
     """
 
     name: Optional[str] = None
-    local_dir: Optional[str] = None
+    storage_path: Optional[str] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None
     sync_config: Optional["SyncConfig"] = None
     checkpoint_config: Optional[CheckpointConfig] = None
     progress_reporter: Optional["ProgressReporter"] = None
-    verbose: Union[int, "Verbosity"] = 3
+    verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
+    # Deprecated
+    local_dir: Optional[str] = None
+
     def __post_init__(self):
-        from ray.tune.syncer import SyncConfig
+        from ray.tune.syncer import SyncConfig, Syncer
+        from ray.tune.utils.util import _resolve_storage_path
+        from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -701,6 +774,68 @@ class RunConfig:
 
         if not self.checkpoint_config:
             self.checkpoint_config = CheckpointConfig()
+
+        # Convert Paths to strings
+        if isinstance(self.local_dir, Path):
+            self.local_dir = str(self.local_dir)
+
+        if isinstance(self.storage_path, Path):
+            self.storage_path = str(self.storage_path)
+
+        local_path, remote_path = _resolve_storage_path(
+            self.storage_path, self.local_dir, self.sync_config.upload_dir
+        )
+
+        if self.sync_config.upload_dir:
+            assert remote_path == self.sync_config.upload_dir
+            warnings.warn(
+                "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
+                "in the future. Pass `RunConfig.storage_path` instead."
+            )
+            # Set upload_dir to None to avoid further downstream resolution.
+            # Copy object first to not alter user input.
+            self.sync_config = copy.copy(self.sync_config)
+            self.sync_config.upload_dir = None
+
+        if self.local_dir:
+            assert local_path == self.local_dir
+            warnings.warn(
+                "Setting a `RunConfig.local_dir` is deprecated and will be removed "
+                "in the future. If you are not using remote storage,"
+                "set the `RunConfig.storage_path` instead. Otherwise, set the"
+                "`RAY_AIR_LOCAL_CACHE_DIR` environment variable to control "
+                "the local cache location."
+            )
+            self.local_dir = None
+
+        if not remote_path:
+            remote_path = _get_storage_uri()
+            if remote_path:
+                logger.info(
+                    "Using configured Ray storage URI as storage path: "
+                    f"{remote_path}"
+                )
+
+        if remote_path:
+            self.storage_path = remote_path
+            if local_path:
+                # If storage_path is a remote path set by SyncConfig.upload_dir,
+                # this may not have been set in the previous if clause.
+                os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
+        elif local_path:
+            self.storage_path = local_path
+
+        if isinstance(self.sync_config.syncer, Syncer) and not remote_path:
+            raise ValueError(
+                "Must specify a remote `storage_path` to use a custom `syncer`."
+            )
+
+        if self.verbose is None:
+            # Default `verbose` value. For new output engine,
+            # this is AirVerbosity.DEFAULT.
+            # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
+            # Todo (krfricke): Currently uses number to pass test_configs::test_repr
+            self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
 
     def __repr__(self):
         from ray.tune.syncer import SyncConfig
@@ -715,14 +850,6 @@ class RunConfig:
         )
 
     def _repr_html_(self) -> str:
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         reprs = []
         if self.failure_config is not None:
             reprs.append(

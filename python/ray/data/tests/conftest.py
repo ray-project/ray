@@ -1,23 +1,54 @@
+import copy
 import os
 import posixpath
 
-import pytest
-import pyarrow as pa
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pytest
 
 import ray
-
-from ray.data.block import BlockAccessor
-from ray.data.tests.mock_server import *  # noqa
-from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray._private.utils import _get_pyarrow_version
+from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
+from ray.tests.conftest import _ray_start
+
+
+@pytest.fixture(scope="module")
+def ray_start_2_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=2, **param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def ray_start_10_cpus_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(num_cpus=10, **param) as res:
+        yield res
+
+
+@pytest.fixture(scope="module")
+def enable_strict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = True
+    yield
+    ctx.strict_mode = False
+
+
+@pytest.fixture(scope="module")
+def enable_nonstrict_mode():
+    ctx = ray.data.DataContext.get_current()
+    ctx.strict_mode = False
+    yield
+    ctx.strict_mode = True
 
 
 @pytest.fixture(scope="function")
@@ -97,8 +128,9 @@ def s3_fs_with_anonymous_crendential(
 
 
 def _s3_fs(aws_credentials, s3_server, s3_path):
-    from pkg_resources._vendor.packaging.version import parse as parse_version
     import urllib.parse
+
+    from pkg_resources._vendor.packaging.version import parse as parse_version
 
     kwargs = aws_credentials.copy()
 
@@ -146,7 +178,7 @@ def test_block_write_path_provider():
             block_index=None,
             file_format=None,
         ):
-            num_rows = BlockAccessor.for_block(ray.get(block)).num_rows()
+            num_rows = BlockAccessor.for_block(block).num_rows()
             suffix = (
                 f"{block_index:06}_{num_rows:02}_{dataset_uuid}" f".test.{file_format}"
             )
@@ -169,10 +201,12 @@ def write_partitioned_df():
         partition_keys,
         partition_path_encoder,
         file_writer_fn,
+        file_name_suffix="_1",
     ):
         import urllib.parse
 
         df_partitions = [df for _, df in df.groupby(partition_keys, as_index=False)]
+        paths = []
         for df_partition in df_partitions:
             partition_values = []
             for key in partition_keys:
@@ -181,12 +215,15 @@ def write_partitioned_df():
             partition_path_encoder.scheme.resolved_filesystem.create_dir(path)
             base_dir = partition_path_encoder.scheme.base_dir
             parsed_base_dir = urllib.parse.urlparse(base_dir)
+            file_name = f"test_{file_name_suffix}.tmp"
             if parsed_base_dir.scheme:
                 # replace the protocol removed by the partition path generator
-                path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", "test.tmp")
+                path = posixpath.join(f"{parsed_base_dir.scheme}://{path}", file_name)
             else:
-                path = os.path.join(path, "test.tmp")
+                path = os.path.join(path, file_name)
             file_writer_fn(df_partition, path)
+            paths.append(path)
+        return paths
 
     yield _write_partitioned_df
 
@@ -224,30 +261,41 @@ def assert_base_partitioned_ds():
         if sorted_values is None:
             sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
         # Test metadata ops.
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == 1
-            ), f"{ds._plan.execute()._num_computed()} != 1"
+        assert ds._plan.execute()._num_computed() == 0
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
         assert ds.schema() is not None
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
-        assert (
-            str(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
-        assert (
-            repr(ds) == f"Dataset(num_blocks={num_input_files}, num_rows={num_rows}, "
-            f"schema={schema})"
-        ), ds
+
+        # For Datasets with long string representations, the format will include
+        # whitespace and newline characters, which is difficult to generalize
+        # without implementing the formatting logic again (from
+        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
+        # characters to test the string contents regardless of the string repr length.
+        def _remove_whitespace(ds_str):
+            for c in ["\n", "   ", " "]:
+                ds_str = ds_str.replace(c, "")
+            return ds_str
+
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(str(ds)), ds
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
+            num_input_files,
+            num_rows,
+            _remove_whitespace(schema),
+        ) == _remove_whitespace(repr(ds)), ds
+
         if num_computed is not None:
             assert (
                 ds._plan.execute()._num_computed() == num_computed
             ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
 
         # Force a data read.
-        values = ds_take_transform_fn(ds.take())
+        values = ds_take_transform_fn(ds.take_all())
         if num_computed is not None:
             assert (
                 ds._plan.execute()._num_computed() == num_computed
@@ -260,9 +308,17 @@ def assert_base_partitioned_ds():
     yield _assert_base_partitioned_ds
 
 
+@pytest.fixture
+def restore_data_context(request):
+    """Restore any DataContext changes after the test runs"""
+    original = copy.deepcopy(ray.data.context.DataContext.get_current())
+    yield
+    ray.data.context.DataContext._set_current(original)
+
+
 @pytest.fixture(params=[True, False])
 def use_push_based_shuffle(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.use_push_based_shuffle
     ctx.use_push_based_shuffle = request.param
     yield request.param
@@ -271,7 +327,7 @@ def use_push_based_shuffle(request):
 
 @pytest.fixture(params=[True, False])
 def enable_automatic_tensor_extension_cast(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_tensor_extension_casting
     ctx.enable_tensor_extension_casting = request.param
     yield request.param
@@ -280,7 +336,7 @@ def enable_automatic_tensor_extension_cast(request):
 
 @pytest.fixture(params=[True, False])
 def enable_auto_log_stats(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_auto_log_stats
     ctx.enable_auto_log_stats = request.param
     yield request.param
@@ -289,7 +345,7 @@ def enable_auto_log_stats(request):
 
 @pytest.fixture(params=[True])
 def enable_dynamic_block_splitting(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.block_splitting_enabled
     ctx.block_splitting_enabled = request.param
     yield request.param
@@ -298,11 +354,35 @@ def enable_dynamic_block_splitting(request):
 
 @pytest.fixture(params=[1024])
 def target_max_block_size(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.target_max_block_size
     ctx.target_max_block_size = request.param
     yield request.param
     ctx.target_max_block_size = original
+
+
+@pytest.fixture
+def enable_optimizer():
+    ctx = ray.data.context.DataContext.get_current()
+    original_backend = ctx.new_execution_backend
+    original_optimizer = ctx.optimizer_enabled
+    ctx.new_execution_backend = True
+    ctx.optimizer_enabled = True
+    yield
+    ctx.new_execution_backend = original_backend
+    ctx.optimizer_enabled = original_optimizer
+
+
+@pytest.fixture
+def enable_streaming_executor():
+    ctx = ray.data.context.DataContext.get_current()
+    original_backend = ctx.new_execution_backend
+    use_streaming_executor = ctx.use_streaming_executor
+    ctx.new_execution_backend = True
+    ctx.use_streaming_executor = True
+    yield
+    ctx.new_execution_backend = original_backend
+    ctx.use_streaming_executor = use_streaming_executor
 
 
 # ===== Pandas dataset formats =====
@@ -388,3 +468,33 @@ def disable_pyarrow_version_check():
     os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"] = "1"
     yield
     del os.environ["RAY_DISABLE_PYARROW_VERSION_CHECK"]
+
+
+# ===== Observability & Logging Fixtures =====
+@pytest.fixture
+def stage_two_block():
+    block_params = {
+        "num_rows": [10000, 5000],
+        "size_bytes": [100, 50],
+        "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
+        "wall_time": [5, 10],
+        "cpu_time": [1.2, 3.4],
+        "node_id": ["a1", "b2"],
+    }
+    block_meta_list = []
+    for i in range(len(block_params["num_rows"])):
+        block_exec_stats = BlockExecStats()
+        block_exec_stats.wall_time_s = block_params["wall_time"][i]
+        block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
+        block_exec_stats.node_id = block_params["node_id"][i]
+        block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
+        block_meta_list.append(
+            BlockMetadata(
+                num_rows=block_params["num_rows"][i],
+                size_bytes=block_params["size_bytes"][i],
+                schema=None,
+                input_files=None,
+                exec_stats=block_exec_stats,
+            )
+        )
+    return block_params, block_meta_list

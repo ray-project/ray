@@ -17,7 +17,7 @@ from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
-parser.add_argument("--framework", choices=["tf2", "tf", "torch"], default="tf")
+parser.add_argument("--framework", choices=["tf2", "tf", "torch"], default="torch")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=2)
@@ -42,7 +42,14 @@ if __name__ == "__main__":
             num_envs_per_worker=2,
             rollout_fragment_length=50,
         )
-        .resources(num_gpus=args.num_gpus, num_gpus_per_worker=args.num_gpus_per_worker)
+        .resources(
+            num_gpus_per_worker=args.num_gpus_per_worker,
+            # Old gpu-training API
+            num_gpus=args.num_gpus,
+            # The new Learner API
+            num_learner_workers=int(args.num_gpus),
+            num_gpus_per_learner_worker=int(args.num_gpus > 0),
+        )
         # Make sure every environment gets a fixed seed.
         .debugging(seed=args.seed)
         .training(
@@ -61,12 +68,16 @@ if __name__ == "__main__":
     results1 = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=air.RunConfig(
+            stop=stop, verbose=1, failure_config=air.FailureConfig(fail_fast="raise")
+        ),
     ).fit()
     results2 = tune.Tuner(
         args.run,
         param_space=config.to_dict(),
-        run_config=air.RunConfig(stop=stop, verbose=1),
+        run_config=air.RunConfig(
+            stop=stop, verbose=1, failure_config=air.FailureConfig(fail_fast="raise")
+        ),
     ).fit()
 
     if args.as_test:
@@ -76,8 +87,14 @@ if __name__ == "__main__":
         check(results1["hist_stats"], results2["hist_stats"])
         # As well as training behavior (minibatch sequence during SGD
         # iterations).
-        check(
-            results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-            results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-        )
+        if config._enable_learner_api:
+            check(
+                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+            )
+        else:
+            check(
+                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+            )
     ray.shutdown()

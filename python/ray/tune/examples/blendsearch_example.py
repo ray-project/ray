@@ -25,7 +25,7 @@ def easy_objective(config):
     for step in range(config["steps"]):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height)
-        # Feed the score back back to Tune.
+        # Feed the score back to Tune.
         session.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
@@ -96,18 +96,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
     args, _ = parser.parse_known_args()
-    if args.server_address is not None:
-        ray.init(f"ray://{args.server_address}")
-    else:
-        ray.init(configure_logging=False)
+
+    ray.init(configure_logging=False)
 
     run_blendsearch_tune_w_budget(time_budget_s=30)
     run_blendsearch_tune(smoke_test=args.smoke_test)

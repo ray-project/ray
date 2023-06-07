@@ -235,9 +235,12 @@ ray.shutdown()
         info["address"]
     )
 
-    before = len(get_workers())
-    assert before == 1
+    def worker_registered():
+        return len(get_workers()) == 1
 
+    wait_for_condition(worker_registered)
+
+    before = 1
     run_string_as_driver(driver_code)
 
     # wait for a while to let workers register

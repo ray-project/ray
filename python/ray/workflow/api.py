@@ -107,7 +107,7 @@ def client_mode_wrap(func):
 
         # `is_client_mode_enabled_by_default` is used for testing with
         # `RAY_CLIENT_MODE=1`. This flag means all tests run with client mode.
-        if client_mode_should_convert(auto_init=False):
+        if client_mode_should_convert():
             f = ray.remote(num_cpus=0)(func)
             ref = f.remote(*args, **kwargs)
             return ray.get(ref)
@@ -224,7 +224,7 @@ def run_async(
                 workflow_id, state, ignore_existing=False
             )
         )
-        job_id = ray.get_runtime_context().job_id.hex()
+        job_id = ray.get_runtime_context().get_job_id()
         return workflow_manager.execute_workflow.remote(job_id, context)
 
 
@@ -284,7 +284,7 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
     # ensures caller of 'run()' holds the reference to the workflow
     # result. Otherwise if the actor removes the reference of the
     # workflow output, the caller may fail to resolve the result.
-    job_id = ray.get_runtime_context().job_id.hex()
+    job_id = ray.get_runtime_context().get_job_id()
 
     context = workflow_context.WorkflowTaskContext(workflow_id=workflow_id)
     ray.get(workflow_manager.reconstruct_workflow.remote(job_id, context))
@@ -502,7 +502,7 @@ def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
     except Exception as e:
         raise RuntimeError("Failed to get management actor") from e
 
-    job_id = ray.get_runtime_context().job_id.hex()
+    job_id = ray.get_runtime_context().get_job_id()
     reconstructed_workflows = []
     for wid, _ in all_failed:
         context = workflow_context.WorkflowTaskContext(workflow_id=wid)
@@ -734,18 +734,21 @@ class options:
     """This class serves both as a decorator and options for workflow.
 
     Examples:
-        >>> import ray
-        >>> from ray import workflow
-        >>>
-        >>> # specify workflow options with a decorator
-        >>> @workflow.options(catch_exceptions=True):
-        >>> @ray.remote
-        >>> def foo():
-        >>>     return 1
-        >>>
-        >>> # speficy workflow options in ".options"
-        >>> foo_new = foo.options(**workflow.options(catch_exceptions=False))
-    """
+
+        .. code-block:: python
+
+            import ray
+            from ray import workflow
+
+            # specify workflow options with a decorator
+            @workflow.options(catch_exceptions=True)
+            @ray.remote
+            def foo():
+                return 1
+
+            # specify workflow options in ".options"
+            foo_new = foo.options(**workflow.options(catch_exceptions=False))
+    """  # noqa: E501
 
     def __init__(self, **workflow_options: Dict[str, Any]):
         # TODO(suquark): More rigid arguments check like @ray.remote arguments. This is

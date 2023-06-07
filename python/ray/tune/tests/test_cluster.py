@@ -15,7 +15,7 @@ from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.syncer import SyncerCallback, SyncConfig
+from ray.tune.syncer import SyncerCallback
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
 
@@ -37,7 +37,11 @@ def _start_new_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 1,
-            "_system_config": {"num_heartbeats_timeout": 10},
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 1000,
+                "health_check_failure_threshold": 10,
+            },
         },
     )
     return cluster
@@ -62,7 +66,11 @@ def start_connected_emptyhead_cluster():
         connect=True,
         head_node_args={
             "num_cpus": 0,
-            "_system_config": {"num_heartbeats_timeout": 10},
+            "_system_config": {
+                "health_check_initial_delay_ms": 0,
+                "health_check_period_ms": 1000,
+                "health_check_failure_threshold": 10,
+            },
         },
     )
     os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
@@ -78,7 +86,7 @@ def test_counting_resources(start_connected_cluster):
     cluster = start_connected_cluster
     nodes = []
     assert ray.cluster_resources()["CPU"] == 1
-    runner = TrialRunner(BasicVariantGenerator())
+    runner = TrialRunner(search_alg=BasicVariantGenerator())
     kwargs = {"stopping_criterion": {"training_iteration": 10}}
 
     trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
@@ -119,7 +127,7 @@ def test_trial_processed_after_node_failure(start_connected_emptyhead_cluster):
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(BasicVariantGenerator())
+    runner = TrialRunner(search_alg=BasicVariantGenerator())
     mock_process_failure = MagicMock(side_effect=runner._process_trial_failure)
     runner._process_trial_failure = mock_process_failure
 
@@ -141,7 +149,7 @@ def test_remove_node_before_result(start_connected_emptyhead_cluster):
     node = cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
 
-    runner = TrialRunner(BasicVariantGenerator())
+    runner = TrialRunner(search_alg=BasicVariantGenerator())
     kwargs = {
         "stopping_criterion": {"training_iteration": 3},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
@@ -194,17 +202,19 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     cluster.wait_for_nodes()
 
     if durable:
-        upload_dir = "file://" + str(tmpdir)
+        experiment_path = "file://" + str(tmpdir) + "/exp"
         syncer_callback = SyncerCallback()
     else:
-        upload_dir = None
+        experiment_path = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
+    runner = TrialRunner(
+        search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
+    )
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
-        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_path": experiment_path,
         "experiment_dir_name": "exp",
         "max_failures": 2,
     }
@@ -232,7 +242,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     while not runner.is_finished():
         runner.step()
 
-    assert t.status == Trial.TERMINATED, runner.debug_string()
+    assert t.status == Trial.TERMINATED
 
     # Test recovery of trial that has been checkpointed
     t2 = Trial("__fake", **kwargs)
@@ -245,12 +255,12 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     cluster.wait_for_nodes()
     while not runner.is_finished():
         runner.step()
-    assert t2.status == Trial.TERMINATED, runner.debug_string()
+    assert t2.status == Trial.TERMINATED
 
     # Test recovery of trial that won't be checkpointed
     kwargs = {
         "stopping_criterion": {"training_iteration": 3},
-        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_path": experiment_path,
         "experiment_dir_name": "exp",
     }
 
@@ -263,7 +273,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, tmpdir, durable):
     cluster.wait_for_nodes()
     while not runner.is_finished():
         runner.step()
-    assert t3.status == Trial.ERROR, runner.debug_string()
+    assert t3.status == Trial.ERROR
 
     with pytest.raises(TuneError):
         runner.step()
@@ -279,17 +289,19 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
     cluster.wait_for_nodes()
 
     if durable:
-        upload_dir = "file://" + str(tmpdir)
+        experiment_path = "file://" + str(tmpdir) + "/exp"
         syncer_callback = SyncerCallback()
     else:
-        upload_dir = None
+        experiment_path = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])  # noqa
+    runner = TrialRunner(
+        search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
+    )  # noqa
     kwargs = {
         "stopping_criterion": {"training_iteration": 5},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
-        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_path": experiment_path,
         "experiment_dir_name": "exp",
         "max_failures": 1,
     }
@@ -310,7 +322,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster, tmpdir, durable):
     time.sleep(0.1)  # Sleep so that next step() refreshes cluster resources
     runner.step()  # Process result, dispatch save
     runner.step()  # Process save (detect error), requeue trial
-    assert all(t.status == Trial.PENDING for t in trials), runner.debug_string()
+    assert all(t.status == Trial.PENDING for t in trials)
 
 
 @pytest.mark.parametrize("durable", [False, True])
@@ -323,17 +335,19 @@ def test_migration_checkpoint_removal(
     cluster.wait_for_nodes()
 
     if durable:
-        upload_dir = "file://" + str(tmpdir)
+        experiment_path = "file://" + str(tmpdir) + "/exp"
         syncer_callback = SyncerCallback()
     else:
-        upload_dir = None
+        experiment_path = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
-    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
+    runner = TrialRunner(
+        search_alg=BasicVariantGenerator(), callbacks=[syncer_callback]
+    )
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=2),
-        "sync_config": SyncConfig(upload_dir=upload_dir),
+        "experiment_path": experiment_path,
         "experiment_dir_name": "exp",
         "max_failures": 2,
     }
@@ -358,12 +372,12 @@ def test_migration_checkpoint_removal(
         t1.checkpoint.dir_or_data = os.path.join(
             tmpdir,
             t1.relative_logdir,
-            os.path.relpath(t1.checkpoint.dir_or_data, t1.logdir),
+            os.path.relpath(t1.checkpoint.dir_or_data, t1.local_path),
         )
 
     while not runner.is_finished():
         runner.step()
-    assert t1.status == Trial.TERMINATED, runner.debug_string()
+    assert t1.status == Trial.TERMINATED
 
 
 @pytest.mark.parametrize("durable", [False, True])
@@ -373,10 +387,10 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
     dirpath = str(tmpdir)
 
     if durable:
-        upload_dir = "file://" + str(tmpdir)
+        storage_path = "file://" + str(tmpdir)
         syncer_callback = SyncerCallback()
     else:
-        upload_dir = None
+        storage_path = None
         syncer_callback = custom_driver_logdir_callback(str(tmpdir))
 
     from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -387,20 +401,20 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, durable):
         run="__fake",
         stop=dict(training_iteration=3),
         local_dir=local_dir,
-        sync_config=dict(upload_dir=upload_dir),
+        storage_path=storage_path,
     )
 
     exp1_args = base_dict
     exp2_args = dict(
         base_dict.items(),
         local_dir=dirpath,
-        checkpoint_config=dict(checkpoint_frequency=1),
+        checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     )
     exp3_args = dict(base_dict.items(), config=dict(mock_error=True))
     exp4_args = dict(
         base_dict.items(),
         config=dict(mock_error=True),
-        checkpoint_config=dict(checkpoint_frequency=1),
+        checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     )
 
     all_experiments = {
@@ -438,6 +452,8 @@ def test_cluster_rllib_restore(start_connected_cluster, tmpdir):
 import time
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
+
 
 ray.init(address="{address}")
 
@@ -448,7 +464,7 @@ tune.run(
     config=dict(env="CartPole-v1", framework="tf"),
     stop=dict(training_iteration=10),
     local_dir="{checkpoint_dir}",
-    checkpoint_freq=1,
+    checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     max_failures=1,
     dict(experiment=kwargs),
     raise_on_failed_trial=False)
@@ -534,6 +550,7 @@ import os
 import time
 import ray
 from ray import tune
+from ray.air import CheckpointConfig
 
 os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
 
@@ -546,7 +563,7 @@ tune.run(
     name="experiment",
     stop=dict(training_iteration=5),
     local_dir="{checkpoint_dir}",
-    checkpoint_freq=1,
+    checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
     max_failures=1,
     raise_on_failed_trial=False)
 """.format(

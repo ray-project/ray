@@ -7,6 +7,8 @@ from typing import List
 
 import ray
 from ray import tune
+from ray.air.config import CheckpointConfig
+from ray.air.util.node import _force_on_node
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
 from ray.tune.callback import Callback
@@ -260,16 +262,17 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         # Run our test
         with self.assertRaises(RuntimeError):
+            checkpoint_config = CheckpointConfig(num_to_keep=2)
             tune.run(
                 train,
                 name="checkpoint_test",
                 num_samples=3,
                 resources_per_trial={"cpu": 4},
                 max_failures=0,
-                local_dir="/cluster/node",
+                storage_path="/cluster/node",
                 trial_name_creator=lambda trial: trial.trial_id,
                 trial_dirname_creator=lambda trial: trial.trial_id,
-                keep_checkpoints_num=2,
+                checkpoint_config=checkpoint_config,
                 callbacks=[FailOnIndicator("/cluster/shared", num_indicators=3)],
                 verbose=2,
             )
@@ -319,12 +322,13 @@ class MultiNodeSyncTest(unittest.TestCase):
 
         # Continue running the experiment in a new run. Note we
         # don't invoke any failure callback here.
+        checkpoint_config = CheckpointConfig(num_to_keep=2)
         analysis = tune.run(
             train,
             name="checkpoint_test",
             resources_per_trial={"cpu": 4},
-            local_dir="/cluster/node",
-            keep_checkpoints_num=2,
+            storage_path="/cluster/node",
+            checkpoint_config=checkpoint_config,
             resume="AUTO",
             verbose=2,
         )
@@ -348,6 +352,47 @@ class MultiNodeSyncTest(unittest.TestCase):
             # Maximum should be 4 because the first trial creates
             # 2, and we currently don't delete these on continue
             self.assertLessEqual(len(checkpoint_dirs), 4)
+
+    def testForceOnNodeScheduling(self):
+        """Test node scheduling behavior correctly schedules with node affinity."""
+        num_workers = 4
+        num_cpu_per_node = 4
+        self.cluster.update_config(
+            {
+                "provider": {"head_resources": {"CPU": num_cpu_per_node, "GPU": 0}},
+                "available_node_types": {
+                    "ray.worker.cpu": {
+                        "resources": {"CPU": num_cpu_per_node},
+                        "min_workers": num_workers,
+                        "max_workers": num_workers,
+                    },
+                    "ray.worker.gpu": {
+                        "min_workers": 0,
+                        "max_workers": 0,  # No GPU nodes
+                    },
+                },
+            }
+        )
+        self.cluster.start()
+        self.cluster.connect(client=True, timeout=120)
+
+        total_num_cpu = (1 + num_workers) * num_cpu_per_node
+        self.cluster.wait_for_resources({"CPU": total_num_cpu})
+
+        @ray.remote
+        def get_current_node_id():
+            return ray.get_runtime_context().get_node_id()
+
+        node_ids = [node["NodeID"] for node in ray.nodes()]
+        assert len(node_ids) == 1 + num_workers
+
+        remote_tasks = [
+            _force_on_node(node_id, get_current_node_id).remote()
+            for node_id in node_ids
+        ]
+        results = ray.get(remote_tasks)
+        print(results)
+        assert results == node_ids
 
 
 if __name__ == "__main__":

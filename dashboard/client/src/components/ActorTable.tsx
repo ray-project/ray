@@ -15,12 +15,14 @@ import { orange } from "@material-ui/core/colors";
 import { SearchOutlined } from "@material-ui/icons";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import Pagination from "@material-ui/lab/Pagination";
-import React, { useContext, useState } from "react";
-import { Link } from "react-router-dom";
+import _ from "lodash";
+import React, { useContext, useMemo, useState } from "react";
 import { GlobalContext } from "../App";
 import { DurationText } from "../common/DurationText";
+import { ActorLink } from "../common/links";
+import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
-import { Actor } from "../type/actor";
+import { Actor, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
@@ -28,19 +30,75 @@ import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
 import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
 
+export type ActorTableProps = {
+  actors: { [actorId: string]: Actor };
+  workers?: Worker[];
+  jobId?: string | null;
+  filterToActorId?: string;
+  onFilterChange?: () => void;
+  detailPathPrefix?: string;
+};
+
+const SEQUENCE = {
+  FIRST: 1,
+  MIDDLE: 2,
+  LAST: 3,
+};
+
+type StateOrder = {
+  [key in ActorEnum]: number;
+};
+
+const stateOrder: StateOrder = {
+  [ActorEnum.ALIVE]: SEQUENCE.FIRST,
+  [ActorEnum.DEPENDENCIES_UNREADY]: SEQUENCE.MIDDLE,
+  [ActorEnum.PENDING_CREATION]: SEQUENCE.MIDDLE,
+  [ActorEnum.RESTARTING]: SEQUENCE.MIDDLE,
+  [ActorEnum.DEAD]: SEQUENCE.LAST,
+};
+//type predicate for ActorEnum
+const isActorEnum = (state: unknown): state is ActorEnum => {
+  return Object.values(ActorEnum).includes(state as ActorEnum);
+};
+
+// We sort the actorsList so that the "Alive" actors appear at first and "Dead" actors appear in the end.
+export const sortActors = (actorList: Actor[]) => {
+  const sortedActors = [...actorList];
+  return _.sortBy(sortedActors, (actor) => {
+    const actorOrder = isActorEnum(actor.state) ? stateOrder[actor.state] : 0;
+    const actorTime = actor.startTime || 0;
+    return [actorOrder, actorTime];
+  });
+};
+
 const ActorTable = ({
   actors = {},
   workers = [],
-}: {
-  actors: { [actorId: string]: Actor };
-  workers?: Worker[];
-}) => {
+  jobId = null,
+  filterToActorId,
+  onFilterChange,
+  detailPathPrefix = "",
+}: ActorTableProps) => {
   const [pageNo, setPageNo] = useState(1);
-  const { changeFilter, filterFunc } = useFilter();
+  const { changeFilter, filterFunc } = useFilter<string>({
+    overrideFilters:
+      filterToActorId !== undefined
+        ? [{ key: "actorId", val: filterToActorId }]
+        : undefined,
+    onFilterChange,
+  });
+  const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
   const [pageSize, setPageSize] = useState(10);
   const { ipLogMap } = useContext(GlobalContext);
-  const actorList = Object.values(actors || {}).filter(filterFunc);
-  const list = actorList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+
+  //We get a filtered and sorted actor list to render from prop actors
+  const sortedActors = useMemo(() => {
+    const actorList = Object.values(actors || {}).filter(filterFunc);
+    return sortActors(actorList);
+  }, [actors, filterFunc]);
+
+  const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+
   const classes = rowStyles();
 
   const columns = [
@@ -76,6 +134,25 @@ const ActorTable = ({
       ),
     },
     {
+      label: "Repr",
+      helpInfo: (
+        <Typography>
+          The repr name of the actor instance defined by __repr__. For example,
+          this actor will have repr "Actor1"
+          <br />
+          <br />
+          @ray.remote
+          <br />
+          class Actor:
+          <br />
+          &emsp;def __repr__(self):
+          <br />
+          &emsp;&emsp;return "Actor1"
+          <br />
+        </Typography>
+      ),
+    },
+    {
       label: "State",
       helpInfo: (
         <Typography>
@@ -94,14 +171,14 @@ const ActorTable = ({
           alive.
           <br />
           - Stack Trace: Get a stacktrace of the alive actor.
-          <br />- Flame Graph: Get a flamegraph for the next 5 seconds of an
+          <br />- CPU Flame Graph: Get a flamegraph for the next 5 seconds of an
           alive actor.
         </Typography>
       ),
     },
     { label: "Uptime" },
-    { label: "Job Id" },
-    { label: "Pid" },
+    { label: "Job ID" },
+    { label: "PID" },
     { label: "IP" },
     {
       label: "Restarted",
@@ -112,7 +189,16 @@ const ActorTable = ({
       ),
     },
     {
-      label: "Required Resources",
+      label: "Placement group ID",
+      helpInfo: (
+        <Typography>
+          The ID of the placement group this actor is scheduled to.
+          <br />
+        </Typography>
+      ),
+    },
+    {
+      label: "Required resources",
       helpInfo: (
         <Typography>
           The required Ray resources to start an actor.
@@ -130,7 +216,7 @@ const ActorTable = ({
       ),
     },
     {
-      label: "Exit Detail",
+      label: "Exit detail",
       helpInfo: (
         <Typography>
           The detail of an actor exit. Only available when an actor is dead.
@@ -152,6 +238,19 @@ const ActorTable = ({
           }}
           renderInput={(params: TextFieldProps) => (
             <TextField {...params} label="State" />
+          )}
+        />
+        <Autocomplete
+          style={{ margin: 8, width: 150 }}
+          defaultValue={filterToActorId === undefined ? jobId : undefined}
+          options={Array.from(
+            new Set(Object.values(actors).map((e) => e.jobId)),
+          )}
+          onInputChange={(_: any, value: string) => {
+            changeFilter("jobId", value.trim());
+          }}
+          renderInput={(params: TextFieldProps) => (
+            <TextField {...params} label="Job Id" />
           )}
         />
         <Autocomplete
@@ -197,12 +296,14 @@ const ActorTable = ({
           }}
         />
         <TextField
+          value={filterToActorId ?? actorIdFilterValue}
           style={{ margin: 8, width: 120 }}
           label="Actor ID"
           size="small"
           InputProps={{
             onChange: ({ target: { value } }) => {
               changeFilter("actorId", value.trim());
+              setActorIdFilterValue(value);
             },
             endAdornment: (
               <InputAdornment position="end">
@@ -215,7 +316,6 @@ const ActorTable = ({
           style={{ margin: 8, width: 120 }}
           label="Page Size"
           size="small"
-          defaultValue={10}
           InputProps={{
             onChange: ({ target: { value } }) => {
               setPageSize(Math.min(Number(value), 500) || 10);
@@ -231,168 +331,195 @@ const ActorTable = ({
           <Pagination
             page={pageNo}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(actorList.length / pageSize)}
+            count={Math.ceil(sortedActors.length / pageSize)}
           />
         </div>
         <div>
-          <StateCounter type="actor" list={actorList} />
+          <StateCounter type="actor" list={sortedActors} />
         </div>
       </div>
-      <Table>
-        <TableHead>
-          <TableRow>
-            {columns.map(({ label, helpInfo }) => (
-              <TableCell align="center" key={label}>
-                <Box display="flex" justifyContent="center" alignItems="center">
-                  {label}
-                  {helpInfo && (
-                    <HelpInfo className={classes.helpInfo}>{helpInfo}</HelpInfo>
-                  )}
-                </Box>
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {list.map(
-            ({
-              actorId,
-              actorClass,
-              jobId,
-              pid,
-              address,
-              state,
-              name,
-              numRestarts,
-              startTime,
-              endTime,
-              exitDetail,
-              requiredResources,
-            }) => (
-              <ExpandableTableRow
-                length={
-                  workers.filter(
-                    (e) =>
-                      e.pid === pid &&
-                      address.ipAddress === e.coreWorkerStats[0].ipAddress,
-                  ).length
-                }
-                expandComponent={
-                  <RayletWorkerTable
-                    actorMap={{}}
-                    workers={workers.filter(
+      <div className={classes.tableContainer}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              {columns.map(({ label, helpInfo }) => (
+                <TableCell align="center" key={label}>
+                  <Box
+                    display="flex"
+                    justifyContent="center"
+                    alignItems="center"
+                  >
+                    {label}
+                    {helpInfo && (
+                      <HelpInfo className={classes.helpInfo}>
+                        {helpInfo}
+                      </HelpInfo>
+                    )}
+                  </Box>
+                </TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {list.map(
+              ({
+                actorId,
+                actorClass,
+                reprName,
+                jobId,
+                placementGroupId,
+                pid,
+                address,
+                state,
+                name,
+                numRestarts,
+                startTime,
+                endTime,
+                exitDetail,
+                requiredResources,
+              }) => (
+                <ExpandableTableRow
+                  length={
+                    workers.filter(
                       (e) =>
                         e.pid === pid &&
                         address.ipAddress === e.coreWorkerStats[0].ipAddress,
-                    )}
-                    mini
-                  />
-                }
-                key={actorId}
-              >
-                <TableCell align="center">
-                  <Tooltip
-                    className={classes.idCol}
-                    title={actorId}
-                    arrow
-                    interactive
-                  >
-                    <div>{actorId}</div>
-                  </Tooltip>
-                </TableCell>
-                <TableCell align="center">{actorClass}</TableCell>
-                <TableCell align="center">{name ? name : "-"}</TableCell>
-                <TableCell align="center">
-                  <StatusChip type="actor" status={state} />
-                </TableCell>
-                <TableCell align="center">
-                  {ipLogMap[address?.ipAddress] && (
-                    <React.Fragment>
-                      <Link
-                        target="_blank"
-                        to={`/log/${encodeURIComponent(
-                          ipLogMap[address?.ipAddress],
-                        )}?fileName=${jobId}-${pid}`}
-                      >
-                        Log
-                      </Link>
-                      <br />
-                      <a
-                        href={`/worker/traceback?pid=${pid}&ip=${address?.ipAddress}&native=0`}
-                        target="_blank"
-                        title="Sample the current Python stack trace for this worker."
-                        rel="noreferrer"
-                      >
-                        Stack&nbsp;Trace
-                      </a>
-                      <br />
-                      <a
-                        href={`/worker/cpu_profile?pid=${pid}&ip=${address?.ipAddress}&duration=5&native=0`}
-                        target="_blank"
-                        title="Profile the Python worker for 5 seconds (default) and display a flame graph."
-                        rel="noreferrer"
-                      >
-                        Flame&nbsp;Graph
-                      </a>
-                      <br />
-                    </React.Fragment>
-                  )}
-                </TableCell>
-                <TableCell align="center">
-                  {startTime && startTime > 0 ? (
-                    <DurationText startTime={startTime} endTime={endTime} />
-                  ) : (
-                    "-"
-                  )}
-                </TableCell>
-                <TableCell align="center">{jobId}</TableCell>
-                <TableCell align="center">{pid ? pid : "-"}</TableCell>
-                <TableCell align="center">
-                  {address?.ipAddress ? address?.ipAddress : "-"}
-                </TableCell>
-                <TableCell
-                  align="center"
-                  style={{
-                    color: Number(numRestarts) > 0 ? orange[500] : "inherit",
-                  }}
+                    ).length
+                  }
+                  expandComponent={
+                    <RayletWorkerTable
+                      actorMap={{}}
+                      workers={workers.filter(
+                        (e) =>
+                          e.pid === pid &&
+                          address.ipAddress === e.coreWorkerStats[0].ipAddress,
+                      )}
+                      mini
+                    />
+                  }
+                  key={actorId}
                 >
-                  {numRestarts}
-                </TableCell>
-                <TableCell align="center">
-                  <Tooltip
-                    className={classes.OverflowCol}
-                    title={Object.entries(requiredResources || {}).map(
-                      ([key, val]) => (
-                        <div style={{ margin: 4 }}>
-                          {key}: {val}
-                        </div>
-                      ),
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.idCol}
+                      title={actorId}
+                      arrow
+                      interactive
+                    >
+                      <div>
+                        <ActorLink
+                          actorId={actorId}
+                          to={
+                            detailPathPrefix
+                              ? `${detailPathPrefix}/${actorId}`
+                              : actorId
+                          }
+                        />
+                      </div>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">{actorClass}</TableCell>
+                  <TableCell align="center">{name ? name : "-"}</TableCell>
+                  <TableCell align="center">
+                    {reprName ? reprName : "-"}
+                  </TableCell>
+                  <TableCell align="center">
+                    <StatusChip type="actor" status={state} />
+                  </TableCell>
+                  <TableCell align="center">
+                    {ipLogMap[address?.ipAddress] && (
+                      <React.Fragment>
+                        <ActorLink
+                          actorId={actorId}
+                          to={
+                            detailPathPrefix
+                              ? `${detailPathPrefix}/${actorId}`
+                              : actorId
+                          }
+                        >
+                          Log
+                        </ActorLink>
+                        <br />
+                        <CpuProfilingLink
+                          pid={pid}
+                          ip={address?.ipAddress}
+                          type=""
+                        />
+                        <br />
+                        <CpuStackTraceLink
+                          pid={pid}
+                          ip={address?.ipAddress}
+                          type=""
+                        />
+                      </React.Fragment>
                     )}
-                    arrow
-                    interactive
+                  </TableCell>
+                  <TableCell align="center">
+                    {startTime && startTime > 0 ? (
+                      <DurationText startTime={startTime} endTime={endTime} />
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
+                  <TableCell align="center">{jobId}</TableCell>
+                  <TableCell align="center">{pid ? pid : "-"}</TableCell>
+                  <TableCell align="center">
+                    {address?.ipAddress ? address?.ipAddress : "-"}
+                  </TableCell>
+                  <TableCell
+                    align="center"
+                    style={{
+                      color: Number(numRestarts) > 0 ? orange[500] : "inherit",
+                    }}
                   >
-                    <div>
-                      {Object.entries(requiredResources || {})
-                        .map(([key, val]) => `${key}: ${val}`)
-                        .join(", ")}
-                    </div>
-                  </Tooltip>
-                </TableCell>
-                <TableCell align="center">
-                  <Tooltip
-                    className={classes.OverflowCol}
-                    title={exitDetail}
-                    arrow
-                    interactive
-                  >
-                    <div>{exitDetail}</div>
-                  </Tooltip>
-                </TableCell>
-              </ExpandableTableRow>
-            ),
-          )}
-        </TableBody>
-      </Table>
+                    {numRestarts}
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.idCol}
+                      title={placementGroupId ? placementGroupId : "-"}
+                      arrow
+                      interactive
+                    >
+                      <div>{placementGroupId ? placementGroupId : "-"}</div>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.OverflowCol}
+                      title={Object.entries(requiredResources || {}).map(
+                        ([key, val]) => (
+                          <div style={{ margin: 4 }}>
+                            {key}: {val}
+                          </div>
+                        ),
+                      )}
+                      arrow
+                      interactive
+                    >
+                      <div>
+                        {Object.entries(requiredResources || {})
+                          .map(([key, val]) => `${key}: ${val}`)
+                          .join(", ")}
+                      </div>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip
+                      className={classes.OverflowCol}
+                      title={exitDetail}
+                      arrow
+                      interactive
+                    >
+                      <div>{exitDetail}</div>
+                    </Tooltip>
+                  </TableCell>
+                </ExpandableTableRow>
+              ),
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </React.Fragment>
   );
 };

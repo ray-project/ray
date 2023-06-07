@@ -4,9 +4,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import os
 
-import numpy as np
 import pytest
+from unittest import mock
 
 import ray
 import ray.cluster_utils
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def test_actor_scheduling(shutdown_only):
-    ray.init()
+    ray.init(num_cpus=1)
 
     @ray.remote
     class A:
@@ -31,7 +32,7 @@ def test_actor_scheduling(shutdown_only):
 
     a = A.remote()
     a.run_fail.remote()
-    with pytest.raises(Exception):
+    with pytest.raises(ray.exceptions.RayActorError, match="exit_actor"):
         ray.get([a.get.remote()])
 
 
@@ -57,11 +58,7 @@ def test_worker_startup_count(ray_start_cluster):
 
     # Flood a large scale lease worker requests.
     for i in range(10000):
-        # Use random cpu resources to make sure that all tasks are sent
-        # to the raylet. Because core worker will cache tasks with the
-        # same resource shape.
-        num_cpus = 0.24 + np.random.uniform(0, 0.01)
-        slow_function.options(num_cpus=num_cpus).remote()
+        slow_function.options(num_cpus=0.25).remote()
 
     # Check "debug_state.txt" to ensure no extra workers were started.
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
@@ -163,6 +160,8 @@ def test_fork_support(shutdown_only):
     sys.platform not in ["win32", "darwin"],
     reason="Only listen on localhost by default on mac and windows.",
 )
+@mock.patch("ray._private.services.ray_constants.ENABLE_RAY_CLUSTER", False)
+@mock.patch.dict(os.environ, {"RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "0"})
 @pytest.mark.parametrize("start_ray", ["ray_start_regular", "call_ray_start"])
 def test_listen_on_localhost(start_ray, request):
     """All ray processes should listen on localhost by default

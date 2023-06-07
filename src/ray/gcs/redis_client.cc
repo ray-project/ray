@@ -59,12 +59,25 @@ static int DoGetNextJobID(redisContext *context) {
   static const std::string kClusterSeparator = "@";
   static std::string key = RayConfig::instance().external_storage_namespace() +
                            kClusterSeparator + kTableSeparator + "JobCounter";
-  static std::string cmd = "INCR " + key;
+  static std::string cmd =
+      "HINCRBY " + RayConfig::instance().external_storage_namespace() + " " + key + " 1";
 
   redisReply *reply = nullptr;
   bool under_retry_limit = RunRedisCommandWithRetries(
       context, cmd.c_str(), &reply, [](const redisReply *reply) {
-        return reply != nullptr && reply->type != REDIS_REPLY_NIL;
+        if (reply == nullptr) {
+          RAY_LOG(WARNING) << "Didn't get reply for " << cmd;
+          return false;
+        }
+        if (reply->type == REDIS_REPLY_NIL) {
+          RAY_LOG(WARNING) << "Got nil reply for " << cmd;
+          return false;
+        }
+        if (reply->type == REDIS_REPLY_ERROR) {
+          RAY_LOG(WARNING) << "Got error reply for " << cmd << " Error is " << reply->str;
+          return false;
+        }
+        return true;
       });
   RAY_CHECK(reply);
   RAY_CHECK(under_retry_limit) << "No entry found for JobCounter";
@@ -207,10 +220,9 @@ void RedisClient::Disconnect() {
 }
 
 std::shared_ptr<RedisContext> RedisClient::GetShardContext(const std::string &shard_key) {
-  RAY_CHECK(!shard_contexts_.empty());
-  static std::hash<std::string> hash;
-  size_t index = hash(shard_key) % shard_contexts_.size();
-  return shard_contexts_[index];
+  // TODO (iycheng) Remove shard context from RedisClient
+  RAY_CHECK(shard_contexts_.size() == 1);
+  return shard_contexts_[0];
 }
 
 int RedisClient::GetNextJobID() {

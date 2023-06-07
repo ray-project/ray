@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import sys
@@ -13,9 +12,7 @@ import pytest
 import ray
 from ray import tune
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray.tune.execution.trial_runner import _load_trial_from_checkpoint
 from ray.tune.experiment import Trial
-from ray.tune.utils.serialization import TuneFunctionDecoder
 
 
 def train(config):
@@ -49,12 +46,12 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         local_dir = str(local_dir_path)
         if local_dir_path.exists():
             local_dir = tempfile.mkdtemp(prefix=str(local_dir_path) + "_")
-        trial = Trial(trainable_name="rel_logdir", local_dir=local_dir)
+        trial = Trial(trainable_name="rel_logdir", experiment_path=local_dir)
 
         with self.assertRaises(ValueError):
-            trial.logdir = "/tmp/test_rel/../dots"
+            trial.local_path = "/tmp/test_rel/../dots"
         with self.assertRaises(ValueError):
-            trial.logdir = local_dir + "/../"
+            trial.local_path = local_dir + "/../"
 
         if shutil.rmtree.avoids_symlink_attacks:
             if local_dir_path.exists():
@@ -73,7 +70,9 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         else:
             local_dir = str(local_dir_path)
 
-        tune.run("rel_logdir", config={"a": tune.randint(0, 10)}, local_dir=local_dir)
+        tune.run(
+            "rel_logdir", config={"a": tune.randint(0, 10)}, storage_path=local_dir
+        )
 
         # Copy the folder
         local_dir_moved = local_dir + "_moved"
@@ -132,7 +131,7 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         tune.run(
             "rel_logdir",
             config={"a": tune.randint(0, 10)},
-            local_dir=local_dir,
+            storage_path=local_dir,
             # Create a nested experiment directory.
             name="exp_dir/deep_exp_dir",
         )
@@ -199,7 +198,7 @@ class TrialRelativeLogdirTest(unittest.TestCase):
         tune.run(
             "rel_logdir",
             config={"a": tune.randint(0, 10)},
-            local_dir=local_dir,
+            storage_path=local_dir,
         )
 
         # Copy the folder.
@@ -259,15 +258,17 @@ class TrialRelativeLogdirTest(unittest.TestCase):
 
 
 def test_load_trial_from_json_state(tmpdir):
-    """Check that `Trial.get_json_state` and `_load_trial_from_checkpoint`
-    for saving and loading a Trial is done correctly."""
+    """Check that serializing a trial to a JSON string with `Trial.get_json_state`
+    and then creating a new trial using the `Trial.from_json_state` alternate
+    constructor loads the trial with equivalent state."""
     trial = Trial(
-        "MockTrainable", stub=True, trial_id="abcd1234", local_dir=str(tmpdir)
+        "MockTrainable", stub=True, trial_id="abcd1234", experiment_path=str(tmpdir)
     )
-    trial.init_logdir()
+    trial.create_placement_group_factory()
+    trial.init_local_path()
     trial.status = Trial.TERMINATED
 
-    checkpoint_logdir = os.path.join(trial.logdir, "checkpoint_00000")
+    checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
     trial.checkpoint_manager.on_checkpoint(
         _TrackedCheckpoint(
             dir_or_data=checkpoint_logdir,
@@ -276,22 +277,49 @@ def test_load_trial_from_json_state(tmpdir):
         )
     )
 
-    json_cp = trial.get_json_state()
-    trial_cp = json.loads(json_cp, cls=TuneFunctionDecoder)
     # After loading, the trial state should be the same
-    new_trial = _load_trial_from_checkpoint(trial_cp.copy(), stub=True)
-    assert new_trial.get_json_state() == json_cp
+    json_state = trial.get_json_state()
+    new_trial = Trial.from_json_state(json_state, stub=True)
+    assert new_trial.get_json_state() == json_state
+
+
+def test_change_trial_local_dir(tmpdir):
+    trial = Trial(
+        "MockTrainable", stub=True, trial_id="abcd1234", experiment_path=str(tmpdir)
+    )
+    trial.init_local_path()
+    trial.status = Trial.TERMINATED
+
+    checkpoint_logdir = os.path.join(trial.local_path, "checkpoint_00000")
+    trial.checkpoint_manager.on_checkpoint(
+        _TrackedCheckpoint(
+            dir_or_data=checkpoint_logdir,
+            storage_mode=CheckpointStorage.PERSISTENT,
+            metrics={"training_iteration": 1},
+        )
+    )
+
+    assert trial.local_path.startswith(str(tmpdir))
+    assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(str(tmpdir))
 
     # Specify a new local dir, and the logdir/checkpoint path should be updated
     with tempfile.TemporaryDirectory() as new_local_dir:
-        new_trial = _load_trial_from_checkpoint(
-            trial_cp.copy(), stub=True, new_local_dir=new_local_dir
-        )
+        trial.local_experiment_path = new_local_dir
 
-        assert new_trial.logdir.startswith(new_local_dir)
-        assert new_trial.get_trial_checkpoints()[0].dir_or_data.startswith(
-            new_local_dir
-        )
+        assert trial.local_path.startswith(new_local_dir)
+        assert trial.get_trial_checkpoints()[0].dir_or_data.startswith(new_local_dir)
+
+
+def test_trial_logdir_length(tmpdir):
+    """Test that trial local paths with a long logdir are truncated"""
+    trial = Trial(
+        trainable_name="none",
+        experiment_path=str(tmpdir),
+        stub=True,
+        config={"a" * 50: 5.0 / 7, "b" * 50: "long" * 40},
+    )
+    trial.init_local_path()
+    assert len(os.path.basename(trial.local_path)) < 200
 
 
 if __name__ == "__main__":

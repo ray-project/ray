@@ -6,12 +6,14 @@
 # You can find the reference results here:
 # https://github.com/ray-project/ray/tree/master/release/release_logs
 atari-impala:
-    env: BreakoutNoFrameskip-v4
+    env: ALE/Breakout-v5
     run: IMPALA
     num_samples: 4
     stop:
         time_total_s: 3600
     config:
+        env_config:
+            frameskip: 1  # no frameskip
         rollout_fragment_length: 50
         train_batch_size: 500
         num_workers: 10
@@ -23,12 +25,14 @@ atari-impala:
         ]
         num_gpus: 1
 atari-ppo-tf:
-    env: BreakoutNoFrameskip-v4
+    env: ALE/Breakout-v5
     run: PPO
     num_samples: 4
     stop:
         time_total_s: 3600
     config:
+        env_config:
+            frameskip: 1  # no frameskip
         lambda: 0.95
         kl_coeff: 0.5
         clip_rewards: True
@@ -47,13 +51,15 @@ atari-ppo-tf:
             vf_share_layers: true
         num_gpus: 1
 atari-ppo-torch:
-    env: BreakoutNoFrameskip-v4
+    env: ALE/Breakout-v5
     run: PPO
     num_samples: 4
     stop:
         time_total_s: 3600
     config:
         framework: torch
+        env_config:
+            frameskip: 1  # no frameskip
         lambda: 0.95
         kl_coeff: 0.5
         clip_rewards: True
@@ -72,12 +78,14 @@ atari-ppo-torch:
             vf_share_layers: true
         num_gpus: 1
 apex:
-    env: BreakoutNoFrameskip-v4
+    env: ALE/Breakout-v5
     run: APEX
     num_samples: 4
     stop:
         time_total_s: 3600
     config:
+        env_config:
+            frameskip: 1  # no frameskip
         double_q: false
         dueling: false
         num_atoms: 1
@@ -101,12 +109,14 @@ apex:
         target_network_update_freq: 50000
         min_sample_timesteps_per_iteration: 25000
 atari-a2c:
-    env: BreakoutNoFrameskip-v4
+    env: ALE/Breakout-v5
     run: A2C
     num_samples: 4
     stop:
         time_total_s: 3600
     config:
+        env_config:
+            frameskip: 1  # no frameskip
         rollout_fragment_length: 20
         clip_rewards: True
         num_workers: 5
@@ -117,12 +127,14 @@ atari-a2c:
             [20000000, 0.000000000001],
         ]
 atari-basic-dqn:
-    env: BreakoutNoFrameskip-v4
+    env: ALE/Breakout-v5
     run: DQN
     num_samples: 4
     stop:
         time_total_s: 3600
     config:
+        env_config:
+            frameskip: 1  # no frameskip
         double_q: false
         dueling: false
         num_atoms: 1

@@ -1,16 +1,18 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
+import json
 import os
 import logging
 import pickle
 import socket
 import time
-from typing import Callable, List, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from ray._private.utils import get_or_create_event_loop
 
 import uvicorn
 import starlette.responses
 import starlette.routing
+from starlette.types import Receive, Scope, Send
 
 import ray
 from ray.exceptions import RayActorError, RayTaskError
@@ -25,21 +27,108 @@ from ray.serve._private.http_util import (
     Response,
     set_socket_reuse_port,
 )
-from ray.serve._private.common import EndpointInfo, EndpointTag
-from ray.serve._private.constants import SERVE_LOGGER_NAME, SERVE_NAMESPACE
+from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
+from ray.serve._private.constants import (
+    SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
+    SERVE_NAMESPACE,
+    DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+)
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.logging_utils import access_log_msg, configure_component_logger
+from ray.serve._private.logging_utils import (
+    access_log_msg,
+    configure_component_logger,
+    get_component_logger_file_path,
+)
+
+from ray.serve._private.utils import get_random_letters
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-MAX_REPLICA_FAILURE_RETRIES = 10
+HTTP_REQUEST_MAX_RETRIES = int(os.environ.get("RAY_SERVE_HTTP_REQUEST_MAX_RETRIES", 10))
+assert HTTP_REQUEST_MAX_RETRIES >= 0, (
+    f"Got unexpected value {HTTP_REQUEST_MAX_RETRIES} for "
+    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES environment variable. "
+    "RAY_SERVE_HTTP_REQUEST_MAX_RETRIES cannot be negative."
+)
+
 DISCONNECT_ERROR_CODE = "disconnection"
 SOCKET_REUSE_PORT_ENABLED = (
     os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "1") == "1"
 )
-SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
-    float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0)) or None
+
+# TODO (shrekris-anyscale): Deprecate SERVE_REQUEST_PROCESSING_TIMEOUT_S env var
+RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or float(os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S", 0))
+    or None
 )
+
+if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
+    logger.warning(
+        "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
+        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
+        "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
+        "future versions."
+    )
+
+
+async def _handle_streaming_response(
+    asgi_response_generator: "ray._raylet.StreamingObjectRefGenerator",
+    scope: Scope,
+    receive: Receive,
+    send: Send,
+) -> str:
+    """Consumes the `asgi_response_generator` and sends its data over `send`.
+
+    This function is a proxy for a downstream ASGI response. The passed
+    generator is expected to return a stream of pickled ASGI messages
+    (dictionaries) that are sent using the provided ASGI interface.
+
+    Exception handling depends on whether the first message has already been sent:
+        - if an exception happens *before* the first message, a 500 status is sent.
+        - if an exception happens *after* the first message, the response stream is
+          terminated.
+
+    The difference in behavior is because once the first message has been sent, the
+    client has already received the status code so we cannot send a `500` (internal
+    server error).
+
+    Returns:
+        status_code
+    """
+
+    status_code = ""
+    try:
+        async for obj_ref in asgi_response_generator:
+            asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
+            for asgi_message in asgi_messages:
+                # There must be exactly one "http.response.start" message that
+                # always contains the "status" field.
+                if not status_code:
+                    assert asgi_message["type"] == "http.response.start", (
+                        "First response message must be 'http.response.start'",
+                    )
+                    assert "status" in asgi_message, (
+                        "'http.response.start' message must contain 'status'",
+                    )
+                    status_code = str(asgi_message["status"])
+
+                await send(asgi_message)
+    except Exception as e:
+        error_message = f"Unexpected error, traceback: {e}."
+        logger.warning(error_message)
+
+        if status_code == "":
+            # If first message hasn't been sent, return 500 status.
+            await Response(error_message, status_code=500).send(scope, receive, send)
+            return "500"
+        else:
+            # If first message has been sent, terminate the response stream.
+            return status_code
+
+    return status_code
 
 
 async def _send_request_to_handle(handle, scope, receive, send) -> str:
@@ -60,7 +149,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
     # We have received all the http request conent. The next `receive`
     # call might never arrive; if it does, it can only be `http.disconnect`.
     client_disconnection_task = loop.create_task(receive())
-    while retries < MAX_REPLICA_FAILURE_RETRIES:
+    while retries < HTTP_REQUEST_MAX_RETRIES + 1:
         assignment_task: asyncio.Task = handle.remote(request)
         done, _ = await asyncio.wait(
             [assignment_task, client_disconnection_task],
@@ -74,12 +163,18 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             )
             logger.warning(
                 f"Client from {scope['client']} disconnected, cancelling the "
-                "request."
+                "request.",
+                extra={"log_to_stderr": False},
             )
             # This will make the .result() to raise cancelled error.
             assignment_task.cancel()
         try:
             object_ref = await assignment_task
+
+            if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
+                return await _handle_streaming_response(
+                    object_ref, scope, receive, send
+                )
 
             # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
             # some replicas crash simultaneously (e.g. if the head node crashes),
@@ -90,14 +185,14 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # https://github.com/ray-project/ray/pull/29534 for more info.
 
             _, request_timed_out = await asyncio.wait(
-                [object_ref], timeout=SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             )
             if request_timed_out:
                 logger.info(
                     "Request didn't finish within "
-                    f"{SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
+                    f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
                     "with another replica. You can modify this timeout by "
-                    'setting the "SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                    'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
                 )
                 backoff = True
             else:
@@ -108,14 +203,14 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             # Here because the client disconnected, we will return a custom
             # error code for metric tracking.
             return DISCONNECT_ERROR_CODE
-        except RayTaskError as error:
-            error_message = "Task Error. Traceback: {}.".format(error)
+        except RayTaskError as e:
+            error_message = f"Unexpected error, traceback: {e}."
             await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
         except RayActorError:
-            logger.debug(
+            logger.info(
                 "Request failed due to replica failure. There are "
-                f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
+                f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
                 "remaining."
             )
             backoff = True
@@ -128,7 +223,7 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
             retries += 1
             backoff = False
     else:
-        error_message = f"Task failed with {MAX_REPLICA_FAILURE_RETRIES} retries."
+        error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
         await Response(error_message, status_code=500).send(scope, receive, send)
         return "500"
 
@@ -149,7 +244,7 @@ class LongestPrefixRouter:
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints associated with the routes.
-        self.route_info: Dict[str, EndpointTag] = dict()
+        self.route_info: Dict[str, Tuple[EndpointTag, ApplicationName]] = dict()
         # Contains a ServeHandle for each endpoint.
         self.handles: Dict[str, RayServeHandle] = dict()
 
@@ -157,20 +252,27 @@ class LongestPrefixRouter:
         return endpoint in self.handles
 
     def update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
-        logger.debug(f"Got updated endpoints: {endpoints}.")
+        logger.info(
+            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
+        )
 
         existing_handles = set(self.handles.keys())
         routes = []
         route_info = {}
         for endpoint, info in endpoints.items():
             routes.append(info.route)
-            route_info[info.route] = endpoint
+            route_info[info.route] = (endpoint, info.app_name)
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
                 self.handles[endpoint] = self._get_handle(endpoint)
 
         # Clean up any handles that are no longer used.
+        if len(existing_handles) > 0:
+            logger.info(
+                f"Deleting {len(existing_handles)} unused handles.",
+                extra={"log_to_stderr": False},
+            )
         for endpoint in existing_handles:
             del self.handles[endpoint]
 
@@ -209,10 +311,10 @@ class LongestPrefixRouter:
                     matched = True
 
                 if matched:
-                    endpoint = self.route_info[route]
-                    return route, self.handles[endpoint]
+                    endpoint, app_name = self.route_info[route]
+                    return route, self.handles[endpoint], app_name
 
-        return None, None
+        return None, None, None
 
 
 class HTTPProxy:
@@ -227,7 +329,7 @@ class HTTPProxy:
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
-            None, None, controller_name, None
+            None, None, controller_name, None, None
         )
 
         # Used only for displaying the route table.
@@ -239,6 +341,7 @@ class HTTPProxy:
                 sync=False,
                 missing_ok=True,
                 _internal_pickled_http_request=True,
+                _stream=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
@@ -252,10 +355,7 @@ class HTTPProxy:
         self.request_counter = metrics.Counter(
             "serve_num_http_requests",
             description="The number of HTTP requests processed.",
-            tag_keys=(
-                "route",
-                "method",
-            ),
+            tag_keys=("route", "method", "application", "status_code"),
         )
 
         self.request_error_counter = metrics.Counter(
@@ -277,6 +377,21 @@ class HTTPProxy:
                 "deployment",
                 "error_code",
                 "method",
+                "route",
+                "application",
+            ),
+        )
+        self.processing_latency_tracker = metrics.Histogram(
+            "serve_http_request_latency_ms",
+            description=(
+                "The end-to-end latency of HTTP requests "
+                "(measured from the Serve HTTP proxy)."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=(
+                "route",
+                "application",
+                "status_code",
             ),
         )
 
@@ -322,27 +437,47 @@ class HTTPProxy:
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
 
-        self.request_counter.inc(
-            tags={"route": route_path, "method": scope["method"].upper()}
-        )
-
         if route_path == "/-/routes":
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                    "status_code": "200",
+                }
+            )
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send
             )
 
         if route_path == "/-/healthz":
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                    "status_code": "200",
+                }
+            )
             return await starlette.responses.PlainTextResponse("success")(
                 scope, receive, send
             )
 
-        route_prefix, handle = self.prefix_router.match_route(route_path)
+        route_prefix, handle, app_name = self.prefix_router.match_route(route_path)
         if route_prefix is None:
             self.request_error_counter.inc(
                 tags={
                     "route": route_path,
                     "error_code": "404",
                     "method": scope["method"].upper(),
+                }
+            )
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": scope["method"].upper(),
+                    "application": "",
+                    "status_code": "404",
                 }
             )
             return await self._not_found(scope, receive, send)
@@ -355,16 +490,45 @@ class HTTPProxy:
             scope["path"] = route_path.replace(route_prefix, "", 1)
             scope["root_path"] = root_path + route_prefix
 
+        request_context_info = {
+            "route": route_path,
+            "request_id": get_random_letters(10),
+            "app_name": app_name,
+        }
         start_time = time.time()
+        for key, value in scope["headers"]:
+            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+                request_context_info["multiplexed_model_id"] = value.decode()
+                break
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(**request_context_info)
+        )
         status_code = await _send_request_to_handle(handle, scope, receive, send)
+        self.request_counter.inc(
+            tags={
+                "route": route_path,
+                "method": scope["method"].upper(),
+                "application": app_name,
+                "status_code": status_code,
+            }
+        )
+
         latency_ms = (time.time() - start_time) * 1000.0
+        self.processing_latency_tracker.observe(
+            latency_ms,
+            tags={
+                "route": route_path,
+                "application": app_name,
+                "status_code": status_code,
+            },
+        )
         logger.info(
             access_log_msg(
                 method=scope["method"],
-                route=route_prefix,
                 status=str(status_code),
                 latency_ms=latency_ms,
-            )
+            ),
+            extra={"log_to_stderr": False},
         )
         if status_code != "200":
             self.request_error_counter.inc(
@@ -379,6 +543,8 @@ class HTTPProxy:
                     "deployment": handle.deployment_name,
                     "error_code": status_code,
                     "method": scope["method"].upper(),
+                    "route": route_path,
+                    "application": app_name,
                 }
             )
 
@@ -421,18 +587,29 @@ class HTTPProxyActor:
         """Returns when HTTP proxy is ready to serve traffic.
         Or throw exception when it is not able to serve traffic.
         """
+        setup_task = get_or_create_event_loop().create_task(self.setup_complete.wait())
         done_set, _ = await asyncio.wait(
             [
                 # Either the HTTP setup has completed.
                 # The event is set inside self.run.
-                self.setup_complete.wait(),
+                setup_task,
                 # Or self.run errored.
                 self.running_task,
             ],
             return_when=asyncio.FIRST_COMPLETED,
         )
 
-        # Return None, or re-throw the exception from self.running_task.
+        # Return metadata, or re-throw the exception from self.running_task.
+        if self.setup_complete.is_set():
+            # NOTE(zcin): We need to convert the metadata to a json string because
+            # of cross-language scenarios. Java can't deserialize a Python tuple.
+            return json.dumps(
+                [
+                    ray.get_runtime_context().get_worker_id(),
+                    get_component_logger_file_path(),
+                ]
+            )
+
         return await done_set.pop()
 
     async def block_until_endpoint_exists(
@@ -472,3 +649,9 @@ Please make sure your http-host and http-port are specified correctly."""
 
         self.setup_complete.set()
         await server.serve(sockets=[sock])
+
+    async def check_health(self):
+        """No-op method to check on the health of the HTTP Proxy.
+        Make sure the async event loop is not blocked.
+        """
+        pass

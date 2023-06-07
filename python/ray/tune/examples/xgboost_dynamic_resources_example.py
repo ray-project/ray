@@ -1,4 +1,4 @@
-from typing import Union, Dict, Any, Optional
+from typing import Dict, Any, Optional
 import sklearn.datasets
 import sklearn.metrics
 import os
@@ -11,7 +11,6 @@ import ray
 from ray import air, tune
 from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune import Trainable
-from ray.tune.resources import Resources
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Trial
 from ray.tune.execution import trial_runner
@@ -167,7 +166,7 @@ def tune_xgboost(use_class_trainable=True):
         trial: Trial,
         result: Dict[str, Any],
         scheduler: "ResourceChangingScheduler",
-    ) -> Optional[Union[PlacementGroupFactory, Resources]]:
+    ) -> Optional[PlacementGroupFactory]:
         """This is a basic example of a resource allocating function.
 
         The function naively balances available CPUs over live trials.

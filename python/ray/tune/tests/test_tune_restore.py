@@ -12,10 +12,13 @@ import threading
 import time
 from typing import List
 import unittest
+from unittest import mock
 
 import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
+from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.config import CheckpointConfig
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.tune import TuneError
@@ -37,8 +40,8 @@ class TuneRestoreTest(unittest.TestCase):
             "PG",
             name=test_name,
             stop={"training_iteration": 1},
-            checkpoint_freq=1,
-            local_dir=tmpdir,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            storage_path=tmpdir,
             config={
                 "env": "CartPole-v0",
                 "framework": "tf",
@@ -60,7 +63,7 @@ class TuneRestoreTest(unittest.TestCase):
             "PG",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},  # train one more iteration.
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             restore=self.checkpoint_path,  # Restore the checkpoint
             config={
                 "env": "CartPole-v0",
@@ -75,8 +78,10 @@ class TuneRestoreTest(unittest.TestCase):
             "PG",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},
-            checkpoint_freq=1,
-            keep_checkpoints_num=1,
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=1,
+                checkpoint_frequency=1,
+            ),
             restore=self.checkpoint_path,
             config={
                 "env": "CartPole-v0",
@@ -105,7 +110,7 @@ def _run(local_dir, driver_semaphore, trainer_semaphore):
 
     tune.run(
         _train,
-        local_dir=local_dir,
+        storage_path=local_dir,
         name="interrupt",
         callbacks=[SteppingCallback(driver_semaphore, trainer_semaphore)],
     )
@@ -263,7 +268,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
 
@@ -291,7 +296,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
 
@@ -314,6 +319,68 @@ class TuneFailResumeGridTest(unittest.TestCase):
         )
         assert len(analysis.trials) == 27
 
+    @mock.patch.dict(os.environ, {"TUNE_MAX_PENDING_TRIALS_PG": "1"})
+    def testConfigUpdateInResume(self):
+        class FakeDataset:
+            def __init__(self, name):
+                self.name = name
+
+        config = dict(
+            num_samples=1,
+            fail_fast=True,
+            config={
+                "test": tune.grid_search(
+                    [FakeDataset("1"), FakeDataset("2"), FakeDataset("3")]
+                ),
+                "test2": tune.grid_search(
+                    [
+                        FakeDataset("4"),
+                        FakeDataset("5"),
+                        FakeDataset("6"),
+                        FakeDataset("7"),
+                    ]
+                ),
+            },
+            stop={"training_iteration": 2},
+            storage_path=self.logdir,
+            verbose=1,
+        )
+
+        with self.assertRaises(RuntimeError):
+            tune.run(
+                "trainable",
+                callbacks=[
+                    self.FailureInjectorCallback(num_trials=1),
+                    self.CheckTrialResourcesCallback(1),
+                ],
+                **config,
+            )
+
+        config["config"] = {
+            "test": tune.grid_search(
+                [FakeDataset("8"), FakeDataset("9"), FakeDataset("10")]
+            ),
+            "test2": tune.grid_search(
+                [
+                    FakeDataset("11"),
+                    FakeDataset("12"),
+                    FakeDataset("13"),
+                    FakeDataset("14"),
+                ]
+            ),
+        }
+
+        analysis = tune.run(
+            "trainable",
+            resume=True,
+            **config,
+        )
+        assert len(analysis.trials) == 12
+        for t in analysis.trials:
+            # Make sure that test and test2 are updated.
+            assert t.config["test"].name in ["8", "9", "10"]
+            assert t.config["test2"].name in ["11", "12", "13", "14"]
+
     def testFailResumeWithPreset(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
@@ -329,7 +396,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
         with self.assertRaises(RuntimeError):
@@ -339,6 +406,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 search_alg=search_alg,
                 **config,
             )
+
+        print("---- RESTARTING RUN ----")
 
         analysis = tune.run(
             "trainable",
@@ -370,7 +439,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test2": tune.grid_search([1, 2, 3]),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
 
@@ -381,6 +450,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 search_alg=search_alg,
                 **config,
             )
+
+        print("---- RESTARTING RUN ----")
 
         analysis = tune.run(
             "trainable",
@@ -411,7 +482,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                         "test": tune.grid_search([1, 2, 3]),
                     },
                     stop={"training_iteration": 1},
-                    local_dir=self.logdir,
+                    storage_path=self.logdir,
                 )
             )
 
@@ -442,7 +513,7 @@ class TuneFailResumeGridTest(unittest.TestCase):
                 "test5": tune.grid_search(list(range(20))),
             },
             stop={"training_iteration": 2},
-            local_dir=self.logdir,
+            storage_path=self.logdir,
             verbose=1,
         )
         with self.assertWarnsRegex(UserWarning, "exceeds the serialization threshold"):
@@ -574,6 +645,27 @@ class ResourceExhaustedTest(unittest.TestCase):
             "The Trainable/training function is too large for grpc resource limit.",
         ):
             tune.run(training_func)
+
+
+@pytest.mark.parametrize(
+    "trial_config", [{}, {"attr": 4}, {"nested": {"key": "value"}}]
+)
+def test_trial_last_result_restore(trial_config):
+    metrics = {"metric1": 4, "nested2": {"metric3": 6}}
+    metrics["config"] = trial_config
+
+    trial = Trial(trainable_name="stub", config=trial_config, stub=True)
+    trial.update_last_result(metrics)
+
+    checkpoint = _TrackedCheckpoint(
+        dir_or_data="no_data",
+        storage_mode=CheckpointStorage.PERSISTENT,
+        metrics=metrics,
+    )
+
+    trial.restoring_from = checkpoint
+    trial.on_restore()
+    assert trial.last_result == metrics
 
 
 def test_stacktrace():

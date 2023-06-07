@@ -10,7 +10,6 @@ import {
   TableRow,
 } from "@material-ui/core";
 import { KeyboardArrowDown, KeyboardArrowRight } from "@material-ui/icons";
-import dayjs from "dayjs";
 import React, {
   PropsWithChildren,
   ReactNode,
@@ -20,6 +19,7 @@ import React, {
 } from "react";
 import { Link } from "react-router-dom";
 import { GlobalContext } from "../App";
+import { formatDateFromTimeMs } from "../common/formatUtils";
 import { Actor } from "../type/actor";
 import { CoreWorkerStats, Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
@@ -101,7 +101,7 @@ const WorkerDetailTable = ({
 
   return (
     <TableContainer>
-      <ActorTable actors={actors} />
+      <ActorTable actors={actors} detailPathPrefix="/actors" />
     </TableContainer>
   );
 };
@@ -223,7 +223,7 @@ const RayletWorkerTable = ({
                     {cmdline && longTextCut(cmdline.filter((e) => e).join(" "))}
                   </TableCell>
                   <TableCell align="center">
-                    {dayjs(createTime * 1000).format("YYYY/MM/DD HH:mm:ss")}
+                    {formatDateFromTimeMs(createTime * 1000)}
                   </TableCell>
                   <TableCell align="center">
                     <Grid container spacing={2}>
@@ -231,7 +231,7 @@ const RayletWorkerTable = ({
                         <Grid item>
                           <Link
                             target="_blank"
-                            to={`/log/${encodeURIComponent(
+                            to={`/logs/${encodeURIComponent(
                               ipLogMap[coreWorkerStats[0]?.ipAddress],
                             )}?fileName=${
                               coreWorkerStats[0].jobId || ""

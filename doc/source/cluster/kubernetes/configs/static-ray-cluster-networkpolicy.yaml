@@ -1,0 +1,95 @@
+# If your Kubernetes has a default deny network policy for pods, you need to manually apply this network policy 
+# to allow the bidirectional communication among the head and worker nodes in the Ray cluster.
+
+# Ray Head Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-head-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster-head
+  policyTypes:
+    - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 6380
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8265
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 10001
+  - from:
+    - podSelector:
+        matchLabels:
+          app: ray-cluster-worker
+
+---
+# Ray Head Egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-head-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster-head
+  policyTypes:
+    - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ray-cluster-worker
+
+---
+# Ray Worker Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-worker-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster-worker
+  policyTypes:
+    - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: ray-cluster-head
+
+---
+# Ray Worker Egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-worker-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster-worker
+  policyTypes:
+    - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: ray-cluster-head

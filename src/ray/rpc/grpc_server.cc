@@ -40,12 +40,31 @@ GrpcServer::GrpcServer(std::string name,
       is_closed_(true),
       num_threads_(num_threads),
       keepalive_time_ms_(keepalive_time_ms) {
+  RAY_CHECK(num_threads_ > 0) << "Num of threads in gRPC must be greater than 0";
   cqs_.resize(num_threads_);
   // Enable built in health check implemented by gRPC:
   //   https://github.com/grpc/grpc/blob/master/doc/health-checking.md
   grpc::EnableDefaultHealthCheckService(true);
   grpc::reflection::InitProtoReflectionServerBuilderPlugin();
   grpc::channelz::experimental::InitChannelzService();
+}
+
+void GrpcServer::Shutdown() {
+  if (!is_closed_) {
+    // Drain the executor threads.
+    // Shutdown the server with an immediate deadline.
+    // TODO(edoakes): do we want to do this in all cases?
+    server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
+    for (const auto &cq : cqs_) {
+      cq->Shutdown();
+    }
+    for (auto &polling_thread : polling_threads_) {
+      polling_thread.join();
+    }
+    is_closed_ = true;
+    RAY_LOG(DEBUG) << "gRPC server of " << name_ << " shutdown.";
+    server_.reset();
+  }
 }
 
 void GrpcServer::Run() {
@@ -65,7 +84,8 @@ void GrpcServer::Run() {
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                              RayConfig::instance().grpc_keepalive_timeout_ms());
   builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS, 0);
-
+  builder.AddChannelArgument(GRPC_ARG_HTTP2_WRITE_BUFFER_SIZE,
+                             RayConfig::instance().grpc_stream_buffer_size());
   // NOTE(rickyyx): This argument changes how frequent the gRPC server expects a keepalive
   // ping from the client. See https://github.com/grpc/grpc/blob/HEAD/doc/keepalive.md#faq
   // We set this to 1min because GCS gRPC client currently sends keepalive every 1min:
@@ -129,7 +149,7 @@ void GrpcServer::Run() {
       if (entry->GetMaxActiveRPCs() != -1) {
         buffer_size = entry->GetMaxActiveRPCs();
       }
-      for (int j = 0; j < buffer_size; j++) {
+      for (int j = 0; j < std::max(1, buffer_size / num_threads_); j++) {
         entry->CreateCall();
       }
     }
@@ -171,7 +191,6 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
       case ServerCallState::PENDING:
         // We've received a new incoming request. Now this call object is used to
         // track this request.
-        server_call->SetState(ServerCallState::PROCESSING);
         server_call->HandleRequest();
         break;
       case ServerCallState::SENDING_REPLY:

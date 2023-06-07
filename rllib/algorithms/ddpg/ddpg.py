@@ -6,7 +6,6 @@ from ray.rllib.algorithms.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.deprecation import Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +116,7 @@ class DDPGConfig(SimpleQConfig):
         self.target_network_update_freq = 0
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 1500
 
         # .rollouts()
@@ -312,20 +311,3 @@ class DDPG(SimpleQ):
             from ray.rllib.algorithms.ddpg.ddpg_tf_policy import DDPGTF2Policy
 
             return DDPGTF2Policy
-
-
-# Deprecated: Use ray.rllib.algorithms.ddpg.DDPGConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(DDPGConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.ddpg.ddpg::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.ddpg.ddpg.DDPGConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

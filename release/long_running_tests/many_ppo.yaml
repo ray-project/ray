@@ -7,18 +7,11 @@ head_node_type:
     name: head_node
     instance_type: m5.4xlarge
 
-worker_node_types:
-    - name: worker_node
-      instance_type: m5.2xlarge
-      min_workers: 0
-      max_workers: 0
-      use_spot: false
+worker_node_types: []
 
 aws:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:
-        - Key: anyscale-user
-          Value: '{{env["ANYSCALE_USER"]}}'
-        - Key: anyscale-expiration
-          Value: '{{env["EXPIRATION_2D"]}}'
+        - Key: ttl-hours
+          Value: '48'

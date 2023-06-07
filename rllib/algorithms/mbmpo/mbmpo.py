@@ -29,7 +29,7 @@ from ray.rllib.policy.sample_batch import (
     concat_samples,
     convert_ma_batch_to_sample_batch,
 )
-from ray.rllib.utils.annotations import Deprecated, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 class MBMPOConfig(AlgorithmConfig):
-    """Defines a configuration class from which an MBMPO Algorithm can be built.
+    r"""Defines a configuration class from which an MBMPO Algorithm can be built.
 
     Example:
         >>> from ray.rllib.algorithms.mbmpo import MBMPOConfig
@@ -458,11 +458,11 @@ def post_process_samples(samples, config: AlgorithmConfig):
     # Instead of using NN for value function, we use regression
     split_lst = []
     for sample in samples:
-        indexes = np.asarray(sample["dones"]).nonzero()[0]
+        indexes = np.asarray(sample[SampleBatch.TERMINATEDS]).nonzero()[0]
         indexes = indexes + 1
 
-        reward_list = np.split(sample["rewards"], indexes)[:-1]
-        observation_list = np.split(sample["obs"], indexes)[:-1]
+        reward_list = np.split(sample[SampleBatch.REWARDS], indexes)[:-1]
+        observation_list = np.split(sample[SampleBatch.OBS], indexes)[:-1]
 
         paths = []
         for i in range(0, len(reward_list)):
@@ -598,20 +598,3 @@ class MBMPO(Algorithm):
                 f"Env {env} doest not have a `reward()` method, needed for "
                 "MB-MPO! This `reward()` method should return "
             )
-
-
-# Deprecated: Use ray.rllib.algorithms.mbmpo.MBMPOConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(MBMPOConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.mbmpo.mbmpo.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.mbmpo.mbmpo.MBMPOConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

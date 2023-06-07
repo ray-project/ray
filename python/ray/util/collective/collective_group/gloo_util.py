@@ -7,7 +7,7 @@ import numpy
 
 import ray
 import ray.experimental.internal_kv as internal_kv
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray.util.collective.types import ReduceOp, torch_available
 from ray.util.queue import _QueueActor
 
@@ -28,7 +28,7 @@ GLOO_REDUCE_OP_MAP = {
 
 NUMPY_GLOO_DTYPE_MAP = {
     # INT types
-    numpy.int: pygloo.glooDataType_t.glooInt64,
+    numpy.int_: pygloo.glooDataType_t.glooInt64,
     numpy.uint8: pygloo.glooDataType_t.glooUint8,
     numpy.uint32: pygloo.glooDataType_t.glooUint32,
     numpy.uint64: pygloo.glooDataType_t.glooUint64,

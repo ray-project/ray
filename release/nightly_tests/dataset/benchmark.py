@@ -47,7 +47,7 @@ class Benchmark:
         print(f"Running case: {name}")
         start_time = time.perf_counter()
         output_ds = fn(**fn_run_args)
-        output_ds.fully_executed()
+        output_ds.materialize()
         duration = time.perf_counter() - start_time
 
         # TODO(chengsu): Record more metrics based on dataset stats.

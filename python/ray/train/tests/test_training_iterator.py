@@ -4,9 +4,9 @@ from unittest.mock import patch
 import pytest
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
-from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.trainer import TrainingIterator
+from ray.train.data_config import DataConfig
 
 import ray
 from ray.air import session
@@ -37,7 +37,11 @@ def gen_execute_single_async_special(special_f):
         assert len(self.workers) == 2
         if i == 0 and hasattr(self, "should_fail") and self.should_fail:
             kwargs["train_func"] = special_f
-        return self.workers[i].actor._RayTrainWorker__execute.remote(f, *args, **kwargs)
+        return (
+            self.workers[i]
+            .actor._RayTrainWorker__execute.options(name=f.__name__)
+            .remote(f, *args, **kwargs)
+        )
 
     return execute_single_async_special
 
@@ -73,8 +77,6 @@ def create_iterator(
 
     train_func = construct_train_func(train_func, None)
 
-    dataset_spec = RayDatasetSpec(dataset_or_dict=None)
-
     remote_executor = ray.remote(num_cpus=0)(backend_executor)
 
     backend_executor_actor = remote_executor.remote(
@@ -96,7 +98,8 @@ def create_iterator(
         backend_config=backend_config,
         train_func=train_func,
         run_dir=None,
-        dataset_spec=dataset_spec,
+        datasets={},
+        data_config=DataConfig(),
         checkpoint_manager=CheckpointManager(checkpoint_strategy=checkpoint_strategy),
         checkpoint=None,
         checkpoint_strategy=checkpoint_strategy,
@@ -387,7 +390,7 @@ def test_worker_kill_checkpoint(ray_start_4_cpus):
         kill_callback.handle_result()
     iterator.get_final_results()
     assert kill_callback.counter == 2
-    assert iterator._checkpoint_manager.latest_checkpoint["epoch"] == 2
+    assert iterator._checkpoint_manager.latest_checkpoint.to_dict()["epoch"] == 2
 
 
 def test_tensorflow_mnist_fail(ray_start_4_cpus):

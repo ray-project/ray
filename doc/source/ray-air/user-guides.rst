@@ -9,87 +9,94 @@ User Guides
 AIR User Guides
 ---------------
 
-.. panels::
-    :container: text-center
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+.. grid:: 3
+    :gutter: 2
+    :class-container: container pb-4
 
-    ---
-    :img-top:  /ray-air/images/preprocessors.svg
+    .. grid-item-card::
+        :img-top: /ray-air/images/preprocessors.svg
+        :class-img-top: pt-5 w-75 d-block mx-auto fixed-height-img
 
-    .. https://docs.google.com/drawings/d/1ZIbsXv5vvwTVIEr2aooKxuYJ_VL7-8VMNlRinAiPaTI/edit
+        +++
+        .. button-ref:: /ray-air/preprocessors
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: /ray-air/preprocessors
-        :type: ref
-        :text: Using Preprocessors
-        :classes: btn-link btn-block stretched-link
+            Using Preprocessors
 
-    ---
-    :img-top: /ray-air/images/train-icon.svg
+    .. grid-item-card::
+        :img-top: /ray-air/images/train-icon.svg
+        :class-img-top: pt-5 w-75 d-block mx-auto fixed-height-img
 
-    .. https://docs.google.com/drawings/d/15SXGHbKPWdrzx3aTAIFcO2uh_s6Q7jLU03UMuwKSzzM/edit
+        +++
+        .. button-ref:: trainers
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: trainer
-        :type: ref
-        :text: Using Trainers
-        :classes: btn-link btn-block stretched-link
+            Using Trainers
 
-    ---
-    :img-top:  /ray-air/images/ingest-icon.svg
+    .. grid-item-card::
+        :img-top: /ray-air/images/ingest-icon.svg
+        :class-img-top: pt-5 w-75 d-block mx-auto fixed-height-img
 
-    .. https://docs.google.com/drawings/d/10GZE_6s6ss8PSxLYyzcbj6yEalWO4N7MS7ao8KO7ne0/edit
+        +++
+        .. button-ref:: air-ingest
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: air-ingest
-        :type: ref
-        :text: Configuring Training Datasets
-        :classes: btn-link btn-block stretched-link
+            Configuring Training Datasets
 
-    ---
-    :img-top:  /ray-air/images/tuner.svg
+    .. grid-item-card::
+        :img-top: /ray-air/images/tuner.svg
+        :class-img-top: pt-5 w-75 d-block mx-auto fixed-height-img
 
-    .. https://docs.google.com/drawings/d/1yMd12iMkyo6DGrFoET1TIlKfFnXX9dfh2u3GSdTz6W4/edit
+        +++
+        .. button-ref:: /ray-air/tuner
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: /ray-air/tuner
-        :type: ref
-        :text: Configuring Hyperparameter Tuning
-        :classes: btn-link btn-block stretched-link
+            Configuring Hyperparameter Tuning
 
-    ---
-    :img-top:  /ray-air/images/predictors.png
+    .. grid-item-card::
+        :img-top:  /ray-air/images/predictors.png
+        :class-img-top: pt-5 w-75 d-block mx-auto fixed-height-img
 
-    .. https://docs.google.com/presentation/d/1jfkQk0tGqgkLgl10vp4-xjcbYG9EEtlZV_Vnve_NenQ/edit#slide=id.g131c21f5e88_0_549
+        +++
+        .. button-ref:: predictors
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: predictors
-        :type: ref
-        :text: Using Predictors for Inference
-        :classes: btn-link btn-block stretched-link
+            Using Predictors for Inference
 
-    ---
-    :img-top: /ray-air/images/serve-icon.svg
+    .. grid-item-card::
+        :img-top: /ray-air/images/serve-icon.svg
+        :class-img-top: pt-5 w-75 d-block mx-auto fixed-height-img
 
-    .. https://docs.google.com/drawings/d/1-rg77bV-vEMURXZw5_mIOUFM3FObIIYbFOiYzFJW_68/edit
+        +++
+        .. button-ref:: /ray-air/examples/serving_guide
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: /ray-air/examples/serving_guide
-        :type: ref
-        :text: Deploying Predictors with Serve
-        :classes: btn-link btn-block stretched-link
+            Deploying Predictors with Serve
 
-    ---
-    :img-top: /ray-air/images/air-deploy.svg
+    .. grid-item-card::
+        :img-top: /ray-air/images/air-deploy.svg
+        :class-img-top: pt-5 w-75 d-block mx-auto fixed-height-img
 
-    .. https://docs.google.com/drawings/d/1ja1RfNCEFn50B9FHWSemUzwhtPAmVyoak1JqEJUmxs4/edit
+        +++
+        .. button-ref:: air-deployment
+            :color: primary
+            :outline:
+            :expand:
 
-    +++
-    .. link-button:: air-deployment
-        :type: ref
-        :text: How to Deploy AIR
-        :classes: btn-link btn-block stretched-link
+            How to Deploy AIR
+
 
 .. _air-env-vars:
 
@@ -103,3 +110,40 @@ Please also see the :ref:`Ray Tune environment variables <tune-env-vars>`.
 - **RAY_AIR_FULL_TRACEBACKS**: If set to 1, will print full tracebacks for training functions,
   including internal code paths. Otherwise, abbreviated tracebacks that only show user code
   are printed. Defaults to 0 (disabled).
+- **RAY_AIR_NEW_OUTPUT**: If set to 0, this disables
+  the :ref:`experimental new console output <air-experimental-new-output>`.
+- **RAY_AIR_RICH_LAYOUT**: If set to 1, this enables
+  the :ref:`stick table layout <air-experimental-rich>`
+  (only available for Ray Tune).
+
+.. _air-multi-tenancy:
+
+Running multiple AIR jobs concurrently on a single cluster
+----------------------------------------------------------
+Running multiple AIR training or tuning jobs at the same
+time on a single cluster is not officially supported.
+We don't test this workflow
+and recommend the use of multiple smaller clusters
+instead.
+
+If you still want to do this, refer to
+the
+:ref:`Ray Tune multi-tenancy docs <tune-multi-tenancy>`
+for potential pitfalls.
+
+.. _air-experimental-overview:
+
+Experimental features in Ray 2.5+
+---------------------------------
+Starting in Ray 2.5, some experimental
+features are enabled by default.
+
+Experimental features are enabled to allow for feedback
+from users. Every experimental feature can be disabled
+by setting an environment variable. Some features are
+not ready for general testing and can only be *enabled* using an
+environment variable.
+
+Please see the :ref:`experimental features <air-experimental-features>`
+page for more details on the current features and how to enable
+or disable them.

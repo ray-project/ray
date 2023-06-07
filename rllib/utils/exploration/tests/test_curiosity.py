@@ -1,6 +1,6 @@
 from collections import deque
-import gym
-import gym_minigrid
+import gymnasium as gym
+import minigrid
 import numpy as np
 import sys
 import unittest
@@ -117,7 +117,7 @@ def env_maker(config):
     # Make it impossible to reach goal by chance.
     env = gym.wrappers.TimeLimit(env, max_episode_steps=15)
     # Only use image portion of observation (discard goal and direction).
-    env = gym_minigrid.wrappers.ImgObsWrapper(env)
+    env = minigrid.wrappers.ImgObsWrapper(env)
     env = OneHotWrapper(
         env,
         config.vector_index if hasattr(config, "vector_index") else 0,
@@ -167,7 +167,9 @@ class TestCuriosity(unittest.TestCase):
             # Limit horizon to make it really hard for non-curious agent to reach
             # the goal state.
             .rollouts(num_rollout_workers=0)
-            .training(lr=0.001)
+            # TODO (Kourosh): We need to provide examples on how we do curiosity with
+            # RLModule API
+            .training(lr=0.001, _enable_learner_api=False)
             .exploration(
                 exploration_config={
                     "type": "Curiosity",
@@ -183,6 +185,7 @@ class TestCuriosity(unittest.TestCase):
                     },
                 }
             )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         num_iterations = 10
@@ -237,6 +240,9 @@ class TestCuriosity(unittest.TestCase):
                     "fcnet_activation": "relu",
                 },
                 num_sgd_iter=8,
+                # TODO (Kourosh): We need to provide examples on how we do curiosity
+                # with RLModule API
+                _enable_learner_api=False,
             )
             .exploration(
                 exploration_config={
@@ -257,6 +263,7 @@ class TestCuriosity(unittest.TestCase):
                     },
                 }
             )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         min_reward = 0.001
@@ -269,11 +276,13 @@ class TestCuriosity(unittest.TestCase):
             # algo = ppo.PPO(config=config)
             # algo.restore("[checkpoint file]")
             # env = env_maker(config["env_config"])
-            # s = env.reset()
+            # obs, info = env.reset()
             # for _ in range(10000):
-            #     s, r, d, _ = env.step(algo.compute_single_action(s))
-            #     if d:
-            #         s = env.reset()
+            #     obs, reward, done, truncated, info = env.step(
+            #         algo.compute_single_action(s)
+            #     )
+            #     if done:
+            #         obs, info = env.reset()
             #     env.render()
 
             results = tune.Tuner(

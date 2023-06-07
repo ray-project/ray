@@ -2,11 +2,11 @@ cartpole-impala-fake-gpus:
     env: CartPole-v1
     run: IMPALA
     stop:
-        episode_reward_mean: 150
+        sampler_results/episode_reward_mean: 150
         training_iteration: 400
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
 
         # Double batch size (2 GPUs).
         train_batch_size: 1000
@@ -17,5 +17,3 @@ cartpole-impala-fake-gpus:
         # Fake 2 GPUs.
         num_gpus: 2
         _fake_gpus: true
-
-        vtrace_drop_last_ts: false

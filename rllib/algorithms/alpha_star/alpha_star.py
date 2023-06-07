@@ -2,9 +2,9 @@
 A multi-agent, distributed multi-GPU, league-capable asynch. PPO
 ================================================================
 """
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional, Type, Union
 
-import gym
+import gymnasium as gym
 import tree
 
 import ray
@@ -21,7 +21,6 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
@@ -139,7 +138,6 @@ class AlphaStarConfig(appo.APPOConfig):
 
         # Override some of APPOConfig's default values with AlphaStar-specific
         # values.
-        self.vtrace_drop_last_ts = False
         self.min_time_s_per_iteration = 2
         self.policies = None
         self.simple_optimizer = True
@@ -257,25 +255,31 @@ class AlphaStar(appo.APPO):
 
     @classmethod
     @override(Algorithm)
-    def default_resource_request(cls, config):
-        cf = dict(cls.get_default_config(), **config)
+    def default_resource_request(
+        cls,
+        config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
+    ):
+        if isinstance(config, AlgorithmConfig):
+            cf: AlphaStarConfig = config
+        else:
+            cf: AlphaStarConfig = cls.get_default_config().update_from_dict(config)
         # Construct a dummy LeagueBuilder, such that it gets the opportunity to
         # adjust the multiagent config, according to its setup, and we can then
         # properly infer the resources to allocate.
-        from_config(cf["league_builder_config"], algo=None, algo_config=cf)
+        from_config(cf.league_builder_config, algo=None, algo_config=cf)
 
-        max_num_policies_to_train = cf["max_num_policies_to_train"] or len(
-            cf["multiagent"].get("policies_to_train") or cf["multiagent"]["policies"]
+        max_num_policies_to_train = cf.max_num_policies_to_train or len(
+            cf.policies_to_train or cf.policies
         )
         num_learner_shards = min(
-            cf["num_gpus"] or max_num_policies_to_train, max_num_policies_to_train
+            cf.num_gpus or max_num_policies_to_train, max_num_policies_to_train
         )
-        num_gpus_per_shard = cf["num_gpus"] / num_learner_shards
+        num_gpus_per_shard = cf.num_gpus / num_learner_shards
         num_policies_per_shard = max_num_policies_to_train / num_learner_shards
 
-        fake_gpus = cf["_fake_gpus"]
+        fake_gpus = cf._fake_gpus
 
-        eval_config = cf["evaluation_config"]
+        eval_config = cf.get_evaluation_config_object()
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -283,15 +287,15 @@ class AlphaStar(appo.APPO):
             bundles=[
                 {
                     # Driver (no GPUs).
-                    "CPU": cf["num_cpus_for_driver"],
+                    "CPU": cf.num_cpus_for_local_worker,
                 }
             ]
             + [
                 {
                     # RolloutWorkers (no GPUs).
-                    "CPU": cf["num_cpus_per_worker"],
+                    "CPU": cf.num_cpus_per_worker,
                 }
-                for _ in range(cf["num_workers"])
+                for _ in range(cf.num_workers)
             ]
             + [
                 {
@@ -310,20 +314,20 @@ class AlphaStar(appo.APPO):
                         # Note: The local eval worker is located on the driver
                         # CPU or not even created iff >0 eval workers.
                         "CPU": eval_config.get(
-                            "num_cpus_per_worker", cf["num_cpus_per_worker"]
+                            "num_cpus_per_worker", cf.num_cpus_per_worker
                         ),
                     }
-                    for _ in range(cf["evaluation_num_workers"])
+                    for _ in range(cf.evaluation_num_workers)
                 ]
-                if cf["evaluation_interval"]
+                if cf.evaluation_interval
                 else []
             ),
-            strategy=config.get("placement_strategy", "PACK"),
+            strategy=cf.placement_strategy,
         )
 
     @classmethod
     @override(appo.APPO)
-    def get_default_config(cls) -> AlgorithmConfig:
+    def get_default_config(cls) -> AlphaStarConfig:
         return AlphaStarConfig()
 
     @override(appo.APPO)
@@ -629,20 +633,3 @@ class AlphaStar(appo.APPO):
         state_copy = state.copy()
         self.league_builder.__setstate__(state.pop("league_builder", {}))
         super().__setstate__(state_copy)
-
-
-# Deprecated: Use ray.rllib.algorithms.alpha_star.AlphaStarConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(AlphaStarConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.alpha_star.alpha_star.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.alpha_star.alpha_star.AlphaStarConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
