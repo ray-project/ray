@@ -7,7 +7,10 @@ from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
 from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
-from ray.air.constants import MODEL_KEY
+from ray.air.constants import (
+    MODEL_KEY,
+    COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
+)
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
 from ray.train.trainer import GenDataset
@@ -384,6 +387,9 @@ class LightningTrainer(TorchTrainer):
         # TODO(yunxuanxiao): find a long term solution that doesn't involve setting a
         # environment variable globally.
         os.environ["TUNE_DISABLE_STRICT_METRIC_CHECKING"] = "1"
+
+        # Avoid moving checkpoint files when Trainer is co-located with rank_0 worker
+        os.environ[COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV] = "1"
 
         train_loop_config = {
             "lightning_config": lightning_config,

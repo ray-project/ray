@@ -197,6 +197,8 @@ class RayModelCheckpoint(ModelCheckpoint):
         super().setup(trainer, pl_module, stage)
         self.is_checkpoint_step = False
 
+        # DDP, FSDP: Report full ckpt from world_rank_0 worker
+        # DeepSpeed: Report ckpt shards from local_rank_0 workers
         if isinstance(trainer.strategy, DeepSpeedStrategy):
             self.is_report_rank = session.get_local_rank() == 0
         else:
@@ -228,8 +230,7 @@ class RayModelCheckpoint(ModelCheckpoint):
         # Step 2: Create a directory-based AIR checkpoint.
         # Step 3: Report the checkpoint to AIR session.
         # Step 4: Move the ckpt back to the original directory.
-        ckpt_dir = os.path.dirname(self.last_model_path)
-        with tempfile.TemporaryDirectory(dir=ckpt_dir) as tmpdir:
+        with tempfile.TemporaryDirectory() as tmpdir:
             tmp_model_path = f"{tmpdir}/{MODEL_KEY}"
 
             if self.is_report_rank:
