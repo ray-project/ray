@@ -158,6 +158,7 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],
+    env = {"RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S": "60"},
 )
 
 
