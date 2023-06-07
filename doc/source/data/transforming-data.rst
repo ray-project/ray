@@ -4,8 +4,10 @@
 Transforming data
 =================
 
-Transformations let you preprocess data and perform inference. This guide shows you
-how to:
+Transformations let you process and modify your dataset. You can compose transformations
+to express a chain of computations.
+
+This guide shows you how to:
 
 * `Transform rows <#transforming-rows>`_
 * `Transform batches <#transforming-batches>`_
@@ -77,7 +79,8 @@ batches is more performant than transforming rows.
 Choosing between tasks and actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data transforms batches with either tasks or actors. If your transformation involves
+Ray Data transforms batches with either tasks or actors. Actors perform setup exactly
+once. In contrast, tasks require setup every batch. So, if your transformation involves
 expensive setup like downloading model weights, use actors. Otherwise, use tasks.
 
 To learn more about tasks and actors, read the
@@ -111,7 +114,8 @@ To transform batches with actors, complete these steps:
 
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
-2. Create an :class:`~ray.data.ActorPoolStrategy` and configure number of concurrent workers.
+2. Create an :class:`~ray.data.ActorPoolStrategy` and configure the number of concurrent
+   workers. Each worker transforms a partition of data.
 
 3. Call :meth:`~ray.data.Dataset.map_batches` and pass your ``ActorPoolStrategy`` to ``compute``.
 
@@ -177,11 +181,11 @@ To transform batches with actors, complete these steps:
 Configuring batch type
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data represents batches as NumPy ndarrays or pandas DataFrames. By default, Ray Data
-represents batches as ndarrays.
+Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
+default, Ray Data represents batches as dicts of NumPy ndarrays.
 
 To configure the batch type, specify ``batch_format`` in
-:meth:`~ray.data.Dataset.map_batches`.
+:meth:`~ray.data.Dataset.map_batches`. You can return either format from your function.
 
 .. tab-set::
 
