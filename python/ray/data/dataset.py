@@ -4000,6 +4000,7 @@ class Dataset:
             logical_plan,
         )
         output._plan.execute()  # No-op that marks the plan as fully executed.
+        output._plan._in_stats.dataset_uuid = self._get_uuid()
         return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
