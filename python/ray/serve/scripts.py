@@ -516,13 +516,20 @@ def config(address: str, name: Optional[str]):
         )
     # Fetch a specific app config by name.
     else:
+        config_unavailable_msg = (
+            "Config unavailable. Either Serve hasn't started or it started "
+            "without a config file. Please start Serve with a config file "
+            'to use "serve config".'
+        )
         if name not in serve_details.applications:
-            config = ServeApplicationSchema.get_empty_schema_dict()
+            cli_logger.error(config_unavailable_msg)
         else:
-            config = serve_details.applications.get(name).deployed_app_config.dict(
-                exclude_unset=True
-            )
-        print(yaml.safe_dump(config, sort_keys=False), end="")
+            app_config = serve_details.applications.get(name).deployed_app_config
+            if app_config is None:
+                cli_logger.error(config_unavailable_msg)
+            else:
+                config = app_config.dict(exclude_unset=True)
+                print(yaml.safe_dump(config, sort_keys=False), end="")
 
 
 @cli.command(
