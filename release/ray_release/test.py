@@ -73,6 +73,7 @@ class Test(dict):
 
     KEY_GITHUB_ISSUE_NUMBER = "github_issue_number"
     KEY_BISECT_BUILD_NUMBER = "bisect_build_number"
+    KEY_BISECT_BLAMED_COMMIT = "bisect_blamed_commit"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

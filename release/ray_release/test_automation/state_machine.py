@@ -113,6 +113,9 @@ class TestStateMachine:
             "HEAD",
             "master",
             message=f"[ray-test-bot] {self.test.get_name()} failing",
+            env={
+                "REPORT_TO_RAY_TEST_DB": "1",
+            },
         )
         failing_commit = self.test_results[0].commit
         passing_commits = [r.commit for r in self.test_results if r.is_passing()]
@@ -134,6 +137,26 @@ class TestStateMachine:
             },
         )
         self.test[Test.KEY_BISECT_BUILD_NUMBER] = build["number"]
+
+    def comment_blamed_commit_on_github_issue(self) -> None:
+        """
+        Comment the blamed commit on the github issue.
+        """
+        blamed_commit = self.test.get(Test.KEY_BISECT_BLAMED_COMMIT)
+        issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        bisect_build_number = self.test.get(Test.KEY_BISECT_BUILD_NUMBER)
+        if not issue_number or not bisect_build_number or not blamed_commit:
+            logger.info(
+                "Skip commenting blamed commit on github issue "
+                f"for {self.test.get_name()}"
+            )
+            return
+        issue = self.ray_repo.get_issue(issue_number)
+        issue.create_comment(
+            f"Blamed commit: {blamed_commit} "
+            f"found by bisect job https://buildkite.com/{BUILDKITE_ORGANIZATION}/"
+            f"{BUILDKITE_BISECT_PIPELINE}/builds/{bisect_build_number}"
+        )
 
     def _create_github_issue(self) -> None:
         issue_number = self.ray_repo.create_issue(
@@ -176,7 +199,9 @@ class TestStateMachine:
         return len(self.test_results) > 0 and self.test_results[0].is_passing()
 
     def _failing_to_consistently_failing(self) -> bool:
-        return self._passing_to_consistently_failing()
+        return self._passing_to_consistently_failing() or self.test.get(
+            Test.KEY_BISECT_BLAMED_COMMIT
+        )
 
     def _consistently_failing_to_passing(self) -> bool:
         return self._failing_to_passing()
