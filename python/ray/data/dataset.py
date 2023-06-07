@@ -959,6 +959,11 @@ class Dataset:
     ) -> "Dataset":
         """Randomly shuffle the elements of this dataset.
 
+        .. tip::
+
+            ``random_shuffle`` can be slow. For better performance, try
+            `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)

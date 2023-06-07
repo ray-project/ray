@@ -138,15 +138,16 @@ For more information on working with batches, see
 Iterating over batches with shuffling
 =====================================
 
-:class:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` is slow. For better
-performance, shuffle data while iterating.
+:class:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` is slow because it
+shuffles all rows. For better performance, shuffle a subset of rows while iterating.
 
 To iterate over batches with shuffling, specify ``local_shuffle_buffer_size``.
 
 .. tip::
 
-    To configure ``local_shuffle_buffer_size``, choose the largest value that fits
-    in memory. For most workloads, 10x the batch size is reasonable.
+    To configure ``local_shuffle_buffer_size``, choose the smallest value that achieves
+    sufficient randomness. Higher values result in more randomness at the cost of slower
+    iteration.
 
 .. tab-set::
 
@@ -242,3 +243,31 @@ To iterate over batches with shuffling, specify ``local_shuffle_buffer_size``.
             tf.Tensor([6.1 6.3], shape=(2,), dtype=float64) tf.Tensor([1 2], shape=(2,), dtype=int64)
             ...
             tf.Tensor([6.1 6.3], shape=(2,), dtype=float64) tf.Tensor([1 2], shape=(2,), dtype=int64)
+
+Splitting datasets for distributed parallel training
+====================================================
+
+If you're performing distributed data parallel training, call
+:meth:`Dataset.split <ray.data.Dataset.split>` to split your dataset into disjoint
+shards.
+
+.. note::
+
+  If you're using :ref:`Ray Train <train-docs>`, you don't need to split the dataset.
+  Ray Train automatically splits your dataset for you.
+
+.. testcode::
+
+    import ray
+
+    @ray.remote
+    class Worker:
+
+        def train(self, data_iterator):
+            for batch in data_iterator.iter_batches(batch_size=8):
+                pass
+
+    ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+    workers = [Worker.remote() for _ in range(4)]
+    shards = ds.streaming_split(n=4, equal=True)
+    ray.get([w.train.remote(s) for w, s in zip(workers, shards)])

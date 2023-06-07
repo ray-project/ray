@@ -59,7 +59,8 @@ For more information such as the number of rows, print the Dataset.
 Inspecting rows
 ===============
 
-To inspect rows, call `Dataset.take() <ray.data.Dataset.take>`. Ray Data represents rows
+To inspect rows, call :meth:`Dataset.take() <ray.data.Dataset.take>` or
+:meth:`Dataset.take_all() <ray.data.Dataset.take_all>`. Ray Data represents rows
 as dictionaries.
 
 .. testcode::
