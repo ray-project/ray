@@ -43,7 +43,7 @@ class HTTPProxyState:
         self._ready_obj_ref = self._actor_handle.ready.remote()
         self._status = HTTPProxyStatus.STARTING
         self._health_check_obj_ref = None
-        self._last_health_check_time: float = time.time()
+        self._last_health_check_time: float = 0
         self._shutting_down = False
         self._consecutive_health_check_failures: int = 0
 
@@ -137,6 +137,11 @@ class HTTPProxyState:
         """
         if self._shutting_down:
             return
+
+        # Start counting last health check time on the first update call so it doesn't
+        # include other initialization time
+        if self._last_health_check_time == 0:
+            self._last_health_check_time = time.time()
 
         if self._status == HTTPProxyStatus.STARTING:
             finished, _ = ray.wait([self._ready_obj_ref], timeout=0)
