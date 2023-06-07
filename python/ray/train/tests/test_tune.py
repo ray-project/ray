@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray import tune
 from ray.air import Checkpoint, session
-from ray.air.constants import TRAINING_ITERATION
 from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -224,7 +223,7 @@ def test_retry_with_max_failures(ray_start_4_cpus):
     checkpoint = result_grid[0].checkpoint.to_dict()
     assert checkpoint["iter"] == 3
     df = result_grid[0].metrics_dataframe
-    assert len(df[TRAINING_ITERATION]) == 4
+    assert len(df["training_iteration"]) == 4
 
 
 def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
