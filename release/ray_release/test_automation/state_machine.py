@@ -14,6 +14,7 @@ RAY_REPO = "ray-project/ray"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
 MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
+CONTINUOUS_FAILURE_TO_JAIL = 5  # Number of continuous failures before jailing
 BUILDKITE_ORGANIZATION = "ray-project"
 BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 
@@ -68,7 +69,13 @@ class TestStateMachine:
                 return TestState.PASSING
 
         if current_state == TestState.CONSITENTLY_FAILING:
+            if self._consistently_failing_to_jailed():
+                return TestState.JAILED
             if self._consistently_failing_to_passing():
+                return TestState.PASSING
+
+        if current_state == TestState.JAILED:
+            if self._jailed_to_passing():
                 return TestState.PASSING
 
         return current_state
@@ -90,6 +97,25 @@ class TestStateMachine:
             self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
         elif change == (TestState.PASSING, TestState.FAILING):
             self._trigger_bisect()
+        elif change == (TestState.CONSITENTLY_FAILING, TestState.JAILED):
+            self._jail_test()
+        elif change == (TestState.JAILED, TestState.PASSING):
+            self._close_github_issue()
+            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
+
+    def _jail_test(self) -> None:
+        """
+        Notify github issue owner that the test is jailed
+        """
+        github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        if not github_issue_number:
+            return
+        issue = self.ray_repo.get_issue(github_issue_number)
+        issue.create_comment("Test has been failing for far too long. Jailing.")
+        labels = ["P1", "jailed-test"] + [label.name for label in issue.get_labels()]
+        if "P0" in labels:
+            labels.remove("P0")
+        issue.edit(labels=labels)
 
     def _bisect_rate_limit_exceeded(self) -> bool:
         """
@@ -113,6 +139,9 @@ class TestStateMachine:
             "HEAD",
             "master",
             message=f"[ray-test-bot] {self.test.get_name()} failing",
+            env={
+                "REPORT_TO_RAY_TEST_DB": "1",
+            },
         )
         failing_commit = self.test_results[0].commit
         passing_commits = [r.commit for r in self.test_results if r.is_passing()]
@@ -134,6 +163,26 @@ class TestStateMachine:
             },
         )
         self.test[Test.KEY_BISECT_BUILD_NUMBER] = build["number"]
+
+    def comment_blamed_commit_on_github_issue(self) -> None:
+        """
+        Comment the blamed commit on the github issue.
+        """
+        blamed_commit = self.test.get(Test.KEY_BISECT_BLAMED_COMMIT)
+        issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        bisect_build_number = self.test.get(Test.KEY_BISECT_BUILD_NUMBER)
+        if not issue_number or not bisect_build_number or not blamed_commit:
+            logger.info(
+                "Skip commenting blamed commit on github issue "
+                f"for {self.test.get_name()}"
+            )
+            return
+        issue = self.ray_repo.get_issue(issue_number)
+        issue.create_comment(
+            f"Blamed commit: {blamed_commit} "
+            f"found by bisect job https://buildkite.com/{BUILDKITE_ORGANIZATION}/"
+            f"{BUILDKITE_BISECT_PIPELINE}/builds/{bisect_build_number}"
+        )
 
     def _create_github_issue(self) -> None:
         issue_number = self.ray_repo.create_issue(
@@ -158,6 +207,9 @@ class TestStateMachine:
         issue.edit(state="closed")
         self.test.pop(Test.KEY_GITHUB_ISSUE_NUMBER, None)
 
+    def _jailed_to_passing(self) -> bool:
+        return len(self.test_results) > 0 and self.test_results[0].is_passing()
+
     def _passing_to_failing(self) -> bool:
         return (
             len(self.test_results) > 0
@@ -176,7 +228,15 @@ class TestStateMachine:
         return len(self.test_results) > 0 and self.test_results[0].is_passing()
 
     def _failing_to_consistently_failing(self) -> bool:
-        return self._passing_to_consistently_failing()
+        return self._passing_to_consistently_failing() or self.test.get(
+            Test.KEY_BISECT_BLAMED_COMMIT
+        )
 
     def _consistently_failing_to_passing(self) -> bool:
         return self._failing_to_passing()
+
+    def _consistently_failing_to_jailed(self) -> bool:
+        return len(self.test_results) >= CONTINUOUS_FAILURE_TO_JAIL and all(
+            result.is_failing()
+            for result in self.test_results[:CONTINUOUS_FAILURE_TO_JAIL]
+        )
