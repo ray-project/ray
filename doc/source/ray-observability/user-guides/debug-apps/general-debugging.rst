@@ -1,19 +1,19 @@
-.. _observability-debug-other:
+.. _observability-general-debugging:
 
-Debugging Other Issues
-======================
+General Debugging
+=======================
 
-Ray sometimes has some aspects of its behavior that might catch
-users off guard. There may be sound arguments for these design choices.
+Distributed applications are more powerful yet complicated than non-distributed ones. Some of Ray's behavior might catch
+users off guard while there may be sound arguments for these design choices. 
 
-In particular, users think of Ray as running on their local machine, and
-while this is mostly true, this doesn't work.
+This page lists some common issues users may run into. In particular, users think of Ray as running on their local machine, and
+while this is sometimes true, this leads to a lot of issues.
 
-Environment variables are not passed from the driver to workers
+Environment variables are not passed from the Driver process to Worker processes
 ---------------------------------------------------------------
 
-**Issue**: If you set an environment variable at the command line, it is not passed to all the workers running in the cluster
-if the cluster was started previously.
+**Issue**: If you set an environment variable at the command line (where you run your Driver), it is not passed to all the Workers running in the Cluster
+if the Cluster was started previously.
 
 **Example**: If you have a file ``baz.py`` in the directory you are running Ray in, and you run the following command:
 
@@ -22,11 +22,11 @@ if the cluster was started previously.
   :start-after: __env_var_start__
   :end-before: __env_var_end__
 
-**Expected behavior**: Most people would expect (as if it was a single process on a single machine) that the environment variables would be the same in all workers. It won’t be.
+**Expected behavior**: Most people would expect (as if it was a single process on a single machine) that the environment variables would be the same in all Workers. It won’t be.
 
-**Fix**: Use runtime environments to pass environment variables explicity.
+**Fix**: Use Runtime Environments to pass environment variables explicity.
 If you call ``ray.init(runtime_env=...)``,
-then the workers will have the environment variable set.
+then the Workers will have the environment variable set.
 
 
 .. literalinclude:: ../../doc_code/gotchas.py
@@ -38,10 +38,10 @@ then the workers will have the environment variable set.
 Filenames work sometimes and not at other times
 -----------------------------------------------
 
-**Issue**: If you reference a file by name in a task or actor,
+**Issue**: If you reference a file by name in a Task or Actor,
 it will sometimes work and sometimes fail. This is
-because if the task or actor runs on the head node
-of the cluster, it will work, but if the task or actor
+because if the Task or Actor runs on the Head Node
+of the Cluster, it will work, but if the Task or A8ctor
 runs on another machine it won't.
 
 **Example**: Let's say we do the following command:
@@ -70,31 +70,30 @@ And I have this code:
 
 .. testoutput::
     :hide:
-    :options: +ELLIPSIS
 
     ...
 
 then you will get a mix of True and False. If
-``check_file()`` runs on the head node, or we're running
-locally it works. But if it runs on a worker node, it returns ``False``.
+``check_file()`` runs on the Head Node, or we're running
+locally it works. But if it runs on a Worker Node, it returns ``False``.
 
 **Expected behavior**: Most people would expect this to either fail or succeed consistently.
 It's the same code after all.
 
 **Fix**
 
-- Use only shared paths for such applications -- e.g. if you are using a network file system you can use that, or the files can be on s3.
+- Use only shared paths for such applications -- e.g. if you are using a network file system you can use that, or the files can be on S3.
 - Do not rely on file path consistency.
 
 
 
-Placement groups are not composable
+Placement Groups are not composable
 -----------------------------------
 
-**Issue**: If you have a task that is called from something that runs in a placement
-group, the resources are never allocated and it hangs.
+**Issue**: If you have a task that is called from something that runs in a Placement
+Group, the resources are never allocated and it hangs.
 
-**Example**: You are using Ray Tune which creates placement groups, and you want to
+**Example**: You are using Ray Tune which creates Placement Groups, and you want to
 apply it to an objective function, but that objective function makes use
 of Ray Tasks itself, e.g.
 
@@ -120,14 +119,14 @@ of Ray Tasks itself, e.g.
 This will error with message:
 
 .. testoutput::
-  :options: +SKIP
+  :options: +MOCK
 
     ValueError: Cannot schedule create_task_that_uses_resources.<locals>.sample_task with the placement group
     because the resource request {'CPU': 10} cannot fit into any bundles for the placement group, [{'CPU': 1.0}].
 
 **Expected behavior**: The above executes.
 
-**Fix**: In the ``@ray.remote`` declaration of tasks
+**Fix**: In the ``@ray.remote`` declaration of Tasks
 called by ``create_task_that_uses_resources()`` , include a
 ``scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=None)``.
 
@@ -189,13 +188,13 @@ Ray).
   update Ray to use the new version of ``h``.
 
   This is because when ``f`` first gets defined, its definition is shipped to
-  all of the workers, and is unpickled. During unpickling, ``file.py`` gets
-  imported in the workers. Then when ``f`` gets redefined, its definition is
-  again shipped and unpickled in all of the workers. But since ``file.py``
-  has been imported in the workers already, it is treated as a second import
+  all of the Worker processes, and is unpickled. During unpickling, ``file.py`` gets
+  imported in the Workers. Then when ``f`` gets redefined, its definition is
+  again shipped and unpickled in all of the Workers. But since ``file.py``
+  has been imported in the Workers already, it is treated as a second import
   and is ignored as a no-op.
 
-  Unfortunately, reloading on the driver does not update ``h``, as the reload
+  Unfortunately, reloading on the Driver does not update ``h``, as the reload
   needs to happen on the worker.
 
   A solution to this problem is to redefine ``f`` to reload ``file.py`` before
@@ -223,11 +222,10 @@ Ray).
         reload(file)
         return file.h()
 
-  This forces the reload to happen on the workers as needed. Note that in
+  This forces the reload to happen on the Workers as needed. Note that in
   Python 3, you need to do ``from importlib import reload``.
 
 This document discusses some common problems that people run into when using Ray
-as well as some known problems. If you encounter other problems, please
-`let us know`_.
+as well as some known problems. If you encounter other problems, `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues

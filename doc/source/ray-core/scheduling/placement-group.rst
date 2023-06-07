@@ -715,7 +715,7 @@ Provide Resources for Partially Lost Bundles
 
 If there are not enough resources to schedule the partially lost bundles, 
 the placement group waits, assuming Ray Autoscaler will start a new node to satisfy the resource requirements. 
-If the additinoal resources cannot be provided (e.g., you don't use the Autoscaler or the Autoscaler hits the resource limit), 
+If the additional resources cannot be provided (e.g., you don't use the Autoscaler or the Autoscaler hits the resource limit), 
 the placement group remains in the partially created state indefinitely.
 
 Fault Tolerance of Actors and Tasks that Use the Bundle

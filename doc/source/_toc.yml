@@ -11,6 +11,8 @@ parts:
         title: "Installation"
       - file: ray-overview/use-cases
         title: "Use Cases"
+      - file: ray-overview/examples
+        title: "Example Gallery"
       - file: ray-overview/ray-libraries
         title: "Ecosystem"
 
@@ -388,6 +390,7 @@ parts:
               sections:
               - file: cluster/vms/examples/ml-example
             - file: cluster/vms/references/index
+          - file: cluster/metrics
           - file: cluster/configure-manage-dashboard
           - file: cluster/running-applications/index
             title: Applications Guide
@@ -405,11 +408,11 @@ parts:
               - file: ray-observability/user-guides/debug-apps/index
                 title: Debugging Applications
                 sections:
+                  - file: ray-observability/user-guides/debug-apps/general-debugging
                   - file: ray-observability/user-guides/debug-apps/debug-memory
                   - file: ray-observability/user-guides/debug-apps/debug-hangs
                   - file: ray-observability/user-guides/debug-apps/debug-failures
                   - file: ray-observability/user-guides/debug-apps/optimize-performance
-                  - file: ray-observability/user-guides/debug-apps/debug-other
                   - file: ray-observability/user-guides/debug-apps/ray-debugging
               - file: ray-observability/user-guides/cli-sdk
               - file: ray-observability/user-guides/configure-logging

@@ -94,6 +94,17 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     }
   }
 
+  void RequestClusterResourceConstraint(
+      const rpc::ClusterResourceConstraint &constraint) {
+    rpc::autoscaler::RequestClusterResourceConstraintRequest request;
+    request.mutable_cluster_resource_constraint()->CopyFrom(constraint);
+    rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+    auto send_reply_callback =
+        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+    gcs_autoscaler_state_manager_->HandleRequestClusterResourceConstraint(
+        request, &reply, send_reply_callback);
+  }
+
   rpc::autoscaler::GetClusterResourceStateReply GetClusterResourceStateSync() {
     rpc::autoscaler::GetClusterResourceStateRequest request;
     rpc::autoscaler::GetClusterResourceStateReply reply;
@@ -132,6 +143,10 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     for (const auto &resource : request.resources_bundle()) {
       m[resource.first] = resource.second;
     }
+    return ShapeToString(m);
+  }
+
+  std::string ShapeToString(const std::map<std::string, double> &m) {
     std::stringstream ss;
     for (const auto &resource : m) {
       ss << resource.first << ":" << resource.second << ",";
@@ -139,6 +154,15 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     auto s = ss.str();
     // Remove last ","
     return s.empty() ? "" : s.substr(0, s.size() - 1);
+  }
+
+  std::string ShapeToString(const ResourceBundleMap &resource_map) {
+    std::stringstream ss;
+    std::map<std::string, double> sorted_m;
+    for (const auto &resource : resource_map) {
+      sorted_m[resource.first] = resource.second;
+    }
+    return ShapeToString(sorted_m);
   }
 
   void CheckPendingRequests(
@@ -227,19 +251,10 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     }
   }
 
-  std::string ShapeToString(const ResourceBundleMap &resource_map) {
-    std::stringstream ss;
-    std::map<std::string, double> sorted_m;
-    for (const auto &resource : resource_map) {
-      sorted_m[resource.first] = resource.second;
-    }
-
-    for (const auto &resource : sorted_m) {
-      ss << resource.first << ":" << resource.second << ",";
-    }
-    auto s = ss.str();
-    // Remove last ","
-    return s.empty() ? "" : s.substr(0, s.size() - 1);
+  void CheckResourceRequest(const rpc::autoscaler::ResourceRequest &request,
+                            const std::map<std::string, double> &expected_resources) {
+    ASSERT_EQ(request.resources_bundle().size(), expected_resources.size());
+    ASSERT_EQ(ShapeToString(request), ShapeToString(expected_resources));
   }
 };
 
@@ -467,10 +482,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
                                             rpc::PlacementGroupTableData::PENDING)});
 
     auto reply = GetClusterResourceStateSync();
-    CheckGangResourceRequests(
-        reply,
-        {{/* no pg constraint */ "",
-          {/* from first */ {{"CPU", 1}, {"GPU", 2}}, /* from second */ {{"TPU", 1}}}}});
+    CheckGangResourceRequests(reply,
+                              {{/* no pg constraint */ "",
+                                {/* from first */ {{"CPU", 1}, {"GPU", 2}},
+                                 /* from second */ {{"TPU", 1}}}}});
   }
 }
 
@@ -500,6 +515,36 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialReschedulin
                                     pg1.Binary(), rpc::PlacementStrategy::STRICT_SPREAD)
                                     ->DebugString(),
                                 {{{"CPU_failed_1", 1}}}}});
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
+  // Get empty cluster resources constraint.
+  {
+    auto reply = GetClusterResourceStateSync();
+    ASSERT_EQ(reply.cluster_resource_constraints_size(), 0);
+  }
+
+  // Generate one constraint.
+  {
+    RequestClusterResourceConstraint(
+        Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}));
+    auto reply = GetClusterResourceStateSync();
+    ASSERT_EQ(reply.cluster_resource_constraints_size(), 1);
+    ASSERT_EQ(reply.cluster_resource_constraints(0).min_bundles_size(), 1);
+    CheckResourceRequest(reply.cluster_resource_constraints(0).min_bundles(0),
+                         {{"CPU", 2}, {"GPU", 1}});
+  }
+
+  // Override it
+  {
+    RequestClusterResourceConstraint(
+        Mocker::GenClusterResourcesConstraint({{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}));
+    auto reply = GetClusterResourceStateSync();
+    ASSERT_EQ(reply.cluster_resource_constraints_size(), 1);
+    ASSERT_EQ(reply.cluster_resource_constraints(0).min_bundles_size(), 1);
+    CheckResourceRequest(reply.cluster_resource_constraints(0).min_bundles(0),
+                         {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
   }
 }
 

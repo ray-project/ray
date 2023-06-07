@@ -107,7 +107,6 @@ class Callback(metaclass=_CallbackMeta):
 
     .. testoutput::
         :hide:
-        :options: +SKIP
 
         ...
     """

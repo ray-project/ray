@@ -55,37 +55,6 @@
 </div>
 
 
-<div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
-    <h2 style="font-weight:600;">Getting Started</h2>
-    
-<div class="grid-container">
-  <a class="no-underline" href="./ray-overview/index.html" target="_blank"> <div class="info-box">
-        <div class="image-header" style="padding:0px;">
-            <img src="_static/img/ray_logo.png" width="44px" height="44px" />
-            <h3 style="font-size:20px;">Learn basics</h3>
-        </div>
-        <p style="color:#515151;">Understand how the Ray framework scales your ML workflows.</p>      
-        <p style="font-weight:600;">Learn more > </p>  
-  </div> </a>  
-   <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <div class="info-box">
-        <div class="image-header" style="padding:0px;">
-            <img src="_static/img/download.png" width="44px" height="44px" />
-            <h3 style="font-size:20px;">Install Ray</h3>
-        </div>
-        <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install "ray[default]"</code></pre></p>      
-        <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p>
-  </div></a>
-  <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
-        ><div class="info-box">
-        <div class="image-header" style="padding:0px;">
-            <img src="_static/img/code.png" width="44px" height="44px" />
-            <h3 style="font-size:20px;">Try it out</h3>
-        </div>
-        <p style="color:#515151;">Experiment with Ray with an introductory notebook.</p>
-        <p style="font-weight:600;">Open the notebook></p> 
-  </div></a>
-</div>
-  
 <div class="container remove-mobile" style="margin-bottom:30px; margin-top:80px; padding:0px;">
 
 
@@ -308,6 +277,39 @@ ppo_algo.evaluate()
     </div>
 </div>
   
+</div>
+
+
+
+<div class="container" style="margin-bottom:30px; margin-top:80px; padding:0px;">
+    <h2 style="font-weight:600;">Getting Started</h2>
+    
+<div class="grid-container">
+  <a class="no-underline" href="./ray-overview/index.html" target="_blank"> <div class="info-box" style="height:100%;">
+        <div class="image-header" style="padding:0px;">
+            <img src="_static/img/ray_logo.png" width="44px" height="44px" />
+            <h3 style="font-size:20px;">Learn basics</h3>
+        </div>
+        <p style="color:#515151;">Understand how the Ray framework scales your ML workflows.</p>      
+        <p style="font-weight:600;">Learn more > </p>  
+  </div> </a>  
+   <a class="no-underline" href="./ray-overview/installation.html" target="_blank"> <div class="info-box" style="height:100%;">
+        <div class="image-header" style="padding:0px;">
+            <img src="_static/img/download.png" width="44px" height="44px" />
+            <h3 style="font-size:20px;">Install Ray</h3>
+        </div>
+        <p><pre style="border:none; margin:0px;"><code class="nohighlight" style="margin:10px;">pip install -U "ray[air]"</code></pre></p>      
+        <p style="font-weight:600; margin-bottom: 0px;">Installation guide ></p>
+  </div></a>
+  <a class="no-underline" href="https://colab.research.google.com/github/ray-project/ray-educational-materials/blob/main/Introductory_modules/Quickstart_with_Ray_AIR_Colab.ipynb"  target="_blank" 
+        ><div class="info-box" style="height:100%;">
+        <div class="image-header" style="padding:0px;">
+            <img src="_static/img/code.png" width="44px" height="44px" />
+            <h3 style="font-size:20px;">Try it out</h3>
+        </div>
+        <p style="color:#515151;">Experiment with Ray with an introductory notebook.</p>
+        <p style="font-weight:600;">Open the notebook></p> 
+  </div></a>
 </div>
 
 

@@ -25,6 +25,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
+#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -356,6 +357,15 @@ struct Mocker {
       i++;
     }
     return placement_group_table_data;
+  }
+  static rpc::autoscaler::ClusterResourceConstraint GenClusterResourcesConstraint(
+      const std::vector<std::unordered_map<std::string, double>> &request_resources) {
+    rpc::autoscaler::ClusterResourceConstraint constraint;
+    for (const auto &resource : request_resources) {
+      auto bundle = constraint.add_min_bundles();
+      bundle->mutable_resources_bundle()->insert(resource.begin(), resource.end());
+    }
+    return constraint;
   }
 };
 

@@ -48,7 +48,7 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
   GetNodeStates(reply);
   GetPendingResourceRequests(reply);
   GetPendingGangResourceRequests(reply);
-  // GetClusterResourceConstraints(reply);
+  GetClusterResourceConstraints(reply);
 
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
@@ -61,6 +61,18 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     rpc::SendReplyCallback send_reply_callback) {
   // Unimplemented.
   throw std::runtime_error("Unimplemented");
+}
+
+void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
+    rpc::autoscaler::RequestClusterResourceConstraintRequest request,
+    rpc::autoscaler::RequestClusterResourceConstraintReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  cluster_resource_constraint_ =
+      std::move(*request.mutable_cluster_resource_constraint());
+
+  // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
+  // having to parse the gcs status code embedded.
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
@@ -111,7 +123,10 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
 
 void GcsAutoscalerStateManager::GetClusterResourceConstraints(
     rpc::autoscaler::GetClusterResourceStateReply *reply) {
-  throw std::runtime_error("Unimplemented");
+  if (cluster_resource_constraint_.has_value()) {
+    reply->add_cluster_resource_constraints()->CopyFrom(
+        cluster_resource_constraint_.value());
+  }
 }
 
 void GcsAutoscalerStateManager::GetPendingResourceRequests(
