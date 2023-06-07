@@ -90,7 +90,7 @@ class LimitPushdownRule(Rule):
                         ops_between_new_input_and_limit[0]
                     ]
                 last_op = ops_between_new_input_and_limit[0]
-                last_op._output_dependencies = limit_op_copy.output_dependencies
+                last_op._output_dependencies = current_op.output_dependencies
 
         return current_op
 
