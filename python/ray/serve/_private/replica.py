@@ -225,7 +225,9 @@ def create_replica_wrapper(name: str):
                 request_kwargs,
                 pickle.loads(pickled_request_metadata),
             )
-            return await self.replica.handle_request(query)
+
+            # Returns a small object for router to track request status.
+            return b"", await self.replica.handle_request(query)
 
         async def handle_request_streaming(
             self,
@@ -298,7 +300,7 @@ def create_replica_wrapper(name: str):
                 proto.request_id, proto.endpoint, call_method=proto.call_method
             )
             request_args = request_args[0]
-            query = Query(request_args, request_kwargs, request_metadata, return_num=1)
+            query = Query(request_args, request_kwargs, request_metadata)
             return await self.replica.handle_request(query)
 
         async def is_allocated(self) -> str:
@@ -564,7 +566,7 @@ class RayServeReplica:
             if len(inspect.signature(runner_method).parameters) > 0:
                 result = await method_to_call(*args, **kwargs)
             else:
-                # When access via http http_arg_is_pickled with no args:
+                # When access via http with no args:
                 # args = (<starlette.requests.Request object at 0x7fe900694cc0>,)
                 # When access via python with no args:
                 # args = ()
@@ -641,7 +643,7 @@ class RayServeReplica:
 
     async def handle_request(
         self, request: Query, *, asgi_sender: Optional[Send] = None
-    ) -> asyncio.Future:
+    ) -> Any:
         async with self.rwlock.reader_lock:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
@@ -673,11 +675,8 @@ class RayServeReplica:
                     latency_ms=latency_ms,
                 )
             )
-            if request.return_num == 1:
-                return result
-            else:
-                # Returns a small object for router to track request status.
-                return b"", result
+
+            return result
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.

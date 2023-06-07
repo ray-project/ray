@@ -83,7 +83,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 def parse_request_item(request_item):
     if len(request_item.args) == 1:
         arg = request_item.args[0]
-        if request_item.metadata.http_arg_is_pickled:
+        if request_item.metadata.is_http_request:
             assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
             return (build_starlette_request(arg.scope, arg.body),), {}
