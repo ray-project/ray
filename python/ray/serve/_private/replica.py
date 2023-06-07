@@ -38,7 +38,7 @@ from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
-    ASGIHTTPSender,
+    BufferedASGISender,
     ASGIHTTPQueueSender,
     RawASGIResponse,
     Response,
@@ -527,7 +527,7 @@ class RayServeReplica:
         This is used on the legacy non-streaming codepath because we cannot serialize
         and return a StreamingResponse.
         """
-        sender = ASGIHTTPSender()
+        sender = BufferedASGISender()
         await response(scope=None, receive=mock_asgi_receive, send=sender)
         return sender.build_asgi_response()
 
