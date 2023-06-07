@@ -15,46 +15,62 @@ Using this guide an ML Accelerator should be able to be added to Ray in less tha
 
 Ray models hardware accelerators as GPUs. The GPU resource should be used to model physical accelerators which have the properties:
 
-- **Managed by a node: A single GPU is managed by a single GPU. (as opposed to a “pod” which many machines can control).**
-- **Homogenous within a node: While a ray cluster can support multiple GPU types, and each node may have multiple GPUs, each node should only have a single type of GPU. (e.g. it is ok to have 2 nodes, one with 8x A100 GPUs, one with 8x H100 GPUs, but not a single node with 1x H100 and 1x A100).**
-- **Multiplexing: Multiple processes can concurrently run workloads on a single device, assuming they can operate within the resource constraints of the device.**
-- **Discrete: If a node has multiple GPUs, each is independently identifiable. A 1-GPU task cannot be split across multiple GPUs. (But communication between GPUs can be implemented out-of-band to achieve multi-gpu workloads).**
+- **Managed by a node**: A single GPU is managed by a single GPU. (as opposed to a “pod” which many machines can control).
+- **Homogenous within a node**: While a ray cluster can support multiple GPU types, and each node may have multiple GPUs, each node should only have a single type of GPU. (e.g. it is ok to have 2 nodes, one with 8x A100 GPUs, one with 8x H100 GPUs, but not a single node with 1x H100 and 1x A100).
+- **Multiplexing**: Multiple processes can concurrently run workloads on a single device, assuming they can operate within the resource constraints of the device.
+- **Discrete**: If a node has multiple GPUs, each is independently identifiable. A 1-GPU task cannot be split across multiple GPUs. (But communication between GPUs can be implemented out-of-band to achieve multi-gpu workloads).
 
 
 ## How it works with Nvidia GPUs today
 
 Users specify GPUs via the \`num_gpus\` argument, which is accepted by a variety of workloads.
 
-|                                                                  |
-| ---------------------------------------------------------------- |
-| **@ray.remote(num_gpus=1)** **def** **gpu_task**():     **pass** |
+```
+@ray.remote(num_gpus=1) 
+def gpu_task():     
+   pass 
+```
 
 
 ### Sharing GPUs (multiplexing)
 
 Multiple workloads can run concurrently on a GPU if it has enough resources.
 
-|                                                                                                                                     |
-| ----------------------------------------------------------------------------------------------------------------------------------- |
-| **@ray.remote(num_gpus=0.5) class HalfGpuActor():     pass _# Shares a GPU_ a1, a2 = HalfGpuActor.remote(), HalfGpuActor.remote()** |
+``` 
+@ray.remote(num_gpus=0.5) class HalfGpuActor():     
+   pass 
+
+# Shares a GPU 
+
+a1, a2 = HalfGpuActor.remote(), HalfGpuActor.remote()
+```
 
 
 ### Specifying a specific type of GPU
 
 GPU types can be specified via the \`accelerator_type\` field.
 
-|                                                                                                                                                                  |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **from** ray.util.accelerators **import** NVIDIA_TESLA_V100 **@ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)** **def** **gpu_task**():     **pass** |
+``` 
+from  ray.util.accelerators import  NVIDIA_TESLA_V100 
+
+@ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
+
+def gpu_task():     
+   pass
+```
 
 
 ### Multi-gpu nodes
 
 Ray assigns (but does not strongly enforce) a specific GPU id to each workload. It also configures hints for frameworks to use the assigned GPU by default (e.g. the CUDA_VISIBLE_DEVICES environment variable for NVIDIA gpus).
 
-|                                                                                                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **@ray.remote(num_gpus=1)** **def** **gpu_task**():    print(ray.get_gpu_ids())    print(os.environ\[“CUDA_VISIBLE_DEVICES”])     **pass** |
+```
+@ray.remote(num_gpus=1)
+def gpu_task():    
+   print(ray.get_gpu_ids())    
+   print(os.environ\[“CUDA_VISIBLE_DEVICES”])
+   pass
+```
 
 
 ## Deploying Ray with GPUs
