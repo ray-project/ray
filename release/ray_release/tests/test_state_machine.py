@@ -31,6 +31,9 @@ class MockIssue:
     def create_comment(self, comment: str):
         self.comments.append(comment)
 
+    def get_labels(self):
+        return self.labels
+
 
 class MockIssueDB:
     issue_id = 1
@@ -142,6 +145,33 @@ def test_move_from_failing_to_passing():
     assert test.get_state() == TestState.PASSING
     assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
     assert test.get(Test.KEY_BISECT_BUILD_NUMBER) is None
+
+
+def test_move_from_failing_to_jailed():
+    test = Test(name="test", team="devprod")
+    test.test_results = [
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+    ]
+    sm = TestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.CONSITENTLY_FAILING
+    test.test_results.insert(
+        0,
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+    )
+    sm = TestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.JAILED
+    test.test_results.insert(
+        0,
+        TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
+    )
+    sm = TestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.PASSING
 
 
 if __name__ == "__main__":
