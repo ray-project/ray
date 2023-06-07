@@ -100,6 +100,46 @@ To view the full list of supported file formats, see the
             petal width (cm)   double
             target             int64
 
+    .. tab-item:: Binary
+
+        To read raw binary files, call :func:`~ray.data.read_binary_files`.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_binary_files("local:///tmp/file.dat")
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            bytes   binary
+
+    .. tab-item:: TFRecords
+
+        To read TFRecords files, call :func:`~ray.data.read_tfrecords`.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_tfrecords("local:///tmp/iris.tfrecords")
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column             Type
+            ------             ----
+            sepal length (cm)  double
+            sepal width (cm)   double
+            petal length (cm)  double
+            petal width (cm)   double
+            target             int64
+
 Reading files from local disk
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -819,3 +859,19 @@ datasource and pass it to :func:`~ray.data.read_datasource`.
     ds.write_datasource(YourCustomDatasource(), **write_args)
 
 For an example, see :ref:`Implementing a Custom Datasource <custom_datasources>`.
+
+Performance considerations
+==========================
+
+The dataset ``parallelism`` determines the number of blocks the base data will be split
+into for parallel reads. Ray Data will decide internally how many read tasks to run
+concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In
+other words, the higher the parallelism, the smaller the data blocks in the Dataset and
+hence the more opportunity for parallel execution.
+
+.. image:: images/dataset-read.svg
+   :width: 650px
+   :align: center
+
+This default parallelism can be overridden via the ``parallelism`` argument; see the
+:ref:`performance guide <data_performance_tips>`  for more information on how to tune this read parallelism.
