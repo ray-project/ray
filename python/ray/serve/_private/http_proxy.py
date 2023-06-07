@@ -519,7 +519,15 @@ class HTTPProxy:
     async def proxy_asgi_receive(
         self, receive: Receive, queue: asyncio.Queue
     ) -> Optional[int]:
-        """TODO"""
+        """Proxies the `receive` interface, placing its messages into the queue.
+
+        Once a disconnect message is received, the call exits and `receive` is no longer
+        called.
+
+        For HTTP messages, `None` is always returned.
+        For websocket messages, the disconnect code is returned if a disconnect code is
+        received.
+        """
         while True:
             msg = await receive()
             await queue.put(msg)
