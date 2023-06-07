@@ -23,15 +23,9 @@ To start, install Ray Data:
 .. code-block:: bash
 
     pip install -U "ray[data]"
-<<<<<<< HEAD
 
 Using Ray Data for offline inference involves four basic steps:
 
-=======
-
-Using Ray Data for offline inference involves four basic steps:
-
->>>>>>> a66a0f270333327249ba1a13306535ea34e4eb9a
 - **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different data sources and formats. For more details, see :ref:`Loading Data <loading_data>`.
 - **Step 2:** Define a Python class to load the pre-trained model. 
 - **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming-data>`.
@@ -204,7 +198,8 @@ Using GPUs for inference
 To use GPUs for inference, make the following changes to your code:
 
 1. Update the class implementation to move the model and data to and from GPU.
-2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU. 
+2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU.
+3. Specify a `batch_size` for inference. For more details on how to configure the batch size, see `batch_inference_batch_size`_. 
 
 The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
@@ -236,14 +231,18 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions = ds.map_batches(
                 HuggingFacePredictor, 
                 num_gpus=1,
+                # Specify the batch size for inference. 
+                # Increase this for larger datasets.
+                batch_size=1, 
                 # Set the ActorPool size to the number of GPUs in your cluster.
                 compute=ray.data.ActorPoolStrategy(size=2), 
                 )
             predictions.show(limit=1)
         
         .. testoutput::
+            :options: +MOCK
 
-            {'data': 'Complete this', 'output': "Complete this article through the web and check our FAQ.\n\nAre you a vegetarian? We'll"}
+            {'data': 'Complete this', 'output': 'Complete this poll. Which one do you think holds the most promise for you?\n\nThank you'}
         
 
     .. group-tab:: PyTorch
@@ -279,12 +278,16 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions = ds.map_batches(
                 TorchPredictor, 
                 num_gpus=1,
+                # Specify the batch size for inference. 
+                # Increase this for larger datasets.
+                batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
                 compute=ray.data.ActorPoolStrategy(size=2) 
                 )
             predictions.show(limit=1)
 
         .. testoutput::
+            :options: +MOCK
 
             {'output': array([0.5590901], dtype=float32)}
 
