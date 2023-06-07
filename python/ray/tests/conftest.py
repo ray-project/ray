@@ -1307,5 +1307,5 @@ worker_node = container(
 
 
 @pytest.fixture
-def docker_cluster():
+def docker_cluster(head_node, worker_node):
     yield (head_node, worker_node)
