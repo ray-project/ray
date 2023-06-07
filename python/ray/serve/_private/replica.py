@@ -445,6 +445,11 @@ class RayServeReplica:
             description="The current number of queries being processed.",
         )
 
+        self.num_pending_items = metrics.Gauge(
+            "serve_replica_pending_queries",
+            description="The number of queries being pended.",
+        )
+
         self.restart_counter.inc()
 
         if autoscaling_config:
@@ -643,7 +648,10 @@ class RayServeReplica:
         self, request: Query, *, asgi_sender: Optional[Send] = None
     ) -> asyncio.Future:
         async with self.rwlock.reader_lock:
-            num_running_requests = self._get_handle_request_stats()["running"]
+            request_stats = self._get_handle_request_stats()
+            num_running_requests = request_stats["running"]
+            num_pending_requests = request_stats["pending"]
+            self.num_pending_items.set(num_pending_requests)
             self.num_processing_items.set(num_running_requests)
 
             # Set request context variables for subsequent handle so that

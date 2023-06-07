@@ -272,6 +272,11 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
      - The current number of queries being processed.
+   * - ``serve_replica_pending_queries`` [**]
+     - * deployment
+       * replica
+       * application
+     - The current number of queries being pended.
    * - ``serve_num_http_requests`` [*]
      - * route
        * method

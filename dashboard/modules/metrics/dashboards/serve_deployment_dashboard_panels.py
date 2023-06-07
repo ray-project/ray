@@ -119,6 +119,36 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         stack=False,
         grid_pos=GridPos(0, 2, 8, 8),
     ),
+    Panel(
+        id=8,
+        title="Pending requests per replica",
+        description="Pending requests for each replica.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="sum(ray_serve_replica_pending_queries{{{global_filters}}}) by (deployment, replica)",
+                legend="{{deployment}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(8, 2, 8, 8),
+    ),
+    Panel(
+        id=9,
+        title="Running requests per replica",
+        description="Current running requests for each replica.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="sum(ray_serve_replica_processing_queries{{{global_filters}}}) by (deployment, replica)",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(16, 2, 8, 8),
+    ),
 ]
 
 ids = []
