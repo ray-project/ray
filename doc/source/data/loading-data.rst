@@ -10,66 +10,14 @@ Ray Data loads data from various sources. This guide shows you how to:
 * `Load in-memory data <#loading-in-memory-data>`_ like pandas DataFrames
 * `Read databases <#reading-databases>`_ like MySQL
 
-To view the full list of supported sources, see the :ref:`Input/Output reference <input-output>`.
-
 Reading files
 =============
 
-Ray Data reads files from disk or cloud storage.
-
-Reading files from disk
-~~~~~~~~~~~~~~~~~~~~~~~
-
-To read files from disk, call a function like ``ray.data.read_*`` and specify paths with
-the ``local://`` schema. Paths can point to files or directories.
-
-.. tip::
-
-    If your files are accessible on every node, exclude ``local://`` to parallelize the
-    read tasks across the cluster.
+Ray Data reads files from local disk or cloud storage in a variety of file formats.
+To view the full list of supported file formats, see the
+:ref:`Input/Output reference <input-output>`.
 
 .. tab-set::
-
-    .. tab-item:: Images
-
-        To read images, call :func:`~ray.data.read_images`. Ray Data represents images
-        as NumPy ndarrays.
-
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.read_images("/tmp/batoidea/JPEGImages")
-
-            print(ds.schema())
-
-        .. testoutput::
-
-            Column  Type
-            ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
-
-        To read other file formats, see the :ref:`Input/Output reference <input-output>`.
-
-    .. tab-item:: Text
-
-        To read lines of text, call :func:`~ray.data.read_text`.
-
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.read_text("/tmp/this.txt")
-
-            print(ds.schema())
-
-        .. testoutput::
-
-            Column  Type
-            ------  ----
-            text    string
-
-        To read other file formats, see the :ref:`Input/Output reference <input-output>`.
 
     .. tab-item:: Parquet
 
@@ -79,7 +27,7 @@ the ``local://`` schema. Paths can point to files or directories.
 
             import ray
 
-            ds = ray.data.read_parquet("/tmp/iris.parquet")
+            ds = ray.data.read_parquet("local:///tmp/iris.parquet")
 
             print(ds.schema())
 
@@ -93,17 +41,52 @@ the ``local://`` schema. Paths can point to files or directories.
             petal.width   double
             variety       string
 
-        To read other file formats, see the :ref:`Input/Output reference <input-output>`.
+    .. tab-item:: Images
 
-    .. tab-item:: CSV
-
-        To read Parquet files, call :func:`~ray.data.read_csv`.
+        To read raw images, call :func:`~ray.data.read_images`. Ray Data represents
+        images as NumPy ndarrays.
 
         .. testcode::
 
             import ray
 
-            ds = ray.data.read_csv("/tmp/iris.csv")
+            ds = ray.data.read_images("local:///tmp/batoidea/JPEGImages/")
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+
+    .. tab-item:: Text
+
+        To read lines of text, call :func:`~ray.data.read_text`.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_text("local:///tmp/this.txt")
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            text    string
+
+    .. tab-item:: CSV
+
+        To read CSV files, call :func:`~ray.data.read_csv`.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_csv("local:///tmp/iris.csv")
 
             print(ds.schema())
 
@@ -117,61 +100,51 @@ the ``local://`` schema. Paths can point to files or directories.
             petal width (cm)   double
             target             int64
 
-        To read other file formats, see the :ref:`Input/Output reference <input-output>`.
+Reading files from local disk
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Reading files from S3
-~~~~~~~~~~~~~~~~~~~~~
+To read files from local disk, call a function like :func:`~ray.data.read_parquet` and
+specify paths with the ``local://`` schema. Paths can point to files or directories.
 
-To read files in S3, ensure all nodes are authenticated with AWS. Then, call a function
-like ``ray.data.read_*`` and specify S3 URIs. URIs can point to objects, buckets, or
-folders.
+To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+
+.. tip::
+
+    If your files are accessible on every node, exclude ``local://`` to parallelize the
+    read tasks across the cluster.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_parquet("local:///tmp/iris.parquet")
+
+    print(ds.schema())
+
+.. testoutput::
+
+    Column        Type
+    ------        ----
+    sepal.length  double
+    sepal.width   double
+    petal.length  double
+    petal.width   double
+    variety       string
+
+Reading files from cloud storage
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To read files in cloud storage, authenticate all nodes with your cloud service provider.
+Then, call a method like :func:`~ray.data.read_parquet` and specify URIs with the
+appropriate schema. URIs can point to buckets, folders, or objects.
+
+To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
 
 .. tab-set::
 
-    .. tab-item:: Images
+    .. tab-item:: S3
 
-        To read images, call :func:`~ray.data.read_images`. Ray Data represents images
-        as NumPy ndarrays.
-
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea/JPEGImages/")
-
-            print(ds.schema())
-
-        .. testoutput::
-
-            Column  Type
-            ------  ----
-            image   numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
-
-        To read other file formats, see the :ref:`Input/Output reference <input-output>`.
-
-    .. tab-item:: Text
-
-        To read lines of text, call :func:`~ray.data.read_text`.
-
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
-
-            print(ds.schema())
-
-        .. testoutput::
-
-            Column  Type
-            ------  ----
-            text    string
-
-        To read other file formats, see the :ref:`Input/Output reference <input-output>`.
-
-    .. tab-item:: Parquet
-
-        To read Parquet files, call :func:`~ray.data.read_parquet`.
+        To read files from Amazon S3, specify URIs with the ``s3://`` scheme.
 
         .. testcode::
 
@@ -191,31 +164,95 @@ folders.
             petal.width   double
             variety       string
 
-        To read other file formats, see the :ref:`Input/Output reference <input-output>`.
+    .. tab-item:: GCS
 
-    .. tab-item:: CSV
+        To read files from Google Cloud Storage, install the
+        `Filesystem interface to Google Cloud Storage <https://gcsfs.readthedocs.io/en/latest/>`_
 
-        To read Parquet files, call :func:`~ray.data.read_csv`.
+        .. code-block:: console
+
+            pip install gcsfs
+
+        Then, create a ``GCSFileSystem`` and specify URIs with the ``gcs://`` scheme.
 
         .. testcode::
+            :skipif: True
 
             import ray
 
-            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
 
             print(ds.schema())
 
         .. testoutput::
 
-            Column             Type
-            ------             ----
-            sepal length (cm)  double
-            sepal width (cm)   double
-            petal length (cm)  double
-            petal width (cm)   double
-            target             int64
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
 
-        To read other file formats, see the :ref:`Input/Output reference <input-output>`.
+    .. tab-item:: ABL
+
+        To read files from Azure Blob Storage, install the
+        `Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage <https://pypi.org/project/adlfs/>`_
+
+        .. code-block:: console
+
+            pip install adlfs
+
+        Then, create a ``AzureBlobFileSystem`` and specify URIs with the `az://` scheme.
+
+        .. testcode::
+            :skipif: True
+
+            import adlfs
+            import ray
+
+            ds = ray.data.read_parquet(
+                "az://ray-example-data/iris.parquet",
+                adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
+            )
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
+
+Reading files from NFS
+~~~~~~~~~~~~~~~~~~~~~~
+
+To read files from NFS filesystems, call a function like :func:`~ray.data.read_parquet`
+and specify files on the mounted filesystem. Paths can point to files or directories.
+
+To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_parquet("/mnt/cluster_storage/iris.parquet")
+
+    print(ds.schema())
+
+.. testoutput::
+
+    Column        Type
+    ------        ----
+    sepal.length  double
+    sepal.width   double
+    petal.length  double
+    petal.width   double
+    variety       string
 
 Handling compressed files
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -232,11 +269,11 @@ You can use any `Codec supported by Arrow <https://arrow.apache.org/docs/python/
         arrow_open_stream_args={"compression": "gzip"},
     )
 
-Loading in-memory data
-======================
+Loading data from other libraries
+=================================
 
-Loading data from common libraries
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Loading data from single-node data libraries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
@@ -267,6 +304,21 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
                num_rows=3,
                schema={food: string, price: double}
             )
+
+        You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
+        Python objects.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.from_items([1, 2, 3, 4, 5])
+
+            print(ds)
+
+        .. testoutput::
+
+            MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
 
     .. tab-item:: NumPy
 
@@ -714,50 +766,44 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
                 "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
 
-Reading NoSQL databases
-~~~~~~~~~~~~~~~~~~~~~~~
+Reading MongoDB
+~~~~~~~~~~~~~~~
 
-Ray Data reads from MongoDB.
+To read data from MongoDB, call :func:`~ray.data.read_mongo` and specify the
+the source URI, database, and collection. You also need to specify a pipeline to
+run against the collection.
 
-.. tab-set::
+.. testcode::
+    :skipif: True
 
-    .. tab-item:: MongoDB
+    import ray
 
-        To read data from MongoDB, call :func:`~ray.data.read_mongo` and specify the
-        the source URI, database, and collection. You also need to specify a pipeline to
-        run against the collection.
+    # Read a local MongoDB.
+    ds = ray.data.read_mongo(
+        uri="mongodb://localhost:27017",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
 
-        .. testcode::
-            :skipif: True
+    # Reading a remote MongoDB is the same.
+    ds = ray.data.read_mongo(
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+        pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
+    )
 
-            import ray
+    # Write back to MongoDB.
+    ds.write_mongo(
+        MongoDatasource(),
+        uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+        database="my_db",
+        collection="my_collection",
+    )
 
-            # Read a local MongoDB.
-            ds = ray.data.read_mongo(
-                uri="mongodb://localhost:27017",
-                database="my_db",
-                collection="my_collection",
-                pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
-            )
-
-            # Reading a remote MongoDB is the same.
-            ds = ray.data.read_mongo(
-                uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-                database="my_db",
-                collection="my_collection",
-                pipeline=[{"$match": {"col": {"$gte": 0, "$lt": 10}}}, {"$sort": "sort_col"}],
-            )
-
-            # Write back to MongoDB.
-            ds.write_mongo(
-                MongoDatasource(),
-                uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-                database="my_db",
-                collection="my_collection",
-            )
-
-Loading unsupported data
-========================
+Loading other data sources
+==========================
 
 If Ray Data can't load your data, subclass
 :class:`~ray.data.datasource.Datasource`. Then, construct an instance of your custom
