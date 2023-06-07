@@ -6,6 +6,7 @@ slackclient
 boto3
 google-cloud-storage
 jinja2
+pybuildkite
 PyGithub
 pydantic < 1.10.0
 pyyaml
