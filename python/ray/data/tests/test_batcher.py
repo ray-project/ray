@@ -45,16 +45,10 @@ def test_shuffling_batcher():
         if no_nexting_yet:
             # Check that no shuffle buffer has been materialized yet.
             assert batcher._shuffle_buffer is None
-            assert batcher._shuffle_indices is None
             assert batcher._batch_head == 0
 
         assert batcher._builder.num_rows() == pending_buffer_size
         assert batcher._materialized_buffer_size() == materialized_buffer_size
-        if batcher._shuffle_indices:
-            assert (
-                max(0, len(batcher._shuffle_indices) - batcher._batch_head)
-                == materialized_buffer_size
-            )
 
     def next_and_check(
         current_cursor,
@@ -78,11 +72,6 @@ def test_shuffling_batcher():
 
         assert batcher._builder.num_rows() == pending_buffer_size
         assert batcher._materialized_buffer_size() == materialized_buffer_size
-        if batcher._shuffle_indices:
-            assert (
-                max(0, len(batcher._shuffle_indices) - batcher._batch_head)
-                == materialized_buffer_size
-            )
 
         if should_have_batch_after:
             assert batcher.has_batch()

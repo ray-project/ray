@@ -181,28 +181,18 @@ class ShufflingBatcher(BatcherInterface):
     #
     # This shuffling batcher lazily builds a shuffle buffer from added blocks, and once
     # a batch is requested via .next_batch(), it concatenates the blocks into a concrete
-    # shuffle buffer, generates random shuffle indices, and starts returning shuffled
-    # batches.
+    # shuffle buffer and randomly shuffles the entire buffer.
     #
     # Adding of more blocks can be intermixed with retrieving batches, but it should be
     # noted that we can end up performing two expensive operations on each retrieval:
     #  1. Build added blocks into a concrete shuffle buffer.
-    #  2. Generate random shuffle indices.
-    # Note that (1) and (2) only happen when new blocks are added, upon the next
-    # retrieval. I.e., if no new blocks have been added since the last batch retrieval,
-    # and there are still batches in the existing concrete shuffle buffer to be yielded,
-    # then each batch retrieval will only involve slicing the batch out of the concrete
-    # shuffle buffer.
+    #  2. Shuffling the entire buffer.
+    # To amortize the overhead of this process, we only shuffle the blocks after a
+    # delay designated by SHUFFLE_BUFFER_COMPACTION_RATIO.
     #
     # Similarly, adding blocks is very cheap. Each added block will be appended to a
     # list, with concatenation of the underlying data delayed until the next batch
-    # retrieval.
-    #
-    # Since (1) runs of block additions are cheap, and (2) runs of batch retrievals are
-    # cheap, callers of ShufflingBatcher are encouraged to add as many blocks as
-    # possible (up to the shuffle buffer capacity), followed by retrieving as many
-    # batches as possible (down to the shuffle buffer minimum size), in such contiguous
-    # runs.
+    # compaction.
 
     def __init__(
         self,
@@ -237,7 +227,6 @@ class ShufflingBatcher(BatcherInterface):
         self._buffer_min_size = shuffle_buffer_min_size
         self._builder = DelegatingBlockBuilder()
         self._shuffle_buffer: Block = None
-        self._shuffle_indices: List[int] = None
         self._batch_head = 0
         self._done_adding = False
 
@@ -325,13 +314,17 @@ class ShufflingBatcher(BatcherInterface):
             if self._shuffle_buffer is not None:
                 if self._batch_head > 0:
                     # Compact the materialized shuffle buffer.
-                    self._shuffle_buffer = BlockAccessor.for_block(
-                        self._shuffle_buffer
-                    ).take(self._shuffle_indices[self._batch_head :])
+                    block = BlockAccessor.for_block(self._shuffle_buffer)
+                    self._shuffle_buffer = block.slice(
+                        self._batch_head, block.num_rows()
+                    )
                 # Add the unyielded rows from the existing shuffle buffer.
                 self._builder.add_block(self._shuffle_buffer)
             # Build the new shuffle buffer.
             self._shuffle_buffer = self._builder.build()
+            self._shuffle_buffer = BlockAccessor.for_block(
+                self._shuffle_buffer
+            ).random_shuffle(None)
             if (
                 isinstance(
                     BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
@@ -345,24 +338,15 @@ class ShufflingBatcher(BatcherInterface):
                 )
             # Reset the builder.
             self._builder = DelegatingBlockBuilder()
-            # Invalidate the shuffle indices.
-            self._shuffle_indices = None
             self._batch_head = 0
 
         assert self._shuffle_buffer is not None
         buffer_size = BlockAccessor.for_block(self._shuffle_buffer).num_rows()
         # Truncate the batch to the buffer size, if necessary.
         batch_size = min(self._batch_size, buffer_size)
-
-        if self._shuffle_indices is None:
-            # Need to generate new shuffle indices.
-            self._shuffle_indices = list(range(buffer_size))
-            random.shuffle(self._shuffle_indices)
-
-        # Get the shuffle indices for this batch.
-        batch_indices = self._shuffle_indices[
-            self._batch_head : self._batch_head + batch_size
-        ]
+        slice_start = self._batch_head
         self._batch_head += batch_size
         # Yield the shuffled batch.
-        return BlockAccessor.for_block(self._shuffle_buffer).take(batch_indices)
+        return BlockAccessor.for_block(self._shuffle_buffer).slice(
+            slice_start, self._batch_head
+        )
