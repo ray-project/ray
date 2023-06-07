@@ -1,16 +1,15 @@
 import sys
 import pytest
 from typing import List, Tuple, Dict
+from unittest.mock import patch, Mock
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import RayTaskError
+
 from ray.serve._private.application_state import (
     ApplicationState,
     ApplicationStateManager,
 )
-
-from ray.serve.exceptions import RayServeException
-
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentConfig,
@@ -19,6 +18,8 @@ from ray.serve._private.common import (
     ReplicaConfig,
     DeploymentInfo,
 )
+from ray.serve._private.utils import get_random_letters
+from ray.serve.exceptions import RayServeException
 
 
 class MockEndpointState:
@@ -41,10 +42,13 @@ class MockDeploymentStateManager:
     def __init__(self):
         self.deployment_infos: Dict[str, DeploymentInfo] = dict()
         self.deployment_statuses: Dict[str, DeploymentStatusInfo] = dict()
+        self.deleting: Dict[str, bool] = dict()
 
     def deploy(self, deployment_name: str, deployment_info: DeploymentInfo):
+        existing_info = self.deployment_infos.get(deployment_name)
+        self.deleting[deployment_name] = False
         self.deployment_infos[deployment_name] = deployment_info
-        if deployment_name not in self.deployment_statuses:
+        if not existing_info or existing_info.version != deployment_info.version:
             self.deployment_statuses[deployment_name] = DeploymentStatusInfo(
                 name=deployment_name,
                 status=DeploymentStatus.UPDATING,
@@ -54,15 +58,6 @@ class MockDeploymentStateManager:
     @property
     def deployments(self) -> List[str]:
         return list(self.deployment_infos.keys())
-
-    def set_deployment_unhealthy(self, name: str):
-        self.deployment_statuses[name].status = DeploymentStatus.UNHEALTHY
-
-    def set_deployment_healthy(self, name: str):
-        self.deployment_statuses[name].status = DeploymentStatus.HEALTHY
-
-    def set_deployment_updating(self, name: str):
-        self.deployment_statuses[name].status = DeploymentStatus.UPDATING
 
     def get_deployment_statuses(self, deployment_names: List[str]):
         return [self.deployment_statuses[name] for name in deployment_names]
@@ -84,12 +79,32 @@ class MockDeploymentStateManager:
             if info.app_name == app_name
         ]
 
-    def delete_deployment(self, deployment_name: str):
-        pass
+    def set_deployment_unhealthy(self, name: str):
+        self.deployment_statuses[name].status = DeploymentStatus.UNHEALTHY
+
+    def set_deployment_healthy(self, name: str):
+        self.deployment_statuses[name].status = DeploymentStatus.HEALTHY
+
+    def set_deployment_updating(self, name: str):
+        self.deployment_statuses[name].status = DeploymentStatus.UPDATING
 
     def set_deployment_deleted(self, name: str):
+        if not self.deployment_infos[name]:
+            raise ValueError(
+                f"Tried to mark deployment {name} as deleted, but {name} not found"
+            )
+        if not self.deleting[name]:
+            raise ValueError(
+                f"Tried to mark deployment {name} as deleted, but delete_deployment()"
+                f"hasn't been called for {name} yet"
+            )
+
         del self.deployment_infos[name]
         del self.deployment_statuses[name]
+        del self.deleting[name]
+
+    def delete_deployment(self, deployment_name: str):
+        self.deleting[deployment_name] = True
 
 
 @pytest.fixture
@@ -108,7 +123,7 @@ def deployment_params(name: str, route_prefix: str = None):
     return {
         "name": name,
         "deployment_config_proto_bytes": DeploymentConfig(
-            num_replicas=1, user_config={}
+            num_replicas=1, user_config={}, version=get_random_letters()
         ).to_proto_bytes(),
         "replica_config_proto_bytes": ReplicaConfig.create(
             lambda x: x
@@ -133,22 +148,57 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
     yield application_state, deployment_state_manager
 
 
-def test_deploy_app(mocked_application_state):
-    """Test DEPLOYING status"""
-    app_state, _ = mocked_application_state
-    app_state.apply_deployment_args([deployment_params("d1")])
+def test_deploy_and_delete_app(mocked_application_state):
+    """Deploy app with 2 deployments, transition DEPLOYING -> RUNNING -> DELETING.
+    This tests the basic typical workflow.
+    """
+    app_state, deployment_state_manager = mocked_application_state
+
+    # DEPLOY application with deployments {d1, d2}
+    app_state.apply_deployment_args([deployment_params("d1"), deployment_params("d2")])
 
     app_status = app_state.get_application_status_info()
     assert app_status.status == ApplicationStatus.DEPLOYING
     assert app_status.deployment_timestamp > 0
 
+    app_state.update()
+    # After one update, deployments {d1, d2} should be created
+    assert deployment_state_manager.get_deployment("d1")
+    assert deployment_state_manager.get_deployment("d2")
+    assert app_state.status == ApplicationStatus.DEPLOYING
 
-def test_delete_app(mocked_application_state):
-    """Test DELETING status"""
-    app_state, _ = mocked_application_state
-    app_state.apply_deployment_args([deployment_params("d1")])
+    # Until both deployments are healthy, app should be deploying
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Mark deployment d1 healthy (app should be deploying)
+    deployment_state_manager.set_deployment_healthy("d1")
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Mark deployment d2 healthy (app should be running)
+    deployment_state_manager.set_deployment_healthy("d2")
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+
+    # Rerun update, status shouldn't change (still running)
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+
+    # Delete application (app should be deleting)
     app_state.delete()
     assert app_state.status == ApplicationStatus.DELETING
+
+    app_state.update()
+    deployment_state_manager.set_deployment_deleted("d1")
+    ready_to_be_deleted = app_state.update()
+    assert not ready_to_be_deleted
+    assert app_state.status == ApplicationStatus.DELETING
+
+    # Once both deployments are deleted, the app should be ready to delete
+    deployment_state_manager.set_deployment_deleted("d2")
+    ready_to_be_deleted = app_state.update()
+    assert ready_to_be_deleted
 
 
 def test_create_app(mocked_application_state_manager):
@@ -158,35 +208,8 @@ def test_create_app(mocked_application_state_manager):
     assert app_state_manager.get_app_status("test_app") == ApplicationStatus.DEPLOYING
 
 
-def test_app_running(mocked_application_state):
-    """Test DEPLOYING -> RUNNING"""
-    app_state, deployment_state_manager = mocked_application_state
-    assert app_state.status == ApplicationStatus.NOT_STARTED
-    # Immediately after apply_deployment_args() returns, status should be DEPLOYING
-    app_state.apply_deployment_args([deployment_params("a"), deployment_params("b")])
-    assert app_state.status == ApplicationStatus.DEPLOYING
-
-    # Before deployments are healthy, status should remain DEPLOYING
-    app_state.update()
-    assert app_state.status == ApplicationStatus.DEPLOYING
-
-    # One deployment healthy
-    deployment_state_manager.set_deployment_healthy("a")
-    app_state.update()
-    assert app_state.status == ApplicationStatus.DEPLOYING
-
-    # Both deployments healthy
-    deployment_state_manager.set_deployment_healthy("b")
-    app_state.update()
-    assert app_state.status == ApplicationStatus.RUNNING
-
-    # Rerun update, application status should not make difference
-    app_state.update()
-    assert app_state.status == ApplicationStatus.RUNNING
-
-
-def test_app_deploy_failed(mocked_application_state):
-    """Test DEPLOYING -> DEPLOY_FAILED"""
+def test_app_deploy_failed_and_redeploy(mocked_application_state):
+    """Test DEPLOYING -> DEPLOY_FAILED -> (redeploy) -> DEPLOYING -> RUNNING"""
     app_state, deployment_state_manager = mocked_application_state
     app_state.apply_deployment_args([deployment_params("d1")])
     assert app_state.status == ApplicationStatus.DEPLOYING
@@ -200,62 +223,79 @@ def test_app_deploy_failed(mocked_application_state):
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
 
-    # Rerun update, application status should not make difference
+    # Message and status should not change
+    deploy_failed_msg = app_state._status_msg
+    assert len(deploy_failed_msg) != 0
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOY_FAILED
+    assert app_state._status_msg == deploy_failed_msg
+
+    app_state.apply_deployment_args([deployment_params("d1"), deployment_params("d2")])
+    assert app_state.status == ApplicationStatus.DEPLOYING
+    assert app_state._status_msg != deploy_failed_msg
+
+    # After one update, deployments {d1, d2} should be created
+    app_state.update()
+    assert deployment_state_manager.get_deployment("d1")
+    assert deployment_state_manager.get_deployment("d2")
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    deployment_state_manager.set_deployment_healthy("d1")
+    deployment_state_manager.set_deployment_healthy("d2")
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+
+    # Message and status should not change
+    running_msg = app_state._status_msg
+    assert running_msg != deploy_failed_msg
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+    assert app_state._status_msg == running_msg
+
+
+def test_app_deploy_failed_and_recover(mocked_application_state):
+    """Test DEPLOYING -> DEPLOY_FAILED -> (self recovered) -> RUNNING
+
+    If while the application is deploying a deployment becomes unhealthy,
+    the app is marked as deploy failed. But if the deployment recovers,
+    the application status should update to running.
+    """
+    app_state, deployment_state_manager = mocked_application_state
+    app_state.apply_deployment_args([deployment_params("d1")])
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Before status of deployment changes, app should still be DEPLOYING
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Mark deployment unhealthy -> app should be DEPLOY_FAILED
+    deployment_state_manager.set_deployment_unhealthy("d1")
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOY_FAILED
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
 
-    # """Test DEPLOYING -> DEPLOY_FAILED -> DEPLOYING -> RUNNING"""
-    # app_state_manager, deployment_state_manager = mocked_application_state_manager
-    # app_state_manager.deploy_application("test_app", [{"name": "d1"}])
-    # # Simulate controller
-    # deployment_state_manager.deploy("d1", None)
-
-    # app_status = app_state_manager.get_app_status("test_app")
-    # assert app_status.status == ApplicationStatus.DEPLOYING
-    # deployment_state_manager.set_deployment_statuses_unhealthy("d1")
-    # app_state_manager.update()
-    # app_status = app_state_manager.get_app_status("test_app")
-    # assert app_status.status == ApplicationStatus.DEPLOY_FAILED
-    # # rerun update, application status should not make difference
-    # deploy_failed_msg = app_status.message
-    # assert len(deploy_failed_msg) != 0
-    # app_state_manager.update()
-    # assert app_status.status == ApplicationStatus.DEPLOY_FAILED
-    # assert app_status.message == deploy_failed_msg
-
-    # app_state_manager.deploy_application("test_app", [{"name": "d1"}, {"name": "d2"}])
-    # # Simulate controller
-    # deployment_state_manager.deploy("d1", None)
-    # deployment_state_manager.deploy("d2", None)
-
-    # app_status = app_state_manager.get_app_status("test_app")
-    # assert app_status.status == ApplicationStatus.DEPLOYING
-    # assert app_status.message != deploy_failed_msg
-    # deployment_state_manager.set_deployment_statuses_healthy("d1")
-    # deployment_state_manager.set_deployment_statuses_healthy("d2")
-    # app_state_manager.update()
-    # app_status = app_state_manager.get_app_status("test_app")
-    # assert app_status.status == ApplicationStatus.RUNNING
-    # running_msg = app_status.message
-    # assert running_msg != deploy_failed_msg
-    # # rerun update, application status should not make difference
-    # app_state_manager.update()
-    # assert app_status.status == ApplicationStatus.RUNNING
-    # assert app_status.message == running_msg
+    # Deployment recovers to healthy -> app should be RUNNING
+    deployment_state_manager.set_deployment_healthy("d1")
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
 
 
 def test_app_unhealthy(mocked_application_state):
-    """something."""
+    """Test DEPLOYING -> RUNNING -> UNHEALTHY -> RUNNING.
+    Even after an application becomes running, if a deployment becomes
+    unhealthy at some point, the application status should also be
+    updated to unhealthy.
+    """
     app_state, deployment_state_manager = mocked_application_state
     app_state.apply_deployment_args([deployment_params("a"), deployment_params("b")])
     assert app_state.status == ApplicationStatus.DEPLOYING
-
-    # Update
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
-    assert set(app_state.deployments) == {"a", "b"}
 
-    # Set running
+    # Once both deployments become healthy, app should be running
     deployment_state_manager.set_deployment_healthy("a")
     deployment_state_manager.set_deployment_healthy("b")
     app_state.update()
@@ -265,55 +305,74 @@ def test_app_unhealthy(mocked_application_state):
     deployment_state_manager.set_deployment_unhealthy("a")
     app_state.update()
     assert app_state.status == ApplicationStatus.UNHEALTHY
-
-    # Rerun update, application status should remain unhealthy
+    # Rerunning update shouldn't make a difference
     app_state.update()
     assert app_state.status == ApplicationStatus.UNHEALTHY
 
+    # If the deployment recovers, the application should also recover
+    deployment_state_manager.set_deployment_healthy("a")
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("fail_deploy", [False, True])
-def test_config_deploy_app(mocked_application_state_manager, fail_deploy):
-    """Test config based deploy
-    DEPLOYING -> RUNNING
-    DEPLOYING -> DEPLOY_FAILED
+
+@patch.object(ApplicationState, "_check_obj_ref_ready")
+@patch("ray.get")
+def test_deploy_through_config_succeed(get, check_obj_ref_ready):
+    """Test deploying through config successfully.
+    Deploy obj ref finishes successfully, so status should transition to running.
     """
-    app_state_manager, deployment_state_manager = mocked_application_state_manager
-    signal = SignalActor.remote()
-
-    @ray.remote
-    def task():
-        ray.get(signal.wait.remote())
-        if fail_deploy:
-            raise Exception("Intentionally failed task.")
-
-    deploy_app_obj_ref = task.remote()
-
+    deployment_state_manager = MockDeploymentStateManager()
+    app_state_manager = ApplicationStateManager(
+        deployment_state_manager, MockEndpointState(), MockKVStore()
+    )
     # Create application state
-    app_state_manager.create_application_state("test_app", deploy_app_obj_ref)
-    assert app_state_manager.get_app_status("test_app") == ApplicationStatus.DEPLOYING
-    # Before object ref is read
-    app_state_manager.update()
-    assert app_state_manager.get_app_status("test_app") == ApplicationStatus.DEPLOYING
+    app_state_manager.create_application_state(name="test_app", deploy_obj_ref=Mock())
+    app_state = app_state_manager._application_states["test_app"]
+    assert app_state.status == ApplicationStatus.DEPLOYING
 
-    signal.send.remote()
-    # Wait for task to return
-    wait_for_condition(lambda: len(ray.wait([deploy_app_obj_ref], timeout=0)[0]))
-    if fail_deploy:
-        app_state_manager.update()
-        assert (
-            app_state_manager.get_app_status("test_app")
-            == ApplicationStatus.DEPLOY_FAILED
-        )
-    else:
-        app_state_manager.apply_deployment_args(
-            "test_app", [deployment_params("a"), deployment_params("b")]
-        )
-        app_state_manager.update()
-        deployment_state_manager.set_deployment_healthy("a")
-        deployment_state_manager.set_deployment_healthy("b")
-        app_state_manager.update()
-        assert app_state_manager.get_app_status("test_app") == ApplicationStatus.RUNNING
+    # Before object ref is ready
+    check_obj_ref_ready.return_value = False
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Object ref is ready, and the task has called apply_deployment_args
+    check_obj_ref_ready.return_value = True
+    app_state.apply_deployment_args([deployment_params("a")])
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOYING
+    assert app_state.target_deployments == ["a"]
+
+    # Set healthy
+    deployment_state_manager.set_deployment_healthy("a")
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+
+
+@patch.object(ApplicationState, "_check_obj_ref_ready")
+@patch("ray.get", side_effect=RayTaskError(None, "intentionally failed", None))
+def test_deploy_through_config_fail(get, check_obj_ref_ready):
+    """Test fail to deploy through config.
+    Deploy obj ref errors out, so status should transition to deploy failed.
+    """
+    deployment_state_manager = MockDeploymentStateManager()
+    app_state_manager = ApplicationStateManager(
+        deployment_state_manager, MockEndpointState(), MockKVStore()
+    )
+    # Create application state
+    app_state_manager.create_application_state(name="test_app", deploy_obj_ref=Mock())
+    app_state = app_state_manager._application_states["test_app"]
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Before object ref is ready
+    check_obj_ref_ready.return_value = False
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Object ref is ready, and the task has called apply_deployment_args
+    check_obj_ref_ready.return_value = True
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOY_FAILED
+    assert "failed" in app_state._status_msg or "error" in app_state._status_msg
 
 
 def test_redeploy_same_app(mocked_application_state):
@@ -325,10 +384,12 @@ def test_redeploy_same_app(mocked_application_state):
     # Update
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
-    assert set(app_state.deployments) == {"a", "b"}
+    assert set(app_state.target_deployments) == {"a", "b"}
 
-    # Set running
+    # Transition to running
     deployment_state_manager.set_deployment_healthy("a")
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOYING
     deployment_state_manager.set_deployment_healthy("b")
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
@@ -336,19 +397,20 @@ def test_redeploy_same_app(mocked_application_state):
     # Deploy the same app with different deployments
     app_state.apply_deployment_args([deployment_params("b"), deployment_params("c")])
     assert app_state.status == ApplicationStatus.DEPLOYING
+    # Target state should be updated immediately
+    assert "a" not in app_state.target_deployments
 
-    # Update
+    # Remove deployment `a`
     app_state.update()
-    assert "a" not in app_state.deployments
-
-    # Remove deployment a
     deployment_state_manager.set_deployment_deleted("a")
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Move to running
-    deployment_state_manager.set_deployment_healthy("b")
     deployment_state_manager.set_deployment_healthy("c")
+    app_state.update()
+    assert app_state.status == ApplicationStatus.DEPLOYING
+    deployment_state_manager.set_deployment_healthy("b")
     app_state.update()
     assert app_state.status == ApplicationStatus.RUNNING
 
@@ -377,7 +439,7 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     # Update
     app_state_manager.update()
     assert app_state_manager.get_app_status("app1") == ApplicationStatus.DEPLOYING
-    assert set(app_state.deployments) == {"a"}
+    assert set(app_state.target_deployments) == {"a"}
 
     # Once its single deployment is healthy, app1 should be running
     deployment_state_manager.set_deployment_healthy("a")

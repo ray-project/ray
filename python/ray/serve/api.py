@@ -500,6 +500,9 @@ def run(
     )
 
     if ingress is not None:
+        # The deployment state is not guaranteed to be created after
+        # deploy_application returns; the application state manager will
+        # need another reconcile iteration to create it.
         client._wait_for_deployment_created(ingress.name)
         return ingress._get_handle()
 

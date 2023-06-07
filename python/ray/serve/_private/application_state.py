@@ -103,7 +103,7 @@ class ApplicationState:
         return self._deploy_obj_ref
 
     @property
-    def deployments(self) -> List[str]:
+    def target_deployments(self) -> List[str]:
         """List of target deployment names in application."""
         if self._target_state.deployment_infos is None:
             return []
@@ -237,7 +237,7 @@ class ApplicationState:
     def _get_live_deployments(self) -> List[str]:
         return self._deployment_state_manager.get_deployments_in_application(self._name)
 
-    def _check_deployment_statuses_and_update_app_status(self):
+    def _check_deployment_statuses_and_update_app_status(self) -> bool:
         """Check deployment statuses, and update the application status correspondingly.
 
         - If all deployments are healthy, mark the application status
@@ -248,6 +248,9 @@ class ApplicationState:
           - Otherwise, mark the new application status as UNHEALTHY
         - Else (there are updating deployments) don't update the
           application status
+
+        Returns:
+            A boolean indicating whether the app is ready to be deleted
         """
 
         # If we're waiting on the build app task to finish, we don't
@@ -256,19 +259,19 @@ class ApplicationState:
         if self._target_state.deployment_infos is None:
             return
 
-        deployments_statuses = self._deployment_state_manager.get_deployment_statuses(
-            self.deployments
-        )
+        if self._target_state.deleting:
+            return len(self._get_live_deployments()) == 0
+
         num_healthy_deployments = 0
         unhealthy_deployment_names = []
 
-        for deployment_status in deployments_statuses:
+        for deployment_status in self.get_deployments_statuses():
             if deployment_status.status == DeploymentStatus.UNHEALTHY:
                 unhealthy_deployment_names.append(deployment_status.name)
             if deployment_status.status == DeploymentStatus.HEALTHY:
                 num_healthy_deployments += 1
 
-        if num_healthy_deployments == len(self.deployments):
+        if num_healthy_deployments == len(self.target_deployments):
             self._update_status(ApplicationStatus.RUNNING)
         elif len(unhealthy_deployment_names):
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
@@ -282,7 +285,13 @@ class ApplicationState:
             else:
                 self._update_status(ApplicationStatus.UNHEALTHY, status_msg=status_msg)
 
-    def _check_deploy_obj_ref(self):
+        return False
+
+    def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
+        finished, _ = ray.wait([obj_ref], timeout=0)
+        return len(finished) == 1
+
+    def _check_deploy_obj_ref(self) -> None:
         """Check on the in-progress deploy task, if there is any.
 
         If something went wrong while executing the task, set status to
@@ -292,11 +301,9 @@ class ApplicationState:
         if not self._deploy_obj_ref:
             return
 
-        finished, _ = ray.wait([self._deploy_obj_ref], timeout=0)
-        if finished:
-            self._deploy_obj_ref = None
+        if self._check_obj_ref_ready(self._deploy_obj_ref):
             try:
-                ray.get(finished[0])
+                ray.get(self._deploy_obj_ref)
                 logger.info(f"Deploy task for app '{self._name}' ran successfully.")
             except RayTaskError as e:
                 # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
@@ -327,6 +334,7 @@ class ApplicationState:
                     ),
                 )
                 logger.warning(self._status_msg)
+            self._deploy_obj_ref = None
 
     def _reconcile_target_deployments(self):
         """Reconcile target deployments in application target state.
@@ -347,7 +355,7 @@ class ApplicationState:
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
-            if deployment_name not in self.deployments:
+            if deployment_name not in self.target_deployments:
                 self._delete_deployment(deployment_name)
 
     def update(self) -> bool:
@@ -368,10 +376,7 @@ class ApplicationState:
         self._check_deploy_obj_ref()
 
         self._reconcile_target_deployments()
-        self._check_deployment_statuses_and_update_app_status()
-
-        if self._target_state.deleting and len(self._get_live_deployments()) == 0:
-            return True
+        return self._check_deployment_statuses_and_update_app_status()
 
     def get_checkpoint_data(self):
         return self._target_state
@@ -382,7 +387,9 @@ class ApplicationState:
 
     def get_deployments_statuses(self) -> List[DeploymentStatusInfo]:
         """Return all deployment status information"""
-        return self._deployment_state_manager.get_deployment_statuses(self.deployments)
+        return self._deployment_state_manager.get_deployment_statuses(
+            self.target_deployments
+        )
 
     def get_application_status_info(self) -> ApplicationStatusInfo:
         """Return the application status information"""
@@ -405,7 +412,7 @@ class ApplicationState:
         """
         details = {
             name: self._deployment_state_manager.get_deployment_details(name)
-            for name in self.deployments
+            for name in self.target_deployments
         }
         return {k: v for k, v in details.items() if v is not None}
 
@@ -490,7 +497,7 @@ class ApplicationStateManager:
         """Return all deployment names by app name"""
         if app_name not in self._application_states:
             return []
-        return self._application_states[app_name].deployments
+        return self._application_states[app_name].target_deployments
 
     def get_deployments_statuses(self, app_name: str) -> List[DeploymentStatusInfo]:
         """Return all deployment statuses by app name"""

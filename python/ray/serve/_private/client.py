@@ -18,6 +18,7 @@ from ray.serve._private.common import (
 from ray.serve.config import DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
+    CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
@@ -227,7 +228,7 @@ class ServeControllerClient:
             if status_bytes is not None:
                 break
 
-            time.sleep(0.1)
+            time.sleep(CLIENT_CHECK_CREATION_POLLING_INTERVAL_S)
         else:
             raise TimeoutError(
                 f"Deployment {name} did not become HEALTHY after {timeout_s}s."
