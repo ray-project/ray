@@ -15,7 +15,7 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml"],
+    tags = ["exclusive", "team:ml", "highly_parallel"],
     data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
