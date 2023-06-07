@@ -40,9 +40,8 @@ class RequestMetadata:
     endpoint: str
     call_method: str = "__call__"
 
-    # This flag will be set to true if the input argument is manually pickled
-    # and it needs to be deserialized by the replica.
-    http_arg_is_pickled: bool = False
+    # This flag is set if the request is made from the HTTP proxy to a replica.
+    is_http_request: bool = False
 
     # HTTP route path of the request.
     route: str = ""
@@ -59,7 +58,6 @@ class Query:
     args: List[Any]
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
-    return_num: int = 2
 
     async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
@@ -214,7 +212,7 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         if replica.is_cross_language:
             # Handling requests for Java replica
             arg = query.args[0]
-            if query.metadata.http_arg_is_pickled:
+            if query.metadata.is_http_request:
                 assert isinstance(arg, bytes)
                 loaded_http_input = pickle.loads(arg)
                 query_string = loaded_http_input.scope.get("query_string")

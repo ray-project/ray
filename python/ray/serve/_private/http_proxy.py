@@ -340,7 +340,7 @@ class HTTPProxy:
                 name,
                 sync=False,
                 missing_ok=True,
-                _internal_pickled_http_request=True,
+                _is_for_http_requests=True,
                 _stream=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
             )
 
