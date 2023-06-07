@@ -567,7 +567,7 @@ class RayServeReplica:
             # Edge case to support empty HTTP handlers: don't pass the Request
             # argument if the callable has no parameters.
             if (
-                request_item.metadata.http_arg_is_pickled
+                request_item.metadata.is_http_request
                 and len(inspect.signature(runner_method).parameters) == 0
             ):
                 args, kwargs = tuple(), {}
