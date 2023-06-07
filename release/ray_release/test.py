@@ -80,7 +80,7 @@ class Test(dict):
         """
         Returns whether this test is running on a BYOD cluster.
         """
-        return self["cluster"].get("byod", False)
+        return self["cluster"].get("byod") is not None
 
     def get_byod_type(self) -> Optional[str]:
         """
