@@ -7,7 +7,7 @@ Loading Data
 Ray Data loads data from various sources. This guide shows you how to:
 
 * `Read files <#reading-files>`_ like images
-* `Load in-memory data <#loading-in-memory-data>`_ like pandas DataFrames
+* `Load in-memory data <#loading-data-from-other-libraries>`_ like pandas DataFrames
 * `Read databases <#reading-databases>`_ like MySQL
 
 Reading files
