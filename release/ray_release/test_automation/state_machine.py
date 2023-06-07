@@ -20,6 +20,8 @@ class TestStateMachine:
     ...
     """
 
+    ray_repo = None
+
     def __init__(self, test: Test) -> None:
         self.test = test
         self.test_results = test.get_test_results()
