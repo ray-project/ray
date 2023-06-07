@@ -10,16 +10,16 @@ Ray Data Overview
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
-Ray Data is a scalable data processing library for ML workloads, particularly suited for
+Ray Data is a scalable data processing library for ML workloads, particularly suited for the following workloads:
 
-1. :ref:`Offline batch inference <batch_inference_overview>`
-2. :ref:`Data preprocessing and ingest for ML training <ml_ingest_overview>`
+-  :ref:`Offline batch inference <batch_inference_overview>`
+-  :ref:`Data preprocessing and ingest for ML training <ml_ingest_overview>`
 
 It provides flexible and performant APIs for distributed data processing:
 
-- Simple transformations such as maps (:meth:`map_batches <ray.data.Dataset.map_batches>`)
-- Global and grouped aggregations (:class:`GroupedData <ray.data.grouped_data.GroupedData>`)
-- Shuffling operations (:meth:`random_shuffle <ray.data.Dataset.random_shuffle>`,:meth:`sort <ray.data.Dataset.sort>`, :meth:`repartition <ray.data.Dataset.repartition>`).
+- Simple transformations such as maps (:meth:`~ray.data.Dataset.map_batches`)
+- Global and grouped aggregations (:meth:`~ray.data.Dataset.groupby`)
+- Shuffling operations (:meth:`~ray.data.Dataset.random_shuffle`, :meth:`~ray.data.Dataset.sort`, :meth:`~ray.data.Dataset.repartition`).
 
 Ray Data is built on top of Ray, so it scales effectively to large clusters and offers scheduling support for both CPU and GPU resources.
 
@@ -92,8 +92,8 @@ How does Ray Data compare to X for offline inference?
 
     For a more detailed performance comarison between Ray Data and Apache Spark, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
 
-Case studies
-~~~~~~~~~~~~
+Batch inference case studies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 - `Sewer AI speeds up object detection on videos 3x using Ray Data <https://www.anyscale.com/blog/inspecting-sewer-line-safety-using-thousands-of-hours-of-video>`_
 - `Spotify's new ML platform built on Ray, using Ray Data for batch inference <https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/>`_
 
@@ -146,8 +146,8 @@ How does Ray Data compare to X for ML training ingest?
     * **Lower overhead:** Datasets is lower overhead: it supports zero-copy exchange between processes, in contrast to the multi-processing-based pipelines used by Petastorm.
     * **Heterogeneous compute:** NVTabular doesn't support mixing heterogeneous resources in dataset transforms (e.g. both CPU and GPU transformations), while Ray Data supports this.
 
-Case studies
-~~~~~~~~~~~~
+ML ingest case studies
+~~~~~~~~~~~~~~~~~~~~~~
 - `Predibase speeds up image augmentation for model training using Ray Data <https://predibase.com/blog/ludwig-v0-7-fine-tuning-pretrained-image-and-text-models-50x-faster-and>`_
 - `Spotify's new ML platform built on Ray, using Ray Data for feature preprocessing <https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/>`_
 
