@@ -1,4 +1,3 @@
-import random
 from typing import Optional
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
@@ -216,6 +215,7 @@ class ShufflingBatcher(BatcherInterface):
         if batch_size is None:
             raise ValueError("Must specify a batch_size if using a local shuffle.")
         self._batch_size = batch_size
+        self._shuffle_seed = shuffle_seed
         if shuffle_buffer_min_size < batch_size:
             # Round it up internally to `batch_size` since our algorithm requires it.
             # This is harmless since it only offers extra randomization.
@@ -229,9 +229,6 @@ class ShufflingBatcher(BatcherInterface):
         self._shuffle_buffer: Block = None
         self._batch_head = 0
         self._done_adding = False
-
-        if shuffle_seed is not None:
-            random.seed(shuffle_seed)
 
     def add(self, block: Block):
         """Add a block to the shuffle buffer.
@@ -324,7 +321,9 @@ class ShufflingBatcher(BatcherInterface):
             self._shuffle_buffer = self._builder.build()
             self._shuffle_buffer = BlockAccessor.for_block(
                 self._shuffle_buffer
-            ).random_shuffle(None)
+            ).random_shuffle(self._shuffle_seed)
+            if self._shuffle_seed is not None:
+                self._shuffle_seed += 1
             if (
                 isinstance(
                     BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
