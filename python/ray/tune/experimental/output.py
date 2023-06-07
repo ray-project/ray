@@ -25,6 +25,7 @@ import pandas as pd
 import textwrap
 import time
 
+from ray.air._internal.usage import AirEntrypoint
 from ray.tune.search.sample import Domain
 from ray.tune.utils.log import Verbosity
 
@@ -601,13 +602,18 @@ class ProgressReporter:
 def _detect_reporter(
     verbosity: AirVerbosity,
     num_samples: int,
+    entrypoint: Optional[AirEntrypoint] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
     config: Optional[Dict] = None,
 ):
     # TODO: Add JupyterNotebook and Ray Client case later.
     rich_enabled = bool(int(os.environ.get("RAY_AIR_RICH_LAYOUT", "0")))
-    if num_samples and num_samples > 1:
+    if entrypoint in {
+        AirEntrypoint.TUNE_RUN,
+        AirEntrypoint.TUNE_RUN_EXPERIMENTS,
+        AirEntrypoint.TUNER,
+    } or (num_samples and num_samples > 1):
         if rich_enabled:
             if not rich:
                 raise ImportError("Please run `pip install rich`. ")
