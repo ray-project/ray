@@ -95,6 +95,7 @@ How does Ray Data compare to X for offline inference?
 Case studies
 ~~~~~~~~~~~~
 - `Sewer AI speeds up object detection on videos 3x using Ray Data <https://www.anyscale.com/blog/inspecting-sewer-line-safety-using-thousands-of-hours-of-video>`_
+- `Spotify's new ML platform built on Ray, using Ray Data for batch inference <https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/>`_
 
 .. _ml_ingest_overview:
 
@@ -148,4 +149,5 @@ How does Ray Data compare to X for ML training ingest?
 Case studies
 ~~~~~~~~~~~~
 - `Predibase speeds up image augmentation for model training using Ray Data <https://predibase.com/blog/ludwig-v0-7-fine-tuning-pretrained-image-and-text-models-50x-faster-and>`_
+- `Spotify's new ML platform built on Ray, using Ray Data for feature preprocessing <https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/>`_
 
