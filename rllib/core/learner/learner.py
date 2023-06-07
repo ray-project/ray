@@ -1144,8 +1144,8 @@ class Learner:
 
         results = []
         # Convert minibatch into a tensor batch (NestedDict) on the correct device
-        # (e.g. GPU). We mov the batch to device here to avoid moving ever minibatch
-        # that is created in the `batch_iter` below.
+        # (e.g. GPU). We move the batch already here to avoid having to move every
+        # single minibatch that is created in the `batch_iter` below.
         batch = self._convert_batch_type(batch)
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
