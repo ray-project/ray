@@ -94,7 +94,7 @@ parts:
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
-          - file: data/examples/index
+          - file: data/examples
           - file: data/faq
           - file: data/api/api
           - file: data/glossary
