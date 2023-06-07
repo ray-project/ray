@@ -144,7 +144,7 @@ class RawASGIResponse(ASGIApp):
         return self.messages[0]["status"]
 
 
-class ASGIHTTPSender(Send):
+class BufferedASGISender(Send):
     """Implement the interface for ASGI sender to save data from varisous
     asgi response type (fastapi, starlette, etc.)
     """
@@ -357,7 +357,7 @@ class ASGIAppReplicaWrapper:
         """
         build_and_return_response = False
         if asgi_sender is None:
-            asgi_sender = ASGIHTTPSender()
+            asgi_sender = BufferedASGISender()
             build_and_return_response = True
 
         await self._asgi_app(
