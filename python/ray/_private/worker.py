@@ -1,7 +1,6 @@
 import atexit
 import faulthandler
 import functools
-import hashlib
 import inspect
 import io
 import json
@@ -56,13 +55,12 @@ import ray._private.storage as storage
 
 # Ray modules
 import ray.actor
-import ray.cloudpickle as pickle
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.function_manager import FunctionActorManager, make_function_table_key
+from ray._private.function_manager import FunctionActorManager
 
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -76,7 +74,7 @@ from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
 from ray._private.storage import _load_class
-from ray._private.utils import check_oversized_function, get_ray_doc_version
+from ray._private.utils import get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,

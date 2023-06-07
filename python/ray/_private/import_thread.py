@@ -1,10 +1,8 @@
 import logging
 import threading
-import traceback
 from collections import defaultdict
 
 import ray
-import ray._private.profiling as profiling
 from ray import JobID
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
