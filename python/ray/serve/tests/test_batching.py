@@ -10,7 +10,6 @@ import ray
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray._private.utils import get_or_create_event_loop
-from ray.serve.batching import SENTINEL
 
 
 def test_batching(serve_instance):
@@ -376,7 +375,8 @@ async def test_batch_generator_exceptions(error_type):
 
 
 @pytest.mark.asyncio
-async def test_batch_generator_sentinel():
+@pytest.mark.parametrize("stop_token", [StopAsyncIteration, StopIteration])
+async def test_batch_generator_early_termination(stop_token):
     NUM_CALLERS = 4
 
     event = asyncio.Event()
@@ -387,7 +387,7 @@ async def test_batch_generator_sentinel():
 
         for num_finished_callers in range(1, NUM_CALLERS + 1):
             event.clear()
-            responses = [SENTINEL.VALUE for _ in range(num_finished_callers)]
+            responses = [stop_token for _ in range(num_finished_callers)]
             responses += [ids[idx] for idx in range(num_finished_callers, NUM_CALLERS)]
             yield responses
             await event.wait()

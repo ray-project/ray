@@ -37,11 +37,6 @@ class _GeneratorResult:
     next_future: asyncio.Future
 
 
-# Singleton enum used as token to indicate that generator in batch is finished
-class SENTINEL(Enum):
-    VALUE = 1
-
-
 def _batch_args_kwargs(
     list_of_flattened_args: List[List[Any]],
 ) -> Tuple[Tuple[Any], Dict[Any, Any]]:
@@ -185,7 +180,7 @@ class _BatchQueue:
                     if future is FINISHED_TOKEN:
                         # This caller has already terminated.
                         next_futures.append(FINISHED_TOKEN)
-                    elif result is SENTINEL.VALUE:
+                    elif result in {StopIteration, StopAsyncIteration}:
                         # User's code returned SENTINEL.VALUE. No values left
                         # for caller. Terminate iteration for caller.
                         future.set_exception(StopAsyncIteration)
