@@ -111,9 +111,8 @@ documentation, sorted alphabetically.
         A processing unit of data. A :class:`~ray.data.Dataset` consists of a
         collection of blocks.
 
-        Under the hood, :term:`Ray Data <Ray Data (library)>` partitions :term:`records <Record>`
-        into a set of distributed data blocks. This allows it to perform operations
-        in parallel.
+        Under the hood, Ray Data partitions rows into a set of distributed data blocks.
+        This allows it to perform operations in parallel.
 
         Unlike a batch, which is a user-facing object, a block is an internal abstraction.
 
