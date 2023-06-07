@@ -221,16 +221,16 @@ def create_replica_wrapper(name: str):
                 request: HTTPRequestWrapper = pickle.loads(request_args[0])
 
                 scope = request.scope
-                buffered_sender = BufferedASGISender()
+                buffered_send = BufferedASGISender()
                 buffered_receive = make_buffered_asgi_receive(request.body)
-                request_args = (scope, buffered_receive, buffered_sender)
+                request_args = (scope, buffered_receive, buffered_send)
 
             result = await self.replica.handle_request(
                 request_metadata, request_args, request_kwargs
             )
 
             if request_metadata.is_http_request:
-                result = buffered_sender.build_asgi_response()
+                result = buffered_send.build_asgi_response()
 
             # Returns a small object for router to track request status.
             return b"", result
@@ -245,7 +245,7 @@ def create_replica_wrapper(name: str):
 
             This is used by the HTTP proxy for experimental StreamingResponse support.
 
-            This generator yields ASGI-compliant messages sent via an ASGI sender
+            This generator yields ASGI-compliant messages sent via an ASGI send
             interface. This allows us to return the messages back to the HTTP proxy as
             they're sent by user code (e.g., the FastAPI wrapper).
             """
@@ -262,12 +262,12 @@ def create_replica_wrapper(name: str):
                 )
 
             scope = pickle.loads(pickled_asgi_scope)
-            asgi_queue_sender = ASGIHTTPQueueSender()
-            request_args = (scope, asgi_receive, asgi_queue_sender)
+            asgi_queue_send = ASGIHTTPQueueSender()
+            request_args = (scope, asgi_receive, asgi_queue_send)
             request_kwargs = {}
 
             # Handle the request in a background asyncio.Task. It's expected that this
-            # task will use the provided ASGI sender interface to send its HTTP
+            # task will use the provided ASGI send interface to send its HTTP
             # response. We will poll for the sent messages and yield them back to the
             # caller.
             handle_request_task = self._event_loop.create_task(
@@ -278,7 +278,7 @@ def create_replica_wrapper(name: str):
 
             while True:
                 wait_for_message_task = self._event_loop.create_task(
-                    asgi_queue_sender.wait_for_message()
+                    asgi_queue_send.wait_for_message()
                 )
                 done, _ = await asyncio.wait(
                     [handle_request_task, wait_for_message_task],
@@ -288,7 +288,7 @@ def create_replica_wrapper(name: str):
                 # The messages are batched into a list to avoid unnecessary RPCs and
                 # we use vanilla pickle because it's faster than cloudpickle and we
                 # know it's safe for these messages containing primitive types.
-                yield pickle.dumps(asgi_queue_sender.get_messages_nowait())
+                yield pickle.dumps(asgi_queue_send.get_messages_nowait())
 
                 # Exit once `handle_request` has finished. In this case, all messages
                 # must have already been sent.
@@ -528,7 +528,7 @@ class RayServeReplica:
         return getattr(self.callable, method_name)
 
     async def send_user_result_over_asgi(
-        self, result: Any, scope: Scope, asgi_sender: Send, asgi_receive: Receive
+        self, result: Any, scope: Scope, receive: Receive, send: Send
     ):
         """Handle the result from user code and send it over the ASGI interface.
 
@@ -537,9 +537,9 @@ class RayServeReplica:
         common Python objects.
         """
         if not isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await Response(result).send(scope, asgi_receive, asgi_sender)
+            await Response(result).send(scope, receive, send)
         else:
-            await result(scope, asgi_receive, asgi_sender)
+            await result(scope, receive, send)
 
     async def invoke_single(
         self,
@@ -604,7 +604,7 @@ class RayServeReplica:
         ):
             # For the FastAPI codepath, the response has already been sent over the ASGI
             # interface, but for the vanilla deployment codepath we need to send it.
-            await self.send_user_result_over_asgi(result, scope, send, receive)
+            await self.send_user_result_over_asgi(result, scope, receive, send)
 
         if success:
             self.request_counter.inc(tags={"route": request_metadata.route})

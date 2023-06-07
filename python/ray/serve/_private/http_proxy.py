@@ -74,60 +74,6 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     )
 
 
-async def _handle_streaming_response(
-    self,
-    asgi_response_generator: "ray._raylet.StreamingObjectRefGenerator",
-    scope: Scope,
-    receive: Receive,
-    send: Send,
-    request_id: str,
-) -> str:
-    """Consumes the `asgi_response_generator` and sends its data over `send`.
-
-    This function is a proxy for a downstream ASGI response. The passed
-    generator is expected to return a stream of pickled ASGI messages
-    (dictionaries) that are sent using the provided ASGI interface.
-
-    Exception handling depends on whether the first message has already been sent:
-        - if an exception happens *before* the first message, a 500 status is sent.
-        - if an exception happens *after* the first message, the response stream is
-          terminated.
-
-    The difference in behavior is because once the first message has been sent, the
-    client has already received the status code so we cannot send a `500` (internal
-    server error).
-
-    Returns:
-        status_code
-    """
-
-    status_code = ""
-    try:
-        async for obj_ref in asgi_response_generator:
-            asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
-            for asgi_message in asgi_messages:
-                # There must be exactly one "http.response.start" message that
-                # always contains the "status" field.
-                # TODO: fix.
-                if not status_code:
-                    status_code = str(asgi_message.get("status", "UNKNOWN"))
-
-                await send(asgi_message)
-    except Exception as e:
-        error_message = f"Unexpected error, traceback: {e}."
-        logger.warning(error_message)
-
-        if status_code == "":
-            # If first message hasn't been sent, return 500 status.
-            await Response(error_message, status_code=500).send(scope, receive, send)
-            return "500"
-        else:
-            # If first message has been sent, terminate the response stream.
-            return status_code
-
-    return status_code
-
-
 class LongestPrefixRouter:
     """Router that performs longest prefix matches on incoming routes."""
 
@@ -415,7 +361,7 @@ class HTTPProxy:
             )
         else:
             status_code = await self.send_request_to_replica_unary(
-                request_id, handle, scope, receive, send
+                handle, scope, receive, send
             )
 
         self.request_counter.inc(
@@ -464,7 +410,6 @@ class HTTPProxy:
 
     async def send_request_to_replica_unary(
         self,
-        request_id: str,
         handle: RayServeHandle,
         scope: Scope,
         receive: Receive,
@@ -571,14 +516,20 @@ class HTTPProxy:
             await Response(result).send(scope, receive, send)
             return "200"
 
-    async def proxy_asgi_receive(self, receive: Receive, queue: asyncio.Queue):
+    async def proxy_asgi_receive(
+        self, receive: Receive, queue: asyncio.Queue
+    ) -> Optional[int]:
         """TODO"""
-        disconnected = False
-        while not disconnected:
+        while True:
             msg = await receive()
+            print(msg)
             await queue.put(msg)
-            if msg["type"] in {"http.disconnect", "websocket.disconnect"}:
-                disconnected = True
+
+            if msg["type"] == "http.disconnect":
+                return None
+
+            if msg["type"] == "websocket.disconnect":
+                return msg["code"]
 
     async def send_request_to_replica_streaming(
         self,
@@ -598,7 +549,6 @@ class HTTPProxy:
         )
 
         status_code = ""
-        first_message_sent = False
         try:
             object_ref_generator = await handle.remote(
                 pickle.dumps(scope), self.self_actor_handle
@@ -606,30 +556,32 @@ class HTTPProxy:
             async for obj_ref in object_ref_generator:
                 asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
                 for asgi_message in asgi_messages:
-                    if not first_message_sent:
+                    if asgi_message["type"] == "http.response.start":
                         # HTTP responses begin with exactly one "http.response.start"
                         # message containing the "status" field. Other response types
                         # (e.g., WebSockets) may not.
-                        status_code = str(asgi_message.get("status", "UNKNOWN"))
+                        status_code = str(asgi_message["status"])
+                    elif asgi_message["type"] == "websocket.disconnect":
+                        status_code = str(asgi_message["code"])
 
-                    first_message_sent = True
                     await send(asgi_message)
         except Exception as e:
-            error_message = f"Unexpected error, traceback: {e}."
-            logger.warning(error_message)
-
-            # If the first message has been sent we cannot send a 500 status as it
-            # would violate ASGI protocol.
-            # TODO(edoakes): this may not be valid at all for WebSocket requests.
-            if not first_message_sent:
-                status_code = "500"
-                await Response(error_message, status_code=500).send(
-                    scope, receive, send
-                )
-
+            logger.exception(e)
+            status_code = "500"
         finally:
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
+            else:
+                # If the server disconnects, status_code is set above from the
+                # disconnect message. Otherwise the disconnect code comes from
+                # a client message via the receive interface.
+                if (
+                    status_code == ""
+                    and scope["type"] == "websocket"
+                    and proxy_asgi_receive_task.exception() is None
+                ):
+                    status_code = str(proxy_asgi_receive_task.result())
+
             del self.asgi_receive_queues[request_id]
 
         return status_code
