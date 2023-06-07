@@ -415,6 +415,7 @@ def test_ray_start_head_block_and_signals(
         target=_start_ray_and_block,
         kwargs={"runner": runner, "child_conn": head_child_conn, "as_head": True},
     )
+    head_proc._start_method = "spawn"
 
     # Run
     head_proc.start()
@@ -493,12 +494,14 @@ def test_ray_start_block_and_stop(configure_lang, monkeypatch, tmp_path, cleanup
         target=_start_ray_and_block,
         kwargs={"runner": runner, "child_conn": head_child_conn, "as_head": True},
     )
+    head_proc._start_method = "spawn"
 
     # Run `ray start --block --address=localhost:DEFAULT_PORT`
     worker_proc = mp.Process(
         target=_start_ray_and_block,
         kwargs={"runner": runner, "child_conn": worker_child_conn, "as_head": False},
     )
+    worker_proc._start_method = "spawn"
 
     try:
         # Run
