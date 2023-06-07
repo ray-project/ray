@@ -235,7 +235,7 @@ class PredictDeployment:
 
     async def __call__(self, http_request: Request) -> str:
         prompts: list[str] = await http_request.json()["prompts"]
-           return self.generate(prompts)
+        return self.generate(prompts)
 
 
             </code></pre>
