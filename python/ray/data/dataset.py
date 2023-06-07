@@ -3993,7 +3993,7 @@ class Dataset:
         output = MaterializedDataset(
             ExecutionPlan(
                 blocks,
-                DatasetStats(stages={"FromMaterializedBlocks": metadata}, parent=None),
+                copy._plan.stats(),
                 run_by_consumer=False,
             ),
             0,
