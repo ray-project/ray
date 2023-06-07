@@ -81,7 +81,6 @@ def test_client_disconnect(serve_instance):
 
     with connect("ws://localhost:8000"):
         print("Client connected.")
-        pass
 
     ray.get(wait_ref)
 
