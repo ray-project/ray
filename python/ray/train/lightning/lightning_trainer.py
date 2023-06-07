@@ -17,6 +17,7 @@ from ray.util import PublicAPI
 from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
+    RayDeepSpeedStrategy,
     RayEnvironment,
     RayDataModule,
     RayModelCheckpoint,
@@ -143,16 +144,18 @@ class LightningConfigBuilder:
 
         Args:
             name: The name of your distributed strategy. You can choose
-                from "ddp" and "fsdp". Default: "ddp".
+                from "ddp", "fsdp", and "deepspeed". Default: "ddp".
             kwargs: For valid arguments to pass, please refer to:
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
-                and
+                ,
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
+                and
+                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DeepSpeedStrategy.html
         """
-        if name not in ["ddp", "fsdp"]:
+        if name not in ["ddp", "fsdp", "deepspeed"]:
             raise ValueError(
-                "LightningTrainer currently supports 'ddp' and 'fsdp' strategy. "
-                "Please choose one of them."
+                "LightningTrainer currently supports 'ddp', 'fsdp', and 'deepspeed'"
+                " strategy. Please choose one of them."
             )
 
         self._strategy_config["_strategy_name"] = name
@@ -522,6 +525,8 @@ def _lightning_train_loop_per_worker(config):
         trainer_config["strategy"] = RayDDPStrategy(**strategy_config)
     if strategy_name == "fsdp":
         trainer_config["strategy"] = RayFSDPStrategy(**strategy_config)
+    if strategy_name == "deepspeed":
+        trainer_config["strategy"] = RayDeepSpeedStrategy(**strategy_config)
 
     # LightningTrainer always requires checkpointing
     trainer_config["enable_checkpointing"] = True

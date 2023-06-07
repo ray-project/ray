@@ -15,7 +15,7 @@ from torch.utils.data import IterableDataset, DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins.environments import LightningEnvironment
-from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies import DDPStrategy, DeepSpeedStrategy
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
@@ -96,6 +96,20 @@ class RayFSDPStrategy(FSDPStrategy):
             # Otherwise Lightning uses Fairscale FSDP, no need to unshard by ourself.
             return super().lightning_module_state_dict()
 
+
+class RayDeepSpeedStrategy(DeepSpeedStrategy):
+    """Subclass of DeepSpeedStrategy to ensure compatibility with Ray orchestration."""
+
+    @property
+    def root_device(self) -> torch.device:
+        return get_worker_root_device()
+
+    @property
+    def distributed_sampler_kwargs(self) -> Dict[str, Any]:
+        return dict(
+            num_replicas=self.world_size,
+            rank=self.global_rank,
+        )
 
 class RayEnvironment(LightningEnvironment):
     """Setup Lightning DDP training environment for Ray cluster."""
