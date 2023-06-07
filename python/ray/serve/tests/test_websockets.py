@@ -15,7 +15,8 @@ from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
     not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     reason="Streaming feature flag is disabled.",
 )
-def test_send_recv_text_and_binary(serve_instance):
+@pytest.mark.parametrize("route_prefix", [None, "/prefix"])
+def test_send_recv_text_and_binary(serve_instance, route_prefix: str):
     app = FastAPI()
 
     @serve.deployment
@@ -31,10 +32,17 @@ def test_send_recv_text_and_binary(serve_instance):
             bytes = await ws.receive_bytes()
             await ws.send_bytes(bytes)
 
+    if route_prefix is not None:
+        WebSocketServer = WebSocketServer.options(route_prefix=route_prefix)
+
     serve.run(WebSocketServer.bind())
 
     msg = "Hello world!"
-    with connect("ws://localhost:8000") as websocket:
+    if route_prefix:
+        url = f"ws://localhost:8000{route_prefix}/"
+    else:
+        url = "ws://localhost:8000/"
+    with connect(url) as websocket:
         websocket.send(msg)
         assert websocket.recv() == msg
 

@@ -522,7 +522,6 @@ class HTTPProxy:
         """TODO"""
         while True:
             msg = await receive()
-            print(msg)
             await queue.put(msg)
 
             if msg["type"] == "http.disconnect":
