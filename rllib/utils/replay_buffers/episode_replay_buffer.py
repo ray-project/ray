@@ -1,10 +1,10 @@
 from collections import deque
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 import uuid
 
 import numpy as np
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
@@ -100,21 +100,13 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         return self.get_num_timesteps()
 
     @override(ReplayBufferInterface)
-    def add(self, batch: SampleBatchType, **kwargs) -> None:
+    def add(self, episodes: Union[List["_Episode"], "_Episode"]):
         """Converts the incoming SampleBatch into a number of _Episode objects.
 
         Then adds these episodes to the internal deque.
         """
-        if isinstance(batch, MultiAgentBatch):
-            raise ValueError(
-                "`EpisodeReplayBuffer` cannot operate on MultiAgentBatches yet! "
-                "For single-agent use only."
-            )
-
-        episode_slices = batch.split_by_episode()
-        episodes = [
-            _Episode.from_sample_batch(eps_slice) for eps_slice in episode_slices
-        ]
+        if isinstance(episodes, _Episode):
+            episodes = [episodes]
 
         for eps in episodes:
             self._num_timesteps += len(eps)
@@ -390,7 +382,7 @@ class _Episode:
 
     def concat_episode(self, episode_chunk: "_Episode"):
         assert episode_chunk.id_ == self.id_
-        assert not self.is_done()
+        assert not self.is_done
 
         episode_chunk.validate()
 
@@ -424,7 +416,7 @@ class _Episode:
         is_truncated=False,
         render_image=None,
     ):
-        assert not self.is_done()
+        assert not self.is_done
 
         self.observations.append(observation)
         self.actions.append(action)
@@ -439,7 +431,7 @@ class _Episode:
     def add_initial_observation(
         self, *, initial_observation, initial_state=None, initial_render_image=None
     ):
-        assert not self.is_done()
+        assert not self.is_done
         assert len(self.observations) == 0
 
         self.observations.append(initial_observation)
@@ -454,12 +446,13 @@ class _Episode:
         assert len(self.observations) == len(self.rewards) + 1 == len(self.actions) + 1
 
         # Convert all lists to numpy arrays, if we are terminated.
-        if self.is_done():
+        if self.is_done:
             self.observations = np.array(self.observations)
             self.actions = np.array(self.actions)
             self.rewards = np.array(self.rewards)
             self.render_images = np.array(self.render_images, dtype=np.uint8)
 
+    @property
     def is_done(self):
         return self.is_terminated or self.is_truncated
 

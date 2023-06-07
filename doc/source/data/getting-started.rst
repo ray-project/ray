@@ -152,7 +152,6 @@ or remote filesystems.
     print(os.listdir("/tmp/iris"))
 
 .. testoutput::
-    :options: +ELLIPSIS
 
     ['..._000000.parquet']
 

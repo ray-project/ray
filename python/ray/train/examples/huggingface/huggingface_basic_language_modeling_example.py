@@ -116,6 +116,10 @@ def main(
         ray_train = ray_train.limit(16)
         ray_validation = ray_validation.limit(8)
 
+    # Materialize the datasets so that they will have __len__.
+    ray_train = ray_train.materialize()
+    ray_validation = ray_validation.materialize()
+
     trainer = TransformersTrainer(
         trainer_init_per_worker=train_function,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),

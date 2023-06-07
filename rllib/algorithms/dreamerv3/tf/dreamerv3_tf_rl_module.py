@@ -12,17 +12,13 @@ from ray.rllib.utils.nested_dict import NestedDict
 tf1, tf, _ = try_import_tf()
 
 
-class DreamerV3TfRLModule(DreamerV3RLModule, TfRLModule):
+class DreamerV3TfRLModule(TfRLModule, DreamerV3RLModule):
     """The tf-specific RLModule class for DreamerV3.
 
     Serves mainly as a thin-wrapper around the `DreamerModel` (a tf.keras.Model) class.
     """
 
     framework: str = "tf2"
-
-    def __init__(self, *args, **kwargs):
-        TfRLModule.__init__(self, *args, **kwargs)
-        DreamerV3RLModule.__init__(self, *args, **kwargs)
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:

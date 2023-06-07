@@ -61,6 +61,29 @@
 # these tests in n different jobs.
 
 load("//bazel:python.bzl", "py_test_module_list")
+load("//bazel:python.bzl", "doctest")
+
+# TODO(@bveeramani): Enable doctests.
+# doctest(
+#     files = glob(
+#         ["**/*.py"],
+#         exclude=[
+#             "**/examples/**",
+#             "**/tests/**",
+#             # Deprecations
+#             "utils/window_stat.py",
+#             "utils/timer.py",
+#             "utils/memory.py",
+#             "offline/off_policy_estimator.py",
+#             "offline/estimators/feature_importance.py",
+#             "env/wrappers/recsim_wrapper.py",
+#             "env/remote_vector_env.py",
+#             # Missing imports
+#             "algorithms/dreamerv3/**"
+#         ]
+#     ),
+#     tags = ["team:rllib"]
+# )
 
 # --------------------------------------------------------------------
 # Algorithms learning regression tests.
@@ -1023,21 +1046,18 @@ py_test(
     size = "small",
     srcs = ["algorithms/dt/tests/test_segmentation_buffer.py"]
 )
-
 py_test(
     name = "test_dt_model",
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/dt/tests/test_dt_model.py"]
 )
-
 py_test(
     name = "test_dt_policy",
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/dt/tests/test_dt_policy.py"]
 )
-
 py_test(
     name = "test_dt",
     tags = ["team:rllib", "algorithms_dir", "ray_data"],
@@ -1079,7 +1099,6 @@ py_test(
     size = "large",
     srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
 )
-
 py_test(
     name = "test_impala_learner",
     tags = ["team:rllib", "algorithms_dir"],
@@ -1159,7 +1178,7 @@ py_test(
 py_test(
     name = "test_ppo_learner",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_learner.py"]
 )
 
@@ -1637,6 +1656,13 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "env/tests/test_single_agent_gym_env_runner",
+    tags = ["team:rllib", "env"],
+    size = "medium",
+    srcs = ["env/tests/test_single_agent_gym_env_runner.py"]
+)
+
+py_test(
     name = "env/tests/test_env_with_subprocess",
     tags = ["team:rllib", "env"],
     size = "medium",
@@ -1971,10 +1997,39 @@ py_test(
 
 # Learner
 py_test(
-    name = "test_learner_group",
+    name = "TestLearnerGroupSyncUpdate",
+    main = "core/learner/tests/test_learner_group.py",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
-    srcs = ["core/learner/tests/test_learner_group.py"]
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupSyncUpdate"]
+)
+
+py_test(
+    name = "TestLearnerGroupCheckpointRestore",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupCheckpointRestore"]
+)
+
+py_test(
+    name = "TestLearnerGroupAsyncUpdate",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupAsyncUpdate"]
+)
+
+py_test(
+    name = "TestLearnerGroupSaveLoadState",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupSaveLoadState"]
 )
 
 py_test(
@@ -1991,19 +2046,18 @@ py_test(
     srcs = ["core/learner/tests/test_learner.py"]
 )
 
-# TODO (Kourosh): to be removed in favor of test_learner.py
-py_test(
-    name = "test_torch_learner",
-    tags = ["team:rllib", "core", "ray_data"],
-    size = "medium",
-    srcs = ["core/learner/torch/tests/test_torch_learner.py"]
-)
-
 py_test(
     name ="tests/test_algorithm_save_load_checkpoint_learner",
     tags = ["team:rllib", "core"],
     size = "medium",
     srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
+)
+
+py_test(
+    name="test_algorithm_rl_module_restore",
+    tags=["team:rllib", "core"],
+    size="large",
+    srcs=["tests/test_algorithm_rl_module_restore.py"]
 )
 
 py_test(
@@ -2442,7 +2496,7 @@ py_test(
 py_test(
     name = "tests/backward_compat/test_gym_env_apis",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
 
@@ -2714,6 +2768,16 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_supported_multi_agent_multi_gpu",
+    main = "tests/test_supported_multi_agent.py",
+    tags = ["team:rllib", "tests_dir", "multi_gpu"],
+    size = "medium",
+    srcs = ["tests/test_supported_multi_agent.py"],
+    args = ["TestSupportedMultiAgentMultiGPU"]
+)
+
+
+py_test(
     name = "tests/test_supported_multi_agent_pg",
     main = "tests/test_supported_multi_agent.py",
     tags = ["team:rllib", "tests_dir"],
@@ -2734,7 +2798,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_appo",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesAPPO"]
@@ -2743,7 +2807,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_impala",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesIMPALA"]
@@ -2752,7 +2816,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_a3c",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesA3C"]
@@ -2788,7 +2852,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces_off_policy",
     main = "tests/test_supported_spaces.py",
-    tags = ["team:rllib", "tests_dir"],
+    tags = ["team:rllib", "tests_dir", "exclusive"],
     size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
@@ -4058,8 +4122,8 @@ py_test(
 # --------------------------------------------------------------------
 # examples/learner directory
 #
-# 
-# Description: These are RLlib tests for the new multi-gpu enabled 
+#
+# Description: These are RLlib tests for the new multi-gpu enabled
 # training stack via Learners.
 #
 # NOTE: Add tests alphabetically to this list.
@@ -4123,7 +4187,7 @@ py_test(
 py_test(
     name = "examples/learner/ppo_tuner_local_gpu_tf2",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu"],
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
     args = ["--framework=tf2", "--config=local-gpu"]
@@ -4181,6 +4245,14 @@ py_test(
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
     args = ["--framework=tf2", "--config=multi-gpu-ddp"]
+)
+
+py_test(
+    name = "examples/learner/train_w_bc_finetune_w_ppo",
+    main = "examples/learner/train_w_bc_finetune_w_ppo.py",
+    tags = ["team:rllib", "examples", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learner/train_w_bc_finetune_w_ppo.py"],
 )
 
 # --------------------------------------------------------------------

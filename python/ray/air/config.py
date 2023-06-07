@@ -20,7 +20,7 @@ from typing import (
 from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.constants import WILDCARD_KEY
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
 
@@ -294,7 +294,10 @@ class ScalingConfig:
 
 
 @dataclass
-@PublicAPI(stability="beta")
+@Deprecated(
+    message="Use `ray.train.DataConfig` instead of DatasetConfig to "
+    "configure data ingest for training."
+)
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
@@ -615,11 +618,11 @@ class CheckpointConfig:
 
     num_to_keep: Optional[int] = None
     checkpoint_score_attribute: Optional[str] = None
-    checkpoint_score_order: str = MAX
-    checkpoint_frequency: int = 0
+    checkpoint_score_order: Optional[str] = MAX
+    checkpoint_frequency: Optional[int] = 0
     checkpoint_at_end: Optional[bool] = None
-    _checkpoint_keep_all_ranks: bool = False
-    _checkpoint_upload_from_workers: bool = False
+    _checkpoint_keep_all_ranks: Optional[bool] = False
+    _checkpoint_upload_from_workers: Optional[bool] = False
 
     def __post_init__(self):
         if self.num_to_keep is not None and self.num_to_keep <= 0:
@@ -727,12 +730,12 @@ class RunConfig:
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
-        verbose: 0, 1, 2, or 3. Verbosity mode.
-            0 = silent, 1 = only status updates, 2 = status and brief
-            results, 3 = status and detailed results. Defaults to 3.
+        verbose: 0, 1, or 2. Verbosity mode.
+            0 = silent, 1 = default, 2 = verbose. Defaults to 1.
             If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
-            uses the new context-aware verbosity settings:
-            0 = silent, 1 = default, 2 = verbose.
+            uses the old verbosity settings:
+            0 = silent, 1 = only status updates, 2 = status and brief
+            results, 3 = status and detailed results.
         log_to_file: Log stdout and stderr to files in
             trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`

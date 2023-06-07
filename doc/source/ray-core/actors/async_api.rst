@@ -50,7 +50,7 @@ async frameworks like aiohttp, aioredis, etc.
     asyncio.run(async_get())
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     (AsyncActor pid=40293) started
     (AsyncActor pid=40293) started
@@ -60,6 +60,18 @@ async frameworks like aiohttp, aioredis, etc.
     (AsyncActor pid=40293) finished
     (AsyncActor pid=40293) finished
     (AsyncActor pid=40293) finished
+
+.. testcode::
+    :hide:
+
+    # NOTE: The outputs from the previous code block can show up in subsequent tests.
+    # To prevent flakiness, we wait for the async calls finish.
+    import time
+    time.sleep(3)
+
+.. testoutput::
+
+    ...
 
 ObjectRefs as asyncio.Futures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -109,7 +121,12 @@ If you need to directly access the future object, you can call:
     async def convert_to_asyncio_future():
         ref = some_task.remote()
         fut: asyncio.Future = asyncio.wrap_future(ref.future())
+        print(await fut)
     asyncio.run(convert_to_asyncio_future())
+
+.. testoutput::
+
+    1
 
 .. _async-ref-to-futures:
 
@@ -157,7 +174,7 @@ By using `async` method definitions, Ray will automatically detect whether an ac
     ray.get([actor.run_task.remote() for _ in range(5)])
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     (AsyncActor pid=3456) started
     (AsyncActor pid=3456) started
@@ -200,7 +217,7 @@ You can set the number of "concurrent" task running at once using the
     ray.get([actor.run_task.remote() for _ in range(8)])
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     (AsyncActor pid=5859) started
     (AsyncActor pid=5859) started
@@ -247,7 +264,7 @@ Instead, you can use the ``max_concurrency`` Actor options without any async met
     ray.get([a.task_1.remote(), a.task_2.remote()])
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     (ThreadedActor pid=4822) I'm running in a thread!
     (ThreadedActor pid=4822) I'm running in another thread!
