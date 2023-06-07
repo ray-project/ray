@@ -419,9 +419,9 @@ def test_config(ray_start_stop):
 
     # Check that `serve config` works even if no Serve app is running
     info_response = subprocess.check_output(["serve", "config"])
-    info = yaml.safe_load(info_response)
 
-    assert ServeApplicationSchema.get_empty_schema_dict() == info
+    # Check that error message was returned
+    assert b"Config unavailable" in info_response
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
