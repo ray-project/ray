@@ -44,6 +44,12 @@ class LimitPushdownRule(Rule):
             # - Read operator
             # - A non-AbstractOneToOne operator (e.g. AbstractAllToAll)
             # - An AbstractOneToOne operator that could change the number of output rows
+
+            # TODO(scottjlee): in our current abstraction, we have Read extend
+            # AbstractMap (with no input dependency), which extends AbstractOneToOne.
+            # So we have to explicitly separate the Read op in its own check.
+            # We should remove this case once we refactor Read op to no longer
+            # be an AbstractOneToOne op.
             if isinstance(current_op, Limit):
                 limit_op_copy = copy.copy(current_op)
 
@@ -83,9 +89,8 @@ class LimitPushdownRule(Rule):
                     limit_output_op._input_dependencies = [
                         ops_between_new_input_and_limit[0]
                     ]
-                ops_between_new_input_and_limit[
-                    0
-                ]._output_dependencies = limit_op_copy.output_dependencies
+                last_op = ops_between_new_input_and_limit[0]
+                last_op._output_dependencies = limit_op_copy.output_dependencies
 
         return current_op
 
