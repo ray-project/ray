@@ -29,10 +29,6 @@ class BatcherInterface:
         """
         raise NotImplementedError()
 
-    def can_add(self, block: Block) -> bool:
-        """Whether the block can be added to the buffer."""
-        raise NotImplementedError()
-
     def done_adding(self) -> bool:
         """Indicate to the batcher that no more blocks will be added to the buffer."""
         raise NotImplementedError()
@@ -88,13 +84,8 @@ class Batcher(BatcherInterface):
             block: Block to add to the block buffer.
         """
         if BlockAccessor.for_block(block).num_rows() > 0:
-            assert self.can_add(block)
             self._buffer.append(block)
             self._buffer_size += BlockAccessor.for_block(block).num_rows()
-
-    def can_add(self, block: Block) -> bool:
-        """Whether the block can be added to the buffer."""
-        return not self._done_adding
 
     def done_adding(self) -> bool:
         """Indicate to the batcher that no more blocks will be added to the batcher."""
@@ -239,17 +230,7 @@ class ShufflingBatcher(BatcherInterface):
             block: Block to add to the shuffle buffer.
         """
         if BlockAccessor.for_block(block).num_rows() > 0:
-            assert self.can_add(block)
             self._builder.add_block(block)
-
-    def can_add(self, block: Block) -> bool:
-        """Whether the block can be added to the shuffle buffer.
-
-        This does not take the to-be-added block size into account when checking the
-        buffer size vs. buffer capacity, since we need to support large outlier blocks
-        and have to guard against min buffer size liveness issues.
-        """
-        return self._buffer_size() <= self._buffer_capacity and not self._done_adding
 
     def done_adding(self) -> bool:
         """Indicate to the batcher that no more blocks will be added to the batcher.
@@ -269,7 +250,7 @@ class ShufflingBatcher(BatcherInterface):
         if not self._done_adding:
             # Delay pulling of batches until the buffer is large enough in order to
             # amortize compaction overhead.
-            return (
+            return self._materialized_buffer_size() >= self._buffer_min_size or (
                 buffer_size - self._batch_size
                 >= self._buffer_min_size * SHUFFLE_BUFFER_COMPACTION_RATIO
             )

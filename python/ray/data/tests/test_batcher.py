@@ -3,6 +3,7 @@ import time
 import pyarrow as pa
 import pytest
 
+import ray
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 
 
@@ -35,7 +36,6 @@ def test_shuffling_batcher():
         no_nexting_yet=True,
     ):
         block = gen_block(num_rows)
-        assert batcher.can_add(block)
         batcher.add(block)
         if expect_has_batch:
             assert batcher.has_batch()
@@ -101,7 +101,7 @@ def test_shuffling_batcher():
         0,
         materialized_buffer_size=30,
         pending_buffer_size=0,
-        should_have_batch_after=False,
+        should_have_batch_after=True,
         new_data_added=True,
     )
 
@@ -125,7 +125,7 @@ def test_shuffling_batcher():
         3 * batch_size,
         materialized_buffer_size=30,
         pending_buffer_size=0,
-        should_have_batch_after=False,
+        should_have_batch_after=True,
     )
 
     # Add a full batch + a partial batch to the buffer.
@@ -140,7 +140,7 @@ def test_shuffling_batcher():
         0,
         materialized_buffer_size=25,
         pending_buffer_size=8,
-        should_have_batch_after=False,
+        should_have_batch_after=True,
         new_data_added=True,
     )
 
@@ -204,6 +204,22 @@ def test_batching_pyarrow_table_with_many_chunks():
         shuffling_batcher.next_batch()
     duration = time.perf_counter() - start
     assert duration < 20
+
+
+@pytest.mark.parametrize(
+    "batch_size,local_shuffle_buffer_size",
+    [(1, 1), (10, 1), (1, 10), (10, 1000), (1000, 10)],
+)
+def test_shuffling_batcher_grid(batch_size, local_shuffle_buffer_size):
+    ds = ray.data.range_tensor(10000, shape=(130,))
+    start = time.time()
+    count = 0
+    for batch in ds.iter_batches(
+        batch_size=batch_size, local_shuffle_buffer_size=local_shuffle_buffer_size
+    ):
+        count += len(batch["data"])
+    print((ds.size_bytes() / 1e9) / (time.time() - start), "GB/s")
+    assert count == 10000
 
 
 if __name__ == "__main__":
