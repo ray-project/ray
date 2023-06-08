@@ -64,7 +64,7 @@ def test_np_in_composed_model(serve_instance):
         def __init__(self, handle):
             self.model = handle
 
-        async def __call__(self):
+        async def __call__(self, *args):
             data = np.ones((10, 10))
             return await (await self.model.remote(data))
 

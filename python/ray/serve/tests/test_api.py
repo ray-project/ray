@@ -479,7 +479,7 @@ def test_deploy_application(serve_instance):
 
     @serve.deployment
     class Model1:
-        def __call__(self):
+        def __call__(self, *args):
             return "got model1"
 
     app = FastAPI()
