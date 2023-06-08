@@ -316,7 +316,7 @@ doctest(
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
-            "source/data/batch_inference.rst"
+            "source/data/batch_inference.rst",
             "source/data/transforming-data.rst"
         ]
     ),
