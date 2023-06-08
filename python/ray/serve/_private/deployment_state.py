@@ -286,38 +286,26 @@ class ActorReplicaWrapper:
     def deployment_config(self) -> DeploymentConfig:
         """Deployment config. This can return an incorrect config during state recovery.
 
-        If the controller hasn't yet recovered the up-to-date version from the running
-        replica actor, this property will return the target config for the overall
-        deployment.
+        If the controller hasn't yet recovered the up-to-date version
+        from the running replica actor, this property will return the
+        current target config for the deployment.
         """
         return self._version.deployment_config
 
     @property
     def max_concurrent_queries(self) -> int:
-        """Maximum number of queries to assign to a replica concurrently.
-        Can return an incorrect value during state recovery.
-        """
         return self.deployment_config.max_concurrent_queries
 
     @property
     def graceful_shutdown_timeout_s(self) -> float:
-        """How long to wait for a replica to gracefully shut down before force-killing
-        it. Can return an incorrect value during state recovery.
-        """
         return self.deployment_config.graceful_shutdown_timeout_s
 
     @property
     def health_check_period_s(self) -> float:
-        """Describes how often to schedule new health checks for replica actors.
-        Can return an incorrect value during state recovery.
-        """
         return self.deployment_config.health_check_period_s
 
     @property
     def health_check_timeout_s(self) -> float:
-        """Length of time in seconds to wait for a health check to finish before marking
-        it as unhealthy. Can return an incorrect value during state recovery.
-        """
         return self.deployment_config.health_check_timeout_s
 
     @property
@@ -627,7 +615,7 @@ class ActorReplicaWrapper:
                 try:
                     ray.get(self._graceful_shutdown_ref)
                 except Exception:
-                    logger.warning(
+                    logger.exception(
                         "Exception when trying to gracefully shutdown replica:\n"
                         + traceback.format_exc()
                     )
@@ -1916,7 +1904,7 @@ class DeploymentState:
 
             deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
-            logger.warning(
+            logger.exception(
                 "Exception occurred trying to update deployment state:\n"
                 + traceback.format_exc()
             )
