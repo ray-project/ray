@@ -100,37 +100,14 @@ class Catalog:
         self.model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
         self.view_requirements = view_requirements
 
-        self._latent_dims = None
-
         # Overwrite this post-init hook in subclasses
         self.__post_init__()
-
-    @property
-    def latent_dims(self):
-        """Returns the latent dimensions of the encoder.
-
-        This establishes an agreement between encoder and heads about the latent
-        dimensions. Encoders can be built to output a latent tensor with
-        `latent_dims` dimensions, and heads can be built with tensors of
-        `latent_dims` dimensions as inputs. This can be safely ignored if this
-        agreement is not needed in case of modifications to the Catalog.
-
-        Returns:
-            The latent dimensions of the encoder.
-        """
-        return self._latent_dims
-
-    @latent_dims.setter
-    def latent_dims(self, value):
-        self._latent_dims = value
 
     def __post_init__(self):
         """Post-init hook for subclasses to override.
 
         This makes it so that subclasses are not forced to create an encoder config
         if the rest of their catalog is not dependent on it or if it breaks.
-        At the end of Catalog initialization, an attribute `Catalog.latent_dims`
-        should be set so that heads can be built using that information.
         """
         self.encoder_config = self.get_encoder_config(
             observation_space=self.observation_space,
@@ -145,9 +122,6 @@ class Catalog:
             self.get_dist_cls_from_action_space, action_space=self.action_space
         )
 
-        # The dimensions of the latent vector that is output by the encoder and fed
-        # to the heads.
-        self.latent_dims = self.encoder_config.output_dims
 
     def build_encoder(self, framework: str) -> Encoder:
         """Builds the encoder.
