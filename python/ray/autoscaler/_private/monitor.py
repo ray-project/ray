@@ -464,7 +464,7 @@ class Monitor:
         for _, node_type, _ in autoscaler_summary.pending_nodes:
             pending_node_count[node_type] += 1
 
-        for node_type, count in autoscaler_summary.pending_launches:
+        for node_type, count in autoscaler_summary.pending_launches.items():
             pending_node_count[node_type] += count
 
         for node_type in node_types:
