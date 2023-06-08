@@ -997,8 +997,6 @@ class Trial:
         self.last_result.setdefault("config", self.config)
         self.restoring_from = None
         self.num_restore_failures = 0
-        self.error_filename = None
-        self.pickled_error_filename = None
         self.invalidate_json_state()
 
     def should_recover(self):

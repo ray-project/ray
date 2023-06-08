@@ -17,6 +17,7 @@ from ray_release.test import (
     Test,
     DEFAULT_PYTHON_VERSION,
 )
+from ray_release.test_automation.state_machine import TestStateMachine
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
@@ -66,6 +67,11 @@ def main(
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
     blamed_commit = _bisect(test, commit_lists, concurrency, run_per_commit)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
+    # TODO(can): this env var is used as a feature flag, in case we need to turn this
+    # off quickly. We should remove this when the new db reporter is stable.
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        logger.info(f"Updating test state for test {test_name} to CONSISTENTLY_FAILING")
+        _update_test_state(test, blamed_commit)
 
 
 def _bisect(
@@ -215,6 +221,20 @@ def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
         .strip()
         .split("\n")
     )
+
+
+def _update_test_state(test: Test, blamed_commit: str) -> None:
+    test.update_from_s3()
+    logger.info(f"Test object: {json.dumps(test)}")
+    test[Test.KEY_BISECT_BLAMED_COMMIT] = blamed_commit
+
+    # Compute and update the next test state, then comment blamed commit on github issue
+    sm = TestStateMachine(test)
+    sm.move()
+    sm.comment_blamed_commit_on_github_issue()
+
+    logger.info(f"Test object: {json.dumps(test)}")
+    test.persist_to_s3()
 
 
 if __name__ == "__main__":
