@@ -1658,7 +1658,7 @@ py_test(
 py_test(
     name = "env/tests/test_single_agent_gym_env_runner",
     tags = ["team:rllib", "env"],
-    size = "small",
+    size = "medium",
     srcs = ["env/tests/test_single_agent_gym_env_runner.py"]
 )
 
@@ -4245,6 +4245,14 @@ py_test(
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
     args = ["--framework=tf2", "--config=multi-gpu-ddp"]
+)
+
+py_test(
+    name = "examples/learner/train_w_bc_finetune_w_ppo",
+    main = "examples/learner/train_w_bc_finetune_w_ppo.py",
+    tags = ["team:rllib", "examples", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learner/train_w_bc_finetune_w_ppo.py"],
 )
 
 # --------------------------------------------------------------------

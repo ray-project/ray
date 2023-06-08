@@ -19,6 +19,7 @@ from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
+from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
@@ -147,6 +148,11 @@ def main(
 
     if report:
         reporters.append(DBReporter())
+
+    # TODO(can): this env var is used as a feature flag, in case we need to turn this
+    # off quickly. We should remove this when the new db reporter is stable.
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        reporters.append(RayTestDBReporter())
 
     try:
         result = run_release_test(

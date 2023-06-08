@@ -11,7 +11,7 @@ Debugging Out of Memory
 
 Before reading this section, familiarize yourself with the Ray :ref:`Memory Management <memory>` model.
 
-- If your cluster has out-of-memory problems, view :ref:`How to Detect Out-of-Memory Errors? <troubleshooting-out-of-memory-how-to-detect>`.
+- If your cluster has out-of-memory problems, view :ref:`How to Detect Out-of-Memory Errors <troubleshooting-out-of-memory-how-to-detect>`.
 - To locate the source of the memory leak, view :ref:`Find per Task and Actor Memory Usage <troubleshooting-out-of-memory-task-actor-mem-usage>`.
 - If your head node has high memory usage, view :ref:`Head Node Out-of-Memory Error <troubleshooting-out-of-memory-head>`.
 - If your memory usage is high due to high parallelism, view :ref:`Reduce Parallelism <troubleshooting-out-of-memory-reduce-parallelism>`.
@@ -27,14 +27,14 @@ One of the common problems of the Linux out-of-memory killer is that SIGKILL kil
 Since SIGKILL cannot be handled by processes, Ray has difficulty raising a proper error message
 and taking proper actions for fault tolerance.
 To solve this problem, Ray has (from Ray 2.2) an application-level :ref:`memory monitor <ray-oom-monitor>`,
-which continually monitors the memory usage of the host and kills the Ray workers before the Linux out-of-memory killer executes. 
+which continually monitors the memory usage of the host and kills the Ray Workers before the Linux out-of-memory killer executes. 
 
 .. _troubleshooting-out-of-memory-how-to-detect:
 
 Detecting Out-of-Memory errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If the Linux out-of-memory killer terminates Tasks or Actors, Ray worker processes are unable to catch and display an exact root cause
+If the Linux out-of-memory killer terminates Tasks or Actors, Ray Worker processes are unable to catch and display an exact root cause
 because SIGKILL cannot be handled by processes. If you call ``ray.get`` into the Tasks and Actors that were executed from the dead worker,
 it raises an exception with one of the following error messages (which indicates the worker is killed unexpectedly).
 
@@ -167,7 +167,7 @@ Each task uses about 18GB / 15 == 1.2 GB. To reduce the parallelism:
 .. _troubleshooting-out-of-memory-profile:
 
 Profiling Task and Actor memory usage
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 It is also possible tasks and actors use more memory than you expect. For example, actors or tasks can have a memory leak or have unnecessary copies.
 
@@ -175,8 +175,9 @@ View the instructions below to learn how to memory profile individual actors and
 
 
 .. _memray-profiling:
+
 Memory Profiling Ray tasks and actors
--------------------
+--------------------------------------
 
 To memory profile Ray tasks or actors, use `memray <https://bloomberg.github.io/memray/>`_.
 Note that you can also use other memory profiling tools if it supports a similar API.
@@ -209,7 +210,7 @@ This will allow you to download profiling files from other nodes.
           :start-after: __memray_profiling_task_start__
           :end-before: __memray_profiling_task_end__
 
-Once the task or actor runs, go to the :ref:`Logs View <dash-logs-view>` of the dashboard. Find and click the log file name.
+Once the task or actor runs, go to the :ref:`Logs view <dash-logs-view>` of the dashboard. Find and click the log file name.
 
 .. image:: ../../images/memory-profiling-files.png
     :align: center

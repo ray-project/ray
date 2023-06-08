@@ -1,11 +1,11 @@
 (observability-configure-manage-dashboard)=
 # Configuring and Managing Ray Dashboard
-{ref}`Ray Dashboard<observability-getting-started>` is one of the most important tools to monitor and debug Ray applications and clusters. This page describes how to configure Ray Dashboard on your clusters.
+{ref}`Ray Dashboard<observability-getting-started>` is one of the most important tools to monitor and debug Ray applications and Clusters. This page describes how to configure Ray Dashboard on your Clusters.
 
-Dashboard configurations may differ depending on how you launch Ray clusters (e.g., local Ray cluster v.s. KubeRay). Integrations with Prometheus and Grafana are optional for better dashboard experience.
+Dashboard configurations may differ depending on how you launch Ray Clusters (e.g., local Ray Cluster v.s. KubeRay). Integrations with Prometheus and Grafana are optional for enhanced Dashboard experience.
 
 :::{note}
-Ray Dashboard is only intended for interactive development and debugging because the dashboard UI and the underlying data are not accessible after the clusters are terminated. For production monitoring and debugging, users should rely on [persisted logs](../cluster/kubernetes/user-guides/logging.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
+Ray Dashboard is only intended for interactive development and debugging because the Dashboard UI and the underlying data are not accessible after Clusters are terminated. For production monitoring and debugging, users should rely on [persisted logs](../cluster/kubernetes/user-guides/logging.md), [persisted metrics](./metrics.md), [persisted Ray states](../ray-observability/user-guides/cli-sdk.rst), and other observability tools.
 :::
 
 ## Changing the Ray Dashboard port
@@ -38,7 +38,7 @@ View the [specifying non-default ports](https://docs.ray.io/en/latest/cluster/ku
 
 ::::
 
-
+(dashboard-in-browser)=
 ## Viewing Ray Dashboard in browsers
 When you start a single-node Ray cluster on your laptop, you can access the dashboard through a URL printed when Ray is initialized (the default URL is `http://localhost:8265`).
 
@@ -72,15 +72,16 @@ Follow the [instructions](https://github.com/ray-project/kuberay/blob/master/doc
 **2. Port forwarding** <br/>
 You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
 
+```shell
+$ kubectl port-forward --address 0.0.0.0 service/${RAYCLUSTER_NAME}-head-svc 8265:8265 
+# Visit ${YOUR_IP}:8265 for the Dashboard (e.g. 127.0.0.1:8265 or ${YOUR_VM_IP}:8265)
+```
+
 ```{admonition} Note
 :class: note
 Do not use port forwarding for production environment. Follow the instructions above to expose the Dashboard with Ingress.
 ```
 
-```shell
-$ kubectl port-forward --address 0.0.0.0 service/${RAYCLUSTER_NAME}-head-svc 8265:8265 
-# Visit ${YOUR_IP}:8265 for the Dashboard (e.g. 127.0.0.1:8265 or ${YOUR_VM_IP}:8265)
-```
 For more information about configuring network access to a Ray cluster on Kubernetes, see the {ref}`networking notes <kuberay-networking>`.
 
 :::
@@ -172,29 +173,10 @@ Set `spec.headGroupSpec.rayStartParams.include-dashboard` to `False`. Check out 
 ::::
 
 
-## Viewing built-in Dashboard API metrics
-
-Dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints.
-Ray emits basic Prometheus metrics for each API endpoint:
-
-`ray_dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
-
-`ray_dashboard_api_requests_duration_seconds_bucket`: Collects the duration of requests. This is tagged by endpoint and method.
-
-For example, you can view the p95 duration of all requests with this query:
-
-```text
-
-histogram_quantile(0.95, sum(rate(ray_dashboard_api_requests_duration_seconds_bucket[5m])) by (le))
-```
-
-You can query these metrics from the Prometheus or Grafana UI. Find instructions on how to set these tools up {ref}`here <observability-visualization-setup>`.
-
-
 (observability-visualization-setup)=
 ## Embed Grafana visualizations into Ray Dashboard
 
-For the enhanced Ray Dashboard experience, like {ref}`viewing time-series metrics<dash-metrics-view>` together with logs, job info, etc., set up Prometheus and Grafana and integrate them with Ray Dashboard.
+For the enhanced Ray Dashboard experience, like {ref}`viewing time-series metrics<dash-metrics-view>` together with logs, Job info, etc., set up Prometheus and Grafana and integrate them with Ray Dashboard.
 
 ### Setting up Prometheus
 To render Grafana visualizations, you need Prometheus to scrape metrics from Ray Clusters. Follow {ref}`the instructions <prometheus-setup>` to set up your Prometheus server and start to scrape system and application metrics from Ray Clusters.
@@ -260,3 +242,22 @@ If you're getting an error that says `RAY_GRAFANA_HOST` is not setup despite hav
 
 ##### Certificate Authority (CA error)
 You may see a CA error if your Grafana instance is hosted behind HTTPS. Contact the Grafana service owner to properly enable HTTPS traffic.
+
+
+## Viewing built-in Dashboard API metrics
+
+Dashboard is powered by a server that serves both the UI code and the data about the cluster via API endpoints.
+Ray emits basic Prometheus metrics for each API endpoint:
+
+`ray_dashboard_api_requests_count_requests_total`: Collects the total count of requests. This is tagged by endpoint, method, and http_status.
+
+`ray_dashboard_api_requests_duration_seconds_bucket`: Collects the duration of requests. This is tagged by endpoint and method.
+
+For example, you can view the p95 duration of all requests with this query:
+
+```text
+
+histogram_quantile(0.95, sum(rate(ray_dashboard_api_requests_duration_seconds_bucket[5m])) by (le))
+```
+
+You can query these metrics from the Prometheus or Grafana UI. Find instructions above for how to set these tools up.
