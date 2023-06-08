@@ -95,7 +95,7 @@ Ray Serve allows you to take advantage of this feature via dynamic request batch
 When a request arrives, Serve puts the request in a queue. This queue buffers the requests to form a batch. The deployment picks up the batch and evaluates it. After the evaluation, the resulting batch will be split up, and each response is returned individually.
 
 ### Enable batching for your deployment
-You can enable batching by using the {mod}`ray.serve.batch` decorator. Let's take a look at a simple example by modifying the `MyModel` class to accept a batch.
+You can enable batching by using the {mod}`ray.serve.batch` decorator. Let's take a look at a simple example by modifying the `Model` class to accept a batch.
 ```{literalinclude} doc_code/batching_guide.py
 ---
 start-after: __single_sample_begin__
@@ -120,6 +120,19 @@ You can supply two optional parameters to the decorators.
 - `batch_wait_timeout_s` controls how long Serve should wait for a batch once the first request arrives.
 - `max_batch_size` controls the size of the batch.
 Once the first request arrives, the batching decorator will wait for a full batch (up to `max_batch_size`) until `batch_wait_timeout_s` is reached. If the timeout is reached, the batch will be sent to the model regardless the batch size.
+
+### Streaming batched requests
+
+You can stream the outputs from your batched requests by using an async generator to process your batches. Let's convert this `StreamingResponder` class to accept a batch.
+
+```{literalinclude} doc_code/batching_guide.py
+---
+start-after: __single_stream_begin__
+end-before: __single_stream_end__
+---
+```
+
+
 
 ### Tips for fine-tuning batching parameters
 

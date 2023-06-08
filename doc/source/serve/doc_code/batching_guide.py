@@ -1,7 +1,7 @@
 # flake8: noqa
 # __single_sample_begin__
-from ray import serve
 import ray
+from ray import serve
 
 
 @serve.deployment
@@ -16,10 +16,11 @@ assert ray.get(handle.remote(1)) == 2
 
 
 # __batch_begin__
-from typing import List
 import numpy as np
-from ray import serve
+from typing import List
+
 import ray
+from ray import serve
 
 
 @serve.deployment
@@ -33,3 +34,77 @@ class Model:
 handle = serve.run(Model.bind())
 assert ray.get([handle.remote(i) for i in range(8)]) == [i * 2 for i in range(8)]
 # __batch_end__
+
+
+# __single_stream_begin__
+import asyncio
+from typing import AsyncGenerator
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
+
+import ray
+from ray import serve
+
+
+@serve.deployment
+class StreamingResponder:
+    async def generate_numbers(self, max: int) -> AsyncGenerator[str, None, None]:
+        for i in range(max):
+            yield i
+            asyncio.sleep(0.1)
+
+    def __call__(self, request: Request) -> StreamingResponse:
+        max = int(request.query_params.get("max", "25"))
+        gen = self.generate_numbers(max)
+        return StreamingResponse(gen, status_code=200, media_type="text/plain")
+
+
+# __single_stream_end__
+
+import time
+import requests
+
+serve.run(StreamingResponder.bind())
+
+r = requests.get("http://localhost:8000?max=10", stream=True)
+start = time.time()
+r.raise_for_status()
+for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
+    print(f"Got result {round(time.time()-start, 1)}s after start: '{chunk}'")
+
+
+# __batch_stream_begin__
+import asyncio
+from typing import AsyncGenerator
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
+
+import ray
+from ray import serve
+
+
+@serve.deployment
+class StreamingResponder:
+    @serve.batch(max_batch_size=5, batch_wait_timeout_s=15)
+    async def generate_numbers(
+        self, max_list: List[int]
+    ) -> AsyncGenerator[str, None, None]:
+        for i in range(max(max_list)):
+            next_numbers = []
+            for requested_max in max_list:
+                if requested_max <= i:
+                    next_numbers.append(i)
+                else:
+                    next_numbers.append(StopIteration)
+            yield next_numbers
+            asyncio.sleep(0.1)
+
+    def __call__(self, request: Request) -> StreamingResponse:
+        max = int(request.query_params.get("max", "25"))
+        gen = self.generate_numbers(max)
+        return StreamingResponse(gen, status_code=200, media_type="text/plain")
+
+
+handle = serve.run(Model.bind())
+assert ray.get(handle.remote(1)) == 2
+# __batch_stream_end__
