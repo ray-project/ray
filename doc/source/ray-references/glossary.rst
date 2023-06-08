@@ -4,8 +4,7 @@ Ray Glossary
 ============
 
 On this page you find a list of important terminology used throughout the Ray
-documentation, sorted alphabetically. If you're interested in a glossary for
-Ray Data specifically, please see the :ref:`Ray Data Glossary<datasets_glossary>`.
+documentation, sorted alphabetically.
 
 .. glossary::
 
@@ -70,6 +69,31 @@ Ray Data specifically, please see the :ref:`Ray Data Glossary<datasets_glossary>
         learning framework (eg. Torch, TensorFlow), used to set up distributed
         data-parallel training for :ref:`Ray Train’s built-in trainers<train-api>`.
 
+    Batch format
+        The way Ray Data represents batches of data.
+
+        Set ``batch_format`` in methods like
+        :meth:`Dataset.iter_batches() <ray.data.Dataset.iter_batches>` and
+        :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>` to specify the
+        batch type.
+
+        .. doctest::
+
+            >>> import ray
+            >>> dataset = ray.data.range(10)
+            >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
+            {'id': array([0, 1, 2, 3, 4])}
+            >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))
+               id
+            0   0
+            1   1
+            2   2
+            3   3
+            4   4
+
+        To learn more about batch formats, read
+        :ref:`Configuring batch formats <transform_datasets_batch_formats>`.
+
     Batch size
         A batch size in the context of model training is the number of data points used
         to compute and apply one gradient update to the model weights.
@@ -79,6 +103,15 @@ Ray Data specifically, please see the :ref:`Ray Data Glossary<datasets_glossary>
         to parallelize inference on a large dataset. A Batch predictor shards the
         dataset to allow multiple workers to do inference on a smaller number of data
         points and then aggregating all the worker predictions at the end.
+
+    Block
+        A processing unit of data. A :class:`~ray.data.Dataset` consists of a
+        collection of blocks.
+
+        Under the hood, Ray Data partitions rows into a set of distributed data blocks.
+        This allows it to perform operations in parallel.
+
+        Unlike a batch, which is a user-facing object, a block is an internal abstraction.
 
     Placement Group Bundle
         A collection of resources that must be reserved on a single Ray node.
@@ -124,7 +157,12 @@ Ray Data specifically, please see the :ref:`Ray Data Glossary<datasets_glossary>
 
     .. TODO: Data Shuffling
 
-    .. TODO: Dataset pipeline
+    Dataset (object)
+        A class that produces a sequence of distributed data blocks.
+
+        :class:`~ray.data.Dataset` exposes methods to read, transform, and consume data at scale.
+
+        To learn more about Datasets and the operations they support, read the :ref:`Datasets API Reference <data-api>`.
 
     Deployment
         A deployment is a group of actors that can handle traffic in Ray Serve.

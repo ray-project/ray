@@ -1,4 +1,5 @@
 import itertools
+import sys
 from typing import List, Optional
 
 import pandas as pd
@@ -1021,6 +1022,7 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromDask"])
 
 
+@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
 def test_from_modin_operator(
     ray_start_regular_shared,
@@ -1050,6 +1052,7 @@ def test_from_modin_operator(
         ctx.enable_pandas_block = old_enable_pandas_block
 
 
+@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     import modin.pandas as mopd
 
@@ -1363,6 +1366,93 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     # Underlying implementation uses `FromItems` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
     _check_usage_record(["FromItems"])
+
+
+def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
+    def f1(x):
+        return x
+
+    def f2(x):
+        return x
+
+    # Test basic limit pushdown past Map.
+    ds = ray.data.range(100, parallelism=100).map(f1).limit(1).materialize()
+    assert (
+        str(ds._plan._logical_plan.dag)
+        == "Read[ReadRange] -> Limit[limit=1] -> MapRows[Map(f1)]"
+    )
+    assert ds.take_all() == [{"id": 0}]
+
+    # Test basic Limit -> Limit fusion.
+    ds2 = ray.data.range(100).limit(5).limit(100).materialize()
+    assert str(ds2._plan._logical_plan.dag) == "Read[ReadRange] -> Limit[limit=5]"
+    assert ds2.take_all() == [{"id": i} for i in range(5)]
+
+    ds2 = ray.data.range(100).limit(100).limit(5).materialize()
+    assert str(ds2._plan._logical_plan.dag) == "Read[ReadRange] -> Limit[limit=5]"
+    assert ds2.take_all() == [{"id": i} for i in range(5)]
+
+    ds2 = ray.data.range(100).limit(50).limit(80).limit(5).limit(20).materialize()
+    assert str(ds2._plan._logical_plan.dag) == "Read[ReadRange] -> Limit[limit=5]"
+    assert ds2.take_all() == [{"id": i} for i in range(5)]
+
+    # Test limit pushdown and Limit -> Limit fusion together.
+    ds3 = ray.data.range(100).limit(5).map(f1).limit(100).materialize()
+    assert (
+        str(ds3._plan._logical_plan.dag)
+        == "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]"
+    )
+    assert ds3.take_all() == [{"id": i} for i in range(5)]
+
+    ds3 = ray.data.range(100).limit(100).map(f1).limit(5).materialize()
+    assert (
+        str(ds3._plan._logical_plan.dag)
+        == "Read[ReadRange] -> Limit[limit=5] -> MapRows[Map(f1)]"
+    )
+    assert ds3.take_all() == [{"id": i} for i in range(5)]
+
+    # Test basic limit pushdown up to Sort.
+    ds4 = ray.data.range(100).sort("id").limit(5).materialize()
+    assert (
+        str(ds4._plan._logical_plan.dag)
+        == "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5]"
+    )
+    assert ds4.take_all() == [{"id": i} for i in range(5)]
+
+    ds4 = ray.data.range(100).sort("id").map(f1).limit(5).materialize()
+    assert (
+        str(ds4._plan._logical_plan.dag)
+        == "Read[ReadRange] -> Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f1)]"
+    )
+    assert ds4.take_all() == [{"id": i} for i in range(5)]
+
+    # Test limit pushdown between two Map operators.
+    ds5 = ray.data.range(100, parallelism=100).map(f1).limit(1).map(f2).materialize()
+    # Limit operators get pushed down in the logical plan optimization,
+    # then fused together.
+    assert str(ds5._plan._logical_plan.dag) == (
+        "Read[ReadRange] -> Limit[limit=1] -> " "MapRows[Map(f1)] -> MapRows[Map(f2)]"
+    )
+    # Map operators only get fused in the optimized physical plan, not the logical plan.
+    assert "Map(f1)->Map(f2)" in ds5.stats()
+    assert ds5.take_all() == [{"id": 0}]
+
+    # More complex interweaved case.
+    ds6 = (
+        ray.data.range(100)
+        .sort("id")
+        .map(f1)
+        .limit(20)
+        .sort("id")
+        .map(f2)
+        .limit(5)
+        .materialize()
+    )
+    assert str(ds6._plan._logical_plan.dag) == (
+        "Read[ReadRange] -> Sort[Sort] -> Limit[limit=20] -> "
+        "MapRows[Map(f1)] -> Sort[Sort] -> Limit[limit=5] -> MapRows[Map(f2)]"
+    )
+    assert ds6.take_all() == [{"id": i} for i in range(5)]
 
 
 def test_blocks_to_input_buffer_op_name(
