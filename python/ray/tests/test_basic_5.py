@@ -146,46 +146,6 @@ ray.get(a.pid.remote())
     assert "Traceback" not in log
 
 
-@pytest.mark.skip("flaky test")
-def test_run_on_all_workers(call_ray_start, tmp_path):
-    # This test is to ensure run_function_on_all_workers are executed
-    # on all workers.
-    lock_file = tmp_path / "lock"
-    data_file = tmp_path / "data"
-    driver_script = f"""
-import ray
-from filelock import FileLock
-from pathlib import Path
-import pickle
-
-lock_file = r"{str(lock_file)}"
-data_file = Path(r"{str(data_file)}")
-
-def init_func(worker_info):
-    with FileLock(lock_file):
-        if data_file.exists():
-            old = pickle.loads(data_file.read_bytes())
-        else:
-            old = []
-        old.append(worker_info['worker'].worker_id)
-        data_file.write_bytes(pickle.dumps(old))
-
-ray._private.worker.global_worker.run_function_on_all_workers(init_func)
-ray.init(address='auto')
-
-@ray.remote
-def ready():
-    with FileLock(lock_file):
-        worker_ids = pickle.loads(data_file.read_bytes())
-        assert ray._private.worker.global_worker.worker_id in worker_ids
-
-ray.get(ready.remote())
-"""
-    run_string_as_driver(driver_script)
-    run_string_as_driver(driver_script)
-    run_string_as_driver(driver_script)
-
-
 def test_worker_sys_path_contains_driver_script_directory(tmp_path, monkeypatch):
     package_folder = tmp_path / "package"
     package_folder.mkdir()

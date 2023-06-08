@@ -5,7 +5,7 @@ debian_packages:
 python:
   pip_packages:
     - pytest
-    - modin==0.12.1
+    - modin==0.18.1
   conda_packages: []
 
 post_build_cmds:
