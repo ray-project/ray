@@ -1,6 +1,5 @@
 import time
 import asyncio
-from enum import Enum
 from functools import wraps
 from dataclasses import dataclass
 from inspect import iscoroutinefunction, isasyncgenfunction
