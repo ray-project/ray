@@ -328,7 +328,7 @@ doctest(
 
 doctest(
     files = [
-        "source/data/batch_inference.rst"
+        "source/data/batch_inference.rst",
         "source/data/transforming-data.rst"
     ],
     tags = ["team:data"],
