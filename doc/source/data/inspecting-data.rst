@@ -1,8 +1,16 @@
 .. _inspecting-data:
 
 ===============
-Inspecting data
+Inspecting Data
 ===============
+
+Inspect :class:`Datasets <ray.data.Dataset>` to better understand your data.
+
+This guide shows you how to:
+
+* `Describe datasets <#describing-datasets>`_
+* `Inspect rows <#inspecting-rows>`_
+* `Inspect batches <#inspecting-batches>`_
 
 .. _describing-datasets:
 
@@ -30,7 +38,7 @@ types, call :meth:`Dataset.schema() <ray.data.Dataset.schema>`.
     petal width (cm)   double
     target             int64
 
-For more information such as the number of rows, print the Dataset.
+For more information like the number of rows, print the Dataset.
 
 .. testcode::
 
@@ -59,9 +67,9 @@ For more information such as the number of rows, print the Dataset.
 Inspecting rows
 ===============
 
-To inspect rows, call :meth:`Dataset.take() <ray.data.Dataset.take>` or
-:meth:`Dataset.take_all() <ray.data.Dataset.take_all>`. Ray Data represents rows
-as dictionaries.
+To get a list of rows, call :meth:`Dataset.take() <ray.data.Dataset.take>` or
+:meth:`Dataset.take_all() <ray.data.Dataset.take_all>`. Ray Data represents each row as
+a dictionary.
 
 .. testcode::
 
@@ -87,8 +95,10 @@ Inspecting batches
 ==================
 
 A batch contains data from multiple rows. To inspect batches, call
-`Dataset.take_batch() <ray.data.Dataset.take_batch>`. By default, Ray Data represents
-batches as ndarrays.
+`Dataset.take_batch() <ray.data.Dataset.take_batch>`.
+
+By default, Ray Data represents batches as dicts of NumPy ndarrays. To change the type
+of the returned batch, set ``batch_format``.
 
 .. tab-set::
 
@@ -101,11 +111,14 @@ batches as ndarrays.
             ds = ray.data.read_images("example://image-datasets/simple")
 
             batch = ds.take_batch(batch_size=2, batch_format="numpy")
-            print(batch)
+            print("Batch:", batch)
+            print("Image shape", batch["image"].shape)
 
         .. testoutput::
+            :options: +MOCK
 
-            {'image': array([[[[...]]]], dtype=uint8)}
+            Batch: {'image': array([[[[...]]]], dtype=uint8)}
+            Image shape: (2, 32, 32, 3)
 
     .. tab-item:: pandas
 

@@ -986,7 +986,7 @@ class Dataset:
 
         Returns:
             The shuffled dataset.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)

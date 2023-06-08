@@ -1,16 +1,26 @@
 .. _iterating-over-data:
 
 ===================
-Iterating over data
+Iterating over Data
 ===================
+
+Ray Data lets you iterate over rows or batches of data.
+
+This guide shows you how to:
+
+* `Iterate over rows <#iterating-over-rows>`_
+* `Iterate over batches <#iterating-over-batches>`_
+* `Iterate over batches with shuffling <#iterating-over-batches-with-shuffling>`_
+* `Split datasets for distributed parallel training <#splitting-datasets-for-distributed-parallel-training>`_
 
 .. _iterating-over-rows:
 
 Iterating over rows
 ===================
 
-To iterate over rows, call :meth:`Dataset.iter_rows() <ray.data.Dataset.iter_rows>`. Ray
-Data represents rows as dictionaries.
+To iterate over the rows of your dataset, call
+:meth:`Dataset.iter_rows() <ray.data.Dataset.iter_rows>`. Ray Data represents each row
+as a dictionary.
 
 .. testcode::
 
@@ -38,8 +48,8 @@ For more information on working with rows, see
 Iterating over batches
 ======================
 
-A batch contains data from multiple rows. To iterate over batches, call one of the
-following methods:
+A batch contains data from multiple rows. Iterate over batches of dataset in different
+formats by calling one of the following methods:
 
 * `Dataset.iter_batches() <ray.data.Dataset.iter_batches>`
 * `Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
@@ -60,6 +70,7 @@ following methods:
                 print(batch)
 
         .. testoutput::
+            :options: +MOCK
 
             {'image': array([[[[...]]]], dtype=uint8)}
             ...
@@ -78,15 +89,15 @@ following methods:
                 print(batch)
 
         .. testoutput::
-            :options:+NORMALIZE_WHITESPACE
+            :options: +NORMALIZE_WHITESPACE
 
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
             0                5.1               3.5                1.4               0.2       0
             1                4.9               3.0                1.4               0.2       0
             ...
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
-            0                5.1               3.5                1.4               0.2       0
-            1                4.9               3.0                1.4               0.2       0
+            0                6.2               3.4                5.4               2.3       2
+            1                5.9               3.0                5.1               1.8       2
 
     .. tab-item:: Torch
         :sync: Torch
@@ -101,6 +112,7 @@ following methods:
                 print(batch)
 
         .. testoutput::
+            :options: +MOCK
 
             {'image': tensor([[[[...]]]], dtype=torch.uint8)}
             ...
@@ -123,11 +135,11 @@ following methods:
             for features, labels in tf_dataset:
                 print(features, labels)
 
-        .. testoutput:
+        .. testoutput::
 
             tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
             ...
-            tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
+            tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dtype=int64)
 
 For more information on working with batches, see
 :ref:`Transforming batches <transforming-batches>` and
@@ -139,9 +151,11 @@ Iterating over batches with shuffling
 =====================================
 
 :class:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` is slow because it
-shuffles all rows. For better performance, shuffle a subset of rows while iterating.
-
-To iterate over batches with shuffling, specify ``local_shuffle_buffer_size``.
+shuffles all rows. If a full global shuffle isn't required, you can shuffle a subset of
+rows up to a provided buffer size during iteration by specifying
+``local_shuffle_buffer_size``. While this isn't a true global shuffle like
+``random_shuffle``, it's more performant because it doesn't require excessive data
+movement.
 
 .. tip::
 
@@ -169,6 +183,7 @@ To iterate over batches with shuffling, specify ``local_shuffle_buffer_size``.
 
 
         .. testoutput::
+            :options: +MOCK
 
             {'image': array([[[[...]]]], dtype=uint8)}
             ...
@@ -191,15 +206,16 @@ To iterate over batches with shuffling, specify ``local_shuffle_buffer_size``.
                 print(batch)
 
         .. testoutput::
-            :options: +NORMALIZE_WHITESPACE
+            :options: +MOCK
 
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
-            0                6.1               2.9                4.7               1.4       1
-            1                6.3               2.8                5.1               1.5       2
+            0                6.3               2.9                5.6               1.8       2
+            1                5.7               4.4                1.5               0.4       0
             ...
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
-            0                6.1               2.9                4.7               1.4       1
-            1                6.3               2.8                5.1               1.5       2
+            0                5.6               2.7                4.2               1.3       1
+            1                4.8               3.0                1.4               0.1       0
+
     .. tab-item:: Torch
         :sync: Torch
 
@@ -215,6 +231,7 @@ To iterate over batches with shuffling, specify ``local_shuffle_buffer_size``.
                 print(batch)
 
         .. testoutput::
+            :options: +MOCK
 
             {'image': tensor([[[[...]]]], dtype=torch.uint8)}
             ...
@@ -239,22 +256,24 @@ To iterate over batches with shuffling, specify ``local_shuffle_buffer_size``.
                 print(features, labels)
 
         .. testoutput::
+            :options: +MOCK
 
-            tf.Tensor([6.1 6.3], shape=(2,), dtype=float64) tf.Tensor([1 2], shape=(2,), dtype=int64)
+            tf.Tensor([5.2 6.3], shape=(2,), dtype=float64) tf.Tensor([1 2], shape=(2,), dtype=int64)
             ...
-            tf.Tensor([6.1 6.3], shape=(2,), dtype=float64) tf.Tensor([1 2], shape=(2,), dtype=int64)
+            tf.Tensor([5.  5.8], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
 
 Splitting datasets for distributed parallel training
 ====================================================
 
 If you're performing distributed data parallel training, call
-:meth:`Dataset.split <ray.data.Dataset.split>` to split your dataset into disjoint
-shards.
+:meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>` to split your dataset
+into disjoint shards.
 
 .. note::
 
   If you're using :ref:`Ray Train <train-docs>`, you don't need to split the dataset.
-  Ray Train automatically splits your dataset for you.
+  Ray Train automatically splits your dataset for you. To learn more, see
+  :ref:`Configuring training datasets <air-ingest>`.
 
 .. testcode::
 
