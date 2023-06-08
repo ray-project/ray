@@ -54,8 +54,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
 
     def __iter__(self):
-
         while min(self._num_covered_epochs.values()) < self._num_iters:
+
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 
@@ -90,7 +90,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # TODO (Kourosh): len(batch) is not correct here. However it's also not
             # clear what the correct value should be. Since training does not depend on
             # this it will be fine for now.
-            minibatch = MultiAgentBatch(minibatch, len(self._batch))
+            length = max(len(b) for b in minibatch.values())
+            minibatch = MultiAgentBatch(minibatch, length)
             yield minibatch
 
 

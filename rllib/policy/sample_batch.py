@@ -1,4 +1,5 @@
 import collections
+from functools import partial
 import numpy as np
 import sys
 import itertools
@@ -1532,11 +1533,14 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
         try:
             if k == "infos":
                 concatd_data[k] = _concat_values(
-                    *[s[k] for s in concated_samples], time_major=time_major
+                    *[s[k] for s in concated_samples],
+                    time_major=time_major,
                 )
             else:
+                values_to_concat = [c[k] for c in concated_samples]
+                _concat_values_w_time = partial(_concat_values, time_major=time_major)
                 concatd_data[k] = tree.map_structure(
-                    _concat_values, *[c[k] for c in concated_samples]
+                    _concat_values_w_time, *values_to_concat
                 )
         except RuntimeError as e:
             # This should catch torch errors that occur when concatenating
@@ -1631,7 +1635,22 @@ def _concat_values(*values, time_major=None) -> TensorType:
         time_major: Whether to concatenate along the first axis
             (time_major=False) or the second axis (time_major=True).
     """
-    return np.concatenate(list(values), axis=1 if time_major else 0)
+    if torch and torch.is_tensor(values[0]):
+        return torch.cat(values, dim=1 if time_major else 0)
+    elif isinstance(values[0], np.ndarray):
+        return np.concatenate(values, axis=1 if time_major else 0)
+    elif tf and tf.is_tensor(values[0]):
+        return tf.concat(values, axis=1 if time_major else 0)
+    elif isinstance(values[0], list):
+        concatenated_list = []
+        for sublist in values:
+            concatenated_list.extend(sublist)
+        return concatenated_list
+    else:
+        raise ValueError(
+            f"Unsupported type for concatenation: {type(values[0])} "
+            f"first element: {values[0]}"
+        )
 
 
 @DeveloperAPI
