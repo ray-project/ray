@@ -1,12 +1,6 @@
-from ray.train.hf_transformers.transformers_checkpoint import (
-    TransformersCheckpoint,
-)
-from ray.train.hf_transformers.transformers_predictor import (
-    TransformersPredictor,
-)
-from ray.train.hf_transformers.transformers_trainer import (
-    TransformersTrainer,
-)
+from .transformers_checkpoint import TransformersCheckpoint
+from .transformers_predictor import TransformersPredictor
+from .transformers_trainer import TransformersTrainer
 
 __all__ = [
     "TransformersCheckpoint",
