@@ -472,8 +472,10 @@ class ActorReplicaWrapper:
             replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
             self._ready_obj_ref = replica_ready_check_func.remote(
                 deployment_config,
-                # Ensure that `is_allocated` will execute before `reconfigure`,
-                # because `reconfigure` runs user code that could block the replica
+                # Ensure that `is_allocated` will execute
+                # before `initialize_and_get_metadata`,
+                # because `initialize_and_get_metadata` runs
+                # user code that could block the replica
                 # asyncio loop. If that happens before `is_allocated` is executed,
                 # the `is_allocated` call won't be able to run.
                 self._allocated_obj_ref,
