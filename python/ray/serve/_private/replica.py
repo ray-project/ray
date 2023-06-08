@@ -329,7 +329,7 @@ def create_replica_wrapper(name: str):
             _after: Optional[Any] = None,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Unused `_after` argument is for scheduling: passing an ObjectRef
-            # allows delaying reconfiguration until after this call has returned.
+            # allows delaying this call until after the `_after` call has returned.
             try:
                 # Ensure that initialization is only performed once.
                 # When controller restarts, it will call this method again.
@@ -349,8 +349,12 @@ def create_replica_wrapper(name: str):
                 raise RuntimeError(traceback.format_exc()) from None
 
         async def reconfigure(
-            self, deployment_config: DeploymentConfig
+            self,
+            deployment_config: DeploymentConfig,
+            _after: Optional[Any] = None,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            # Unused `_after` argument is for scheduling: passing an ObjectRef
+            # allows delaying this call until after the `_after` call has returned.
             try:
                 await self.replica.reconfigure(deployment_config)
                 return await self._get_metadata()

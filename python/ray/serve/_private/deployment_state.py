@@ -505,7 +505,7 @@ class ActorReplicaWrapper:
                 deployment_config.user_config
             )
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-                deployment_config
+                deployment_config, self._ready_obj_ref
             )
 
         self._version = version
