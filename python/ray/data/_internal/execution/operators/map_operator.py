@@ -1,7 +1,7 @@
 import copy
 import itertools
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
@@ -523,12 +523,15 @@ class _OrderedOutputQueue(_OutputQueue):
         out_bundle = self._tasks_by_output_order[self._next_output_index].output
         # Pop out the next single-block bundle.
         next_bundle = RefBundle(
-            [out_bundle.blocks.pop(0)], owns_blocks=out_bundle.owns_blocks
+            [out_bundle.blocks[0]], owns_blocks=out_bundle.owns_blocks
         )
+        out_bundle = replace(out_bundle, blocks=out_bundle.blocks[1:])
         if not out_bundle.blocks:
             # If this task's RefBundle is exhausted, move to the next one.
             del self._tasks_by_output_order[self._next_output_index]
             self._next_output_index += 1
+        else:
+            self._tasks_by_output_order[self._next_output_index].output = out_bundle
         return next_bundle
 
 
@@ -549,11 +552,14 @@ class _UnorderedOutputQueue(_OutputQueue):
         out_bundle = self._completed_tasks[0].output
         # Pop out the next single-block bundle.
         next_bundle = RefBundle(
-            [out_bundle.blocks.pop(0)], owns_blocks=out_bundle.owns_blocks
+            [out_bundle.blocks[0]], owns_blocks=out_bundle.owns_blocks
         )
+        out_bundle = replace(out_bundle, blocks=out_bundle.blocks[1:])
         if not out_bundle.blocks:
             # If this task's RefBundle is exhausted, move to the next one.
             del self._completed_tasks[0]
+        else:
+            self._completed_tasks[0].output = out_bundle
         return next_bundle
 
 

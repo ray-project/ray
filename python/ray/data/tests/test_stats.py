@@ -851,6 +851,7 @@ def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
     ds = ray.data.range(10).materialize().repeat(2).map_batches(lambda x: x)
     ds.take(999)
     stats = ds.stats()
+    print("STATS", stats)
     assert "[execution cached]" in stats
 
     # CACHED (eager map stage).

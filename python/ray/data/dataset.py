@@ -3988,12 +3988,20 @@ class Dataset:
             )
             for block_with_metadata in blocks_with_metadata
         ]
-
-        # Create a new logical plan whose input is the existing data
-        # from the the old Dataset.
-        copy._logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
-
-        return copy
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        output = MaterializedDataset(
+            ExecutionPlan(
+                blocks,
+                copy._plan.stats(),
+                run_by_consumer=False,
+            ),
+            copy._epoch,
+            copy._lazy,
+            logical_plan,
+        )
+        output._plan.execute()  # No-op that marks the plan as fully executed.
+        output._plan._in_stats.dataset_uuid = self._get_uuid()
+        return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:

@@ -2,6 +2,7 @@ import copy
 import logging
 import threading
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -195,7 +196,8 @@ class SplitCoordinator:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
-            bundle = next_bundle.blocks.pop()
+            block = next_bundle.blocks[-1]
+            next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
 
             # Accumulate any remaining blocks in next_bundle map as needed.
             with self._lock:
@@ -203,7 +205,7 @@ class SplitCoordinator:
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
 
-            return bundle
+            return block
         except StopIteration:
             return None
 

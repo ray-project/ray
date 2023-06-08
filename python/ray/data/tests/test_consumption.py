@@ -199,10 +199,17 @@ def test_cache_dataset(ray_start_regular_shared):
     assert isinstance(ds2, MaterializedDataset)
     assert not ds.is_fully_executed()
 
+    # Tests standard iteration uses the materialized blocks.
     for _ in range(10):
         ds2.take_all()
 
     assert ray.get(c.inc.remote()) == 2
+
+    # Tests streaming iteration uses the materialized blocks.
+    for _ in range(10):
+        list(ds2.streaming_split(1)[0].iter_batches())
+
+    assert ray.get(c.inc.remote()) == 3
 
 
 def test_schema(ray_start_regular_shared):

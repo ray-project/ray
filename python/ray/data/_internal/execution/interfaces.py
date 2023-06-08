@@ -36,7 +36,7 @@ class RefBundle:
     """
 
     # The size_bytes must be known in the metadata, num_rows is optional.
-    blocks: List[Tuple[ObjectRef[Block], BlockMetadata]]
+    blocks: Tuple[Tuple[ObjectRef[Block], BlockMetadata]]
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
@@ -49,6 +49,8 @@ class RefBundle:
     _cached_location: Optional[NodeIdStr] = None
 
     def __post_init__(self):
+        if not isinstance(self.blocks, tuple):
+            object.__setattr__(self, "blocks", tuple(self.blocks))
         for b in self.blocks:
             assert isinstance(b, tuple), b
             assert len(b) == 2, b
@@ -58,6 +60,11 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
+
+    def __setattr__(self, key, value):
+        if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
+            raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")
+        object.__setattr__(self, key, value)
 
     def num_rows(self) -> Optional[int]:
         """Number of rows present in this bundle, if known."""
