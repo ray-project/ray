@@ -46,7 +46,7 @@ expected_action_dist_input_dims = (env.action_space.n,)
 encoder = catalog.build_encoder(framework="torch")
 # Build a suitable head model for the action distribution.
 head_config = MLPHeadConfig(
-    input_dims=catalog.latent_dims, output_dims=expected_action_dist_input_dims
+    input_dims=catalog.latent_dims, hidden_layer_dims=expected_action_dist_input_dims
 )
 head = head_config.build(framework="torch")
 # Now we are ready to interact with the environment
