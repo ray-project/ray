@@ -21,7 +21,7 @@ It provides flexible and performant APIs for distributed data processing:
 - Global and grouped aggregations (:meth:`~ray.data.Dataset.groupby`)
 - Shuffling operations (:meth:`~ray.data.Dataset.random_shuffle`, :meth:`~ray.data.Dataset.sort`, :meth:`~ray.data.Dataset.repartition`).
 
-Ray Data is built on top of Ray, so it scales effectively to large clusters and offers scheduling support for both CPU and GPU resources.
+Ray Data is built on top of Ray, so it scales effectively to large clusters and offers scheduling support for both CPU and GPU resources. Ray Data uses `streaming execution <https://www.anyscale.com/blog/streaming-distributed-execution-across-cpus-and-gpus>`__ to efficiently process large datasets.
 
 
 Why choose Ray Data?
