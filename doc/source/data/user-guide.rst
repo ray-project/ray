@@ -14,7 +14,9 @@ show you how achieve several tasks.
 
     loading-data
     transforming-data
-    consuming-data
+    inspecting-data
+    iterating-over-data
+    saving-data
     working-with-tensors
     data-internals
     performance-tips
