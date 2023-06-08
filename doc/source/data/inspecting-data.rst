@@ -115,7 +115,7 @@ of the returned batch, set ``batch_format``.
             print("Image shape", batch["image"].shape)
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
             Batch: {'image': array([[[[...]]]], dtype=uint8)}
             Image shape: (2, 32, 32, 3)
