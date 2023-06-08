@@ -322,15 +322,14 @@ class FileBasedDatasource(Datasource):
                 block = _block_udf(block)
 
             block = BlockAccessor.for_block(block)
-            # Skip write if the block is empty.
-            if block.num_rows() > 0:
-                with fs.open_output_stream(write_path, **open_stream_args) as f:
-                    _write_block_to_file(
-                        f,
-                        block,
-                        writer_args_fn=write_args_fn,
-                        **write_args,
-                    )
+            assert block.num_rows() > 0, "Cannot write an empty block."
+            with fs.open_output_stream(write_path, **open_stream_args) as f:
+                _write_block_to_file(
+                    f,
+                    block,
+                    writer_args_fn=write_args_fn,
+                    **write_args,
+                )
             # TODO: decide if we want to return richer object when the task
             # succeeds.
             return "ok"
@@ -810,6 +809,7 @@ def _unwrap_arrow_serialization_workaround(kwargs: dict) -> dict:
 def _resolve_kwargs(
     kwargs_fn: Callable[[], Dict[str, Any]], **kwargs
 ) -> Dict[str, Any]:
+
     if kwargs_fn:
         kwarg_overrides = kwargs_fn()
         kwargs.update(kwarg_overrides)
