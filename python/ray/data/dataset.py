@@ -964,6 +964,11 @@ class Dataset:
     ) -> "Dataset":
         """Randomly shuffle the elements of this dataset.
 
+        .. tip::
+
+            ``random_shuffle`` can be slow. For better performance, try
+            `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
@@ -986,7 +991,7 @@ class Dataset:
 
         Returns:
             The shuffled dataset.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
