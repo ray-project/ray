@@ -1,4 +1,5 @@
 import itertools
+import sys
 from typing import List, Optional
 
 import pandas as pd
@@ -1021,6 +1022,7 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromDask"])
 
 
+@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
 def test_from_modin_operator(
     ray_start_regular_shared,

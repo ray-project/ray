@@ -55,7 +55,7 @@ import ray._private.storage as storage
 
 # Ray modules
 import ray.actor
-import ray.cloudpickle as pickle
+import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
