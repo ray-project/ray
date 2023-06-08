@@ -33,7 +33,7 @@ except ModuleNotFoundError:
 
 skip = not modin_installed
 
-# These tests are written for versions of Modin that require python 3.7+
+# These tests are written for versions of Modin that require python 3.8+
 pytestmark = pytest.mark.skipif(skip, reason="Outdated or missing Modin dependency")
 
 if not skip:
