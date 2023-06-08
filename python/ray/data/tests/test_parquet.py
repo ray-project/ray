@@ -824,6 +824,57 @@ def test_parquet_write_create_dir(
     else:
         fs.delete_dir(_unwrap_protocol(path))
 
+    # Test that writing empty blocks does not create empty parquet files,
+    # nor does it create empty directories when no files are created.
+    ds_all_empty = ds.filter(lambda x: x["one"] > 10).materialize()
+    assert ds_all_empty.num_blocks() == 2
+    assert ds_all_empty.count() == 0
+
+    all_empty_key = "all_empty"
+    all_empty_path = os.path.join(data_path, f"test_parquet_dir_{all_empty_key}")
+    ds_all_empty._set_uuid(all_empty_key)
+    ds_all_empty.write_parquet(all_empty_path, filesystem=fs)
+
+    ds_contains_some_empty = ds.union(ds_all_empty)
+    # 2 blocks from original ds with 6 rows total, 2 empty blocks from ds_all_empty.
+    assert ds_contains_some_empty.num_blocks() == 4
+    assert ds_contains_some_empty.count() == 6
+
+    some_empty_key = "some_empty"
+    some_empty_path = os.path.join(path, f"test_parquet_dir_{some_empty_key}")
+    ds_contains_some_empty._set_uuid(some_empty_key)
+    ds_contains_some_empty.write_parquet(some_empty_path, filesystem=fs)
+
+    # Ensure that directory was created for only the non-empty dataset.
+    if fs is None:
+        assert not os.path.isdir(all_empty_path)
+        assert os.path.isdir(some_empty_path)
+        # Only files for the non-empty blocks should be created.
+        assert os.listdir(some_empty_path) == [
+            f"some_empty_00000{i}.parquet" for i in range(2)
+        ]
+    else:
+        assert (
+            fs.get_file_info(_unwrap_protocol(all_empty_path)).type
+            == pa.fs.FileType.NotFound
+        )
+        assert (
+            fs.get_file_info(_unwrap_protocol(some_empty_path)).type
+            == pa.fs.FileType.Directory
+        )
+
+    # Check that data was properly written to the directory.
+    dfds = pd.concat(
+        [
+            pd.read_parquet(
+                os.path.join(some_empty_path, f"some_empty_00000{i}.parquet"),
+                storage_options=storage_options,
+            )
+            for i in range(2)
+        ]
+    )
+    assert df.equals(dfds)
+
 
 def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     data_path = str(tmp_path)
