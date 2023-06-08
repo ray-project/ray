@@ -263,8 +263,8 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa:E501
             "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa:E501
             # Original issue: https://github.com/ray-project/ray/issues/33833
-            "grpcio >= 1.32.0, <= 1.50.0; python_version < '3.10' and sys_platform != 'darwin'",  # noqa:E501
-            "grpcio >= 1.42.0, <= 1.50.0; python_version >= '3.10' and sys_platform != 'darwin'",  # noqa:E501
+            "grpcio >= 1.32.0, <= 1.51.1; python_version < '3.10' and sys_platform != 'darwin'",  # noqa:E501
+            "grpcio >= 1.42.0, <= 1.51.1; python_version >= '3.10' and sys_platform != 'darwin'",  # noqa:E501
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
