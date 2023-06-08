@@ -1,7 +1,7 @@
 .. _transforming-data:
 
 =================
-Transforming data
+Transforming Data
 =================
 
 Transformations let you process and modify your dataset. You can compose transformations
@@ -55,7 +55,7 @@ If your transformation returns multiple rows for each input row, call
 
 .. testcode::
 
-    from typing import Any, Dict
+    from typing import Any, Dict, List
     import ray
 
     def duplicate_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -69,7 +69,7 @@ If your transformation returns multiple rows for each input row, call
 
 .. testoutput::
 
-    [{"item": 0}, {"item": 0}, {"item": 1}, {"item": 1}, {"item": 2}, {"item": 2}]
+    [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
 
 Transforming batches
 ====================
@@ -137,16 +137,21 @@ To transform batches with actors, complete these steps:
                     self.model = torch.nn.Identity()
                     self.model.eval()
 
-                def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]
+                def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
                     inputs = torch.as_tensor(batch["data"], dtype=torch.float32)
                     with torch.inference_mode():
-                        batch["output"] = self.model(tensor).detach().numpy())
+                        batch["output"] = self.model(inputs).detach().numpy()
                     return batch
 
             ds = (
-                ray.data.from_numpy(np.ones((32, 100))
+                ray.data.from_numpy(np.ones((32, 100)))
                 .map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2))
             )
+
+        .. testcode::
+            :hide:
+
+            ds.materialize()
 
     .. tab-item:: GPU
 
@@ -163,14 +168,14 @@ To transform batches with actors, complete these steps:
                     self.model = torch.nn.Identity().cuda()
                     self.model.eval()
 
-                def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]
+                def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
                     inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
                     with torch.inference_mode():
-                        batch["output"] = self.model(tensor).detach().cpu().numpy())
+                        batch["output"] = self.model(inputs).detach().cpu().numpy()
                     return batch
 
             ds = (
-                ray.data.from_numpy(np.ones((32, 100))
+                ray.data.from_numpy(np.ones((32, 100)))
                 .map_batches(
                     TorchPredictor,
                     # Two workers with one GPU each
@@ -180,6 +185,11 @@ To transform batches with actors, complete these steps:
                     num_gpus=1
                 )
             )
+
+        .. testcode::
+            :hide:
+
+            ds.materialize()
 
 Configuring batch type
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -255,7 +265,7 @@ To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then,
             import ray
 
             items = [
-                {"image": np.zeros((32, 32, 3)), "label": i}
+                {"image": np.zeros((32, 32, 3)), "label": label}
                 for _ in range(10) for label in range(100)
             ]
 
@@ -316,11 +326,6 @@ increase the number of blocks.
 
 To change the number of blocks, call
 :meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
-
-.. warning::
-
-    Avoid :meth:`Dataset.repartition() <ray.data.Dataset.repartition>`. Instead, specify
-    ``parallelism`` when you load data.
 
 .. testcode::
 

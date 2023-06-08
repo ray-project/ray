@@ -317,6 +317,7 @@ doctest(
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
             "source/data/batch_inference.rst"
+            "source/data/transforming-data.rst"
         ]
     ),
     size = "large",
@@ -324,10 +325,12 @@ doctest(
 )
 
 
+
 doctest(
-    files = glob(
-        include=["source/data/batch_inference.rst"],
-    ),
+    files = [
+        "source/data/batch_inference.rst"
+        "source/data/transforming-data.rst"
+    ],
     tags = ["team:data"],
     gpu = True
 )
