@@ -254,20 +254,23 @@ class HyperBandScheduler(FIFOScheduler):
             # kill bad trials
             self._num_stopped += len(bad)
             for t in bad:
+                # We should have already cleaned up an errored/terminated trial
+                assert t.status not in (Trial.ERROR, Trial.TERMINATED), (
+                    f"Bad trial {t.trial_id} is in an invalid state: {t.status}\n"
+                    "Expected trial to be either PAUSED, PENDING, or RUNNING.\n"
+                    "If you encounter this, please file an issue on the Ray Github."
+                )
+
                 if t.status == Trial.PAUSED:
                     trial_runner.stop_trial(t)
-                elif t.status == Trial.RUNNING:
+                elif t.status in Trial.RUNNING:
                     bracket.cleanup_trial(t)
                     action = TrialScheduler.STOP
-                else:
-                    raise TuneError(
-                        f"Trial with unexpected bad status " f"encountered: {t.status}"
-                    )
 
             # ready the good trials - if trial is too far ahead, don't continue
             for t in good:
                 if bracket.continue_trial(t):
-                    # The scheduler should have cleaned up this trial already.
+                    # We should have already cleaned up an errored/terminated trial
                     assert t.status not in (Trial.ERROR, Trial.TERMINATED), (
                         f"Good trial {t.trial_id} is in an invalid state: {t.status}\n"
                         "Expected trial to be either PAUSED, PENDING, or RUNNING.\n"
