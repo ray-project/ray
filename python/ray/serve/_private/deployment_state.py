@@ -1916,6 +1916,10 @@ class DeploymentState:
 
             deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
+            logger.warning(
+                "Exception occurred trying to update deployment state:\n"
+                + traceback.format_exc()
+            )
             self._curr_status_info = DeploymentStatusInfo(
                 name=self._name,
                 status=DeploymentStatus.UNHEALTHY,

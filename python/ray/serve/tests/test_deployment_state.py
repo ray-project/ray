@@ -118,7 +118,19 @@ class MockReplicaActorWrapper:
 
     @property
     def max_concurrent_queries(self) -> int:
-        return 100
+        return self.version.deployment_config.max_concurrent_queries
+
+    @property
+    def graceful_shutdown_timeout_s(self) -> float:
+        return self.version.deployment_config.graceful_shutdown_timeout_s
+
+    @property
+    def health_check_period_s(self) -> float:
+        return self.version.deployment_config.health_check_period_s
+
+    @property
+    def health_check_timeout_s(self) -> float:
+        return self.version.deployment_config.health_check_timeout_s
 
     @property
     def pid(self) -> Optional[int]:
@@ -148,8 +160,12 @@ class MockReplicaActorWrapper:
     def log_file_path(self) -> Optional[str]:
         return None
 
-    def set_ready(self):
+    def set_ready(self, version: DeploymentVersion = None):
         self.ready = ReplicaStartupStatus.SUCCEEDED
+        if version:
+            self.version_to_be_fetched_from_actor = version
+        else:
+            self.version_to_be_fetched_from_actor = self.version
 
     def set_failed_to_start(self):
         self.ready = ReplicaStartupStatus.FAILED
@@ -166,7 +182,6 @@ class MockReplicaActorWrapper:
 
     def start(self, deployment_info: DeploymentInfo):
         self.started = True
-        self.deployment_info = deployment_info
 
     def reconfigure(self, version: DeploymentVersion):
         self.started = True
@@ -184,7 +199,7 @@ class MockReplicaActorWrapper:
         if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
             self.recovering = False
             self.started = True
-            self.version = self.starting_version
+            self.version = self.version_to_be_fetched_from_actor
         return ready, None
 
     def resource_requirements(self) -> Tuple[str, str]:
@@ -203,7 +218,7 @@ class MockReplicaActorWrapper:
     def graceful_stop(self) -> None:
         assert self.started
         self.stopped = True
-        return self.deployment_info.deployment_config.graceful_shutdown_timeout_s
+        return self.graceful_shutdown_timeout_s
 
     def check_stopped(self) -> bool:
         return self.done_stopping
@@ -214,6 +229,35 @@ class MockReplicaActorWrapper:
     def check_health(self):
         self.health_check_called = True
         return self.healthy
+
+
+class MockKVStore:
+    def __init__(self):
+        self.store = dict()
+
+    def put(self, key: str, val: bytes) -> bool:
+        if not isinstance(key, str):
+            raise TypeError("key must be a string, got: {}.".format(type(key)))
+        if not isinstance(val, bytes):
+            raise TypeError("val must be bytes, got: {}.".format(type(val)))
+
+        self.store[key] = val
+        return True
+
+    def get(self, key: str) -> Optional[bytes]:
+        if not isinstance(key, str):
+            raise TypeError("key must be a string, got: {}.".format(type(key)))
+        return self.store.get(key, None)
+
+    def delete(self, key: str) -> bool:
+        if not isinstance(key, str):
+            raise TypeError("key must be a string, got: {}.".format(type(key)))
+
+        if key in self.store:
+            del self.store[key]
+            return True
+
+        return False
 
 
 def deployment_info(
@@ -2117,6 +2161,241 @@ def test_exponential_backoff(mock_get_all_node_ids, mock_deployment_state):
 
 
 @pytest.fixture
+def mock_deployment_state_manager_full(request) -> Tuple[DeploymentStateManager, Mock]:
+    """Fully mocked deployment state manager.
+
+    i.e kv store and gcs client is mocked so we don't need to initialize
+    ray. Also, since this is used for some recovery tests, this yields a
+    method for creating a new mocked deployment state manager.
+    """
+
+    timer = MockTimer()
+    with patch(
+        "ray.serve._private.deployment_state.ActorReplicaWrapper",
+        new=MockReplicaActorWrapper,
+    ), patch("time.time", new=timer.time), patch(
+        "ray.serve._private.long_poll.LongPollHost"
+    ) as mock_long_poll, patch(
+        "ray.serve._private.deployment_state.GcsClient"
+    ), patch(
+        "ray.get_runtime_context"
+    ):
+
+        kv_store = MockKVStore()
+
+        def create_deployment_state_manager(actor_names=[], is_driver_deployment=False):
+            return DeploymentStateManager(
+                "name",
+                True,
+                kv_store,
+                mock_long_poll,
+                actor_names,
+            )
+
+        yield create_deployment_state_manager, timer
+
+
+@pytest.mark.parametrize("is_driver_deployment", [True, False])
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_recover_state_from_replica_names(
+    mock_get_all_node_ids, mock_deployment_state_manager_full, is_driver_deployment
+):
+    """Test recover deployment state."""
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
+
+    tag = "test_deployment"
+    create_deployment_state_manager, _ = mock_deployment_state_manager_full
+    deployment_state_manager = create_deployment_state_manager()
+
+    # Step 1: Create some deployment info with actors in running state
+    info1, version1 = deployment_info(
+        version="1", is_driver_deployment=is_driver_deployment
+    )
+    updating = deployment_state_manager.deploy(tag, info1)
+    deployment_state = deployment_state_manager._deployment_states[tag]
+    assert updating
+
+    # Single replica of version `version1` should be created and in STARTING state
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.STARTING, 1)],
+    )
+    mocked_replica = deployment_state._replicas.get()[0]
+
+    # The same replica should transition to RUNNING
+    mocked_replica._actor.set_ready()
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+
+    # (simulate controller crashed!) Create a new deployment state
+    # manager, and it should call _recover_from_checkpoint
+    new_deployment_state_manager = create_deployment_state_manager(
+        [ReplicaName.prefix + mocked_replica.replica_tag]
+    )
+
+    # New deployment state should be created and one replica should
+    # be RECOVERING with last-checkpointed target version `version1`
+    new_deployment_state = new_deployment_state_manager._deployment_states[tag]
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.RECOVERING, 1)],
+    )
+
+    # Get the new mocked replica. Note that this represents a newly
+    # instantiated class keeping track of the state of the replica,
+    # but pointing to the same replica actor
+    new_mocked_replica = new_deployment_state._replicas.get()[0]
+    new_mocked_replica._actor.set_ready(version1)
+    any_recovering = new_deployment_state_manager.update()
+    print(new_deployment_state._replicas)
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+    assert not any_recovering
+    # Make sure replica name is the same, meaning the actor is the same
+    assert mocked_replica.replica_tag == new_mocked_replica.replica_tag
+
+
+@pytest.mark.parametrize("is_driver_deployment", [True, False])
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_recover_during_rolling_update(
+    mock_get_all_node_ids, mock_deployment_state_manager_full, is_driver_deployment
+):
+    """Test controller crashes before a replica is updated to new version.
+
+    During recovery, the controller should wait for the version to be fetched from
+    the replica actor. Once it is fetched and the controller realizes the replica
+    has an outdated version, it should be stopped and a new replica should be started
+    with the target version.
+    """
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
+
+    tag = "test_deployment"
+    create_deployment_state_manager, _ = mock_deployment_state_manager_full
+    deployment_state_manager = create_deployment_state_manager()
+
+    # Step 1: Create some deployment info with actors in running state
+    info1, version1 = deployment_info(
+        version="1", is_driver_deployment=is_driver_deployment
+    )
+    updating = deployment_state_manager.deploy(tag, info1)
+    deployment_state = deployment_state_manager._deployment_states[tag]
+    assert updating
+
+    # Single replica of version `version1` should be created and in STARTING state
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.STARTING, 1)],
+    )
+    mocked_replica = deployment_state._replicas.get()[0]
+
+    # The same replica should transition to RUNNING
+    mocked_replica._actor.set_ready()
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+
+    # Now execute a rollout: upgrade the version to "2".
+    info2, version2 = deployment_info(
+        version="2", is_driver_deployment=is_driver_deployment
+    )
+    updating = deployment_state_manager.deploy(tag, info2)
+    assert updating
+
+    # Before the replica could be stopped and restarted, simulate
+    # controller crashed! A new deployment state manager should be
+    # created, and it should call _recover_from_checkpoint
+    new_deployment_state_manager = create_deployment_state_manager(
+        [ReplicaName.prefix + mocked_replica.replica_tag]
+    )
+
+    # New deployment state should be created and one replica should
+    # be RECOVERING with last-checkpointed target version "2"
+    new_deployment_state = new_deployment_state_manager._deployment_states[tag]
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version2,
+        by_state=[(ReplicaState.RECOVERING, 1)],
+    )
+    # Replica should remain recovering and remain labeled as version "2"
+    # before it recovers the real version from the actor
+    if not is_driver_deployment:
+        # NOTE(zcin): because the node id is not available yet when recovering,
+        # if we perform an update before marking the replica as ready, it will
+        # think it needs to bring up a new replica on the node(s) in the cluster.
+        for _ in range(3):
+            new_deployment_state_manager.update()
+            check_counts(
+                new_deployment_state,
+                total=1,
+                version=version2,
+                by_state=[(ReplicaState.RECOVERING, 1)],
+            )
+
+    # Get the new mocked replica. Note that this represents a newly
+    # instantiated class keeping track of the state of the replica,
+    # but pointing to the same replica actor
+    new_mocked_replica = new_deployment_state._replicas.get()[0]
+    # Recover real version "1" (simulate previous actor not yet stopped)
+    # This replica should be stopped
+    new_mocked_replica._actor.set_ready(version1)
+    # At this point the replica is running
+    new_deployment_state_manager.update()
+    # Then deployment state manager notices the replica has an outdated version
+    new_deployment_state_manager.update()
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version1,
+        by_state=[(ReplicaState.STOPPING, 1)],
+    )
+    new_mocked_replica._actor.set_done_stopping()
+    new_deployment_state_manager.update()
+    check_counts(new_deployment_state, total=0)
+
+    # Now that the replica of version "1" has been stopped, a new
+    # replica of version "2" should be started
+    new_deployment_state_manager.update()
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version2,
+        by_state=[(ReplicaState.STARTING, 1)],
+    )
+    new_mocked_replica_version2 = new_deployment_state._replicas.get()[0]
+    new_mocked_replica_version2._actor.set_ready()
+    new_deployment_state_manager.update()
+    check_counts(
+        new_deployment_state,
+        total=1,
+        version=version2,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+    assert mocked_replica.replica_tag != new_mocked_replica_version2.replica_tag
+
+
+@pytest.fixture
 def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock]:
     ray.init()
     timer = MockTimer()
@@ -2195,82 +2474,6 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     deployment_state_manager.update()
     check_counts(deployment_state, total=0)
     assert len(deployment_state_manager.get_deployment_statuses()) == 0
-
-
-@pytest.mark.parametrize("is_driver_deployment", [False, True])
-@patch.object(DriverDeploymentState, "_get_all_node_ids")
-def test_resume_deployment_state_from_replica_tags(
-    mock_get_all_node_ids, is_driver_deployment, mock_deployment_state_manager
-):
-    deployment_state_manager, deployment_state, timer = mock_deployment_state_manager
-    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
-
-    tag = "test"
-
-    # Step 1: Create some deployment info with actors in running state
-    b_info_1, b_version_1 = deployment_info(
-        version="1", is_driver_deployment=is_driver_deployment
-    )
-    updating = deployment_state.deploy(b_info_1)
-    assert updating
-
-    deployment_state_manager._deployment_states[tag] = deployment_state
-
-    # Single replica should be created.
-    any_recovering = deployment_state_manager.update()
-    assert not any_recovering
-    check_counts(
-        deployment_state,
-        total=1,
-        version=b_version_1,
-        by_state=[(ReplicaState.STARTING, 1)],
-    )
-    deployment_state._replicas.get()[0]._actor.set_ready()
-
-    # Now the replica should be marked running.
-    any_recovering = deployment_state_manager.update()
-    assert not any_recovering
-    check_counts(
-        deployment_state,
-        total=1,
-        version=b_version_1,
-        by_state=[(ReplicaState.RUNNING, 1)],
-    )
-
-    mocked_replica = deployment_state._replicas.get(states=[ReplicaState.RUNNING])[0]
-
-    # Step 2: Delete _replicas from deployment_state
-    deployment_state._replicas = ReplicaStateContainer()
-
-    # Step 3: Create new deployment_state by resuming from passed in replicas
-    deployment_state_manager._recover_from_checkpoint(
-        [ReplicaName.prefix + mocked_replica.replica_tag]
-    )
-
-    # Step 4: Ensure new deployment_state is correct
-    # deployment state behind "test" is re-created in recovery flow
-    deployment_state = deployment_state_manager._deployment_states[tag]
-    # Ensure recovering replica begin with no version assigned
-    check_counts(
-        deployment_state, total=1, version=None, by_state=[(ReplicaState.RECOVERING, 1)]
-    )
-
-    # Now the replica should be marked running.
-    deployment_state._replicas.get()[0]._actor.set_ready()
-    deployment_state._replicas.get()[0]._actor.set_starting_version(b_version_1)
-    any_recovering = deployment_state_manager.update()
-    assert not any_recovering
-    check_counts(
-        deployment_state,
-        total=1,
-        version=b_version_1,
-        by_state=[(ReplicaState.RUNNING, 1)],
-    )
-    # Ensure same replica name is used
-    assert deployment_state._replicas.get()[0].replica_tag == mocked_replica.replica_tag
-
-    any_recovering = deployment_state_manager.update()
-    assert not any_recovering
 
 
 def test_stopping_replicas_ranking():
