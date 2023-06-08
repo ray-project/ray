@@ -23,7 +23,7 @@ supersuit==3.7.0
 # For tests on minigrid.
 minigrid==2.1.1
 # For tests on RecSim and Kaggle envs.
-recsim==0.2.4
+recsim==0.2.4; sys_platform != 'darwin' or platform_machine != 'arm64'
 tensorflow_estimator==2.11.0
 # DeepMind's OpenSpiel
 open-spiel==1.2
