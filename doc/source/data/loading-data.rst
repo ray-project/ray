@@ -34,24 +34,6 @@ To view the full list of supported file formats, see the
 
         .. testoutput::
 
-<<<<<<< HEAD
-      .. doctest::
-
-        >>> import ray
-        >>> ds = ray.data.range_tensor(100 * 64 * 64, shape=(64, 64))
-        >>> ds.schema()
-        Column  Type
-        ------  ----
-        data    numpy.ndarray(shape=(64, 64), dtype=int64)
-        >>> ds.show(1)
-        {'data': array([[0, 0, 0, ..., 0, 0, 0],
-               [0, 0, 0, ..., 0, 0, 0],
-               [0, 0, 0, ..., 0, 0, 0],
-               ...,
-               [0, 0, 0, ..., 0, 0, 0],
-               [0, 0, 0, ..., 0, 0, 0],
-               [0, 0, 0, ..., 0, 0, 0]])}
-=======
             Column        Type
             ------        ----
             sepal.length  double
@@ -64,7 +46,6 @@ To view the full list of supported file formats, see the
 
         To read raw images, call :func:`~ray.data.read_images`. Ray Data represents
         images as NumPy ndarrays.
->>>>>>> 369f68eade ([Data][Docs] Revise "Loading data" (#36144))
 
         .. testcode::
             :skipif: True
@@ -613,7 +594,7 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
             ray_ds["train"].take(2)
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
             [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
 
