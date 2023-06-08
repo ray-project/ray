@@ -1838,7 +1838,12 @@ def from_huggingface(
     import datasets
 
     def convert(ds: "datasets.Dataset") -> Dataset:
-        ray_ds = from_arrow(ds.data.table)
+        # To get the resulting Arrow table from a Hugging Face Dataset after
+        # applying transformations (e.g. train_test_split(), shard(), select()),
+        # we create a copy of the Arrow table, which applies the indices
+        # mapping from the transformations.
+        hf_ds_arrow = ds.with_format("arrow")
+        ray_ds = from_arrow(hf_ds_arrow[:])
         logical_plan = LogicalPlan(FromHuggingFace(ds))
         ray_ds._logical_plan = logical_plan
         ray_ds._plan.link_logical_plan(logical_plan)

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Type
 
 from fastapi.encoders import jsonable_encoder
 from starlette.requests import Request
-from starlette.types import Send, ASGIApp
+from starlette.types import Receive, Send, ASGIApp
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
@@ -25,12 +25,8 @@ class HTTPRequestWrapper:
     body: bytes
 
 
-def build_starlette_request(scope, serialized_body: bytes):
-    """Build and return a Starlette Request from ASGI payload.
-
-    This function is intended to be used immediately before task invocation
-    happens.
-    """
+def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
+    """Returns an ASGI receiver that returns the provided buffered body."""
 
     # Simulates receiving HTTP body from TCP socket.  In reality, the body has
     # already been streamed in chunks and stored in serialized_body.
@@ -49,7 +45,7 @@ def build_starlette_request(scope, serialized_body: bytes):
         received = True
         return {"body": serialized_body, "type": "http.request", "more_body": False}
 
-    return Request(scope, mock_receive)
+    return mock_receive
 
 
 class Response:
@@ -144,7 +140,7 @@ class RawASGIResponse(ASGIApp):
         return self.messages[0]["status"]
 
 
-class ASGIHTTPSender(Send):
+class BufferedASGISender(Send):
     """Implement the interface for ASGI sender to save data from varisous
     asgi response type (fastapi, starlette, etc.)
     """
@@ -357,7 +353,7 @@ class ASGIAppReplicaWrapper:
         """
         build_and_return_response = False
         if asgi_sender is None:
-            asgi_sender = ASGIHTTPSender()
+            asgi_sender = BufferedASGISender()
             build_and_return_response = True
 
         await self._asgi_app(
