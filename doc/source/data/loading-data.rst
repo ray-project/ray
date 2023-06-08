@@ -864,6 +864,52 @@ run against the collection.
         collection="my_collection",
     )
 
+Creating synthetic data
+=======================
+
+Synthetic datasets can be useful for testing and benchmarking.
+
+.. tab-set::
+
+    .. tab-item:: Int Range
+
+        To create a synthetic :class:`~ray.data.Dataset` from a range of integers, call
+        :func:`~ray.data.range`. Ray Data stores the integer range in a single column.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.range(10000)
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            id      int64
+
+    .. tab-item:: Tensor Range
+
+        To create a synthetic :class:`~ray.data.Dataset` containing arrays, call
+        :func:`~ray.data.range_tensor`. Ray Data packs an integer range into ndarrays of
+        the provided shape.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.range_tensor(10, shape=(64, 64))
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            data    numpy.ndarray(shape=(64, 64), dtype=int64)
+
 Loading other data sources
 ==========================
 
