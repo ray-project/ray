@@ -9,12 +9,20 @@ set -x
 DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
-PY_MMS=("3.7"
-        "3.8"
-        "3.9"
-        "3.10"
-        "3.11")
 
+if [ "$(uname -m)" = "arm64" ]; then
+  # We Don't build wheels for Python 3.7 on Apple Silicon
+  PY_MMS=("3.8"
+          "3.9"
+          "3.10"
+          "3.11")
+else
+  PY_MMS=("3.7"
+          "3.8"
+          "3.9"
+          "3.10"
+          "3.11")
+fi
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
@@ -25,6 +33,7 @@ if [[ -n "${SKIP_DEP_RES}" ]]; then
     curl -o- https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh | bash
   else
     curl -o- https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh | bash
+  fi
 
   conda init bash
   source ~/.bash_profile
