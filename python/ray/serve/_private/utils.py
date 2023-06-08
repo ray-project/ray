@@ -1,6 +1,7 @@
 import copy
 import importlib
 import inspect
+import logging
 import os
 import pickle
 import random
@@ -27,7 +28,7 @@ import numpy as np
 import pydantic
 import pydantic.json
 import requests
-import logging
+from starlette.requests import Request
 
 import ray
 import ray.util.serialization_addons
@@ -38,7 +39,7 @@ from ray.serve._private.constants import (
     RAY_GCS_RPC_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
+from ray.serve._private.http_util import HTTPRequestWrapper, make_buffered_asgi_receive
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -83,10 +84,10 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 def parse_request_item(request_item):
     if len(request_item.args) == 1:
         arg = request_item.args[0]
-        if request_item.metadata.http_arg_is_pickled:
+        if request_item.metadata.is_http_request:
             assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
-            return (build_starlette_request(arg.scope, arg.body),), {}
+            return (Request(arg.scope, make_buffered_asgi_receive(arg.body)),), {}
 
     return request_item.args, request_item.kwargs
 

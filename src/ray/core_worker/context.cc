@@ -106,6 +106,8 @@ struct WorkerThreadContext {
     put_counter_ = 0;
   }
 
+  uint32_t GetMaxNumGeneratorReturnIndex() const { return max_num_generator_returns_; }
+
  private:
   /// The task ID for current task.
   TaskID current_task_id_;
@@ -389,7 +391,17 @@ const ObjectID WorkerContext::GetGeneratorReturnId(
   if (!put_index.has_value()) {
     current_put_index = GetNextPutIndex();
   } else {
+    // Streaming generator case.
     current_put_index = put_index.value();
+    // We don't allow to return more than GetMaxNumGeneratorReturnIndex()
+    // return values.
+    auto max_generator_returns = GetThreadContext().GetMaxNumGeneratorReturnIndex();
+    if (put_index > max_generator_returns) {
+      RAY_LOG(FATAL)
+          << "The generator returns " << current_put_index
+          << " items, which exceed the maximum number of return values allowed, "
+          << max_generator_returns;
+    }
   }
 
   return ObjectID::FromIndex(current_task_id, current_put_index);
