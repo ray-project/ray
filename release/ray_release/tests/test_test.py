@@ -21,6 +21,12 @@ def _stub_test(val: dict) -> Test:
     return test
 
 
+def test_is_byod_cluster():
+    assert not _stub_test({}).is_byod_cluster()
+    assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
+    assert _stub_test({"cluster": {"byod": {"type": "gpu"}}}).is_byod_cluster()
+
+
 def test_get_python_version():
     assert _stub_test({}).get_python_version() == "3.7"
     assert _stub_test({"python": "3.8"}).get_python_version() == "3.8"

@@ -419,6 +419,8 @@ py_library(
         bk_require("click"),
         bk_require("google-cloud-storage"),
         bk_require("jinja2"),
+        bk_require("pybuildkite"),
+        bk_require("pygithub"),
         bk_require("retry"),
     ],
 )
@@ -615,6 +617,21 @@ py_test(
         "ray_release/tests/_test_run_release_test_sh.py",
         "run_release_test.sh",
     ],
+    exec_compatible_with = [":hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_state_machine",
+    size = "small",
+    srcs = ["ray_release/tests/test_state_machine.py"],
     exec_compatible_with = [":hermetic_python"],
     tags = [
         "release_unit",

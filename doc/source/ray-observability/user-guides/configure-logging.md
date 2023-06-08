@@ -6,7 +6,7 @@ This guide helps you understand and modify the configuration of Ray's logging sy
 
 (logging-directory)=
 ## Logging directory
-By default, Ray log files are stored in a `/tmp/ray/session_*/logs` directory. View the [detailed logging structure](#) to understand how the log files are organized within the logs folder.
+By default, Ray log files are stored in a `/tmp/ray/session_*/logs` directory. View the {ref}`log files in logging directory <logging-directory-structure>` below to understand how they are organized within the logs folder.
 
 :::{note}
 Ray uses ``/tmp/ray`` (for Linux and macOS) as the default temp directory. To change the temp and the logging directory, specify it when you call ``ray start`` or ``ray.init()``.
@@ -28,7 +28,7 @@ A new Ray session creates a new folder to the temp directory. The latest session
 
 Usually, temp directories are cleared up whenever the machines reboot. As a result, log files may get lost whenever your cluster or some of the nodes are stopped or terminated.
 
-If you need to inspect logs after the clusters are stopped or terminated, you need to store and persist the logs. View the instructions for how to process and export logs for [clusters on VMs](#) and [KubeRay Clusters](#).
+If you need to inspect logs after the clusters are stopped or terminated, you need to store and persist the logs. View the instructions for how to process and export logs for {ref}`clusters on VMs <vm-logging>` and {ref}`KubeRay Clusters <kuberay-logging>`.
 
 (logging-directory-structure)=
 ## Log files in logging directory
@@ -58,18 +58,18 @@ System logs may include information about your applications. For example, ``runt
 - ``raylet.[out|err]``: A log file of raylets.
 - ``redis-shard_[shard_index].[out|err]``: Redis shard log files.
 - ``redis.[out|err]``: Redis log files.
-- ``runtime_env_agent.log``: Every Ray node has one agent that manages :ref:`runtime environment <runtime-environments>` creation, deletion, and caching.
+- ``runtime_env_agent.log``: Every Ray node has one agent that manages :ref:`Runtime Environment <runtime-environments>` creation, deletion, and caching.
   This is the log file of the agent containing logs of create or delete requests and cache hits and misses.
   For the logs of the actual installations (for example, ``pip install`` logs), see the ``runtime_env_setup-[job_id].log`` file (see below).
-- ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
-- ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a Task, Actor or Job.  This file is only present if a runtime environment is installed.
+- ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
+- ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a Task, Actor or Job.  This file is only present if a Runtime Environment is installed.
 
 
 (log-redirection-to-driver)=
-## Logging to the driver
-By default, stdout and stderr for Tasks and Actors stream to the Ray driver (the entrypoint script that calls ``ray.init``). It helps users aggregate the logs for the distributed Ray application in a single place.
+## Redirecting Worker logs to the Driver
+By default, Worker stdout and stderr for Tasks and Actors stream to the Ray Driver (the entrypoint script that calls ``ray.init``). It helps users aggregate the logs for the distributed Ray application in a single place.
 
-```{literalinclude} doc_code/app_logging.py
+```{literalinclude} ../doc_code/app_logging.py
 ```
 
 All stdout emitted from the ``print`` method are printed to the driver with a ``(Task or Actor repr, process ID, IP address)`` prefix.
@@ -328,20 +328,6 @@ If you need node IP, use {py:obj}`ray.nodes` API to fetch all nodes and map the 
 
 :::
 
-:::{tab-item} Ray Worker
-Get the Worker ID.
-
-```python
-import ray
-# Initiate a driver.
-ray.init()
-
-@ray.remote
-def task():
-    # Get the ID of the Worker process where the task is running
-    worker_id = ray.get_runtime_context().get_worker_id
-```
-:::
 
 ::::
 
