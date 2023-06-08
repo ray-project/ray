@@ -403,7 +403,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    # This is needed or else the Ray Client tests run into a gRPC forking problem
+    # This is needed or else the Ray Client tests run into a gRPC forking problem,
     # similar to https://github.com/grpc/grpc/issues/31885
     - pip install pip install grpcio==1.50.0
     - bazel test --config=ci $(./scripts/bazel_export_options)
