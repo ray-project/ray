@@ -743,7 +743,7 @@ class TuneTerminalReporter(TuneReporterBase):
     def _print_heartbeat(self, trials, *sys_args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold and not force:
             return
-        heartbeat_strs, table_data = self._get_heartbeat(
+        heartbeat_strs, fail_table_data = self._get_heartbeat(
             trials, *sys_args, force_full_output=force
         )
 
@@ -752,8 +752,8 @@ class TuneTerminalReporter(TuneReporterBase):
         # now print the table using Tabulate
         more_infos = []
         all_data = []
-        header = table_data.header
-        for sub_table in table_data.data:
+        fail_header = fail_table_data.header
+        for sub_table in fail_table_data.data:
             all_data.extend(sub_table.trial_infos)
             if sub_table.more_info:
                 more_infos.append(sub_table.more_info)
@@ -761,7 +761,7 @@ class TuneTerminalReporter(TuneReporterBase):
         print(
             tabulate(
                 all_data,
-                headers=header,
+                headers=fail_header,
                 tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
             )
@@ -775,26 +775,25 @@ class TuneTerminalReporter(TuneReporterBase):
             return
 
         print(f"Number of errored trials: {len(trials_with_error)}")
-        header = ["Trial name", "# failures", "error file"]
-        table_data = [
+        fail_header = ["Trial name", "# failures", "error file"]
+        fail_table_data = [
             [
                 str(trial),
-                str(trial.num_failures)
-                + ("" if trial.num_failures_after_restore else "*"),
+                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
                 trial.error_file,
             ]
             for trial in trials_with_error
         ]
         print(
             tabulate(
-                table_data,
-                headers=header,
+                fail_table_data,
+                headers=fail_header,
                 tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
                 colalign=("left", "right", "left"),
             )
         )
-        if any(trial.num_failures_after_restore == 0 for trial in trials_with_error):
+        if any(trial.status == Trial.TERMINATED for trial in trials_with_error):
             print("* The trial terminated successfully after retrying.")
         print()
 
