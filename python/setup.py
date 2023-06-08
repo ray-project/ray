@@ -258,7 +258,7 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
         "client": [
-            # The Ray client needs a specific range or gRPC to work:
+            # The Ray client needs a specific range of gRPC to work:
             # Tracking issue: https://github.com/ray-project/ray/issues/30984
             "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa:E501
             "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa:E501
