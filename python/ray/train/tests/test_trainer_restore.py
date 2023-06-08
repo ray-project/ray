@@ -3,6 +3,7 @@ import pytest
 import warnings
 
 import ray
+from ray import air
 from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
 from ray.air._internal.remote_storage import upload_to_uri
 from ray.train.base_trainer import BaseTrainer
@@ -448,6 +449,55 @@ def test_trainer_can_restore_utility(tmp_path, upload_dir):
         upload_to_uri(tmp_path / name, str(path))
 
     assert DataParallelTrainer.can_restore(path)
+
+
+@pytest.mark.parametrize("eventual_success", [True, False])
+def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
+    """Test auto-resume of a Train run when setting max_failures > 0."""
+
+    num_failures = 2 if eventual_success else 3
+    max_retries = 2
+    final_iter = 10
+
+    def train_func():
+        ckpt = session.get_checkpoint()
+        itr = 1
+        restore_count = 0
+        if ckpt:
+            ckpt = ckpt.to_dict()
+            itr = ckpt["iter"] + 1
+            restore_count = ckpt["restore_count"] + 1
+
+        for i in range(itr, final_iter + 1):
+            session.report(
+                dict(test=i, training_iteration=i),
+                checkpoint=Checkpoint.from_dict(
+                    dict(iter=i, restore_count=restore_count)
+                ),
+            )
+            if restore_count < num_failures:
+                raise RuntimeError("try to fail me")
+
+    trainer = DataParallelTrainer(
+        train_func,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            failure_config=air.FailureConfig(max_failures=max_retries)
+        ),
+    )
+
+    if not eventual_success:
+        # If we gave up due to hitting our max retry attempts,
+        # then `trainer.fit` should raise the last error we encountered.
+        with pytest.raises(TrainingFailedError):
+            trainer.fit()
+    else:
+        # If we encounter errors but eventually succeed, `trainer.fit` should NOT
+        # raise any of those errors.
+        result = trainer.fit()
+        assert not result.error
+        checkpoint = result.checkpoint.to_dict()
+        assert checkpoint["iter"] == final_iter
 
 
 if __name__ == "__main__":
