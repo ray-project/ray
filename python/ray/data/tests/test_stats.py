@@ -34,6 +34,30 @@ def dummy_map_batches(x):
     return x
 
 
+def test_streaming_split_stats(ray_start_regular_shared):
+    context = DataContext.get_current()
+    ds = ray.data.range(1000, parallelism=10)
+    it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
+    list(it.iter_batches())
+    stats = it.stats()
+    assert (
+        canonicalize(stats)
+        == """Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
+
+Stage N split(N, equal=False): 
+* Extra metrics: {'num_output_N': N}
+"""
+    )
+
+
 def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
     context = DataContext.get_current()
     context.optimize_fuse_stages = True
