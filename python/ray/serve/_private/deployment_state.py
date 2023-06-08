@@ -1378,7 +1378,7 @@ class DeploymentState:
     def delete(self) -> None:
         self._set_target_state_deleting()
 
-    def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> int:
+    def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
         """Stop or update replicas with outdated versions.
 
         Stop replicas with versions that require the actor to be restarted, and
@@ -1390,24 +1390,25 @@ class DeploymentState:
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
-            states=[ReplicaState.RUNNING],
-            max_replicas=max_to_stop,
+            states=[ReplicaState.STARTING, ReplicaState.RUNNING],
             ranking_function=rank_replicas_for_stopping,
         )
         replicas_changed = False
         code_version_changes = 0
         reconfigure_changes = 0
         for replica in replicas_to_update:
+            if (code_version_changes + reconfigure_changes) >= max_to_stop:
+                self._replicas.add(replica.actor_details.state, replica)
             # If the new version requires the actors to be restarted, stop the replica.
             # A new one with the correct version will be started later as part of the
             # normal scale-up process.
-            if replica.version.requires_actor_restart(self._target_state.version):
+            elif replica.version.requires_actor_restart(self._target_state.version):
                 code_version_changes += 1
                 self._stop_replica(replica)
                 replicas_changed = True
             # Otherwise, only lightweight options in deployment config is a mismatch, so
             # we update it dynamically without restarting the replica.
-            else:
+            elif replica.actor_details.state == ReplicaState.RUNNING:
                 reconfigure_changes += 1
                 if replica.version.requires_long_poll_broadcast(
                     self._target_state.version
@@ -1422,6 +1423,9 @@ class DeploymentState:
                     "Adding UPDATING to replica_tag: "
                     f"{replica.replica_tag}, deployment_name: {self._name}"
                 )
+            # We don't allow going from STARTING to UPDATING.
+            else:
+                self._replicas.add(replica.actor_details.state, replica)
 
         if code_version_changes > 0:
             logger.info(
@@ -1472,7 +1476,7 @@ class DeploymentState:
             self._target_state.num_replicas
             < old_running_replicas + old_stopping_replicas
         ):
-            return 0
+            return False
 
         # The number of replicas that are currently in transition between
         # an old version and the new version. Note that we cannot directly

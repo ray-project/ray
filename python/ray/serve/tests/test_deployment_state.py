@@ -936,6 +936,73 @@ def test_deploy_new_config_same_code_version(
 
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
 @patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_deploy_new_config_same_code_version_2(
+    mock_get_all_node_ids, mock_deployment_state
+):
+    # Make sure we don't transition from STARTING to UPDATING directly.
+    deployment_state, timer = mock_deployment_state
+    mock_get_all_node_ids.return_value = [("node-id", "node-id")]
+
+    b_info_1, b_version_1 = deployment_info(version="1")
+    updated = deployment_state.deploy(b_info_1)
+    assert updated
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    # Create the replica initially.
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=b_version_1,
+        total=1,
+        by_state=[(ReplicaState.STARTING, 1)],
+    )
+
+    # Update to a new config without changing the code version.
+    b_info_2, b_version_2 = deployment_info(version="1", user_config={"hello": "world"})
+    updated = deployment_state.deploy(b_info_2)
+    assert updated
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
+
+    deployment_state.update()
+    # Since it's STARTING, we cannot transition to UPDATING
+    check_counts(
+        deployment_state,
+        version=b_version_1,
+        total=1,
+        by_state=[(ReplicaState.STARTING, 1)],
+    )
+
+    deployment_state._replicas.get()[0]._actor.set_ready()
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=b_version_1,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+    deployment_state.update()
+    check_counts(
+        deployment_state,
+        version=b_version_2,
+        total=1,
+        by_state=[(ReplicaState.UPDATING, 1)],
+    )
+
+    # Mark the replica as ready.
+    deployment_state._replicas.get()[0]._actor.set_ready()
+    deployment_state.update()
+    check_counts(deployment_state, total=1)
+    check_counts(
+        deployment_state,
+        version=b_version_2,
+        total=1,
+        by_state=[(ReplicaState.RUNNING, 1)],
+    )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY
+
+
+@pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
 def test_deploy_new_config_new_version(mock_get_all_node_ids, mock_deployment_state):
     # Deploying a new config with a new version should deploy a new replica.
     deployment_state, timer = mock_deployment_state
