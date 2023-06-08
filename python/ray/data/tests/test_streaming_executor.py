@@ -1,7 +1,8 @@
 import collections
-import pytest
 import time
 from unittest.mock import MagicMock
+
+import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -9,26 +10,25 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
 )
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.streaming_executor import (
     _debug_dump_topology,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     AutoscalingState,
+    DownstreamMemoryInfo,
     OpState,
     TopologyResourceUsage,
-    DownstreamMemoryInfo,
+    _execution_allowed,
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
-    _execution_allowed,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.data.tests.conftest import *  # noqa
-
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 EMPTY_DOWNSTREAM_USAGE = collections.defaultdict(lambda: DownstreamMemoryInfo(0, 0))
 NO_USAGE = TopologyResourceUsage(ExecutionResources(), EMPTY_DOWNSTREAM_USAGE)

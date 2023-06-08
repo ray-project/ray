@@ -1801,30 +1801,6 @@
 
   alert: tune_tests
 
-- name: tune_cloud_durable_upload_rllib_str_byod
-  group: Tune cloud tests
-  working_dir: tune_tests/cloud_tests
-  python: "3.8"
-  stable: false
-
-  frequency: manual
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config_ml.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-
-    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str
-      --bucket s3://tune-cloud-tests/durable_upload_rllib_str
-
-    wait_for_nodes:
-      num_nodes: 4
-
 - name: tune_cloud_durable_upload_rllib_str
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -2244,8 +2220,12 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.8"
   team: core
   cluster:
+    byod:
+      pre_run_cmds:
+        - export RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2353,8 +2333,12 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.8"
   team: core
   cluster:
+    byod:
+      pre_run_cmds:
+        - export RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2389,8 +2373,12 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.8"
   team: core
   cluster:
+    byod:
+      pre_run_cmds:
+        - export RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2466,8 +2454,12 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.8"
   team: core
   cluster:
+    byod:
+      pre_run_cmds:
+        - export RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2502,8 +2494,12 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.8"
   team: core
   cluster:
+    byod:
+      pre_run_cmds:
+        - export RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2538,8 +2534,12 @@
   working_dir: long_running_tests
 
   frequency: weekly
+  python: "3.8"
   team: core
   cluster:
+    byod:
+      pre_run_cmds:
+        - export RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -3664,7 +3664,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf2
+    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=tf2
 
   alert: default
 
@@ -3693,7 +3693,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=torch
 
   alert: default
 
@@ -3720,7 +3720,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=tf2
+    script: python learning_tests/run.py --yaml-sub-dir=appo/old_stack --framework=tf
 
   alert: default
 
@@ -4155,7 +4155,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf2
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/new_stack --framework=tf2
 
   alert: default
 
@@ -4184,7 +4184,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/new_stack --framework=torch
 
   alert: default
 
@@ -4543,8 +4543,12 @@
   working_dir: nightly_tests
 
   frequency: nightly
+  python: "3.8"
   team: core
   cluster:
+    byod:
+      pre_run_cmds:
+        - export RAY_worker_killing_policy=retriable_lifo
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
@@ -4569,8 +4573,10 @@
   working_dir: nightly_tests
 
   frequency: nightly
+  python: "3.8"
   team: core
   cluster:
+    byod: {}
     cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
@@ -4592,8 +4598,10 @@
   working_dir: nightly_tests
 
   frequency: nightly
+  python: "3.8"
   team: core
   cluster:
+    byod: {}
     cluster_env: decision_tree/decision_tree_app_config.yaml
     cluster_compute: decision_tree/autoscaling_compute.yaml
 
@@ -4615,8 +4623,12 @@
   working_dir: nightly_tests
 
   frequency: nightly
+  python: "3.8"
   team: core
   cluster:
+    byod:
+      pre_run_cmds:
+        - export RAY_worker_killing_policy=retriable_lifo
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
@@ -4633,23 +4645,6 @@
       cluster:
         cluster_env: shuffle/shuffle_app_config.yaml
         cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
-
-- name: microbenchmark_byod
-  group: core-daily-test
-  team: core
-  frequency: manual
-  working_dir: microbenchmark
-  python: "3.8"
-
-  cluster:
-    byod: 
-      type: cpu
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_64.yaml
-
-  run:
-    timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
 
 - name: microbenchmark
   group: core-daily-test
@@ -4686,6 +4681,7 @@
   python: "3.8"
 
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_64.yaml
 

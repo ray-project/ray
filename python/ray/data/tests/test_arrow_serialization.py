@@ -3,29 +3,29 @@ import os
 import sys
 from unittest import mock
 
-from pkg_resources._vendor.packaging.version import parse as parse_version
-import pytest
-from pytest_lazyfixture import lazy_fixture
+import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
-import numpy as np
+import pytest
+from pkg_resources._vendor.packaging.version import parse as parse_version
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 import ray.cloudpickle as pickle
-from ray._private.utils import _get_pyarrow_version
-from ray.tests.conftest import *  # noqa
 from ray._private.arrow_serialization import (
-    _bytes_for_bits,
     _align_bit_offset,
+    _bytes_for_bits,
+    _copy_bitpacked_buffer_if_needed,
     _copy_buffer_if_needed,
     _copy_normal_buffer_if_needed,
-    _copy_bitpacked_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
+from ray._private.utils import _get_pyarrow_version
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowVariableShapedTensorArray,
 )
+from ray.tests.conftest import *  # noqa
 
 
 @pytest.mark.parametrize(

@@ -1,15 +1,10 @@
-import pytest
+import numpy as np
 import pandas as pd
 import pyarrow as pa
-import numpy as np
+import pytest
 
 import ray
-
-from ray.data.extensions import (
-    TensorDtype,
-    ArrowTensorType,
-    ArrowTensorArray,
-)
+from ray.data.extensions import ArrowTensorArray, ArrowTensorType, TensorDtype
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
