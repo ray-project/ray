@@ -351,10 +351,7 @@ def create_replica_wrapper(name: str):
         async def reconfigure(
             self,
             deployment_config: DeploymentConfig,
-            _after: Optional[Any] = None,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            # Unused `_after` argument is for scheduling: passing an ObjectRef
-            # allows delaying this call until after the `_after` call has returned.
             try:
                 await self.replica.reconfigure(deployment_config)
                 return await self._get_metadata()

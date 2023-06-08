@@ -507,7 +507,7 @@ class ActorReplicaWrapper:
                 deployment_config.user_config
             )
             self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-                deployment_config, self._ready_obj_ref
+                deployment_config
             )
 
         self._version = version
@@ -1390,7 +1390,7 @@ class DeploymentState:
         """
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
-            states=[ReplicaState.STARTING, ReplicaState.RUNNING],
+            states=[ReplicaState.RUNNING],
             max_replicas=max_to_stop,
             ranking_function=rank_replicas_for_stopping,
         )
