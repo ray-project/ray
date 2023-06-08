@@ -316,9 +316,10 @@ class TfLearner(Learner):
                 )
 
     @override(Learner)
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:
         batch = _convert_to_tf(batch.policy_batches)
-        batch = NestedDict(batch)
+        length = max(len(b) for b in batch.values())
+        batch = MultiAgentBatch(batch, env_steps=length)
         return batch
 
     @override(Learner)
