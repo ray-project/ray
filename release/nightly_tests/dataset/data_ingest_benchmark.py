@@ -170,10 +170,7 @@ def run_ingest_bulk(dataset_size_gb, num_workers):
     ]
     ds = ds.map_batches(lambda df: df * 2, batch_format="pandas")
     splits = ds.split(num_workers, equal=True, locality_hints=consumers)
-    future = [
-        consumers[i].consume.remote(s)
-        for i, s in enumerate(splits)
-    ]
+    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
     ray.get(future)
 
     # Example ballpark number for transformation (5s):
@@ -203,10 +200,7 @@ def run_ingest_dataset_pipeline(dataset_size_gb, num_workers):
         .map_batches(lambda df: df * 2, batch_format="pandas")
     )
     splits = p.split(num_workers, equal=True, locality_hints=consumers)
-    future = [
-        consumers[i].consume.remote(s)
-        for i, s in enumerate(splits)
-    ]
+    future = [consumers[i].consume.remote(s) for i, s in enumerate(splits)]
     ray.get(future)
 
     # Example ballpark numbers:

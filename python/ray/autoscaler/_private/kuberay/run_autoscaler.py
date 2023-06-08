@@ -86,8 +86,16 @@ def _setup_logging() -> None:
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
         max_bytes=ray_constants.LOGGING_ROTATE_BYTES,
         backup_count=ray_constants.LOGGING_ROTATE_BACKUP_COUNT,
-        logger_name="ray",  # Root of the logging hierarchy for Ray code.
     )
-    # Logs will also be written to the container's stdout.
+
+    # For the autoscaler, the root logger _also_ needs to write to stderr, not just
+    # ray_constants.MONITOR_LOG_FILE_NAME.
+    level = logging.getLevelName(ray_constants.LOGGER_LEVEL.upper())
+    stderr_handler = logging._StderrHandler()
+    stderr_handler.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
+    stderr_handler.setLevel(level)
+    logging.root.setLevel(level)
+    logging.root.addHandler(stderr_handler)
+
     # The stdout handler was set up in the Ray CLI entry point.
     # See ray.scripts.scripts::cli().

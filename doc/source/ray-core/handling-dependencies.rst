@@ -355,7 +355,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   The modules will be downloaded to each node on the cluster.
 
-  Note: Setting options (1) and (3) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
+  Note: Setting options (1), (3) and (4) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
 
   Note: For option (1), if the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
 
@@ -683,7 +683,7 @@ Here is a list of different use cases and corresponding URLs:
     runtime_env = {"working_dir": ("https://github.com"
                                    "/[username]/[repository]/archive/[commit hash].zip")}
 
-- Example: Retrieve package from a private GitHub repository using a Personal Access Token
+- Example: Retrieve package from a private GitHub repository using a Personal Access Token **during development**. **For production** see :ref:`this document <runtime-env-auth>` to learn how to authenticate private dependencies safely.
 
 .. testcode::
 
@@ -775,7 +775,7 @@ Example log output:
   ray.init(runtime_env={"pip": ["requests"]})
 
 .. testoutput::
-    :options: +SKIP
+    :options: +MOCK
 
     (pid=runtime_env) 2022-02-28 14:12:33,653       INFO pip.py:188 -- Creating virtualenv at /tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv, current python dir /Users/user/anaconda3/envs/ray-py38
     (pid=runtime_env) 2022-02-28 14:12:33,653       INFO utils.py:76 -- Run cmd[1] ['/Users/user/anaconda3/envs/ray-py38/bin/python', '-m', 'virtualenv', '--app-data', '/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv_app_data', '--reset-app-data', '--no-periodic-update', '--system-site-packages', '--no-download', '/tmp/ray/session_2022-02-28_14-12-29_909064_87908/runtime_resources/pip/0cc818a054853c3841171109300436cad4dcf594/virtualenv']

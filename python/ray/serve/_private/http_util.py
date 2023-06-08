@@ -4,12 +4,13 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, Type
+from typing import Any, Dict, List, Optional, Type
 
-import starlette.responses
-import starlette.requests
-from starlette.types import Send, ASGIApp
 from fastapi.encoders import jsonable_encoder
+from starlette.requests import Request
+from starlette.types import Receive, Send, ASGIApp
+from uvicorn.config import Config
+from uvicorn.lifespan.on import LifespanOn
 
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -24,12 +25,8 @@ class HTTPRequestWrapper:
     body: bytes
 
 
-def build_starlette_request(scope, serialized_body: bytes):
-    """Build and return a Starlette Request from ASGI payload.
-
-    This function is intended to be used immediately before task invocation
-    happens.
-    """
+def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
+    """Returns an ASGI receiver that returns the provided buffered body."""
 
     # Simulates receiving HTTP body from TCP socket.  In reality, the body has
     # already been streamed in chunks and stored in serialized_body.
@@ -48,7 +45,7 @@ def build_starlette_request(scope, serialized_body: bytes):
         received = True
         return {"body": serialized_body, "type": "http.request", "more_body": False}
 
-    return starlette.requests.Request(scope, mock_receive)
+    return mock_receive
 
 
 class Response:
@@ -57,7 +54,7 @@ class Response:
     It is expected to be called in async context and pass along
     `scope, receive, send` as in ASGI spec.
 
-    >>> from ray.serve.http_util import Response
+    >>> from ray.serve.http_util import Response  # doctest: +SKIP
     >>> scope, receive = ... # doctest: +SKIP
     >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
@@ -134,7 +131,7 @@ class RawASGIResponse(ASGIApp):
     def __init__(self, messages):
         self.messages = messages
 
-    async def __call__(self, _scope, _receive, send):
+    async def __call__(self, scope, receive, send):
         for message in self.messages:
             await send(message)
 
@@ -143,7 +140,7 @@ class RawASGIResponse(ASGIApp):
         return self.messages[0]["status"]
 
 
-class ASGIHTTPSender(Send):
+class BufferedASGISender(Send):
     """Implement the interface for ASGI sender to save data from varisous
     asgi response type (fastapi, starlette, etc.)
     """
@@ -157,6 +154,45 @@ class ASGIHTTPSender(Send):
 
     def build_asgi_response(self) -> RawASGIResponse:
         return RawASGIResponse(self.messages)
+
+
+class ASGIHTTPQueueSender(Send):
+    """ASGI sender that enables polling for the sent messages off a queue.
+
+    This class assumes a single consumer of the queue (concurrent calls to
+    `get_messages_nowait` and `wait_for_message` may result in undefined behavior).
+    """
+
+    def __init__(self):
+        self._message_queue = asyncio.Queue()
+        self._new_message_event = asyncio.Event()
+
+    async def __call__(self, message: Dict[str, Any]):
+        assert message["type"] in ("http.response.start", "http.response.body")
+        await self._message_queue.put(message)
+        self._new_message_event.set()
+
+    def get_messages_nowait(self) -> List[Dict[str, Any]]:
+        """Returns all messages that are currently available (non-blocking).
+
+        At least one message will be present if `wait_for_message` had previously
+        returned and a subsequent call to `wait_for_message` blocks until at
+        least one new message is available.
+        """
+        messages = []
+        while not self._message_queue.empty():
+            messages.append(self._message_queue.get_nowait())
+
+        self._new_message_event.clear()
+        return messages
+
+    async def wait_for_message(self):
+        """Wait until at least one new message is available.
+
+        If a message is available, this method will return immediately on each call
+        until `get_messages_nowait` is called.
+        """
+        await self._new_message_event.wait()
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
@@ -282,3 +318,59 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
             f"Setting SO_REUSEPORT failed because of {e}. SO_REUSEPORT is disabled."
         )
         return False
+
+
+class ASGIAppReplicaWrapper:
+    """Provides a common wrapper for replicas running an ASGI app."""
+
+    def __init__(self, app: ASGIApp):
+        self._asgi_app = app
+
+        # Use uvicorn's lifespan handling code to properly deal with
+        # startup and shutdown event.
+        self._serve_asgi_lifespan = LifespanOn(Config(self._asgi_app, lifespan="on"))
+
+        # Replace uvicorn logger with our own.
+        self._serve_asgi_lifespan.logger = logger
+
+    async def _run_asgi_lifespan_startup(self):
+        # LifespanOn's logger logs in INFO level thus becomes spammy
+        # Within this block we temporarily uplevel for cleaner logging
+        from ray.serve._private.logging_utils import LoggingContext
+
+        with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
+            await self._serve_asgi_lifespan.startup()
+
+    async def __call__(
+        self, request: Request, asgi_sender: Optional[Send] = None
+    ) -> Optional[ASGIApp]:
+        """Calls into the wrapped ASGI app.
+
+        If asgi_sender is provided, it's passed into the app and nothing is
+        returned.
+
+        If no asgi_sender is provided, an ASGI response is built and returned.
+        """
+        build_and_return_response = False
+        if asgi_sender is None:
+            asgi_sender = BufferedASGISender()
+            build_and_return_response = True
+
+        await self._asgi_app(
+            request.scope,
+            request.receive,
+            asgi_sender,
+        )
+
+        if build_and_return_response:
+            return asgi_sender.build_asgi_response()
+
+    # NOTE: __del__ must be async so that we can run ASGI shutdown
+    # in the same event loop.
+    async def __del__(self):
+        # LifespanOn's logger logs in INFO level thus becomes spammy.
+        # Within this block we temporarily uplevel for cleaner logging.
+        from ray.serve._private.logging_utils import LoggingContext
+
+        with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
+            await self._serve_asgi_lifespan.shutdown()

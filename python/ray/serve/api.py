@@ -2,13 +2,12 @@ import collections
 import inspect
 import logging
 from typing import Any, Callable, Dict, Optional, Tuple, Union
+from functools import wraps
 
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from starlette.requests import Request
-from uvicorn.config import Config
-from uvicorn.lifespan.on import LifespanOn
 
+import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
 from ray.util.annotations import Deprecated, PublicAPI
@@ -29,14 +28,17 @@ from ray.serve.context import (
     _set_global_client,
 )
 from ray.serve.deployment import Application, Deployment
+from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeSyncHandle
-from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve._private.logging_utils import LoggingContext
+from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
+    make_fastapi_class_based_view,
+)
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
@@ -45,6 +47,7 @@ from ray.serve._private.utils import (
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
     record_serve_tag,
+    extract_self_if_method_call,
 )
 
 from ray.serve._private import api as _private_api
@@ -209,57 +212,27 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
-        class ASGIAppWrapper(cls):
-            async def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
+        class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
+            def __init__(self, *args, **kwargs):
+                # Call user-defined constructor.
+                cls.__init__(self, *args, **kwargs)
 
                 record_serve_tag("SERVE_FASTAPI_USED", "1")
                 install_serve_encoders_to_fastapi()
+                ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
-                self._serve_app = frozen_app
-
-                # Use uvicorn's lifespan handling code to properly deal with
-                # startup and shutdown event.
-                self._serve_asgi_lifespan = LifespanOn(
-                    Config(self._serve_app, lifespan="on")
-                )
-                # Replace uvicorn logger with our own.
-                self._serve_asgi_lifespan.logger = logger
-                # LifespanOn's logger logs in INFO level thus becomes spammy
-                # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.startup()
-
-            async def __call__(self, request: Request):
-                sender = ASGIHTTPSender()
-                await self._serve_app(
-                    request.scope,
-                    request.receive,
-                    sender,
-                )
-                return sender.build_asgi_response()
-
-            # NOTE: __del__ must be async so that we can run asgi shutdown
-            # in the same event loop.
             async def __del__(self):
-                # LifespanOn's logger logs in INFO level thus becomes spammy
-                # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.shutdown()
+                await ASGIAppReplicaWrapper.__del__(self)
 
-                # Make sure to call user's del method as well.
-                super_cls = super()
-                if hasattr(super_cls, "__del__"):
-                    super_cls.__del__()
+                # Call user-defined destructor if defined.
+                if hasattr(cls, "__del__"):
+                    cls.__del__(self)
 
-        ASGIAppWrapper.__name__ = cls.__name__
+        ASGIIngressWrapper.__name__ = cls.__name__
         if hasattr(frozen_app, "docs_url"):
-            ASGIAppWrapper.__fastapi_docs_path__ = frozen_app.docs_url
-        return ASGIAppWrapper
+            ASGIIngressWrapper.__fastapi_docs_path__ = frozen_app.docs_url
+
+        return ASGIIngressWrapper
 
     return decorator
 
@@ -505,6 +478,11 @@ def run(
     for deployment in deployments:
         # Overwrite route prefix
         if route_prefix is not DEFAULT.VALUE and deployment._route_prefix is not None:
+            if route_prefix is not None and not route_prefix.startswith("/"):
+                raise ValueError(
+                    "The route_prefix must start with a forward slash ('/')"
+                )
+
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
@@ -638,7 +616,78 @@ def multiplexed(
         number if you want to save memory on the node resource.
     """
 
-    raise NotImplementedError("Multiplexed deployment is not supported yet.")
+    if func is not None:
+        if not callable(func):
+            raise TypeError(
+                "The `multiplexed` decorator must be used with a function or method."
+            )
+
+        # TODO(Sihan): Make the API accept the sync function as well.
+        # https://github.com/ray-project/ray/issues/35356
+        if not inspect.iscoroutinefunction(func):
+            raise TypeError(
+                "@serve.multiplexed can only be used to decorate async "
+                "functions or methods."
+            )
+        signature = inspect.signature(func)
+        if len(signature.parameters) == 0 or len(signature.parameters) > 2:
+            raise TypeError(
+                "@serve.multiplexed can only be used to decorate functions or methods "
+                "with at least one 'model_id: str' argument."
+            )
+
+    if type(max_num_models_per_replica) is not int:
+        raise TypeError("max_num_models_per_replica must be an integer.")
+
+    if max_num_models_per_replica != -1 and max_num_models_per_replica <= 0:
+        raise ValueError("max_num_models_per_replica must be positive.")
+
+    def _multiplex_decorator(func: Callable):
+        @wraps(func)
+        async def _multiplex_wrapper(*args):
+            args_check_error_msg = (
+                "Functions decorated with `@serve.multiplexed` must take exactly one"
+                "the multiplexed model ID (str), but got {}"
+            )
+            if not args:
+                raise TypeError(
+                    args_check_error_msg.format("no arguments are provided.")
+                )
+            self = extract_self_if_method_call(args, func)
+
+            # User defined multiplexed function can be a standalone function or a
+            # method of a class. If it is a method of a class, the first argument
+            # is self.
+            if self is None:
+                if len(args) != 1:
+                    raise TypeError(
+                        args_check_error_msg.format("more than one arguments.")
+                    )
+                multiplex_object = func
+                model_id = args[0]
+            else:
+                # count self as an argument
+                if len(args) != 2:
+                    raise TypeError(
+                        args_check_error_msg.format("more than one arguments.")
+                    )
+                multiplex_object = self
+                model_id = args[1]
+            multiplex_attr = f"__serve_multiplex_{func.__name__}"
+            # If the multiplexed function is called for the first time,
+            # create a model multiplex wrapper and cache it in the multiplex object.
+            if not hasattr(multiplex_object, multiplex_attr):
+                model_multiplex_wrapper = _ModelMultiplexWrapper(
+                    func, self, max_num_models_per_replica
+                )
+                setattr(multiplex_object, multiplex_attr, model_multiplex_wrapper)
+            else:
+                model_multiplex_wrapper = getattr(multiplex_object, multiplex_attr)
+            return await model_multiplex_wrapper.load_model(model_id)
+
+        return _multiplex_wrapper
+
+    return _multiplex_decorator(func) if callable(func) else _multiplex_decorator
 
 
 @PublicAPI(stability="alpha")
@@ -667,4 +716,5 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
-    raise NotImplementedError("get_multiplexed_model_id API is not supported yet.")
+    _request_context = ray.serve.context._serve_request_context.get()
+    return _request_context.multiplexed_model_id

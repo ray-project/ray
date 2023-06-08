@@ -1,15 +1,9 @@
 import os
+import pytorch_lightning as pl
+
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
-import pytorch_lightning as pl
 from pytorch_lightning.plugins.environments import ClusterEnvironment
-
-from packaging.version import Version
-
-if Version(pl.__version__) >= Version("2.0.0"):
-    from pytorch_lightning.callbacks.progress import ProgressBar as ProgressBarBase
-else:
-    from pytorch_lightning.callbacks.progress.base import ProgressBarBase
 
 from ray.air import session
 from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
@@ -244,7 +238,7 @@ class LightningTrainer(TorchTrainer):
     run ``pytorch_lightning.Trainer.fit``.
 
     Example:
-        .. testcode::
+        .. code-block:: python
 
             import torch
             import torch.nn.functional as F
@@ -331,12 +325,6 @@ class LightningTrainer(TorchTrainer):
             )
             result = trainer.fit()
             result
-
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
-
-        ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
@@ -509,13 +497,6 @@ def _lightning_train_loop_per_worker(config):
     lightning_module = module_class(**module_init_config)
 
     # Prepare Lightning Trainer
-    # Disable the Lightning progress bar to avoid corrupted AIR outputs,
-    # unless users provide a customized progress bar callback.
-    trainer_config["enable_progress_bar"] = any(
-        isinstance(callback, ProgressBarBase)
-        for callback in trainer_config.get("callbacks", [])
-    )
-
     # Setup trainer's parallel devices
     if trainer_config.get("accelerator", None) == "gpu":
         current_device = get_worker_root_device()
@@ -552,9 +533,13 @@ def _lightning_train_loop_per_worker(config):
 
     trainer = pl.Trainer(**trainer_config)
 
-    # Restore from a previously failed run
     checkpoint = session.get_checkpoint()
-    if checkpoint and "ckpt_path" not in trainer_fit_params:
+    if checkpoint:
+        checkpoint_log_message = "Resuming training from an AIR checkpoint."
+        if "ckpt_path" in trainer_fit_params:
+            checkpoint_log_message += " `ckpt_path` will be ignored."
+        logger.info(checkpoint_log_message)
+
         with checkpoint.as_directory() as ckpt_dir:
             trainer_fit_params["ckpt_path"] = f"{ckpt_dir}/{MODEL_KEY}"
             trainer.fit(lightning_module, **trainer_fit_params)

@@ -1,12 +1,8 @@
 import logging
 import threading
-import traceback
 from collections import defaultdict
 
-import grpc
-
 import ray
-import ray._private.profiling as profiling
 from ray import JobID
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
@@ -35,7 +31,7 @@ class ImportThread:
         self.gcs_client = worker.gcs_client
         self.subscriber = worker.gcs_function_key_subscriber
         self.subscriber.subscribe()
-        self.exception_type = grpc.RpcError
+        self.exception_type = ray.exceptions.RpcError
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
         self.t = None
@@ -45,9 +41,6 @@ class ImportThread:
         self._lock = threading.Lock()
         # Protect start and join of import thread.
         self._thread_spawn_lock = threading.Lock()
-        # Try to load all FunctionsToRun so that these functions will be
-        # run before accepting tasks.
-        self._do_importing()
 
     def start(self):
         """Start the import thread."""
@@ -168,9 +161,6 @@ class ImportThread:
             # for profiling).
             # with profiling.profile("register_remote_function"):
             (self.worker.function_actor_manager.fetch_and_register_remote_function(key))
-        elif key.startswith(b"FunctionsToRun:"):
-            with profiling.profile("fetch_and_run_function"):
-                self.fetch_and_execute_function_to_run(key)
         elif key.startswith(b"ActorClass:"):
             # Keep track of the fact that this actor class has been
             # exported so that we know it is safe to turn this worker
@@ -185,34 +175,6 @@ class ImportThread:
         # fetching actor classes here.
         else:
             assert False, "This code should be unreachable."
-
-    def fetch_and_execute_function_to_run(self, key):
-        """Run on arbitrary function on the worker."""
-        (job_id, serialized_function) = self._internal_kv_multiget(
-            key, ["job_id", "function"]
-        )
-        if self.worker.mode == ray.SCRIPT_MODE:
-            return
-
-        try:
-            # FunctionActorManager may call pickle.loads at the same time.
-            # Importing the same module in different threads causes deadlock.
-            with self.worker.function_actor_manager.lock:
-                # Deserialize the function.
-                function = pickle.loads(serialized_function)
-            # Run the function.
-            function({"worker": self.worker})
-        except Exception:
-            # If an exception was thrown when the function was run, we record
-            # the traceback and notify the scheduler of the failure.
-            traceback_str = traceback.format_exc()
-            # Log the error message.
-            ray._private.utils.push_error_to_driver(
-                self.worker,
-                ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
-                traceback_str,
-                job_id=ray.JobID(job_id),
-            )
 
     def _internal_kv_multiget(self, key, fields):
         vals = self.gcs_client.internal_kv_get(

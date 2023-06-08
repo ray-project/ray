@@ -13,7 +13,7 @@ import requests
 import ray
 import ray.actor
 import ray._private.state
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 
 from ray import serve
 from ray._private.test_utils import (
@@ -246,7 +246,6 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
 
 
 def test_get_serve_status(shutdown_ray):
-
     ray.init()
 
     @serve.deployment
@@ -331,7 +330,6 @@ def test_controller_deserialization_args_and_kwargs():
         """Cannot be deserialized by the process with specified pid."""
 
         def deserializer(*args):
-
             import os
 
             if os.getpid() == pid:
@@ -576,7 +574,6 @@ class TestDeployApp:
         self.check_multi_app()
 
     def test_deploy_app_with_overriden_config(self, client: ServeControllerClient):
-
         config = self.get_test_config()
         config["deployments"] = [
             {

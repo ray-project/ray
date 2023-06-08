@@ -121,6 +121,7 @@ class RayParams:
         env_vars: Override environment variables for the raylet.
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
+        labels: The key-value labels of the node.
     """
 
     def __init__(
@@ -180,6 +181,7 @@ class RayParams:
         env_vars: Optional[Dict[str, str]] = None,
         session_name: Optional[str] = None,
         webui: Optional[str] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -238,6 +240,7 @@ class RayParams:
         self.webui = webui
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
+        self.labels = labels
         self._check_usage()
 
         # Set the internal config options for object reconstruction.

@@ -8,27 +8,30 @@ import {
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import { Section } from "../../common/Section";
+import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
-import { ActorDetail } from "../../type/actor";
-import { ServeHttpProxy } from "../../type/serve";
+import { ActorDetail, ActorEnum } from "../../type/actor";
+import {
+  ServeHttpProxy,
+  ServeSystemActor,
+  ServeSystemActorStatus,
+} from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
 import { MainNavPageInfo } from "../layout/mainNavContext";
-import { useServeHTTPProxyDetails } from "./hook/useServeApplications";
-
-type ActorInfo = {
-  type: "httpProxy";
-  detail: ServeHttpProxy;
-};
-
-type ServeSystemActorDetailProps = {
-  actor: ActorInfo;
-};
+import {
+  useServeControllerDetails,
+  useServeHTTPProxyDetails,
+} from "./hook/useServeApplications";
 
 export const ServeHttpProxyDetailPage = () => {
   const { httpProxyId } = useParams();
 
-  const { httpProxy } = useServeHTTPProxyDetails(httpProxyId);
+  const { httpProxy, loading } = useServeHTTPProxyDetails(httpProxyId);
+
+  if (loading) {
+    return <Loading loading />;
+  }
 
   if (!httpProxy) {
     return (
@@ -41,12 +44,22 @@ export const ServeHttpProxyDetailPage = () => {
   return (
     <div>
       <MainNavPageInfo
-        pageInfo={{
-          id: "serveHttpProxy",
-          title: `HTTPProxyActor:${httpProxy.node_id}`,
-          pageTitle: `${httpProxy.node_id} | Serve HTTPProxyActor`,
-          path: `/serve/httpProxies/${encodeURIComponent(httpProxy.node_id)}`,
-        }}
+        pageInfo={
+          httpProxy.node_id
+            ? {
+                id: "serveHttpProxy",
+                title: `HTTPProxyActor:${httpProxy.node_id}`,
+                pageTitle: `${httpProxy.node_id} | Serve HTTPProxyActor`,
+                path: `/serve/httpProxies/${encodeURIComponent(
+                  httpProxy.node_id,
+                )}`,
+              }
+            : {
+                id: "serveHttpProxy",
+                title: "HTTPProxyActor",
+                path: undefined,
+              }
+        }
       />
       <ServeSystemActorDetail
         actor={{ type: "httpProxy", detail: httpProxy }}
@@ -55,10 +68,66 @@ export const ServeHttpProxyDetailPage = () => {
   );
 };
 
+export const ServeControllerDetailPage = () => {
+  const { controller, loading } = useServeControllerDetails();
+
+  if (loading) {
+    return <Loading loading />;
+  }
+
+  if (!controller) {
+    return <Typography color="error">Serve controller not found.</Typography>;
+  }
+
+  return (
+    <div>
+      <MainNavPageInfo
+        pageInfo={{
+          id: "serveController",
+          title: "Serve Controller",
+          path: "/serve/controller",
+        }}
+      />
+      <ServeSystemActorDetail
+        actor={{ type: "controller", detail: controller }}
+      />
+    </div>
+  );
+};
+
+type ActorInfo =
+  | {
+      type: "httpProxy";
+      detail: ServeHttpProxy;
+    }
+  | {
+      type: "controller";
+      detail: ServeSystemActor;
+    };
+
+type ServeSystemActorDetailProps = {
+  actor: ActorInfo;
+};
+
+export const convertActorStateForServeController = (
+  actorState: ActorEnum | string,
+) => {
+  if (actorState === ActorEnum.ALIVE) {
+    return ServeSystemActorStatus.HEALTHY;
+  } else if (actorState === ActorEnum.DEAD) {
+    return ServeSystemActorStatus.UNHEALTHY;
+  } else {
+    return ServeSystemActorStatus.STARTING;
+  }
+};
+
 export const ServeSystemActorDetail = ({
   actor,
 }: ServeSystemActorDetailProps) => {
-  const name = `HTTPProxyActor:${actor.detail.actor_id}`;
+  const name =
+    actor.type === "httpProxy"
+      ? `HTTPProxyActor:${actor.detail.actor_id}`
+      : "Serve Controller";
 
   const { data: fetchedActor } = useFetchActor(actor.detail.actor_id);
 
@@ -74,46 +143,74 @@ export const ServeSystemActorDetail = ({
           },
           {
             label: "Status",
-            content: (
-              <StatusChip type="serveReplica" status={actor.detail.status} />
-            ),
+            content:
+              actor.type === "httpProxy" ? (
+                <StatusChip
+                  type="serveHttpProxy"
+                  status={actor.detail.status}
+                />
+              ) : fetchedActor ? (
+                <StatusChip
+                  type="serveController"
+                  status={convertActorStateForServeController(
+                    fetchedActor.state,
+                  )}
+                />
+              ) : (
+                {
+                  value: "-",
+                }
+              ),
           },
           {
             label: "Actor ID",
-            content: {
-              value: actor.detail.actor_id,
-              copyableValue: actor.detail.actor_id,
-              link: actor.detail.actor_id
-                ? generateActorLink(actor.detail.actor_id)
-                : undefined,
-            },
+            content: actor.detail.actor_id
+              ? {
+                  value: actor.detail.actor_id,
+                  copyableValue: actor.detail.actor_id,
+                  link: actor.detail.actor_id
+                    ? generateActorLink(actor.detail.actor_id)
+                    : undefined,
+                }
+              : {
+                  value: "-",
+                },
           },
           {
             label: "Actor name",
             content: {
-              value: actor.detail.actor_name,
+              value: actor.detail.actor_name ? actor.detail.actor_name : "-",
             },
           },
           {
             label: "Worker ID",
-            content: {
-              value: actor.detail.worker_id,
-            },
+            content: actor.detail.worker_id
+              ? {
+                  value: actor.detail.worker_id,
+                  copyableValue: actor.detail.worker_id,
+                }
+              : {
+                  value: "-",
+                },
           },
           {
             label: "Node ID",
-            content: {
-              value: actor.detail.node_id,
-              copyableValue: actor.detail.node_id,
-              link: actor.detail.node_id
-                ? generateNodeLink(actor.detail.node_id)
-                : undefined,
-            },
+            content: actor.detail.node_id
+              ? {
+                  value: actor.detail.node_id,
+                  copyableValue: actor.detail.node_id,
+                  link: actor.detail.node_id
+                    ? generateNodeLink(actor.detail.node_id)
+                    : undefined,
+                }
+              : {
+                  value: "-",
+                },
           },
           {
             label: "Node IP",
             content: {
-              value: actor.detail.node_ip,
+              value: actor.detail.node_ip ? actor.detail.node_ip : "-",
             },
           },
         ]}
@@ -122,7 +219,7 @@ export const ServeSystemActorDetail = ({
         <CollapsibleSection title="Logs" startExpanded>
           <Section noTopPadding>
             <ServeSystemActorLogs
-              type="httpProxy"
+              type={actor.type}
               actor={fetchedActor}
               systemLogFilePath={actor.detail.log_file_path}
             />
@@ -135,14 +232,14 @@ export const ServeSystemActorDetail = ({
 
 type ServeSystemActorLogsProps = {
   type: "controller" | "httpProxy";
-  actor: Pick<ActorDetail, "address" | "jobId" | "pid">;
+  actor: Pick<ActorDetail, "address" | "actorId" | "pid">;
   systemLogFilePath: string;
 };
 
 const ServeSystemActorLogs = ({
   type,
   actor: {
-    jobId,
+    actorId,
     pid,
     address: { workerId, rayletId },
   },
@@ -150,29 +247,11 @@ const ServeSystemActorLogs = ({
 }: ServeSystemActorLogsProps) => {
   const tabs: MultiTabLogViewerTabDetails[] = [
     {
-      title: type === "controller" ? "Controller" : "HTTP Proxy",
+      title: type === "controller" ? "Controller logs" : "HTTP proxy logs",
       nodeId: rayletId,
       filename: systemLogFilePath.startsWith("/")
         ? systemLogFilePath.substring(1)
         : systemLogFilePath,
-    },
-    {
-      title: "Actor Logs (stderr)",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.err`,
-    },
-    {
-      title: "Actor Logs (stdout)",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.out`,
-    },
-    {
-      title: "Actor Logs (system)",
-      nodeId: rayletId,
-      // TODO(aguo): Have API return the log file name.
-      filename: `python-core-worker-${workerId}_${pid}.log`,
     },
   ];
   return <MultiTabLogViewer tabs={tabs} />;

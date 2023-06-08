@@ -1,22 +1,39 @@
+import time
 import asyncio
 from functools import wraps
-from inspect import iscoroutinefunction
-import time
-from typing import Any, Callable, Dict, List, Optional, overload, Tuple, TypeVar
 from dataclasses import dataclass
+from inspect import iscoroutinefunction, isasyncgenfunction
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    overload,
+    Tuple,
+    TypeVar,
+    AsyncGenerator,
+    Iterable,
+)
 
-
-from ray._private.signature import extract_signature, flatten_args, recover_args
-from ray._private.utils import get_or_create_event_loop
-from ray.serve.exceptions import RayServeException
 from ray.util.annotations import PublicAPI
+from ray.serve.exceptions import RayServeException
+from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.utils import extract_self_if_method_call
+from ray._private.signature import extract_signature, flatten_args, recover_args
 
 
 @dataclass
 class _SingleRequest:
-    self_arg: Optional[Any]
+    self_arg: Any
     flattened_args: List[Any]
     future: asyncio.Future
+
+
+@dataclass
+class _GeneratorResult:
+    result: Any
+    next_future: asyncio.Future
 
 
 def _batch_args_kwargs(
@@ -75,7 +92,7 @@ class _BatchQueue:
         self._handle_batch_task = None
         if handle_batch_func is not None:
             self._handle_batch_task = get_or_create_event_loop().create_task(
-                self._handle_batches(handle_batch_func)
+                self._process_batches(handle_batch_func)
             )
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
@@ -129,7 +146,50 @@ class _BatchQueue:
 
         return batch
 
-    async def _handle_batches(self, func):
+    def _validate_results(
+        self, results: Iterable[Any], input_batch_length: int
+    ) -> None:
+        if len(results) != input_batch_length:
+            raise RayServeException(
+                "Batched function doesn't preserve batch size. "
+                f"The input list has length {input_batch_length} but the "
+                f"returned list has length {len(results)}."
+            )
+
+    async def _consume_func_generator(
+        self,
+        func_generator: AsyncGenerator,
+        initial_futures: List[asyncio.Future],
+        input_batch_length: int,
+    ) -> None:
+        """Consumes batch function generator.
+
+        This function only runs if the function decorated with @serve.batch
+        is a generator.
+        """
+
+        try:
+            futures = initial_futures
+            async for results in func_generator:
+                self._validate_results(results, input_batch_length)
+                next_futures = [
+                    get_or_create_event_loop().create_future() for _ in futures
+                ]
+                for result, (future, next_future) in zip(
+                    results, zip(futures, next_futures)
+                ):
+                    future.set_result(_GeneratorResult(result, next_future))
+                futures = next_futures
+
+            for future in futures:
+                future.set_exception(StopAsyncIteration)
+        except Exception as e:
+            for future in futures:
+                future.set_exception(e)
+
+    async def _process_batches(self, func: Callable) -> None:
+        """Loops infinitely and processes queued request batches."""
+
         while True:
             batch: List[_SingleRequest] = await self.wait_for_batch()
             assert len(batch) > 0
@@ -137,26 +197,26 @@ class _BatchQueue:
             args, kwargs = _batch_args_kwargs([item.flattened_args for item in batch])
             futures = [item.future for item in batch]
 
-            try:
-                # Method call.
-                if self_arg is not None:
-                    results = await func(self_arg, *args, **kwargs)
-                # Normal function call.
-                else:
-                    results = await func(*args, **kwargs)
+            # Method call.
+            if self_arg is not None:
+                func_future_or_generator = func(self_arg, *args, **kwargs)
+            # Normal function call.
+            else:
+                func_future_or_generator = func(*args, **kwargs)
 
-                if len(results) != len(batch):
-                    raise RayServeException(
-                        "Batched function doesn't preserve batch size. "
-                        f"The input list has length {len(batch)} but the "
-                        f"returned list has length {len(results)}."
-                    )
-
-                for i, result in enumerate(results):
-                    futures[i].set_result(result)
-            except Exception as e:
-                for future in futures:
-                    future.set_exception(e)
+            if isasyncgenfunction(func):
+                func_generator = func_future_or_generator
+                await self._consume_func_generator(func_generator, futures, len(batch))
+            else:
+                try:
+                    func_future = func_future_or_generator
+                    results = await func_future
+                    self._validate_results(results, len(batch))
+                    for result, future in zip(results, futures):
+                        future.set_result(result)
+                except Exception as e:
+                    for future in futures:
+                        future.set_exception(e)
 
     def __del__(self):
         if (
@@ -169,30 +229,6 @@ class _BatchQueue:
         # causes some errors when the process exits due to the asyncio loop
         # already being destroyed.
         self._handle_batch_task.cancel()
-
-
-def _extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
-    """Check if this is a method rather than a function.
-
-    Does this by checking to see if `func` is the attribute of the first
-    (`self`) argument under `func.__name__`. Unfortunately, this is the most
-    robust solution to this I was able to find. It would also be preferable
-    to do this check when the decorator runs, rather than when the method is.
-
-    Returns the `self` object if it's a method call, else None.
-
-    Arguments:
-        args (List[Any]): arguments to the function/method call.
-        func: the unbound function that was called.
-    """
-    if len(args) > 0:
-        method = getattr(args[0], func.__name__, False)
-        if method:
-            wrapped = getattr(method, "__wrapped__", False)
-            if wrapped and wrapped == func:
-                return args[0]
-
-    return None
 
 
 T = TypeVar("T")
@@ -287,9 +323,22 @@ def batch(
         raise ValueError("batch_wait_timeout_s must be a float >= 0")
 
     def _batch_decorator(_func):
-        @wraps(_func)
-        async def batch_wrapper(*args, **kwargs):
-            self = _extract_self_if_method_call(args, _func)
+        async def batch_handler_generator(
+            first_future: asyncio.Future,
+        ) -> AsyncGenerator:
+            """Generator that handles generator batch functions."""
+
+            future = first_future
+            while True:
+                try:
+                    async_response: _GeneratorResult = await future
+                    future = async_response.next_future
+                    yield async_response.result
+                except StopAsyncIteration:
+                    break
+
+        def enqueue_request(args, kwargs) -> asyncio.Future:
+            self = extract_self_if_method_call(args, _func)
             flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
 
             if self is None:
@@ -315,11 +364,22 @@ def batch(
 
             future = get_or_create_event_loop().create_future()
             batch_queue.put(_SingleRequest(self, flattened_args, future))
+            return future
 
+        @wraps(_func)
+        def generator_batch_wrapper(*args, **kwargs):
+            first_future = enqueue_request(args, kwargs)
+            return batch_handler_generator(first_future)
+
+        @wraps(_func)
+        async def batch_wrapper(*args, **kwargs):
             # This will raise if the underlying call raised an exception.
-            return await future
+            return await enqueue_request(args, kwargs)
 
-        return batch_wrapper
+        if isasyncgenfunction(_func):
+            return generator_batch_wrapper
+        else:
+            return batch_wrapper
 
     # Unfortunately, this is required to handle both non-parametrized
     # (@serve.batch) and parametrized (@serve.batch(**kwargs)) usage.

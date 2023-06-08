@@ -1,9 +1,4 @@
-import {
-  CircularProgress,
-  createStyles,
-  makeStyles,
-  Typography,
-} from "@material-ui/core";
+import { createStyles, makeStyles, Typography } from "@material-ui/core";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -20,7 +15,6 @@ import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeReplica } from "../../type/serve";
-import { useFetchActor } from "../actor/hook/useActorDetail";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import TaskList from "../state/task";
 import { useServeReplicaDetails } from "./hook/useServeApplications";
@@ -179,49 +173,18 @@ type ServeReplicaLogsProps = {
 const ServeReplicaLogs = ({
   replica: { log_file_path, node_id, actor_id },
 }: ServeReplicaLogsProps) => {
-  const { data: actor } = useFetchActor(actor_id);
-
-  if (!actor) {
-    return <CircularProgress />;
-  }
-
-  const {
-    address: { workerId },
-    pid,
-    jobId,
-  } = actor;
-
   const tabs: MultiTabLogViewerTabDetails[] = [
-    {
-      title: "stderr",
-      nodeId: node_id,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.err`,
-    },
-    {
-      title: "stdout",
-      nodeId: node_id,
-      // TODO(aguo): Have API return the log file name.
-      filename: `worker-${workerId}-${jobId}-${pid}.out`,
-    },
-    {
-      title: "system",
-      nodeId: node_id,
-      // TODO(aguo): Have API return the log file name.
-      filename: `python-core-worker-${workerId}_${pid}.log`,
-    },
-    // TODO(aguo): enable this once state-api logs supports files with # in the name.
-    // ...(log_file_path
-    //   ? [
-    //       {
-    //         title: "replica",
-    //         nodeId: node_id,
-    //         filename: log_file_path.startsWith("/")
-    //           ? log_file_path.substring(1)
-    //           : log_file_path,
-    //       },
-    //     ]
-    //   : []),
+    ...(log_file_path
+      ? [
+          {
+            title: "replica",
+            nodeId: node_id,
+            filename: log_file_path.startsWith("/")
+              ? log_file_path.substring(1)
+              : log_file_path,
+          },
+        ]
+      : []),
   ];
   return <MultiTabLogViewer tabs={tabs} />;
 };

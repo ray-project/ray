@@ -20,6 +20,11 @@ from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
 )
+from ray.air.constants import (
+    TIMESTAMP,
+    TIME_THIS_ITER_S,
+    TRAINING_ITERATION,
+)
 from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_RESULTS_DIR,
@@ -33,12 +38,9 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
     STDERR_FILE,
     STDOUT_FILE,
-    TIME_THIS_ITER_S,
     TIME_TOTAL_S,
-    TIMESTAMP,
     TIMESTEPS_THIS_ITER,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
     TRIAL_ID,
     TRIAL_INFO,
 )
@@ -234,11 +236,11 @@ class Trainable:
         This can be overridden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
-        .. code-block:: python
+        .. testcode::
 
             @classmethod
             def default_resource_request(cls, config):
-                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}]])
+                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}])
 
 
         Args:
@@ -1170,9 +1172,11 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. code-block:: python
+        .. testcode::
 
-            name = self.trial_name
+            from ray.tune import Trainable
+
+            name = Trainable().trial_name
         """
         if self._trial_info:
             return self._trial_info.trial_name
@@ -1185,9 +1189,11 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. code-block:: python
+        .. testcode::
 
-            trial_id = self.trial_id
+            from ray.tune import Trainable
+
+            trial_id = Trainable().trial_id
         """
         if self._trial_info:
             return self._trial_info.trial_id
@@ -1200,9 +1206,11 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. code-block:: python
+        .. testcode::
 
-            trial_resources = self.trial_resources
+            from ray.tune import Trainable
+
+            trial_resources = Trainable().trial_resources
         """
         if self._trial_info:
             return self._trial_info.trial_resources

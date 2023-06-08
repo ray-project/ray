@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import ActorDetailPage from "./pages/actor/ActorDetail";
+import ActorDetailPage, { ActorDetailLayout } from "./pages/actor/ActorDetail";
 import { ActorLayout } from "./pages/actor/ActorLayout";
 import Loading from "./pages/exception/Loading";
 import JobList, { JobsLayout } from "./pages/job";
@@ -32,7 +32,11 @@ import {
 import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
 import { ServeLayout } from "./pages/serve/ServeLayout";
 import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
-import { ServeHttpProxyDetailPage } from "./pages/serve/ServeSystemActorDetailPage";
+import {
+  ServeControllerDetailPage,
+  ServeHttpProxyDetailPage,
+} from "./pages/serve/ServeSystemActorDetailPage";
+import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
 
@@ -201,20 +205,31 @@ const App = () => {
                     <Route
                       element={
                         <JobDetailActorDetailWrapper>
-                          <ActorDetailPage />
+                          <ActorDetailLayout />
                         </JobDetailActorDetailWrapper>
                       }
                       path="actors/:actorId"
-                    />
+                    >
+                      <Route element={<ActorDetailPage />} path="" />
+                      <Route element={<TaskPage />} path="tasks/:taskId" />
+                    </Route>
+                    <Route element={<TaskPage />} path="tasks/:taskId" />
                   </Route>
                 </Route>
                 <Route element={<ActorLayout />} path="actors">
                   <Route element={<Actors />} path="" />
-                  <Route element={<ActorDetailPage />} path=":actorId" />
+                  <Route element={<ActorDetailLayout />} path=":actorId">
+                    <Route element={<ActorDetailPage />} path="" />
+                    <Route element={<TaskPage />} path="tasks/:taskId" />
+                  </Route>
                 </Route>
                 <Route element={<Metrics />} path="metrics" />
                 <Route element={<ServeLayout />} path="serve">
                   <Route element={<ServeApplicationsListPage />} path="" />
+                  <Route
+                    element={<ServeControllerDetailPage />}
+                    path="controller"
+                  />
                   <Route
                     element={<ServeHttpProxyDetailPage />}
                     path="httpProxies/:httpProxyId"

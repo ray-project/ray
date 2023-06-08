@@ -31,6 +31,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     RunningReplicaInfo,
     ReplicaState,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.schema import (
     DeploymentDetails,
@@ -39,6 +40,10 @@ from ray.serve.schema import (
 )
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+    DEFAULT_HEALTH_CHECK_PERIOD_S,
+    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
     MAX_NUM_DELETED_DEPLOYMENTS,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -273,24 +278,56 @@ class ActorReplicaWrapper:
             return self._version.deployment_config
 
     @property
-    def max_concurrent_queries(self) -> Optional[int]:
+    def max_concurrent_queries(self) -> int:
         if self.deployment_config:
             return self.deployment_config.max_concurrent_queries
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for max_concurrent_queries"
+            )
+            return DEFAULT_MAX_CONCURRENT_QUERIES
 
     @property
-    def graceful_shutdown_timeout_s(self) -> Optional[float]:
+    def graceful_shutdown_timeout_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.graceful_shutdown_timeout_s
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for graceful_shutdown_timeout_s"
+            )
+            return DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S
 
     @property
-    def health_check_period_s(self) -> Optional[float]:
+    def health_check_period_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.health_check_period_s
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for health_check_period_s"
+            )
+            return DEFAULT_HEALTH_CHECK_PERIOD_S
 
     @property
-    def health_check_timeout_s(self) -> Optional[float]:
+    def health_check_timeout_s(self) -> float:
         if self.deployment_config:
             return self.deployment_config.health_check_timeout_s
+        else:
+            # The value in deployment_config won't be respected.
+            # Issue: https://github.com/ray-project/ray/issues/36035
+            logger.warn(
+                "Deployment config is not found, "
+                "using default value for health_check_timeout_s"
+            )
+            return DEFAULT_HEALTH_CHECK_TIMEOUT_S
 
     @property
     def pid(self) -> Optional[int]:
@@ -432,7 +469,8 @@ class ActorReplicaWrapper:
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+            replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
+            self._ready_obj_ref = replica_ready_check_func.remote(
                 deployment_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
@@ -492,7 +530,9 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+            self._ready_obj_ref = (
+                self._actor_handle.initialize_and_get_metadata.remote()
+            )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
@@ -765,6 +805,7 @@ class DeploymentReplica(VersionedReplica):
             state=ReplicaState.STARTING,
             start_time_s=0,
         )
+        self._multiplexed_model_ids: List = []
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
@@ -773,7 +814,16 @@ class DeploymentReplica(VersionedReplica):
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
+            multiplexed_model_ids=self.multiplexed_model_ids,
         )
+
+    def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
+        """Record the multiplexed model ids for this replica."""
+        self._multiplexed_model_ids = multiplexed_model_ids
+
+    @property
+    def multiplexed_model_ids(self) -> List[str]:
+        return self._multiplexed_model_ids
 
     @property
     def actor_details(self) -> ReplicaDetails:
@@ -1102,6 +1152,10 @@ class DeploymentState:
             ),
             tag_keys=("deployment", "replica", "application"),
         )
+
+        # Whether the multiplexed model ids have been updated since the last
+        # time we checked.
+        self._multiplexed_model_ids_updated = False
 
     def should_autoscale(self) -> bool:
         """
@@ -1853,8 +1907,12 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             running_replicas_changed |= self._check_and_update_replicas()
 
+            # Check if the model_id has changed.
+            running_replicas_changed |= self._multiplexed_model_ids_updated
+
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
+                self._multiplexed_model_ids_updated = False
 
             deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
@@ -1865,6 +1923,23 @@ class DeploymentState:
             )
 
         return deleted, any_replicas_recovering
+
+    def record_multiplexed_model_ids(
+        self, replica_name: str, multiplexed_model_ids: List[str]
+    ) -> None:
+        """Records the multiplexed model IDs of a replica.
+
+        Args:
+            replica_name: Name of the replica.
+            multiplexed_model_ids: List of model IDs that replica is serving.
+        """
+        # Find the replica
+        for replica in self._replicas.get():
+            if replica.replica_tag == replica_name:
+                replica.record_multiplexed_model_ids(multiplexed_model_ids)
+                self._multiplexed_model_ids_updated = True
+                return
+        logger.warn(f"Replia {replica_name} not found in deployment {self._name}")
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -2389,4 +2464,21 @@ class DeploymentStateManager:
                 num_gpu_deployments += 1
         record_extra_usage_tag(
             TagKey.SERVE_NUM_GPU_DEPLOYMENTS, str(num_gpu_deployments)
+        )
+
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """
+        Record multiplexed model ids for a multiplexed replica.
+
+        Args:
+            info: Multiplexed replica info including deployment name,
+                replica tag and model ids.
+        """
+        if info.deployment_name not in self._deployment_states:
+            logger.error(
+                f"Deployment {info.deployment_name} not found in state manager."
+            )
+            return
+        self._deployment_states[info.deployment_name].record_multiplexed_model_ids(
+            info.replica_tag, info.model_ids
         )
