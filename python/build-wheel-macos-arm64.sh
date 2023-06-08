@@ -9,11 +9,8 @@ set -x
 DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
-PY_VERSIONS=("3.8.2"
-             "3.9.1"
-             "3.10.4"
-             "3.11.1")
-PY_MMS=("3.8"
+PY_MMS=("3.7"
+        "3.8"
         "3.9"
         "3.10"
         "3.11")
@@ -23,7 +20,12 @@ if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
 
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-  curl -o- https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh | bash
+
+  if [ "$(uname -m)" = "arm64" ]; then
+    curl -o- https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh | bash
+  else
+    curl -o- https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh | bash
+
   conda init bash
   source ~/.bash_profile
 
@@ -42,7 +44,7 @@ popd
 
 mkdir -p .whl
 
-for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
+for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   PY_MM=${PY_MMS[i]}
   CONDA_ENV_NAME="p$PY_MM"
  
