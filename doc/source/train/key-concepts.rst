@@ -37,6 +37,7 @@ There are three categories of built-in Trainers:
         - :class:`TorchTrainer <ray.train.torch.TorchTrainer>`
         - :class:`TensorflowTrainer <ray.train.tensorflow.TensorflowTrainer>`
         - :class:`HorovodTrainer <ray.train.horovod.HorovodTrainer>`
+        - :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`
 
         For these trainers, you usually define your own training function that loads the model
         and executes single-worker training steps. Refer to the following guides for more details:
