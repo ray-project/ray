@@ -313,7 +313,6 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
         "attrs",
         "click >= 7.0",
-        "dataclasses; python_version < '3.7'",
         "filelock",
         # Tracking issue: https://github.com/ray-project/ray/issues/30984
         "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa:E501
