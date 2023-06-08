@@ -64,7 +64,7 @@
     # Upload to latest directory.
     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
-- label: ":docker: Build Images: py37 (1/2)"
+- label: ":docker: Build Images: {{matrix}} - cpu/cu115/116"
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
@@ -78,6 +78,7 @@
     - py38
     - py39
     - py310
+    - py311
 
 - label: ":docker: Build Images: {{matrix}} - cu117/cu118"
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
@@ -93,6 +94,7 @@
     - py38
     - py39
     - py310
+    - py311
 
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
