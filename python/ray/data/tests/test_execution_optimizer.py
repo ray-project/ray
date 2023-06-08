@@ -1052,6 +1052,7 @@ def test_from_modin_operator(
         ctx.enable_pandas_block = old_enable_pandas_block
 
 
+@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     import modin.pandas as mopd
 
