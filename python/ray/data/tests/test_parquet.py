@@ -776,7 +776,9 @@ def test_parquet_write_create_dir(
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
     path = os.path.join(data_path, "test_parquet_dir")
-    ds._set_uuid("data")
+    # Set the uuid to a known value so that we can easily get the parquet file names.
+    data_key = "data"
+    ds._set_uuid(data_key)
     ds.write_parquet(path, filesystem=fs)
 
     # Ensure that directory was created.
@@ -786,8 +788,8 @@ def test_parquet_write_create_dir(
         assert fs.get_file_info(_unwrap_protocol(path)).type == pa.fs.FileType.Directory
 
     # Check that data was properly written to the directory.
-    path1 = os.path.join(path, "data_000000.parquet")
-    path2 = os.path.join(path, "data_000001.parquet")
+    path1 = os.path.join(path, f"{data_key}_000000.parquet")
+    path2 = os.path.join(path, f"{data_key}_000001.parquet")
     dfds = pd.concat(
         [
             pd.read_parquet(path1, storage_options=storage_options),
@@ -798,8 +800,8 @@ def test_parquet_write_create_dir(
 
     # Ensure that directories that already exist are left alone and that the
     # attempted creation still succeeds.
-    path3 = os.path.join(path, "data_0000002.parquet")
-    path4 = os.path.join(path, "data_0000003.parquet")
+    path3 = os.path.join(path, f"{data_key}_0000002.parquet")
+    path4 = os.path.join(path, f"{data_key}_0000003.parquet")
     if fs is None:
         os.rename(path1, path3)
         os.rename(path2, path4)
@@ -832,7 +834,6 @@ def test_parquet_write_create_dir(
 
     all_empty_key = "all_empty"
     all_empty_path = os.path.join(data_path, f"test_parquet_dir_{all_empty_key}")
-    ds_all_empty._set_uuid(all_empty_key)
     ds_all_empty.write_parquet(all_empty_path, filesystem=fs)
 
     ds_contains_some_empty = ds.union(ds_all_empty)
@@ -841,8 +842,9 @@ def test_parquet_write_create_dir(
     assert ds_contains_some_empty.count() == 6
 
     some_empty_key = "some_empty"
-    some_empty_path = os.path.join(path, f"test_parquet_dir_{some_empty_key}")
+    # Set the uuid to a known value so that we can easily get the parquet file names.
     ds_contains_some_empty._set_uuid(some_empty_key)
+    some_empty_path = os.path.join(path, f"test_parquet_dir_{some_empty_key}")
     ds_contains_some_empty.write_parquet(some_empty_path, filesystem=fs)
 
     # Ensure that directory was created for only the non-empty dataset.
@@ -851,7 +853,7 @@ def test_parquet_write_create_dir(
         assert os.path.isdir(some_empty_path)
         # Only files for the non-empty blocks should be created.
         assert os.listdir(some_empty_path) == [
-            f"some_empty_00000{i}.parquet" for i in range(2)
+            f"{some_empty_key}_00000{i}.parquet" for i in range(2)
         ]
     else:
         assert (
@@ -867,7 +869,10 @@ def test_parquet_write_create_dir(
     dfds = pd.concat(
         [
             pd.read_parquet(
-                os.path.join(some_empty_path, f"some_empty_00000{i}.parquet"),
+                os.path.join(
+                    some_empty_path,
+                    f"{some_empty_key}_00000{i}.parquet",
+                ),
                 storage_options=storage_options,
             )
             for i in range(2)
