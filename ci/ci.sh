@@ -506,7 +506,7 @@ build_wheels_and_jars() {
       if [ "$(uname -m)" = "arm64" ]; then
         "${WORKSPACE_DIR}"/python/build-wheel-macos-arm64.sh
       else
-        "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
+        "${WORKSPACE_DIR}"/python/build-wheel-macos-arm64.sh
       fi
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
