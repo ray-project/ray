@@ -7,7 +7,7 @@ Implementing a Custom Datasource
 .. note::
 
   This MongoDatasource guide below is for education only. For production use of MongoDB
-  in Ray Data, see :ref:`Creating Dataset from MongoDB <dataset_mongo_db>`.
+  in Ray Data, see :ref:`Creating Dataset from MongoDB <reading_mongodb>`.
 
 Ray Data supports multiple ways to :ref:`create a dataset <loading_data>`,
 allowing you to easily ingest data of common formats from popular sources. However, if the
