@@ -407,7 +407,7 @@ class Monitor:
                             self.autoscaler.all_node_types,
                         )
                     except Exception:
-                        logger.error("Error emitting metrics")
+                        logger.exception("Error emitting metrics")
 
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
