@@ -7,7 +7,6 @@ import pickle
 import socket
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from ray._private.utils import get_or_create_event_loop
 
 import uvicorn
 import starlette.responses
@@ -15,8 +14,10 @@ import starlette.routing
 from starlette.types import Receive, Scope, Send
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
+from ray._private.utils import get_or_create_event_loop
 
 from ray import serve
 from ray.serve.handle import RayServeHandle
@@ -266,11 +267,20 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
-    async def receive_asgi_message(self, request_id: str):
-        if request_id not in self.asgi_receive_queues:
+    async def receive_asgi_messages(self, request_id: str) -> List[Dict[str, Any]]:
+        queue = self.asgi_receive_queues.get(request_id, None)
+        if queue is None:
             raise KeyError(f"Request ID {request_id} not found.")
 
-        return await self.asgi_receive_queues[request_id].get()
+
+        messages = []
+        if queue.empty():
+            messages.append(await queue.get())
+
+        while not queue.empty():
+            messages.append(queue.get_nowait())
+
+        return messages
 
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
@@ -701,5 +711,5 @@ Please make sure your http-host and http-port are specified correctly."""
         """
         pass
 
-    async def receive_asgi_message(self, request_id: str) -> Dict[str, any]:
-        return await self.app.receive_asgi_message(request_id)
+    async def receive_asgi_messages(self, request_id: str) -> List[Dict[str, Any]]:
+        return await self.app.receive_asgi_messages(request_id)

@@ -63,6 +63,37 @@ from ray.serve._private.version import DeploymentVersion
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+class ASGIReceiver:
+    def __init__(self, event_loop: asyncio.AbstractEventLoop, request_id: str, actor_handle: ActorHandle):
+        self._task = None
+        self._queue = asyncio.Queue()
+        self._event_loop = event_loop
+        self._request_id = request_id
+        self._actor_handle = actor_handle
+        self._disconnected_message: Optional[Dict[str, Any]] = None
+
+    def start(self):
+        self._task = self._event_loop.create_task(self._fetch_until_disconnect())
+
+    def stop(self):
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+
+    async def _fetch_until_disconnect(self):
+        while self._disconnected_message is not None:
+            messages = await self._actor_handle.receive_asgi_messages.remote(self._request_id)
+            print(messages)
+            for message in messages:
+                if message["type"] in {"http.disconnect"}:
+                    self._disconnected_message = message
+                    return
+
+    async def __call__(self) -> Dict[str, Any]:
+        if self._disconnected_message is not None:
+            return self._disconnected_message
+
+        return await self._queue.get()
+
 
 def _format_replica_actor_name(deployment_name: str):
     return f"ServeReplica:{deployment_name}"
@@ -254,54 +285,65 @@ def create_replica_wrapper(name: str):
                 raise NotImplementedError(
                     "Only HTTP requests are currently supported over streaming."
                 )
+            
 
-            # TODO: optimize by fetching multiple messages per actor call.
-            async def asgi_receive() -> Dict[str, Any]:
-                return await http_proxy_handle.receive_asgi_message.remote(
-                    request_metadata.request_id
+            receiver = None
+            handle_request_task = None
+            wait_for_message_task = None
+            try:
+                receiver = ASGIReceiver(self._event_loop, http_proxy_handle, request_metadata.request_id)
+                receiver.start()
+
+                scope = pickle.loads(pickled_asgi_scope)
+                asgi_queue_send = ASGIHTTPQueueSender()
+                request_args = (scope, receiver, asgi_queue_send)
+                request_kwargs = {}
+
+                # Handle the request in a background asyncio.Task. It's expected that this
+                # task will use the provided ASGI send interface to send its HTTP
+                # response. We will poll for the sent messages and yield them back to the
+                # caller.
+                handle_request_task = self._event_loop.create_task(
+                    self.replica.handle_request(
+                        request_metadata, request_args, request_kwargs
+                    )
                 )
 
-            scope = pickle.loads(pickled_asgi_scope)
-            asgi_queue_send = ASGIHTTPQueueSender()
-            request_args = (scope, asgi_receive, asgi_queue_send)
-            request_kwargs = {}
+                while True:
+                    wait_for_message_task = self._event_loop.create_task(
+                        asgi_queue_send.wait_for_message()
+                    )
+                    done, _ = await asyncio.wait(
+                        [handle_request_task, wait_for_message_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    # Consume and yield all available messages in the queue.
+                    # The messages are batched into a list to avoid unnecessary RPCs and
+                    # we use vanilla pickle because it's faster than cloudpickle and we
+                    # know it's safe for these messages containing primitive types.
+                    yield pickle.dumps(asgi_queue_send.get_messages_nowait())
 
-            # Handle the request in a background asyncio.Task. It's expected that this
-            # task will use the provided ASGI send interface to send its HTTP
-            # response. We will poll for the sent messages and yield them back to the
-            # caller.
-            handle_request_task = self._event_loop.create_task(
-                self.replica.handle_request(
-                    request_metadata, request_args, request_kwargs
-                )
-            )
+                    # Exit once `handle_request` has finished. In this case, all messages
+                    # must have already been sent.
+                    # Cancel the `wait_for_message_task` to avoid innocuous error messages.
+                    if handle_request_task in done:
+                        if not wait_for_message_task.done():
+                            wait_for_message_task.cancel()
 
-            while True:
-                wait_for_message_task = self._event_loop.create_task(
-                    asgi_queue_send.wait_for_message()
-                )
-                done, _ = await asyncio.wait(
-                    [handle_request_task, wait_for_message_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                # Consume and yield all available messages in the queue.
-                # The messages are batched into a list to avoid unnecessary RPCs and
-                # we use vanilla pickle because it's faster than cloudpickle and we
-                # know it's safe for these messages containing primitive types.
-                yield pickle.dumps(asgi_queue_send.get_messages_nowait())
+                        break
 
-                # Exit once `handle_request` has finished. In this case, all messages
-                # must have already been sent.
-                # Cancel the `wait_for_message_task` to avoid innocuous error messages.
-                if handle_request_task in done:
-                    if not wait_for_message_task.done():
-                        wait_for_message_task.cancel()
+                e = handle_request_task.exception()
+                if e is not None:
+                    raise e from None
+            finally:
+                if receiver is not None:
+                    receiver.stop()
 
-                    break
+                if handle_request_task is not None and not handle_request_task.done():
+                    handle_request_task.cancel()
 
-            e = handle_request_task.exception()
-            if e is not None:
-                raise e from None
+                if wait_for_message_task is not None and not wait_for_message_task.done():
+                    wait_for_message_task.cancel()
 
         async def handle_request_from_java(
             self,
