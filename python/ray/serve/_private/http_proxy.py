@@ -116,7 +116,12 @@ async def _handle_streaming_response(
                         "'http.response.start' message must contain 'status'",
                     )
                     status_code = str(asgi_message["status"])
-
+                asgi_message["headers"].append(
+                    [
+                        RAY_SERVE_REQUEST_ID,
+                        ray.serve.context._serve_request_context.get().request_id,
+                    ]
+                )
                 await send(asgi_message)
     except Exception as e:
         error_message = f"Unexpected error, traceback: {e}."
@@ -230,8 +235,9 @@ async def _send_request_to_handle(handle, scope, receive, send) -> str:
         return "500"
 
     if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
+        # When user provides a starlette response, we need to add the request
+        # id to the headers.
         if isinstance(result, starlette.responses.Response):
-            # Hack to RAY_SERVE_REQUEST_ID for native starlette response.
             if RAY_SERVE_REQUEST_ID not in result.headers:
                 result.headers[
                     RAY_SERVE_REQUEST_ID
@@ -505,9 +511,10 @@ class HTTPProxy:
         }
         start_time = time.time()
         for key, value in scope["headers"]:
-            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+            if key.decode().upper() == SERVE_MULTIPLEXED_MODEL_ID:
                 request_context_info["multiplexed_model_id"] = value.decode()
-            if key.decode() == RAY_SERVE_REQUEST_ID:
+            if key.decode().upper() == RAY_SERVE_REQUEST_ID:
+                print("wtf: request id", value.decode())
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(**request_context_info)

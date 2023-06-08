@@ -493,6 +493,7 @@ py_test(
                "tests/test_api.py",
                "tests/test_fastapi.py",
                "tests/test_http_adapters.py",
+               "test/test_http_headers.py"
                "**/conftest.py"]),
    tags = ["exclusive", "team:serve"],
    deps = [":serve_lib"],
