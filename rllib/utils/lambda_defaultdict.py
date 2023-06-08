@@ -29,7 +29,7 @@ class LambdaDefaultDict(defaultdict):
         .. testoutput::
 
             Value for a
-    """
+    """  # noqa: E501
 
     def __init__(self, default_factory: Callable[[str], Any], *args, **kwargs):
         """Initializes a LambdaDefaultDict instance.
