@@ -170,12 +170,19 @@ on the head node.
 .. testoutput::
     :options: +NORMALIZE_WHITESPACE
 
-         sepal.length  sepal.width  petal.length  petal.width    variety
-    0             5.1          3.5           1.4          0.2     Setosa
-    1             4.9          3.0           1.4          0.2     Setosa
-    ...
-    149           5.9          3.0           5.1          1.8  Virginica
-    <BLANKLINE>
+         sepal.length  ...    variety
+    0             5.1  ...     Setosa
+    1             4.9  ...     Setosa
+    2             4.7  ...     Setosa
+    3             4.6  ...     Setosa
+    4             5.0  ...     Setosa
+    ..            ...  ...        ...
+    145           6.7  ...  Virginica
+    146           6.3  ...  Virginica
+    147           6.5  ...  Virginica
+    148           6.2  ...  Virginica
+    149           5.9  ...  Virginica
+    
     [150 rows x 5 columns]
 
 Converting Datasets to distributed DataFrames

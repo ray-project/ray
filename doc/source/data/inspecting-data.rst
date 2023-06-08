@@ -134,10 +134,9 @@ of the returned batch, set ``batch_format``.
         .. testoutput::
             :options: +NORMALIZE_WHITESPACE
 
-               sepal length (cm)  sepal width (cm)  ...  petal width (cm)  target
-            0                5.1               3.5  ...               0.2       0
-            1                4.9               3.0  ...               0.2       0
-            <BLANKLINE>
+                sepal length (cm)  ...  target
+            0                5.1  ...       0
+            1                4.9  ...       0
             [2 rows x 5 columns]
 
 For more information on working with batches, see

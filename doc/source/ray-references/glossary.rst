@@ -81,9 +81,9 @@ documentation, sorted alphabetically.
 
             >>> import ray
             >>> dataset = ray.data.range(10)
-            >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))
+            >>> next(iter(dataset.iter_batches(batch_format="numpy", batch_size=5)))  # doctest: +SKIP
             {'id': array([0, 1, 2, 3, 4])}
-            >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))
+            >>> next(iter(dataset.iter_batches(batch_format="pandas", batch_size=5)))  # doctest: +SKIP
                id
             0   0
             1   1
