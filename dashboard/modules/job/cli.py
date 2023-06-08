@@ -1,5 +1,6 @@
 import os
 import pprint
+import re
 import time
 from subprocess import list2cmdline
 from typing import Optional, Tuple, Union
@@ -24,6 +25,9 @@ def _get_sdk_client(
 ) -> JobSubmissionClient:
     client = JobSubmissionClient(address, create_cluster_if_needed, verify=verify)
     client_address = client.get_address()
+    secret = re.findall("https?:\/\/.*:(.*)@.*$", client_address)
+    if len(secret) > 0:
+        client_address = client_address.replace(f":{secret[0]}@", ":<redacted>@")
     cli_logger.labeled_value("Job submission server address", client_address)
     return client
 
