@@ -8,7 +8,6 @@ from ray.tune.execution import trial_runner
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.experiment import Trial
-from ray.tune.error import TuneError
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
