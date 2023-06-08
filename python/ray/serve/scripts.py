@@ -511,17 +511,17 @@ def config(address: str, name: Optional[str]):
                     sort_keys=False,
                 )
                 for app in serve_details.applications.values()
+                if app.deployed_app_config is not None
             ),
             end="",
         )
     # Fetch a specific app config by name.
     else:
-        if name not in serve_details.applications:
+        app = serve_details.applications.get(name)
+        if app is None or app.deployed_app_config is None:
             config = ServeApplicationSchema.get_empty_schema_dict()
         else:
-            config = serve_details.applications.get(name).deployed_app_config.dict(
-                exclude_unset=True
-            )
+            config = app.deployed_app_config.dict(exclude_unset=True)
         print(yaml.safe_dump(config, sort_keys=False), end="")
 
 

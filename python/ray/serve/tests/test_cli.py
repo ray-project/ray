@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import re
 import signal
@@ -462,6 +463,90 @@ def test_config_multi_app(ray_start_stop):
 
     assert config["applications"][0] == fetched_configs[0]
     assert config["applications"][1] == fetched_configs[1]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_cli_without_config_deploy(ray_start_stop):
+    """Deploys application with serve.run instead of a config, and check that cli
+    still works as expected.
+    """
+
+    @serve.deployment
+    def fn():
+        return "hi"
+
+    serve.run(fn.bind())
+
+    def check_cli():
+        info_response = subprocess.check_output(["serve", "config"])
+        status_response = subprocess.check_output(["serve", "status"])
+        fetched_configs = list(yaml.safe_load_all(info_response))
+        fetched_status = yaml.safe_load(status_response)
+
+        return (
+            len(fetched_configs) == 1
+            and fetched_configs[0] == ServeApplicationSchema.get_empty_schema_dict()
+            and fetched_status["app_status"]["status"] == "RUNNING"
+            and fetched_status["deployment_statuses"][0]["status"] == "HEALTHY"
+        )
+
+    wait_for_condition(check_cli)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_config_with_deleting_app(ray_start_stop):
+    """Test that even if one or more apps is deleting, serve config still works"""
+
+    config_json1 = {
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": "ray.serve.tests.test_config_files.delete_blocked.app",
+            },
+        ]
+    }
+    config_json2 = deepcopy(config_json1)
+    del config_json2["applications"][1]
+
+    def check_cli(expected_configs: List, expected_statuses: int):
+        info_response = subprocess.check_output(["serve", "config"])
+        status_response = subprocess.check_output(["serve", "status"])
+        fetched_configs = list(yaml.safe_load_all(info_response))
+        fetched_statuses = list(yaml.safe_load_all(status_response))
+
+        return (
+            len([s for s in fetched_statuses if s["app_status"]["status"] == "RUNNING"])
+            == expected_statuses
+            and fetched_configs == expected_configs
+        )
+
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+        tmp.write(yaml.safe_dump(config_json1))
+        tmp.flush()
+        subprocess.check_output(["serve", "deploy", tmp.name])
+        print("Deployed config with app1 and app2.")
+
+    wait_for_condition(
+        check_cli, expected_configs=config_json1["applications"], expected_statuses=2
+    )
+    print("`serve status` and `serve cli` are returning expected responses.")
+
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+        tmp.write(yaml.safe_dump(config_json2))
+        tmp.flush()
+        subprocess.check_output(["serve", "deploy", tmp.name])
+        print("Redeployed config with app2 removed.")
+
+    wait_for_condition(
+        check_cli, expected_configs=config_json2["applications"], expected_statuses=1
+    )
+    print("`serve status` and `serve cli` are returning expected responses.")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
