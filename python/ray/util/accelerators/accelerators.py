@@ -7,5 +7,6 @@ NVIDIA_TESLA_A10G = "A10G"
 
 NVIDIA_AMPERE_A100 = "A100"
 
-# A100 is not an Nvidia Tesla, but this name was used by mistake, and is kept for backward compatibility.
+# A100 is not an Nvidia Tesla, but this name was used by mistake.
+# It is kept for backward compatibility.
 NVIDIA_TESLA_A100 = NVIDIA_AMPERE_A100
