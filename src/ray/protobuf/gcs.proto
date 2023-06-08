@@ -331,6 +331,8 @@ message GcsNodeInfo {
   uint64 end_time_ms = 24;
   // If this is a head node.
   bool is_head_node = 25;
+  // The key-value labels of this node.
+  map<string, string> labels = 26;
 }
 
 // Please keep this in sync with the definition of JobInfo in

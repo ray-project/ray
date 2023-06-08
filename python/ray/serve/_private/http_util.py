@@ -4,11 +4,13 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Optional, Type
 
-from starlette.requests import Request
-from starlette.types import Send, ASGIApp
 from fastapi.encoders import jsonable_encoder
+from starlette.requests import Request
+from starlette.types import Receive, Send, ASGIApp
+from uvicorn.config import Config
+from uvicorn.lifespan.on import LifespanOn
 
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -23,12 +25,8 @@ class HTTPRequestWrapper:
     body: bytes
 
 
-def build_starlette_request(scope, serialized_body: bytes):
-    """Build and return a Starlette Request from ASGI payload.
-
-    This function is intended to be used immediately before task invocation
-    happens.
-    """
+def make_buffered_asgi_receive(serialized_body: bytes) -> Receive:
+    """Returns an ASGI receiver that returns the provided buffered body."""
 
     # Simulates receiving HTTP body from TCP socket.  In reality, the body has
     # already been streamed in chunks and stored in serialized_body.
@@ -47,7 +45,7 @@ def build_starlette_request(scope, serialized_body: bytes):
         received = True
         return {"body": serialized_body, "type": "http.request", "more_body": False}
 
-    return Request(scope, mock_receive)
+    return mock_receive
 
 
 class Response:
@@ -142,7 +140,7 @@ class RawASGIResponse(ASGIApp):
         return self.messages[0]["status"]
 
 
-class ASGIHTTPSender(Send):
+class BufferedASGISender(Send):
     """Implement the interface for ASGI sender to save data from varisous
     asgi response type (fastapi, starlette, etc.)
     """
@@ -320,3 +318,59 @@ def set_socket_reuse_port(sock: socket.socket) -> bool:
             f"Setting SO_REUSEPORT failed because of {e}. SO_REUSEPORT is disabled."
         )
         return False
+
+
+class ASGIAppReplicaWrapper:
+    """Provides a common wrapper for replicas running an ASGI app."""
+
+    def __init__(self, app: ASGIApp):
+        self._asgi_app = app
+
+        # Use uvicorn's lifespan handling code to properly deal with
+        # startup and shutdown event.
+        self._serve_asgi_lifespan = LifespanOn(Config(self._asgi_app, lifespan="on"))
+
+        # Replace uvicorn logger with our own.
+        self._serve_asgi_lifespan.logger = logger
+
+    async def _run_asgi_lifespan_startup(self):
+        # LifespanOn's logger logs in INFO level thus becomes spammy
+        # Within this block we temporarily uplevel for cleaner logging
+        from ray.serve._private.logging_utils import LoggingContext
+
+        with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
+            await self._serve_asgi_lifespan.startup()
+
+    async def __call__(
+        self, request: Request, asgi_sender: Optional[Send] = None
+    ) -> Optional[ASGIApp]:
+        """Calls into the wrapped ASGI app.
+
+        If asgi_sender is provided, it's passed into the app and nothing is
+        returned.
+
+        If no asgi_sender is provided, an ASGI response is built and returned.
+        """
+        build_and_return_response = False
+        if asgi_sender is None:
+            asgi_sender = BufferedASGISender()
+            build_and_return_response = True
+
+        await self._asgi_app(
+            request.scope,
+            request.receive,
+            asgi_sender,
+        )
+
+        if build_and_return_response:
+            return asgi_sender.build_asgi_response()
+
+    # NOTE: __del__ must be async so that we can run ASGI shutdown
+    # in the same event loop.
+    async def __del__(self):
+        # LifespanOn's logger logs in INFO level thus becomes spammy.
+        # Within this block we temporarily uplevel for cleaner logging.
+        from ray.serve._private.logging_utils import LoggingContext
+
+        with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
+            await self._serve_asgi_lifespan.shutdown()

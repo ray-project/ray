@@ -19,6 +19,7 @@
 
 - label: ":tv: :brain: RLlib: Multi-GPU Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
+  parallelism: 2
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -27,8 +28,12 @@
     # --jobs 2 is necessary as we only need to have at least 2 gpus on the machine
     # and running tests in parallel would cause timeouts as the other scripts would
     # wait for the GPU to become available.
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --jobs 2
-      --test_tag_filters=multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --jobs=2
+      --test_tag_filters=multi_gpu
+      --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 
+      rllib/...
 
 - label: ":tv: :airplane: AIR GPU tests (ray/air)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
@@ -48,6 +53,10 @@
     - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
+    # Test examples with newer version of `transformers`
+    # TODO(amogkam): Remove when https://github.com/ray-project/ray/issues/36011 
+    # is resolved.
+    - pip install -U transformers
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-py37,-post_wheel_build,-doctest doc/...
 
 - label: ":book: Doctest (GPU)"
@@ -57,6 +66,10 @@
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
+    # Test examples with newer version of `transformers`
+    # TODO(amogkam): Remove when https://github.com/ray-project/ray/issues/36011 
+    # is resolved.
+    - pip install -U transformers
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-cpu python/ray/... doc/...
 

@@ -1,35 +1,25 @@
 import copy
 import logging
-import time
 import threading
-from typing import (
-    List,
-    Dict,
-    Optional,
-    Iterator,
-    Tuple,
-    Union,
-    TYPE_CHECKING,
-)
+import time
+from dataclasses import replace
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-
-from ray.data.iterator import DataIterator
-from ray.data.block import Block, BlockMetadata
-from ray.data.context import DataContext
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.execution.legacy_compat import (
-    execute_to_legacy_bundle_iterator,
-)
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
+from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.stats import DatasetStats
+from ray.data.block import Block, BlockMetadata
+from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
@@ -52,27 +42,29 @@ class StreamSplitDataIterator(DataIterator):
 
         See also: `Dataset.streaming_split`.
         """
-        ctx = DataContext.get_current()
-
         # To avoid deadlock, the concurrency on this actor must be set to at least `n`.
         coord_actor = SplitCoordinator.options(
             max_concurrency=n,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             ),
-        ).remote(ctx, base_dataset, n, equal, locality_hints)
+        ).remote(base_dataset, n, equal, locality_hints)
 
-        return [StreamSplitDataIterator(base_dataset, coord_actor, i) for i in range(n)]
+        return [
+            StreamSplitDataIterator(base_dataset, coord_actor, i, n) for i in range(n)
+        ]
 
     def __init__(
         self,
         base_dataset: "Dataset",
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
+        world_size: int,
     ):
         self._base_dataset = base_dataset
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
+        self._world_size = world_size
 
     def _to_block_iterator(
         self,
@@ -110,6 +102,10 @@ class StreamSplitDataIterator(DataIterator):
         """Implements DataIterator."""
         return self._base_dataset.schema()
 
+    def world_size(self) -> int:
+        """Returns the number of splits total."""
+        return self._world_size
+
 
 @ray.remote(num_cpus=0)
 class SplitCoordinator:
@@ -121,7 +117,6 @@ class SplitCoordinator:
 
     def __init__(
         self,
-        ctx: DataContext,
         dataset: "Dataset",
         n: int,
         equal: bool,
@@ -129,10 +124,9 @@ class SplitCoordinator:
     ):
         # Automatically set locality with output to the specified location hints.
         if locality_hints:
-            ctx.execution_options.locality_with_output = locality_hints
+            dataset.context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
 
-        DataContext._set_current(ctx)
         self._base_dataset = dataset
         self._n = n
         self._equal = equal
@@ -146,7 +140,9 @@ class SplitCoordinator:
 
         def gen_epochs():
             while True:
-                executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
+                executor = StreamingExecutor(
+                    copy.deepcopy(dataset.context.execution_options)
+                )
 
                 def add_split_op(dag):
                     return OutputSplitter(dag, n, equal, locality_hints)
@@ -196,11 +192,12 @@ class SplitCoordinator:
                     next_bundle = None
 
             # Fetch next bundle if needed.
-            if next_bundle is None:
+            while next_bundle is None or not next_bundle.blocks:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
-            bundle = next_bundle.blocks.pop()
+            block = next_bundle.blocks[-1]
+            next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
 
             # Accumulate any remaining blocks in next_bundle map as needed.
             with self._lock:
@@ -208,7 +205,7 @@ class SplitCoordinator:
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
 
-            return bundle
+            return block
         except StopIteration:
             return None
 

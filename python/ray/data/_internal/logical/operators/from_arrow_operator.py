@@ -5,8 +5,8 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
-    import pyarrow
     import datasets
+    import pyarrow
 
 ArrowTable = Union["pyarrow.Table", bytes]
 ArrowTableOrRefsList = Union[List[ObjectRef[ArrowTable]], List[ArrowTable]]

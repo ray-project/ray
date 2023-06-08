@@ -1,16 +1,13 @@
 from typing import List, Union
 
 import ray
-from ray.data._internal.execution.interfaces import (
-    PhysicalOperator,
-    RefBundle,
-)
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.logical.operators.from_pandas_operator import (
-    FromPandasRefs,
     FromDask,
-    FromModin,
     FromMars,
+    FromModin,
+    FromPandasRefs,
 )
 from ray.data.context import DataContext
 
@@ -26,8 +23,9 @@ def _plan_from_pandas_refs_op(op: FromPandasRefsOperators) -> PhysicalOperator:
 
     def _init_data_from_dask(op: FromDask):
         import dask
-        from ray.util.dask import ray_dask_get
         import pandas
+
+        from ray.util.dask import ray_dask_get
 
         partitions = op._df.to_delayed()
         persisted_partitions = dask.persist(*partitions, scheduler=ray_dask_get)
@@ -60,8 +58,8 @@ def _plan_from_pandas_refs_op(op: FromPandasRefsOperators) -> PhysicalOperator:
     def get_input_data() -> List[RefBundle]:
         from ray.data._internal.remote_fn import cached_remote_fn
         from ray.data._internal.util import (
-            pandas_df_to_arrow_block,
             get_table_block_metadata,
+            pandas_df_to_arrow_block,
         )
 
         if isinstance(op, FromPandasRefs):
