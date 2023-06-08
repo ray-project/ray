@@ -89,7 +89,7 @@ formats by calling one of the following methods:
                 print(batch)
 
         .. testoutput::
-            :options: +NORMALIZE_WHITESPACE
+            :options: +MOCK
 
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
             0                5.1               3.5                1.4               0.2       0
