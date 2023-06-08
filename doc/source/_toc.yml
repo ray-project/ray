@@ -91,6 +91,8 @@ parts:
       - file: data/data
         title: Ray Data
         sections:
+          - file: data/overview
+            title: Overview
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
@@ -108,7 +110,6 @@ parts:
               - file: data/examples/custom-datasource
           - file: data/faq
           - file: data/api/api
-          - file: data/glossary
 
       - file: train/train
         title: Ray Train
