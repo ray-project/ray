@@ -29,7 +29,7 @@ Streaming Batch Inference
 -------------------------
 
 Ray Data simplifies general purpose parallel GPU and CPU compute in Ray through its
-powerful :ref:`Datastream <datastream_concept>` primitive. Datastreams enable workloads such as
+powerful :ref:`Datasets <dataset_concept>` primitive. Datasets enable workloads such as
 :doc:`GPU batch inference <batch_inference>` to run efficiently on large datasets,
 maximizing resource utilization by keeping the working data fitting into Ray object store memory.
 
