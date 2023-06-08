@@ -2183,7 +2183,12 @@ def mock_deployment_state_manager_full(request) -> Tuple[DeploymentStateManager,
 
         kv_store = MockKVStore()
 
-        def create_deployment_state_manager(actor_names=[], is_driver_deployment=False):
+        def create_deployment_state_manager(
+            actor_names=None, is_driver_deployment=False
+        ):
+            if actor_names is None:
+                actor_names = []
+
             return DeploymentStateManager(
                 "name",
                 True,
