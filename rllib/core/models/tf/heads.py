@@ -27,9 +27,10 @@ class TfMLPHead(TfModel):
             hidden_layer_dims=config.hidden_layer_dims,
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
-            output_dim=config.output_dims[0],
-            output_activation=config.output_activation,
-            use_bias=config.use_bias,
+            hidden_layer_use_bias=config.hidden_layer_use_bias,
+            output_dim=config.output_layer_dim,
+            output_activation=config.output_layer_activation,
+            output_use_bias=config.output_layer_use_bias,
         )
 
     @override(Model)
@@ -59,9 +60,10 @@ class TfFreeLogStdMLPHead(TfModel):
             hidden_layer_dims=config.hidden_layer_dims,
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
+            hidden_layer_use_bias=config.hidden_layer_use_bias,
             output_dim=self._half_output_dim,
-            output_activation=config.output_activation,
-            use_bias=config.use_bias,
+            output_activation=config.output_layer_activation,
+            output_use_bias=config.output_layer_use_bias,
         )
 
         self.log_std = tf.Variable(
@@ -107,7 +109,7 @@ class TfCNNTransposeHead(TfModel):
             cnn_transpose_filter_specifiers=config.cnn_transpose_filter_specifiers,
             cnn_transpose_activation=config.cnn_transpose_activation,
             cnn_transpose_use_layernorm=config.cnn_transpose_use_layernorm,
-            use_bias=config.use_bias,
+            cnn_transpose_use_bias=config.cnn_transpose_use_bias,
         )
 
     @override(Model)

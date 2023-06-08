@@ -27,8 +27,8 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
             AssertionError, lambda: env_runner.sample(num_timesteps=10, num_episodes=10)
         )
 
-        # Sample 10 episodes (5 per env) 10 times.
-        for _ in range(10):
+        # Sample 10 episodes (5 per env) 100 times.
+        for _ in range(100):
             done_episodes, ongoing_episodes = env_runner.sample(num_episodes=10)
             self.assertTrue(len(done_episodes + ongoing_episodes) == 10)
             # Since we sampled complete episodes, there should be no ongoing episodes
@@ -37,8 +37,8 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
             # Check, whether all done_episodes returned are indeed terminated.
             self.assertTrue(all(e.is_done for e in done_episodes))
 
-        # Sample 10 timesteps (5 per env) 10 times.
-        for _ in range(10):
+        # Sample 10 timesteps (5 per env) 100 times.
+        for _ in range(100):
             done_episodes, ongoing_episodes = env_runner.sample(num_timesteps=10)
             # Check, whether all done_episodes returned are indeed terminated.
             self.assertTrue(all(e.is_done for e in done_episodes))
@@ -46,7 +46,7 @@ class TestSingleAgentGymEnvRunner(unittest.TestCase):
             self.assertTrue(not any(e.is_done for e in ongoing_episodes))
 
         # Sample (by default setting: rollout_fragment_length=64) 10 times.
-        for _ in range(10):
+        for _ in range(100):
             done_episodes, ongoing_episodes = env_runner.sample()
             # Check, whether all done_episodes returned are indeed terminated.
             self.assertTrue(all(e.is_done for e in done_episodes))

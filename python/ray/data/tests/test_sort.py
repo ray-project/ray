@@ -10,8 +10,8 @@ import ray
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
-from ray.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
+from ray.tests.conftest import *  # noqa
 
 
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):

@@ -6,9 +6,10 @@ This is an experimental feature and the API may change in the future. You are we
 
 ## Why model multiplexing?
 
-Model multiplexing is a technique used to efficiently serve multiple models with similar input types from a pool of replicas.. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas to optimize cost. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
+Model multiplexing is a technique used to efficiently serve multiple models with similar input types from a pool of replicas. Traffic is routed to the corresponding model based on the request header. To serve multiple models with a pool of replicas, 
+model multiplexing optimizes cost and load balances the traffic. This is useful in cases where you might have many models with the same shape but different weights that are sparsely invoked. If any replica for the deployment has the model loaded, incoming traffic for that model (based on request header) will automatically be routed to that replica avoiding unnecessary load time.
 
-## Wrting a multiplexed deployment
+## Writing a multiplexed deployment
 
 To write a multiplexed deployment, use the `serve.multiplexed` and `serve.get_multiplexed_model_id` APIs.
 

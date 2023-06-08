@@ -39,7 +39,7 @@ at a large scale.
   the object store, but if it is not large enough (i.e. ``--object-store-memory``
   > size of ``/dev/shm``), Ray will write the plasma store to disk instead, which
   may cause significant performance problems.
-* Use NVMe SSDs (or other high perforfmance storage) if possible. If
+* Use NVMe SSDs (or other high performance storage) if possible. If
   :ref:`object spilling <object-spilling>` is enabled Ray will spill objects to
   disk if necessary. This is most commonly needed for data processing
   workloads.

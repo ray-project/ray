@@ -20,7 +20,14 @@ Computer Vision
     :class-container: container pb-4
 
     .. grid-item-card::
-    
+
+       .. button-ref:: huggingface_vit_batch_prediction
+
+            Image Classification Batch Inference with Huggingface Vision Transformer
+
+
+    .. grid-item-card::
+
        .. button-ref:: pytorch_resnet_batch_prediction
 
             Image Classification Batch Inference with PyTorch ResNet18

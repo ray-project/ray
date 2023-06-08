@@ -1,12 +1,11 @@
+import inspect
 from typing import Any, Dict, Iterable, Optional, Union
 
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
-
-import inspect
 
 logger = DatasetLogger(__name__)
 

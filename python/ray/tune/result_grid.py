@@ -51,7 +51,6 @@ class ResultGrid:
 
     .. testoutput::
         :hide:
-        :options: +ELLIPSIS
 
         ...
 
@@ -212,7 +211,6 @@ class ResultGrid:
 
             .. testoutput::
                 :hide:
-                :options: +ELLIPSIS
 
                 ...
 
@@ -260,6 +258,8 @@ class ResultGrid:
 
     @staticmethod
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
+        if trial.status == Trial.TERMINATED:
+            return None
         if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):
             with open(trial.pickled_error_file, "rb") as f:
                 e = cloudpickle.load(f)

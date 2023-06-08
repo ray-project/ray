@@ -7,6 +7,7 @@ from typing import Dict, List, Set
 
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
+from ray_release.byod.build import build_anyscale_byod_images
 from ray_release.config import (
     read_and_validate_release_test_collection,
     parse_python_version,
@@ -16,6 +17,7 @@ from ray_release.test import (
     Test,
     DEFAULT_PYTHON_VERSION,
 )
+from ray_release.test_automation.state_machine import TestStateMachine
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
 
 
@@ -65,6 +67,11 @@ def main(
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
     blamed_commit = _bisect(test, commit_lists, concurrency, run_per_commit)
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
+    # TODO(can): this env var is used as a feature flag, in case we need to turn this
+    # off quickly. We should remove this when the new db reporter is stable.
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        logger.info(f"Updating test state for test {test_name} to CONSISTENTLY_FAILING")
+        _update_test_state(test, blamed_commit)
 
 
 def _bisect(
@@ -130,10 +137,14 @@ def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
     python_version = DEFAULT_PYTHON_VERSION
     if "python" in test:
         python_version = parse_python_version(test["python"])
-
-    ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
-    )
+    if test.is_byod_cluster():
+        ray_wheels_url = None
+        os.environ["COMMIT_TO_TEST"] = commit
+        build_anyscale_byod_images([test])
+    else:
+        ray_wheels_url = find_and_wait_for_ray_wheels_url(
+            commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
+        )
     for run in range(run_per_commit):
         step = get_step(
             test,
@@ -210,6 +221,20 @@ def _get_commit_lists(passing_commit: str, failing_commit: str) -> List[str]:
         .strip()
         .split("\n")
     )
+
+
+def _update_test_state(test: Test, blamed_commit: str) -> None:
+    test.update_from_s3()
+    logger.info(f"Test object: {json.dumps(test)}")
+    test[Test.KEY_BISECT_BLAMED_COMMIT] = blamed_commit
+
+    # Compute and update the next test state, then comment blamed commit on github issue
+    sm = TestStateMachine(test)
+    sm.move()
+    sm.comment_blamed_commit_on_github_issue()
+
+    logger.info(f"Test object: {json.dumps(test)}")
+    test.persist_to_s3()
 
 
 if __name__ == "__main__":
