@@ -32,6 +32,7 @@ CHECKPOINT_KEY = "serve-application-state-checkpoint"
 
 @dataclass
 class ApplicationTargetState:
+    # Map of deployment names to deployment infos
     deployment_infos: Optional[Dict[str, DeploymentInfo]]
     deleting: bool
 
@@ -58,6 +59,7 @@ class ApplicationState:
             deploy_obj_ref: Task ObjRef of deploying application.
             deployment_time: Deployment timestamp
         """
+
         self._name = name
         self._deploy_obj_ref = deploy_obj_ref
         self._status_msg = ""
@@ -66,10 +68,7 @@ class ApplicationState:
         self._route_prefix = None
         self._docs_path = None
 
-        if deploy_obj_ref:
-            self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
-        else:
-            self._status: ApplicationStatus = ApplicationStatus.NOT_STARTED
+        self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         if deployment_time:
             self._deployment_timestamp = deployment_time
         else:
@@ -127,10 +126,7 @@ class ApplicationState:
         When a request to delete the application has been received, this should be
             ({}, True)
         """
-        # This can be either:
-        # [Deploying] waiting for deploy task to finish: (None, False)
-        # [Deployed] deploy task finished:
-        # [Deleting] request received to delete application: ({}, True)
+
         if deleting:
             target_state = ApplicationTargetState(dict(), True)
             self._update_status(ApplicationStatus.DELETING)
@@ -138,7 +134,9 @@ class ApplicationState:
             target_state = ApplicationTargetState(deployment_infos, False)
             self._update_status(ApplicationStatus.DEPLOYING)
 
-        # Checkpoint ahead
+        # Checkpoint ahead, so that if the controller crashes before we
+        # write to the target state, the target state will be recovered
+        # after the controller recovers
         self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
         # Set target state
         self._target_state = target_state
@@ -219,7 +217,7 @@ class ApplicationState:
         }
         self._set_target_state(deployment_infos=deployment_infos)
 
-    def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int):
+    def update_obj_ref(self, deploy_obj_ref: ObjectRef, deployment_time: int) -> None:
         """Update deploy object ref.
 
         Updates the deployment timestamp, sets status to DEPLOYING, and
@@ -336,7 +334,7 @@ class ApplicationState:
                 logger.warning(self._status_msg)
             self._deploy_obj_ref = None
 
-    def _reconcile_target_deployments(self):
+    def _reconcile_target_deployments(self) -> None:
         """Reconcile target deployments in application target state.
 
         Ensure each deployment is running on up-to-date deployment info
@@ -378,7 +376,7 @@ class ApplicationState:
         self._reconcile_target_deployments()
         return self._check_deployment_statuses_and_update_app_status()
 
-    def get_checkpoint_data(self):
+    def get_checkpoint_data(self) -> ApplicationTargetState:
         return self._target_state
 
     def get_deployment(self, name: str) -> DeploymentInfo:
@@ -416,7 +414,7 @@ class ApplicationState:
         }
         return {k: v for k, v in details.items() if v is not None}
 
-    def _update_status(self, status: ApplicationStatus, status_msg: str = ""):
+    def _update_status(self, status: ApplicationStatus, status_msg: str = "") -> None:
         self._status = status
         self._status_msg = status_msg
 
@@ -449,7 +447,7 @@ class ApplicationStateManager:
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
                 self._application_states[app_name] = app_state
 
-    def delete_application(self, name: str):
+    def delete_application(self, name: str) -> None:
         """Delete application by name"""
         if name not in self._application_states:
             return
@@ -549,7 +547,7 @@ class ApplicationStateManager:
         name: str,
         deploy_obj_ref: ObjectRef,
         deployment_time: float = 0,
-    ):
+    ) -> None:
         """Create application state
         This is used for holding the deploy_obj_ref which is created by run_graph method
         """
@@ -592,7 +590,7 @@ class ApplicationStateManager:
                 TagKey.SERVE_NUM_APPS, str(len(self._application_states))
             )
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         for app_state in self._application_states.values():
             app_state.delete()
 

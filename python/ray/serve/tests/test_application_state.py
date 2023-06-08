@@ -1,6 +1,6 @@
 import sys
 import pytest
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 from unittest.mock import patch, Mock
 
 import ray
@@ -31,18 +31,45 @@ class MockEndpointState:
 
 
 class MockKVStore:
-    def get(self, *args):
-        pass
+    def __init__(self):
+        self.store = dict()
 
-    def put(self, *args):
-        pass
+    def put(self, key: str, val: Any) -> bool:
+        self.store[key] = val
+        return True
+
+    def get(self, key: str) -> Any:
+        if not isinstance(key, str):
+            raise TypeError("key must be a string, got: {}.".format(type(key)))
+        return self.store.get(key, None)
+
+    def delete(self, key: str) -> bool:
+        if not isinstance(key, str):
+            raise TypeError("key must be a string, got: {}.".format(type(key)))
+
+        if key in self.store:
+            del self.store[key]
+            return True
+
+        return False
 
 
 class MockDeploymentStateManager:
-    def __init__(self):
+    def __init__(self, kv_store):
+        self.kv_store = kv_store
         self.deployment_infos: Dict[str, DeploymentInfo] = dict()
         self.deployment_statuses: Dict[str, DeploymentStatusInfo] = dict()
         self.deleting: Dict[str, bool] = dict()
+
+        # Recover
+        recovered_deployments = self.kv_store.get("fake_deployment_state_checkpoint")
+        if recovered_deployments is not None:
+            for name, checkpointed_data in recovered_deployments.items():
+                (info, deleting) = checkpointed_data
+
+                self.deployment_infos[name] = info
+                self.deployment_statuses[name] = DeploymentStatus.UPDATING
+                self.deleting[name] = deleting
 
     def deploy(self, deployment_name: str, deployment_info: DeploymentInfo):
         existing_info = self.deployment_infos.get(deployment_name)
@@ -54,6 +81,16 @@ class MockDeploymentStateManager:
                 status=DeploymentStatus.UPDATING,
                 message="",
             )
+
+        self.kv_store.put(
+            "fake_deployment_state_checkpoint",
+            dict(
+                zip(
+                    self.deployment_infos.keys(),
+                    zip(self.deployment_infos.values(), self.deleting.values()),
+                )
+            ),
+        )
 
     @property
     def deployments(self) -> List[str]:
@@ -103,6 +140,20 @@ class MockDeploymentStateManager:
         del self.deployment_statuses[name]
         del self.deleting[name]
 
+    def set_deployment(
+        self,
+        deployment_name: str,
+        deployment_info: DeploymentInfo,
+        status: DeploymentStatus,
+    ):
+        self.deleting[deployment_name] = False
+        self.deployment_infos[deployment_name] = deployment_info
+        self.deployment_statuses[deployment_name] = DeploymentStatusInfo(
+            name=deployment_name,
+            status=status,
+            message="",
+        )
+
     def delete_deployment(self, deployment_name: str):
         self.deleting[deployment_name] = True
 
@@ -111,12 +162,13 @@ class MockDeploymentStateManager:
 def mocked_application_state_manager() -> Tuple[
     ApplicationStateManager, MockDeploymentStateManager
 ]:
-    deployment_state_manager = MockDeploymentStateManager()
+    kv_store = MockKVStore()
 
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
     application_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), MockKVStore()
+        deployment_state_manager, MockEndpointState(), kv_store
     )
-    yield application_state_manager, deployment_state_manager
+    yield application_state_manager, deployment_state_manager, kv_store
 
 
 def deployment_params(name: str, route_prefix: str = None):
@@ -137,8 +189,9 @@ def deployment_params(name: str, route_prefix: str = None):
 
 @pytest.fixture
 def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateManager]:
-    deployment_state_manager = MockDeploymentStateManager()
+    kv_store = MockKVStore()
 
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
     application_state = ApplicationState(
         "test_app",
         deployment_state_manager,
@@ -203,7 +256,7 @@ def test_deploy_and_delete_app(mocked_application_state):
 
 def test_create_app(mocked_application_state_manager):
     """Test object ref based deploy and set DEPLOYING"""
-    app_state_manager, _ = mocked_application_state_manager
+    app_state_manager, _, _ = mocked_application_state_manager
     app_state_manager.create_application_state("test_app", ray.ObjectRef.nil())
     assert app_state_manager.get_app_status("test_app") == ApplicationStatus.DEPLOYING
 
@@ -417,7 +470,7 @@ def test_redeploy_same_app(mocked_application_state):
 
 def test_deploy_with_route_prefix_conflict(mocked_application_state_manager):
     """Test that an application fails to deploy with a route prefix conflict."""
-    app_state_manager, _ = mocked_application_state_manager
+    app_state_manager, _, _ = mocked_application_state_manager
 
     app_state_manager.apply_deployment_args("app1", [deployment_params("a", "/hi")])
     with pytest.raises(RayServeException):
@@ -429,7 +482,7 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     Test that an application deploys successfully when there is a route prefix
     conflict with an old app running on the cluster.
     """
-    app_state_manager, deployment_state_manager = mocked_application_state_manager
+    app_state_manager, deployment_state_manager, _ = mocked_application_state_manager
 
     # deploy app1
     app_state_manager.apply_deployment_args("app1", [deployment_params("a", "/url1")])
@@ -467,6 +520,98 @@ def test_deploy_with_renamed_app(mocked_application_state_manager):
     app_state_manager.update()
     assert app_state_manager.get_app_status("app1") == ApplicationStatus.NOT_STARTED
     assert app_state_manager.get_app_status("app2") == ApplicationStatus.RUNNING
+
+
+def test_application_state_recovery(mocked_application_state_manager):
+    """Test DEPLOYING -> RUNNING -> (controller crash) -> DEPLOYING -> RUNNING"""
+    (
+        app_state_manager,
+        deployment_state_manager,
+        kv_store,
+    ) = mocked_application_state_manager
+    app_name = "test_app"
+
+    # DEPLOY application with deployments {d1, d2}
+    params = deployment_params("d1")
+    app_state_manager.apply_deployment_args(app_name, [params])
+    app_state = app_state_manager._application_states[app_name]
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Once deployment is healthy, app should be running
+    app_state_manager.update()
+    assert deployment_state_manager.get_deployment("d1")
+    deployment_state_manager.set_deployment_healthy("d1")
+    app_state_manager.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+
+    # Simulate controller crashed!! Create new deployment state manager,
+    # which should recover target state for deployment "d1" from kv store
+    new_deployment_state_manager = MockDeploymentStateManager(kv_store)
+    version1 = new_deployment_state_manager.deployment_infos["d1"].version
+
+    # Create new application state manager, and it should call _recover_from_checkpoint
+    new_app_state_manager = ApplicationStateManager(
+        new_deployment_state_manager, MockEndpointState(), kv_store
+    )
+    app_state = new_app_state_manager._application_states[app_name]
+    assert app_state.status == ApplicationStatus.DEPLOYING
+    assert app_state._target_state.deployment_infos["d1"].version == version1
+
+    new_deployment_state_manager.set_deployment_healthy("d1")
+    new_app_state_manager.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+
+
+def test_recover_during_update(mocked_application_state_manager):
+    """"""
+    (
+        app_state_manager,
+        deployment_state_manager,
+        kv_store,
+    ) = mocked_application_state_manager
+    app_name = "test_app"
+
+    # DEPLOY application with deployment "d1"
+    params = deployment_params("d1")
+    app_state_manager.apply_deployment_args(app_name, [params])
+    app_state = app_state_manager._application_states[app_name]
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Once deployment is healthy, app should be running
+    app_state_manager.update()
+    assert deployment_state_manager.get_deployment("d1")
+    deployment_state_manager.set_deployment_healthy("d1")
+    app_state_manager.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+
+    # Deploy new version of "d1" (this auto generates new random version)
+    params2 = deployment_params("d1")
+    app_state_manager.apply_deployment_args(app_name, [params2])
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Before application state manager could propagate new version to
+    # deployment state manager, controller crashes.
+    # Create new deployment state manager. It should recover the old
+    # version of the deployment from the kv store
+    new_deployment_state_manager = MockDeploymentStateManager(kv_store)
+    dr_version = new_deployment_state_manager.deployment_infos["d1"].version
+
+    # Create new application state manager, and it should call _recover_from_checkpoint
+    new_app_state_manager = ApplicationStateManager(
+        new_deployment_state_manager, MockEndpointState(), kv_store
+    )
+    app_state = new_app_state_manager._application_states[app_name]
+    ar_version = app_state._target_state.deployment_infos["d1"].version
+    assert app_state.status == ApplicationStatus.DEPLOYING
+    assert ar_version != dr_version
+
+    new_app_state_manager.update()
+    assert new_deployment_state_manager.deployment_infos["d1"].version == ar_version
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    new_deployment_state_manager.set_deployment_healthy("d1")
+    new_app_state_manager.update()
+    assert app_state.status == ApplicationStatus.RUNNING
 
 
 if __name__ == "__main__":
