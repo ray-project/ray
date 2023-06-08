@@ -519,10 +519,10 @@ def config(address: str, name: Optional[str]):
     else:
         app = serve_details.applications.get(name)
         if app is None or app.deployed_app_config is None:
-            config = ServeApplicationSchema.get_empty_schema_dict()
+            print(f'No config has been deployed for application "{name}".')
         else:
             config = app.deployed_app_config.dict(exclude_unset=True)
-        print(yaml.safe_dump(config, sort_keys=False), end="")
+            print(yaml.safe_dump(config, sort_keys=False), end="")
 
 
 @cli.command(
