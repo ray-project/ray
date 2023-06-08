@@ -42,13 +42,12 @@ from typing import AsyncGenerator
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
-import ray
 from ray import serve
 
 
 @serve.deployment
 class StreamingResponder:
-    async def generate_numbers(self, max: int) -> AsyncGenerator[str, None, None]:
+    async def generate_numbers(self, max: int) -> AsyncGenerator[int, None]:
         for i in range(max):
             yield i
             asyncio.sleep(0.1)
@@ -61,25 +60,14 @@ class StreamingResponder:
 
 # __single_stream_end__
 
-import time
-import requests
-
-serve.run(StreamingResponder.bind())
-
-r = requests.get("http://localhost:8000?max=10", stream=True)
-start = time.time()
-r.raise_for_status()
-for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
-    print(f"Got result {round(time.time()-start, 1)}s after start: '{chunk}'")
-
+# TODO (shrekris-anyscale): add unit tests
 
 # __batch_stream_begin__
 import asyncio
-from typing import AsyncGenerator
+from typing import List, AsyncGenerator
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
-import ray
 from ray import serve
 
 
@@ -88,7 +76,7 @@ class StreamingResponder:
     @serve.batch(max_batch_size=5, batch_wait_timeout_s=15)
     async def generate_numbers(
         self, max_list: List[int]
-    ) -> AsyncGenerator[str, None, None]:
+    ) -> AsyncGenerator[List[int], None]:
         for i in range(max(max_list)):
             next_numbers = []
             for requested_max in max_list:
@@ -105,6 +93,6 @@ class StreamingResponder:
         return StreamingResponse(gen, status_code=200, media_type="text/plain")
 
 
-handle = serve.run(Model.bind())
-assert ray.get(handle.remote(1)) == 2
 # __batch_stream_end__
+
+# TODO (shrekris-anyscale): add unit tests
