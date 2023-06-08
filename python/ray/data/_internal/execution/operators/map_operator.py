@@ -1,7 +1,7 @@
 import copy
 import itertools
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
@@ -19,6 +19,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.operators.one_to_one_operator import OneToOneOperator
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
@@ -26,7 +27,7 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
-class MapOperator(PhysicalOperator, ABC):
+class MapOperator(OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task
@@ -59,7 +60,7 @@ class MapOperator(PhysicalOperator, ABC):
         # Output metadata, added to on get_next().
         self._output_metadata: List[BlockMetadata] = []
 
-        super().__init__(name, [input_op])
+        super().__init__(name, input_op)
 
     @classmethod
     def create(
@@ -523,12 +524,15 @@ class _OrderedOutputQueue(_OutputQueue):
         out_bundle = self._tasks_by_output_order[self._next_output_index].output
         # Pop out the next single-block bundle.
         next_bundle = RefBundle(
-            [out_bundle.blocks.pop(0)], owns_blocks=out_bundle.owns_blocks
+            [out_bundle.blocks[0]], owns_blocks=out_bundle.owns_blocks
         )
+        out_bundle = replace(out_bundle, blocks=out_bundle.blocks[1:])
         if not out_bundle.blocks:
             # If this task's RefBundle is exhausted, move to the next one.
             del self._tasks_by_output_order[self._next_output_index]
             self._next_output_index += 1
+        else:
+            self._tasks_by_output_order[self._next_output_index].output = out_bundle
         return next_bundle
 
 
@@ -549,11 +553,14 @@ class _UnorderedOutputQueue(_OutputQueue):
         out_bundle = self._completed_tasks[0].output
         # Pop out the next single-block bundle.
         next_bundle = RefBundle(
-            [out_bundle.blocks.pop(0)], owns_blocks=out_bundle.owns_blocks
+            [out_bundle.blocks[0]], owns_blocks=out_bundle.owns_blocks
         )
+        out_bundle = replace(out_bundle, blocks=out_bundle.blocks[1:])
         if not out_bundle.blocks:
             # If this task's RefBundle is exhausted, move to the next one.
             del self._completed_tasks[0]
+        else:
+            self._completed_tasks[0].output = out_bundle
         return next_bundle
 
 

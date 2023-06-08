@@ -50,7 +50,6 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
@@ -58,6 +57,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -959,6 +959,11 @@ class Dataset:
     ) -> "Dataset":
         """Randomly shuffle the elements of this dataset.
 
+        .. tip::
+
+            ``random_shuffle`` can be slow. For better performance, try
+            `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
@@ -981,7 +986,7 @@ class Dataset:
 
         Returns:
             The shuffled dataset.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
@@ -3988,12 +3993,20 @@ class Dataset:
             )
             for block_with_metadata in blocks_with_metadata
         ]
-
-        # Create a new logical plan whose input is the existing data
-        # from the the old Dataset.
-        copy._logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
-
-        return copy
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        output = MaterializedDataset(
+            ExecutionPlan(
+                blocks,
+                copy._plan.stats(),
+                run_by_consumer=False,
+            ),
+            copy._epoch,
+            copy._lazy,
+            logical_plan,
+        )
+        output._plan.execute()  # No-op that marks the plan as fully executed.
+        output._plan._in_stats.dataset_uuid = self._get_uuid()
+        return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
