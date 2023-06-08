@@ -3,7 +3,10 @@ import math
 from typing import List
 
 from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
+import logging
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def calculate_desired_num_replicas(
@@ -123,6 +126,19 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
         # scale_up_periods or scale_down_periods.
         self.decision_counter = 0
 
+    def _logging_autoscaling_metrics(
+        self,
+        curr_target_num_replicas: int,
+        current_num_ongoing_requests: List[float],
+        desired_num_replicas: int,
+    ):
+        autosacling_msg = (
+            f"curr_target_num_replicas:  {curr_target_num_replicas}, "
+            f"current_num_ongoing_requests: {current_num_ongoing_requests}, "
+            f"desired_num_replicas: {desired_num_replicas}"
+        )
+        logger.debug(autosacling_msg)
+
     def get_decision_num_replicas(
         self,
         curr_target_num_replicas: int,
@@ -155,6 +171,11 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             if self.decision_counter > self.scale_up_consecutive_periods:
                 self.decision_counter = 0
                 decision_num_replicas = desired_num_replicas
+                self._logging_autoscaling_metrics(
+                    curr_target_num_replicas,
+                    current_num_ongoing_requests,
+                    desired_num_replicas,
+                )
 
         # Scale down.
         elif desired_num_replicas < curr_target_num_replicas:
@@ -169,6 +190,11 @@ class BasicAutoscalingPolicy(AutoscalingPolicy):
             if self.decision_counter < -self.scale_down_consecutive_periods:
                 self.decision_counter = 0
                 decision_num_replicas = desired_num_replicas
+                self._logging_autoscaling_metrics(
+                    curr_target_num_replicas,
+                    current_num_ongoing_requests,
+                    desired_num_replicas,
+                )
 
         # Do nothing.
         else:
