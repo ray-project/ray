@@ -457,7 +457,7 @@ class _FileBasedDatasourceReader(Reader):
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
             DataContext._set_current(ctx)
-            logger.debug(f"Reading {len(read_paths)} files.")
+            logger.get_logger().debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
             output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
