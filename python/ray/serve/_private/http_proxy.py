@@ -34,7 +34,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_MULTIPLEXED_MODEL_ID,
     RAY_SERVE_REQUEST_ID,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
