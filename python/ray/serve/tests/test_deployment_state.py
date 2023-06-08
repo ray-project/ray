@@ -2340,9 +2340,9 @@ def test_recover_during_rolling_update(
     # Replica should remain recovering and remain labeled as version "2"
     # before it recovers the real version from the actor
     if not is_driver_deployment:
-        # NOTE(zcin): because the node id is not available yet when recovering,
-        # if we perform an update before marking the replica as ready, it will
-        # think it needs to bring up a new replica on the node(s) in the cluster.
+        # NOTE(zcin): for is_driver_deployment=True, since the node id is not available
+        # when recovering, if we perform an update before marking the replica as ready,
+        # it will think it needs to bring up a new replica on the node(s) in the cluster
         for _ in range(3):
             new_deployment_state_manager.update()
             check_counts(
@@ -2357,11 +2357,10 @@ def test_recover_during_rolling_update(
     # but pointing to the same replica actor
     new_mocked_replica = new_deployment_state._replicas.get()[0]
     # Recover real version "1" (simulate previous actor not yet stopped)
-    # This replica should be stopped
     new_mocked_replica._actor.set_ready(version1)
     # At this point the replica is running
     new_deployment_state_manager.update()
-    # Then deployment state manager notices the replica has an outdated version
+    # Then deployment state manager notices the replica has outdated version -> stops it
     new_deployment_state_manager.update()
     check_counts(
         new_deployment_state,
@@ -2391,6 +2390,7 @@ def test_recover_during_rolling_update(
         version=version2,
         by_state=[(ReplicaState.RUNNING, 1)],
     )
+    # Make sure replica name is different, meaning a different "actor" was started
     assert mocked_replica.replica_tag != new_mocked_replica_version2.replica_tag
 
 
