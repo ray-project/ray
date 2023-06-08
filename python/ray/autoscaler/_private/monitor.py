@@ -370,7 +370,6 @@ class Monitor:
 
     def _run(self):
         """Run the monitor loop."""
-
         while True:
             try:
                 gcs_request_start_time = time.time()
@@ -400,11 +399,15 @@ class Monitor:
                     self.autoscaler.update()
                     status["autoscaler_update_time"] = time.time() - update_start_time
                     autoscaler_summary = self.autoscaler.summary()
-                    self.emit_metrics(
-                        load_metrics_summary,
-                        autoscaler_summary,
-                        self.autoscaler.all_node_types,
-                    )
+                    try:
+                        self.emit_metrics(
+                            load_metrics_summary,
+                            autoscaler_summary,
+                            self.autoscaler.all_node_types,
+                        )
+                    except Exception:
+                        logger.error("Error emitting metrics")
+
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
                         status[
