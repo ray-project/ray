@@ -19,6 +19,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.operators.one_to_one_operator import OneToOneOperator
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
@@ -26,7 +27,7 @@ from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
-class MapOperator(PhysicalOperator, ABC):
+class MapOperator(OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task
@@ -59,7 +60,7 @@ class MapOperator(PhysicalOperator, ABC):
         # Output metadata, added to on get_next().
         self._output_metadata: List[BlockMetadata] = []
 
-        super().__init__(name, [input_op])
+        super().__init__(name, input_op)
 
     @classmethod
     def create(
