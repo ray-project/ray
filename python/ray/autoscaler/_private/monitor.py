@@ -370,6 +370,7 @@ class Monitor:
 
     def _run(self):
         """Run the monitor loop."""
+
         while True:
             try:
                 gcs_request_start_time = time.time()
