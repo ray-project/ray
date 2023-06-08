@@ -15,11 +15,19 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 
 config = (
     DreamerV3Config()
-    #.resources(
-    #    num_learner_workers=1,
-    #    num_gpus_per_learner_worker=1,
-    #    num_cpus_for_local_worker=1,
-    #)
+    .resources(
+        num_learner_workers=1,
+        num_gpus_per_learner_worker=1,
+        num_cpus_for_local_worker=1,
+    )
+    # TODO (sven): concretize this: If you use >1 GPU and increase the batch size
+    #  accordingly, you might also want to increase the number of envs per worker
+    .rollouts(
+        num_envs_per_worker=1,
+        # Since we are using gymnasium.vector.Env, we can parallelize the individual
+        # envs w/o performance hit.
+        remote_worker_envs=True,
+    )
     .environment(
         # [2]: "We follow the evaluation protocol of Machado et al. (2018) with 200M
         # environment steps, action repeat of 4, a time limit of 108,000 steps per
@@ -43,7 +51,6 @@ config = (
         training_ratio=1024,
         # TODO
         model={
-            "batch_size_B": 16,
             "batch_length_T": 64,
             "horizon_H": 15,
             "gamma": 0.997,

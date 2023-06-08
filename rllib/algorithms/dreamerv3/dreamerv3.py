@@ -473,19 +473,22 @@ class DreamerV3(Algorithm):
                 self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
 
                 ts_in_buffer = self.replay_buffer.get_num_timesteps()
+                actual_train_ratio = (
+                    self._counters[NUM_ENV_STEPS_TRAINED]
+                    / self._counters[NUM_ENV_STEPS_SAMPLED]
+                )
                 if (
                     # More timesteps than BxT.
                     ts_in_buffer
                     >= (self.config.batch_size_B * self.config.batch_length_T)
                     # And enough timesteps for the next train batch to not exceed
                     # the training_ratio.
-                    and self._counters[NUM_ENV_STEPS_TRAINED]
-                    / self._counters[NUM_ENV_STEPS_SAMPLED]
-                    < self.config.training_ratio
+                    and actual_train_ratio < self.config.training_ratio
                 ):
                     # Summarize environment interaction and buffer data.
                     results[ALL_MODULES] = summarize_sampling_and_replay_buffer(
                         replay_buffer=self.replay_buffer,
+                        actual_train_ratio=actual_train_ratio,
                     )
                     break
 

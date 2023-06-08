@@ -103,12 +103,14 @@ if __name__ == "__main__":
 
     # Loop through all collected files.
     for file in files:
+        config_is_python = False
         # For python files, need to make sure, we only deliver the module name into the
         # `load_experiments_from_file` function (everything from "/ray/rllib" on).
         if file.endswith(".py"):
             if file.endswith("__init__.py"):  # weird CI learning test (BAZEL) case
                 continue
             experiments = load_experiments_from_file(file, SupportedFileType.python)
+            config_is_python = True
         else:
             experiments = load_experiments_from_file(file, SupportedFileType.yaml)
 
@@ -139,19 +141,19 @@ if __name__ == "__main__":
             print(f"Skipping framework='{args.framework}' for QMIX.")
             continue
 
-        # Always run with eager-tracing when framework=tf2 if not in local-mode.
-        # Ignore this if the yaml explicitly tells us to disable eager tracing
+        # Always run with eager-tracing when framework=tf2, if not in local-mode
+        # and unless the yaml explicitly tells us to disable eager tracing.
         if (
-            args.framework == "tf2"
+            (args.framework == "tf2" or exp["config"].get("framework") == "tf2")
             and not args.local_mode
             and not exp["config"].get("eager_tracing") is False
         ):
-
             exp["config"]["eager_tracing"] = True
 
-        # Print out the actual config.
-        print("== Test config ==")
-        print(yaml.dump(experiments))
+        # Print out the actual config (not for py files as yaml.dump weirdly fails).
+        if not config_is_python:
+            print("== Test config ==")
+            print(yaml.dump(experiments))
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.

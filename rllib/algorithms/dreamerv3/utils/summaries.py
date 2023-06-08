@@ -240,6 +240,7 @@ def summarize_dreamed_eval_trajectory_vs_samples(
 def summarize_sampling_and_replay_buffer(
     *,
     replay_buffer,
+    actual_train_ratio,
 ):
     episodes_in_buffer = replay_buffer.get_num_episodes()
     ts_in_buffer = replay_buffer.get_num_timesteps()
@@ -252,7 +253,7 @@ def summarize_sampling_and_replay_buffer(
         "BUFFER_size_timesteps": ts_in_buffer,
         "BUFFER_replayed_steps": replayed_steps,
         "BUFFER_added_steps": added_steps,
-        "actual_train_ratio": replayed_steps / added_steps,
+        "actual_train_ratio": actual_train_ratio,
     }
 
 
