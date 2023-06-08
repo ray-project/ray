@@ -3209,11 +3209,6 @@ class Dataset:
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
-        .. warning::
-            If your dataset contains ragged tensors, this method errors. To prevent
-            errors, resize tensors or
-            :ref:`disable tensor extension casting <disable_tensor_extension_casting>`.
-
         Examples:
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
