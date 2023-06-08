@@ -69,7 +69,7 @@ def main(
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
     # TODO(can): this env var is used as a feature flag, in case we need to turn this
     # off quickly. We should remove this when the new db reporter is stable.
-    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+    if os.environ.get("UPDATE_TEST_STATE_MACHINE", False):
         logger.info(f"Updating test state for test {test_name} to CONSISTENTLY_FAILING")
         _update_test_state(test, blamed_commit)
 

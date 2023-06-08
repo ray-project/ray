@@ -140,7 +140,7 @@ class TestStateMachine:
             "master",
             message=f"[ray-test-bot] {self.test.get_name()} failing",
             env={
-                "REPORT_TO_RAY_TEST_DB": "1",
+                "UPDATE_TEST_STATE_MACHINE": "1",
             },
         )
         failing_commit = self.test_results[0].commit
