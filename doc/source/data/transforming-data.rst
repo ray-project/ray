@@ -11,8 +11,9 @@ This guide shows you how to:
 
 * `Transform rows <#transforming-rows>`_
 * `Transform batches <#transforming-batches>`_
-* `Transform groups <#transforming-groups>`_
+* `Groupby and transform groups <#groupby-and-transforming-groups>`_
 * `Shuffle rows <#shuffling-rows>`_
+* `Repartition data <#repartitioning-data>`_
 
 Transforming rows
 =================
@@ -44,7 +45,7 @@ If your transformation returns exactly one row for each input row, call
 .. tip::
 
     If your transformation is vectorized, call :meth:`~ray.data.Dataset.map_batches` for
-    better performance. To learn more, see `Transforming batches with actors <transforming-batches-with-actors>`_.
+    better performance. To learn more, see `Transforming batches <#transforming-batches>`_.
 
 Transforming rows with flat map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -174,6 +175,8 @@ To transform batches with actors, complete these steps:
                     TorchPredictor,
                     # Two workers with one GPU each
                     compute=ray.data.ActorPoolStrategy(size=2),
+                    # Batch size is required if you're using GPUs.
+                    batch_size=4,
                     num_gpus=1
                 )
             )
@@ -221,8 +224,22 @@ To configure the batch type, specify ``batch_format`` in
                 .map_batches(drop_nas, batch_format="pandas")
             )
 
-Transforming groups
-===================
+Configuring batch size
+~~~~~~~~~~~~~~~~~~~~~~
+
+Increasing ``batch_size`` improves the performance of vectorized transformations like
+NumPy functions and model inference. However, if your batch size is too large, your
+program might run out of memory. If you encounter an out-of-memory error, decrease your
+``batch_size``.
+
+.. note::
+
+    The default batch size depends on your resource type. If you're using CPUs,
+    the default batch size is 4096. If you're using GPUs, you must specify an explicit
+    batch size.
+
+Groupby and transforming groups
+===============================
 
 To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then, call
 :meth:`~ray.data.grouped_data.GroupedData.map_groups` to transform the groups.
@@ -289,3 +306,32 @@ To randomly shuffle all rows, call :meth:`~ray.data.Dataset.random_shuffle`.
 
     :meth:`~ray.data.Dataset.random_shuffle` is slow. For better performance, try
     `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+
+Repartitioning data
+===================
+
+A :class:`~ray.data.dataset.Dataset` operates on a sequence of distributed data
+:term:`blocks <block>`. If you want to achieve more fine-grained parallelization,
+increase the number of blocks.
+
+To change the number of blocks, call
+:meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
+
+.. warning::
+
+    Avoid :meth:`Dataset.repartition() <ray.data.Dataset.repartition>`. Instead, specify
+    ``parallelism`` when you load data.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.range(10000, parallelism=1000)
+
+    # Repartition the data into 100 blocks. Since shuffle=False, Ray Data will minimize
+    # data movement during this operation by merging adjacent blocks.
+    ds = ds.repartition(100, shuffle=False).materialize()
+
+    # Repartition the data into 200 blocks, and force a full data shuffle.
+    # This operation will be more expensive
+    ds = ds.repartition(200, shuffle=True).materialize()
