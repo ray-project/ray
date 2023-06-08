@@ -2207,7 +2207,7 @@ def test_recover_state_from_replica_names(
     create_deployment_state_manager, _ = mock_deployment_state_manager_full
     deployment_state_manager = create_deployment_state_manager()
 
-    # Step 1: Create some deployment info with actors in running state
+    # Deploy deployment with version "1" and one replica
     info1, version1 = deployment_info(
         version="1", is_driver_deployment=is_driver_deployment
     )
@@ -2257,7 +2257,6 @@ def test_recover_state_from_replica_names(
     new_mocked_replica = new_deployment_state._replicas.get()[0]
     new_mocked_replica._actor.set_ready(version1)
     any_recovering = new_deployment_state_manager.update()
-    print(new_deployment_state._replicas)
     check_counts(
         new_deployment_state,
         total=1,
