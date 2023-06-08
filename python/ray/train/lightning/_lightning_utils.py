@@ -4,7 +4,6 @@ from ray.air.constants import MODEL_KEY
 from ray.data.dataset import DataIterator
 from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
 
-import os
 import logging
 import shutil
 import torch

@@ -80,7 +80,7 @@ def test_deepspeed_stages(ray_start_6_cpus_4_gpus, tmpdir, stage, test_restore):
         # Check all deepspeed model/optimizer shards are saved
         all_files = os.listdir(f"{result.checkpoint.path}/{MODEL_KEY}/checkpoint")
         for rank in range(num_workers):
-            full_model = f"mp_rank_00_model_states.pt"
+            full_model = "mp_rank_00_model_states.pt"
             model_shard = f"zero_pp_rank_{rank}_mp_rank_00_model_states.pt"
             optim_shard = f"zero_pp_rank_{rank}_mp_rank_00_optim_states.pt"
 
