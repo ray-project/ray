@@ -294,7 +294,11 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
-/// The maximum number of generator return values. It is used to
+/// The maximum number of generator returns. We are using this to pre-reserve
+/// Ray object ID indexes.
+/// The first N indexes are for num_returns.
+/// The next max_num_generator_returns indexes are for generator return.
+/// The rest of them is for ray.put.
 RAY_CONFIG(uint32_t, max_num_generator_returns, 100 * 1000 * 1000)
 
 /// A value to add to workers' OOM score adjustment, so that the OS prioritizes
@@ -824,3 +828,6 @@ RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
 // See https://github.com/ray-project/ray/pull/33976 for more
 // info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
+
+// If autoscaler v2 is enabled.
+RAY_CONFIG(bool, enable_autoscaler_v2, false)
