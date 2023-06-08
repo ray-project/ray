@@ -572,6 +572,28 @@ def read_parquet(
            }
         )
 
+        The Parquet reader also supports projection and filter pushdown, allowing column
+        selection and row filtering to be pushed down to the file scan.
+
+        .. testcode::
+
+            import pyarrow as pa
+
+            # Create a Dataset by reading a Parquet file, pushing column selection and
+            # row filtering down to the file scan.
+            ds = ray.data.read_parquet(
+                "example://iris.parquet",
+                columns=["sepal.length", "variety"],
+                filter=pa.dataset.field("sepal.length") > 5.0,
+            )
+
+            ds.show(2)
+
+        .. testoutput::
+
+            {'sepal.length': 5.1, 'variety': 'Setosa'}
+            {'sepal.length': 5.4, 'variety': 'Setosa'}
+
         For further arguments you can pass to pyarrow as a keyword argument, see
         https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
 
