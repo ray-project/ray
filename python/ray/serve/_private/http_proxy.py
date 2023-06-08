@@ -115,12 +115,6 @@ async def _handle_streaming_response(
                         "'http.response.start' message must contain 'status'",
                     )
                     status_code = str(asgi_message["status"])
-                asgi_message["headers"].append(
-                    [
-                        RAY_SERVE_REQUEST_ID,
-                        ray.serve.context._serve_request_context.get().request_id,
-                    ]
-                )
                 await send(asgi_message)
     except Exception as e:
         error_message = f"Unexpected error, traceback: {e}."
