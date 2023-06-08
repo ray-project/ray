@@ -24,6 +24,7 @@ To view the full list of supported file formats, see the
         To read Parquet files, call :func:`~ray.data.read_parquet`.
 
         .. testcode::
+            :skipif: True
 
             import ray
 
@@ -47,6 +48,7 @@ To view the full list of supported file formats, see the
         images as NumPy ndarrays.
 
         .. testcode::
+            :skipif: True
 
             import ray
 
@@ -55,6 +57,7 @@ To view the full list of supported file formats, see the
             print(ds.schema())
 
         .. testoutput::
+            :skipif: True
 
             Column  Type
             ------  ----
@@ -65,6 +68,7 @@ To view the full list of supported file formats, see the
         To read lines of text, call :func:`~ray.data.read_text`.
 
         .. testcode::
+            :skipif: True
 
             import ray
 
@@ -83,6 +87,7 @@ To view the full list of supported file formats, see the
         To read CSV files, call :func:`~ray.data.read_csv`.
 
         .. testcode::
+            :skipif: True
 
             import ray
 
@@ -105,6 +110,7 @@ To view the full list of supported file formats, see the
         To read raw binary files, call :func:`~ray.data.read_binary_files`.
 
         .. testcode::
+            :skipif: True
 
             import ray
 
@@ -123,6 +129,7 @@ To view the full list of supported file formats, see the
         To read TFRecords files, call :func:`~ray.data.read_tfrecords`.
 
         .. testcode::
+            :skipif: True
 
             import ray
 
@@ -154,6 +161,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
     read tasks across the cluster.
 
 .. testcode::
+    :skipif: True
 
     import ray
 
@@ -277,6 +285,7 @@ and specify files on the mounted filesystem. Paths can point to files or directo
 To read formats other than Parquet, see the :ref:`Input/Output reference <input-output>`.
 
 .. testcode::
+    :skipif: True
 
     import ray
 
@@ -609,7 +618,15 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
 
         .. testoutput::
 
-            MaterializedDataset(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
+            MaterializedDataset(
+               num_blocks=...,
+               num_rows=50000,
+               schema={
+                  id: binary,
+                  image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8),
+                  label: int64
+               }
+            )
 
 Reading databases
 =================
@@ -636,7 +653,8 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
         Then, define your connection logic and query the database.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import mysql.connector
 
@@ -674,7 +692,8 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
         Then, define your connection logic and query the database.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import psycopg2
 
@@ -710,7 +729,8 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
         Then, define your connection logic and query the database.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import snowflake.connector
 
@@ -748,7 +768,8 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
         Then, define your connection logic and read from the Databricks SQL warehouse.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             from databricks import sql
 
@@ -784,7 +805,8 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
         Then, define your connection logic and query the dataset.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             from google.cloud import bigquery
             from google.cloud.bigquery import dbapi

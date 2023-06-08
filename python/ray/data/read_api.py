@@ -573,8 +573,8 @@ def read_parquet(
 
             import pyarrow as pa
 
-            # Create a Dataset by reading a Parquet file, pushing column selection and row
-            # filtering down to the file scan.
+            # Create a Dataset by reading a Parquet file, pushing column selection and
+            # row filtering down to the file scan.
             ds = ray.data.read_parquet(
                 "example://iris.parquet",
                 columns=["sepal.length", "variety"],
