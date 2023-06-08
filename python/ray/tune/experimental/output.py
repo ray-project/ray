@@ -613,7 +613,7 @@ def _detect_reporter(
         AirEntrypoint.TUNE_RUN,
         AirEntrypoint.TUNE_RUN_EXPERIMENTS,
         AirEntrypoint.TUNER,
-    } or (num_samples and num_samples > 1):
+    }:
         if rich_enabled:
             if not rich:
                 raise ImportError("Please run `pip install rich`. ")
