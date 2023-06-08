@@ -56,6 +56,9 @@ from ray.data._internal.logical.operators.map_operator import (
     MapBatches,
     MapRows,
 )
+from ray.data._internal.logical.operators.n_ary_operator import (
+    Union as UnionLogicalOperator,
+)
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
@@ -1597,6 +1600,7 @@ class Dataset:
                 metadata.extend(ms)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
         else:
+            # TODO(scott): move this logic over
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
             block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
@@ -1638,10 +1642,17 @@ class Dataset:
             parent=[d._plan.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
+
+        logical_plan = self._logical_plan
+        if logical_plan is not None:
+            op = UnionLogicalOperator(self, other)
+            logical_plan = LogicalPlan(op)
+
         return Dataset(
             ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
             max_epoch,
             self._lazy,
+            logical_plan,
         )
 
     def groupby(self, key: Optional[str]) -> "GroupedData":
