@@ -64,7 +64,7 @@
     # Upload to latest directory.
     - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
-- label: ":docker: Build Images: {{matrix}} - cpu/cu115/cu116"
+- label: ":docker: Build Images: {{matrix}} - cpu/cu115/116"
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
