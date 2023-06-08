@@ -1714,21 +1714,6 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: remove_before_commit
-  group: Devprod tests
-  working_dir: tune_tests/cloud_tests
-  frequency: manual
-  team: ml
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: exit 40
-
-
 - name: tune_cloud_no_sync_down
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -3679,7 +3664,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=tf2
+    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=tf2
 
   alert: default
 
@@ -3708,7 +3693,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=appo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=appo/new_stack --framework=torch
 
   alert: default
 
@@ -4170,7 +4155,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf2
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/new_stack --framework=tf2
 
   alert: default
 
@@ -4199,7 +4184,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=torch
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/new_stack --framework=torch
 
   alert: default
 

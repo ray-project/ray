@@ -37,7 +37,7 @@ from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
-    ASGIHTTPSender,
+    BufferedASGISender,
     ASGIHTTPQueueSender,
     RawASGIResponse,
     Response,
@@ -224,7 +224,9 @@ def create_replica_wrapper(name: str):
                 request_kwargs,
                 pickle.loads(pickled_request_metadata),
             )
-            return await self.replica.handle_request(query)
+
+            # Returns a small object for router to track request status.
+            return b"", await self.replica.handle_request(query)
 
         async def handle_request_streaming(
             self,
@@ -297,7 +299,7 @@ def create_replica_wrapper(name: str):
                 proto.request_id, proto.endpoint, call_method=proto.call_method
             )
             request_args = request_args[0]
-            query = Query(request_args, request_kwargs, request_metadata, return_num=1)
+            query = Query(request_args, request_kwargs, request_metadata)
             return await self.replica.handle_request(query)
 
         async def is_allocated(self) -> str:
@@ -528,7 +530,7 @@ class RayServeReplica:
         This is used on the legacy non-streaming codepath because we cannot serialize
         and return a StreamingResponse.
         """
-        sender = ASGIHTTPSender()
+        sender = BufferedASGISender()
         await response(scope=None, receive=mock_asgi_receive, send=sender)
         return sender.build_asgi_response()
 
@@ -562,21 +564,16 @@ class RayServeReplica:
             runner_method = self.get_runner_method(request_item)
             method_to_call = sync_to_async(runner_method)
             result = None
-            if len(inspect.signature(runner_method).parameters) > 0:
-                result = await method_to_call(*args, **kwargs)
-            else:
-                # When access via http http_arg_is_pickled with no args:
-                # args = (<starlette.requests.Request object at 0x7fe900694cc0>,)
-                # When access via python with no args:
-                # args = ()
-                if len(args) == 1 and isinstance(args[0], starlette.requests.Request):
-                    # The method doesn't take in anything, including the request
-                    # information, so we pass nothing into it
-                    result = await method_to_call()
-                else:
-                    # Will throw due to signature mismatch if user attempts to
-                    # call with non-empty args
-                    result = await method_to_call(*args, **kwargs)
+
+            # Edge case to support empty HTTP handlers: don't pass the Request
+            # argument if the callable has no parameters.
+            if (
+                request_item.metadata.is_http_request
+                and len(inspect.signature(runner_method).parameters) == 0
+            ):
+                args, kwargs = tuple(), {}
+
+            result = await method_to_call(*args, **kwargs)
 
             # Streaming HTTP codepath: always send response over ASGI interface.
             if asgi_sender is not None:
@@ -641,7 +638,7 @@ class RayServeReplica:
 
     async def handle_request(
         self, request: Query, *, asgi_sender: Optional[Send] = None
-    ) -> asyncio.Future:
+    ) -> Any:
         async with self.rwlock.reader_lock:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
@@ -673,11 +670,8 @@ class RayServeReplica:
                     latency_ms=latency_ms,
                 )
             )
-            if request.return_num == 1:
-                return result
-            else:
-                # Returns a small object for router to track request status.
-                return b"", result
+
+            return result
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.
