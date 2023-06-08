@@ -2224,8 +2224,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2337,8 +2337,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2377,8 +2377,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2458,8 +2458,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2498,8 +2498,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2538,8 +2538,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -4547,8 +4547,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RAY_worker_killing_policy=retriable_lifo
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
@@ -4627,8 +4627,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RAY_worker_killing_policy=retriable_lifo
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
