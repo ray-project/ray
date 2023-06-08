@@ -1898,7 +1898,7 @@
 - name: tune_cloud_long_running_cloud_storage
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
-  frequency: nightly
+  frequency: weekly
   team: ml
 
   cluster:
