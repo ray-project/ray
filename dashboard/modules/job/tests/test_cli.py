@@ -145,6 +145,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -159,6 +160,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "blah"},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -172,6 +174,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={"working_dir": "'.'"},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -192,6 +195,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -207,6 +211,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -247,6 +252,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -269,6 +275,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env=env_dict,
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -285,6 +292,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -299,6 +307,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id="my_job_id",
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -318,6 +327,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=2,
                 entrypoint_num_gpus=None,
                 entrypoint_resources=None,
@@ -337,6 +347,7 @@ class TestSubmit:
                 entrypoint='"echo hello"',
                 submission_id=None,
                 runtime_env={},
+                metadata=None,
                 entrypoint_num_cpus=None,
                 entrypoint_num_gpus=2,
                 entrypoint_resources=None,
@@ -368,6 +379,7 @@ class TestSubmit:
                 "entrypoint": '"echo hello"',
                 "submission_id": None,
                 "runtime_env": {},
+                "metadata": None,
                 "entrypoint_num_cpus": None,
                 "entrypoint_num_gpus": None,
                 "entrypoint_resources": None,
@@ -385,11 +397,55 @@ class TestSubmit:
                     "submit",
                     """--entrypoint-resources={"Custom":3""",
                     "--",
-                    "echo hello",
+                    "echo hello world",
                 ],
             )
             print(result.output)
             assert result.exit_code == 1
+            assert "not a valid JSON string" in result.output
+
+    def test_metadata(self, mock_sdk_client):
+        runner = CliRunner()
+        mock_client_instance = mock_sdk_client.return_value
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--metadata-json",
+                    '{"key": "value"}',
+                    "--",
+                    "echo hello",
+                ],
+            )
+            check_exit_code(result, 0)
+            mock_client_instance.submit_job.assert_called_with(
+                entrypoint='"echo hello"',
+                submission_id=None,
+                runtime_env={},
+                entrypoint_num_cpus=None,
+                entrypoint_num_gpus=None,
+                entrypoint_resources=None,
+                metadata={"key": "value"},
+            )
+
+    def test_metadata_invalid_json(self, mock_sdk_client):
+        runner = CliRunner()
+
+        with set_env_var("RAY_ADDRESS", "env_addr"):
+            result = runner.invoke(
+                job_cli_group,
+                [
+                    "submit",
+                    "--metadata-json",
+                    '{"key": "value"',
+                    "--",
+                    "echo hello",
+                ],
+            )
+            print(result.output)
+            check_exit_code(result, 1)
             assert "not a valid JSON string" in result.output
 
     @pytest.mark.parametrize(
