@@ -222,13 +222,12 @@ class AnyscaleJobRunner(JobRunner):
         )
 
         full_env = self.get_full_command_env(env)
-        env_str = _get_env_str(full_env)
 
         no_raise_on_timeout_str = (
             " --test-no-raise-on-timeout" if not raise_on_timeout else ""
         )
         full_command = (
-            f"{env_str}python anyscale_job_wrapper.py '{command}' "
+            f"python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
             "--results-cloud-storage-uri "
             f"'{join_cloud_storage_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
