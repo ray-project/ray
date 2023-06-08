@@ -1,8 +1,8 @@
 .. _data-examples-ref:
 
-========
-Examples
-========
+=================
+Ray Data Examples
+=================
 
 .. tip:: Check out the Datasets :ref:`User Guide <data_user_guide>` to learn more about
   Dataset features in-depth.
