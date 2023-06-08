@@ -1,5 +1,5 @@
 import sys
-from typing import List
+from typing import List, Optional
 
 import pytest
 
@@ -16,10 +16,12 @@ from ray_release.test_automation.state_machine import TestStateMachine
 
 
 class MockIssue:
-    def __init__(self, number: int, state: str = "open", labels: List[str] = []):
+    def __init__(
+        self, number: int, state: str = "open", labels: Optional[List[str]] = None
+    ):
         self.number = number
         self.state = state
-        self.labels = labels
+        self.labels = labels or []
         self.comments = []
 
     def edit(self, state: str = None, labels: List[str] = None):
