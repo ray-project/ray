@@ -595,7 +595,7 @@ def get_num_cpus(
             # TODO (Alex): We should probably add support for fractional cpus.
             if int(docker_count) != float(docker_count):
                 logger.warning(
-                    f"Ray currently does not support initializing Ray"
+                    f"Ray currently does not support initializing Ray "
                     f"with fractional cpus. Your num_cpus will be "
                     f"truncated from {docker_count} to "
                     f"{int(docker_count)}."
