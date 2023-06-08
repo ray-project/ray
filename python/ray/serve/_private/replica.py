@@ -563,21 +563,16 @@ class RayServeReplica:
             runner_method = self.get_runner_method(request_item)
             method_to_call = sync_to_async(runner_method)
             result = None
-            if len(inspect.signature(runner_method).parameters) > 0:
-                result = await method_to_call(*args, **kwargs)
-            else:
-                # When access via http with no args:
-                # args = (<starlette.requests.Request object at 0x7fe900694cc0>,)
-                # When access via python with no args:
-                # args = ()
-                if len(args) == 1 and isinstance(args[0], starlette.requests.Request):
-                    # The method doesn't take in anything, including the request
-                    # information, so we pass nothing into it
-                    result = await method_to_call()
-                else:
-                    # Will throw due to signature mismatch if user attempts to
-                    # call with non-empty args
-                    result = await method_to_call(*args, **kwargs)
+
+            # Edge case to support empty HTTP handlers: don't pass the Request
+            # argument if the callable has no parameters.
+            if (
+                request_item.metadata.is_http_request
+                and len(inspect.signature(runner_method).parameters) == 0
+            ):
+                args, kwargs = tuple(), {}
+
+            result = await method_to_call(*args, **kwargs)
 
             # Streaming HTTP codepath: always send response over ASGI interface.
             if asgi_sender is not None:
