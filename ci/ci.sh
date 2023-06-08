@@ -503,7 +503,7 @@ build_wheels_and_jars() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      "${WORKSPACE_DIR}"/python/build-wheel-macos-arm64.sh
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
 
