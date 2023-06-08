@@ -535,7 +535,7 @@ def test_config_with_deleting_app(ray_start_stop):
     wait_for_condition(
         check_cli, expected_configs=config_json1["applications"], expected_statuses=2
     )
-    print("`serve status` and `serve cli` are returning expected responses.")
+    print("`serve status` and `serve config` are returning expected responses.")
 
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
         tmp.write(yaml.safe_dump(config_json2))
@@ -546,7 +546,7 @@ def test_config_with_deleting_app(ray_start_stop):
     wait_for_condition(
         check_cli, expected_configs=config_json2["applications"], expected_statuses=1
     )
-    print("`serve status` and `serve cli` are returning expected responses.")
+    print("`serve status` and `serve config` are returning expected responses.")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
