@@ -18,22 +18,11 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
-from ray.data._internal.logical.operators.from_arrow_operator import (
-    FromArrowRefs,
-    FromHuggingFace,
-)
-from ray.data._internal.logical.operators.from_items_operator import (
+from ray.data._internal.logical.operators.from_operators import (
+    FromArrow,
     FromItems,
-    FromTorch,
-)
-from ray.data._internal.logical.operators.from_numpy_operator import (
-    FromNumpyRefs,
-    FromTF,
-)
-from ray.data._internal.logical.operators.from_pandas_operator import (
-    FromDask,
-    FromModin,
-    FromPandasRefs,
+    FromNumpy,
+    FromPandas,
 )
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -87,15 +76,22 @@ def test_read_operator(ray_start_regular_shared, enable_optimizer):
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
 
 
-def test_from_items_operator(ray_start_regular_shared, enable_optimizer):
-    planner = Planner()
-    from_items_op = FromItems(["Hello", "World"])
-    plan = LogicalPlan(from_items_op)
-    physical_op = planner.plan(plan).dag
+def test_from_operators(ray_start_regular_shared, enable_optimizer):
+    op_classes = [
+        FromArrow,
+        FromItems,
+        FromNumpy,
+        FromPandas,
+    ]
+    for op_cls in op_classes:
+        planner = Planner()
+        op = op_cls([], [])
+        plan = LogicalPlan(op)
+        physical_op = planner.plan(plan).dag
 
-    assert from_items_op.name == "FromItems"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
+        assert op.name == op_cls.__name__
+        assert isinstance(physical_op, InputDataBuffer)
+        assert len(physical_op.input_dependencies) == 0
 
 
 def test_from_items_e2e(ray_start_regular_shared, enable_optimizer):
@@ -988,22 +984,6 @@ def test_zip_e2e(ray_start_regular_shared, enable_optimizer, num_blocks1, num_bl
     _check_usage_record(["ReadRange", "Zip"])
 
 
-def test_from_dask_operator(ray_start_regular_shared, enable_optimizer):
-    import dask.dataframe as dd
-
-    df = pd.DataFrame({"one": list(range(100)), "two": list(range(100))})
-    ddf = dd.from_pandas(df, npartitions=10)
-
-    planner = Planner()
-    from_dask_op = FromDask(ddf)
-    plan = LogicalPlan(from_dask_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_dask_op.name == "FromDask"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
-
-
 def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     import dask.dataframe as dd
 
@@ -1016,40 +996,10 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     dfds = ds.to_pandas()
     assert df.equals(dfds)
 
-    # Underlying implementation uses `FromPandasRefs` operator
-    assert "FromPandasRefs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromDask"
-    _check_usage_record(["FromDask"])
-
-
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
-@pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_modin_operator(
-    ray_start_regular_shared,
-    enable_optimizer,
-    enable_pandas_block,
-):
-    ctx = ray.data.context.DataContext.get_current()
-    old_enable_pandas_block = ctx.enable_pandas_block
-    ctx.enable_pandas_block = enable_pandas_block
-    try:
-        import modin.pandas as mopd
-
-        df = pd.DataFrame(
-            {"one": list(range(100)), "two": list(range(100))},
-        )
-        modf = mopd.DataFrame(df)
-
-        planner = Planner()
-        from_modin_op = FromModin(modf)
-        plan = LogicalPlan(from_modin_op)
-        physical_op = planner.plan(plan).dag
-
-        assert from_modin_op.name == "FromModin"
-        assert isinstance(physical_op, InputDataBuffer)
-        assert len(physical_op.input_dependencies) == 0
-    finally:
-        ctx.enable_pandas_block = old_enable_pandas_block
+    # Underlying implementation uses `FromPandas` operator
+    assert "FromPandas" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromPandas"
+    _check_usage_record(["FromPandas"])
 
 
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
@@ -1068,34 +1018,11 @@ def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     dfds = ds.to_pandas()
 
     assert df.equals(dfds)
-    # Check that metadata fetch is included in stats. This is `FromPandasRefs`
+    # Check that metadata fetch is included in stats. This is `FromPandas`
     # instead of `FromModin` because `from_modin` reduces to `from_pandas_refs`.
-    assert "FromPandasRefs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromModin"
-    _check_usage_record(["FromModin"])
-
-
-@pytest.mark.parametrize("enable_pandas_block", [False, True])
-def test_from_pandas_refs_operator(
-    ray_start_regular_shared, enable_optimizer, enable_pandas_block
-):
-    ctx = ray.data.context.DataContext.get_current()
-    old_enable_pandas_block = ctx.enable_pandas_block
-    ctx.enable_pandas_block = enable_pandas_block
-    try:
-        df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-        df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-
-        planner = Planner()
-        from_pandas_ref_op = FromPandasRefs([df1, df2])
-        plan = LogicalPlan(from_pandas_ref_op)
-        physical_op = planner.plan(plan).dag
-
-        assert from_pandas_ref_op.name == "FromPandasRefs"
-        assert isinstance(physical_op, InputDataBuffer)
-        assert len(physical_op.input_dependencies) == 0
-    finally:
-        ctx.enable_pandas_block = old_enable_pandas_block
+    assert "FromPandas" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromPandas"
+    _check_usage_record(["FromPandas"])
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
@@ -1115,15 +1042,15 @@ def test_from_pandas_refs_e2e(
         rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
         assert values == rows
         # Check that metadata fetch is included in stats.
-        assert "FromPandasRefs" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
+        assert "FromPandas" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "FromPandas"
 
         # Test chaining multiple operations
         ds2 = ds.map_batches(lambda x: x)
         values = [(r["one"], r["two"]) for r in ds2.take(6)]
         assert values == rows
         assert "MapBatches" in ds2.stats()
-        assert "FromPandasRefs" in ds2.stats()
+        assert "FromPandas" in ds2.stats()
         assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
 
         # test from single pandas dataframe
@@ -1132,30 +1059,11 @@ def test_from_pandas_refs_e2e(
         rows = [(r.one, r.two) for _, r in df1.iterrows()]
         assert values == rows
         # Check that metadata fetch is included in stats.
-        assert "FromPandasRefs" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromPandasRefs"
-        _check_usage_record(["FromPandasRefs"])
+        assert "FromPandas" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "FromPandas"
+        _check_usage_record(["FromPandas"])
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
-
-
-def test_from_numpy_refs_operator(
-    ray_start_regular_shared,
-    enable_optimizer,
-):
-    import numpy as np
-
-    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
-    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
-
-    planner = Planner()
-    from_numpy_ref_op = FromNumpyRefs([ray.put(arr1), ray.put(arr2)])
-    plan = LogicalPlan(from_numpy_ref_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_numpy_ref_op.name == "FromNumpyRefs"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
 
 
 def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
@@ -1168,51 +1076,27 @@ def test_from_numpy_refs_e2e(ray_start_regular_shared, enable_optimizer):
     values = np.stack(extract_values("data", ds.take(8)))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     # Check that conversion task is included in stats.
-    assert "FromNumpyRefs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
-    _check_usage_record(["FromNumpyRefs"])
+    assert "FromNumpy" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromNumpy"
+    _check_usage_record(["FromNumpy"])
 
     # Test chaining multiple operations
     ds2 = ds.map_batches(lambda x: x)
     values = np.stack(extract_values("data", ds2.take(8)))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     assert "MapBatches" in ds2.stats()
-    assert "FromNumpyRefs" in ds2.stats()
+    assert "FromNumpy" in ds2.stats()
     assert ds2._plan._logical_plan.dag.name == "MapBatches(<lambda>)"
-    _check_usage_record(["FromNumpyRefs", "MapBatches"])
+    _check_usage_record(["FromNumpy", "MapBatches"])
 
     # Test from single NumPy ndarray.
     ds = ray.data.from_numpy_refs(ray.put(arr1))
     values = np.stack(extract_values("data", ds.take(4)))
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
-    assert "FromNumpyRefs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromNumpyRefs"
-    _check_usage_record(["FromNumpyRefs"])
-
-
-def test_from_arrow_refs_operator(
-    ray_start_regular_shared,
-    enable_optimizer,
-):
-    import pyarrow as pa
-
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-
-    planner = Planner()
-    from_arrow_refs_op = FromArrowRefs(
-        [
-            ray.put(pa.Table.from_pandas(df1)),
-            ray.put(pa.Table.from_pandas(df2)),
-        ]
-    )
-    plan = LogicalPlan(from_arrow_refs_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_arrow_refs_op.name == "FromArrowRefs"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
+    assert "FromNumpy" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromNumpy"
+    _check_usage_record(["FromNumpy"])
 
 
 def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
@@ -1228,9 +1112,9 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
-    _check_usage_record(["FromArrowRefs"])
+    assert "FromArrow" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromArrow"
+    _check_usage_record(["FromArrow"])
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
@@ -1238,28 +1122,9 @@ def test_from_arrow_refs_e2e(ray_start_regular_shared, enable_optimizer):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that conversion task is included in stats.
-    assert "FromArrowRefs" in ds.stats()
-    assert ds._plan._logical_plan.dag.name == "FromArrowRefs"
-    _check_usage_record(["FromArrowRefs"])
-
-
-def test_from_huggingface_operator(
-    ray_start_regular_shared,
-    enable_optimizer,
-):
-    import datasets
-
-    data = datasets.load_dataset("tweet_eval", "emotion")
-    assert isinstance(data, datasets.DatasetDict)
-
-    planner = Planner()
-    from_huggingface_op = FromHuggingFace(data)
-    plan = LogicalPlan(from_huggingface_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_huggingface_op.name == "FromHuggingFace"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
+    assert "FromArrow" in ds.stats()
+    assert ds._plan._logical_plan.dag.name == "FromArrow"
+    _check_usage_record(["FromArrow"])
 
 
 def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
@@ -1276,38 +1141,21 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
         # needed for checking operator usage below.
         assert len(ds.take_all()) > 0
         # Check that metadata fetch is included in stats;
-        # the underlying implementation uses the `FromArrowRefs` operator.
-        assert "FromArrowRefs" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "FromHuggingFace"
-        assert isinstance(ds._plan._logical_plan.dag, FromHuggingFace)
+        # the underlying implementation uses the `FromArrow` operator.
+        assert "FromArrow" in ds.stats()
+        assert ds._plan._logical_plan.dag.name == "FromArrow"
         assert ray.get(ray_datasets[ds_key].to_arrow_refs())[0].equals(
             data[ds_key].data.table
         )
-        _check_usage_record(["FromHuggingFace"])
+        _check_usage_record(["FromArrow"])
 
     ray_dataset = ray.data.from_huggingface(data["train"])
     assert isinstance(ray_dataset, ray.data.Dataset)
     assert len(ray_dataset.take_all()) > 0
-    assert "FromArrowRefs" in ray_dataset.stats()
-    assert ray_dataset._plan._logical_plan.dag.name == "FromHuggingFace"
+    assert "FromArrow" in ray_dataset.stats()
+    assert ray_dataset._plan._logical_plan.dag.name == "FromArrow"
     assert ray.get(ray_dataset.to_arrow_refs())[0].equals(data["train"].data.table)
-    _check_usage_record(["FromHuggingFace"])
-
-
-def test_from_tf_operator(ray_start_regular_shared, enable_optimizer):
-    import tensorflow_datasets as tfds
-
-    tf_dataset = tfds.load("mnist", split=["train"], as_supervised=True)[0]
-    tf_dataset = tf_dataset.take(8)  # Use subset to make test run faster.
-
-    planner = Planner()
-    from_tf_op = FromTF(tf_dataset)
-    plan = LogicalPlan(from_tf_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_tf_op.name == "FromTF"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
+    _check_usage_record(["FromArrow"])
 
 
 def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
@@ -1333,21 +1181,6 @@ def test_from_tf_e2e(ray_start_regular_shared, enable_optimizer):
     # Underlying implementation uses `FromItems` operator
     assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
     _check_usage_record(["FromItems"])
-
-
-def test_from_torch_operator(ray_start_regular_shared, enable_optimizer, tmp_path):
-    import torchvision
-
-    torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
-
-    planner = Planner()
-    from_torch_op = FromTorch(torch_dataset)
-    plan = LogicalPlan(from_torch_op)
-    physical_op = planner.plan(plan).dag
-
-    assert from_torch_op.name == "FromTorch"
-    assert isinstance(physical_op, InputDataBuffer)
-    assert len(physical_op.input_dependencies) == 0
 
 
 def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
