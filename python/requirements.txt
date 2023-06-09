@@ -7,7 +7,6 @@
 # You can obtain this list from the ray.egg-info/requires.txt
 
 ## setup.py install_requires
-attrs
 click>=7.0
 filelock
 # Tracking issue: https://github.com/ray-project/ray/issues/33411
