@@ -400,11 +400,15 @@ class Monitor:
                     self.autoscaler.update()
                     status["autoscaler_update_time"] = time.time() - update_start_time
                     autoscaler_summary = self.autoscaler.summary()
-                    self.emit_metrics(
-                        load_metrics_summary,
-                        autoscaler_summary,
-                        self.autoscaler.all_node_types,
-                    )
+                    try:
+                        self.emit_metrics(
+                            load_metrics_summary,
+                            autoscaler_summary,
+                            self.autoscaler.all_node_types,
+                        )
+                    except Exception:
+                        logger.exception("Error emitting metrics")
+
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
                         status[
@@ -464,7 +468,7 @@ class Monitor:
         for _, node_type, _ in autoscaler_summary.pending_nodes:
             pending_node_count[node_type] += 1
 
-        for node_type, count in autoscaler_summary.pending_launches:
+        for node_type, count in autoscaler_summary.pending_launches.items():
             pending_node_count[node_type] += count
 
         for node_type in node_types:
