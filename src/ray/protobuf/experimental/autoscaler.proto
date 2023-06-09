@@ -26,20 +26,32 @@ import "src/ray/protobuf/experimental/instance_manager.proto";
 
 // Represents an anti-affinity constraint. A bundle with this constraint
 // can't be allocated to a node that has a label with the same name and
-// value. This is used to implement placement group anti-affinity.
+// value.
 //
-// For placement group, the label_name is "_PG" (reserved),
-// and the label_value is the placement group id.
+// This is now used to implement placement group anti-affinity, i.e.
+// strict-spread. The label_name is "_PG_<pg_id>",
+// and the label_value is empty string.
 message AntiAffinityConstraint {
   string label_name = 1;
   string label_value = 2;
-  // If true, the label will be created on the node
-  // where the request with this constraint is scheduled.
-  bool create_label_on_schedule = 3;
 }
 
+// Represents an affinity constraint. A bundle with this constraint
+// should be allocated to node with the same label name and value.
+//
+// This is now used to implement placement group affinity, i.e.
+// strict-pack. The label_name is "_PG_<pg_id>",
+// and the label_value is empty string.
+message AffinityConstraint {
+  string label_name = 1;
+  string label_value = 2;
+}
+
+// Represents a placement constraint to specify where a resource
+// request should be placed on.
 message PlacementConstraint {
-  AntiAffinityConstraint anti_affinity = 1;
+  optional AntiAffinityConstraint anti_affinity = 1;
+  optional AffinityConstraint affinity = 2;
 }
 
 message ResourceRequest {
