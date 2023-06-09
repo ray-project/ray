@@ -1,9 +1,8 @@
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import NAryOperator
 from ray.data._internal.stats import StatsDict
-from ray.data.block import BlockMetadata
 
 
 class UnionOperator(NAryOperator):
@@ -23,8 +22,9 @@ class UnionOperator(NAryOperator):
         self._input_dependency_has_next: List[bool] = [
             True for _ in range(len(input_ops))
         ]
-        # The index of the input dependency that is currently the source of the output buffer.
-        # New inputs from this input dependency will be added directly to the output buffer.
+        # The index of the input dependency that is currently the source of
+        # the output buffer. New inputs from this input dependency will be added
+        # directly to the output buffer.
         self._input_idx_to_output = None
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
@@ -97,7 +97,8 @@ class UnionOperator(NAryOperator):
         with the most blocks remaining, adding its blocks to the output buffer
         and clearing the input buffer."""
 
-        # Use the input buffer with the most blocks as the next source for the output buffer.
+        # Use the input buffer with the most blocks as
+        # the next source for the output buffer.
         num_blocks_in_input_buffers = [len(b) for b in self._input_buffers]
         self._input_idx_to_output = max(
             range(len(num_blocks_in_input_buffers)),
@@ -106,5 +107,6 @@ class UnionOperator(NAryOperator):
         # Add the existing blocks in the new input buffer source to the output buffer.
         self._output_buffer.extend(self._input_buffers[self._input_idx_to_output])
 
-        # Clear the input buffer, since all its blocks have now been added to the output buffer.
+        # Clear the input buffer, since all its blocks have now been
+        # added to the output buffer.
         self._input_buffers[self._input_idx_to_output].clear()

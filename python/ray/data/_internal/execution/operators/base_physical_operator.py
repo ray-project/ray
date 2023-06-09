@@ -126,7 +126,7 @@ class AllToAllOperator(PhysicalOperator):
 
 
 class NAryOperator(PhysicalOperator):
-    """An operator that has multiple input and one output dependencies.
+    """An operator that has multiple input dependencies and one output.
     This operator serves as the base for union, zip, etc.
     """
 
