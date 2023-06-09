@@ -141,6 +141,7 @@ class TestStateMachine:
             message=f"[ray-test-bot] {self.test.get_name()} failing",
             env={
                 "UPDATE_TEST_STATE_MACHINE": "1",
+                "SMOKE_TEST": self.test_results[0].smoke_test,
             },
         )
         failing_commit = self.test_results[0].commit

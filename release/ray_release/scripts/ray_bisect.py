@@ -149,6 +149,7 @@ def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
         step = get_step(
             test,
             ray_wheels=ray_wheels_url,
+            smoke_test=True if os.environ.get("SMOKE_TEST") else False,
             env={
                 "RAY_COMMIT_OF_WHEEL": commit,
             },
