@@ -104,7 +104,7 @@ def test_server_disconnect(serve_instance):
     serve.run(WebSocketServer.bind())
     with connect("ws://localhost:8000") as websocket:
         with pytest.raises(ConnectionClosed):
-            websocket.send("")
+            websocket.recv()
 
 
 @pytest.mark.skipif(
