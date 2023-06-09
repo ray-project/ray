@@ -38,7 +38,7 @@ Reading image data
             :end-before: __read_images1_stop__
             :dedent:
 
-        Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+        Then, apply a :ref:`user-defined function <transforming_data>` to
         encode the class names as integer targets.
 
         .. literalinclude:: ./doc_code/computer_vision.py
@@ -98,7 +98,7 @@ Reading image data
             :end-before: __read_tfrecords1_stop__
             :dedent:
 
-        Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+        Then, apply a :ref:`user-defined function <transforming_data>` to
         decode the raw image bytes.
 
         .. literalinclude:: ./doc_code/computer_vision.py
