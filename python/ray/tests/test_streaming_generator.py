@@ -741,6 +741,33 @@ def test_generator_dist_gather(ray_start_cluster):
     print(summary)
 
 
+def test_generator_max_returns(monkeypatch, shutdown_only):
+    """
+    Test when generator returns more than system limit values
+    (100 million by default), it fails a task.
+    """
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_max_num_generator_returns",
+            "2",
+        )
+
+        @ray.remote(num_returns="streaming")
+        def generator_task():
+            for _ in range(3):
+                yield 1
+
+        @ray.remote
+        def driver():
+            gen = generator_task.remote()
+            for ref in gen:
+                assert ray.get(ref) == 1
+
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(driver.remote())
+
+
 if __name__ == "__main__":
     import os
 

@@ -132,7 +132,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_4,
                                   std::placeholders::_5,
                                   std::placeholders::_6,
-                                  std::placeholders::_7);
+                                  std::placeholders::_7,
+                                  std::placeholders::_8);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->TaskDone();
@@ -2569,6 +2570,7 @@ Status CoreWorker::ExecuteTask(
     const std::shared_ptr<ResourceMappingType> &resource_ids,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
+    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
@@ -2696,6 +2698,7 @@ Status CoreWorker::ExecuteTask(
       task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
       dynamic_return_objects,
+      streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
       application_error,
@@ -2961,10 +2964,12 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   std::string application_error = "";
   // TODO(swang): Support ObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+  std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
                          resource_ids,
                          &return_objects,
                          &dynamic_return_objects,
+                         &streaming_generator_returns,
                          &borrowed_refs,
                          &is_retryable_error,
                          &application_error));
