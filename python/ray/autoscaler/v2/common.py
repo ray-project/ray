@@ -1,7 +1,7 @@
 
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Any, Optional
-from ray.core.generated.experimental import autoscaler_pb2
+from ray.core.generated.experimental.autoscaler_pb2  import NodeStatus
 
 from ray.autoscaler._private.util import (
     NodeIP,
@@ -11,6 +11,24 @@ from ray.autoscaler._private.util import (
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeAvailabilitySummary,
 )
+
+# This class contains the ray node info and the underlying instance info.
+# This should mirror most of the information in `autoscaler.proto::NodeStatus`
+# NOTE(rickyx): This could actually be similar with state API's node info.
+@dataclass
+class Node:
+    # Ray node id. Empty if the node is not registered to GCS.
+    node_id = str
+    # The node's instance id if set when starting the node.
+    instance_id: Optional[str]
+    # Available resources
+    available_resources: Dict[str, float]
+    # Total resources
+    total_resources: Dict[str, float]
+    # Node's labels
+    labels: Dict[str, str]
+    # Node status
+    status: NodeStatus
 
 @dataclass
 class LaunchRequest:
@@ -29,7 +47,6 @@ class PlacementGroupInfo:
     strategy: str
 
 
-
 @dataclass
 class ResourceRequest:
     # Bundles 
@@ -45,7 +62,7 @@ class ResourceRequest:
 @dataclass
 class ClusterStatus:
     # A list of nodes in the cluster (active, or dead), reported by GCS.
-    nodes: List[autoscaler_pb2.NodeState]
+    nodes: List[Node]
     # A map of pending launch requests reported by the autoscaler/node provider.
     pending_launches: List[LaunchRequest]
     # A list of pending resource requests 
