@@ -15,7 +15,9 @@
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 
 namespace ray {
@@ -24,10 +26,12 @@ namespace gcs {
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     const ClusterResourceManager &cluster_resource_manager,
     const GcsResourceManager &gcs_resource_manager,
-    const GcsNodeManager &gcs_node_manager)
+    const GcsNodeManager &gcs_node_manager,
+    const GcsPlacementGroupManager &gcs_placement_group_manager)
     : cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
+      gcs_placement_group_manager_(gcs_placement_group_manager),
       last_cluster_resource_state_version_(0),
       last_seen_autoscaler_state_version_(0) {}
 
@@ -43,7 +47,7 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
 
   GetNodeStates(reply);
   GetPendingResourceRequests(reply);
-  // GetPendingGangResourceRequests(reply);
+  GetPendingGangResourceRequests(reply);
   GetClusterResourceConstraints(reply);
 
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
@@ -73,7 +77,48 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::GetClusterResourceStateReply *reply) {
-  throw std::runtime_error("Unimplemented");
+  // Get the gang resource requests from the placement group load.
+  auto placement_group_load = gcs_resource_manager_.GetPlacementGroupLoad();
+  if (!placement_group_load) {
+    return;
+  }
+
+  // Iterate through each placement group load.
+  for (const auto &pg_data : placement_group_load->placement_group_data()) {
+    auto gang_resource_req = reply->add_pending_gang_resource_requests();
+    // For each placement group, if it's not pending/rescheduling, skip it since.
+    // it's not part of the load.
+    RAY_CHECK(pg_data.state() == rpc::PlacementGroupTableData::PENDING ||
+              pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING)
+        << "Placement group load should only include pending/rescheduling PGs. ";
+
+    const auto pg_constraint = GenPlacementConstraintForPlacementGroup(
+        pg_data.placement_group_id(), pg_data.strategy());
+
+    // Copy the PG's bundles to the request.
+    for (const auto &bundle : pg_data.bundles()) {
+      if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
+        // We will be skipping **placed** bundle (which has node id associated with it).
+        // This is to avoid double counting the bundles that are already placed when
+        // reporting PG related load.
+        RAY_CHECK(pg_data.state() == rpc::PlacementGroupTableData::RESCHEDULING);
+        // NOTE: This bundle is placed in a PG, this must be a bundle that was lost due
+        // to node crashed.
+        continue;
+      }
+      // Add the resources.
+      auto resource_req = gang_resource_req->add_requests();
+      resource_req->mutable_resources_bundle()->insert(bundle.unit_resources().begin(),
+                                                       bundle.unit_resources().end());
+
+      // Add the placement constraint.
+      if (pg_constraint.has_value()) {
+        resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
+      }
+    }
+  }
+
+  return;
 }
 
 void GcsAutoscalerStateManager::GetClusterResourceConstraints(
@@ -126,7 +171,13 @@ void GcsAutoscalerStateManager::GetNodeStates(
       const auto &total = node_resource_data.total.ToResourceMap();
       node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
 
-      // TODO(rickyx): support dynamic labels
+      // Add dynamic PG labels.
+      const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(
+          NodeID::FromBinary(gcs_node_info.node_id()));
+      for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
+        node_state_proto->mutable_dynamic_labels()->insert(
+            {FormatPlacementGroupLabelName(pg_id.Binary()), ""});
+      }
     }
   };
 
