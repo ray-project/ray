@@ -1,5 +1,4 @@
 import itertools
-import logging
 import pathlib
 import posixpath
 import sys
@@ -22,6 +21,7 @@ import numpy as np
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.air._internal.remote_storage import _is_local_windows_path
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 
-logger = logging.getLogger(__name__)
+logger = DatasetLogger(__name__)
 
 
 # We should parallelize file size fetch operations beyond this threshold.
@@ -285,6 +285,22 @@ class FileBasedDatasource(Datasource):
         **write_args,
     ) -> WriteResult:
         """Write blocks for a file-based datasource."""
+        file_format = self._FILE_EXTENSION
+        if isinstance(file_format, list):
+            file_format = file_format[0]
+
+        builder = DelegatingBlockBuilder()
+        for block in blocks:
+            builder.add_block(block)
+        block = builder.build()
+
+        total_num_rows = BlockAccessor.for_block(block).num_rows()
+        if total_num_rows == 0:
+            logger.get_logger().warning(
+                f"Skipping writing empty dataset with UUID {dataset_uuid} at {path}",
+            )
+            return "skip"
+
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
         if try_create_dir:
@@ -300,30 +316,23 @@ class FileBasedDatasource(Datasource):
             open_stream_args = {}
 
         def write_block(write_path: str, block: Block):
-            logger.debug(f"Writing {write_path} file.")
+            logger.get_logger().debug(f"Writing {write_path} file.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
             if _block_udf is not None:
                 block = _block_udf(block)
 
+            block = BlockAccessor.for_block(block)
+            assert block.num_rows() > 0, "Cannot write an empty block."
             with fs.open_output_stream(write_path, **open_stream_args) as f:
                 _write_block_to_file(
                     f,
-                    BlockAccessor.for_block(block),
+                    block,
                     writer_args_fn=write_args_fn,
                     **write_args,
                 )
             # TODO: decide if we want to return richer object when the task
             # succeeds.
             return "ok"
-
-        file_format = self._FILE_EXTENSION
-        if isinstance(file_format, list):
-            file_format = file_format[0]
-
-        builder = DelegatingBlockBuilder()
-        for block in blocks:
-            builder.add_block(block)
-        block = builder.build()
 
         if not block_path_provider:
             block_path_provider = DefaultBlockWritePathProvider()
@@ -447,7 +456,7 @@ class _FileBasedDatasourceReader(Reader):
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
             DataContext._set_current(ctx)
-            logger.debug(f"Reading {len(read_paths)} files.")
+            logger.get_logger().debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
             output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
