@@ -68,18 +68,18 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
-        "been deprecated. Please use `requset_timeout_s` in the serve config instead. "
+        "been deprecated. Please use `request_timeout_s` in the serve config instead. "
         "`SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in future versions. See: "
         "https://docs.ray.io/en/master/serve/api/doc/ray.serve.schema.HTTPOptionsSchema"
-        ".html#ray.serve.schema.HTTPOptionsSchema.requset_timeout_s"
+        ".html#ray.serve.schema.HTTPOptionsSchema.request_timeout_s"
     )
 if os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
-        "been deprecated. Please use `requset_timeout_s` in the serve config instead. "
+        "been deprecated. Please use `request_timeout_s` in the serve config instead. "
         "`RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in future versions. "
         "See: https://docs.ray.io/en/master/serve/api/doc/ray.serve.schema.HTTPOptionsS"
-        "chema.html#ray.serve.schema.HTTPOptionsSchema.requset_timeout_s"
+        "chema.html#ray.serve.schema.HTTPOptionsSchema.request_timeout_s"
     )
 
 
@@ -141,7 +141,7 @@ async def _handle_streaming_response(
 
 
 async def _send_request_to_handle(
-    handle, scope, receive, send, requset_timeout_s
+    handle, scope, receive, send, request_timeout_s
 ) -> str:
     http_body_bytes = await receive_http_body(scope, receive, send)
 
@@ -196,13 +196,13 @@ async def _send_request_to_handle(
             # https://github.com/ray-project/ray/pull/29534 for more info.
 
             _, request_timed_out = await asyncio.wait(
-                [object_ref], timeout=requset_timeout_s
+                [object_ref], timeout=request_timeout_s
             )
             if request_timed_out:
                 logger.info(
-                    f"Request didn't finish within {requset_timeout_s} seconds"
+                    f"Request didn't finish within {request_timeout_s} seconds"
                     ". Retrying with another replica. You can modify this timeout by "
-                    'setting the "requset_timeout_s" in the serve config.'
+                    'setting the "request_timeout_s" in the serve config.'
                 )
                 backoff = True
             else:
@@ -335,8 +335,8 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str, requset_timeout_s: float):
-        self.requset_timeout_s = requset_timeout_s
+    def __init__(self, controller_name: str, request_timeout_s: float):
+        self.request_timeout_s = request_timeout_s
 
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
@@ -516,7 +516,7 @@ class HTTPProxy:
             ray.serve.context.RequestContext(**request_context_info)
         )
         status_code = await _send_request_to_handle(
-            handle, scope, receive, send, self.requset_timeout_s
+            handle, scope, receive, send, self.request_timeout_s
         )
         self.request_counter.inc(
             tags={
@@ -572,7 +572,7 @@ class HTTPProxyActor:
         root_path: str,
         controller_name: str,
         node_ip_address: str,
-        requset_timeout_s: float,
+        request_timeout_s: float,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
         configure_component_logger(
@@ -590,8 +590,8 @@ class HTTPProxyActor:
 
         self.app = HTTPProxy(
             controller_name=controller_name,
-            requset_timeout_s=(
-                requset_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+            request_timeout_s=(
+                request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
         )
 

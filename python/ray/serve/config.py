@@ -560,7 +560,7 @@ class HTTPOptions(pydantic.BaseModel):
     root_path: str = ""
     fixed_number_replicas: Optional[int] = None
     fixed_number_selection_seed: int = 0
-    requset_timeout_s: Optional[float] = None
+    request_timeout_s: Optional[float] = None
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):
