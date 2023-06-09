@@ -14,10 +14,10 @@ show you how achieve several tasks.
 
     loading-data
     transforming-data
-    inspecting-data
-    iterating-over-data
-    saving-data
+    consuming-data
+    batch_inference
     working-with-tensors
+    custom-datasource
     data-internals
     performance-tips
-    batch_inference
+    pipelining-compute

@@ -108,8 +108,6 @@ avoid loading unnecessary data (projection pushdown).
 For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"])`` to read
 just two of the five columns of Iris dataset.
 
-.. _parquet_row_pruning:
-
 Parquet Row Pruning
 ~~~~~~~~~~~~~~~~~~~
 

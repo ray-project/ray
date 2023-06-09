@@ -13,7 +13,7 @@ Overview
 .. _ingest_basics:
 
 The following figure illustrates a simple Ray AIR training job that (1) loads parquet data from S3, (2) applies a simple
-user-defined function to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
+:ref:`user-defined function <transform_datasets_writing_udfs>` to preprocess batches of data, and (3) runs an AIR Trainer with the given dataset and preprocessor.
 
 .. figure:: images/ingest.svg
 

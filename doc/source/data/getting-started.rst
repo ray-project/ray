@@ -45,7 +45,7 @@ To learn more about creating datasets, read
 Transform the dataset
 ------------------------
 
-Apply user-defined functions (UDFs) to
+Apply :ref:`user-defined functions <transform_datasets_writing_udfs>` (UDFs) to
 transform datasets. Ray executes transformations in parallel for performance.
 
 .. testcode::
@@ -135,7 +135,7 @@ Pass datasets to Ray tasks or actors, and access records with methods like
 
 
 To learn more about consuming datasets, read
-:ref:`Iterating over Data <iterating-over-data>` and :ref:`Saving Data <saving-data>`.
+:ref:`Consuming data <consuming_data>`.
 
 Save the dataset
 -------------------
@@ -157,4 +157,4 @@ or remote filesystems.
     ['..._000000.parquet']
 
 
-To learn more about saving dataset contents, read :ref:`Saving data <saving-data>`.
+To learn more about saving dataset contents, read :ref:`Saving data <saving_data>`.

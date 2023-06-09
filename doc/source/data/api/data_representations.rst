@@ -26,6 +26,14 @@ Batch API
 
    block.DataBatch
 
+Row API
+--------
+
+.. autosummary::
+   :toctree: doc/
+
+   row.TableRow
+
 .. _dataset-tensor-extension-api:
 
 Tensor Column Extension API
@@ -46,3 +54,4 @@ Tensor Column Extension API
    extensions.tensor_extension.ArrowTensorArray
    extensions.tensor_extension.ArrowVariableShapedTensorType
    extensions.tensor_extension.ArrowVariableShapedTensorArray
+
