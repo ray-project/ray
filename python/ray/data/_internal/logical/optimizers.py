@@ -10,7 +10,6 @@ from ray.data._internal.logical.rules import (
     OperatorFusionRule,
     ReorderRandomizeBlocksRule,
 )
-from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.planner.planner import Planner
 
 
@@ -19,7 +18,7 @@ class LogicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List[Rule]:
-        return [ReorderRandomizeBlocksRule(), LimitPushdownRule()]
+        return [ReorderRandomizeBlocksRule()]
 
 
 class PhysicalOptimizer(Optimizer):
@@ -38,7 +37,6 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
-    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
-    logical_plan._dag = optimized_logical_plan.dag
-    physical_plan = Planner().plan(optimized_logical_plan)
+    logical_plan = LogicalOptimizer().optimize(logical_plan)
+    physical_plan = Planner().plan(logical_plan)
     return PhysicalOptimizer().optimize(physical_plan)

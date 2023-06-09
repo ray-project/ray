@@ -10,30 +10,7 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.types import ObjectRef
 
 
-class OneToOneOperator(PhysicalOperator):
-    """An operator that has one input and one output dependency.
-    This operator serves as the base for map, filter, limit, etc.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        input_op: PhysicalOperator,
-    ):
-        """Create a OneToOneOperator.
-
-        Args:
-            input_op: Operator generating input data for this op.
-            name: The name of this operator.
-        """
-        super().__init__(name, [input_op])
-
-    @property
-    def input_dependency(self) -> PhysicalOperator:
-        return self.input_dependencies[0]
-
-
-class LimitOperator(OneToOneOperator):
+class LimitOperator(PhysicalOperator):
     """Physical operator for limit."""
 
     def __init__(
@@ -44,10 +21,10 @@ class LimitOperator(OneToOneOperator):
         self._limit = limit
         self._consumed_rows = 0
         self._buffer: Deque[RefBundle] = deque()
-        self._name = f"limit={limit}"
+        self._name = f"Limit[limit={limit}]"
         self._output_metadata: List[BlockMetadata] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op)
+        super().__init__(self._name, [input_op])
         if self._limit <= 0:
             self.inputs_done()
 

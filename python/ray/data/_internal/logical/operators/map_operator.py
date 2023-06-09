@@ -4,14 +4,13 @@ from typing import Any, Dict, Iterable, Optional, Union
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
 
 logger = DatasetLogger(__name__)
 
 
-class AbstractMap(AbstractOneToOne):
+class AbstractMap(LogicalOperator):
     """Abstract class for logical operators that should be converted to physical
     MapOperator.
     """
@@ -30,7 +29,7 @@ class AbstractMap(AbstractOneToOne):
                 of `input_op` will be the inputs to this operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, input_op)
+        super().__init__(name, [input_op] if input_op else [])
         self._ray_remote_args = ray_remote_args or {}
 
 
@@ -134,10 +133,6 @@ class MapBatches(AbstractUDFMap):
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return False
-
 
 class MapRows(AbstractUDFMap):
     """Logical operator for map."""
@@ -156,10 +151,6 @@ class MapRows(AbstractUDFMap):
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
-
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return False
 
 
 class Filter(AbstractUDFMap):
@@ -180,10 +171,6 @@ class Filter(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return True
-
 
 class FlatMap(AbstractUDFMap):
     """Logical operator for flat_map."""
@@ -202,7 +189,3 @@ class FlatMap(AbstractUDFMap):
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
-
-    @property
-    def can_modify_num_rows(self) -> bool:
-        return True
