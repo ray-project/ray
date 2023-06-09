@@ -485,12 +485,13 @@ py_test(
    deps = [":serve_lib"],
 )
 
-# Runs test_api, test_fastapi, and test_http_adapters with experimental streaming turned on.
+# Runs a subset of the tests with experimental streaming turned on.
 py_test(
    name = "test_experimental_streaming",
    size = "large",
    srcs = glob(["tests/test_experimental_streaming.py",
                "tests/test_api.py",
+               "tests/test_failure.py",
                "tests/test_fastapi.py",
                "tests/test_http_adapters.py",
                "**/conftest.py"]),

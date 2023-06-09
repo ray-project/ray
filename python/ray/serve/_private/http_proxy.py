@@ -6,15 +6,14 @@ import logging
 import pickle
 import socket
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import uvicorn
 import starlette.responses
 import starlette.routing
-from starlette.types import Receive, Scope, Send
+from starlette.types import Message, Receive, Scope, Send
 
 import ray
-from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 from ray._private.utils import get_or_create_event_loop
@@ -22,6 +21,7 @@ from ray._private.utils import get_or_create_event_loop
 from ray import serve
 from ray.serve.handle import RayServeHandle
 from ray.serve._private.http_util import (
+    ASGIMessageQueue,
     HTTPRequestWrapper,
     RawASGIResponse,
     receive_http_body,
@@ -176,7 +176,7 @@ class HTTPProxy:
         self.route_info: Dict[str, EndpointTag] = dict()
 
         self.self_actor_handle = ray.get_runtime_context().current_actor
-        self.asgi_receive_queues: Dict[str, asyncio.Queue] = dict()
+        self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
 
         def get_handle(name):
             return serve.context.get_global_client().get_handle(
@@ -267,20 +267,13 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
-    async def receive_asgi_messages(self, request_id: str) -> List[Dict[str, Any]]:
+    async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
         if queue is None:
             raise KeyError(f"Request ID {request_id} not found.")
 
-
-        messages = []
-        if queue.empty():
-            messages.append(await queue.get())
-
-        while not queue.empty():
-            messages.append(queue.get_nowait())
-
-        return messages
+        await queue.wait_for_message()
+        return queue.get_messages_nowait()
 
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
@@ -527,7 +520,7 @@ class HTTPProxy:
             return "200"
 
     async def proxy_asgi_receive(
-        self, receive: Receive, queue: asyncio.Queue
+        self, receive: Receive, queue: ASGIMessageQueue
     ) -> Optional[int]:
         """Proxies the `receive` interface, placing its messages into the queue.
 
@@ -540,7 +533,7 @@ class HTTPProxy:
         """
         while True:
             msg = await receive()
-            await queue.put(msg)
+            await queue(msg)
 
             if msg["type"] == "http.disconnect":
                 return None
@@ -557,9 +550,9 @@ class HTTPProxy:
         send: Send,
     ) -> str:
         # Proxy the receive interface by placing the received messages on a queue.
-        # The downstream replica must call back into `receive_asgi_message` on this
+        # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
-        receive_queue = asyncio.Queue()
+        receive_queue = ASGIMessageQueue()
         self.asgi_receive_queues[request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(receive, receive_queue)
@@ -571,7 +564,7 @@ class HTTPProxy:
                 pickle.dumps(scope), self.self_actor_handle
             )
             async for obj_ref in object_ref_generator:
-                asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
+                asgi_messages: List[Message] = pickle.loads(await obj_ref)
                 for asgi_message in asgi_messages:
                     if asgi_message["type"] == "http.response.start":
                         # HTTP responses begin with exactly one "http.response.start"
@@ -711,5 +704,5 @@ Please make sure your http-host and http-port are specified correctly."""
         """
         pass
 
-    async def receive_asgi_messages(self, request_id: str) -> List[Dict[str, Any]]:
-        return await self.app.receive_asgi_messages(request_id)
+    async def receive_asgi_messages(self, request_id: str) -> bytes:
+        return pickle.dumps(await self.app.receive_asgi_messages(request_id))

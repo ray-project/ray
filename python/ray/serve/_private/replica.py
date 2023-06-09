@@ -11,7 +11,7 @@ import traceback
 
 import starlette.responses
 from starlette.requests import Request
-from starlette.types import Receive, Scope, Send
+from starlette.types import Message, Receive, Scope, Send
 
 import ray
 from ray import cloudpickle
@@ -40,8 +40,9 @@ from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
     make_buffered_asgi_receive,
     ASGIAppReplicaWrapper,
+    ASGIReceiveProxy,
+    ASGIMessageQueue,
     BufferedASGISender,
-    ASGIHTTPQueueSender,
     HTTPRequestWrapper,
     RawASGIResponse,
     Response,
@@ -62,37 +63,6 @@ from ray.serve._private.version import DeploymentVersion
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-class ASGIReceiver:
-    def __init__(self, event_loop: asyncio.AbstractEventLoop, request_id: str, actor_handle: ActorHandle):
-        self._task = None
-        self._queue = asyncio.Queue()
-        self._event_loop = event_loop
-        self._request_id = request_id
-        self._actor_handle = actor_handle
-        self._disconnected_message: Optional[Dict[str, Any]] = None
-
-    def start(self):
-        self._task = self._event_loop.create_task(self._fetch_until_disconnect())
-
-    def stop(self):
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-
-    async def _fetch_until_disconnect(self):
-        while self._disconnected_message is not None:
-            messages = await self._actor_handle.receive_asgi_messages.remote(self._request_id)
-            print(messages)
-            for message in messages:
-                if message["type"] in {"http.disconnect"}:
-                    self._disconnected_message = message
-                    return
-
-    async def __call__(self) -> Dict[str, Any]:
-        if self._disconnected_message is not None:
-            return self._disconnected_message
-
-        return await self._queue.get()
 
 
 def _format_replica_actor_name(deployment_name: str):
@@ -271,7 +241,7 @@ def create_replica_wrapper(name: str):
             pickled_request_metadata: bytes,
             pickled_asgi_scope: bytes,
             http_proxy_handle: ActorHandle,
-        ) -> AsyncGenerator[Dict[str, Any], None]:
+        ) -> AsyncGenerator[Message, None]:
             """Handle a request and stream the results to the caller.
 
             This is used by the HTTP proxy for experimental StreamingResponse support.
@@ -285,24 +255,25 @@ def create_replica_wrapper(name: str):
                 raise NotImplementedError(
                     "Only HTTP requests are currently supported over streaming."
                 )
-            
 
             receiver = None
             handle_request_task = None
             wait_for_message_task = None
             try:
-                receiver = ASGIReceiver(self._event_loop, http_proxy_handle, request_metadata.request_id)
+                receiver = ASGIReceiveProxy(
+                    self._event_loop, request_metadata.request_id, http_proxy_handle
+                )
                 receiver.start()
 
                 scope = pickle.loads(pickled_asgi_scope)
-                asgi_queue_send = ASGIHTTPQueueSender()
+                asgi_queue_send = ASGIMessageQueue()
                 request_args = (scope, receiver, asgi_queue_send)
                 request_kwargs = {}
 
-                # Handle the request in a background asyncio.Task. It's expected that this
-                # task will use the provided ASGI send interface to send its HTTP
-                # response. We will poll for the sent messages and yield them back to the
-                # caller.
+                # Handle the request in a background asyncio.Task. It's expected that
+                # this task will use the provided ASGI send interface to send its HTTP
+                # the response. We will poll for the sent messages and yield them back
+                # to the caller.
                 handle_request_task = self._event_loop.create_task(
                     self.replica.handle_request(
                         request_metadata, request_args, request_kwargs
@@ -323,13 +294,9 @@ def create_replica_wrapper(name: str):
                     # know it's safe for these messages containing primitive types.
                     yield pickle.dumps(asgi_queue_send.get_messages_nowait())
 
-                    # Exit once `handle_request` has finished. In this case, all messages
-                    # must have already been sent.
-                    # Cancel the `wait_for_message_task` to avoid innocuous error messages.
+                    # Exit once `handle_request` has finished. In this case, all
+                    # messages must have already been sent.
                     if handle_request_task in done:
-                        if not wait_for_message_task.done():
-                            wait_for_message_task.cancel()
-
                         break
 
                 e = handle_request_task.exception()
@@ -342,7 +309,10 @@ def create_replica_wrapper(name: str):
                 if handle_request_task is not None and not handle_request_task.done():
                     handle_request_task.cancel()
 
-                if wait_for_message_task is not None and not wait_for_message_task.done():
+                if (
+                    wait_for_message_task is not None
+                    and not wait_for_message_task.done()
+                ):
                     wait_for_message_task.cancel()
 
         async def handle_request_from_java(

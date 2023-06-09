@@ -4,13 +4,15 @@ from dataclasses import dataclass
 import inspect
 import json
 import logging
-from typing import Any, Dict, List, Optional, Type
+import pickle
+from typing import List, Optional, Type
 
 from fastapi.encoders import jsonable_encoder
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
+from ray.actor import ActorHandle
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 
@@ -156,8 +158,8 @@ class BufferedASGISender(Send):
         return RawASGIResponse(self.messages)
 
 
-class ASGIHTTPQueueSender(Send):
-    """ASGI sender that enables polling for the sent messages off a queue.
+class ASGIMessageQueue(Send):
+    """Queue enables polling for received or sent messages off a queue.
 
     This class assumes a single consumer of the queue (concurrent calls to
     `get_messages_nowait` and `wait_for_message` may result in undefined behavior).
@@ -167,11 +169,11 @@ class ASGIHTTPQueueSender(Send):
         self._message_queue = asyncio.Queue()
         self._new_message_event = asyncio.Event()
 
-    async def __call__(self, message: Dict[str, Any]):
+    async def __call__(self, message: Message):
         await self._message_queue.put(message)
         self._new_message_event.set()
 
-    def get_messages_nowait(self) -> List[Dict[str, Any]]:
+    def get_messages_nowait(self) -> List[Message]:
         """Returns all messages that are currently available (non-blocking).
 
         At least one message will be present if `wait_for_message` had previously
@@ -192,6 +194,80 @@ class ASGIHTTPQueueSender(Send):
         until `get_messages_nowait` is called.
         """
         await self._new_message_event.wait()
+
+
+class ASGIReceiveProxy:
+    """Proxies ASGI receive from an actor.
+
+    The provided actor handle is expected to implement a single method:
+    `receive_asgi_messages`. It will be called repeatedly until a disconnect message
+    is received.
+    """
+
+    def __init__(
+        self,
+        event_loop: asyncio.AbstractEventLoop,
+        request_id: str,
+        actor_handle: ActorHandle,
+    ):
+        self._task = None
+        self._queue = asyncio.Queue()
+        self._event_loop = event_loop
+        self._request_id = request_id
+        self._actor_handle = actor_handle
+        self._disconnect_message = None
+
+    def start(self):
+        self._task = self._event_loop.create_task(self._fetch_until_disconnect())
+
+    def stop(self):
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+
+    async def _fetch_until_disconnect(self):
+        """Fetch messages repeatedly until a disconnect message is received.
+
+        If a disconnect message is received, this function exits and returns it.
+
+        If an exception occurs, it will be raised on the next __call__ and no more
+        messages will be received.
+        """
+        while True:
+            try:
+                print("GET MESSAGES")
+                pickled_messages = (
+                    await self._actor_handle.receive_asgi_messages.remote(
+                        self._request_id
+                    )
+                )
+                print("GOT MESSAGES")
+                for message in pickle.loads(pickled_messages):
+                    if message["type"] in {"http.disconnect", "websocket.disconnect"}:
+                        self._disconnect_message = message
+
+                    self._queue.put_nowait(message)
+            except Exception as e:
+                print("GOT EXCEPTION", e)
+                self._queue.put_nowait(e)
+                return
+
+    async def __call__(self) -> Message:
+        """Return the next message once available.
+
+        This will repeatedly return a disconnect message once it's been received.
+        """
+        print("RECEIVE CALLED")
+        assert self._task is not None, "Must call `start` before receiving messages."
+
+        if self._queue.empty() and self._disconnect_message is not None:
+            return self._disconnect_message
+
+        message = await self._queue.get()
+        if isinstance(message, Exception):
+            raise message
+
+        print("MESSAGE:", message)
+        return message
 
 
 def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
