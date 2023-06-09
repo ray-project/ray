@@ -291,7 +291,8 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     def get_metrics(self) -> Dict[str, int]:
-        return self._metrics.to_metrics_dict()
+        return dict(self._metrics.to_metrics_dict(),
+            ray_remote_args=self._get_runtime_ray_remote_args())
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
