@@ -55,7 +55,6 @@ class TestDreamerV3(unittest.TestCase):
                     "gamma": 0.997,
                     "symlog_obs": True,
                 },
-                _enable_learner_api=True,
             )
             .resources(
                 num_learner_workers=2,  # Try with 2 Learners.
@@ -64,7 +63,6 @@ class TestDreamerV3(unittest.TestCase):
                 num_gpus=0,
             )
             .debugging(log_level="INFO")
-            .rl_module(_enable_rl_module_api=True)
         )
 
         # TODO (sven): Add a `get_model_config` utility to AlgorithmConfig
