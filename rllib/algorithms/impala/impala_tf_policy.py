@@ -355,12 +355,10 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
             )
 
-            # Add values to bootstrap values to yield correct t=1 to T+1 trajectories,
-            # with T being the rollout length (max trajectory len).
-            # Note that the `SampleBatch.VALUES_BOOTSTRAPPED` values are always recorded
-            # ONLY at the last ts of a trajectory (for the following timestep,
-            # which is one past(!) the last ts). All other values in that tensor are
-            # zero.
+            # See docstring of:
+            # `ray.rllib.evaluation.postprocessing.compute_bootstrap_value()` for
+            # details on the following computation to yield correct t=1 to T+1
+            # trajectories, with T being the rollout length (max trajectory len).
             shape = tf.shape(values_time_major)
             B = shape[1]
             values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
@@ -443,6 +441,8 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             )
 
             if self.config["vtrace"]:
+                # Add the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need
+                # inside the loss for vtrace calculations.
                 sample_batch = compute_bootstrap_value(sample_batch, self)
 
             return sample_batch

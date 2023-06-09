@@ -272,12 +272,10 @@ class ImpalaTorchPolicy(
             train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
         )
 
-        # Add values to bootstrap values to yield correct t=1 to T+1 trajectories,
+        # See docstring of:
+        # `ray.rllib.evaluation.postprocessing.compute_bootstrap_value()` for details
+        # on the following computation to yield correct t=1 to T+1 trajectories,
         # with T being the rollout length (max trajectory len).
-        # Note that the `SampleBatch.VALUES_BOOTSTRAPPED` values are always recorded
-        # ONLY at the last ts of a trajectory (for the following timestep,
-        # which is one past(!) the last ts). All other values in that tensor are
-        # zero.
         _, B = values_time_major.shape
         values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
         bootstrap_values_time_major = torch.cat(
@@ -371,6 +369,8 @@ class ImpalaTorchPolicy(
         )
 
         if self.config["vtrace"]:
+            # Add the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need
+            # inside the loss for vtrace calculations.
             sample_batch = compute_bootstrap_value(sample_batch, self)
 
         return sample_batch

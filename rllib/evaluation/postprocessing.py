@@ -179,6 +179,8 @@ def compute_gae_for_sample_batch(
     Returns:
         The postprocessed, modified SampleBatch (or a new one).
     """
+    # Compute the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need for the
+    # following `last_r` arg in `compute_advantages()`.
     sample_batch = compute_bootstrap_value(sample_batch, policy)
 
     # Adds the policy logits, VF preds, and advantages to the batch,
@@ -196,8 +198,51 @@ def compute_gae_for_sample_batch(
 
 
 @DeveloperAPI
-def compute_bootstrap_value(sample_batch, policy):
-    """TODO (sven): docstr"""
+def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> SampleBatch:
+    """Performs a value function computation at the end of a trajectory.
+
+    If the trajectory is terminated (not truncated), will not use the value function,
+    but assume that the value of the last timestep is 0.0.
+    In all other cases, will use the given policy's value function to compute the
+    "bootstrapped" value estimate at the end of the given trajectory. To do so, the
+    very last observation (sample_batch[NEXT_OBS][-1]) and - if applicable -
+    the very last state output (sample_batch[STATE_OUT][-1]) wil be used as inputs to
+    the value function.
+
+    The thus computed value estimate will be stored in a new column of the
+    `sample_batch`: SampleBatch.VALUES_BOOTSTRAPPED. Thereby, values at all timesteps
+    in this column are set to 0.0, except or the last timestep, which receives the
+    computed bootstrapped value.
+    This is done, such that in any loss function (which processes raw, intact
+    trajectories, such as those of IMPALA and APPO) can use this new column as follows:
+
+    Example: numbers=ts in episode, '|'=episode boundary (terminal),
+    X=bootstrapped value (!= 0.0 b/c ts=12 is not a terminal).
+    ts=5 is NOT a terminal.
+    T:                     8   9  10  11  12 <- no terminal
+    VF_PREDS:              .   .   .   .   .
+    VALUES_BOOTSTRAPPED:   0   0   0   0   X
+
+    Then in the loss, we can now shift VALUES_BOOTSTRAPPED by one to the right ->
+    T:                     8   9  10  11  12  13 <- next timestep
+    VF_PREDS:              .   .   .   .   . 0.0 <- fill right side ts (13) with 0.0
+    VALUES_BOOTSTRAPPED: 0.0   0   0   0   0   X <- fill left side ts (8) with 0.0
+
+    Then add the two columns together to yield the correct value estimates for each
+    timestep.
+    T:                   8   9  10  11  12  13 <- next (bootstrapped) timestep
+    RESULTING VALUES:    .   .   .   .   . 0+X
+
+    Args:
+        sample_batch: The SampleBatch (single trajectory) for which to compute the
+            bootstrap value at the end. This SampleBatch will be altered in place
+            (by adding a new column: SampleBatch.VALUES_BOOTSTRAPPED).
+        policy: The Policy object, whose value function to use.
+
+    Returns:
+         The altered SampleBatch (with the extra SampleBatch.VALUES_BOOTSTRAPPED
+         column).
+    """
     # Trajectory is actually complete -> last r=0.0.
     if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0

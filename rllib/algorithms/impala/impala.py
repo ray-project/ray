@@ -284,7 +284,14 @@ class ImpalaConfig(AlgorithmConfig):
             This updated AlgorithmConfig object.
         """
         if vtrace_drop_last_ts is not None:
-            deprecation_warning(old="vtrace_drop_last_ts", error=False)
+            deprecation_warning(
+                old="vtrace_drop_last_ts",
+                help="The v-trace operations in RLlib have been enhanced and we are "
+                     "now using proper value bootstrapping at the end of each "
+                     "trajectory, such that no timesteps in our loss functions have to "
+                     "be dropped anymore.",
+                error=True,
+            )
 
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
