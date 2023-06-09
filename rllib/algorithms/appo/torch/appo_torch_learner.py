@@ -85,12 +85,14 @@ class APPOTorchLearner(AppoLearner, TorchLearner):
             recurrent_seq_len=hps.recurrent_seq_len,
         )
         bootstrap_values_time_major = make_time_major(
-            batch[SampleBatch.VALUES_BOOTSTRAPPED]
+            batch[SampleBatch.VALUES_BOOTSTRAPPED],
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
         # Then add the shifted-by-one bootstrapped values to that to yield the final
         # value tensor. Use the last ts in that resulting tensor as the
         # "bootstrapped" values for vtrace.
-        T, B = values_time_major.shape
+        _, B = values_time_major.shape
         # Augment `values_time_major` by one timestep at the end (all zeros).
         values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
         # Augment `bootstrap_values_time_major` by one timestep at the beginning

@@ -72,7 +72,9 @@ class APPOTfLearner(AppoLearner, TfLearner):
             recurrent_seq_len=hps.recurrent_seq_len,
         )
         bootstrap_values_time_major = make_time_major(
-            batch[SampleBatch.VALUES_BOOTSTRAPPED]
+            batch[SampleBatch.VALUES_BOOTSTRAPPED],
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
         # Then add the shifted-by-one bootstrapped values to that to yield the final
         # value tensor. Use the last ts in that resulting tensor as the
