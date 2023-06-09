@@ -7,7 +7,7 @@ from ray.data.block import BlockMetadata
 
 
 class UnionOperator(NAryOperator):
-    """An operator that combines input operators.
+    """An operator that combines blocks from input operators.
 
     The order of the blocks from the input operators is preserved,
     as is the relative ordering between the input operators.
@@ -15,12 +15,12 @@ class UnionOperator(NAryOperator):
 
     def __init__(
         self,
-        *input_ops: List[PhysicalOperator],
+        *input_ops: PhysicalOperator,
     ):
         """Create a UnionOperator.
 
         Args:
-            other: List of input operators to union.
+            input_ops: Operators generating input data for this operator to union.
         """
 
         self._input_buffers: List[List[RefBundle]] = [[] for _ in range(len(input_ops))]
