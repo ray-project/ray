@@ -43,7 +43,7 @@
         </a>
       </div>
     </div>
-    <div class="col-6">
+    <div class="col-6" style="z-index:-1;">
       <iframe width="450px" height="240px" style="border-radius:"10px";"
        src="https://www.youtube.com/embed/Iu_F_EzQb5o?modestbranding=1" 
        title="YouTube Preview" 
