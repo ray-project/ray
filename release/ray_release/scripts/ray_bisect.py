@@ -1,4 +1,5 @@
 import click
+import copy
 import subprocess
 import os
 import json
@@ -138,16 +139,14 @@ def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
     if "python" in test:
         python_version = parse_python_version(test["python"])
     if test.is_byod_cluster():
-        ray_wheels_url = None
         os.environ["COMMIT_TO_TEST"] = commit
         build_anyscale_byod_images([test])
-    else:
-        ray_wheels_url = find_and_wait_for_ray_wheels_url(
-            commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
-        )
+    ray_wheels_url = find_and_wait_for_ray_wheels_url(
+        commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
+    )
     for run in range(run_per_commit):
         step = get_step(
-            test,
+            copy.deepcopy(test),
             ray_wheels=ray_wheels_url,
             smoke_test=True if os.environ.get("SMOKE_TEST") else False,
             env={
