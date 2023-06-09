@@ -7,7 +7,9 @@ import pytest
 
 import ray
 from ray.data._internal.execution.legacy_compat import _blocks_to_input_buffer
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
@@ -390,7 +392,7 @@ def test_union_operator(ray_start_regular_shared, enable_optimizer):
     plan = LogicalPlan(union_op)
     physical_op = planner.plan(plan).dag
 
-    assert union_op.name == "Union(ReadParquet, ReadRange, ReadJSON)"
+    assert union_op.name == "Union"
     assert isinstance(physical_op, UnionOperator)
     assert len(physical_op.input_dependencies) == 3
     for input_op in physical_op.input_dependencies:
@@ -410,17 +412,23 @@ def test_union_e2e(ray_start_regular_shared):
     ds = ds.union(ds)
     assert ds.count() == 200
     assert ds.sum() == (950 * 2)
-    _check_usage_record(["ReadRange", "MapBatches", "Union"])
+    _check_usage_record(["ReadRange", "Union"])
 
     # Test materialized union.
-    ds2 = ray.data.from_items([1, 2, 3, 4, 5])
+    ds2 = ray.data.from_items([{"id": i} for i in range(1, 5 + 1)])
     assert ds2.count() == 5
-    _check_usage_record(["FromItems", "Union"])
+    assert ds2.sum() == 15
+    _check_usage_record(["FromItems"])
 
     ds2 = ds2.union(ds2)
     assert ds2.count() == 10
+    assert ds2.sum() == 30
+    _check_usage_record(["FromItems", "Union"])
+
     ds2 = ds2.union(ds)
     assert ds2.count() == 210
+    assert ds2.sum() == (950 * 2 + 30)
+    _check_usage_record(["FromItems", "Union"])
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):

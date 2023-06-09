@@ -19,13 +19,15 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _BlockRefBundler,
 )
-from ray.data._internal.execution.operators.one_to_one_operator import LimitOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,

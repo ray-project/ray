@@ -19,7 +19,9 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.one_to_one_operator import OneToOneOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    OneToOneOperator,
+)
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata

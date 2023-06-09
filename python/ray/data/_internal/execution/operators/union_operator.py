@@ -1,14 +1,16 @@
 from typing import Callable, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.operators.base_physical_operator import NAryOperator
 from ray.data._internal.stats import StatsDict
+from ray.data.block import BlockMetadata
 
 
-class UnionOperator(PhysicalOperator):
-    """An operator that combines input operators of the same type.
+class UnionOperator(NAryOperator):
+    """An operator that combines input operators.
 
-    The order of the blocks in the datastreams is preserved, as is the
-    relative ordering between the datastreams passed in the argument list.
+    The order of the blocks from the input operators is preserved,
+    as is the relative ordering between the input operators.
     """
 
     def __init__(
@@ -21,57 +23,55 @@ class UnionOperator(PhysicalOperator):
             other: List of input operators to union.
         """
 
+        self._input_buffers: List[List[RefBundle]] = [[] for _ in range(len(input_ops))]
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
-        op_name = f"Union[{', '.join([op._name for op in input_ops])}]"
-        super().__init__(op_name, list(input_ops))
+        super().__init__(*input_ops)
 
     def num_outputs_total(self) -> Optional[int]:
-        # TODO(Scott)
-        left_num_outputs = self.input_dependencies[0].num_outputs_total()
-        right_num_outputs = self.input_dependencies[1].num_outputs_total()
-        if left_num_outputs is not None and right_num_outputs is not None:
-            return max(left_num_outputs, right_num_outputs)
-        elif left_num_outputs is not None:
-            return left_num_outputs
-        else:
-            return right_num_outputs
+        num_outputs = 0
+        for input_op in self.input_dependencies:
+            op_num_outputs = input_op.num_outputs_total()
+            # If at least one of the input ops has an unknown number of outputs,
+            # the number of outputs of the union operator is unknown.
+            if op_num_outputs is None:
+                return None
+            num_outputs += op_num_outputs
+        return num_outputs
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
-        # TODO(Scott)
         assert not self.completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
-        if input_index == 0:
-            self._left_buffer.append(refs)
-        else:
-            self._right_buffer.append(refs)
+        self._input_buffers[input_index].append(refs)
 
     def inputs_done(self) -> None:
-        # TODO(Scott)
-        self._output_buffer, self._stats = self._zip(
-            self._left_buffer, self._right_buffer
-        )
-        self._left_buffer.clear()
-        self._right_buffer.clear()
+        self._output_buffer, self._stats = self._union(self._input_buffers)
+        self._input_buffers.clear()
         super().inputs_done()
 
     def has_next(self) -> bool:
-        # TODO(Scott)
         return len(self._output_buffer) > 0
 
     def get_next(self) -> RefBundle:
-        # TODO(Scott)
         return self._output_buffer.pop(0)
 
     def get_stats(self) -> StatsDict:
-        # TODO(Scott)
         return self._stats
 
     def get_transformation_fn(self) -> Callable:
-        return self._zip
+        return self._union
 
     def _union(
-        self, *inputs: List[List[RefBundle]]
+        self, inputs: List[List[RefBundle]]
     ) -> Tuple[List[RefBundle], StatsDict]:
-        # TODO(Scott)
-        pass
+        output_refs: List[RefBundle] = []
+        output_metadata: List[BlockMetadata] = []
+        # Collect all the refs and metadata from the input refs.
+        for curr_input_refs in inputs:
+            output_refs.extend(curr_input_refs)
+            for ref_bundle in curr_input_refs:
+                for _, block_metadata in ref_bundle.blocks:
+                    output_metadata.append(block_metadata)
+
+        stats = {self._name: output_metadata}
+        return output_refs, stats

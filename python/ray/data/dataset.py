@@ -1644,8 +1644,11 @@ class Dataset:
         stats.time_total_s = time.perf_counter() - start_time
 
         logical_plan = self._logical_plan
-        if logical_plan is not None:
-            op = UnionLogicalOperator(self, other)
+        logical_plans = [
+            getattr(union_ds, "_logical_plan", None) for union_ds in datasets
+        ]
+        if all(logical_plans):
+            op = UnionLogicalOperator(*[plan.dag for plan in logical_plans])
             logical_plan = LogicalPlan(op)
 
         return Dataset(
