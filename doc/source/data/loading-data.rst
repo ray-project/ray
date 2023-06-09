@@ -445,6 +445,8 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
                schema={food: string, price: double}
             )
 
+.. _loading_datasets_from_distributed_df:
+
 Loading data from distributed DataFrame libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -634,6 +636,8 @@ Reading databases
 =================
 
 Ray Data reads from databases like MySQL, Postgres, and MongoDB.
+
+.. _reading_sql:
 
 Reading SQL databases
 ~~~~~~~~~~~~~~~~~~~~~
@@ -829,6 +833,8 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
             dataset = ray.data.read_sql(
                 "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
             )
+
+.. _reading_mongodb:
 
 Reading MongoDB
 ~~~~~~~~~~~~~~~
