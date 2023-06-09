@@ -1,3 +1,4 @@
+import os
 import ray
 from ray.air import session
 from ray.air.constants import MODEL_KEY
@@ -225,23 +226,20 @@ class RayModelCheckpoint(ModelCheckpoint):
         trainer.strategy.barrier()
 
         # Create and report the latest checkpoint
-        # Step 1: Move the last ckpt to a tmp directory.
-        # Step 2: Create a directory-based AIR checkpoint.
-        # Step 3: Report the checkpoint to AIR session.
-        # Step 4: Move the ckpt back to the original directory.
         with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_model_path = f"{tmpdir}/{MODEL_KEY}"
+            src_model_path = os.path.expanduser(self.last_model_path)
+            dst_model_path = f"{tmpdir}/{MODEL_KEY}"
 
             if self.is_report_rank:
-                shutil.move(self.last_model_path, tmp_model_path)
+                if os.path.isdir(src_model_path):
+                    shutil.copytree(src_model_path, dst_model_path)
+                elif os.path.isfile(src_model_path):
+                    shutil.copy(src_model_path, dst_model_path)
 
             # Only the report_rank worker creates the actual checkpoints.
             # Other workers create placeholder checkpoints to prevent blocking.
             checkpoint = LightningCheckpoint.from_directory(path=tmpdir)
             session.report(metrics=metrics, checkpoint=checkpoint)
-
-            if self.is_report_rank:
-                shutil.move(tmp_model_path, self.last_model_path)
 
         self.is_checkpoint_step = False
 
