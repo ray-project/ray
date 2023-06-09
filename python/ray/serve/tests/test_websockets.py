@@ -2,6 +2,8 @@ import asyncio
 import pytest
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import requests
+from starlette.responses import StreamingResponse
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
@@ -103,6 +105,50 @@ def test_server_disconnect(serve_instance):
     with connect("ws://localhost:8000") as websocket:
         with pytest.raises(ConnectionClosed):
             websocket.send("")
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Streaming feature flag is disabled.",
+)
+def test_unary_streaming_websocket_same_deployment(serve_instance):
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class RenaissanceMan:
+        @app.get("/")
+        def say_hi(self):
+            return "hi"
+
+        @app.get("/stream")
+        def gen_hi(self) -> StreamingResponse:
+            def gen():
+                for i in range(5):
+                    yield "hi"
+
+            return StreamingResponse(gen(), media_type="text/plain")
+
+        @app.websocket("/ws")
+        async def ws_hi(self, ws: WebSocket):
+            try:
+                await ws.accept()
+                await ws.send_text(await ws.receive_text())
+            except WebSocketDisconnect:
+                pass
+
+    serve.run(RenaissanceMan.bind())
+
+    assert requests.get("http://localhost:8000/").json() == "hi"
+
+    r = requests.get("http://localhost:8000/stream", stream=True)
+    r.raise_for_status()
+    for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
+        assert chunk == "hi"
+
+    with connect("ws://localhost:8000/ws") as ws:
+        ws.send("hi")
+        assert ws.recv() == "hi"
 
 
 if __name__ == "__main__":

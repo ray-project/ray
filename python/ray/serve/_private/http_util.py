@@ -234,20 +234,17 @@ class ASGIReceiveProxy:
         """
         while True:
             try:
-                print("GET MESSAGES")
                 pickled_messages = (
                     await self._actor_handle.receive_asgi_messages.remote(
                         self._request_id
                     )
                 )
-                print("GOT MESSAGES")
                 for message in pickle.loads(pickled_messages):
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
                         self._disconnect_message = message
 
                     self._queue.put_nowait(message)
             except Exception as e:
-                print("GOT EXCEPTION", e)
                 self._queue.put_nowait(e)
                 return
 
@@ -256,7 +253,6 @@ class ASGIReceiveProxy:
 
         This will repeatedly return a disconnect message once it's been received.
         """
-        print("RECEIVE CALLED")
         assert self._task is not None, "Must call `start` before receiving messages."
 
         if self._queue.empty() and self._disconnect_message is not None:
@@ -266,7 +262,6 @@ class ASGIReceiveProxy:
         if isinstance(message, Exception):
             raise message
 
-        print("MESSAGE:", message)
         return message
 
 
