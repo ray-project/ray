@@ -487,6 +487,8 @@ def test_cli_without_config_deploy(ray_start_stop):
         )
 
     wait_for_condition(check_cli)
+    serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
