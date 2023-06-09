@@ -10,7 +10,6 @@ from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingCo
 from ray.air.constants import (
     MODEL_KEY,
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV
 )
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
@@ -391,7 +390,6 @@ class LightningTrainer(TorchTrainer):
 
         # Avoid moving checkpoint files when Trainer is co-located with rank_0 worker
         os.environ[COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV] = "1"
-        os.environ[DISABLE_LAZY_CHECKPOINTING_ENV] = "1"
 
         train_loop_config = {
             "lightning_config": lightning_config,

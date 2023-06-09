@@ -11,7 +11,7 @@ from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
-from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY
+from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY, LAZY_CHECKPOINT_MARKER_FILE
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
@@ -416,12 +416,18 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint_config=self.run_config.checkpoint_config,
         )
 
+        def clear_lazy_checkpoint_marker():
+            marker_file = Path(trial_info.logdir) / LAZY_CHECKPOINT_MARKER_FILE
+            if marker_file.exists():
+                logger.debug(f"Removing stale marker file: {marker_file}")
+                marker_file.unlink()
+
+        # Start the remote actors.
+        backend_executor.start(initialization_hook=clear_lazy_checkpoint_marker)
+
         checkpoint_manager = self._checkpoint_manager_cls(
             preprocessor=self.preprocessor
         )
-
-        # Start the remote actors.
-        backend_executor.start(initialization_hook=None)
 
         # Disable TrainingIterator's CheckpointManager from handling
         # checkpoints itself by setting num_to_keep to None.
