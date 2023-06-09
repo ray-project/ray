@@ -51,13 +51,17 @@ class ApplicationState:
     ):
         """
         Args:
-            name: application name
-            deployment_state_manager: deployment state manager which is used for
-                fetching deployment information
-            endpoint_state:
-            save_checkpoint_func:
+            name: Application name.
+            deployment_state_manager: State manager for all deployments
+                in the cluster.
+            endpoint_state: State manager for endpoints in the system.
+            save_checkpoint_func: Function that can be called to write
+                a checkpoint of the application state. This should be
+                called in self._set_target_state() before actually
+                setting the target state so that the controller can
+                properly recover application states if it crashes.
             deploy_obj_ref: Task ObjRef of deploying application.
-            deployment_time: Deployment timestamp
+            deployment_time: Deployment timestamp.
         """
 
         self._name = name
@@ -75,7 +79,7 @@ class ApplicationState:
             self._deployment_timestamp = time.time()
 
         # Before a deploy app task finishes, we don't know what the
-        # target deployments are
+        # target deployments are, so set deployment_infos=None
         self._target_state: ApplicationTargetState = ApplicationTargetState(
             deployment_infos=None, deleting=False
         )
@@ -91,6 +95,17 @@ class ApplicationState:
 
     @property
     def status(self) -> ApplicationStatus:
+        """Status of the application.
+        
+        DEPLOYING: The deploy task is still running, or the deployments
+            have started deploying but aren't healthy yet.
+        RUNNING: All deployments are healthy.
+        DEPLOY_FAILED: The deploy task failed or one or more deployments
+            became unhealthy in the process of deploying
+        UNHEALTHY: One or more deployments transitioned from healthy to
+            unhealthy.
+        DELETING: Application and its deployments are being deleted.
+        """
         return self._status
 
     @property
@@ -150,7 +165,7 @@ class ApplicationState:
         logger.info(f"Deleting application '{self._name}'")
         self._set_target_state(deleting=True)
 
-    def apply_deployment(
+    def apply_deployment_info(
         self, deployment_name: str, deployment_info: DeploymentInfo
     ) -> bool:
         """
@@ -174,13 +189,18 @@ class ApplicationState:
         return updating
 
     def apply_deployment_args(self, deployment_params: List[Dict]) -> None:
-        """Set deployment args in application target state.
+        """Set the list of deployment infos in application target state.
 
         Args:
-            deployment_params: list of deployment parameters, including all deployment
-            information.
+            deployment_params: list of deployment parameters, including
+                all deployment information.
+        
+        Raises:
+            RayServeException: If there is more than one deployment with
+                a non-null route prefix or docs path.
         """
-        # Update route prefix for application
+        # Makes sure that at most one deployment has a non-null route
+        # prefix and docs path.
         num_route_prefixes = 0
         num_docs_paths = 0
         for deploy_param in deployment_params:
@@ -193,7 +213,7 @@ class ApplicationState:
                 num_docs_paths += 1
         if num_route_prefixes > 1:
             raise RayServeException(
-                f'Found multiple route prefix from application "{self._name}",'
+                f'Found multiple route prefixes from application "{self._name}",'
                 " Please specify only one route prefix for the application "
                 "to avoid this issue."
             )
@@ -337,8 +357,8 @@ class ApplicationState:
     def _reconcile_target_deployments(self) -> None:
         """Reconcile target deployments in application target state.
 
-        Ensure each deployment is running on up-to-date deployment info
-        Remove outdated deployments from application
+        Ensure each deployment is running on up-to-date info, and
+        remove outdated deployments from application
         """
 
         # If we're waiting on the build app task to finish, we don't
@@ -349,7 +369,7 @@ class ApplicationState:
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
-            self.apply_deployment(deployment_name, info)
+            self.apply_deployment_info(deployment_name, info)
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
@@ -357,13 +377,10 @@ class ApplicationState:
                 self._delete_deployment(deployment_name)
 
     def update(self) -> bool:
-        """Update the application status, maintain the ApplicationStatus.
-        This method should be idempotent.
+        """Attempts to reconcile this application to match its target state.
 
-        Status:
-            DEPLOYING -> RUNNING: All deployments are healthy.
-            DEPLOYING -> DEPLOY_FAILED: Not all deployments are healthy.
-            DELETING: Mark ready_to_be_deleted as True when all deployments are gone.
+        Updates the application status and status message based on the
+        current state of the system.
 
         Returns:
             A boolean indicating whether the application is ready to be
@@ -459,6 +476,10 @@ class ApplicationStateManager:
         Args:
             name: application name
             deployment_args_list: arguments for deploying a list of deployments.
+        
+        Raises:
+            RayServeException: If the list of deployments is trying to
+                use a route prefix that is already used by another application
         """
 
         # Make sure route_prefix is not being used by other application.
@@ -479,6 +500,8 @@ class ApplicationStateManager:
                     f' Failed to deploy application "{name}".'
                 )
 
+        # This if conditional should only evaluate to true if the app is
+        # being deployed through serve.run instead of from a config
         if name not in self._application_states:
             self._application_states[name] = ApplicationState(
                 name,

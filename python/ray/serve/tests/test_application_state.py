@@ -1,6 +1,6 @@
 import sys
 import pytest
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict
 from unittest.mock import patch, Mock
 
 import ray
@@ -20,6 +20,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
+from ray.serve.tests.test_deployment_state import MockKVStore
 
 
 class MockEndpointState:
@@ -28,30 +29,6 @@ class MockEndpointState:
 
     def delete_endpoint(self, endpoint):
         pass
-
-
-class MockKVStore:
-    def __init__(self):
-        self.store = dict()
-
-    def put(self, key: str, val: Any) -> bool:
-        self.store[key] = val
-        return True
-
-    def get(self, key: str) -> Any:
-        if not isinstance(key, str):
-            raise TypeError("key must be a string, got: {}.".format(type(key)))
-        return self.store.get(key, None)
-
-    def delete(self, key: str) -> bool:
-        if not isinstance(key, str):
-            raise TypeError("key must be a string, got: {}.".format(type(key)))
-
-        if key in self.store:
-            del self.store[key]
-            return True
-
-        return False
 
 
 class MockDeploymentStateManager:
@@ -374,9 +351,10 @@ def test_deploy_through_config_succeed(get, check_obj_ref_ready):
     """Test deploying through config successfully.
     Deploy obj ref finishes successfully, so status should transition to running.
     """
-    deployment_state_manager = MockDeploymentStateManager()
+    kv_store = MockKVStore()
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), MockKVStore()
+        deployment_state_manager, MockEndpointState(), kv_store
     )
     # Create application state
     app_state_manager.create_application_state(name="test_app", deploy_obj_ref=Mock())
@@ -407,9 +385,10 @@ def test_deploy_through_config_fail(get, check_obj_ref_ready):
     """Test fail to deploy through config.
     Deploy obj ref errors out, so status should transition to deploy failed.
     """
-    deployment_state_manager = MockDeploymentStateManager()
+    kv_store = MockKVStore()
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), MockKVStore()
+        deployment_state_manager, MockEndpointState(), kv_store
     )
     # Create application state
     app_state_manager.create_application_state(name="test_app", deploy_obj_ref=Mock())
