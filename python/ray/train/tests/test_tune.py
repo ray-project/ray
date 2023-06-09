@@ -191,7 +191,9 @@ def test_reuse_checkpoint(ray_start_4_cpus):
     assert len(trial_dfs[0]["training_iteration"]) == 5
 
 
-def test_retry(ray_start_4_cpus):
+def test_retry_with_max_failures(ray_start_4_cpus):
+    """Tests trainer retry with max_failures > 0 when integrating with Tune."""
+
     def train_func():
         ckpt = session.get_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
@@ -217,13 +219,11 @@ def test_retry(ray_start_4_cpus):
         trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
     )
 
-    analysis = tuner.fit()._experiment_analysis
-    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    result_grid = tuner.fit()
+    checkpoint = result_grid[0].checkpoint.to_dict()
     assert checkpoint["iter"] == 3
-
-    trial_dfs = list(analysis.trial_dataframes.values())
-    assert len(trial_dfs[0]["training_iteration"]) == 4
+    df = result_grid[0].metrics_dataframe
+    assert len(df["training_iteration"]) == 4
 
 
 def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
