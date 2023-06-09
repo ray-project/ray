@@ -1,6 +1,5 @@
 import aiorwlock
 import asyncio
-from asyncio.events import AbstractEventLoop
 from importlib import import_module
 import inspect
 import logging
@@ -17,7 +16,7 @@ import ray
 from ray import cloudpickle
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
-from ray._private.async_compat import sync_to_async
+from ray._private.async_compat import sync_to_async, wrap_sync_func_with_run_in_executor
 from ray._private.utils import get_or_create_event_loop
 
 from ray.serve import metrics
@@ -201,7 +200,6 @@ def create_replica_wrapper(name: str):
                     is_function,
                     controller_handle,
                     app_name,
-                    self._event_loop,
                 )
                 self._initialized = True
 
@@ -396,7 +394,6 @@ class RayServeReplica:
         is_function: bool,
         controller_handle: ActorHandle,
         app_name: str,
-        event_loop: AbstractEventLoop,
     ) -> None:
         self.deployment_name = deployment_name
         self.replica_tag = replica_tag
@@ -407,7 +404,6 @@ class RayServeReplica:
         self.rwlock = aiorwlock.RWLock()
         self.delete_lock = asyncio.Lock()
         self.app_name = app_name
-        self.event_loop = event_loop
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
         if not callable(user_health_check):
@@ -415,7 +411,7 @@ class RayServeReplica:
             def user_health_check():
                 pass
 
-        self.user_health_check = sync_to_async(user_health_check)
+        self.user_health_check = wrap_sync_func_with_run_in_executor(user_health_check)
 
         self.request_counter = metrics.Counter(
             "serve_deployment_request_counter",
@@ -562,12 +558,11 @@ class RayServeReplica:
         if asgi_sender is not None and callable_is_asgi_wrapper:
             kwargs["asgi_sender"] = asgi_sender
 
-        method_to_call = None
+        result = None
         success = True
+        runner_method = None
         try:
             runner_method = self.get_runner_method(request_item)
-            method_to_call = sync_to_async(runner_method)
-            result = None
 
             # Edge case to support empty HTTP handlers: don't pass the Request
             # argument if the callable has no parameters.
@@ -577,16 +572,9 @@ class RayServeReplica:
             ):
                 args, kwargs = tuple(), {}
 
-            # If the callable is a sync method, run it in the asyncio loop's
-            # default executor.
-            if inspect.iscoroutinefunction(runner_method):
-                coro = runner_method(*args, **kwargs)
-            else:
-                coro = self.event_loop.run_in_executor(
-                    None, lambda: runner_method(*args, **kwargs)
-                )
-
-            result = await coro
+            result = await wrap_sync_func_with_run_in_executor(runner_method)(
+                *args, **kwargs
+            )
 
             # Streaming HTTP codepath: always send response over ASGI interface.
             if asgi_sender is not None:
@@ -612,8 +600,8 @@ class RayServeReplica:
                 ray.util.pdb._post_mortem()
 
             function_name = "unknown"
-            if method_to_call is not None:
-                function_name = method_to_call.__name__
+            if runner_method is not None:
+                function_name = runner_method.__name__
             result = wrap_to_ray_error(function_name, e)
             self.error_counter.inc(tags={"route": request_item.metadata.route})
 
@@ -644,7 +632,7 @@ class RayServeReplica:
                         + RECONFIGURE_METHOD
                         + " method"
                     )
-                reconfigure_method = sync_to_async(
+                reconfigure_method = wrap_sync_func_with_run_in_executor(
                     getattr(self.callable, RECONFIGURE_METHOD)
                 )
                 await reconfigure_method(user_config)
@@ -722,7 +710,7 @@ class RayServeReplica:
             try:
                 if hasattr(self.callable, "__del__"):
                     # Make sure to accept `async def __del__(self)` as well.
-                    await sync_to_async(self.callable.__del__)()
+                    await wrap_sync_func_with_run_in_executor(self.callable.__del__)()
                     setattr(self.callable, "__del__", lambda _: None)
             except Exception as e:
                 logger.exception(f"Exception during graceful shutdown of replica: {e}")

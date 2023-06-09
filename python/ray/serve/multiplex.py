@@ -1,11 +1,10 @@
 import asyncio
 from collections import OrderedDict
-import inspect
 import logging
 import time
 from typing import Any, Callable
 
-from ray._private.async_compat import sync_to_async
+from ray._private.async_compat import wrap_sync_func_with_run_in_executor
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
@@ -147,10 +146,7 @@ class _ModelMultiplexWrapper:
         # If the model has __del__ attribute, call it.
         # This is to clean up the model resources eagerly.
         if hasattr(model, "__del__"):
-            if not inspect.iscoroutinefunction(model.__del__):
-                await asyncio.get_running_loop().run_in_executor(None, model.__del__)
-            else:
-                await sync_to_async(model.__del__)()
+            await wrap_sync_func_with_run_in_executor(model.__del__)()
             setattr(model, "__del__", lambda _: None)
 
     async def _push_model_ids(self):

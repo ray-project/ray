@@ -3,13 +3,18 @@ This file should only be imported from Python 3.
 It will raise SyntaxError when importing from Python 2.
 """
 import asyncio
+from asyncio.events import AbstractEventLoop
 import inspect
-from typing import Callable
+from typing import Callable, Optional
+
+from ray._private.utils import get_or_create_event_loop
 
 try:
     import uvloop
 except ImportError:
     uvloop = None
+
+event_loop: Optional[AbstractEventLoop] = None
 
 
 def get_new_event_loop():
@@ -35,3 +40,17 @@ def sync_to_async(func: Callable):
         return func(*args, **kwargs)
 
     return wrapper
+
+
+def wrap_sync_func_with_run_in_executor(func: Callable):
+    global event_loop
+    if event_loop is None:
+        event_loop = get_or_create_event_loop()
+
+    if is_async_func(func):
+        return func
+
+    async def run_in_executor_wrapper(*args, **kwargs):
+        return await event_loop.run_in_executor(None, lambda: func(*args, **kwargs))
+
+    return run_in_executor_wrapper
