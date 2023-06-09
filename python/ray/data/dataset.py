@@ -50,7 +50,6 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
@@ -58,6 +57,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -399,8 +399,7 @@ class Dataset:
         This applies the ``fn`` in parallel with map tasks, with each task handling
         a batch of data (typically Dict[str, np.ndarray] or pd.DataFrame).
 
-        To learn more about writing functions for :meth:`~Dataset.map_batches`, read
-        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+        To learn more, see the :ref:`Transforming batches user guide <transforming_batches>`.
 
         .. tip::
             If ``fn`` does not mutate its input, set ``zero_copy_batch=True`` to elide a
@@ -437,7 +436,7 @@ class Dataset:
 
             Here ``fn`` returns the same batch type as the input, but your ``fn`` can
             also return a different batch type (e.g., pd.DataFrame). Read more about
-            :ref:`Transforming Data <transforming_data>`.
+            :ref:`Transforming batches <transforming_batches>`.
 
             >>> from typing import Dict
             >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
