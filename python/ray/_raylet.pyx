@@ -110,6 +110,7 @@ from ray.includes.common cimport (
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
     kResourceUnitScaling,
     kWorkerSetupHookKeyName,
+    PythonCheckGcsHealth,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -2620,6 +2621,18 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
             actor_data.SerializeAsString())
 
         return [(key_id, info)]
+
+def check_gcs_health(address: str, timeout=2, skip_version_check=False):
+    gcs_address, gcs_port = address.split(":")
+
+    cdef:
+        c_string c_gcs_address = gcs_address
+        int c_gcs_port = gcs_port
+        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        c_bool c_skip_version_check = skip_version_check
+
+    with nogil:
+        check_status(PythonCheckGcsHealth(c_gcs_address, c_gcs_port, timeout_ms, c_skip_version_check))
 
 
 cdef class CoreWorker:

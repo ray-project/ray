@@ -408,5 +408,23 @@ std::unordered_map<std::string, std::string> PythonGetNodeLabels(
                                                       node_info.labels().end());
 }
 
+Status PythonCheckGcsHealth(const std::string& gcs_address, int gcs_port, int64_t timeout_ms, bool skip_version_check) {
+  auto channel =
+      rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
+  auto stub = rpc::NodeInfoGcsService::NewStub(channel);
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+  rpc::CheckAliveRequest request;
+  rpc::CheckAliveReply reply;
+  grpc::Status status = stub->CheckAlive(&context, request, &reply);
+  if (status.ok()) {
+    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+      return Status::OK();
+    }
+    return HandleGcsError(reply.status());
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 }  // namespace gcs
 }  // namespace ray
