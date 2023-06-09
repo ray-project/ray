@@ -80,7 +80,7 @@ class StreamingResponder:
         for i in range(max(max_list)):
             next_numbers = []
             for requested_max in max_list:
-                if requested_max <= i:
+                if requested_max > i:
                     next_numbers.append(i)
                 else:
                     next_numbers.append(StopIteration)

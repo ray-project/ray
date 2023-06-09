@@ -123,7 +123,7 @@ Once the first request arrives, the batching decorator will wait for a full batc
 
 ### Streaming batched requests
 
-You can stream the outputs from your batched requests by using an async generator to process your batches. Let's convert this `StreamingResponder` class to accept a batch.
+You can stream the outputs from your batched requests with an async generator. Let's convert this `StreamingResponder` class to accept a batch.
 
 ```{literalinclude} doc_code/batching_guide.py
 ---
@@ -132,7 +132,18 @@ end-before: __single_stream_end__
 ---
 ```
 
+You can decorate async generator functions with the {mod}`ray.serve.batch` decorator. Similar to non-streaming methods, the function should take in a `List` of inputs. In each iteration, it should `yield` an iterable of outputs with the same length as the input batch size.
 
+```{literalinclude} doc_code/batching_guide.py
+---
+start-after: __batch_stream_begin__
+end-before: __batch_stream_end__
+---
+```
+
+Calling the `serve.batch`-decorated function returns an async generator that can be awaited to receive results.
+
+Some inputs within a batch may generate fewer outputs than others. When a particular input has nothing left to yield, pass a `StopIteration` object into the output iterable. This terminates the generator that was returned when the `serve.batch` function was called with that input. When streaming generators returned by `serve.batch`-decorated functions over HTTP, this allows the end client's connection to terminate once its call is done, instead of waiting until the entire batch is done.
 
 ### Tips for fine-tuning batching parameters
 
