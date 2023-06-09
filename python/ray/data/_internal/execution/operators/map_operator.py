@@ -291,8 +291,10 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     def get_metrics(self) -> Dict[str, int]:
-        return dict(self._metrics.to_metrics_dict(),
-            ray_remote_args=self._get_runtime_ray_remote_args())
+        return dict(
+            self._metrics.to_metrics_dict(),
+            ray_remote_args=self._get_runtime_ray_remote_args(),
+        )
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
@@ -575,6 +577,8 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
     ray_remote_args = ray_remote_args.copy()
     if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
         ray_remote_args["num_cpus"] = 1
+    if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args["scheduling_strategy"] = "SPREAD"
     if ray_remote_args.get("num_gpus", 0) > 0:
         if ray_remote_args.get("num_cpus", 0) != 0:
             raise ValueError(
