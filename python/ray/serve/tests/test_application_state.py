@@ -408,7 +408,7 @@ def test_deploy_through_config_fail(get, check_obj_ref_ready):
 
 
 def test_redeploy_same_app(mocked_application_state):
-    """Test deploying the same app with different deploy_params."""
+    """Test redeploying same application with updated deployments."""
     app_state, deployment_state_manager = mocked_application_state
     app_state.apply_deployment_args([deployment_params("a"), deployment_params("b")])
     assert app_state.status == ApplicationStatus.DEPLOYING
@@ -448,7 +448,7 @@ def test_redeploy_same_app(mocked_application_state):
 
 
 def test_deploy_with_route_prefix_conflict(mocked_application_state_manager):
-    """Test that an application fails to deploy with a route prefix conflict."""
+    """Test that an application with a route prefix conflict fails to deploy"""
     app_state_manager, _, _ = mocked_application_state_manager
 
     app_state_manager.apply_deployment_args("app1", [deployment_params("a", "/hi")])
@@ -542,7 +542,15 @@ def test_application_state_recovery(mocked_application_state_manager):
 
 
 def test_recover_during_update(mocked_application_state_manager):
-    """"""
+    """Test that application and deployment states are recovered if
+    controller crashed in the middle of a redeploy.
+
+    Target state is checkpointed in the application state manager,
+    but not yet the deployment state manager when the controller crashes
+    Then the deployment state manager should recover an old version of
+    the deployment during initial recovery, but the application state
+    manager should eventually reconcile this.
+    """
     (
         app_state_manager,
         deployment_state_manager,

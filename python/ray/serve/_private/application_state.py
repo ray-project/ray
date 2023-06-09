@@ -96,7 +96,7 @@ class ApplicationState:
     @property
     def status(self) -> ApplicationStatus:
         """Status of the application.
-        
+
         DEPLOYING: The deploy task is still running, or the deployments
             have started deploying but aren't healthy yet.
         RUNNING: All deployments are healthy.
@@ -194,7 +194,7 @@ class ApplicationState:
         Args:
             deployment_params: list of deployment parameters, including
                 all deployment information.
-        
+
         Raises:
             RayServeException: If there is more than one deployment with
                 a non-null route prefix or docs path.
@@ -476,7 +476,7 @@ class ApplicationStateManager:
         Args:
             name: application name
             deployment_args_list: arguments for deploying a list of deployments.
-        
+
         Raises:
             RayServeException: If the list of deployments is trying to
                 use a route prefix that is already used by another application
