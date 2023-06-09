@@ -172,12 +172,6 @@ class StatusOverview:
         )
 
 
-HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"
-REPLICA_DEFAULT_ACTOR_OPTIONS = {
-    "concurrency_groups": {HEALTH_CHECK_CONCURRENCY_GROUP: 1}
-}
-
-
 class DeploymentInfo:
     def __init__(
         self,
@@ -240,7 +234,7 @@ class DeploymentInfo:
         if self._cached_actor_def is None:
             assert self.actor_name is not None
 
-            self._cached_actor_def = ray.remote(**REPLICA_DEFAULT_ACTOR_OPTIONS)(
+            self._cached_actor_def = ray.remote()(
                 create_replica_wrapper(self.actor_name)
             )
 
