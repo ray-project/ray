@@ -1,6 +1,7 @@
 .. _ref-ray-examples:
 
-.. title:: Ray Example Gallery
+Ray Examples
+============
 
 .. raw:: html
 
