@@ -1,8 +1,10 @@
+import time
 import pytest
 
 import ray
 from ray.exceptions import RayError
 from ray._private.test_utils import wait_for_condition
+
 from ray import serve
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
@@ -35,14 +37,15 @@ class Patient:
 
     def check_health(self):
         if self.should_hang:
-            import time
-
             time.sleep(10000)
         elif not self.healthy:
             raise Exception("intended to fail")
 
     def __call__(self, *args):
         return ray.get_runtime_context().current_actor
+
+    def hang(self):
+        time.sleep(10000)
 
     def set_should_fail(self):
         self.healthy = False
@@ -96,7 +99,7 @@ def test_user_defined_method_fails(serve_instance):
     ray.get([h.remote() for _ in range(100)])
 
 
-def test_user_defined_method_hangs(serve_instance):
+def test_user_defined_health_check_hangs(serve_instance):
     h = serve.run(Patient.bind())
     actor = ray.get(h.remote())
     ray.get(h.set_should_hang.remote())
@@ -117,6 +120,16 @@ def test_multiple_replicas(serve_instance):
     new_actors = {a._actor_id for a in ray.get([h.remote() for _ in range(100)])}
     assert len(new_actors) == 2
     assert len(new_actors.intersection(actors)) == 1
+
+
+def test_call_method_hanging_does_not_fail_health_check(serve_instance):
+    """Check that a sync call method hanging doesn't block the asyncio loop."""
+    h = serve.run(Patient.options(num_replicas=1, graceful_shutdown_timeout_s=0).bind())
+    actor_id = ray.get(h.remote())._actor_id
+
+    assert len(ray.wait([h.hang.remote()], timeout=5)[1]) == 1
+
+    assert ray.get(h.remote())._actor_id == actor_id
 
 
 def test_inherit_healthcheck(serve_instance):

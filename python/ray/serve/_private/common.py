@@ -234,9 +234,7 @@ class DeploymentInfo:
         if self._cached_actor_def is None:
             assert self.actor_name is not None
 
-            self._cached_actor_def = ray.remote()(
-                create_replica_wrapper(self.actor_name)
-            )
+            self._cached_actor_def = ray.remote(create_replica_wrapper(self.actor_name))
 
         return self._cached_actor_def
 
