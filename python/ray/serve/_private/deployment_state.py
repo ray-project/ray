@@ -10,7 +10,7 @@ import traceback
 from collections import defaultdict, OrderedDict
 from copy import copy
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -62,10 +62,14 @@ from ray.serve._private.utils import (
     get_all_node_ids,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
+from ray.serve._private.deployment_scheduler import (
+    DeploymentScheduler,
+    SpreadDeploymentSchedulingConstraint,
+    DriverDeploymentSchedulingConstraint,
+)
 
 from ray.serve import metrics
 from ray._raylet import GcsClient
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -194,10 +198,7 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
-        # Spread replicas to avoid correlated failures on a single node.
-        # This is a soft spread, so if there is only space on a single node
-        # the replicas will be placed there.
-        scheduling_strategy: Union[str, NodeAffinitySchedulingStrategy] = "SPREAD",
+        deployment_scheduler,
     ):
         self._actor_name = actor_name
         self._detached = detached
@@ -205,6 +206,7 @@ class ActorReplicaWrapper:
 
         self._replica_tag = replica_tag
         self._deployment_name = deployment_name
+        self._deployment_scheduler = deployment_scheduler
 
         # Populated in either self.start() or self.recover()
         self._allocated_obj_ref: ObjectRef = None
@@ -223,11 +225,8 @@ class ActorReplicaWrapper:
         self._pid: int = None
         self._actor_id: str = None
         self._worker_id: str = None
-        if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
-            self._node_id = scheduling_strategy.node_id
-        else:
-            # Populated after replica is allocated.
-            self._node_id: str = None
+        # Populated after replica is allocated.
+        self._node_id: str = None
         self._node_ip: str = None
         self._log_file_path: str = None
 
@@ -237,8 +236,6 @@ class ActorReplicaWrapper:
         # todo: will be confused with deployment_config.is_cross_language
         self._is_cross_language = False
         self._deployment_is_cross_language = False
-
-        self.scheduling_strategy = scheduling_strategy
 
     @property
     def replica_tag(self) -> str:
@@ -364,9 +361,18 @@ class ActorReplicaWrapper:
         return len(ready) == 1
 
     def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
+        """Start the current DeploymentReplica instance.
+
+        The replica will be in the STARTING and PENDING_ALLOCATION states
+        until the deployment scheduler schedules the underlying actor.
+
         """
-        Start a new actor for current DeploymentReplica instance.
-        """
+        logger.info(
+            f"Starting replica {self.replica_tag} for deployment "
+            f"{self.deployment_name}.",
+            extra={"log_to_stderr": False},
+        )
+
         self._version = version
 
         self._actor_resources = deployment_info.replica_config.resource_dict
@@ -374,12 +380,6 @@ class ActorReplicaWrapper:
         # with no resources (https://github.com/ray-project/ray/issues/20401)
         self._deployment_is_cross_language = (
             deployment_info.deployment_config.is_cross_language
-        )
-
-        logger.info(
-            f"Starting replica {self.replica_tag} for deployment "
-            f"{self.deployment_name}.",
-            extra={"log_to_stderr": False},
         )
 
         actor_def = deployment_info.actor_def
@@ -447,17 +447,28 @@ class ActorReplicaWrapper:
                 self._controller_name,
             )
 
-        self._actor_handle = actor_def.options(
-            name=self._actor_name,
-            namespace=SERVE_NAMESPACE,
-            lifetime="detached" if self._detached else None,
-            scheduling_strategy=self.scheduling_strategy,
-            **deployment_info.replica_config.ray_actor_options,
-        ).remote(*init_args)
+        actor_options = {
+            "name": self._actor_name,
+            "namespace": SERVE_NAMESPACE,
+            "lifetime": "detached" if self._detached else None,
+        }
+        actor_options.update(deployment_info.replica_config.ray_actor_options)
 
+        self._deployment_scheduler.schedule_replica(
+            deployment_name=self.deployment_name,
+            replica_name=self.replica_tag,
+            actor_def=actor_def,
+            actor_resources=self._actor_resources,
+            actor_options=actor_options,
+            actor_init_args=init_args,
+            on_scheduled=self.on_scheduled,
+        )
+
+    def on_scheduled(self, actor_handle):
+        self._actor_handle = actor_handle
         # Perform auto method name translation for java handles.
         # See https://github.com/ray-project/ray/issues/21474
-        deployment_config = copy(deployment_info.deployment_config)
+        deployment_config = copy(self._version.deployment_config)
         deployment_config.user_config = self._format_user_config(
             deployment_config.user_config
         )
@@ -559,8 +570,26 @@ class ActorReplicaWrapper:
         """
 
         # Check whether the replica has been allocated.
-        if not self._check_obj_ref_ready(self._allocated_obj_ref):
+        if self._allocated_obj_ref is None or not self._check_obj_ref_ready(
+            self._allocated_obj_ref
+        ):
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
+
+        try:
+            (
+                self._pid,
+                self._actor_id,
+                self._worker_id,
+                self._node_id,
+                self._node_ip,
+                self._log_file_path,
+            ) = ray.get(self._allocated_obj_ref)
+        except RayTaskError as e:
+            logger.exception(
+                f"Exception in replica '{self._replica_tag}', "
+                "the replica will be stopped."
+            )
+            return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
 
         # Check whether relica initialization has completed.
         replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
@@ -578,15 +607,6 @@ class ActorReplicaWrapper:
                 #  is different from the controller's userconfig
                 if not self._deployment_is_cross_language:
                     _, self._version = ray.get(self._ready_obj_ref)
-
-                (
-                    self._pid,
-                    self._actor_id,
-                    self._worker_id,
-                    self._node_id,
-                    self._node_ip,
-                    self._log_file_path,
-                ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in replica '{self._replica_tag}', "
@@ -780,11 +800,7 @@ class DeploymentReplica(VersionedReplica):
         detached: bool,
         replica_tag: ReplicaTag,
         deployment_name: str,
-        version: DeploymentVersion,
-        # Spread replicas to avoid correlated failures on a single node.
-        # This is a soft spread, so if there is only space on a single node
-        # the replicas will be placed there.
-        scheduling_strategy: Union[str, NodeAffinitySchedulingStrategy] = "SPREAD",
+        deployment_scheduler,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
@@ -792,7 +808,7 @@ class DeploymentReplica(VersionedReplica):
             controller_name,
             replica_tag,
             deployment_name,
-            scheduling_strategy,
+            deployment_scheduler,
         )
         self._controller_name = controller_name
         self._deployment_name = deployment_name
@@ -1121,6 +1137,7 @@ class DeploymentState:
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
+        deployment_scheduler: DeploymentScheduler,
         _save_checkpoint_func: Callable,
     ):
 
@@ -1128,6 +1145,7 @@ class DeploymentState:
         self._controller_name: str = controller_name
         self._detached: bool = detached
         self._long_poll_host: LongPollHost = long_poll_host
+        self._deployment_scheduler = deployment_scheduler
         self._save_checkpoint_func = _save_checkpoint_func
 
         # Each time we set a new deployment goal, we're trying to save new
@@ -1156,6 +1174,10 @@ class DeploymentState:
         # Whether the multiplexed model ids have been updated since the last
         # time we checked.
         self._multiplexed_model_ids_updated = False
+
+        self._deployment_scheduler.add_deployment(
+            self._name, SpreadDeploymentSchedulingConstraint()
+        )
 
     def should_autoscale(self) -> bool:
         """
@@ -1204,10 +1226,13 @@ class DeploymentState:
                 self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
-                None,
+                self._deployment_scheduler,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
+            self._deployment_scheduler.on_replica_recovering(
+                replica_name.deployment_tag, replica_name.replica_tag
+            )
             logger.debug(
                 f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
                 f"deployment: {self._name}."
@@ -1437,7 +1462,7 @@ class DeploymentState:
 
         return replicas_changed
 
-    def _check_and_stop_wrong_version_replicas(self) -> bool:
+    def _check_and_stop_outdated_version_replicas(self) -> bool:
         """Stops replicas with outdated versions to implement rolling updates.
 
         This includes both explicit code version updates and changes to the
@@ -1497,7 +1522,7 @@ class DeploymentState:
             self._target_state.num_replicas >= 0
         ), "Number of replicas must be greater than or equal to 0."
 
-        replicas_changed = self._check_and_stop_wrong_version_replicas()
+        replicas_changed = self._check_and_stop_outdated_version_replicas()
 
         current_replicas = self._replicas.count(
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
@@ -1545,7 +1570,7 @@ class DeploymentState:
                         self._detached,
                         replica_name.replica_tag,
                         replica_name.deployment_tag,
-                        self._target_state.version,
+                        self._deployment_scheduler,
                     )
                     new_deployment_replica.start(
                         self._target_state.info, self._target_state.version
@@ -1564,16 +1589,16 @@ class DeploymentState:
                 f"Removing {to_remove} replica{'s' if to_remove > 1 else ''} "
                 f"from deployment '{self._name}'."
             )
-            replicas_to_stop = self._replicas.pop(
-                states=[
-                    ReplicaState.STARTING,
-                    ReplicaState.UPDATING,
-                    ReplicaState.RECOVERING,
-                    ReplicaState.RUNNING,
-                ],
-                max_replicas=to_remove,
-                ranking_function=rank_replicas_for_stopping,
+
+            replicas_to_stop = []
+            replica_names_to_stop = self._deployment_scheduler.get_replicas_to_stop(
+                self._name, to_remove
             )
+            for replica in self._replicas.pop():
+                if replica.replica_tag in replica_names_to_stop:
+                    replicas_to_stop.append(replica)
+                else:
+                    self._replicas.add(replica.actor_details.state, replica)
 
             for replica in replicas_to_stop:
                 logger.debug(
@@ -1689,6 +1714,9 @@ class DeploymentState:
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
+                self._deployment_scheduler.on_replica_running(
+                    replica.deployment_name, replica.replica_tag, replica.actor_node_id
+                )
                 transitioned_to_running = True
                 logger.info(
                     f"Replica {replica.replica_tag} started successfully.",
@@ -1707,7 +1735,12 @@ class DeploymentState:
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
             ]:
-
+                if start_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
+                    self._deployment_scheduler.on_replica_running(
+                        replica.deployment_name,
+                        replica.replica_tag,
+                        replica.actor_node_id,
+                    )
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
                 if is_slow:
                     slow_replicas.append((replica, start_status))
@@ -1744,6 +1777,9 @@ class DeploymentState:
         """
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
+        self._deployment_scheduler.stop_replica(
+            replica.deployment_name, replica.replica_tag
+        )
         self.health_check_gauge.set(
             0,
             tags={
@@ -1898,14 +1934,14 @@ class DeploymentState:
         """
         deleted, any_replicas_recovering = False, False
         try:
+            # Check the state of existing replicas and transition if necessary.
+            running_replicas_changed = self._check_and_update_replicas()
+
             # Add or remove DeploymentReplica instances in self._replicas.
             # This should be the only place we adjust total number of replicas
             # we manage.
 
-            running_replicas_changed = self._scale_deployment_replicas()
-
-            # Check the state of existing replicas and transition if necessary.
-            running_replicas_changed |= self._check_and_update_replicas()
+            running_replicas_changed |= self._scale_deployment_replicas()
 
             # Check if the model_id has changed.
             running_replicas_changed |= self._multiplexed_model_ids_updated
@@ -1959,16 +1995,26 @@ class DriverDeploymentState(DeploymentState):
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
+        deployment_scheduler: DeploymentScheduler,
         _save_checkpoint_func: Callable,
         gcs_client: GcsClient = None,
     ):
         super().__init__(
-            name, controller_name, detached, long_poll_host, _save_checkpoint_func
+            name,
+            controller_name,
+            detached,
+            long_poll_host,
+            deployment_scheduler,
+            _save_checkpoint_func,
         )
         if gcs_client:
             self._gcs_client = gcs_client
         else:
             self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+        self._deployment_scheduler.add_deployment(
+            self._name, DriverDeploymentSchedulingConstraint()
+        )
 
     def _get_all_node_ids(self):
         # Test mock purpose
@@ -1976,38 +2022,25 @@ class DriverDeploymentState(DeploymentState):
 
     def _deploy_driver(self) -> bool:
         """Deploy the driver deployment to each node."""
-        all_nodes = self._get_all_node_ids()
-        deployed_nodes = set()
-        for replica in self._replicas.get(
-            [
-                ReplicaState.STARTING,
-                ReplicaState.RUNNING,
-                ReplicaState.RECOVERING,
-                ReplicaState.UPDATING,
-                ReplicaState.STOPPING,
-            ]
-        ):
-            if replica.actor_node_id:
-                deployed_nodes.add(replica.actor_node_id)
         replica_changed = False
-        for node_id, _ in all_nodes:
-            if node_id in deployed_nodes:
-                continue
-            replica_name = ReplicaName(self._name, get_random_letters())
-            new_deployment_replica = DeploymentReplica(
-                self._controller_name,
-                self._detached,
-                replica_name.replica_tag,
-                replica_name.deployment_tag,
-                self._target_state.version,
-                NodeAffinitySchedulingStrategy(node_id, soft=False),
-            )
-            new_deployment_replica.start(
-                self._target_state.info, self._target_state.version
-            )
+        num_existing_replicas = self._replicas.count()
+        if num_existing_replicas < self._target_state.num_replicas:
+            for _ in range(self._target_state.num_replicas - num_existing_replicas):
+                replica_name = ReplicaName(self._name, get_random_letters())
+                new_deployment_replica = DeploymentReplica(
+                    self._controller_name,
+                    self._detached,
+                    replica_name.replica_tag,
+                    replica_name.deployment_tag,
+                    self._target_state.version,
+                    self._deployment_scheduler,
+                )
+                new_deployment_replica.start(
+                    self._target_state.info, self._target_state.version
+                )
 
-            self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
-            replica_changed = True
+                self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
+                replica_changed = True
         return replica_changed
 
     def _stop_all_replicas(self) -> bool:
@@ -2017,6 +2050,7 @@ class DriverDeploymentState(DeploymentState):
                 ReplicaState.STARTING,
                 ReplicaState.RUNNING,
                 ReplicaState.RECOVERING,
+                ReplicaState.UPDATING,
             ]
         ):
             self._stop_replica(replica)
@@ -2024,8 +2058,8 @@ class DriverDeploymentState(DeploymentState):
         return replica_changed
 
     def _calculate_max_replicas_to_stop(self) -> int:
-        nums_nodes = len(self._get_all_node_ids())
-        rollout_size = max(int(0.2 * nums_nodes), 1)
+        num_nodes = len(self._get_all_node_ids())
+        rollout_size = max(int(0.2 * num_nodes), 1)
         old_running_replicas = self._replicas.count(
             exclude_version=self._target_state.version,
             states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING],
@@ -2033,7 +2067,7 @@ class DriverDeploymentState(DeploymentState):
         new_running_replicas = self._replicas.count(
             version=self._target_state.version, states=[ReplicaState.RUNNING]
         )
-        pending_replicas = nums_nodes - new_running_replicas - old_running_replicas
+        pending_replicas = num_nodes - new_running_replicas - old_running_replicas
         return max(rollout_size - pending_replicas, 0)
 
     def update(self) -> Tuple[bool, bool]:
@@ -2090,12 +2124,14 @@ class DeploymentStateManager:
         self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
+        self._deployment_scheduler = DeploymentScheduler()
 
         self._create_deployment_state: Callable = lambda name: DeploymentState(
             name,
             controller_name,
             detached,
             long_poll_host,
+            self._deployment_scheduler,
             self._save_checkpoint_func,
         )
 
@@ -2105,6 +2141,7 @@ class DeploymentStateManager:
                 controller_name,
                 detached,
                 long_poll_host,
+                self._deployment_scheduler,
                 self._save_checkpoint_func,
             )
         )
@@ -2435,10 +2472,13 @@ class DeploymentStateManager:
             any_recovering |= recovering
 
         for tag in deleted_tags:
+            self._deployment_scheduler.remove_deployment(tag)
             del self._deployment_states[tag]
 
         if len(deleted_tags):
             self._record_deployment_usage()
+
+        self._deployment_scheduler.schedule()
 
         return any_recovering
 
