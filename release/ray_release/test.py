@@ -2,7 +2,7 @@ import enum
 import os
 import json
 import time
-from typing import Optional, List
+from typing import Optional, List, Dict
 from dataclasses import dataclass
 
 import boto3
@@ -25,6 +25,18 @@ DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 
 
+def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
+    env_dict = {}
+    for env in env_list:
+        # an env can be "a=b" or just "a"
+        eq_pos = env.find("=")
+        if eq_pos < 0:
+            env_dict[env] = os.environ.get(env, "")
+        else:
+            env_dict[env[:eq_pos]] = env[eq_pos + 1 :]
+    return env_dict
+
+
 class TestState(enum.Enum):
     """
     Overall state of the test
@@ -32,6 +44,7 @@ class TestState(enum.Enum):
 
     JAILED = "jailed"
     FAILING = "failing"
+    CONSITENTLY_FAILING = "consistently_failing"
     PASSING = "passing"
 
 
@@ -71,6 +84,8 @@ class Test(dict):
     """A class represents a test to run on buildkite"""
 
     KEY_GITHUB_ISSUE_NUMBER = "github_issue_number"
+    KEY_BISECT_BUILD_NUMBER = "bisect_build_number"
+    KEY_BISECT_BLAMED_COMMIT = "bisect_blamed_commit"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -97,6 +112,14 @@ class Test(dict):
         if not self.is_byod_cluster():
             return []
         return self["cluster"]["byod"].get("pre_run_cmds", [])
+
+    def get_byod_runtime_env(self) -> Dict[str, str]:
+        """
+        Returns the runtime environment variables for the BYOD cluster.
+        """
+        if not self.is_byod_cluster():
+            return {}
+        return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
 
     def get_name(self) -> str:
         """
@@ -157,8 +180,11 @@ class Test(dict):
             "COMMIT_TO_TEST",
             os.environ["BUILDKITE_COMMIT"],
         )
+        branch = os.environ.get(
+            "BRANCH_TO_TEST",
+            os.environ["BUILDKITE_BRANCH"],
+        )
         ray_version = commit[:6]
-        branch = os.environ.get("BUILDKITE_BRANCH", "")
         assert branch == "master" or branch.startswith(
             "releases/"
         ), f"Invalid branch name {branch}"

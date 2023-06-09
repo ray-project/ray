@@ -96,21 +96,9 @@ parts:
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
-          - file: data/examples/index
-            sections:
-              - file: data/examples/nyc_taxi_basic_processing
-                title: Processing the NYC taxi dataset
-              - file: data/examples/batch_training
-                title: Batch Training with Ray Data
-              - file: data/examples/ocr_example
-                title: Scaling OCR with Ray Data
-              - file: data/examples/random-access
-              - file: data/examples/batch_inference_object_detection
-                title: Object Detection Batch Inference with PyTorch
-              - file: data/examples/custom-datasource
+          - file: data/examples
           - file: data/faq
           - file: data/api/api
-          - file: data/glossary
 
       - file: train/train
         title: Ray Train

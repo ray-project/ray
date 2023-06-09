@@ -1714,21 +1714,6 @@
 #######################
 # Tune cloud  tests
 #######################
-- name: remove_before_commit
-  group: Devprod tests
-  working_dir: tune_tests/cloud_tests
-  frequency: manual
-  team: ml
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_aws_4x2.yaml
-
-  run:
-    timeout: 600
-    script: exit 40
-
-
 - name: tune_cloud_no_sync_down
   group: Tune cloud tests
   working_dir: tune_tests/cloud_tests
@@ -2239,8 +2224,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2352,8 +2337,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2392,8 +2377,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2473,8 +2458,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2513,8 +2498,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2553,8 +2538,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RLLIB_TEST_NO_JAX_IMPORT=1
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -4226,7 +4211,7 @@
 
   run:
     timeout: 18000
-    script: python learning_tests/run.py --yaml-sub-dir=ppo --framework=tf
+    script: python learning_tests/run.py --yaml-sub-dir=ppo/old_stack --framework=tf
 
   alert: default
 
@@ -4562,8 +4547,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RAY_worker_killing_policy=retriable_lifo
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
@@ -4642,8 +4627,8 @@
   team: core
   cluster:
     byod:
-      pre_run_cmds:
-        - export RAY_worker_killing_policy=retriable_lifo
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
