@@ -1,6 +1,7 @@
 # The build output should clearly not be checked in
 *test-output.xml
 /bazel-*
+!bazel-steward.yaml
 /python/ray/core
 /python/ray/pickle5_files/
 /python/ray/thirdparty_files/

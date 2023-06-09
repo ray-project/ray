@@ -134,8 +134,8 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "rules_jvm_external",
-        url = "https://github.com/bazelbuild/rules_jvm_external/archive/2.10.tar.gz",
-        sha256 = "5c1b22eab26807d5286ada7392d796cbc8425d3ef9a57d114b79c5f8ef8aca7c",
+        url = "https://github.com/bazelbuild/rules_jvm_external/releases/download/5.0/rules_jvm_external-5.0.tar.gz",
+        sha256 = "8c3cd0ce6aa3dd8c01a414385e0a3807c7a14c769ca0aa3c53fb135c91f9198c",
     )
 
     auto_http_archive(

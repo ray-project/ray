@@ -1,0 +1,9 @@
+pull-requests:
+  - dependencies: "com.google.protobuf:protobuf-*"
+    group-id: protobuf
+  - dependencies: "org.apache.logging.log4j:log4j-*"
+    group-id: log4j
+  - dependencies: "org.apache.httpcomponents.client5:httpclient5*"
+    group-id: httpclient5
+  - limits:
+      max-open: 10
