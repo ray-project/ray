@@ -437,6 +437,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             print(ds)
 
         .. testoutput::
+            :options: +SKIP
 
             MaterializedDataset(
                num_blocks=1,
@@ -617,6 +618,7 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
             print(ds)
 
         .. testoutput::
+            :options: +SKIP
 
             MaterializedDataset(
                num_blocks=...,

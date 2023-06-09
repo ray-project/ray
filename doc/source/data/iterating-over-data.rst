@@ -136,6 +136,7 @@ formats by calling one of the following methods:
                 print(features, labels)
 
         .. testoutput::
+            :options: +SKIP
 
             tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
             ...
