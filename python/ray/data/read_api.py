@@ -1415,7 +1415,7 @@ def read_sql(
     Examples:
 
         For examples of reading from larger databases like MySQL and PostgreSQL, see
-        :ref:`Reading from SQL Databases <datasets_sql_databases>`.
+        :ref:`Reading from SQL Databases <reading_sql>`.
 
         .. testcode::
 
