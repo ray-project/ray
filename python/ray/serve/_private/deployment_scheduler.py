@@ -24,7 +24,7 @@ class DeploymentScheduler:
         # Replicas that are pending to be scheduled.
         self._pending_replicas = defaultdict(dict)
         # Replicas that are being scheduled.
-        # The underlying actors are created but
+        # The underlying actors are submitted but
         # we don't know where they are running.
         self._launching_replicas = defaultdict(dict)
         # Replicas that are recovering.
@@ -61,14 +61,14 @@ class DeploymentScheduler:
         )
 
     def stop_replica(self, deployment_name, replica_name):
-        del self._pending_replicas[deployment_name][replica_name]
-        del self._launching_replicas[deployment_name][replica_name]
-        del self._recovering_replicas[deployment_name][replica_name]
-        del self._running_replicas[deployment_name][replica_name]
+        self._pending_replicas[deployment_name].pop(replica_name, None)
+        self._launching_replicas[deployment_name].pop(replica_name, None)
+        self._recovering_replicas[deployment_name].pop(replica_name, None)
+        self._running_replicas[deployment_name].pop(replica_name, None)
 
     def on_replica_running(self, deployment_name, replica_name, node_id):
-        del self._launching_replicas[deployment_name][replica_name]
-        del self._recovering_replicas[deployment_name][replica_name]
+        self._launching_replicas[deployment_name].pop(replica_name, None)
+        self._recovering_replicas[deployment_name].pop(replica_name, None)
         self._running_replicas[deployment_name][replica_name] = node_id
 
     def on_replica_recovering(self, deployment_name, replica_name):
@@ -167,7 +167,7 @@ class DeploymentScheduler:
                         node_id, soft=False
                     )
                     actor_handle = actor_def.options(
-                        scheduling_constraint=scheduling_strategy, **actor_options
+                        scheduling_strategy=scheduling_strategy, **actor_options
                     ).remote(*actor_init_args)
                     self._subtract_node_available_resources(
                         cluster_view[node_id]["available"], actor_resources
@@ -184,7 +184,7 @@ class DeploymentScheduler:
                     pending_autoscaling.append(
                         {
                             resource: math.ceil(quantity)
-                            for resource, quantity in actor_resources
+                            for resource, quantity in actor_resources.items()
                         }
                     )
                     break
