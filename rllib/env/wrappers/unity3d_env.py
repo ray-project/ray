@@ -64,6 +64,9 @@ class Unity3DEnv(MultiAgentEnv):
                 Note: The game itself may contain its own episode length
                 limits, which are always obeyed (on top of this value here).
         """
+        # Skip env checking as the nature of the agent IDs depends on the game
+        # running in the connected Unity editor.
+        self._skip_env_checking = True
 
         super().__init__()
 

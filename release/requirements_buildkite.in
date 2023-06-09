@@ -1,6 +1,7 @@
 # Requirements to run release tests from buildkite (client dependencies will be installed separately)
 # Copy anyscale pin to requirements.txt and util.py
 anyscale
+bazel-runfiles
 boto3
 click
 freezegun
@@ -10,6 +11,8 @@ protobuf >= 3.15.3, != 3.19.5
 pydantic < 1.10.0
 pytest
 pyyaml
+pybuildkite
+PyGithub
 requests
 retry
 

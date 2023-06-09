@@ -331,27 +331,33 @@ You can render an illustration of your deployment graph to see its nodes and the
 
 Make sure you have `pydot` and `graphviz` to follow this section:
 
-:::{tab-set}
+::::{tab-set}
 
-::::::{tab-item} MacOS
+:::{tab-item} MacOS
+
 ```
 pip install -U pydot && brew install graphviz
 ```
-::::::
 
-::::{tab-item} Windows
+:::
+
+:::{tab-item} Windows
+
 ```
 pip install -U pydot && winget install graphviz
 ```
-::::::
 
-::::::{tab-item} Linux
+:::
+
+:::{tab-item} Linux
+
 ```
 pip install -U pydot && sudo apt-get install -y graphviz
 ```
-::::::
 
 :::
+
+::::
 
 Here's an example graph:
 

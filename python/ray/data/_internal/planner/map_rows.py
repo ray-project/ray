@@ -4,13 +4,13 @@ from typing import Callable, Iterator
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
 from ray.data._internal.util import _truncated_repr
-from ray.data.block import Block, BlockAccessor, UserDefinedFunction, StrictModeError
+from ray.data.block import Block, BlockAccessor, StrictModeError, UserDefinedFunction
 from ray.data.context import DataContext
 
 
-def generate_map_rows_fn() -> Callable[
-    [Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]
-]:
+def generate_map_rows_fn() -> (
+    Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]
+):
     """Generate function to apply the UDF to each record of blocks."""
 
     context = DataContext.get_current()
@@ -30,7 +30,7 @@ def generate_map_rows_fn() -> Callable[
                     raise StrictModeError(
                         f"Error validating {_truncated_repr(item)}: "
                         "Standalone Python objects are not "
-                        "allowed in strict mode. To return Python objects from map(), "
+                        "allowed in Ray 2.5. To return Python objects from map(), "
                         "wrap them in a dict, e.g., "
                         "return `{'item': item}` instead of just `item`."
                     )

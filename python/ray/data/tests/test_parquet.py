@@ -1,12 +1,13 @@
 import os
 import shutil
+from typing import Any
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-from typing import Any
+import pytest
+from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray.data.block import BlockAccessor
@@ -14,23 +15,18 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
 )
+from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD,
-    _ParquetDatasourceReader,
     ParquetDatasource,
-)
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
-from ray.data.datasource.parquet_datasource import (
-    _SerializedPiece,
     _deserialize_pieces_with_retry,
+    _ParquetDatasourceReader,
+    _SerializedPiece,
 )
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-from pytest_lazyfixture import lazy_fixture
 
 
 def check_num_computed(ds, expected, streaming_expected) -> None:
@@ -146,11 +142,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 0, 0)
@@ -224,11 +220,11 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 2, 2)
@@ -301,11 +297,11 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 2, 2)
@@ -391,11 +387,11 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={one: int64, two: string})"
     ), ds
     check_num_computed(ds, 2, 2)
@@ -452,7 +448,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     check_num_computed(ds, 0, 0)
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=6,\n"
         "   schema={two: string, "
@@ -460,7 +456,7 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         ")"
     ), ds
     assert repr(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=6,\n"
         "   schema={two: string, "
@@ -550,11 +546,11 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert (
-        str(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        str(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={two: string, one: int32})"
     ), ds
     assert (
-        repr(ds) == "Datastream(num_blocks=2, num_rows=6, "
+        repr(ds) == "Dataset(num_blocks=2, num_rows=6, "
         "schema={two: string, one: int32})"
     ), ds
     check_num_computed(ds, 0, 0)

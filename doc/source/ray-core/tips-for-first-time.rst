@@ -54,8 +54,9 @@ With Ray, the invocation of every remote operation (e.g., task, actor method) is
 
 Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray.get()``. To illustrate this point, consider the following simple Python code which calls the ``do_some_work()`` function four times, where each invocation takes around 1 sec:
 
-.. code-block:: python
+.. testcode::
 
+    import ray
     import time
 
     def do_some_work(x):
@@ -65,25 +66,31 @@ Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray
     start = time.time()
     results = [do_some_work(x) for x in range(4)]
     print("duration =", time.time() - start)
-    print("results = ", results)
+    print("results =", results)
 
 
 The output of a program execution is below. As expected, the program takes around 4 seconds:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 4.0149290561676025
-    results =  [0, 1, 2, 3]
+    results = [0, 1, 2, 3]
 
 Now, let’s parallelize the above program with Ray. Some first-time users will do this by just making the function remote, i.e.,
 
-.. code-block:: python
-    :linenos:
+.. testcode::
+    :hide:
+
+    import ray
+    ray.shutdown()
+
+.. testcode::
 
     import time
     import ray
 
-    ray.init(num_cpus = 4) # Specify this system has 4 CPUs.
+    ray.init(num_cpus=4) # Specify this system has 4 CPUs.
 
     @ray.remote
     def do_some_work(x):
@@ -93,26 +100,28 @@ Now, let’s parallelize the above program with Ray. Some first-time users will 
     start = time.time()
     results = [do_some_work.remote(x) for x in range(4)]
     print("duration =", time.time() - start)
-    print("results = ", results)
+    print("results =", results)
 
 However, when executing the above program one gets:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 0.0003619194030761719
-    results =  [ObjectRef(df5a1a828c9685d3ffffffff0100000001000000), ObjectRef(cb230a572350ff44ffffffff0100000001000000), ObjectRef(7bbd90284b71e599ffffffff0100000001000000), ObjectRef(bd37d2621480fc7dffffffff0100000001000000)]
+    results = [ObjectRef(df5a1a828c9685d3ffffffff0100000001000000), ObjectRef(cb230a572350ff44ffffffff0100000001000000), ObjectRef(7bbd90284b71e599ffffffff0100000001000000), ObjectRef(bd37d2621480fc7dffffffff0100000001000000)]
 
 When looking at this output, two things jump out. First, the program finishes immediately, i.e., in less than 1 ms. Second, instead of the expected results (i.e., [0, 1, 2, 3]), we get a bunch of identifiers. Recall that remote operations are asynchronous and they return futures (i.e., object IDs) instead of the results themselves. This is exactly what we see here. We measure only the time it takes to invoke the tasks, not their running times, and we get the IDs of the results corresponding to the four tasks.
 
 To get the actual results,  we need to use ray.get(), and here the first instinct is to just call ``ray.get()`` on the remote operation invocation, i.e., replace line 12 with:
 
-.. code-block:: python
+.. testcode::
 
     results = [ray.get(do_some_work.remote(x)) for x in range(4)]
 
 By re-running the program after this change we get:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 4.018050909042358
     results =  [0, 1, 2, 3]
@@ -121,13 +130,14 @@ So now the results are correct, but it still takes 4 seconds, so no speedup! Wha
 
 To enable parallelism, we need to call ``ray.get()`` after invoking all tasks. We can easily do so in our example by replacing line 12 with:
 
-.. code-block:: python
+.. testcode::
 
     results = ray.get([do_some_work.remote(x) for x in range(4)])
 
 By re-running the program after this change we now get:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 1.0064549446105957
     results =  [0, 1, 2, 3]
@@ -143,7 +153,7 @@ When a first-time developer wants to parallelize their code with Ray, the natura
 
 Let’s consider again the above examples, but this time we make the tasks much shorter (i.e, each takes just 0.1ms), and dramatically increase the number of task invocations to 100,000.
 
-.. code-block:: python
+.. testcode::
 
     import time
 
@@ -157,7 +167,8 @@ Let’s consider again the above examples, but this time we make the tasks much 
 
 By running this program we get:
 
-.. code-block:: python
+.. testoutput::
+    :options: +MOCK
 
     duration = 13.36544418334961
 
@@ -165,12 +176,10 @@ This result should be expected since the lower bound of executing 100,000 tasks 
 
 Let’s now parallelize this code using Ray, by making every invocation of ``tiny_work()`` remote:
 
-.. code-block:: python
+.. testcode::
 
     import time
     import ray
-
-    ray.init(num_cpus = 4)
 
     @ray.remote
     def tiny_work(x):
@@ -184,7 +193,8 @@ Let’s now parallelize this code using Ray, by making every invocation of ``tin
 
 The result of running this code is:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 27.46447515487671
 
@@ -192,12 +202,10 @@ Surprisingly, not only Ray didn’t improve the execution time, but the Ray prog
 
 One way to speed up this program is to make the remote tasks larger in order to amortize the invocation overhead. Here is one possible solution where we aggregate 1000 ``tiny_work()`` function calls in a single bigger remote function:
 
-.. code-block:: python
+.. testcode::
 
     import time
     import ray
-
-    ray.init(num_cpus = 4)
 
     def tiny_work(x):
         time.sleep(0.0001) # replace this is with work you need to do
@@ -215,13 +223,14 @@ One way to speed up this program is to make the remote tasks larger in order to 
 
 Now, if we run the above program we get:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 3.2539820671081543
 
 This is approximately one fourth of the sequential execution, in line with our expectations (recall, we can run four tasks in parallel). Of course, the natural question is how large is large enough for a task to amortize the remote invocation overhead. One way to find this is to run the following simple program to estimate the per-task invocation overhead:
 
-.. code-block:: python
+.. testcode::
 
     @ray.remote
     def no_work(x):
@@ -234,7 +243,8 @@ This is approximately one fourth of the sequential execution, in line with our e
 
 Running the above program on a 2018 MacBook Pro notebook shows:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     per task overhead (ms) = 0.4739549160003662
 
@@ -247,13 +257,11 @@ When we pass a large object as an argument to a remote function, Ray calls ``ray
 
 However, there are cases when automatically calling ``ray.put()`` on a task invocation leads to performance issues. One example is passing the same large object as an argument repeatedly, as illustrated by the program below:
 
-.. code-block:: python
+.. testcode::
 
     import time
     import numpy as np
     import ray
-
-    ray.init(num_cpus = 4)
 
     @ray.remote
     def no_work(a):
@@ -267,7 +275,8 @@ However, there are cases when automatically calling ``ray.put()`` on a task invo
 
 This program outputs:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 1.0837509632110596
 
@@ -276,13 +285,19 @@ This running time is quite large for a program that calls just 10 remote tasks t
 
 To avoid copying array ``a`` every time ``no_work()`` is invoked, one simple solution is to explicitly call ``ray.put(a)``, and then pass ``a``’s ID to ``no_work()``, as illustrated below:
 
-.. code-block:: python
+.. testcode::
+    :hide:
+
+    import ray
+    ray.shutdown()
+
+.. testcode::
 
     import time
     import numpy as np
     import ray
 
-    ray.init(num_cpus = 4)
+    ray.init(num_cpus=4)
 
     @ray.remote
     def no_work(a):
@@ -296,7 +311,8 @@ To avoid copying array ``a`` every time ``no_work()`` is invoked, one simple sol
 
 Running this program takes only:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 0.132796049118042
 
@@ -312,13 +328,11 @@ If we use ``ray.get()`` on the results of multiple tasks we will have to wait un
 
 To illustrate this issue, consider the following example where we run four ``do_some_work()`` tasks in parallel, with each task taking a time uniformly distributed between 0 and 4 seconds. Next, assume the results of these tasks are processed by ``process_results()``, which takes 1 sec per result. The expected running time is then (1) the time it takes to execute the slowest of the ``do_some_work()`` tasks, plus (2) 4 seconds which is the time it takes to execute ``process_results()``.
 
-.. code-block:: python
+.. testcode::
 
     import time
     import random
     import ray
-
-    ray.init(num_cpus = 4)
 
     @ray.remote
     def do_some_work(x):
@@ -339,7 +353,8 @@ To illustrate this issue, consider the following example where we run four ``do_
 
 The output of the program shows that it takes close to 8 sec to run:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 7.82636022567749
     result =  6
@@ -347,13 +362,11 @@ The output of the program shows that it takes close to 8 sec to run:
 Waiting for the last task to finish when the others tasks might have finished much earlier unnecessarily increases the program running time. A better solution would be to process the data as soon it becomes available.
 Fortunately, Ray allows you to do exactly this by calling ``ray.wait()`` on a list of object IDs. Without specifying any other parameters, this function returns as soon as an object in its argument list is ready. This call has two returns: (1) the ID of the ready object, and (2) the list containing the IDs of the objects not ready yet. The modified program is below. Note that one change we need to do is to replace ``process_results()`` with ``process_incremental()`` that processes one result at a time.
 
-.. code-block:: python
+.. testcode::
 
     import time
     import random
     import ray
-
-    ray.init(num_cpus = 4)
 
     @ray.remote
     def do_some_work(x):
@@ -374,7 +387,8 @@ Fortunately, Ray allows you to do exactly this by calling ``ray.wait()`` on a li
 
 This program now takes just a bit over 4.8sec, a significant improvement:
 
-.. code-block:: bash
+.. testoutput::
+    :options: +MOCK
 
     duration = 4.852453231811523
     result =  6
@@ -384,4 +398,3 @@ To aid the intuition, Figure 1 shows the execution timeline in both cases: when 
 .. figure:: /images/pipeline.png
 
     Figure 1: (a) Execution timeline when  using ray.get() to wait for all results from ``do_some_work()`` tasks before calling ``process_results()``. (b) Execution timeline when using ``ray.wait()`` to process results as soon as they become available.
-

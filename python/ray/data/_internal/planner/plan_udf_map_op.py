@@ -1,11 +1,7 @@
 from typing import Any, Iterator
 
 import ray
-from ray.data._internal.compute import (
-    ActorPoolStrategy,
-    TaskPoolStrategy,
-    get_compute,
-)
+from ray.data._internal.compute import ActorPoolStrategy, get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator, TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.util import make_callable_class_concurrent
@@ -20,6 +16,7 @@ from ray.data._internal.planner.filter import generate_filter_fn
 from ray.data._internal.planner.flat_map import generate_flat_map_fn
 from ray.data._internal.planner.map_batches import generate_map_batches_fn
 from ray.data._internal.planner.map_rows import generate_map_rows_fn
+from ray.data._internal.util import validate_compute
 from ray.data.block import Block, CallableClass
 
 
@@ -47,14 +44,9 @@ def _plan_udf_map_op(
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 
     compute = get_compute(op._compute)
+    validate_compute(op._fn, compute)
 
     if isinstance(op._fn, CallableClass):
-        if isinstance(compute, TaskPoolStrategy):
-            raise ValueError(
-                "``compute`` must be specified when using a callable class, "
-                "and must specify the actor compute strategy. "
-                "For example, use ``compute=ActorPoolStrategy(size=n)``."
-            )
         assert isinstance(compute, ActorPoolStrategy)
 
         fn_constructor_args = op._fn_constructor_args or ()

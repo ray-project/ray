@@ -69,6 +69,7 @@ class TestEnvsThatCrash(unittest.TestCase):
         config = (
             pg.PGConfig()
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
                 num_envs_per_worker=3,
                 # Ignore worker failures (continue with worker #2).
@@ -85,7 +86,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     "skip_env_checking": True,
                 },
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
         # Pre-checking disables, so building the Algorithm is save.
         algo = config.build()
@@ -101,6 +101,7 @@ class TestEnvsThatCrash(unittest.TestCase):
         config = (
             pg.PGConfig()
             .rollouts(
+                env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_rollout_workers=2,
                 rollout_fragment_length=10,
                 num_envs_per_worker=3,
@@ -120,7 +121,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     "skip_env_checking": True,
                 },
             )
-            .debugging(worker_cls=ForwardHealthCheckToEnvWorker)
         )
         # Pre-checking disables, so building the Algorithm is save.
         algo = config.build()

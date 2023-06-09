@@ -55,8 +55,8 @@ class SimpleQConfig(AlgorithmConfig):
         >>>         "capacity":  40000,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
-        ...       .resources(num_gpus=1)\
+        >>> config.training(replay_buffer_config=replay_config)
+        ...       .resources(num_gpus=1)
         ...       .rollouts(num_rollout_workers=3)
 
     Example:
@@ -82,8 +82,8 @@ class SimpleQConfig(AlgorithmConfig):
         >>>         "final_epsilon": 0.01,
         >>>         "epsilon_timesteps": 5000,
         >>>     })
-        >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
-        >>>                         .exploration(exploration_config=explore_config)\
+        >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)
+        >>>                         .exploration(exploration_config=explore_config)
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig
@@ -229,7 +229,7 @@ class SimpleQConfig(AlgorithmConfig):
             num_steps_sampled_before_learning_starts: Number of timesteps to collect
                 from rollout workers before we start sampling from replay buffers for
                 learning. Whether we count this in agent steps  or environment steps
-                depends on config["multiagent"]["count_steps_by"].
+                depends on config.multi_agent(count_steps_by=..).
             tau: Update the target by \tau * policy + (1-\tau) * target_policy.
 
         Returns:

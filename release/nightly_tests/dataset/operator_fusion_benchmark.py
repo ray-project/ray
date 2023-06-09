@@ -77,7 +77,7 @@ def make_ds(
     num_columns: int,
     ops_spec: List[Dict[str, Any]],
     target_max_block_size: int,
-) -> ray.data.Datastream:
+) -> ray.data.Dataset:
     ds = ray.data.read_datasource(
         BlockDatasource(),
         num_blocks_per_task=num_blocks_per_task,
@@ -96,7 +96,7 @@ def make_ds(
     return ds
 
 
-def execute_ds(ds: ray.data.Datastream):
+def execute_ds(ds: ray.data.Dataset):
     ds = ds.fully_executed()
 
 

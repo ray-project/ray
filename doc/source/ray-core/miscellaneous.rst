@@ -13,7 +13,9 @@ You can dynamically adjust resource requirements or return values of ``ray.remot
 
 For example, here we instantiate many copies of the same actor with varying resource requirements. Note that to create these actors successfully, Ray will need to be started with sufficient CPU resources and the relevant custom resources:
 
-.. code-block:: python
+.. testcode::
+
+  import ray
 
   @ray.remote(num_cpus=4)
   class Counter(object):
@@ -30,21 +32,28 @@ For example, here we instantiate many copies of the same actor with varying reso
 
 You can specify different resource requirements for tasks (but not for actor methods):
 
-.. code-block:: python
+.. testcode::
+  :hide:
+
+  ray.shutdown()
+
+.. testcode::
+
+    ray.init(num_cpus=1, num_gpus=1)
 
     @ray.remote
     def g():
         return ray.get_gpu_ids()
 
     object_gpu_ids = g.remote()
-    assert ray.get(object_gpu_ids) == [0]
+    assert ray.get(object_gpu_ids) == []
 
     dynamic_object_gpu_ids = g.options(num_cpus=1, num_gpus=1).remote()
     assert ray.get(dynamic_object_gpu_ids) == [0]
 
 And vary the number of return values for tasks (and actor methods too):
 
-.. code-block:: python
+.. testcode::
 
     @ray.remote
     def f(n):
@@ -56,7 +65,7 @@ And vary the number of return values for tasks (and actor methods too):
 
 And specify a name for tasks (and actor methods too) at task submission time:
 
-.. code-block:: python
+.. testcode::
 
    import setproctitle
 
@@ -154,16 +163,21 @@ To get information about the current nodes in your cluster, you can use ``ray.no
 .. autofunction:: ray.nodes
     :noindex:
 
+.. testcode::
+  :hide:
 
-.. code-block:: python
+  ray.shutdown()
+
+.. testcode::
 
     import ray
 
     ray.init()
-
     print(ray.nodes())
 
-    """
+.. testoutput::
+  :options: +MOCK
+
     [{'NodeID': '2691a0c1aed6f45e262b2372baf58871734332d7',
       'Alive': True,
       'NodeManagerAddress': '192.168.1.82',
@@ -175,7 +189,6 @@ To get information about the current nodes in your cluster, you can use ``ray.no
       'MetricsExportPort': 64860,
       'alive': True,
       'Resources': {'CPU': 16.0, 'memory': 100.0, 'object_store_memory': 34.0, 'node:192.168.1.82': 1.0}}]
-    """
 
 The above information includes:
 

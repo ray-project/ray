@@ -14,7 +14,6 @@
   commands:
     # Build the wheels and jars
     - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
-    - bash ./java/build-jar-multiplatform.sh linux
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -88,7 +87,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.7 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -98,7 +97,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.7 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -108,7 +107,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.8 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -118,7 +117,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.8 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -128,7 +127,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.9 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -138,7 +137,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.9 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -148,7 +147,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.10 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
@@ -158,7 +157,7 @@
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.10 ./ci/ci.sh build
     - pip install -q docker aws_requests_auth boto3
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
     - python ./ci/build/build-docker-images.py --py-versions py310 -T cu111 -T cu112 -T cu113 -T cu116 -T cu118 --build-type BUILDKITE --build-base
@@ -242,7 +241,7 @@
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
+    - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
@@ -260,7 +259,8 @@
   instance_size: large
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
+    - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
+    - bash ./ci/ci.sh prepare_docker
     - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
     - ./ci/env/env_info.sh
     - >-
@@ -274,6 +274,10 @@
     - cat test_shard.txt
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-post_wheel_build,-py37,-gpu
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
       $(cat test_shard.txt)
 
 
@@ -287,7 +291,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - echo "--- Setting up Python 3.7 environment."
-    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
+    - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
     # Specifying above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client.
     # (Remove thirdparty_files to sidestep an issue with psutil.)
@@ -368,6 +372,7 @@
     - DL=1 ./ci/env/install-dependencies.sh
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
+    - pip install ray[client]
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
@@ -378,6 +383,8 @@
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
       -- python/ray/tests/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      -- python/ray/autoscaler/v2/...
 
 - label: ":python: (Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -416,6 +423,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
+    - pip install ray[client]
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
       --test_env=TEST_EXTERNAL_REDIS=1
@@ -472,7 +480,6 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
-    - pip install "grpcio >= 1.28.1, <= 1.43.0"
     - ./ci/env/env_info.sh
     - bazel test --config=ci --config=asan $(./ci/run/bazel_export_options)
       --config=asan-buildkite
@@ -484,6 +491,17 @@
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
 
+- label: ":book: Doctest (CPU)"
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
+    - DOC_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/install-horovod.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=doctest,-gpu
+      python/ray/... doc/...
+
 - label: ":python: Ray on Spark Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
@@ -491,6 +509,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip uninstall -y ray
     - RAY_DEBUG_BUILD=debug ./ci/ci.sh build
+    # Install latest pyspark. We cannot move this to the requirements file as subdependencies conflict
+    - pip install -U https://ml-team-public-read.s3.us-west-2.amazonaws.com/spark-pkgs/pyspark-3.4.0.dev0-0cb0fa313979e1b82ddd711a05d8c4e78cf6c9f5.tar.gz
     - ./ci/env/env_info.sh
     - bazel test --config=ci-debug $(./ci/run/bazel_export_options)
       --test_env=RAY_ON_SPARK_BACKGROUND_JOB_STARTUP_WAIT=1
@@ -568,7 +588,8 @@
     # Horovod needs to be installed separately (needed for API ref imports)
     - ./ci/env/install-horovod.sh
     # See https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
-    - pip install mosaicml==0.12.1 --ignore-installed
+    # Pin urllib to avoid downstream ssl incompatibility issues. This matches requirements-doc.txt.
+    - pip install "mosaicml==0.12.1" "urllib3<1.27" --ignore-installed
     - ./ci/ci.sh build
 
 - label: ":octopus: Tune multinode tests"

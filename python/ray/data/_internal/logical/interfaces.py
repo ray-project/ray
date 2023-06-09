@@ -1,4 +1,4 @@
-from typing import Dict, Iterator, List, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Iterator, List
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 class Operator:
     """Abstract class for operators.
 
-    Operators live on the driver side of the Datastream only.
+    Operators live on the driver side of the Dataset only.
     """
 
     def __init__(self, name: str, input_dependencies: List["Operator"]):

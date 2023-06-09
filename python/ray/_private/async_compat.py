@@ -20,10 +20,15 @@ def get_new_event_loop():
         return asyncio.new_event_loop()
 
 
-def sync_to_async(func: Callable):
-    """Convert a blocking function to an async function."""
+def is_async_func(func):
+    """Return True if the function is an async or async generator method."""
+    return inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func)
 
-    if inspect.iscoroutinefunction(func):
+
+def sync_to_async(func: Callable):
+    """Convert a blocking function to async function"""
+
+    if is_async_func(func):
         return func
 
     async def wrapper(*args, **kwargs):

@@ -80,6 +80,7 @@ available_node_types:
                 - DeviceName: /dev/sda1
                   Ebs:
                       VolumeSize: 140
+                      VolumeType: gp3
             # Additional options in the boto docs.
     ray.worker.default:
         # The minimum number of worker nodes of this type to launch.

@@ -11,7 +11,7 @@ dragonfly-opt==0.1.6
 flaml==1.1.1
 freezegun==1.1.0
 # Requires decord which is unavailable for arm64
-gluoncv==0.10.1.post0; platform_machine != "arm64"
+gluoncv==0.10.5.post0; platform_machine != "arm64"
 gpy==1.10.0
 # Requires libtorrent which is unavailable for arm64
 autorom[accept-rom-license]; platform_machine != "arm64"
@@ -22,7 +22,8 @@ hyperopt==0.2.5
 jupyterlab==3.6.1
 lightgbm==3.3.5
 matplotlib!=3.4.3
-mlflow==1.30.0
+mlflow==1.30.0; python_version <= '3.7'
+mlflow==2.2.2; python_version > '3.7'
 # Unavailable for arm64 in more recent versions
 mxnet==1.8.0.post0; platform_machine != "arm64"
 nevergrad==0.4.3.post7
@@ -31,7 +32,6 @@ optuna==2.10.0
 pymoo==0.5.0
 pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
-protobuf==3.19.6
 pytorch-lightning==1.6.5
 fairscale==0.4.6
 s3fs==2023.1.0

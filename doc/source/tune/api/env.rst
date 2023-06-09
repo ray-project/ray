@@ -21,6 +21,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_DISABLE_DATED_SUBDIR**: Ray Tune automatically adds a date string to experiment
   directories when the name is not specified explicitly or the trainable isn't passed
   as a string. Setting this environment variable to ``1`` disables adding these date strings.
+* **TUNE_NEW_EXECUTION**: Disable :ref:`Ray Tune's new execution engine <air-experimental-execution>`.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
   ``session.report()`` and passed a ``metric`` parameter to ``Tuner()``, a scheduler,
   or a search algorithm, Tune will error

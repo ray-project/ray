@@ -1,17 +1,17 @@
 from typing import Callable, List, Optional
 
-from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
-    RefBundle,
     PhysicalOperator,
+    RefBundle,
 )
+from ray.data._internal.stats import StatsDict
 
 
 class InputDataBuffer(PhysicalOperator):
     """Defines the input data for the operator DAG.
 
-    For example, this may hold cached blocks from a previous Datastream execution, or
+    For example, this may hold cached blocks from a previous Dataset execution, or
     the arguments for read tasks.
     """
 
@@ -28,7 +28,8 @@ class InputDataBuffer(PhysicalOperator):
         """
         if input_data is not None:
             assert input_data_factory is None
-            self._input_data = input_data
+            # Copy the input data to avoid mutating the original list.
+            self._input_data = input_data[:]
             self._is_input_initialized = True
             self._initialize_metadata()
         else:

@@ -1084,7 +1084,9 @@ def start_api_server(
             no redirection should happen, then this should be None.
 
     Returns:
-        ProcessInfo for the process that was started.
+        A tuple of :
+            - Dashboard URL if dashboard enabled and started.
+            - ProcessInfo for the process that was started.
     """
     try:
         # Make sure port is available.
@@ -1389,6 +1391,7 @@ def start_raylet(
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
+    labels: Optional[dict] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1441,7 +1444,7 @@ def start_raylet(
         ray_debugger_external: True if the Ray debugger should be made
             available externally to this node.
         env_updates: Environment variable overrides.
-
+        labels: The key-value labels of the node.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1552,6 +1555,10 @@ def start_raylet(
     if max_worker_port is None:
         max_worker_port = 0
 
+    labels_json_str = ""
+    if labels:
+        labels_json_str = json.dumps(labels)
+
     agent_command = [
         *_build_python_executable_command_memory_profileable(
             ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, session_dir
@@ -1615,6 +1622,7 @@ def start_raylet(
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
+        f"--labels={labels_json_str}",
     ]
 
     if is_head_node:

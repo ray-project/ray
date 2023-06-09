@@ -13,97 +13,86 @@ User Guides
 RLlib Feature Guides
 --------------------
 
-.. panels::
-    :container: container pb-4 full-width
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: rllib-advanced-api-doc
-        :type: ref
-        :text: Advanced Feautures of the RLlib Python API
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: rllib-advanced-api-doc
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+            Advanced Features of the RLlib Python API
 
-    +++
-    .. link-button:: rllib-models
-        :type: ref
-        :text: Working With Models, Preprocessors and Action Distributions
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+        .. button-ref:: rllib-models
 
-    +++
-    .. link-button:: rllib-saving-and-loading-algos-and-policies
-        :type: ref
-        :text: Checkpointing your Algorithms and Policies, and Exporting your NN Models
-        :classes: btn-link btn-block stretched-link
+            Working With Models, Preprocessors and Action Distributions
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: rllib-concepts
-        :type: ref
-        :text: How To Customize Your Policies?
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: rllib-saving-and-loading-algos-and-policies
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+            Checkpointing your Algorithms and Policies, and Exporting your Models
 
-    +++
-    .. link-button:: rllib-sample-collection
-        :type: ref
-        :text: How To Use Sample Collections and Trajectory Views?
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+        .. button-ref:: rllib-concepts
 
-    +++
-    .. link-button:: rllib-offline
-        :type: ref
-        :text: Working With Offline Data
-        :classes: btn-link btn-block stretched-link
+            How To Customize Your Policies?
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: rllib-replay-buffers
-        :type: ref
-        :text: Working with ReplayBuffers
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: rllib-sample-collection
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+            How To Use Sample Collections and Trajectory Views?
 
-    +++
-    .. link-button:: rllib-dev
-        :type: ref
-        :text: How To Contribute To RLlib?
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+        .. button-ref:: rllib-offline
 
-    +++
-    .. link-button:: rllib-cli
-        :type: ref
-        :text: How To Work With the RLlib CLI?
-        :classes: btn-link btn-block stretched-link
+            Working With Offline Data
 
-    ---
-    :img-top: /rllib/images/rllib-logo.svg
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: rllib-catalogs
-        :type: ref
-        :text: How To Use the RLlib Catalogs
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: rllib-replay-buffers
+
+            Working with ReplayBuffers
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-dev
+
+            How To Contribute To RLlib?
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-cli
+
+            How To Work With the RLlib CLI?
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-catalogs
+
+            How To Use the RLlib Catalogs

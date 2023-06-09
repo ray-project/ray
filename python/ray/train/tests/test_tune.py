@@ -6,6 +6,7 @@ import pytest
 import ray
 from ray import tune
 from ray.air import Checkpoint, session
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.config import FailureConfig, RunConfig, ScalingConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -185,13 +186,15 @@ def test_reuse_checkpoint(ray_start_4_cpus):
     tuner = Tuner(
         trainer,
         param_space={"train_loop_config": {"max_iter": 10}},
-    ).restore(trial.local_dir)
+    ).restore(trial.local_dir, trainable=trainer)
     analysis = tuner.fit()._experiment_analysis
     trial_dfs = list(analysis.trial_dataframes.values())
     assert len(trial_dfs[0]["training_iteration"]) == 5
 
 
-def test_retry(ray_start_4_cpus):
+def test_retry_with_max_failures(ray_start_4_cpus):
+    """Tests trainer retry with max_failures > 0 when integrating with Tune."""
+
     def train_func():
         ckpt = session.get_checkpoint()
         restored = bool(ckpt)  # Does a previous checkpoint exist?
@@ -217,13 +220,11 @@ def test_retry(ray_start_4_cpus):
         trainer, run_config=RunConfig(failure_config=FailureConfig(max_failures=3))
     )
 
-    analysis = tuner.fit()._experiment_analysis
-    checkpoint_path = analysis.trials[0].checkpoint.dir_or_data
-    checkpoint = Checkpoint.from_directory(checkpoint_path).to_dict()
+    result_grid = tuner.fit()
+    checkpoint = result_grid[0].checkpoint.to_dict()
     assert checkpoint["iter"] == 3
-
-    trial_dfs = list(analysis.trial_dataframes.values())
-    assert len(trial_dfs[0]["training_iteration"]) == 4
+    df = result_grid[0].metrics_dataframe
+    assert len(df[TRAINING_ITERATION]) == 4
 
 
 def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, caplog):
@@ -261,14 +262,12 @@ def test_restore_with_new_trainer(ray_start_4_cpus, tmpdir, propagate_logs, capl
     )
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="ray.tune.impl.tuner_internal"):
-        with pytest.warns() as warn_record:
-            tuner = Tuner.restore(
-                str(tmpdir / "restore_new_trainer"),
-                trainable=trainer,
-                resume_errored=True,
-            )
-        # Should warn about the RunConfig being ignored
-        assert any("RunConfig" in str(record.message) for record in warn_record)
+        tuner = Tuner.restore(
+            str(tmpdir / "restore_new_trainer"),
+            trainable=trainer,
+            resume_errored=True,
+        )
+        assert "they will be ignored in the resumed run" in caplog.text
 
     results = tuner.fit()
     assert not results.errors

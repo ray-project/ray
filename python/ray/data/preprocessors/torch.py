@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, Dict, List, Union, Optional, Mapping
+from typing import TYPE_CHECKING, Callable, Dict, List, Mapping, Optional, Union
 
 import numpy as np
 
@@ -17,46 +17,52 @@ class TorchVisionPreprocessor(Preprocessor):
     to image columns.
 
     Examples:
-        >>> import ray
-        >>> datastream = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
-        >>> datastream  # doctest: +ellipsis
-        Datastream(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(..., 3), dtype=float)})
 
         Torch models expect inputs of shape :math:`(B, C, H, W)` in the range
         :math:`[0.0, 1.0]`. To convert images to this format, add ``ToTensor`` to your
         preprocessing pipeline.
 
-        >>> from torchvision import transforms
-        >>> from ray.data.preprocessors import TorchVisionPreprocessor
-        >>> transform = transforms.Compose([
-        ...     transforms.ToTensor(),
-        ...     transforms.Resize((224, 224)),
-        ... ])
-        >>> preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
-        >>> datastream = preprocessor.transform(datastream)  # doctest: +ellipsis
-        >>> datastream  # doctest: +ellipsis
-        Datastream(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(3, 224, 224), dtype=float)})
+        .. testcode::
+
+            from torchvision import transforms
+
+            import ray
+            from ray.data.preprocessors import TorchVisionPreprocessor
+
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Resize((224, 224)),
+            ])
+            preprocessor = TorchVisionPreprocessor(["image"], transform=transform)
+
+            dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+            dataset = preprocessor.transform(dataset)
+
 
         For better performance, set ``batched`` to ``True`` and replace ``ToTensor``
         with a batch-supporting ``Lambda``.
 
-        >>> def to_tensor(batch: np.ndarray) -> torch.Tensor:
-        ...     tensor = torch.as_tensor(batch, dtype=torch.float)
-        ...     # (B, H, W, C) -> (B, C, H, W)
-        ...     tensor = tensor.permute(0, 3, 1, 2).contiguous()
-        ...     # [0., 255.] -> [0., 1.]
-        ...     tensor = tensor.div(255)
-        ...     return tensor
-        >>> transform = transforms.Compose([
-        ...     transforms.Lambda(to_tensor),
-        ...     transforms.Resize((224, 224))
-        ... ])
-        >>> preprocessor = TorchVisionPreprocessor(
-        ...     ["image"], transform=transform, batched=True
-        ... )
-        >>> datastream = preprocessor.transform(datastream)  # doctest: +ellipsis
-        >>> datastream  # doctest: +ellipsis
-        Datastream(num_blocks=..., num_rows=..., schema={image: numpy.ndarray(shape=(3, 224, 224), dtype=float)})
+        .. testcode::
+
+            import numpy as np
+            import torch
+
+            def to_tensor(batch: np.ndarray) -> torch.Tensor:
+                tensor = torch.as_tensor(batch, dtype=torch.float)
+                # (B, H, W, C) -> (B, C, H, W)
+                tensor = tensor.permute(0, 3, 1, 2).contiguous()
+                # [0., 255.] -> [0., 1.]
+                tensor = tensor.div(255)
+                return tensor
+
+            transform = transforms.Compose([
+                transforms.Lambda(to_tensor),
+                transforms.Resize((224, 224))
+            ])
+            preprocessor = TorchVisionPreprocessor(["image"], transform=transform, batched=True)
+
+            dataset = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+            dataset = preprocessor.transform(dataset)
 
     Args:
         columns: The columns to apply the TorchVision transform to.
@@ -102,6 +108,7 @@ class TorchVisionPreprocessor(Preprocessor):
         self, data_batch: Dict[str, "np.ndarray"]
     ) -> Dict[str, "np.ndarray"]:
         import torch
+
         from ray.air._internal.torch_utils import convert_ndarray_to_torch_tensor
 
         def apply_torchvision_transform(array: np.ndarray) -> np.ndarray:

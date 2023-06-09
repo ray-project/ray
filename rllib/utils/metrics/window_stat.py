@@ -2,7 +2,7 @@ import numpy as np
 
 
 class WindowStat:
-    """Handles/stores incoming datastream and provides window-based statistics.
+    """Handles/stores incoming dataset and provides window-based statistics.
 
     Examples:
         >>> win_stats = WindowStat("level", 3)

@@ -1,30 +1,30 @@
 import math
-from typing import Callable, Optional, List, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
-from ray.util.annotations import PublicAPI
+from ray.data._internal.null_aggregate import (
+    _null_wrap_accumulate_block,
+    _null_wrap_accumulate_row,
+    _null_wrap_finalize,
+    _null_wrap_init,
+    _null_wrap_merge,
+)
 from ray.data.block import (
-    T,
-    U,
+    AggType,
     Block,
     BlockAccessor,
     KeyType,
-    AggType,
+    T,
+    U,
     _validate_key_fn,
 )
-from ray.data._internal.null_aggregate import (
-    _null_wrap_init,
-    _null_wrap_merge,
-    _null_wrap_accumulate_block,
-    _null_wrap_finalize,
-    _null_wrap_accumulate_row,
-)
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow as pa
 
 
 @PublicAPI
-class AggregateFn(object):
+class AggregateFn:
     def __init__(
         self,
         init: Callable[[KeyType], AggType],
@@ -58,7 +58,7 @@ class AggregateFn(object):
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
             name: The name of the aggregation. This will be used as the output
-                column name in the case of Arrow datastream.
+                column name in the case of Arrow dataset.
         """
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None

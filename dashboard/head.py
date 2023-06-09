@@ -7,6 +7,7 @@ from concurrent.futures import Future
 from queue import Queue
 
 import ray._private.services
+import ray._private.tls_utils
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -304,12 +305,21 @@ class DashboardHead:
             logger.info("Initialize the http server.")
             self.http_server = await self._configure_http_server(modules)
             http_host, http_port = self.http_server.get_address()
+            logger.info(f"http server initialized at {http_host}:{http_port}")
         else:
             logger.info("http server disabled.")
+
+        # We need to expose dashboard's node's ip for other worker nodes
+        # if it's listening to all interfaces.
+        dashboard_http_host = (
+            self.ip
+            if self.http_host != ray_constants.DEFAULT_DASHBOARD_IP
+            else http_host
+        )
         await asyncio.gather(
             self.gcs_aio_client.internal_kv_put(
                 ray_constants.DASHBOARD_ADDRESS.encode(),
-                f"{http_host}:{http_port}".encode(),
+                f"{dashboard_http_host}:{http_port}".encode(),
                 True,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
             ),

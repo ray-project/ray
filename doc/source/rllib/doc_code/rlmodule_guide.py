@@ -15,6 +15,7 @@ config = (
     .framework("torch")
     .environment("CartPole-v1")
     .rl_module(_enable_rl_module_api=True)
+    .training(_enable_learner_api=True)
 )
 
 algorithm = config.build()
@@ -85,7 +86,10 @@ config = (
         _enable_rl_module_api=True,
         rl_module_spec=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule),
     )
-    .training(model={"fcnet_hiddens": [32, 32]})
+    .training(
+        model={"fcnet_hiddens": [32, 32]},
+        _enable_learner_api=True,
+    )
 )
 
 algo = config.build()
@@ -110,7 +114,10 @@ config = (
             module_specs=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule)
         ),
     )
-    .training(model={"fcnet_hiddens": [32, 32]})
+    .training(
+        model={"fcnet_hiddens": [32, 32]},
+        _enable_learner_api=True,
+    )
 )
 # __pass-specs-to-configs-ma-end__
 

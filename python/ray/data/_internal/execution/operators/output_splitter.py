@@ -1,17 +1,17 @@
 import math
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
-from ray.data.block import Block, BlockMetadata, BlockAccessor
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import StatsDict
-from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    PhysicalOperator,
     ExecutionOptions,
     ExecutionResources,
     NodeIdStr,
+    PhysicalOperator,
+    RefBundle,
 )
+from ray.data._internal.execution.util import locality_string
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.stats import StatsDict
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.types import ObjectRef
 
 
@@ -21,7 +21,7 @@ class OutputSplitter(PhysicalOperator):
     The output bundles of this operator will have a `bundle.output_split_idx` attr
     set to an integer from [0..n-1]. This operator tries to divide the rows evenly
     across output splits. If the `equal` option is set, the operator will furthermore
-    guarantee an exact split of rows across outputs, truncating the Datastream.
+    guarantee an exact split of rows across outputs, truncating the Dataset.
 
     Implementation wise, this operator keeps an internal buffer of bundles. The buffer
     has a minimum size calculated to enable a good locality hit rate, as well as ensure

@@ -1,13 +1,8 @@
-from abc import ABCMeta, abstractmethod
-import gymnasium as gym
-from gymnasium.spaces import Box
 import json
 import logging
-import numpy as np
 import os
-from packaging import version
 import platform
-import tree  # pip install dm_tree
+from abc import ABCMeta, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,10 +17,16 @@ from typing import (
     Union,
 )
 
+import gymnasium as gym
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Box
+from packaging import version
+
 import ray
+import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
-import ray.cloudpickle as pickle
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -38,15 +39,15 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
 )
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
     get_checkpoint_info,
     try_import_msgpack,
+)
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
 )
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -975,6 +976,9 @@ class Policy(metaclass=ABCMeta):
         the exploration component's state, as well as global variables, such
         as sampling timesteps.
 
+        Note that the state may contain references to the original variables.
+        This means that you may need to deepcopy() the state before mutating it.
+
         Returns:
             Serialized local state.
         """
@@ -1470,35 +1474,50 @@ class Policy(metaclass=ABCMeta):
             seq_len = sample_batch_size // B
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
             postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
-        # Switch on lazy to-tensor conversion on `postprocessed_batch`.
-        train_batch = self._lazy_tensor_dict(postprocessed_batch)
-        # Calling loss, so set `is_training` to True.
-        train_batch.set_training(True)
-        if seq_lens is not None:
-            train_batch[SampleBatch.SEQ_LENS] = seq_lens
-        train_batch.count = self._dummy_batch.count
-        # Call the loss function, if it exists.
-        # TODO(jungong) : clean up after all agents get migrated.
-        # We should simply do self.loss(...) here.
-        if self._loss is not None:
-            self._loss(self, self.model, self.dist_class, train_batch)
-        elif (
-            is_overridden(self.loss) or self.config.get("_enable_rl_module_api", False)
-        ) and not self.config["in_evaluation"]:
-            self.loss(self.model, self.dist_class, train_batch)
-        # Call the stats fn, if given.
-        # TODO(jungong) : clean up after all agents get migrated.
-        # We should simply do self.stats_fn(train_batch) here.
-        if stats_fn is not None:
-            stats_fn(self, train_batch)
-        if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
-            self.stats_fn(train_batch)
+
+        if not self.config.get("_enable_learner_api"):
+            # Switch on lazy to-tensor conversion on `postprocessed_batch`.
+            train_batch = self._lazy_tensor_dict(postprocessed_batch)
+            # Calling loss, so set `is_training` to True.
+            train_batch.set_training(True)
+            if seq_lens is not None:
+                train_batch[SampleBatch.SEQ_LENS] = seq_lens
+            train_batch.count = self._dummy_batch.count
+
+            # Call the loss function, if it exists.
+            # TODO(jungong) : clean up after all agents get migrated.
+            # We should simply do self.loss(...) here.
+            if self._loss is not None:
+                self._loss(self, self.model, self.dist_class, train_batch)
+            elif is_overridden(self.loss) and not self.config["in_evaluation"]:
+                self.loss(self.model, self.dist_class, train_batch)
+            # Call the stats fn, if given.
+            # TODO(jungong) : clean up after all agents get migrated.
+            # We should simply do self.stats_fn(train_batch) here.
+            if stats_fn is not None:
+                stats_fn(self, train_batch)
+            if hasattr(self, "stats_fn") and not self.config["in_evaluation"]:
+                self.stats_fn(train_batch)
+        else:
+            # This is not needed to run a training with the Learner API, but useful if
+            # we want to create a batche of data for training from view requirements.
+            for key in set(postprocessed_batch.keys()).difference(
+                set(new_batch.keys())
+            ):
+                # Add all columns generated by postprocessing to view requirements.
+                if key not in self.view_requirements and key != SampleBatch.SEQ_LENS:
+                    self.view_requirements[key] = ViewRequirement(
+                        used_for_compute_actions=False
+                    )
 
         # Re-enable tracing.
         self._no_tracing = False
 
         # Add new columns automatically to view-reqs.
-        if auto_remove_unneeded_view_reqs:
+        if (
+            not self.config.get("_enable_learner_api")
+            and auto_remove_unneeded_view_reqs
+        ):
             # Add those needed for postprocessing and training.
             all_accessed_keys = (
                 train_batch.accessed_keys

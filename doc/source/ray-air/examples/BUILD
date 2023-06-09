@@ -42,7 +42,6 @@ py_test_run_all_notebooks(
         "automl_with_ray_air.ipynb",  # Requires timeseries_libs
         "batch_forecasting.ipynb",  # Requires timeseries_libs
         "huggingface_text_classification.ipynb",
-        "pytorch_resnet_batch_prediction.ipynb", # Requires GPUs
         "feast_example.ipynb",  # REGRESSION
         "upload_to_comet_ml.ipynb",  # Needs credentials
         "upload_to_wandb.ipynb",  # Needs credentials
@@ -51,6 +50,8 @@ py_test_run_all_notebooks(
         "gptj_serving.ipynb",  # Requires GPUs
         "stablediffusion_batch_prediction.ipynb",  # Requires GPUs
         "gptj_deepspeed_fine_tuning.ipynb",  # Requires release test
+        "opt_deepspeed_batch_inference.ipynb", # Requires release test
+        "dolly_lightning_fsdp_finetuning.ipynb", # Requires release test
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
@@ -81,7 +82,6 @@ py_test_run_all_notebooks(
     size = "large",
     include = [
         "huggingface_text_classification.ipynb",
-        "pytorch_resnet_batch_prediction.ipynb",
         "torch_detection.ipynb",
         "gptj_batch_prediction.ipynb",
         "gptj_serving.ipynb",

@@ -1,3 +1,5 @@
+import sys
+import pytest
 from ray_release.log_aggregator import LogAggregator
 
 
@@ -66,3 +68,7 @@ def test_compute_stack_trace():
         )
         == error_trace
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

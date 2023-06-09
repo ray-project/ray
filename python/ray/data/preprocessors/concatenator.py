@@ -1,12 +1,11 @@
 import logging
-
 from typing import List, Optional, Union
+
 import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ class Concatenator(Preprocessor):
         2  [1.0, 0.9]
 
         Sometimes, you might not want to concatenate all of of the columns in your
-        datastream. In this case, you can exclude columns with the ``exclude`` parameter.
+        dataset. In this case, you can exclude columns with the ``exclude`` parameter.
 
         >>> df = pd.DataFrame({"X0": [0, 3, 1], "X1": [0.5, 0.2, 0.9], "Y": ["blue", "orange", "blue"]})
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
@@ -88,7 +87,7 @@ class Concatenator(Preprocessor):
 
         >>> concatenator = Concatenator(include=["X0", "X1"], dtype=np.float32)
         >>> concatenator.fit_transform(ds)  # doctest: +SKIP
-        Datastream(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
+        Dataset(num_blocks=1, num_rows=3, schema={Y: object, concat_out: TensorDtype(shape=(2,), dtype=float32)})
 
     Args:
         output_column_name: The desired name for the new column.
@@ -106,7 +105,7 @@ class Concatenator(Preprocessor):
 
     Raises:
         ValueError: if `raise_if_missing` is `True` and a column in `include` or
-            `exclude` doesn't exist in the datastream.
+            `exclude` doesn't exist in the dataset.
     """  # noqa: E501
 
     _is_fittable = False
