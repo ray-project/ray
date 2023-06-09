@@ -23,12 +23,14 @@ namespace gcs {
 
 class GcsResourceManager;
 class GcsNodeManager;
+class GcsPlacementGroupManager;
 
 class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
  public:
   GcsAutoscalerStateManager(const ClusterResourceManager &cluster_resource_manager,
                             const GcsResourceManager &gcs_resource_manager,
-                            const GcsNodeManager &gcs_node_manager);
+                            const GcsNodeManager &gcs_node_manager,
+                            const GcsPlacementGroupManager &gcs_placement_group_manager);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -38,6 +40,11 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   void HandleReportAutoscalingState(
       rpc::autoscaler::ReportAutoscalingStateRequest request,
       rpc::autoscaler::ReportAutoscalingStateReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleRequestClusterResourceConstraint(
+      rpc::autoscaler::RequestClusterResourceConstraintRequest request,
+      rpc::autoscaler::RequestClusterResourceConstraintReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
@@ -67,8 +74,23 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// \brief Get the gang resource requests (e.g. from placement group) state.
   /// \param reply The reply to be filled.
   ///
+  /// This method fills up the `pending_gang_resource_requests` field.
+  /// The `pending_gang_resource_requests` field is a list of resource requests from
+  /// placement groups, which should be fulfilled atomically (either all fulfilled or all
+  /// failed). Each pending or rescheduling placement group should generate one
+  /// GangResourceRequest.
+  ///
+  /// Scheduling STRICT_SPREAD PGs
+  /// ===============================
+  /// If a pending/rescheduling placement group is STRICT_SPREAD, then its resources
+  /// requests should also have anti-affinity constraint attached to it.
+  ///
+  /// When a placement group is rescheduled due to node failures, some bundles might
+  /// get unplaced. In this case, the request corresponding to the placement group will
+  /// only include those unplaced bundles.
+  ///
   /// See rpc::autoscaler::GetClusterResourceStateReply::pending_gang_resource_requests
-  /// for more
+  /// for more details.
   void GetPendingGangResourceRequests(
       rpc::autoscaler::GetClusterResourceStateReply *reply);
 
@@ -89,6 +111,9 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// GCS resource manager that provides resource demand/load information.
   const GcsResourceManager &gcs_resource_manager_;
 
+  /// GCS placement group manager reference.
+  const GcsPlacementGroupManager &gcs_placement_group_manager_;
+
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
   // We currently provide two guarantees for this version:
@@ -103,6 +128,11 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// The last seen autoscaler state version. Use 0 as the default value to indicate
   /// no previous autoscaler state has been seen.
   int64_t last_seen_autoscaler_state_version_ = 0;
+
+  /// The most recent cluster resource constraints requested.
+  /// This is requested through autoscaler SDK from request_resources().
+  absl::optional<rpc::ClusterResourceConstraint> cluster_resource_constraint_ =
+      absl::nullopt;
 };
 
 }  // namespace gcs

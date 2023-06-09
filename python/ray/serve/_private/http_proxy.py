@@ -340,7 +340,7 @@ class HTTPProxy:
                 name,
                 sync=False,
                 missing_ok=True,
-                _internal_pickled_http_request=True,
+                _is_for_http_requests=True,
                 _stream=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
             )
 
@@ -605,7 +605,7 @@ class HTTPProxyActor:
             # of cross-language scenarios. Java can't deserialize a Python tuple.
             return json.dumps(
                 [
-                    ray._private.worker.global_worker.worker_id.hex(),
+                    ray.get_runtime_context().get_worker_id(),
                     get_component_logger_file_path(),
                 ]
             )

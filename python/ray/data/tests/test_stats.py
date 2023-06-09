@@ -1,19 +1,18 @@
-from collections import Counter
 import re
-import numpy as np
+from collections import Counter
+from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 import ray
-from ray.data._internal.stats import _StatsActor, DatasetStats
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.stats import DatasetStats, _StatsActor
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
 from ray.tests.conftest import *  # noqa
-from ray._private.test_utils import wait_for_condition
-
-from unittest.mock import patch
 
 
 def canonicalize(stats: str) -> str:
@@ -33,6 +32,29 @@ def canonicalize(stats: str) -> str:
 def dummy_map_batches(x):
     """Dummy function used in calls to map_batches below."""
     return x
+
+
+def test_streaming_split_stats(ray_start_regular_shared):
+    ds = ray.data.range(1000, parallelism=10)
+    it = ds.map_batches(dummy_map_batches).streaming_split(1)[0]
+    list(it.iter_batches())
+    stats = it.stats()
+    assert (
+        canonicalize(stats)
+        == """Stage N ReadRange->MapBatches(dummy_map_batches): N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
+'obj_store_mem_peak': N}
+
+Stage N split(N, equal=False):
+* Extra metrics: {'num_output_N': N}
+"""
+    )
 
 
 def test_dataset_stats_basic(ray_start_regular_shared, enable_auto_log_stats):
@@ -852,6 +874,7 @@ def test_dataset_pipeline_cache_cases(ray_start_regular_shared):
     ds = ray.data.range(10).materialize().repeat(2).map_batches(lambda x: x)
     ds.take(999)
     stats = ds.stats()
+    print("STATS", stats)
     assert "[execution cached]" in stats
 
     # CACHED (eager map stage).

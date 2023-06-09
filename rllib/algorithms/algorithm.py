@@ -189,7 +189,6 @@ class Algorithm(Trainable):
         "env_config",
         "model",
         "optimizer",
-        "multiagent",
         "custom_resources_per_worker",
         "evaluation_config",
         "exploration_config",
@@ -617,13 +616,6 @@ class Algorithm(Trainable):
                     self.workers, self.config, **self._kwargs_for_execution_plan()
                 )
 
-            # Now that workers have been created, update our policies
-            # dict in config[multiagent] (with the correct original/
-            # unpreprocessed spaces).
-            self.config["multiagent"][
-                "policies"
-            ] = self.workers.local_worker().policy_dict
-
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
         self.evaluation_config.validate()
@@ -719,8 +711,6 @@ class Algorithm(Trainable):
             self.learner_group = learner_group_config.build()
 
             # check if there are modules to load from the module_spec
-            marl_module_ckpt_dir = None
-            modules_to_load = None
             rl_module_ckpt_dirs = {}
             marl_module_ckpt_dir = module_spec.load_state_path
             modules_to_load = module_spec.modules_to_load

@@ -1,12 +1,12 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, List, Union, Tuple, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+
+from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
-
-from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.util.annotations import PublicAPI
 
 
 @PublicAPI
