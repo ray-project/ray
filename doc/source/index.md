@@ -79,7 +79,7 @@
           </a>
         </div>
     </div>
-    <div class="col-8">
+    <div class="col-8" style="z-index:-1">
         <div class="tab-content" id="v-pills-tabContent" style="box-shadow: 0px 6px 30px 5px rgba(3,28,74,0.12); border-radius:8px;">
           <div class="tab-pane fade show active" id="v-pills-data" role="tabpanel" aria-labelledby="v-pills-data-tab" style="user-select:none;">
             <pre style="margin:0;"><code class="language-python not-selectable">
