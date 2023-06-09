@@ -47,24 +47,30 @@ from ray import serve
 
 @serve.deployment
 class StreamingResponder:
-    async def generate_numbers(self, max: int) -> AsyncGenerator[int, None]:
+    async def generate_numbers(self, max: str) -> AsyncGenerator[str, None]:
         for i in range(max):
-            yield i
-            asyncio.sleep(0.1)
+            yield str(i)
+            await asyncio.sleep(0.1)
 
     def __call__(self, request: Request) -> StreamingResponse:
         max = int(request.query_params.get("max", "25"))
         gen = self.generate_numbers(max)
         return StreamingResponse(gen, status_code=200, media_type="text/plain")
-
-
 # __single_stream_end__
 
-# TODO (shrekris-anyscale): add unit tests
+import requests
+
+serve.run(StreamingResponder.bind())
+r = requests.get("http://localhost:8000/", stream=True)
+chunks = []
+for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
+    chunks.append(chunk)
+
+assert ",".join(list(map(str, range(25)))) == ",".join(chunks)
 
 # __batch_stream_begin__
 import asyncio
-from typing import List, AsyncGenerator
+from typing import List, AsyncGenerator, Union
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
@@ -73,26 +79,44 @@ from ray import serve
 
 @serve.deployment
 class StreamingResponder:
-    @serve.batch(max_batch_size=5, batch_wait_timeout_s=15)
+    @serve.batch(max_batch_size=5, batch_wait_timeout_s=0.1)
     async def generate_numbers(
-        self, max_list: List[int]
+        self, max_list: List[Union[str, StopIteration]]
     ) -> AsyncGenerator[List[int], None]:
         for i in range(max(max_list)):
             next_numbers = []
             for requested_max in max_list:
                 if requested_max > i:
-                    next_numbers.append(i)
+                    next_numbers.append(str(i))
                 else:
                     next_numbers.append(StopIteration)
             yield next_numbers
-            asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)
 
-    def __call__(self, request: Request) -> StreamingResponse:
+    async def __call__(self, request: Request) -> StreamingResponse:
         max = int(request.query_params.get("max", "25"))
         gen = self.generate_numbers(max)
         return StreamingResponse(gen, status_code=200, media_type="text/plain")
-
-
 # __batch_stream_end__
 
-# TODO (shrekris-anyscale): add unit tests
+import requests
+from functools import partial
+from concurrent.futures.thread import ThreadPoolExecutor
+
+serve.run(StreamingResponder.bind())
+
+
+def issue_request(max) -> List[str]:
+    url = "http://localhost:8000/?max="
+    response = requests.get(url + str(max), stream=True)
+    chunks = []
+    for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
+        chunks.append(chunk)
+
+
+requested_maxes = [1, 2, 5, 6, 9]
+with ThreadPoolExecutor(max_workers=5) as pool:
+    futs = [pool.submit(partial(issue_request, max)) for max in requested_maxes]
+    chunks_list = [fut.result() for fut in futs]
+    for max, chunks in zip(requested_maxes, chunks_list):
+        assert chunks == [str(i) for i in range(requested_maxes)]
