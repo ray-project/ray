@@ -1,7 +1,7 @@
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Any, Optional
-from ray.core.generated.experimental.autoscaler_pb2  import NodeStatus
+from typing import Dict, List, Optional
+from ray.core.generated.experimental.autoscaler_pb2  import NodeState 
 
 from ray.autoscaler._private.util import (
     NodeIP,
@@ -28,7 +28,7 @@ class Node:
     # Node's labels
     labels: Dict[str, str]
     # Node status
-    status: NodeStatus
+    status: NodeState.NodeStatus
 
 @dataclass
 class LaunchRequest:

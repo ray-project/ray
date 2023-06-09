@@ -70,22 +70,21 @@ message ClusterResourceConstraint {
   repeated ResourceRequest min_bundles = 1;
 }
 
-enum NodeStatus {
-  // Node is alive.
-  ALIVE = 0;
-  // Node is dead.
-  DEAD = 1;
-  // Node is being drained.
-  DRAIN_PENDING = 2;
-  // Node is being drained.
-  DRAIN_FAILED = 3;
-  // Node is being drained.
-  DRAINING = 4;
-  // Node is already drained, and ready to be removed.
-  DRAINED = 5;
-}
-
 message NodeState {
+  enum NodeStatus {
+    // Node is alive.
+    ALIVE = 0;
+    // Node is dead.
+    DEAD = 1;
+    // Node is being drained.
+    DRAIN_PENDING = 2;
+    // Node is being drained.
+    DRAIN_FAILED = 3;
+    // Node is being drained.
+    DRAINING = 4;
+    // Node is already drained, and ready to be removed.
+    DRAINED = 5;
+  }
   // The node id internal to Ray in binary format.
   bytes node_id = 11;
 
