@@ -442,7 +442,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             MaterializedDataset(
                num_blocks=1,
                num_rows=3,
-               schema={food: string, price: double}
+               schema={food\: string, price\: double}
             )
 
 .. _loading_datasets_from_distributed_df:
