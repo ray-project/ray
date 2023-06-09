@@ -24,6 +24,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
+#include "ray/gcs/pb_util.h"
 #include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
@@ -324,6 +325,39 @@ struct Mocker {
     data.set_node_id(node_id);
   }
 
+  static rpc::PlacementGroupTableData GenPlacementGroupTableData(
+      const PlacementGroupID &placement_group_id,
+      const JobID &job_id,
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<std::string> &nodes,
+      rpc::PlacementStrategy strategy,
+      const rpc::PlacementGroupTableData::PlacementGroupState state,
+      const std::string &name = "",
+      const ActorID &actor_id = ActorID::Nil()) {
+    rpc::PlacementGroupTableData placement_group_table_data;
+    placement_group_table_data.set_placement_group_id(placement_group_id.Binary());
+    placement_group_table_data.set_state(state);
+    placement_group_table_data.set_name(name);
+    placement_group_table_data.set_strategy(strategy);
+    RAY_CHECK(bundles.size() == nodes.size());
+    size_t i = 0;
+    for (auto &bundle : bundles) {
+      // Add unit resources
+      auto bundle_spec = placement_group_table_data.add_bundles();
+      for (auto &resource : bundle) {
+        (*bundle_spec->mutable_unit_resources())[resource.first] = resource.second;
+      }
+
+      // Add node id
+      const auto &node = nodes[i];
+      if (!node.empty()) {
+        bundle_spec->set_node_id(node);
+      }
+
+      i++;
+    }
+    return placement_group_table_data;
+  }
   static rpc::autoscaler::ClusterResourceConstraint GenClusterResourcesConstraint(
       const std::vector<std::unordered_map<std::string, double>> &request_resources) {
     rpc::autoscaler::ClusterResourceConstraint constraint;

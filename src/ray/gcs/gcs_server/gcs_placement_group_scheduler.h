@@ -62,12 +62,22 @@ class GcsPlacementGroupSchedulerInterface {
       PGSchedulingFailureCallback failure_callback,
       PGSchedulingSuccessfulCallback success_callback) = 0;
 
-  /// Get bundles belong to the specified node.
+  /// Get and remove bundles belong to the specified node.
+  ///
+  /// This is expected to be called on dead node only since it will remove
+  /// the bundles from the node.
   ///
   /// \param node_id ID of the dead node.
   /// \return The bundles belong to the dead node.
+  virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
+  GetAndRemoveBundlesOnNode(const NodeID &node_id) = 0;
+
+  /// Get bundles belong to the specified node.
+  ///
+  /// \param node_id ID of a node.
+  /// \return The bundles belong to the node.
   virtual absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
-      const NodeID &node_id) = 0;
+      const NodeID &node_id) const = 0;
 
   /// Destroy bundle resources from all nodes in the placement group.
   ///
@@ -311,12 +321,22 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group_id The placement group id scheduling is in progress.
   void MarkScheduleCancelled(const PlacementGroupID &placement_group_id) override;
 
-  /// Get bundles belong to the specified node.
+  /// Get and remove bundles belong to the specified node.
+  ///
+  /// This is expected to be called on dead node only since it will remove
+  /// the bundles from the node.
   ///
   /// \param node_id ID of the dead node.
   /// \return The bundles belong to the dead node.
-  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetAndRemoveBundlesOnNode(
       const NodeID &node_id) override;
+
+  /// Get bundles belong to the specified node.
+  ///
+  /// \param node_id ID of a node.
+  /// \return The bundles belong to the node.
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+      const NodeID &node_id) const override;
 
   /// Notify raylets to release unused bundles.
   ///
