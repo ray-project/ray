@@ -92,7 +92,7 @@ documentation, sorted alphabetically.
             4   4
 
         To learn more about batch formats, read
-        :ref:`Configuring batch formats <transform_datasets_batch_formats>`.
+        :ref:`Configuring batch formats <configure_batch_format>`.
 
     Batch size
         A batch size in the context of model training is the number of data points used
