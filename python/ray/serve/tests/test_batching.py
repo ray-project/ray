@@ -375,6 +375,35 @@ async def test_batch_generator_exceptions(error_type):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stop_token", [StopAsyncIteration, StopIteration])
+async def test_batch_generator_early_termination(stop_token):
+    NUM_CALLERS = 4
+
+    event = asyncio.Event()
+
+    @serve.batch(max_batch_size=NUM_CALLERS, batch_wait_timeout_s=1000)
+    async def sequential_terminator(ids: List[int]):
+        """Terminates callers one-after-another in order of call."""
+
+        for num_finished_callers in range(1, NUM_CALLERS + 1):
+            event.clear()
+            responses = [stop_token for _ in range(num_finished_callers)]
+            responses += [ids[idx] for idx in range(num_finished_callers, NUM_CALLERS)]
+            yield responses
+            await event.wait()
+
+    ids = list(range(NUM_CALLERS))
+    generators = [sequential_terminator(id) for id in ids]
+    for id, generator in zip(ids, generators):
+        async for result in generator:
+            assert result == id
+
+        # Each terminated caller frees the sequential_terminator to process
+        # another iteration.
+        event.set()
+
+
+@pytest.mark.asyncio
 async def test_batch_generator_streaming_response_integration_test(serve_instance):
     NUM_YIELDS = 10
 
