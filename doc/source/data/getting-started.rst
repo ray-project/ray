@@ -157,4 +157,4 @@ or remote filesystems.
     ['..._000000.parquet']
 
 
-To learn more about saving dataset contents, read :ref:`Saving data <saving_data>`.
+To learn more about saving dataset contents, read :ref:`Saving data <saving-data>`.
