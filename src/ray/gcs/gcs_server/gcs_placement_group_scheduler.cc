@@ -469,7 +469,17 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
-GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
+GcsPlacementGroupScheduler::GetAndRemoveBundlesOnNode(const NodeID &node_id) {
+  auto bundles = GetBundlesOnNode(node_id);
+  RAY_UNUSED(committed_bundle_location_index_.Erase(node_id));
+  RAY_UNUSED(cluster_resource_scheduler_.GetClusterResourceManager()
+                 .GetBundleLocationIndex()
+                 .Erase(node_id));
+  return bundles;
+}
+
+absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
+GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) const {
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles_on_node;
   const auto &maybe_bundle_locations =
       committed_bundle_location_index_.GetBundleLocationsOnNode(node_id);
@@ -480,10 +490,6 @@ GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
       const auto &bundle_index = bundle.first.second;
       bundles_on_node[bundle_placement_group_id].push_back(bundle_index);
     }
-    committed_bundle_location_index_.Erase(node_id);
-    cluster_resource_scheduler_.GetClusterResourceManager()
-        .GetBundleLocationIndex()
-        .Erase(node_id);
   }
   return bundles_on_node;
 }
@@ -856,8 +862,8 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetPreparedBundleLoc
   return preparing_bundle_locations_;
 }
 
-const std::shared_ptr<BundleLocations> &
-LeaseStatusTracker::GetUnCommittedBundleLocations() const {
+const std::shared_ptr<BundleLocations>
+    &LeaseStatusTracker::GetUnCommittedBundleLocations() const {
   return uncommitted_bundle_locations_;
 }
 
@@ -870,8 +876,8 @@ const std::shared_ptr<BundleLocations> &LeaseStatusTracker::GetBundleLocations()
   return bundle_locations_;
 }
 
-const std::vector<std::shared_ptr<const BundleSpecification>> &
-LeaseStatusTracker::GetBundlesToSchedule() const {
+const std::vector<std::shared_ptr<const BundleSpecification>>
+    &LeaseStatusTracker::GetBundlesToSchedule() const {
   return bundles_to_schedule_;
 }
 
