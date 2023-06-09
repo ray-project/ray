@@ -379,7 +379,7 @@ redis-75c8b8b65d-4qgfz                                    1/1     Running   0   
 Port-forward to one of your worker pods. Make sure this pod is on a separate node from the head node, so you can kill the head node without crashing the worker:
 
 ```console
-$ kubectl port-forward ervice-sample-raycluster-thwmr-worker-small-group-bdv6q
+$ kubectl port-forward ervice-sample-raycluster-thwmr-worker-small-group-bdv6q 8000:8000
 Forwarding from 127.0.0.1:8000 -> 8000
 Forwarding from [::1]:8000 -> 8000
 ```
