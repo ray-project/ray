@@ -32,7 +32,6 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
-    DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -339,14 +338,15 @@ def create_replica_wrapper(name: str):
                     if not self._initialized:
                         await self._initialize_replica()
                     if deployment_config:
-                        await self.reconfigure(deployment_config)
-                metadata = await self._get_metadata()
+                        await self.replica.update_user_config(
+                            deployment_config.user_config
+                        )
 
-                # A new replica should not be considered healthy until it passes an
-                # initial health check. If an initial health check fails, consider
-                # it an initialization failure.
+                # A new replica should not be considered healthy until it passes
+                # an initial health check. If an initial health check fails,
+                # consider it an initialization failure.
                 await self.check_health()
-                return metadata
+                return await self._get_metadata()
             except Exception:
                 raise RuntimeError(traceback.format_exc()) from None
 
@@ -400,8 +400,9 @@ class RayServeReplica:
         self.callable = _callable
         self.is_function = is_function
         self.version = version
-        self.deployment_config = None
+        self.deployment_config: DeploymentConfig = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
+        self.delete_lock = asyncio.Lock()
         self.app_name = app_name
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
@@ -606,19 +607,18 @@ class RayServeReplica:
         return result, success
 
     async def reconfigure(self, deployment_config: DeploymentConfig):
-        async with self.rwlock.writer_lock:
-            user_config_changed = False
-            if (
-                self.deployment_config is None
-                or self.deployment_config.user_config != deployment_config.user_config
-            ):
-                user_config_changed = True
-            self.deployment_config = deployment_config
-            self.version = DeploymentVersion.from_deployment_version(
-                self.version, self.deployment_config
-            )
+        old_user_config = self.deployment_config.user_config
+        self.deployment_config = deployment_config
+        self.version = DeploymentVersion.from_deployment_version(
+            self.version, self.deployment_config
+        )
 
-            if self.deployment_config.user_config is not None and user_config_changed:
+        if old_user_config != deployment_config.user_config:
+            await self.update_user_config(deployment_config.user_config)
+
+    async def update_user_config(self, user_config: Any):
+        async with self.rwlock.writer_lock:
+            if user_config is not None:
                 if self.is_function:
                     raise ValueError(
                         "deployment_def must be a class to use user_config"
@@ -634,7 +634,7 @@ class RayServeReplica:
                 reconfigure_method = sync_to_async(
                     getattr(self.callable, RECONFIGURE_METHOD)
                 )
-                await reconfigure_method(self.deployment_config.user_config)
+                await reconfigure_method(user_config)
 
     async def handle_request(
         self, request: Query, *, asgi_sender: Optional[Send] = None
@@ -682,12 +682,7 @@ class RayServeReplica:
         while True:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
-            if self.deployment_config:
-                await asyncio.sleep(
-                    self.deployment_config.graceful_shutdown_wait_loop_s
-                )
-            else:
-                await asyncio.sleep(DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S)
+            await asyncio.sleep(self.deployment_config.graceful_shutdown_wait_loop_s)
             method_stat = self._get_handle_request_stats()
             # The handle_request method wasn't even invoked.
             if method_stat is None:
@@ -707,13 +702,17 @@ class RayServeReplica:
         # Explicitly call the del method to trigger clean up.
         # We set the del method to noop after successfully calling it so the
         # destructor is called only once.
-        try:
-            if hasattr(self.callable, "__del__"):
-                # Make sure to accept `async def __del__(self)` as well.
-                await sync_to_async(self.callable.__del__)()
-                setattr(self.callable, "__del__", lambda _: None)
-        except Exception as e:
-            logger.exception(f"Exception during graceful shutdown of replica: {e}")
-        finally:
-            if hasattr(self.callable, "__del__"):
-                del self.callable
+        async with self.delete_lock:
+            if not hasattr(self, "callable"):
+                return
+
+            try:
+                if hasattr(self.callable, "__del__"):
+                    # Make sure to accept `async def __del__(self)` as well.
+                    await sync_to_async(self.callable.__del__)()
+                    setattr(self.callable, "__del__", lambda _: None)
+            except Exception as e:
+                logger.exception(f"Exception during graceful shutdown of replica: {e}")
+            finally:
+                if hasattr(self.callable, "__del__"):
+                    del self.callable
