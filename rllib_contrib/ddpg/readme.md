@@ -1,4 +1,4 @@
-# DDPG (Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks)
+# DDPG (Deep Deterministic Policy Gradient)
 
 [DDPG](https://arxiv.org/abs/1509.02971) is an actor-critic, model-free algorithm based on the deterministic policy gradient that can operate over continuous action spaces.
 
