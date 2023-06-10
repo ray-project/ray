@@ -2624,6 +2624,20 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
 
 
 def check_health(address: str, timeout=2, skip_version_check=False):
+    """Checks Ray cluster health, before / without actually connecting to the
+    cluster via ray.init().
+
+    Args:
+        address: Ray cluster / GCS address string, e.g. ip:port.
+        timeout: request timeout.
+        skip_version_check: If True, will skip comparision of GCS Ray version with local
+            Ray version. If False (default), will raise exception on mismatch.
+    Returns:
+        Returns True if the cluster is running and has matching Ray version.
+        Returns False if no service is running.
+        Raises an exception otherwise.
+    """
+
     gcs_address, gcs_port = address.split(":")
 
     cdef:
