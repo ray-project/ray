@@ -1,19 +1,16 @@
-(serve-user-guides)=
-# User Guides
+(serve-advanced-guides)=
+# Advanced Guides
 
 If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick Start](getting_started).
 
-This user guide will help you navigate the Ray Serve project and show you how to achieve several key tasks:
-- [HTTP Handling](http-guide)
-- [Scaling and Resource Allocation](scaling-and-resource-allocation)
-- [Model Composition](serve-model-composition)
-- [Development Workflow](dev-workflow)
+Use these advanced guides for more options and configurations:
 - [Passing Arguments to Applications](app-builder-guide)
+- [FastAPI and HTTP Setup](http-guide)
+- [Scaling and Resource Allocation](scaling-and-resource-allocation)
+- [Development Workflow](dev-workflow)
 - [Ray Serve Dashboard](dash-serve-view)
-- [Production Guide](serve-in-production)
 - [Performance Tuning](performance)
 - [Handling Dependencies](handling-dependencies)
 - [Experimental Java API](managing-java-deployments)
 - [1.x to 2.x API Migration Guide](migration)
 - [Experimental gRPC Support](direct-ingress)
-- [Model Multiplexing](model-multiplexing)

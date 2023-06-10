@@ -1,4 +1,4 @@
-# Experimental Direct Ingress
+# Experimental gRPC Ingress
 
 In the 2.1, Serve provides an alpha version of [gRPC](https://grpc.io/) ingress.
 

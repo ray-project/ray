@@ -1,6 +1,6 @@
 (serve-migration)=
 
-# 1.x to 2.x API Migration Guide
+# Migrating from 1.x to 2.x
 
 This section covers what to consider or change in your application when migrating from Ray versions 1.x to 2.x.
 

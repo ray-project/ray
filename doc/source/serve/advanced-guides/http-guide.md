@@ -1,4 +1,4 @@
-# HTTP Handling
+# FastAPI and HTTP Setup
 
 This section helps you understand how to:
 - send HTTP requests to Serve deployments

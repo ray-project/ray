@@ -1,6 +1,6 @@
 (serve-monitoring)=
 
-# Monitoring Ray Serve
+# Monitor Your Application
 
 This section helps you debug and monitor your Serve applications by:
 
@@ -9,7 +9,7 @@ This section helps you debug and monitor your Serve applications by:
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
 
-## Ray dashboard
+## Ray Dashboard
 
 You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states.
 This includes details such as:
