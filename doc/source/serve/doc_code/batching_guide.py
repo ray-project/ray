@@ -56,6 +56,8 @@ class StreamingResponder:
         max = int(request.query_params.get("max", "25"))
         gen = self.generate_numbers(max)
         return StreamingResponse(gen, status_code=200, media_type="text/plain")
+
+
 # __single_stream_end__
 
 import requests
@@ -97,6 +99,8 @@ class StreamingResponder:
         max = int(request.query_params.get("max", "25"))
         gen = self.generate_numbers(max)
         return StreamingResponse(gen, status_code=200, media_type="text/plain")
+
+
 # __batch_stream_end__
 
 import requests
@@ -119,4 +123,4 @@ with ThreadPoolExecutor(max_workers=5) as pool:
     futs = [pool.submit(partial(issue_request, max)) for max in requested_maxes]
     chunks_list = [fut.result() for fut in futs]
     for max, chunks in zip(requested_maxes, chunks_list):
-        assert chunks == [str(i) for i in range(requested_maxes)]
+        assert chunks == [str(i) for i in range(max)]
