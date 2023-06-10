@@ -16,14 +16,12 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
-from ray._private.gcs_pubsub import GcsAioPublisher
 from ray._raylet import GcsClient
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import (
     setup_component_logger,
     configure_log_file,
 )
-from ray.core.generated import agent_manager_pb2, agent_manager_pb2_grpc
+from ray.core.generated import agent_manager_pb2
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_initialized,
@@ -120,12 +118,6 @@ class DashboardAgent:
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
 
-        # Setup raylet channel
-        options = ray_constants.GLOBAL_GRPC_OPTIONS
-        self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
-            f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
-        )
-
         # Setup grpc server
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
@@ -156,6 +148,10 @@ class DashboardAgent:
         self.gcs_client = GcsClient(address=self.gcs_address)
         _initialize_internal_kv(self.gcs_client)
         assert _internal_kv_initialized()
+
+        from ray._private.gcs_pubsub import GcsAioPublisher
+        from ray._private.gcs_utils import GcsAioClient
+
         self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
         self.publisher = GcsAioPublisher(address=self.gcs_address)
 
@@ -321,18 +317,27 @@ class DashboardAgent:
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
-        # Register agent to agent manager.
-        raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
-            self.aiogrpc_raylet_channel
-        )
+        if not self.minimal:
+            from ray.core.generated import agent_manager_pb2_grpc
 
-        await raylet_stub.RegisterAgent(
-            agent_manager_pb2.RegisterAgentRequest(
-                agent_id=self.agent_id,
-                agent_port=self.grpc_port,
-                agent_ip_address=self.ip,
+            # Setup raylet channel
+            options = ray_constants.GLOBAL_GRPC_OPTIONS
+            self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
+                f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
             )
-        )
+
+            # Register agent to agent manager.
+            raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
+                self.aiogrpc_raylet_channel
+            )
+
+            await raylet_stub.RegisterAgent(
+                agent_manager_pb2.RegisterAgentRequest(
+                    agent_id=self.agent_id,
+                    agent_port=self.grpc_port,
+                    agent_ip_address=self.ip,
+                )
+            )
 
         tasks = [m.run(self.server) for m in modules]
         if sys.platform not in ["win32", "cygwin"]:
