@@ -1,6 +1,5 @@
 import enum
 import logging
-import traceback
 import inspect
 import os
 import asyncio
@@ -9,7 +8,6 @@ from typing import Dict, List, Optional
 
 import grpc
 
-import ray
 from ray._private import ray_constants
 from ray.core.generated import (
     gcs_service_pb2,

@@ -2622,6 +2622,7 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
 
         return [(key_id, info)]
 
+
 def check_health(address: str, timeout=2, skip_version_check=False):
     gcs_address, gcs_port = address.split(":")
 
@@ -2635,7 +2636,9 @@ def check_health(address: str, timeout=2, skip_version_check=False):
 
     try:
         with nogil:
-            check_status(PythonCheckGcsHealth(c_gcs_address, c_gcs_port, timeout_ms, c_ray_version, c_skip_version_check, c_is_healthy))
+            check_status(PythonCheckGcsHealth(
+                c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
+                c_skip_version_check, c_is_healthy))
     except RaySystemError as e:
         raise RuntimeError(str(e))
 
