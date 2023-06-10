@@ -136,7 +136,7 @@ end-before: __single_stream_end__
 ---
 ```
 
-You can decorate async generator functions with the {mod}`ray.serve.batch` decorator. Similar to non-streaming methods, the function should take in a `List` of inputs. In each iteration, it should `yield` an iterable of outputs with the same length as the input batch size.
+Decorate async generator functions with the {mod}`ray.serve.batch` decorator. Similar to non-streaming methods, the function takes in a `List` of inputs and in each iteration it `yield`s an iterable of outputs with the same length as the input batch size.
 
 ```{literalinclude} doc_code/batching_guide.py
 ---
