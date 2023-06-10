@@ -72,6 +72,8 @@ _PYARROW_VERSION = None
 _CALLED_FREQ = defaultdict(lambda: 0)
 _CALLED_FREQ_LOCK = threading.Lock()
 
+INIT_FILE_NAME = "__init__.py"
+
 
 def get_user_temp_dir():
     if "RAY_TMPDIR" in os.environ:
@@ -1161,6 +1163,22 @@ def deprecated(
     return deprecated_wrapper
 
 
+def create_init_files(module_name: str):
+    """Iteratively go through all subdirectories and add __init__.py files if not exist
+
+    Python requires __init__.py in the directory to register the modules as importable.
+    This function helps to create __init__.py files if they don't currently exist in the
+    subdirectories, so they can be imported by the import_attr().
+    """
+    module_path = Path(importlib.util.find_spec(module_name).origin)
+    for path_object in module_path.parent.rglob("*"):
+        if path_object.is_dir():
+            init_file_path = path_object / INIT_FILE_NAME
+            if not init_file_path.exists():
+                logger.info(f"Init file not exist at {init_file_path}, creating now.")
+                open(init_file_path, "a").close()
+
+
 def import_attr(full_path: str):
     """Given a full import path to a module attr, return the imported attr.
 
@@ -1187,6 +1205,8 @@ def import_attr(full_path: str):
         module_name = full_path[:last_period_idx]
         attr_name = full_path[last_period_idx + 1 :]
 
+    # Create init files so the submodules can be imported
+    create_init_files(module_name=module_name)
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
 
