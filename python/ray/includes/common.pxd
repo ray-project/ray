@@ -406,7 +406,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
 
     CRayStatus PythonCheckGcsHealth(
         const c_string& gcs_address, const int gcs_port, const int64_t timeout_ms,
-        const c_string& ray_version, const c_bool skip_version_check, c_bool& is_healthy)
+        const c_string& ray_version, const c_bool skip_version_check,
+        c_bool& is_healthy)
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":
