@@ -2634,6 +2634,8 @@ def check_gcs_health(address: str, timeout=2, skip_version_check=False):
     with nogil:
         check_status(PythonCheckGcsHealth(c_gcs_address, c_gcs_port, timeout_ms, c_skip_version_check))
 
+    return True
+
 
 cdef class CoreWorker:
 
