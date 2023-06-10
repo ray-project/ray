@@ -2653,6 +2653,8 @@ def check_health(address: str, timeout=2, skip_version_check=False):
             check_status(PythonCheckGcsHealth(
                 c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
                 c_skip_version_check, c_is_healthy))
+    except RpcError:
+        traceback.print_exc()
     except RaySystemError as e:
         raise RuntimeError(str(e))
 

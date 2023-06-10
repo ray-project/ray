@@ -238,10 +238,10 @@ std::unordered_map<std::string, std::string> PythonGetNodeLabels(
     const rpc::GcsNodeInfo &node_info);
 
 Status PythonCheckGcsHealth(const std::string &gcs_address,
-                            int gcs_port,
-                            int64_t timeout_ms,
+                            const int gcs_port,
+                            const int64_t timeout_ms,
                             const std::string &ray_version,
-                            bool skip_version_check,
+                            const bool skip_version_check,
                             bool &is_healthy);
 
 }  // namespace gcs
