@@ -408,7 +408,7 @@ std::unordered_map<std::string, std::string> PythonGetNodeLabels(
                                                       node_info.labels().end());
 }
 
-Status PythonCheckGcsHealth(const std::string& gcs_address, int gcs_port, int64_t timeout_ms, bool skip_version_check) {
+Status PythonCheckGcsHealth(const std::string& gcs_address, int gcs_port, int64_t timeout_ms, const std::string& ray_version, bool skip_version_check, bool& is_healthy) {
   auto channel =
       rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
   auto stub = rpc::NodeInfoGcsService::NewStub(channel);
@@ -419,10 +419,25 @@ Status PythonCheckGcsHealth(const std::string& gcs_address, int gcs_port, int64_
   grpc::Status status = stub->CheckAlive(&context, request, &reply);
   if (status.ok()) {
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      return Status::OK();
+      if (skip_version_check) {
+        is_healthy = true;
+        return Status::OK();
+      } else {
+        // Check for Ray version match
+        if (reply.ray_version() != ray_version) {
+          is_healthy = false;
+          std::ostringstream ss;
+          ss << "Ray cluster at " << gcs_address << ":" << gcs_port
+             << " has version " << reply.ray_version() << ", but this process"
+             << "is running Ray version " << ray_version << ".";
+          return Status::Invalid(ss.str());
+        }
+      }
     }
+    is_healthy = false;
     return HandleGcsError(reply.status());
   }
+  is_healthy = false;
   return Status::RpcError(status.error_message(), status.error_code());
 }
 

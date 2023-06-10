@@ -2629,12 +2629,17 @@ def check_gcs_health(address: str, timeout=2, skip_version_check=False):
         c_string c_gcs_address = gcs_address
         int c_gcs_port = gcs_port
         int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        c_string c_ray_version = ray.__version__
         c_bool c_skip_version_check = skip_version_check
+        c_bool c_is_healthy = True
 
-    with nogil:
-        check_status(PythonCheckGcsHealth(c_gcs_address, c_gcs_port, timeout_ms, c_skip_version_check))
+    try:
+        with nogil:
+            check_status(PythonCheckGcsHealth(c_gcs_address, c_gcs_port, timeout_ms, c_ray_version, c_skip_version_check, c_is_healthy))
+    except RaySystemError as e:
+        raise RuntimeError(str(e))
 
-    return True
+    return c_is_healthy
 
 
 cdef class CoreWorker:
