@@ -34,8 +34,6 @@ class DeploymentScheduler:
         # We know where those replicas are running.
         self._running_replicas = defaultdict(dict)
 
-        self._preempting_nodes = set()
-
     def add_deployment(self, deployment_name, scheduling_constraint):
         self._deployments[deployment_name] = scheduling_constraint
 
@@ -105,10 +103,7 @@ class DeploymentScheduler:
 
         return replicas_to_stop
 
-    def preempt_node(self, node_id):
-        pass
-
-    def schedule(self):
+    def schedule(self, preempting_nodes):
         # Holistically schedule all the pending replicas.
         # TODO: consider colocation.
         pending_autoscaling = []
@@ -152,8 +147,11 @@ class DeploymentScheduler:
                 ) = pending_replicas[pending_replica_name]
                 actor_handle = None
                 for node_id in cluster_view.keys():
-                    if not self._is_node_available(
-                        cluster_view[node_id]["available"], actor_resources
+                    if (
+                        not self._is_node_available(
+                            cluster_view[node_id]["available"], actor_resources
+                        )
+                        or node_id in preempting_nodes
                     ):
                         continue
                     if (
@@ -177,6 +175,7 @@ class DeploymentScheduler:
                         pending_replica_name
                     ] = node_id
                     on_scheduled(actor_handle)
+                    node_to_replicas[node_id].add(pending_replica_name)
                     break
 
                 if actor_handle is None:
@@ -206,10 +205,7 @@ class DeploymentScheduler:
         )
         for node in ray.nodes():
             node_id = node["NodeID"]
-            if (
-                node_id not in available_resources_per_node
-                or node_id in self._preempting_nodes
-            ):
+            if node_id not in available_resources_per_node:
                 continue
             nodes[node_id] = {
                 "available": available_resources_per_node[node_id],

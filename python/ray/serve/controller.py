@@ -36,6 +36,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
+    RAY_SERVE_KV_TIMEOUT_S,
 )
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
@@ -117,10 +118,10 @@ class ServeController:
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
-        gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"{self.controller_name}-{self.ray_worker_namespace}"
-        self.kv_store = RayInternalKVStore(kv_store_namespace, gcs_client)
-        self.snapshot_store = RayInternalKVStore(kv_store_namespace, gcs_client)
+        self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self.snapshot_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
 
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
@@ -136,7 +137,7 @@ class ServeController:
                 detached,
                 http_config,
                 head_node_id,
-                gcs_client,
+                self.gcs_client,
             )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
@@ -294,8 +295,20 @@ class ServeController:
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
 
+            preempting_nodes = set()
             try:
-                any_recovering = self.deployment_state_manager.update()
+                preempting_nodes_json = self.gcs_client.internal_kv_get(
+                    b"RAY_PREEMPTING_NODES", timeout=RAY_SERVE_KV_TIMEOUT_S
+                )
+                if preempting_nodes_json:
+                    preempting_nodes = set(
+                        json.loads(preempting_nodes_json.decode("utf-8"))
+                    )
+            except Exception:
+                logger.exception("Exception fetching preempting nodes.")
+
+            try:
+                any_recovering = self.deployment_state_manager.update(preempting_nodes)
                 if not self.done_recovering_event.is_set() and not any_recovering:
                     self.done_recovering_event.set()
             except Exception:

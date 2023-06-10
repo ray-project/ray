@@ -1789,6 +1789,23 @@ class DeploymentState:
             },
         )
 
+    def _preempt_replicas(self, preempting_nodes) -> bool:
+        running_replicas_changed = False
+        for replica in self._replicas.pop(
+            states=[ReplicaState.STARTING, ReplicaState.UPDATING, ReplicaState.RUNNING]
+        ):
+            if replica.actor_node_id in preempting_nodes:
+                running_replicas_changed = True
+                logger.info(
+                    f"Replica {replica.replica_tag} of deployment "
+                    f"{self._name} is preempted, stopping it."
+                )
+                self._stop_replica(replica, graceful_stop=False)
+            else:
+                self._replicas.add(replica.actor_details.state, replica)
+
+        return running_replicas_changed
+
     def _check_and_update_replicas(self) -> bool:
         """
         Check current state of all DeploymentReplica being tracked, and compare
@@ -1922,7 +1939,7 @@ class DeploymentState:
 
         return running_replicas_changed
 
-    def update(self) -> Tuple[bool, bool]:
+    def update(self, preempting_nodes) -> Tuple[bool, bool]:
         """Attempts to reconcile this deployment to match its goal state.
 
         This is an asynchronous call; it's expected to be called repeatedly.
@@ -1936,6 +1953,8 @@ class DeploymentState:
         try:
             # Check the state of existing replicas and transition if necessary.
             running_replicas_changed = self._check_and_update_replicas()
+
+            running_replicas_changed |= self._preempt_replicas(preempting_nodes)
 
             # Add or remove DeploymentReplica instances in self._replicas.
             # This should be the only place we adjust total number of replicas
@@ -2070,7 +2089,7 @@ class DriverDeploymentState(DeploymentState):
         pending_replicas = num_nodes - new_running_replicas - old_running_replicas
         return max(rollout_size - pending_replicas, 0)
 
-    def update(self) -> Tuple[bool, bool]:
+    def update(self, preempting_nodes) -> Tuple[bool, bool]:
         """Returns (deleted, any_replicas_recovering)."""
         try:
             if self._target_state.deleting:
@@ -2440,7 +2459,7 @@ class DeploymentStateManager:
             current_handle_queued_queries = 0
         return current_handle_queued_queries
 
-    def update(self) -> bool:
+    def update(self, preempting_nodes) -> bool:
         """Updates the state of all deployments to match their goal state.
 
         Returns True if any of the deployments have replicas in the RECOVERING state.
@@ -2460,7 +2479,7 @@ class DeploymentStateManager:
                 deployment_state.autoscale(
                     current_num_ongoing_requests, current_handle_queued_queries
                 )
-            deleted, recovering = deployment_state.update()
+            deleted, recovering = deployment_state.update(preempting_nodes)
             if deleted:
                 deleted_tags.append(deployment_name)
                 deployment_info = deployment_state.target_info
@@ -2478,7 +2497,7 @@ class DeploymentStateManager:
         if len(deleted_tags):
             self._record_deployment_usage()
 
-        self._deployment_scheduler.schedule()
+        self._deployment_scheduler.schedule(preempting_nodes)
 
         return any_recovering
 
