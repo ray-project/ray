@@ -131,8 +131,8 @@ def _get_execution_dag(
     # Get DAG of physical operators and input statistics.
     if (
         DataContext.get_current().optimizer_enabled
-        # TODO(hchen): Remove this when all operators support logical plan.
-        and getattr(plan, "_logical_plan", None) is not None
+        # # TODO(hchen): Remove this when all operators support logical plan.
+        # and getattr(plan, "_logical_plan", None) is not None
     ):
         dag = get_execution_plan(plan._logical_plan).dag
         stats = _get_initial_stats_from_plan(plan)
