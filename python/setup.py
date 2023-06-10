@@ -322,7 +322,6 @@ if setup_spec.type == SetupType.RAY:
         "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
         "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
         "jsonschema",
-        "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "packaging",

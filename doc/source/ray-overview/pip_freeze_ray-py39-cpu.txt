@@ -74,7 +74,6 @@ markdown-it-py==2.2.0
 mdurl==0.1.2
 msal==1.18.0b1
 msal-extensions==1.0.0
-msgpack==1.0.5
 msrest==0.7.1
 msrestazure==0.6.4
 multidict==6.0.4

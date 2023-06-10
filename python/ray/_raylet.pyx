@@ -11,7 +11,6 @@ from functools import wraps
 import gc
 import inspect
 import logging
-import msgpack
 import io
 import os
 import pickle
