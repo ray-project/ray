@@ -1,6 +1,6 @@
 (serve-scaling-and-resource-allocation)=
 
-# Scaling and Resource Allocation
+# Set Up Autoscaling and Resource Allocation
 
 This guide helps you to:
 

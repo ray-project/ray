@@ -1,3 +1,5 @@
+(serve-model-multiplexing)=
+
 # Model Multiplexing
 
 This section helps you understand how to write multiplexed deployment by using the `serve.multiplexed` and `serve.get_multiplexed_model_id` APIs.

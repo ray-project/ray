@@ -6,11 +6,9 @@ If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick St
 Use these advanced guides for more options and configurations:
 - [Passing Arguments to Applications](app-builder-guide)
 - [FastAPI and HTTP Setup](http-guide)
-- [Scaling and Resource Allocation](scaling-and-resource-allocation)
 - [Development Workflow](dev-workflow)
 - [Ray Serve Dashboard](dash-serve-view)
 - [Performance Tuning](performance)
-- [Handling Dependencies](handling-dependencies)
 - [Experimental Java API](managing-java-deployments)
 - [1.x to 2.x API Migration Guide](migration)
 - [Experimental gRPC Support](direct-ingress)
