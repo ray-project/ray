@@ -116,6 +116,7 @@ def issue_request(max) -> List[str]:
     chunks = []
     for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
         chunks.append(chunk)
+    return chunks
 
 
 requested_maxes = [1, 2, 5, 6, 9]
