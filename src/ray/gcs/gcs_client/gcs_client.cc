@@ -419,10 +419,7 @@ Status PythonCheckGcsHealth(const std::string& gcs_address, int gcs_port, int64_
   grpc::Status status = stub->CheckAlive(&context, request, &reply);
   if (status.ok()) {
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      if (skip_version_check) {
-        is_healthy = true;
-        return Status::OK();
-      } else {
+      if (!skip_version_check) {
         // Check for Ray version match
         if (reply.ray_version() != ray_version) {
           is_healthy = false;
@@ -433,6 +430,8 @@ Status PythonCheckGcsHealth(const std::string& gcs_address, int gcs_port, int64_
           return Status::Invalid(ss.str());
         }
       }
+      is_healthy = true;
+      return Status::OK();
     }
     is_healthy = false;
     return HandleGcsError(reply.status());

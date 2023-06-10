@@ -15,7 +15,7 @@ import ray.experimental.internal_kv as internal_kv
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray.dashboard.utils import DashboardHeadModule
-from ray._raylet import GcsClient, check_gcs_health
+from ray._raylet import GcsClient, check_health
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
@@ -55,7 +55,7 @@ class GCSHealthCheckThread(threading.Thread):
     def run(self) -> None:
         while True:
             future = self.work_queue.get()
-            check_result = check_gcs_health(self.gcs_address)
+            check_result = check_health(self.gcs_address)
             future.set_result(check_result)
 
     async def check_once(self) -> bool:

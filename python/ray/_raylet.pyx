@@ -2622,12 +2622,12 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
 
         return [(key_id, info)]
 
-def check_gcs_health(address: str, timeout=2, skip_version_check=False):
+def check_health(address: str, timeout=2, skip_version_check=False):
     gcs_address, gcs_port = address.split(":")
 
     cdef:
         c_string c_gcs_address = gcs_address
-        int c_gcs_port = gcs_port
+        int c_gcs_port = int(gcs_port)
         int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         c_string c_ray_version = ray.__version__
         c_bool c_skip_version_check = skip_version_check
