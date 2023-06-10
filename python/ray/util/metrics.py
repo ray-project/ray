@@ -126,9 +126,6 @@ class Metric:
             else:
                 raise ValueError(f"Missing value for tag key {tag_key}.")
 
-        if len(tags_copy) > 0:
-            raise ValueError(f"Unrecognized tag keys: {list(tags_copy.keys())}.")
-
         self._metric.record(value, tags=final_tags)
 
     @property
