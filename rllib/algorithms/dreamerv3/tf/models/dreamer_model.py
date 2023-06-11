@@ -98,11 +98,11 @@ class DreamerModel(tf.keras.Model):
         actions = self.actor(
             h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
         )
-        # Actor (with returning distribution).
-        _, distr = self.actor(
+        # Actor (with returning distribution parameters).
+        _, distr_params = self.actor(
             h=results["h_states_BxT"],
             z=results["z_posterior_states_BxT"],
-            return_distribution=True,
+            return_distr_params=True,
         )
         # Critic.
         values = self.critic(
@@ -156,8 +156,11 @@ class DreamerModel(tf.keras.Model):
             is_first=is_first,
         )
         # Compute action using our actor network and the current states.
-        _, distr = self.actor(h=states["h"], z=states["z"], return_distribution=True)
+        _, distr_params = self.actor(
+            h=states["h"], z=states["z"], return_distr_params=True
+        )
         # Use the mode of the distribution (Discrete=argmax, Normal=mean).
+        distr = self.actor.get_action_dist_object(distr_params)
         actions = distr.mode()
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
@@ -268,9 +271,9 @@ class DreamerModel(tf.keras.Model):
             timesteps_H: The number of timesteps to dream for.
             gamma: The discount factor gamma.
         """
-        # Dreamed actions (one-hot for discrete actions).
+        # Dreamed actions (one-hot encoded for discrete actions).
         a_dreamed_t0_to_H = []
-        a_dreamed_distributions_t0_to_H = []
+        a_dreamed_dist_params_t0_to_H = []
 
         h = start_states["h"]
         z = start_states["z"]
@@ -282,7 +285,7 @@ class DreamerModel(tf.keras.Model):
 
         # Compute `a` using actor network (already the first step uses a dreamed action,
         # not a sampled one).
-        a, a_dist = self.actor(
+        a, a_dist_params = self.actor(
             # We have to stop the gradients through the states. B/c we are using a
             # differentiable Discrete action distribution (straight through gradients
             # with `a = stop_gradient(sample(probs)) + probs - stop_gradient(probs)`,
@@ -290,10 +293,10 @@ class DreamerModel(tf.keras.Model):
             # term on actions further back in the trajectory.
             h=tf.stop_gradient(h),
             z=tf.stop_gradient(z),
-            return_distribution=True,
+            return_distr_params=True,
         )
         a_dreamed_t0_to_H.append(a)
-        a_dreamed_distributions_t0_to_H.append(a_dist)
+        a_dreamed_dist_params_t0_to_H.append(a_dist_params)
 
         for i in range(timesteps_H):
             # Move one step in the dream using the RSSM.
@@ -305,13 +308,13 @@ class DreamerModel(tf.keras.Model):
             z_states_prior_t0_to_H.append(z)
 
             # Compute `a` using actor network.
-            a, a_dist = self.actor(
+            a, a_dist_params = self.actor(
                 h=tf.stop_gradient(h),
                 z=tf.stop_gradient(z),
-                return_distribution=True,
+                return_distr_params=True,
             )
             a_dreamed_t0_to_H.append(a)
-            a_dreamed_distributions_t0_to_H.append(a_dist)
+            a_dreamed_dist_params_t0_to_H.append(a_dist_params)
 
         h_states_H_B = tf.stack(h_states_t0_to_H, axis=0)  # (T, B, ...)
         h_states_HxB = tf.reshape(h_states_H_B, [-1] + h_states_H_B.shape.as_list()[2:])
@@ -322,6 +325,7 @@ class DreamerModel(tf.keras.Model):
         )
 
         a_dreamed_H_B = tf.stack(a_dreamed_t0_to_H, axis=0)  # (T, B, ...)
+        a_dreamed_dist_params_H_B = tf.stack(a_dreamed_dist_params_t0_to_H, axis=0)
 
         # Compute r using reward predictor.
         r_dreamed_H_B = tf.reshape(
@@ -395,9 +399,10 @@ class DreamerModel(tf.keras.Model):
             "rewards_dreamed_t0_to_H_BxT": r_dreamed_H_B,
             "continues_dreamed_t0_to_H_BxT": c_dreamed_H_B,
             "actions_dreamed_t0_to_H_BxT": a_dreamed_H_B,
-            "actions_dreamed_distributions_t0_to_H_BxT": (
-                a_dreamed_distributions_t0_to_H
-            ),
+            #"actions_dreamed_distributions_t0_to_H_BxT": (
+            #    a_dreamed_distributions_t0_to_H
+            #),
+            "actions_dreamed_dist_params_t0_to_H_BxT": a_dreamed_dist_params_H_B,
             "values_dreamed_t0_to_H_BxT": v_dreamed_H_B,
             "values_symlog_dreamed_logits_t0_to_HxBxT": v_symlog_dreamed_logits_HxB,
             "v_symlog_dreamed_ema_t0_to_H_BxT": v_symlog_dreamed_ema_H_B,

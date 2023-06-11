@@ -17,7 +17,7 @@ config = (
     DreamerV3Config()
     .resources(
         num_learner_workers=1,
-        num_gpus_per_learner_worker=1,
+        #num_gpus_per_learner_worker=1,
         num_cpus_for_local_worker=1,
     )
     # TODO (sven): concretize this: If you use >1 GPU and increase the batch size
@@ -44,6 +44,11 @@ config = (
             # Already done by MaxAndSkip wrapper: "action repeat" == 4.
             "frameskip": 1,
         }
+    )
+    .reporting(
+        summarize_images_and_videos=True,
+        summarize_dream_data=True,
+        summarize_individual_batch_item_stats=True,
     )
     # See Appendix A.
     .training(
