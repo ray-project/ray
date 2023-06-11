@@ -119,6 +119,7 @@ class DashboardAgent:
             logger.info("Parent pid is %s", self.ppid)
 
         # Setup grpc server
+        import ray._private.tls_utils
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
