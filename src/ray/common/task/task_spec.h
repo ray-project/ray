@@ -252,6 +252,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   size_t NumReturns() const;
 
+  size_t NumStreamingGeneratorReturns() const;
+
+  ObjectID StreamingGeneratorReturnId(uint32_t generator_index) const;
+
+  void SetNumStreamingGeneratorReturns(uint64_t num_streaming_generator_returns);
+
   bool ArgByRef(size_t arg_index) const;
 
   ObjectID ArgId(size_t arg_index) const;

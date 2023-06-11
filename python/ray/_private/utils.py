@@ -1434,6 +1434,22 @@ def parse_resources_json(
     return resources
 
 
+def parse_metadata_json(
+    metadata: str, cli_logger, cf, command_arg="--metadata-json"
+) -> Dict[str, str]:
+    try:
+        metadata = json.loads(metadata)
+        if not isinstance(metadata, dict):
+            raise ValueError
+    except Exception:
+        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+        cli_logger.abort(
+            "Valid values look like this: `{}`",
+            cf.bold(f'{command_arg}=\'{{"key1": "value1", ' '"key2": "value2"}}\''),
+        )
+    return metadata
+
+
 def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20):
     if isinstance(key, str):
         key = key.encode()

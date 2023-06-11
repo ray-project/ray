@@ -57,7 +57,6 @@ class Catalog:
                 self.my_model_config_dict = MLPHeadConfig(
                     hidden_layer_dims=[64, 32],
                     input_dims=[self.observation_space.shape[0]],
-                    output_dims=[1],
                 )
 
             def build_my_head(self, framework: str):

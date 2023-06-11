@@ -316,9 +316,7 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "attrs",
         "click >= 7.0",
-        "dataclasses; python_version < '3.7'",
         "filelock",
         "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
         "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501

@@ -28,10 +28,10 @@ Using Ray Data for offline inference involves four basic steps:
 
 - **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different data sources and formats. For more details, see :ref:`Loading Data <loading_data>`.
 - **Step 2:** Define a Python class to load the pre-trained model. 
-- **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming-data>`.
-- **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see :ref:`Consuming data <consuming_data>`.
+- **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming_data>`.
+- **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see the :ref:`Iterating over data <iterating-over-data>` and :ref:`Saving data <saving-data>` user guides.
 
-For more in-depth examples for your use case, see :ref:`batch_inference_examples`_. For how to configure batch inference, see :ref:`batch_inference_configuration`_.
+For more in-depth examples for your use case, see :ref:`our batch inference examples <batch_inference_examples>`. For how to configure batch inference, see :ref:`the configuration guide <batch_inference_configuration>`.
 
 .. tabs::
 
@@ -188,7 +188,7 @@ More examples
 .. _batch_inference_configuration:
 
 Configuration and troubleshooting
--------------------------------
+---------------------------------
 
 .. _batch_inference_gpu:
 
@@ -365,7 +365,7 @@ Increasing batch size results in faster execution because inference is a vectori
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following :ref:`these steps <_batch_inference_batch_size>`.
+If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following :ref:`these steps <batch_inference_batch_size>`.
 
 If your batch size is already set to 1, then use either a smaller model or GPU devices with more memory.
 
