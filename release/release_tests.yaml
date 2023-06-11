@@ -6033,8 +6033,19 @@
   working_dir: nightly_tests
 
   frequency: weekly
+  python: "3.8"
   team: data
   cluster:
+    byod: 
+      runtime_env:
+        - RAY_object_spilling_config={"type":"filesystem","params":{"directory_path":["/tmp/data0","/tmp/data1"]}}
+      pre_run_cmds:
+        - yes N | sudo mkfs -t ext4 /dev/nvme1n1 || true
+        - mkdir -p /tmp/data0
+        - mkdir -p /tmp/data1
+        - sudo chmod 0777 /tmp/data0
+        - sudo chmod 0777 /tmp/data1
+        - sudo mount /dev/nvme1n1 /tmp/data1 || true
     cluster_env: shuffle/100tb_shuffle_app_config.yaml
     cluster_compute: shuffle/100tb_shuffle_compute.yaml
 
