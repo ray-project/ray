@@ -28,17 +28,20 @@ Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
 * Prepare a Kubernetes cluster
 * Deploy a KubeRay operator
 
-(serve-deploy-app-on-kuberay)=
-## Deploying a Serve application
-
-Once the KubeRay controller is running, you can manage your Ray Serve application by creating and updating a `RayService` custom resource (CR).
-`RayService` custom resources consist of the following:
-- a `KubeRay` `RayCluster` config defining the cluster that the Serve application runs on.
-- a Ray Serve [config](serve-in-production-config-file) defining the Serve application to run on the cluster.
+## RayService CR Inspection
+Once the KubeRay controller is running, you can manage your Ray Serve application by creating and updating a `RayService` custom resource (CR). ([example](https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml))
+Under the `spec` section in the `RayService` CR, you can find the following fields:
+`serviceUnhealthySecondThreshold`: represents the threshold in seconds that defines when a service is considered unhealthy. Default is 60 seconds. When the service is unhealthy, the KubeRay Service controller will try to recreate a new cluster and deploy the application to the new cluster.
+`deploymentUnhealthySecondThreshold`: represents the threshold in seconds that defines when the ray dashboard is considered unhealthy. Default is 60 seconds. When the ray dashboard is unhealthy, the KubeRay Service controller will try to recreate a new cluster and deploy the application to the new cluster.
+`serveConfig`: represents the Serve config that will be used to deploy the application. You can use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve config in a format that can be copy-pasted directly into your [Kubernetes config](serve-in-production-kubernetes). You can paste this config into the `RayService` CR.
+`rayClusterConfig`: Please refer to [KubeRay configuration](kuberay-config) for more details.
 
 :::{tip}
-You can use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve config in a format that can be copy-pasted directly into your [Kubernetes config](serve-in-production-kubernetes). You can paste this config into the `RayService` CR.
+To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider increasing the value of the `serviceUnhealthySecondThreshold` to avoid cluster restart.
 :::
+
+(serve-deploy-app-on-kuberay)=
+## Deploying a Serve application
 
 When the `RayService` is created, the `KubeRay` controller first creates a Ray cluster using the provided configuration.
 Then, once the cluster is running, it deploys the Serve application to the cluster using the [REST API](serve-in-production-deploying).
