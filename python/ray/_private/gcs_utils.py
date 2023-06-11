@@ -1,6 +1,5 @@
 import enum
 import logging
-import traceback
 import inspect
 import os
 import asyncio
@@ -9,7 +8,6 @@ from typing import Dict, List, Optional
 
 import grpc
 
-import ray
 from ray._private import ray_constants
 from ray.core.generated import (
     gcs_service_pb2,
@@ -100,47 +98,6 @@ def create_gcs_channel(address: str, aio=False):
     from ray._private.utils import init_grpc_channel
 
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
-
-
-def check_health(address: str, timeout=2, skip_version_check=False) -> bool:
-    """Checks Ray cluster health, before / without actually connecting to the
-    cluster via ray.init().
-
-    Args:
-        address: Ray cluster / GCS address string, e.g. ip:port.
-        timeout: request timeout.
-        skip_version_check: If True, will skip comparision of GCS Ray version with local
-            Ray version. If False (default), will raise exception on mismatch.
-    Returns:
-        Returns True if the cluster is running and has matching Ray version.
-        Returns False if no service is running.
-        Raises an exception otherwise.
-    """
-    req = gcs_service_pb2.CheckAliveRequest()
-    try:
-        channel = create_gcs_channel(address)
-        stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel)
-        resp = stub.CheckAlive(req, timeout=timeout)
-    except grpc.RpcError:
-        traceback.print_exc()
-        return False
-    finally:
-        channel.close()
-    if resp.status.code != GcsCode.OK:
-        raise RuntimeError(f"GCS running at {address} is unhealthy: {resp.status}")
-
-    if skip_version_check:
-        return True
-    # Otherwise, continue to check for Ray version match.
-    if resp.ray_version is None:
-        resp.ray_version = "<= 1.12"
-    if resp.ray_version != ray.__version__:
-        raise RuntimeError(
-            f"Ray cluster at {address} has version "
-            f"{resp.ray_version}, but this process is running "
-            f"Ray version {ray.__version__}."
-        )
-    return True
 
 
 # This global variable is used for testing only
