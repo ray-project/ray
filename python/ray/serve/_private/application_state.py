@@ -251,6 +251,13 @@ class ApplicationState:
         apply_deployments_args().
         """
 
+        if self._deploy_obj_ref:
+            logger.info(
+                f'Received new config for application "{self._name}". '
+                "Cancelling previous request."
+            )
+            ray.cancel(self._deploy_obj_ref)
+
         self._deploy_obj_ref = deploy_obj_ref
         self._deployment_timestamp = deployment_time
         # Halt reconciliation of target deployments
