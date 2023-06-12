@@ -85,8 +85,6 @@ Check out [our benchmark workloads'](https://github.com/ray-project/ray/tree/f67
 You can check out our [microbenchmark instructions](https://github.com/ray-project/ray/blob/master/python/ray/serve/benchmarks/README.md)
 to benchmark Ray Serve on your hardware.
 
-(serve-performance-batching-requests)=
-
 ## Debugging performance issues
 
 The performance issue you're most likely to encounter is high latency and/or low throughput for requests.
@@ -102,7 +100,7 @@ There are handful of ways to address these issues:
    * Are you reserving GPUs for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_gpus”: 1}`)?
    * Are you reserving one or more cores for your deployment replicas using `ray_actor_options` (e.g. `ray_actor_options={“num_cpus”: 2}`)?
    * Are you setting [OMP_NUM_THREADS](serve-omp-num-threads) to increase the performance of your deep learning framework?
-2. Try batching your requests. See [the section above](serve-performance-batching-requests).
+2. Try batching your requests. See [Dynamic Request Batching](serve-performance-batching-requests).
 3. Consider using `async` methods in your callable. See [the section below](serve-performance-async-methods).
 4. Set an end-to-end timeout for your HTTP requests. See [the section below](serve-performance-e2e-timeout).
 

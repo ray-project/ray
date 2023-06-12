@@ -4,7 +4,7 @@
 If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick Start](getting_started).
 
 Use these advanced guides for more options and configurations:
-- [Passing Arguments to Applications](app-builder-guide)
+- [Pass Arguments to Applications](app-builder-guide)
 - [FastAPI and HTTP Setup](http-guide)
 - [Development Workflow](dev-workflow)
 - [Ray Serve Dashboard](dash-serve-view)

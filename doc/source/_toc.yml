@@ -259,8 +259,10 @@ parts:
           - file: serve/user-guides/index
             sections:
               - file: serve/user-guides/model_composition
-              - file: serve/user-guides/multi-app
-              - file: serve/user-guides/model-multiplexing
+              - file: serve/user-guides/deploy-many-models/index
+                sections:
+                - file: serve/user-guides/deploy-many-models/multi-app
+                - file: serve/user-guides/deploy-many-models/model-multiplexing
               - file: serve/user-guides/production-guide/index
                 sections:
                   - file: serve/user-guides/production-guide/config

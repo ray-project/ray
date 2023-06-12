@@ -1,5 +1,5 @@
 (serve-handling-dependencies)=
-# Handling Dependencies
+# Handle Dependencies
 
 Ray Serve supports serving deployments with different (possibly conflicting)
 Python dependencies.  For example, you can simultaneously serve one deployment

@@ -1,3 +1,4 @@
+(serve-java-api)=
 # Experimental Java API
 
 :::{warning}

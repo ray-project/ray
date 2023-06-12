@@ -1,6 +1,6 @@
 (serve-in-production-deploying)=
 
-# Deploying on VM
+# Deploy on VM
 
 You can deploy your Serve application to production on a Ray cluster using the Ray Serve CLI.
 `serve deploy` takes in a config file path and it deploys that file to a Ray cluster over HTTP.

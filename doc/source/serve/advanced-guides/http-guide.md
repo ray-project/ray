@@ -1,4 +1,5 @@
-# FastAPI and HTTP Setup
+(serve-set-up-fastapi-http)=
+# Set Up FastAPI and HTTP
 
 This section helps you understand how to:
 - send HTTP requests to Serve deployments

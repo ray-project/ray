@@ -1,4 +1,5 @@
-# Passing Arguments to Applications
+(serve-app-builder-guide)=
+# Pass Arguments to Applications
 
 This section describes how to pass arguments to your applications using an application builder function.
 
