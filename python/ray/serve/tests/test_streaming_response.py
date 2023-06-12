@@ -253,6 +253,34 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
         next(stream_iter)
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Streaming feature flag is disabled.",
+)
+def test_http_disconnect(serve_instance):
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class SimpleGenerator:
+        def __call__(self, request: Request) -> StreamingResponse:
+            async def wait_for_disconnect():
+                while not await request.is_disconnected():
+                    yield b""
+
+                print("Disconnected!")
+                signal_actor.send.remote()
+
+            return StreamingResponse(wait_for_disconnect())
+
+    serve.run(SimpleGenerator.bind())
+
+    with requests.get("http://localhost:8000", stream=True):
+        with pytest.raises(TimeoutError):
+            ray.get(signal_actor.wait.remote(), timeout=1)
+
+    ray.get(signal_actor.wait.remote(), timeout=5)
+
+
 if __name__ == "__main__":
     import sys
 
