@@ -49,9 +49,11 @@ The Serve config for the example is embedded into [this example `RayService` CR]
 To follow along, save this CR locally in a file named `ray_v1alpha1_rayservice.yaml`:
 
 :::{note}
-The example `RayService` uses very small resource requests because it's only for demonstration.
+- The example `RayService` uses very small resource requests because it's only for demonstration.
 In production, you'll want to provide more resources to the cluster.
 Learn more about how to configure KubeRay clusters [here](kuberay-config).
+
+- If you have dependencies that need to be installed for the deployment, you can add them to the `runtime_env` in your Deployment code. Checkout [here](serve-handling-dependencies)
 :::
 
 ```console
