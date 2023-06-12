@@ -11,7 +11,7 @@ This guide shows you how to:
 * `Describe datasets <#describing-datasets>`_
 * `Inspect rows <#inspecting-rows>`_
 * `Inspect batches <#inspecting-batches>`_
-* `Inspect Dataset runtime statistics <#inspecting-stats>`_
+* `Inspect execution statistics <#inspecting-stats>`_
 
 .. _describing-datasets:
 
@@ -146,12 +146,12 @@ For more information on working with batches, see
 :ref:`Iterating over batches <iterating-over-batches>`.
 
 
-Inspecting runtime statistics
-=============================
+Inspecting exeuction statistics
+===============================
 
 Ray Data calculates statistics during execution like runtime and memory usage for the different stages. 
 
-View debug stats for your Dataset executions via :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data.log`.
+To view debug stats about your :class:`Datasets <ray.data.Dataset>` executions, call :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data.log`.
 
 .. testcode::
     import ray
@@ -161,11 +161,13 @@ View debug stats for your Dataset executions via :meth:`Dataset.stats() <ray.dat
         time.sleep(.0001)
         return x
 
-    ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-    ds = ds.map(lambda x: x)
-    ds = ds.map(pause)
+    ds = (
+        ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+        .map(lambda x: x)
+        .map(pause)
+    )
 
-    for x in ds.iter_batches():
+    for batch in ds.iter_batches():
         pass
 
     print(ds.stats())

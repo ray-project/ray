@@ -8,7 +8,7 @@ Transformations let you process and modify your dataset. You can compose transfo
 to express a chain of computations.
 
 .. note::
-    Transformations are lazy by default. They are not executed until consumption of the data is triggered via :ref:`iterating over the Dataset <iterating-over-data>`, :ref:`saving the Datase <saving-data>`, or :ref:`inspecting properties of the Dataset <inspecting-data>`.
+    Transformations are lazy by default. They aren't executed until you trigger consumption of the data by :ref:`iterating over the Dataset <iterating-over-data>`, :ref:`saving the Dataset <saving-data>`, or :ref:`inspecting properties of the Dataset <inspecting-data>`.
 
 This guide shows you how to:
 
@@ -16,7 +16,7 @@ This guide shows you how to:
 * `Transform batches <#transforming-batches>`_
 * `Groupby and transform groups <#groupby-and-transforming-groups>`_
 * `Shuffle rows <#shuffling-rows>`_
-* `Repartition data <#repartitioning-data>`_
+* `Repartition data <#repartitioning-data>`_\
 
 .. _transforming_rows:
 
