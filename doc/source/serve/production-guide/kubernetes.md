@@ -28,20 +28,22 @@ Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
 * Prepare a Kubernetes cluster
 * Deploy a KubeRay operator
 
-## RayService CR
-Once the KubeRay controller is running, you can manage your Ray Serve application by creating and updating a `RayService` custom resource (CR, here is [example](https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml)).
-Under the `spec` section in the `RayService` CR, you can find the following fields:
+## Setting up a RayService custom resource (CR)
+Once the KubeRay controller is running, manage your Ray Serve application by creating and updating a `RayService` CR ([example](https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml)).
 
-**`serviceUnhealthySecondThreshold`**: represents the threshold in seconds that defines when a service is considered unhealthy. Default is 60 seconds. When the service is unhealthy, the KubeRay Service controller will try to recreate a new cluster and deploy the application to the new cluster.
+Under the `spec` section in the `RayService` CR, find the following fields:
 
-**`deploymentUnhealthySecondThreshold`**: represents the threshold in seconds that defines when the ray dashboard is considered unhealthy. Default is 60 seconds. When the ray dashboard is unhealthy, the KubeRay Service controller will try to recreate a new cluster and deploy the application to the new cluster.
+**`serviceUnhealthySecondThreshold`**: Represents the threshold in seconds that defines when a service is considered unhealthy (application status is not HEALTHY status). The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
 
-**`serveConfig`**: represents the Serve config that will be used to deploy the application. You can use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve config in a format that can be copy-pasted directly into your [Kubernetes config](serve-in-production-kubernetes). You can paste this config into the `RayService` CR.
+**`deploymentUnhealthySecondThreshold`**: Represents the threshold in seconds that defines when application status is not able to fetched, this is caused by Dashboard is not available or serve deploy is not finished. The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
 
-**`rayClusterConfig`**: Please refer to [KubeRay configuration](kuberay-config) for more details.
+**`serveConfig`**: Represents the configuration that Ray Serve uses to deploy the application. Use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve configuration and copy-paste directly into your [Kubernetes config](serve-in-production-kubernetes) and `RayService` CR.
+
+**`rayClusterConfig`**: Populate this field with the contents of the `spec` field from the `RayCluster` CR YAML file. Refer to [KubeRay configuration](kuberay-config) for more details.
 
 :::{tip}
-To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider increasing the value of the `serviceUnhealthySecondThreshold` to avoid cluster restart.
+To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider increasing the value of the `deploymentUnhealthySecondThreshold` to avoid a cluster restart.
+Alternatively, you can also download the dependencies in the Dockerfile and build a custom image so that the dependencies are already available when the cluster starts.
 :::
 
 (serve-deploy-app-on-kuberay)=
