@@ -16,7 +16,7 @@ This guide shows you how to:
 * `Transform batches <#transforming-batches>`_
 * `Groupby and transform groups <#groupby-and-transforming-groups>`_
 * `Shuffle rows <#shuffling-rows>`_
-* `Repartition data <#repartitioning-data>`_\
+* `Repartition data <#repartitioning-data>`_
 
 .. _transforming_rows:
 
