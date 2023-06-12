@@ -743,7 +743,7 @@ class TuneTerminalReporter(TuneReporterBase):
     def _print_heartbeat(self, trials, *sys_args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold and not force:
             return
-        heartbeat_strs, fail_table_data = self._get_heartbeat(
+        heartbeat_strs, table_data = self._get_heartbeat(
             trials, *sys_args, force_full_output=force
         )
 
@@ -752,8 +752,8 @@ class TuneTerminalReporter(TuneReporterBase):
         # now print the table using Tabulate
         more_infos = []
         all_data = []
-        fail_header = fail_table_data.header
-        for sub_table in fail_table_data.data:
+        fail_header = table_data.header
+        for sub_table in table_data.data:
             all_data.extend(sub_table.trial_infos)
             if sub_table.more_info:
                 more_infos.append(sub_table.more_info)
