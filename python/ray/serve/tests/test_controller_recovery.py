@@ -308,12 +308,6 @@ def test_recover_deleting_deployment(serve_instance):
     This is similar to the test test_replica_deletion_after_controller_recover,
     except what's blocking the deployment is __del__ instead of ongoing requests
     """
-    # TODO(zcin): Update this test to use serve.run() and application after the deploy
-    # refactor adds checkpointing for applications. Right now we checkpoint the user
-    # submitted config and use that for recovery, so applications that are in the
-    # process of deleting when the controller crashes, will not be recovered when the
-    # controller recovers (although its deployment will be recovered). This should be
-    # fixed after we refactor the application state manager.
 
     signal = SignalActor.remote()
 
