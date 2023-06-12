@@ -42,14 +42,14 @@ def test_repr(tmpdir):
 
 
 @pytest.mark.parametrize("batch_type", [np.ndarray, pd.DataFrame, dict])
-def test_predict(tmpdir, ray_start_runtime_env, batch_type):
+def test_predict(tmpdir, ray_start_4_cpus, batch_type):
     dtype_prompts = _convert_pandas_to_batch_type(
         prompts, type=TYPE_TO_ENUM[batch_type]
     )
 
-    @ray.remote
+    os.chdir(tmpdir)
+
     def test(use_preprocessor):
-        os.chdir(tmpdir)
         if use_preprocessor:
             preprocessor = DummyPreprocessor()
         else:
@@ -71,30 +71,23 @@ def test_predict(tmpdir, ray_start_runtime_env, batch_type):
         if preprocessor:
             assert predictor.get_preprocessor().has_preprocessed
 
-    ray.get(test.remote(use_preprocessor=True))
-    ray.get(test.remote(use_preprocessor=False))
+    test(use_preprocessor=True)
+    test(use_preprocessor=False)
 
 
-def test_predict_no_preprocessor_no_training(ray_start_runtime_env):
-    @ray.remote
-    def test():
-        with tempfile.TemporaryDirectory() as tmpdir:
-            model_config = AutoConfig.from_pretrained(model_checkpoint)
-            model = AutoModelForCausalLM.from_config(model_config)
-            tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
-            checkpoint = TransformersCheckpoint.from_model(
-                model, tokenizer, path=tmpdir
-            )
-            predictor = TransformersPredictor.from_checkpoint(
-                checkpoint,
-                task="text-generation",
-            )
+def test_predict_no_preprocessor_no_training(tmpdir, ray_start_4_cpus):
+    model_config = AutoConfig.from_pretrained(model_checkpoint)
+    model = AutoModelForCausalLM.from_config(model_config)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+    checkpoint = TransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
+    predictor = TransformersPredictor.from_checkpoint(
+        checkpoint,
+        task="text-generation",
+    )
 
-            predictions = predictor.predict(prompts)
+    predictions = predictor.predict(prompts)
 
-            assert len(predictions) == 3
-
-    ray.get(test.remote())
+    assert len(predictions) == 3
 
 
 def create_checkpoint():

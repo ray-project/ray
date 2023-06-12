@@ -60,7 +60,12 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
                                      std::vector<std::shared_ptr<BundleSpecification>>>
                &group_to_bundles));
 
-  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetBundlesOnNode(
+  MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
+              GetBundlesOnNode,
+              (const NodeID &node_id),
+              (const, override));
+
+  absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> GetAndRemoveBundlesOnNode(
       const NodeID &node_id) override {
     absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles;
     bundles[group_on_dead_node_] = bundles_on_dead_node_;

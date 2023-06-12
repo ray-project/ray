@@ -16,9 +16,11 @@
 
 #include <memory>
 
+#include "ray/common/constants.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
+#include "src/ray/protobuf/experimental/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -336,6 +338,46 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
     UNREACHABLE;
   }
   }
+}
+
+inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
+  return kPlacementGroupConstraintKeyPrefix + pg_id;
+}
+
+/// Generate a placement constraint for placement group.
+///
+/// \param pg_id The ID of placement group.
+/// \param strategy The placement strategy of placement group.
+/// \return The placement constraint for placement group if it's not a strict
+///   strategy, else absl::nullopt.
+inline absl::optional<rpc::autoscaler::PlacementConstraint>
+GenPlacementConstraintForPlacementGroup(const std::string &pg_id,
+                                        rpc::PlacementStrategy strategy) {
+  rpc::autoscaler::PlacementConstraint pg_constraint;
+  // We are embedding the PG id into the key for the same reasons as we do for
+  // dynamic labels (a node will have multiple PGs thus having a common PG key
+  // is not enough).
+  const std::string name = FormatPlacementGroupLabelName(pg_id);
+  switch (strategy) {
+  case rpc::PlacementStrategy::STRICT_SPREAD: {
+    pg_constraint.mutable_anti_affinity()->set_label_name(name);
+    pg_constraint.mutable_anti_affinity()->set_label_value("");
+    return pg_constraint;
+  }
+  case rpc::PlacementStrategy::STRICT_PACK: {
+    pg_constraint.mutable_affinity()->set_label_name(name);
+    pg_constraint.mutable_affinity()->set_label_value("");
+    return pg_constraint;
+  }
+  case rpc::PlacementStrategy::SPREAD:
+  case rpc::PlacementStrategy::PACK: {
+    return absl::nullopt;
+  }
+  default: {
+    RAY_LOG(ERROR) << "Encountered unexpected strategy type: " << strategy;
+  }
+  }
+  return absl::nullopt;
 }
 
 }  // namespace gcs

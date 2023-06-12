@@ -587,7 +587,8 @@ void GcsServer::InitGcsAutoscalerStateManager() {
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_resource_manager_,
-      *gcs_node_manager_);
+      *gcs_node_manager_,
+      *gcs_placement_group_manager_);
 
   autoscaler_state_service_.reset(
       new rpc::AutoscalerStateGrpcService(main_service_, *gcs_autoscaler_state_manager_));
