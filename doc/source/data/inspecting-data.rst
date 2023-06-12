@@ -149,7 +149,7 @@ For more information on working with batches, see
 Inspecting exeuction statistics
 ===============================
 
-Ray Data calculates statistics during execution like runtime and memory usage for the different stages. 
+Ray Data calculates statistics during execution like the wall clock time and memory usage for the different stages. 
 
 To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data.log`.
 
