@@ -240,10 +240,11 @@ class ASGIReceiveProxy:
                     )
                 )
                 for message in pickle.loads(pickled_messages):
+                    self._queue.put_nowait(message)
+
                     if message["type"] in {"http.disconnect", "websocket.disconnect"}:
                         self._disconnect_message = message
-
-                    self._queue.put_nowait(message)
+                        return
             except Exception as e:
                 self._queue.put_nowait(e)
                 return
