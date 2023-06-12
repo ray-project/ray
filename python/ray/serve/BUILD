@@ -485,12 +485,13 @@ py_test(
    deps = [":serve_lib"],
 )
 
-# Runs test_api, test_fastapi, and test_http_adapters with experimental streaming turned on.
+# Runs a subset of the tests with experimental streaming turned on.
 py_test(
    name = "test_experimental_streaming",
    size = "large",
    srcs = glob(["tests/test_experimental_streaming.py",
                "tests/test_api.py",
+               "tests/test_failure.py",
                "tests/test_fastapi.py",
                "tests/test_http_adapters.py",
                "**/conftest.py"]),
@@ -501,6 +502,15 @@ py_test(
 
 py_test(
     name = "test_streaming_response",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
+)
+
+py_test(
+    name = "test_websockets",
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -601,7 +611,7 @@ py_test(
 
 py_test(
     name = "test_gradio_visualization",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve", "py37"],
     deps = [":serve_lib"],
