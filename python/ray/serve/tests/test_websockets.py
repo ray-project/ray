@@ -14,7 +14,6 @@ from ray import serve
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Not working on Windows.")
 @pytest.mark.skipif(
     not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     reason="Streaming feature flag is disabled.",
@@ -54,7 +53,6 @@ def test_send_recv_text_and_binary(serve_instance, route_prefix: str):
         assert websocket.recv().decode("utf-8") == msg
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Not working on Windows.")
 @pytest.mark.skipif(
     not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     reason="Streaming feature flag is disabled.",
@@ -90,7 +88,6 @@ def test_client_disconnect(serve_instance):
     ray.get(wait_ref)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Not working on Windows.")
 @pytest.mark.skipif(
     not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     reason="Streaming feature flag is disabled.",
@@ -111,7 +108,6 @@ def test_server_disconnect(serve_instance):
             websocket.recv()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Not working on Windows.")
 @pytest.mark.skipif(
     not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     reason="Streaming feature flag is disabled.",
@@ -157,6 +153,4 @@ def test_unary_streaming_websocket_same_deployment(serve_instance):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", "-s", __file__]))
