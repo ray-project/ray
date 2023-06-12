@@ -44,7 +44,6 @@ import ray._private.ray_constants as ray_constants
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
-from ray._private.__import import import_attr
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv

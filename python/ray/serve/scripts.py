@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 import ray
 from ray import serve
-from ray._private.utils import import_attr
+from ray._private.__import import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient

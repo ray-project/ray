@@ -274,7 +274,7 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
     def run_graph():
         """Deploys a Serve application to the controller's Ray cluster."""
         from ray import serve
-        from ray._private.utils import import_attr
+        from ray._private.__import import import_attr
         from ray.serve.api import build
 
         # Import and build the graph
