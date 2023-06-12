@@ -6,11 +6,11 @@ aws:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
-            VolumeSize: 2000
+            VolumeSize: 5000
         - DeviceName: /dev/sda2
           Ebs:
             DeleteOnTermination: true
-            VolumeSize: 2000
+            VolumeSize: 5000
 
 head_node_type:
     name: head_node
