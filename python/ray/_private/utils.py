@@ -44,6 +44,7 @@ import ray._private.ray_constants as ray_constants
 from ray.core.generated.runtime_env_common_pb2 import (
     RuntimeEnvInfo as ProtoRuntimeEnvInfo,
 )
+from ray._private.__import import import_attr
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -71,8 +72,6 @@ _PYARROW_VERSION = None
 # This global variable is used for testing only
 _CALLED_FREQ = defaultdict(lambda: 0)
 _CALLED_FREQ_LOCK = threading.Lock()
-
-INIT_FILE_NAME = "__init__.py"
 
 
 def get_user_temp_dir():
@@ -1161,54 +1160,6 @@ def deprecated(
         return new_func
 
     return deprecated_wrapper
-
-
-def create_init_files(module_name: str):
-    """Iteratively go through all subdirectories and add __init__.py files if not exist
-
-    Python requires __init__.py in the directory to register the modules as importable.
-    This function helps to create __init__.py files if they don't currently exist in the
-    subdirectories, so they can be imported by the import_attr().
-    """
-    module_path = Path(importlib.util.find_spec(module_name).origin)
-    for path_object in module_path.parent.rglob("*"):
-        if path_object.is_dir():
-            init_file_path = path_object / INIT_FILE_NAME
-            if not init_file_path.exists():
-                logger.info(f"Init file not exist at {init_file_path}, creating now.")
-                open(init_file_path, "a").close()
-
-
-def import_attr(full_path: str):
-    """Given a full import path to a module attr, return the imported attr.
-
-    For example, the following are equivalent:
-        MyClass = import_attr("module.submodule:MyClass")
-        MyClass = import_attr("module.submodule.MyClass")
-        from module.submodule import MyClass
-
-    Returns:
-        Imported attr
-    """
-    if full_path is None:
-        raise TypeError("import path cannot be None")
-
-    if ":" in full_path:
-        if full_path.count(":") > 1:
-            raise ValueError(
-                f'Got invalid import path "{full_path}". An '
-                "import path may have at most one colon."
-            )
-        module_name, attr_name = full_path.split(":")
-    else:
-        last_period_idx = full_path.rfind(".")
-        module_name = full_path[:last_period_idx]
-        attr_name = full_path[last_period_idx + 1 :]
-
-    # Create init files so the submodules can be imported
-    create_init_files(module_name=module_name)
-    module = importlib.import_module(module_name)
-    return getattr(module, attr_name)
 
 
 def get_wheel_filename(

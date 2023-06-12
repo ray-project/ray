@@ -8,10 +8,8 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import (
-    import_attr,
-    run_background_task,
-)
+from ray._private.utils import run_background_task
+from ray._private.__import import import_attr
 from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
