@@ -159,7 +159,7 @@ class BufferedASGISender(Send):
 
 
 class ASGIMessageQueue(Send):
-    """Queue enables polling for received or sent messages off a queue.
+    """Queue enables polling for received or sent messages.
 
     This class assumes a single consumer of the queue (concurrent calls to
     `get_messages_nowait` and `wait_for_message` may result in undefined behavior).
