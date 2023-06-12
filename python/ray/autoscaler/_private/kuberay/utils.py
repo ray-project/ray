@@ -1,4 +1,4 @@
-# Source: 
+# Source:
 # https://github.com/kubernetes-client/python/blob/master/kubernetes/utils/quantity.py
 from decimal import Decimal, InvalidOperation
 
@@ -10,7 +10,7 @@ def parse_quantity(quantity):
     base1024: Ki | Mi | Gi | Ti | Pi | Ei
     base1000: n | u | m | "" | k | M | G | T | P | E
 
-    See 
+    See
     https://github.com/kubernetes/apimachinery/blob/master/pkg/api/resource/quantity.go
 
     Input:
