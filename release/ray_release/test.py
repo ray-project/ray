@@ -141,6 +141,14 @@ class Test(dict):
             return {}
         return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
 
+    def get_byod_pips(self) -> List[str]:
+        """
+        Returns the list of pips for the BYOD cluster.
+        """
+        if not self.is_byod_cluster():
+            return []
+        return self["cluster"]["byod"].get("pip", [])
+
     def get_name(self) -> str:
         """
         Returns the name of the test.
