@@ -34,7 +34,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.http_util import make_fastapi_class_based_view
-from ray.serve._private.utils import DEFAULT
+from ray.serve._private.__utils import DEFAULT
 
 
 def test_fastapi_function(serve_instance):

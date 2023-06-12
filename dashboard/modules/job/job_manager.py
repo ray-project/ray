@@ -20,7 +20,7 @@ from ray.util.scheduling_strategies import (
 )
 import ray
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.utils import run_background_task
+from ray._private._utils import run_background_task
 import ray._private.ray_constants as ray_constants
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle

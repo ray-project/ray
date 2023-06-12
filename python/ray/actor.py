@@ -9,6 +9,7 @@ import ray._private.worker
 import ray._raylet
 from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
+from ray._private.__utils import get_runtime_env_info, parse_runtime_env
 from ray._private.async_compat import is_async_func
 from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import (
@@ -22,7 +23,6 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
-from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
     PythonFunctionDescriptor,
@@ -730,7 +730,7 @@ class ActorClass:
             elif name == "":
                 raise ValueError("Actor name cannot be an empty string.")
         if namespace is not None:
-            ray._private.utils.validate_namespace(namespace)
+            ray._private.__utils.validate_namespace(namespace)
 
         # Handle the get-or-create case.
         if actor_options.get("get_if_exists"):
@@ -851,7 +851,7 @@ class ActorClass:
                 meta.method_meta.methods.keys(),
             )
 
-        resources = ray._private.utils.resources_from_ray_options(actor_options)
+        resources = ray._private.__utils.resources_from_ray_options(actor_options)
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
         # decorator. Last three conditions are to check that no resources were

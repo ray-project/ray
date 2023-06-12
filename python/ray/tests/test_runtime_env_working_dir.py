@@ -20,7 +20,7 @@ from ray._private.runtime_env.working_dir import (
     WorkingDirPlugin,
     set_pythonpath_in_context,
 )
-from ray._private.utils import get_directory_size_bytes
+from ray._private._utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).

@@ -216,7 +216,7 @@ def test_config_metadata(shutdown_only):
 
 def test_get_entrypoint():
     get_entrypoint = """
-from ray._private.utils import get_entrypoint_name
+from ray._private._utils import get_entrypoint_name
 print("result:", get_entrypoint_name())
 """
 

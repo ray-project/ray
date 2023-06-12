@@ -59,7 +59,7 @@ from ray.tune.utils import date_str, flatten_dict
 from ray.tune.utils.util import _split_remote_local_path
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
-from ray._private.utils import binary_to_hex, hex_to_binary
+from ray._private.__utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
 _DEFAULT_WIN_MAX_PATH_LENGTH = 260

@@ -87,7 +87,7 @@ def workflow_start_regular_shared_serve(storage_type, use_ray_client: str, reque
 
 def _start_cluster_and_get_address(parameter: str) -> str:
     command_args = parameter.split(" ")
-    out = ray._private.utils.decode(
+    out = ray._private._utils.decode(
         subprocess.check_output(command_args, stderr=subprocess.STDOUT)
     )
     # Get the redis address from the output.

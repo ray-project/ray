@@ -38,7 +38,7 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
-import ray._private.utils
+import ray._private._utils
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
@@ -396,11 +396,11 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
     with proc:
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
-            print(ray._private.utils.decode(output, encode_type=encode))
+            print(ray._private._utils.decode(output, encode_type=encode))
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
-        out = ray._private.utils.decode(output, encode_type=encode)
+        out = ray._private._utils.decode(output, encode_type=encode)
     return out
 
 
@@ -528,7 +528,7 @@ def wait_for_condition(
             if condition_predictor(**kwargs):
                 return
         except Exception:
-            last_ex = ray._private.utils.format_error_message(traceback.format_exc())
+            last_ex = ray._private._utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
     if last_ex is not None:
@@ -1378,7 +1378,7 @@ def get_and_run_node_killer(
             self.is_running = False
             self.head_node_id = head_node_id
             self.killed_nodes = set()
-            self.done = ray._private.utils.get_or_create_event_loop().create_future()
+            self.done = ray._private._utils.get_or_create_event_loop().create_future()
             self.max_nodes_to_kill = max_nodes_to_kill
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
@@ -1495,17 +1495,17 @@ def chdir(d: str):
 
 def test_get_directory_size_bytes():
     with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
-        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 0
+        assert ray._private._utils.get_directory_size_bytes(tmp_dir) == 0
         with open("test_file", "wb") as f:
             f.write(os.urandom(100))
-        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 100
+        assert ray._private._utils.get_directory_size_bytes(tmp_dir) == 100
         with open("test_file_2", "wb") as f:
             f.write(os.urandom(50))
-        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 150
+        assert ray._private._utils.get_directory_size_bytes(tmp_dir) == 150
         os.mkdir("subdir")
         with open("subdir/subdir_file", "wb") as f:
             f.write(os.urandom(2))
-        assert ray._private.utils.get_directory_size_bytes(tmp_dir) == 152
+        assert ray._private._utils.get_directory_size_bytes(tmp_dir) == 152
 
 
 def check_local_files_gced(cluster, whitelist=None):
@@ -1665,7 +1665,7 @@ def wandb_setup_api_key_hook():
 # Get node stats from node manager.
 def get_node_stats(raylet, num_retry=5, timeout=2):
     raylet_address = f'{raylet["NodeManagerAddress"]}:{raylet["NodeManagerPort"]}'
-    channel = ray._private.utils.init_grpc_channel(raylet_address)
+    channel = ray._private._utils.init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     for _ in range(num_retry):
         try:
@@ -1684,7 +1684,7 @@ def get_resource_usage(gcs_address, timeout=10):
     if not gcs_address:
         gcs_address = ray.worker._global_node.gcs_address
 
-    gcs_channel = ray._private.utils.init_grpc_channel(
+    gcs_channel = ray._private._utils.init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=False
     )
 

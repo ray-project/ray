@@ -26,7 +26,7 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
-from ray._private.utils import get_or_create_event_loop
+from ray._private._utils import get_or_create_event_loop
 from ray._private.test_utils import (
     format_web_url,
     get_error_message,

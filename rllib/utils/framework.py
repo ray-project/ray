@@ -310,7 +310,7 @@ def get_variable(
 
 @Deprecated(
     old="rllib/utils/framework.py::get_activation_fn",
-    new="rllib/models/utils.py::get_activation_fn",
+    new="rllib/models/__utils.py::get_activation_fn",
     error=True,
 )
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):

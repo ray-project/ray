@@ -11,11 +11,11 @@ from fastapi import Depends, FastAPI
 import ray
 from ray import serve
 from ray._private.__import import import_attr
-from ray.serve._private.utils import require_packages
+from ray.serve._private.__utils import require_packages
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve.drivers_utils import load_http_adapter, HTTPAdapterFn
-from ray.serve._private.utils import install_serve_encoders_to_fastapi
+from ray.serve._private.__utils import install_serve_encoders_to_fastapi
 from ray.serve._private.http_util import BufferedASGISender
 
 

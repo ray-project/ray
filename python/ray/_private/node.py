@@ -22,11 +22,11 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-import ray._private.utils
+import ray._private._utils
 from ray._private import storage
 from ray._raylet import GcsClient
 from ray._private.resource_spec import ResourceSpec
-from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
+from ray._private._utils import open_log, try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -79,7 +79,7 @@ class Node:
         self._default_worker = default_worker
         self.head = head
         self.kernel_fate_share = bool(
-            spawn_reaper and ray._private.utils.detect_fate_sharing_support()
+            spawn_reaper and ray._private._utils.detect_fate_sharing_support()
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
@@ -131,7 +131,7 @@ class Node:
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            temp_dir=ray._private.utils.get_ray_temp_dir(),
+            temp_dir=ray._private._utils.get_ray_temp_dir(),
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers",
@@ -183,13 +183,13 @@ class Node:
         else:
             if ray_params.session_name is None:
                 assert not self._default_worker
-                session_name = ray._private.utils.internal_kv_get_with_retry(
+                session_name = ray._private._utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
                     "session_name",
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._session_name = ray._private.utils.decode(session_name)
+                self._session_name = ray._private._utils.decode(session_name)
             else:
                 # worker mode
                 self._session_name = ray_params.session_name
@@ -342,7 +342,7 @@ class Node:
 
         if not cluster_metadata:
             return
-        ray._private.utils.check_version_info(cluster_metadata)
+        ray._private._utils.check_version_info(cluster_metadata)
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -359,7 +359,7 @@ class Node:
             self.kill_all_processes(check_alive=False, allow_graceful=True)
             sys.exit(1)
 
-        ray._private.utils.set_sigterm_handler(sigterm_handler)
+        ray._private._utils.set_sigterm_handler(sigterm_handler)
 
     def _init_temp(self):
         # Create a dictionary to store temp file index.
@@ -370,13 +370,13 @@ class Node:
         else:
             if self._ray_params.temp_dir is None:
                 assert not self._default_worker
-                temp_dir = ray._private.utils.internal_kv_get_with_retry(
+                temp_dir = ray._private._utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
                     "temp_dir",
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._temp_dir = ray._private.utils.decode(temp_dir)
+                self._temp_dir = ray._private._utils.decode(temp_dir)
             else:
                 self._temp_dir = self._ray_params.temp_dir
 
@@ -387,13 +387,13 @@ class Node:
         else:
             if self._temp_dir is None or self._session_name is None:
                 assert not self._default_worker
-                session_dir = ray._private.utils.internal_kv_get_with_retry(
+                session_dir = ray._private._utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
                     "session_dir",
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._session_dir = ray._private.utils.decode(session_dir)
+                self._session_dir = ray._private._utils.decode(session_dir)
             else:
                 self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
@@ -666,7 +666,7 @@ class Node:
                 "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
-            directory_name = ray._private.utils.get_ray_temp_dir()
+            directory_name = ray._private._utils.get_ray_temp_dir()
         directory_name = os.path.expanduser(directory_name)
         index = self._incremental_dict[suffix, prefix, directory_name]
         # `tempfile.TMP_MAX` could be extremely large,

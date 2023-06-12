@@ -6,7 +6,7 @@ from math import floor
 import os
 import sys
 import time
-from ray._private.utils import get_or_create_event_loop
+from ray._private._utils import get_or_create_event_loop
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 from packaging.version import Version

@@ -25,7 +25,7 @@ from ray.serve._private.constants import (
     DEFAULT_HTTP_PORT,
     DEFAULT_MAX_CONCURRENT_QUERIES,
 )
-from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
+from ray.serve._private.__utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
@@ -33,7 +33,7 @@ from ray.serve.generated.serve_pb2 import (
     ReplicaConfig as ReplicaConfigProto,
 )
 from ray._private import ray_option_utils
-from ray._private.utils import resources_from_ray_options
+from ray._private.__utils import resources_from_ray_options
 from ray._private.serialization import pickle_dumps
 from ray.util.annotations import DeveloperAPI, PublicAPI
 

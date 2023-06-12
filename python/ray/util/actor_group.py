@@ -6,7 +6,7 @@ from typing import List, TypeVar, Optional, Dict, Type, Tuple
 import ray
 from ray.actor import ActorHandle
 from ray.util.annotations import Deprecated
-from ray._private.utils import get_ray_doc_version
+from ray._private.__utils import get_ray_doc_version
 
 T = TypeVar("T")
 ActorMetadata = TypeVar("ActorMetadata")

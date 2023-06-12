@@ -8,7 +8,7 @@ from typing import Coroutine, Dict, Optional, Union
 import threading
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._private.__utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 
 from ray import serve
@@ -18,7 +18,7 @@ from ray.serve._private.constants import (
     SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
     ServeHandleType,
 )
-from ray.serve._private.utils import (
+from ray.serve._private.__utils import (
     get_random_letters,
     DEFAULT,
 )

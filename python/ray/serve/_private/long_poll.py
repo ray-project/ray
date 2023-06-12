@@ -7,7 +7,7 @@ import logging
 import os
 import random
 from typing import Any, Tuple, Callable, DefaultDict, Dict, Set, Union
-from ray._private.utils import get_or_create_event_loop
+from ray._private.__utils import get_or_create_event_loop
 
 from ray.serve._private.common import ReplicaName
 from ray.serve.generated.serve_pb2 import (
@@ -21,7 +21,7 @@ from ray.serve.generated.serve_pb2 import (
 
 import ray
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.utils import format_actor_name
+from ray.serve._private.__utils import format_actor_name
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

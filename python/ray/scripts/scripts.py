@@ -21,7 +21,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.utils import parse_resources_json, parse_node_labels_json
+from ray._private._utils import parse_resources_json, parse_node_labels_json
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
@@ -922,7 +922,7 @@ def start(
         cli_logger.flush()
 
     assert ray_params.gcs_address is not None
-    ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
+    ray._private._utils.write_ray_address(ray_params.gcs_address, temp_dir)
 
     if block:
         cli_logger.newline()
@@ -1157,7 +1157,7 @@ def stop(force: bool, grace_period: int):
     # NOTE(swang): This will not reset the cluster address for a user-defined
     # temp_dir. This is fine since it will get overwritten the next time we
     # call `ray start`.
-    ray._private.utils.reset_ray_address()
+    ray._private._utils.reset_ray_address()
 
 
 @cli.command()
@@ -1836,7 +1836,7 @@ def timeline(address):
     ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = os.path.join(
-        ray._private.utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
+        ray._private._utils.get_user_temp_dir(), f"ray-timeline-{time}.json"
     )
     ray.timeline(filename=filename)
     size = os.path.getsize(filename)

@@ -16,7 +16,7 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray._private.ray_constants as ray_constants
 import ray._private.resource_spec as resource_spec
-import ray._private.utils
+import ray._private.__utils
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.test_utils import wait_for_condition
@@ -286,7 +286,7 @@ def test_get_system_memory():
         memory_limit_file.write("100")
         memory_limit_file.flush()
         assert (
-            ray._private.utils.get_system_memory(
+            ray._private.__utils.get_system_memory(
                 memory_limit_filename=memory_limit_file.name,
                 memory_limit_filename_v2="__does_not_exist__",
             )
@@ -299,7 +299,7 @@ def test_get_system_memory():
         memory_limit_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (
-            ray._private.utils.get_system_memory(
+            ray._private.__utils.get_system_memory(
                 memory_limit_filename=memory_limit_file.name,
                 memory_limit_filename_v2="__does_not_exist__",
             )
@@ -310,7 +310,7 @@ def test_get_system_memory():
         memory_max_file.write("100\n")
         memory_max_file.flush()
         assert (
-            ray._private.utils.get_system_memory(
+            ray._private.__utils.get_system_memory(
                 memory_limit_filename="__does_not_exist__",
                 memory_limit_filename_v2=memory_max_file.name,
             )
@@ -323,7 +323,7 @@ def test_get_system_memory():
         memory_max_file.flush()
         psutil_memory_in_bytes = psutil.virtual_memory().total
         assert (
-            ray._private.utils.get_system_memory(
+            ray._private.__utils.get_system_memory(
                 memory_limit_filename="__does_not_exist__",
                 memory_limit_filename_v2=memory_max_file.name,
             )
@@ -343,7 +343,7 @@ def test_get_num_cpus(
     monkeypatch,
 ):
     """Tests
-    - Conditions under which ray._private.utils.get_num_cpus logs a warning about
+    - Conditions under which ray._private.__utils.get_num_cpus logs a warning about
         docker.
     - Fallback to multiprocessing.cpu_count if there's no docker count available.
     """
@@ -375,12 +375,12 @@ def test_get_num_cpus(
             pass
 
     with mock.patch.multiple(
-        "ray._private.utils",
+        "ray._private.__utils",
         _get_docker_cpus=mock_get_docker_cpus,
         ENV_DISABLE_DOCKER_CPU_WARNING=env_disable,
         logger=mock.DEFAULT,
     ) as mocks:
-        num_cpus = ray._private.utils.get_num_cpus(override_disable)
+        num_cpus = ray._private.__utils.get_num_cpus(override_disable)
 
         if got_docker_cpus:
             # Got the docker count of 128 CPUs in the giant mock container.
@@ -408,7 +408,7 @@ def test_detect_docker_cpus():
         period_file.flush()
         cpuset_file.flush()
         assert (
-            ray._private.utils._get_docker_cpus(
+            ray._private.__utils._get_docker_cpus(
                 cpu_quota_file_name=quota_file.name,
                 cpu_period_file_name=period_file.name,
                 cpuset_file_name=cpuset_file.name,
@@ -427,7 +427,7 @@ def test_detect_docker_cpus():
         period_file.flush()
         cpuset_file.flush()
         assert (
-            ray._private.utils._get_docker_cpus(
+            ray._private.__utils._get_docker_cpus(
                 cpu_quota_file_name=quota_file.name,
                 cpu_period_file_name=period_file.name,
                 cpuset_file_name=cpuset_file.name,
@@ -446,7 +446,7 @@ def test_detect_docker_cpus():
         period_file.flush()
         cpuset_file.flush()
         assert (
-            ray._private.utils._get_docker_cpus(
+            ray._private.__utils._get_docker_cpus(
                 cpu_quota_file_name=quota_file.name,
                 cpu_period_file_name=period_file.name,
                 cpuset_file_name=cpuset_file.name,
@@ -459,7 +459,7 @@ def test_detect_docker_cpus():
         cpu_max_file.write("200000 100000")
         cpu_max_file.flush()
         assert (
-            ray._private.utils._get_docker_cpus(
+            ray._private._utils._get_docker_cpus(
                 cpu_quota_file_name="nope",
                 cpu_period_file_name="give_up",
                 cpuset_file_name="lose_hope",
@@ -473,7 +473,7 @@ def test_detect_docker_cpus():
         cpu_max_file.write("max 100000")
         cpu_max_file.flush()
         assert (
-            ray._private.utils._get_docker_cpus(
+            ray._private._utils._get_docker_cpus(
                 cpu_quota_file_name="nope",
                 cpu_period_file_name="give_up",
                 cpuset_file_name="lose_hope",
@@ -489,7 +489,7 @@ def test_detect_docker_cpus():
 @pytest.mark.parametrize("use_cgroups_v2", [True, False])
 def test_k8s_cpu(use_cgroups_v2: bool):
     """Test all the functions in dashboard/k8s_utils.py.
-    Also test ray._private.utils.get_num_cpus when running in a  K8s pod.
+    Also test ray._private._utils.get_num_cpus when running in a  K8s pod.
     Files were obtained from within a K8s pod with 2 CPU request, CPU limit
     unset, with 1 CPU of stress applied.
     """
@@ -567,7 +567,7 @@ def test_k8s_cpu(use_cgroups_v2: bool):
         # If using cgroups v1, use the temp file we've just made
         cpu_usage_file = cpu_file.name
     with mock.patch(
-        "ray._private.utils.os.environ", {"KUBERNETES_SERVICE_HOST": "host"}
+        "ray._private._utils.os.environ", {"KUBERNETES_SERVICE_HOST": "host"}
     ), mock.patch("ray.dashboard.k8s_utils.CPU_USAGE_PATH", cpu_usage_file), mock.patch(
         "ray.dashboard.k8s_utils.CPU_USAGE_PATH_V2", cpu_v2_file.name
     ), mock.patch(

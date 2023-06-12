@@ -11,7 +11,7 @@ import pytest
 import os
 from ray.util.state import list_objects
 import subprocess
-from ray._private.utils import get_num_cpus
+from ray._private._utils import get_num_cpus
 import time
 import sys
 

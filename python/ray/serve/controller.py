@@ -8,7 +8,7 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import run_background_task
+from ray._private.__utils import run_background_task
 from ray._private.__import import import_attr
 from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
@@ -57,7 +57,7 @@ from ray.serve.schema import (
     ServeActorDetails,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
-from ray.serve._private.utils import (
+from ray.serve._private.__utils import (
     DEFAULT,
     override_runtime_envs_except_env_vars,
 )
@@ -835,9 +835,6 @@ def deploy_serve_application(
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
 
         # Import and build the application.
-        raise Exception(
-            f"Test failing, import_path: {import_path}, pwd: {os. getcwd()}"
-        )
         app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
         app = build(app, name)
 

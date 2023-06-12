@@ -16,7 +16,7 @@ from ray.exceptions import (
     WorkerCrashedError,
     ObjectLostError,
 )
-from ray._private.utils import DeferSigint
+from ray._private.__utils import DeferSigint
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.util.state import list_tasks
 

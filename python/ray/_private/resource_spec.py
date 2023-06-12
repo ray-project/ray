@@ -170,10 +170,10 @@ class ResourceSpec(
 
         num_cpus = self.num_cpus
         if num_cpus is None:
-            num_cpus = ray._private.utils.get_num_cpus()
+            num_cpus = ray._private._utils.get_num_cpus()
 
         num_gpus = self.num_gpus
-        gpu_ids = ray._private.utils.get_cuda_visible_devices()
+        gpu_ids = ray._private._utils.get_cuda_visible_devices()
         # Check that the number of GPUs that the raylet wants doesn't
         # exceed the amount allowed by CUDA_VISIBLE_DEVICES.
         if num_gpus is not None and gpu_ids is not None and num_gpus > len(gpu_ids):
@@ -199,8 +199,8 @@ class ResourceSpec(
             logger.exception("Could not parse gpu information.")
 
         # Choose a default object store size.
-        system_memory = ray._private.utils.get_system_memory()
-        avail_memory = ray._private.utils.estimate_available_memory()
+        system_memory = ray._private._utils.get_system_memory()
+        avail_memory = ray._private._utils.estimate_available_memory()
         object_store_memory = self.object_store_memory
         if object_store_memory is None:
             object_store_memory = int(
@@ -221,7 +221,7 @@ class ResourceSpec(
             if sys.platform == "linux" or sys.platform == "linux2":
                 # Multiple by 0.95 to give a bit of wiggle-room.
                 # https://github.com/ray-project/ray/pull/23034/files
-                shm_avail = ray._private.utils.get_shared_memory_bytes() * 0.95
+                shm_avail = ray._private._utils.get_shared_memory_bytes() * 0.95
                 max_cap = min(
                     max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail), max_cap
                 )

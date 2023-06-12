@@ -14,7 +14,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
 )
-from ray._private.utils import init_grpc_channel
+from ray._private._utils import init_grpc_channel
 
 
 def get_workers():
@@ -94,8 +94,8 @@ ray.shutdown()
         err = p.stderr.read().decode("ascii")
         p.wait()
         # out, err = p.communicate()
-        # out = ray._private.utils.decode(out)
-        # err = ray._private.utils.decode(err)
+        # out = ray._private._utils.decode(out)
+        # err = ray._private._utils.decode(err)
         if p.returncode != 0:
             print(
                 "Driver with PID {} returned error code {}".format(p.pid, p.returncode)

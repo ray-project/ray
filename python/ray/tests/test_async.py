@@ -10,7 +10,7 @@ import pytest
 import ray
 from ray._private.async_compat import is_async_func
 from ray._private.test_utils import wait_for_condition
-from ray._private.utils import (
+from ray._private.__utils import (
     get_or_create_event_loop,
     run_background_task,
     background_tasks,

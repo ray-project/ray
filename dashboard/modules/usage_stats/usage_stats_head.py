@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
-from ray._private.utils import get_or_create_event_loop
+from ray._private._utils import get_or_create_event_loop
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.utils import async_loop_forever
 
@@ -37,7 +37,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         self._grafana_ran_before = False
         self._prometheus_ran_before = False
 
-    if ray._private.utils.check_dashboard_dependencies_installed():
+    if ray._private._utils.check_dashboard_dependencies_installed():
         import aiohttp
         import ray.dashboard.optional_utils
 

@@ -20,7 +20,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve.tests.test_failure import request_with_retries
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.__utils import get_random_letters
 
 
 def test_recover_start_from_replica_actor_names(serve_instance):

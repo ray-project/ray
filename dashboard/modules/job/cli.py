@@ -8,13 +8,13 @@ import click
 
 import ray._private.ray_constants as ray_constants
 from ray._private.storage import _load_class
-from ray._private.utils import get_or_create_event_loop
+from ray._private._utils import get_or_create_event_loop
 from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.dashboard.modules.job.cli_utils import add_common_job_options
 from ray.util.annotations import PublicAPI
-from ray._private.utils import parse_resources_json, parse_metadata_json
+from ray._private._utils import parse_resources_json, parse_metadata_json
 
 
 def _get_sdk_client(

@@ -603,7 +603,7 @@ class Pool:
             # Cluster mode.
             if ray_address is None and (
                 RAY_ADDRESS_ENV in os.environ
-                or ray._private.utils.read_ray_address() is not None
+                or ray._private.__utils.read_ray_address() is not None
             ):
                 ray.init()
             elif ray_address is not None:

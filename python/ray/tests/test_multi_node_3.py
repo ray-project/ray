@@ -20,7 +20,7 @@ from ray._private.test_utils import (
     wait_for_children_of_pid,
     wait_for_children_of_pid_to_exit,
 )
-from ray._private.utils import detect_fate_sharing_support
+from ray._private._utils import detect_fate_sharing_support
 
 
 def test_calling_start_ray_head(call_ray_stop_only):
@@ -128,7 +128,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     )
     check_call_ray(["stop"])
 
-    temp_dir = ray._private.utils.get_ray_temp_dir()
+    temp_dir = ray._private._utils.get_ray_temp_dir()
 
     # Test starting Ray with RAY_REDIS_ADDRESS env.
     _, proc = start_redis_instance(
@@ -382,7 +382,7 @@ ray.init(address="{}")
 @ray.remote
 def g(x):
     return
-g.remote(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
+g.remote(ray.ObjectRef(ray._private._utils.hex_to_binary("{}")))
 time.sleep(1)
 print("success")
 """
@@ -405,7 +405,7 @@ import ray
 ray.init(address="{}")
 @ray.remote
 def g():
-    ray.wait(ray.ObjectRef(ray._private.utils.hex_to_binary("{}")))
+    ray.wait(ray.ObjectRef(ray._private._utils.hex_to_binary("{}")))
 g.remote()
 time.sleep(1)
 print("success")

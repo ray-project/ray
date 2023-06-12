@@ -6,7 +6,7 @@ import grpc
 
 import aiohttp.web
 
-import ray._private.utils
+import ray._private._utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -107,7 +107,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 node_info["nodeManagerAddress"], int(node_info["nodeManagerPort"])
             )
             options = ray_constants.GLOBAL_GRPC_OPTIONS
-            channel = ray._private.utils.init_grpc_channel(
+            channel = ray._private._utils.init_grpc_channel(
                 address, options, asynchronous=True
             )
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)

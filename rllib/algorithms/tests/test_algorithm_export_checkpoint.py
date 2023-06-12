@@ -54,7 +54,7 @@ def save_test(alg_name, framework="tf", multi_agent=False):
         test_obs = np.array([[0.1, 0.2, 0.3, 0.4]])
 
     export_dir = os.path.join(
-        ray._private.utils.get_user_temp_dir(), "export_dir_%s" % alg_name
+        ray._private._utils.get_user_temp_dir(), "export_dir_%s" % alg_name
     )
 
     print("Exporting algo checkpoint", alg_name, export_dir)

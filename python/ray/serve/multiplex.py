@@ -15,7 +15,7 @@ from ray.serve.context import (
     get_internal_replica_context,
 )
 from ray.serve._private.common import MultiplexedReplicaInfo
-from ray._private.utils import run_background_task
+from ray._private.__utils import run_background_task
 from ray.serve import metrics
 
 

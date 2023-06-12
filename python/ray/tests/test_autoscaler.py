@@ -3514,7 +3514,7 @@ class AutoscalingTest(unittest.TestCase):
             def __init__(self, *args, **kwargs):
                 raise AutoscalerInitFailException
 
-        with patch("ray._private.utils.publish_error_to_driver") as mock_publish:
+        with patch("ray._private._utils.publish_error_to_driver") as mock_publish:
             with patch.multiple(
                 "ray.autoscaler._private.monitor",
                 StandardAutoscaler=FaultyAutoscaler,

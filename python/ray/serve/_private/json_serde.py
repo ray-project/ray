@@ -22,7 +22,7 @@ from ray.serve._private.deployment_function_executor_node import (
 from ray.serve.schema import (
     DeploymentSchema,
 )
-from ray.serve._private.utils import parse_import_path
+from ray.serve._private.__utils import parse_import_path
 from ray.serve.handle import (
     HandleOptions,
     RayServeHandle,

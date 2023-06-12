@@ -14,7 +14,7 @@ from ray.serve._private.common import (
     HTTPProxyStatus,
 )
 from ray.serve.config import DeploymentMode
-from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
+from ray.serve._private.__utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 

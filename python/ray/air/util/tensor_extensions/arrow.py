@@ -10,7 +10,7 @@ from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
-from ray._private.utils import _get_pyarrow_version
+from ray._private.__utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
 

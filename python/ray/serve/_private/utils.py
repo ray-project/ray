@@ -207,7 +207,7 @@ def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
-        >>> from ray.serve._private.utils import compute_iterable_delta
+        >>> from ray.serve._private._utils import compute_iterable_delta
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
         >>> compute_iterable_delta(old, new)
@@ -224,7 +224,7 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
     """Given two dicts, return the entries that's (added, removed, updated).
 
     Usage:
-        >>> from ray.serve._private.utils import compute_dict_delta
+        >>> from ray.serve._private._utils import compute_dict_delta
         >>> old = {"a": 1, "b": 2}
         >>> new = {"a": 3, "d": 4}
         >>> compute_dict_delta(old, new)
@@ -254,7 +254,7 @@ def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
         # Raise and catch so we can access traceback.format_exc()
         raise exception
     except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
+        traceback_str = ray._private._utils.format_error_message(traceback.format_exc())
         return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
@@ -420,7 +420,7 @@ def require_packages(packages: List[str]):
     """Decorator making sure function run in specified environments
 
     Examples:
-        >>> from ray.serve._private.utils import require_packages
+        >>> from ray.serve._private._utils import require_packages
         >>> @require_packages(["numpy", "package_a"]) # doctest: +SKIP
         ... def func(): # doctest: +SKIP
         ...     import numpy as np # doctest: +SKIP
@@ -481,7 +481,7 @@ def in_interactive_shell():
 def guarded_deprecation_warning(*args, **kwargs):
     """Wrapper for deprecation warnings, guarded by a flag."""
     if os.environ.get("SERVE_WARN_V1_DEPRECATIONS", "0") == "1":
-        from ray._private.utils import deprecated
+        from ray._private._utils import deprecated
 
         return deprecated(*args, **kwargs)
     else:

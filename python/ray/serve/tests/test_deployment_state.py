@@ -36,7 +36,7 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_CONCURRENT_QUERIES,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.__utils import get_random_letters
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 

@@ -21,7 +21,7 @@ from ray._private.inspect_util import (
     is_static_method,
 )
 from ray._private.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
-from ray._private.utils import (
+from ray._private.__utils import (
     check_oversized_function,
     ensure_str,
     format_error_message,
@@ -468,7 +468,7 @@ class FunctionActorManager:
                 )
                 if not warning_sent:
                     logger.error(warning_message)
-                    ray._private.utils.push_error_to_driver(
+                    ray._private.__utils.push_error_to_driver(
                         self._worker,
                         ray_constants.WAIT_FOR_FUNCTION_PUSH_ERROR,
                         warning_message,

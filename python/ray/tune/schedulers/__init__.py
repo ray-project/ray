@@ -1,6 +1,6 @@
 import inspect
 
-from ray._private.utils import get_function_args
+from ray._private.__utils import get_function_args
 from ray.tune.schedulers.trial_scheduler import TrialScheduler, FIFOScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB

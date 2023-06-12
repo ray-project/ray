@@ -7,6 +7,7 @@ from functools import wraps
 import ray._private.signature
 from ray import Language, cross_language
 from ray._private import ray_option_utils
+from ray._private.__utils import get_runtime_env_info, parse_runtime_env
 from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import (
     client_mode_convert_function,
@@ -14,7 +15,6 @@ from ray._private.client_mode_hook import (
 )
 from ray._private.ray_option_utils import _warn_if_using_deprecated_placement_group
 from ray._private.serialization import pickle_dumps
-from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
     PythonFunctionDescriptor,
@@ -328,7 +328,7 @@ class RemoteFunction:
         ):
             _warn_if_using_deprecated_placement_group(task_options, 4)
 
-        resources = ray._private.utils.resources_from_ray_options(task_options)
+        resources = ray._private.__utils.resources_from_ray_options(task_options)
 
         if scheduling_strategy is None or isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy

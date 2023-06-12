@@ -6,7 +6,7 @@ from time import sleep
 import pytest
 
 import ray
-from ray._private.utils import get_or_create_event_loop
+from ray._private._utils import get_or_create_event_loop
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants

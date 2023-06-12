@@ -340,7 +340,7 @@ def usage_stats_prompt_enabled():
 
 def _generate_cluster_metadata():
     """Return a dictionary of cluster metadata."""
-    ray_version, python_version = ray._private.utils.compute_version_info()
+    ray_version, python_version = ray._private._utils.compute_version_info()
     # These two metadata is necessary although usage report is not enabled
     # to check version compatibility.
     metadata = {

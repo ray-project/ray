@@ -9,7 +9,7 @@ import grpc
 
 import ray
 from ray import cloudpickle
-from ray._private.utils import get_or_create_event_loop
+from ray._private.__utils import get_or_create_event_loop
 from ray._private.tls_utils import add_port_to_grpc_server
 from ray.util.annotations import PublicAPI
 
@@ -21,7 +21,10 @@ from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
-from ray.serve._private.utils import install_serve_encoders_to_fastapi, record_serve_tag
+from ray.serve._private.__utils import (
+    install_serve_encoders_to_fastapi,
+    record_serve_tag,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

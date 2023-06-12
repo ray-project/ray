@@ -12,6 +12,7 @@ from pytest_lazyfixture import lazy_fixture
 
 import ray
 import ray.cloudpickle as pickle
+from ray._private.__utils import _get_pyarrow_version
 from ray._private.arrow_serialization import (
     _align_bit_offset,
     _bytes_for_bits,
@@ -20,7 +21,6 @@ from ray._private.arrow_serialization import (
     _copy_normal_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
-from ray._private.utils import _get_pyarrow_version
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowVariableShapedTensorArray,

@@ -49,7 +49,7 @@ from ray.serve._private.constants import (
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
-from ray.serve._private.utils import (
+from ray.serve._private.__utils import (
     JavaActorHandleProxy,
     format_actor_name,
     get_random_letters,

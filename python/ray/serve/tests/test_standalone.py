@@ -33,7 +33,7 @@ from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import ActorNameList
 from ray.serve._private.http_util import set_socket_reuse_port
-from ray.serve._private.utils import (
+from ray.serve._private.__utils import (
     block_until_http_ready,
     format_actor_name,
     get_all_node_ids,

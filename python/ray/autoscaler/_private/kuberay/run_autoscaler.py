@@ -5,9 +5,9 @@ import time
 
 import ray
 from ray._private import ray_constants
+from ray._private._utils import try_to_create_directory
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
-from ray._private.utils import try_to_create_directory
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import Monitor
 
@@ -71,7 +71,7 @@ def _setup_logging() -> None:
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
     """
     log_dir = os.path.join(
-        ray._private.utils.get_ray_temp_dir(),
+        ray._private._utils.get_ray_temp_dir(),
         ray._private.ray_constants.SESSION_LATEST,
         "logs",
     )
