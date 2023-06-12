@@ -7,6 +7,9 @@ Transforming Data
 Transformations let you process and modify your dataset. You can compose transformations
 to express a chain of computations.
 
+.. note::
+    Transformations are lazy by default. They are not executed until consumption of the data is triggered via :ref:`iterating over the Dataset <iterating-over-data>`, :ref:`saving the Datase <saving-data>`, or :ref:`inspecting properties of the Dataset <inspecting-data>`.
+
 This guide shows you how to:
 
 * `Transform rows <#transforming-rows>`_
