@@ -1,4 +1,5 @@
 import collections
+import copy
 import html
 import itertools
 import logging
@@ -4108,7 +4109,8 @@ class Dataset:
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
-        ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
+        logical_plan_copy = copy.copy(self._plan._logical_plan)
+        ds = Dataset(plan_copy, self._get_epoch(), self._lazy, logical_plan_copy)
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
