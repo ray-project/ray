@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import Dict, Set
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
+from tempfile import NamedTemporaryFile
 
 import pytest
 import requests
@@ -13,7 +14,7 @@ import requests
 import ray
 import ray.actor
 import ray._private.state
-from ray.util.state import list_actors
+from ray.util.state import list_actors, list_tasks
 
 from ray import serve
 from ray._private.test_utils import (
@@ -422,7 +423,6 @@ def test_controller_recover_and_delete(shutdown_ray):
 
 def test_serve_stream_logs(start_and_shutdown_ray_cli_function):
     """Test that serve logs show up across different drivers."""
-    import tempfile
 
     file1 = """from ray import serve
 @serve.deployment
@@ -438,7 +438,7 @@ class B:
         return "Hello B"
 serve.run(B.bind())"""
 
-    with tempfile.NamedTemporaryFile() as f1, tempfile.NamedTemporaryFile() as f2:
+    with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
         f1.write(file1.encode("utf-8"))
         f1.seek(0)
         # Driver 1 (starts Serve controller)
@@ -1121,18 +1121,35 @@ class TestDeployApp:
     def test_controller_recover_and_deploy(self, client: ServeControllerClient):
         """Ensure that in-progress deploy can finish even after controller dies."""
 
-        config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        signal = SignalActor.options(name="signal123").remote()
+
+        config_json = {
+            "applications": [
+                {
+                    "name": "default",
+                    "import_path": "ray.serve.tests.test_config_files.hangs.app",
+                }
+            ]
+        }
+        config = ServeDeploySchema.parse_obj(config_json)
         client.deploy_apps(config)
+
+        # Wait for deploy_serve_application task to start->config has been checkpointed
+        wait_for_condition(
+            lambda: len(
+                list_tasks(
+                    filters=[("func_or_class_name", "=", "deploy_serve_application")],
+                )
+            )
+            > 0
+        )
         ray.kill(client._controller, no_restart=False)
+
+        signal.send.remote()
 
         # When controller restarts, it should redeploy config automatically
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "4 pizzas please!"
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
-            == "9 pizzas please!"
+            lambda: requests.post("http://localhost:8000/").text == "hello world"
         )
 
         serve.shutdown()
