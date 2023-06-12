@@ -1891,8 +1891,8 @@
     cluster_compute: tpl_aws_1x4.yaml
 
   run:
-    # 2.5 days
-    timeout: 216000
+    # 14 hours
+    timeout: 50400
     long_running: true
     script: python workloads/long_running_cloud_storage.py s3://tune-cloud-tests/long_running_cloud_storage
 
@@ -1904,8 +1904,8 @@
       cluster:
         cluster_compute: tpl_gce_1x4.yaml
       run:
-        # 2.5 days
-        timeout: 216000
+        # 14 hours
+        timeout: 50400
         long_running: true
         script: python workloads/long_running_cloud_storage.py gs://tune-cloud-tests/long_running_cloud_storage
         wait_for_nodes:
