@@ -87,8 +87,10 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: cpt_autoscaling_1-3_aws.yaml
 
@@ -121,8 +123,13 @@
 
   frequency: nightly-3x
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      runtime_env:
+        - RAY_memory_usage_threshold=0.5
+        - automatic_object_spilling_enabled=0
     cluster_env: frequent_pausing/app_config.yaml
     cluster_compute: frequent_pausing/compute_config_aws.yaml
 
@@ -149,8 +156,15 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      runtime_env:
+        - RAY_memory_usage_threshold=0.5
+        - automatic_object_spilling_enabled=0
+      pip:
+        - ray[tune]
     cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
@@ -186,8 +200,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_data_20_nodes_aws.yaml
 
@@ -216,8 +233,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: xgboost_app_config.yaml
     cluster_compute: compute_xgboost_aws.yaml
 
@@ -252,8 +272,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
@@ -281,8 +304,11 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
@@ -326,8 +352,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_cpu_1_aws.yaml
 
@@ -353,8 +382,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_1_cpu_16_aws.yaml
 
@@ -380,10 +412,13 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   stable: false
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
@@ -411,8 +446,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
@@ -440,8 +478,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_cpu_8_aws.yaml
 
@@ -469,8 +510,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
@@ -499,8 +543,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
@@ -529,8 +576,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_cpu_1_aws.yaml
 
@@ -556,10 +606,13 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   stable: false
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_cpu_4_aws.yaml
 
@@ -588,10 +641,13 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
 
   stable: false
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
@@ -634,8 +690,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_1_aws.yaml
 
@@ -661,10 +720,13 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   stable: false
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
@@ -803,7 +865,11 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
+
   cluster:
+    byod:
+      type: gpu
     cluster_env: dreambooth_env.yaml
     cluster_compute: dreambooth_compute_aws.yaml
 
@@ -850,6 +916,8 @@
   frequency: weekly
   team: ml
   cluster:
+    byod:
+      type: gpu
     cluster_env: dolly_v2_fsdp_env.yaml
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
@@ -986,8 +1054,18 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: cpu
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1015,8 +1093,18 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        -  sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -so create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
+      runtime_env:
+        - NCCL_SOCKET_IFNAME=ens
     cluster_env: app_config_gpu.yaml
     cluster_compute: tpl_gpu_small_aws.yaml
 
@@ -1044,8 +1132,18 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: cpu
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1073,8 +1171,18 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: cpu
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1103,8 +1211,18 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: cpu
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1132,8 +1250,18 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: cpu
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1162,8 +1290,18 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: cpu
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1192,8 +1330,18 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: cpu
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1247,8 +1395,17 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1276,8 +1433,17 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1305,8 +1471,17 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1334,8 +1509,17 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1362,8 +1546,17 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1390,8 +1583,17 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -o create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python ./create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1424,8 +1626,10 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
@@ -1452,8 +1656,10 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
@@ -1483,8 +1689,15 @@
 
   frequency: nightly-3x
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - HOROVOD_GLOO_TIMEOUT_SECONDS:120
+      pip:
+        - ray[tune]
     cluster_env: horovod/app_config.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
@@ -1511,7 +1724,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
     cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
@@ -1539,8 +1752,12 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
     cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
@@ -1567,8 +1784,12 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
     cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
@@ -1595,8 +1816,16 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/classification.parquet || true
+        - curl -so create_test_data.py https://raw.githubusercontent.com/ray-project/ray/releases/1.3.0/release/xgboost_tests/create_test_data.py
+        - python create_test_data.py /data/classification.parquet --seed 1234 --num-rows 1000000 --num-cols 40 --num-partitions 100 --num-classes 2
     cluster_env: xgboost/app_config_gpu.yaml
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
@@ -1623,7 +1852,7 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
     cluster_env: xgboost/app_config_gpu_master.yaml
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
@@ -1651,8 +1880,13 @@
 
   frequency: nightly-3x
   team: ml
+  python: "3.8"
 
   cluster:
+    byod: 
+      type: gpu
+      pip: 
+        - ray-lightning
     cluster_env: ray-lightning/app_config.yaml
     cluster_compute: ray-lightning/compute_tpl_aws.yaml
 
@@ -1679,6 +1913,7 @@
 
   frequency: nightly-3x
   team: ml
+  python: "3.8"
 
   cluster:
     cluster_env: ray-lightning/app_config_master.yaml
@@ -1737,8 +1972,10 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1764,8 +2001,10 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1791,8 +2030,10 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1827,8 +2068,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod: 
+      type: gpu
     cluster_env: app_config_ml.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1867,8 +2111,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config_ml.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1907,8 +2153,11 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: 
+      pip:
+        - ray[tune]
     cluster_env: app_config.yaml
     cluster_compute: tpl_1x16.yaml
 
@@ -1933,8 +2182,11 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: 
+      pip:
+        - ray[tune] 
     cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
@@ -1967,8 +2219,11 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: 
+      pip:
+        - ray[tune] 
     cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
@@ -2000,8 +2255,11 @@
 
   frequency: weekly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: 
+      pip:
+        - ray[tune] 
     cluster_env: app_config.yaml
     cluster_compute: tpl_1x32_hd.yaml
 
@@ -2035,8 +2293,11 @@
 
   frequency: weekly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: 
+      pip:
+        - ray[tune] 
     cluster_env: app_config.yaml
     cluster_compute: tpl_100x2.yaml
 
@@ -2075,8 +2336,11 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: 
+      pip:
+        - ray[tune] 
     cluster_env: app_config.yaml
     cluster_compute: tpl_16x64.yaml
 
@@ -2104,8 +2368,11 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: 
+      pip:
+        - ray[tune] 
     cluster_env: app_config.yaml
     cluster_compute: tpl_1x96.yaml
 
@@ -2133,8 +2400,20 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
 
   cluster:
+    byod:
+      pip:
+        - ray[tune]
+      pre_run_cmds:
+        - sudo mkdir -p /data || true
+        - sudo chown ray:1000 /data || true
+        - rm -rf /data/train.parquet || true
+        - rm -rf /data/test.parquet || true
+        - curl -o ./create_test_data.py https://raw.githubusercontent.com/ray-project/ray/2a02b97f1ae552debd2071985e23e2da418ed906/release/tune_tests/scalability_tests/create_test_data.py
+        - python ./create_test_data.py /data/train.parquet --seed 1234 --num-rows 40000000 --num-cols 40 --num-partitions 128 --num-classes 2
+        - python ./create_test_data.py /data/test.parquet --seed 1234 --num-rows 10000000 --num-cols 40 --num-partitions 128 --num-classes 2
     cluster_env: app_config_data.yaml
     cluster_compute: tpl_16x64.yaml
 
@@ -2169,8 +2448,9 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_aws_16x1.yaml
 
@@ -2206,8 +2486,10 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: torch_tune_serve_app_config.yaml
     cluster_compute: gpu_tpl_aws.yaml
 
@@ -2741,7 +3023,10 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl.yaml
 
@@ -3348,8 +3633,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
@@ -3381,7 +3668,6 @@
 
   frequency: nightly
   team: ml
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: gpu_2x4_t4_aws.yaml
@@ -6366,6 +6652,7 @@
   stable: false
 
   frequency: nightly
+  python: "3.8"
   team: data
   python: "3.8"
   cluster:
@@ -6401,6 +6688,7 @@
   stable: false
 
   frequency: nightly
+  python: "3.8"
   team: data
   python: "3.8"
   cluster:
