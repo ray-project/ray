@@ -21,7 +21,7 @@
 namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(
-    std::shared_ptr<plasma::PlasmaClientInterface> store_client, uint64_t chunk_size)
+    std::shared_ptr<plasma::ObjectStoreClientInterface> store_client, uint64_t chunk_size)
     : store_client_(store_client), default_chunk_size_(chunk_size) {}
 
 ObjectBufferPool::~ObjectBufferPool() {
@@ -301,3 +301,4 @@ std::string ObjectBufferPool::DebugString() const {
 }
 
 }  // namespace ray
+

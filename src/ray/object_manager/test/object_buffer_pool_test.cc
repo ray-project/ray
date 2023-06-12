@@ -22,7 +22,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
-#include "ray/object_manager/plasma/client.h"
+#include "ray/object_manager/plasma/object_store_client_interface.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
@@ -35,7 +35,7 @@ namespace ray {
 
 using ::testing::_;
 
-class MockPlasmaClient : public plasma::PlasmaClientInterface {
+class MockPlasmaClient : public plasma::ObjectStoreClientInterface {
  public:
   MOCK_METHOD1(Release, ray::Status(const ObjectID &object_id));
 
@@ -64,6 +64,41 @@ class MockPlasmaClient : public plasma::PlasmaClientInterface {
   }
 
   MOCK_METHOD1(Delete, ray::Status(const std::vector<ObjectID> &object_ids));
+
+  MOCK_METHOD4(Connect, ray::Status(const std::string &store_socket_name,
+                 const std::string &manager_socket_name,
+                 int release_delay,
+                 int num_retries));
+
+  MOCK_METHOD2(Authenticate, ray::Status(const std::string& user,
+                                         const std::string& passwd));
+
+  MOCK_METHOD1(Authenticate, ray::Status(const std::string& secret));
+
+  void MemCpy(void* dest, void* src, size_t len) {
+    memcpy(dest, src, len);
+  }
+
+  ray::Status TryCreateImmediately(const ObjectID &object_id,
+                              const ray::rpc::Address &owner_address,
+                              int64_t data_size,
+                              const uint8_t *metadata,
+                              int64_t metadata_size,
+                              std::shared_ptr<Buffer> *data,
+                              plasma::flatbuf::ObjectSource source,
+                              int device_num) {
+    *data = std::make_shared<LocalMemoryBuffer>(data_size);
+    return ray::Status::OK();
+  }
+
+  MOCK_METHOD2(Contains, ray::Status(const ObjectID &object_id, bool *has_object));
+
+  MOCK_METHOD2(Evict, ray::Status(int64_t num_bytes, int64_t &num_bytes_evicted));
+
+  MOCK_METHOD0(DebugString, std::string());
+
+  MOCK_METHOD0(store_capacity, int64_t());
+
 };
 
 class ObjectBufferPoolTest : public ::testing::Test {
@@ -169,3 +204,4 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+

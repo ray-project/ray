@@ -27,7 +27,8 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/object_manager/memory_object_reader.h"
-#include "ray/object_manager/plasma/client.h"
+#include "ray/object_manager/plasma/object_store_client_interface.h"
+
 
 namespace ray {
 
@@ -60,7 +61,7 @@ class ObjectBufferPool {
   ///
   /// \param store_client Plasma store client. Used for testing purposes only.
   /// \param chunk_size The chunk size into which objects are to be split.
-  ObjectBufferPool(std::shared_ptr<plasma::PlasmaClientInterface> store_client,
+  ObjectBufferPool(std::shared_ptr<plasma::ObjectStoreClientInterface> store_client,
                    const uint64_t chunk_size);
 
   ~ObjectBufferPool();
@@ -214,7 +215,7 @@ class ObjectBufferPool {
       GUARDED_BY(pool_mutex_);
 
   /// Plasma client pool.
-  std::shared_ptr<plasma::PlasmaClientInterface> store_client_;
+  std::shared_ptr<plasma::ObjectStoreClientInterface> store_client_;
 
   /// Determines the maximum chunk size to be transferred by a single thread.
   const uint64_t default_chunk_size_;
@@ -223,3 +224,4 @@ class ObjectBufferPool {
 };
 
 }  // namespace ray
+

@@ -339,6 +339,7 @@ cc_library(
         "src/ray/object_manager/plasma/plasma_generated.h",
         "src/ray/object_manager/plasma/protocol.h",
         "src/ray/object_manager/plasma/shared_memory.h",
+	"src/ray/object_manager/plasma/object_store_client_interface.h",
     ] + select({
         "@bazel_tools//src/conditions:windows": [
         ],
