@@ -185,4 +185,5 @@ service AutoscalerStateService {
   // when users call ray.autoscaler.sdk.request_resources.
   rpc RequestClusterResourceConstraint(RequestClusterResourceConstraintRequest)
       returns (RequestClusterResourceConstraintReply);
+  rpc GetClusterState(GetClusterStateRequest) returns (GetClusterStateReply);
 }
