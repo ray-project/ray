@@ -113,9 +113,9 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
 
         while created_cloud_instances and instances_selected:
             cloud_instance = created_cloud_instances.pop()
-            instance = self._instance_storage.pop()
+            instance = instances_selected.pop()
             instance.cloud_instance_id = cloud_instance.cloud_instance_id
-            instance.interal_ip = cloud_instance.internal_ip
+            instance.internal_ip = cloud_instance.internal_ip
             instance.external_ip = cloud_instance.external_ip
             instance.status = Instance.ALLOCATED
             instance.ray_status = Instance.RAY_STATUS_UNKOWN
@@ -133,9 +133,8 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
 
         if created_cloud_instances:
             # instances are leaked, we probably need to terminate them
-            self._node_provider.terminate_nodes(
-                [instance.cloud_instance_id for instance in created_cloud_instances]
-            )
+            for instance in created_cloud_instances:
+                self._node_provider.terminate_node(instance.cloud_instance_id)
 
         if instances_selected:
             # instances creation failed, we need to marke them allocation failed.
