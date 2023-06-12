@@ -601,7 +601,7 @@ py_test(
 
 py_test(
     name = "test_gradio_visualization",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve", "py37"],
     deps = [":serve_lib"],
