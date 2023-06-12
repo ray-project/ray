@@ -75,6 +75,9 @@ EXPR_ERROR_PICKLE_FILE = "error.pkl"
 # File that stores the error file
 EXPR_ERROR_FILE = "error.txt"
 
+# File that stores the checkpoint metadata
+CHECKPOINT_TUNE_METADATA_FILE = ".tune_metadata"
+
 # ==================================================
 #               Environment Variables
 # ==================================================
