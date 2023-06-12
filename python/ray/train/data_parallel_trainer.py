@@ -452,6 +452,17 @@ class DataParallelTrainer(BaseTrainer):
         )
 
         def clear_lazy_checkpoint_marker():
+            """Clear the stale lazy checkpointing marker on all worker nodes.
+
+            After recovery, the trainer may be scheduled on another node.
+            We should delete the marker files created earlier on each node to
+            Avoid converting checkpoints to string paths.
+
+            Please note that we need to clear the flag before the initialization
+            of the checkpoint_manager, during which it will create a new lazy
+            checkpointing marker file.
+            """
+
             marker_file = Path(trial_info.logdir) / LAZY_CHECKPOINT_MARKER_FILE
             if marker_file.exists():
                 logger.debug(
