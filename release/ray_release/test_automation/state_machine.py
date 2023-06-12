@@ -46,7 +46,7 @@ class TestStateMachine:
 
     @classmethod
     def get_ray_repo(cls):
-        cls.init_ray_repo()
+        cls._init_ray_repo()
         return cls.ray_repo
 
     @classmethod
