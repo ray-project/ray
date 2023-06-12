@@ -151,7 +151,7 @@ Inspecting exeuction statistics
 
 Ray Data calculates statistics during execution like runtime and memory usage for the different stages. 
 
-To view debug stats about your :class:`Datasets <ray.data.Dataset>` executions, call :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data.log`.
+To view stats about your :class:`Datasets <ray.data.Dataset>`, call :meth:`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data.log`.
 
 .. testcode::
     import ray
