@@ -21,8 +21,7 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
         size = size,
         args = [
             "--doctest-modules",
-            "--doctest-globs='*.md'",
-            "--capture=no",
+            "--doctest-glob='*.md'",
             "-c=$(location //bazel:conftest.py)",
             "-v"
         ] + args + ["$(location :%s)" % file for file in files],

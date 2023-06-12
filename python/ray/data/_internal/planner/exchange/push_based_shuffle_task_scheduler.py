@@ -3,8 +3,11 @@ import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
-from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
+from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.planner.exchange.interfaces import (
+    ExchangeTaskScheduler,
+    ExchangeTaskSpec,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
@@ -365,6 +368,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
+        ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         merge_factor: int = 2,
@@ -427,7 +431,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             shuffle_map,
             [output_num_blocks, stage.merge_schedule, *self._exchange_spec._map_args],
         )
-        map_bar = ProgressBar("Shuffle Map", position=0, total=len(input_blocks_list))
+
+        sub_progress_bar_dict = ctx.sub_progress_bar_dict
+        bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
+        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        map_bar = sub_progress_bar_dict[bar_name]
         map_stage_executor = _PipelinedStageExecutor(
             map_stage_iter, stage.num_map_tasks_per_round, progress_bar=map_bar
         )
@@ -460,12 +468,13 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             except StopIteration:
                 merge_done = True
                 break
-
-        map_bar.close()
         all_merge_results = merge_stage_iter.pop_merge_results()
 
         # Execute and wait for the reduce stage.
-        reduce_bar = ProgressBar("Shuffle Reduce", total=output_num_blocks)
+        bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
+        assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
+        reduce_bar = sub_progress_bar_dict[bar_name]
+
         shuffle_reduce = cached_remote_fn(self._exchange_spec.reduce)
         reduce_stage_iter = _ReduceStageIterator(
             stage,
@@ -503,13 +512,15 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             for i, block in enumerate(new_blocks)
         ]
         sorted_blocks.sort(key=lambda x: x[0])
-        _, new_blocks, reduce_stage_metadata = zip(*sorted_blocks)
+
+        new_blocks, reduce_stage_metadata = [], []
+        if sorted_blocks:
+            _, new_blocks, reduce_stage_metadata = zip(*sorted_blocks)
         del sorted_blocks
 
         assert (
             len(new_blocks) == output_num_blocks
         ), f"Expected {output_num_blocks} outputs, produced {len(new_blocks)}"
-        reduce_bar.close()
 
         output = []
         for block, meta in zip(new_blocks, reduce_stage_metadata):

@@ -1,14 +1,11 @@
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 import numpy as np
 
 import ray
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from typing import Optional
-
-from ray.data.block import Block
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:

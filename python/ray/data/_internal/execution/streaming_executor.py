@@ -1,36 +1,36 @@
+import os
 import threading
 import time
-import os
 import uuid
 from typing import Iterator, Optional
 
 import ray
-from ray.data.context import DataContext
 from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.execution.interfaces import (
-    Executor,
-    ExecutionOptions,
-    ExecutionResources,
-    OutputIterator,
-    RefBundle,
-    PhysicalOperator,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.streaming_executor_state import (
-    AutoscalingState,
-    Topology,
-    TopologyResourceUsage,
-    OpState,
-    build_streaming_topology,
-    process_completed_tasks,
-    select_operator_to_run,
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
-)
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
+    Executor,
+    OutputIterator,
+    PhysicalOperator,
+    RefBundle,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.streaming_executor_state import (
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
+    AutoscalingState,
+    OpState,
+    Topology,
+    TopologyResourceUsage,
+    build_streaming_topology,
+    process_completed_tasks,
+    select_operator_to_run,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
+from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 

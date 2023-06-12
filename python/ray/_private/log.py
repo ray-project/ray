@@ -96,8 +96,9 @@ def generate_logging_config():
 
         formatters = {
             "plain": {
-                "datefmt": "[%Y-%m-%d %H:%M:%S]",
-                "format": "%(asctime)s %(package)s %(levelname)s %(name)s::%(message)s",
+                "format": (
+                    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
+                ),
             },
         }
         filters = {"context_filter": {"()": ContextFilter}}

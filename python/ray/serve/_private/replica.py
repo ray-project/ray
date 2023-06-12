@@ -36,7 +36,8 @@ from ray.serve._private.constants import (
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.http_util import (
-    ASGIHTTPSender,
+    ASGIAppReplicaWrapper,
+    BufferedASGISender,
     ASGIHTTPQueueSender,
     RawASGIResponse,
     Response,
@@ -94,6 +95,7 @@ def create_replica_wrapper(name: str):
             detached: bool,
             app_name: str = None,
         ):
+            self._replica_tag = replica_tag
             configure_component_logger(
                 component_type=ServeComponentType.DEPLOYMENT,
                 component_name=deployment_name,
@@ -158,7 +160,7 @@ def create_replica_wrapper(name: str):
             )
 
             # Indicates whether the replica has finished initializing.
-            self._init_finish_event = asyncio.Event()
+            self._initialized = False
 
             # This closure initializes user code and finalizes replica
             # startup. By splitting the initialization step like this,
@@ -173,9 +175,12 @@ def create_replica_wrapper(name: str):
                     _callable = deployment_def
                 else:
                     # This allows deployments to define an async __init__
-                    # method (required for FastAPI).
+                    # method (mostly used for testing).
                     _callable = deployment_def.__new__(deployment_def)
                     await sync_to_async(_callable.__init__)(*init_args, **init_kwargs)
+
+                    if isinstance(_callable, ASGIAppReplicaWrapper):
+                        await _callable._run_asgi_lifespan_startup()
 
                 # Setting the context again to update the servable_object.
                 ray.serve.context._set_internal_replica_context(
@@ -196,13 +201,16 @@ def create_replica_wrapper(name: str):
                     controller_handle,
                     app_name,
                 )
-                self._init_finish_event.set()
+                self._initialized = True
 
             # Is it fine that replica is None here?
             # Should we add a check in all methods that use self.replica
             # or, alternatively, create an async get_replica() method?
             self.replica = None
             self._initialize_replica = initialize_replica
+
+            # Used to guard `initialize_replica` so that it isn't called twice.
+            self._replica_init_lock = asyncio.Lock()
 
         @ray.method(num_returns=2)
         async def handle_request(
@@ -216,7 +224,9 @@ def create_replica_wrapper(name: str):
                 request_kwargs,
                 pickle.loads(pickled_request_metadata),
             )
-            return await self.replica.handle_request(query)
+
+            # Returns a small object for router to track request status.
+            return b"", await self.replica.handle_request(query)
 
         async def handle_request_streaming(
             self,
@@ -247,10 +257,12 @@ def create_replica_wrapper(name: str):
                 self.replica.handle_request(query, asgi_sender=asgi_queue_sender)
             )
 
-            done = []
-            while handle_request_task not in done:
+            while True:
+                wait_for_message_task = self._event_loop.create_task(
+                    asgi_queue_sender.wait_for_message()
+                )
                 done, _ = await asyncio.wait(
-                    [handle_request_task, asgi_queue_sender.wait_for_message()],
+                    [handle_request_task, wait_for_message_task],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 # Consume and yield all available messages in the queue.
@@ -258,6 +270,15 @@ def create_replica_wrapper(name: str):
                 # we use vanilla pickle because it's faster than cloudpickle and we
                 # know it's safe for these messages containing primitive types.
                 yield pickle.dumps(asgi_queue_sender.get_messages_nowait())
+
+                # Exit once `handle_request` has finished. In this case, all messages
+                # must have already been sent.
+                # Cancel the `wait_for_message_task` to avoid innocuous error messages.
+                if handle_request_task in done:
+                    if not wait_for_message_task.done():
+                        wait_for_message_task.cancel()
+
+                    break
 
             e = handle_request_task.exception()
             if e is not None:
@@ -278,7 +299,7 @@ def create_replica_wrapper(name: str):
                 proto.request_id, proto.endpoint, call_method=proto.call_method
             )
             request_args = request_args[0]
-            query = Query(request_args, request_kwargs, request_metadata, return_num=1)
+            query = Query(request_args, request_kwargs, request_metadata)
             return await self.replica.handle_request(query)
 
         async def is_allocated(self) -> str:
@@ -297,28 +318,35 @@ def create_replica_wrapper(name: str):
             return (
                 os.getpid(),
                 ray.get_runtime_context().get_actor_id(),
-                ray._private.worker.global_worker.worker_id.hex(),
+                ray.get_runtime_context().get_worker_id(),
                 ray.get_runtime_context().get_node_id(),
                 ray.util.get_node_ip_address(),
                 get_component_logger_file_path(),
             )
 
-        async def is_initialized(
+        async def initialize_and_get_metadata(
             self,
             deployment_config: DeploymentConfig = None,
             _after: Optional[Any] = None,
-        ):
+        ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Unused `_after` argument is for scheduling: passing an ObjectRef
             # allows delaying reconfiguration until after this call has returned.
             try:
-                await self._initialize_replica()
-                metadata = await self.reconfigure(deployment_config)
+                # Ensure that initialization is only performed once.
+                # When controller restarts, it will call this method again.
+                async with self._replica_init_lock:
+                    if not self._initialized:
+                        await self._initialize_replica()
+                    if deployment_config:
+                        await self.replica.update_user_config(
+                            deployment_config.user_config
+                        )
 
-                # A new replica should not be considered healthy until it passes an
-                # initial health check. If an initial health check fails, consider
-                # it an initialization failure.
+                # A new replica should not be considered healthy until it passes
+                # an initial health check. If an initial health check fails,
+                # consider it an initialization failure.
                 await self.check_health()
-                return metadata
+                return await self._get_metadata()
             except Exception:
                 raise RuntimeError(traceback.format_exc()) from None
 
@@ -327,15 +355,13 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             try:
                 await self.replica.reconfigure(deployment_config)
-                return await self.get_metadata()
+                return await self._get_metadata()
             except Exception:
                 raise RuntimeError(traceback.format_exc()) from None
 
-        async def get_metadata(
+        async def _get_metadata(
             self,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            # Wait for replica initialization to finish
-            await self._init_finish_event.wait()
             return self.replica.version.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
@@ -374,8 +400,9 @@ class RayServeReplica:
         self.callable = _callable
         self.is_function = is_function
         self.version = version
-        self.deployment_config = None
+        self.deployment_config: DeploymentConfig = version.deployment_config
         self.rwlock = aiorwlock.RWLock()
+        self.delete_lock = asyncio.Lock()
         self.app_name = app_name
 
         user_health_check = getattr(_callable, HEALTH_CHECK_METHOD, None)
@@ -503,7 +530,7 @@ class RayServeReplica:
         This is used on the legacy non-streaming codepath because we cannot serialize
         and return a StreamingResponse.
         """
-        sender = ASGIHTTPSender()
+        sender = BufferedASGISender()
         await response(scope=None, receive=mock_asgi_receive, send=sender)
         return sender.build_asgi_response()
 
@@ -527,7 +554,7 @@ class RayServeReplica:
 
         # Check if the callable is our ASGI wrapper (i.e., the user used
         # `@serve.ingress`).
-        callable_is_asgi_wrapper = hasattr(self.callable, "_is_serve_asgi_wrapper")
+        callable_is_asgi_wrapper = isinstance(self.callable, ASGIAppReplicaWrapper)
         if asgi_sender is not None and callable_is_asgi_wrapper:
             kwargs["asgi_sender"] = asgi_sender
 
@@ -537,21 +564,16 @@ class RayServeReplica:
             runner_method = self.get_runner_method(request_item)
             method_to_call = sync_to_async(runner_method)
             result = None
-            if len(inspect.signature(runner_method).parameters) > 0:
-                result = await method_to_call(*args, **kwargs)
-            else:
-                # When access via http http_arg_is_pickled with no args:
-                # args = (<starlette.requests.Request object at 0x7fe900694cc0>,)
-                # When access via python with no args:
-                # args = ()
-                if len(args) == 1 and isinstance(args[0], starlette.requests.Request):
-                    # The method doesn't take in anything, including the request
-                    # information, so we pass nothing into it
-                    result = await method_to_call()
-                else:
-                    # Will throw due to signature mismatch if user attempts to
-                    # call with non-empty args
-                    result = await method_to_call(*args, **kwargs)
+
+            # Edge case to support empty HTTP handlers: don't pass the Request
+            # argument if the callable has no parameters.
+            if (
+                request_item.metadata.is_http_request
+                and len(inspect.signature(runner_method).parameters) == 0
+            ):
+                args, kwargs = tuple(), {}
+
+            result = await method_to_call(*args, **kwargs)
 
             # Streaming HTTP codepath: always send response over ASGI interface.
             if asgi_sender is not None:
@@ -585,19 +607,18 @@ class RayServeReplica:
         return result, success
 
     async def reconfigure(self, deployment_config: DeploymentConfig):
-        async with self.rwlock.writer_lock:
-            user_config_changed = False
-            if (
-                self.deployment_config is None
-                or self.deployment_config.user_config != deployment_config.user_config
-            ):
-                user_config_changed = True
-            self.deployment_config = deployment_config
-            self.version = DeploymentVersion.from_deployment_version(
-                self.version, self.deployment_config
-            )
+        old_user_config = self.deployment_config.user_config
+        self.deployment_config = deployment_config
+        self.version = DeploymentVersion.from_deployment_version(
+            self.version, self.deployment_config
+        )
 
-            if self.deployment_config.user_config is not None and user_config_changed:
+        if old_user_config != deployment_config.user_config:
+            await self.update_user_config(deployment_config.user_config)
+
+    async def update_user_config(self, user_config: Any):
+        async with self.rwlock.writer_lock:
+            if user_config is not None:
                 if self.is_function:
                     raise ValueError(
                         "deployment_def must be a class to use user_config"
@@ -613,11 +634,11 @@ class RayServeReplica:
                 reconfigure_method = sync_to_async(
                     getattr(self.callable, RECONFIGURE_METHOD)
                 )
-                await reconfigure_method(self.deployment_config.user_config)
+                await reconfigure_method(user_config)
 
     async def handle_request(
         self, request: Query, *, asgi_sender: Optional[Send] = None
-    ) -> asyncio.Future:
+    ) -> Any:
         async with self.rwlock.reader_lock:
             num_running_requests = self._get_handle_request_stats()["running"]
             self.num_processing_items.set(num_running_requests)
@@ -649,11 +670,8 @@ class RayServeReplica:
                     latency_ms=latency_ms,
                 )
             )
-            if request.return_num == 1:
-                return result
-            else:
-                # Returns a small object for router to track request status.
-                return b"", result
+
+            return result
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.
@@ -684,13 +702,17 @@ class RayServeReplica:
         # Explicitly call the del method to trigger clean up.
         # We set the del method to noop after successfully calling it so the
         # destructor is called only once.
-        try:
-            if hasattr(self.callable, "__del__"):
-                # Make sure to accept `async def __del__(self)` as well.
-                await sync_to_async(self.callable.__del__)()
-                setattr(self.callable, "__del__", lambda _: None)
-        except Exception as e:
-            logger.exception(f"Exception during graceful shutdown of replica: {e}")
-        finally:
-            if hasattr(self.callable, "__del__"):
-                del self.callable
+        async with self.delete_lock:
+            if not hasattr(self, "callable"):
+                return
+
+            try:
+                if hasattr(self.callable, "__del__"):
+                    # Make sure to accept `async def __del__(self)` as well.
+                    await sync_to_async(self.callable.__del__)()
+                    setattr(self.callable, "__del__", lambda _: None)
+            except Exception as e:
+                logger.exception(f"Exception during graceful shutdown of replica: {e}")
+            finally:
+                if hasattr(self.callable, "__del__"):
+                    del self.callable

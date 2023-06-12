@@ -1,9 +1,8 @@
-from dataclasses import dataclass, field
 import os
-from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.util.annotations import DeveloperAPI
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
@@ -12,6 +11,7 @@ from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
 
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
 NodeIdStr = str
@@ -36,7 +36,7 @@ class RefBundle:
     """
 
     # The size_bytes must be known in the metadata, num_rows is optional.
-    blocks: List[Tuple[ObjectRef[Block], BlockMetadata]]
+    blocks: Tuple[Tuple[ObjectRef[Block], BlockMetadata]]
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
@@ -49,6 +49,8 @@ class RefBundle:
     _cached_location: Optional[NodeIdStr] = None
 
     def __post_init__(self):
+        if not isinstance(self.blocks, tuple):
+            object.__setattr__(self, "blocks", tuple(self.blocks))
         for b in self.blocks:
             assert isinstance(b, tuple), b
             assert len(b) == 2, b
@@ -58,6 +60,11 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
+
+    def __setattr__(self, key, value):
+        if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
+            raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")
+        object.__setattr__(self, key, value)
 
     def num_rows(self) -> Optional[int]:
         """Number of rows present in this bundle, if known."""
@@ -233,9 +240,22 @@ class TaskContext:
     # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
     sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
 
+    # NOTE(hchen): `upstream_map_transform_fn` and `upstream_map_ray_remote_args`
+    # are only used for `RandomShuffle`. DO NOT use them for other operators.
+    # Ideally, they should be handled by the optimizer, and should be transparent
+    # to the specific operators.
+    # But for `RandomShuffle`, the AllToAllOperator doesn't do the shuffle itself.
+    # It uses `ExchangeTaskScheduler` to launch new tasks to do the shuffle.
+    # That's why we need to pass them to `ExchangeTaskScheduler`.
+    # TODO(hchen): Use a physical operator to do the shuffle directly.
+
     # The underlying function called in a MapOperator; this is used when fusing
     # an AllToAllOperator with an upstream MapOperator.
     upstream_map_transform_fn: Optional["MapTransformFn"] = None
+
+    # The Ray remote arguments of the fused upstream MapOperator.
+    # This should be set if upstream_map_transform_fn is set.
+    upstream_map_ray_remote_args: Dict[str, Any] = None
 
 
 # Block transform function applied by task and actor pools in MapOperator.
