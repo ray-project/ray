@@ -874,7 +874,7 @@ class Algorithm(Trainable):
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
             self.evaluation_workers.sync_weights(
-                from_worker_or_trainer=self.workers.local_worker()
+                from_worker_or_learner_group=self.workers.local_worker()
             )
             self._sync_filters_if_needed(
                 from_worker=self.workers.local_worker(),
@@ -1412,7 +1412,7 @@ class Algorithm(Trainable):
             if self.config._enable_learner_api:
                 from_worker_or_trainer = self.learner_group
             self.workers.sync_weights(
-                from_worker_or_trainer=from_worker_or_trainer,
+                from_worker_or_learner_group=from_worker_or_trainer,
                 policies=list(train_results.keys()),
                 global_vars=global_vars,
             )

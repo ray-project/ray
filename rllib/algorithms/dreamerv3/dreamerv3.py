@@ -362,7 +362,7 @@ class DreamerV3Config(AlgorithmConfig):
         return DreamerV3LearnerHyperparameters(
             model_size=self.model_size,
             training_ratio=self.training_ratio,
-            batch_size_B=self.batch_size_B // self.num_learner_workers,#TODO: make sure batch_size is compatible with num learners
+            batch_size_B=self.batch_size_B,#TODO // self.num_learner_workers,#TODO: make sure batch_size is compatible with num learners
             batch_length_T=self.batch_length_T,
             horizon_H=self.horizon_H,
             gamma=self.gamma,
@@ -596,7 +596,7 @@ class DreamerV3(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-            self.workers.sync_weights(from_worker_or_trainer=self.learner_group)
+            self.workers.sync_weights(from_worker_or_learner_group=self.learner_group)
 
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
         # issue-in-keras-model-training-e703907a6501
