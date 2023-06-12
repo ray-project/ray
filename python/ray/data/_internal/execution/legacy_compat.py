@@ -203,6 +203,7 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
         assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
 
         from ray.data._internal.planner.plan_read_op import cleaned_metadata
+        # TODO set estimated num blocks as outputs of data buffer for progress bars
 
         inputs = InputDataBuffer(
             [

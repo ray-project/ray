@@ -216,7 +216,8 @@ class ExecutionPlan:
         if dataset_blocks is None:
             num_blocks = "?"
         else:
-            num_blocks = dataset_blocks.initial_num_blocks()
+            num_in = dataset_blocks.initial_num_blocks()
+            num_blocks = dataset_blocks.estimated_num_blocks()
         dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
             classname, num_blocks, count, schema_str
         )
@@ -902,6 +903,7 @@ class OneToOneStage(Stage):
         self.fn_constructor_kwargs = fn_constructor_kwargs
 
     def can_fuse(self, prev: Stage):
+        # TODO disable fusion of split blocks stages
         if not isinstance(prev, OneToOneStage):
             return False
         # Allow fusing tasks->actors if the resources are compatible (read->map), but

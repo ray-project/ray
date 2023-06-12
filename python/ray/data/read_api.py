@@ -407,16 +407,19 @@ def read_datasource(
         if inmemory_size:
             expected_block_size = inmemory_size / len(read_tasks)
             print("Expected block size", expected_block_size)
-            size_based_splits = max(1, expected_block_size / ctx.target_max_block_size)
+            size_based_splits = math.floor(max(1, expected_block_size / ctx.target_max_block_size))
             print("Size based splits", size_based_splits)
         else:
             size_based_splits = 1
         k = math.ceil(desired_splits_per_file / size_based_splits)
+        estimated_num_blocks = len(read_tasks) * size_based_splits * k
         print("Additional split factor", k)
         for r in read_tasks:
             r._set_additional_split_factor(k)
+        print("Estimated num blocks", estimated_num_blocks)
     else:
         print("No additional splits are needed")
+        estimated_num_blocks = len(read_tasks)
 
     read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
@@ -442,6 +445,7 @@ def read_datasource(
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
+    block_list._estimated_num_blocks = estimated_num_blocks
 
     # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
     # after removing LazyBlockList code path.
