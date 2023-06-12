@@ -181,8 +181,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // completed
     auto try_send_reply =
         [num_processed_jobs, kv_callback_done, reply, send_reply_callback]() {
-          if (*num_processed_jobs == reply->job_info_list_size() &&
-              *kv_callback_done) {
+          if (*num_processed_jobs == reply->job_info_list_size() && *kv_callback_done) {
             RAY_LOG(INFO) << "Finished getting all job info.";
             GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
           }
@@ -211,7 +210,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         WorkerID worker_id =
             WorkerID::FromBinary(data.second.driver_address().worker_id());
         core_worker_clients_.Disconnect(worker_id);
-        (*num_processed_jobs)++;;
+        (*num_processed_jobs)++;
+        ;
         try_send_reply();
       } else {
         // Get is_running_tasks from the core worker for the driver.
@@ -229,7 +229,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               }
               bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
               reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
-              (*num_processed_jobs)++;;
+              (*num_processed_jobs)++;
+              ;
               try_send_reply();
             });
       }
