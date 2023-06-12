@@ -172,19 +172,17 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     std::unordered_map<std::string, std::vector<int>> job_data_key_to_indices;
 
     // Create a shared counter for the number of jobs processed
-    std::shared_ptr<std::atomic<int>> num_processed_jobs =
-        std::make_shared<std::atomic<int>>(0);
+    std::shared_ptr<int> num_processed_jobs = std::make_shared<int>(0);
 
     // Create a shared boolean flag for the internal KV callback completion
-    std::shared_ptr<std::atomic<bool>> kv_callback_done =
-        std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<bool> kv_callback_done = std::make_shared<bool>(false);
 
     // Function to send the reply once all jobs have been processed and KV callback
     // completed
     auto try_send_reply =
         [num_processed_jobs, kv_callback_done, reply, send_reply_callback]() {
-          if (num_processed_jobs->load() == reply->job_info_list_size() &&
-              kv_callback_done->load()) {
+          if (*num_processed_jobs == reply->job_info_list_size() &&
+              *kv_callback_done) {
             RAY_LOG(INFO) << "Finished getting all job info.";
             GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
           }
@@ -213,7 +211,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         WorkerID worker_id =
             WorkerID::FromBinary(data.second.driver_address().worker_id());
         core_worker_clients_.Disconnect(worker_id);
-        num_processed_jobs->fetch_add(1);
+        (*num_processed_jobs)++;;
         try_send_reply();
       } else {
         // Get is_running_tasks from the core worker for the driver.
@@ -231,7 +229,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               }
               bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
               reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
-              num_processed_jobs->fetch_add(1);
+              (*num_processed_jobs)++;;
               try_send_reply();
             });
       }
@@ -266,7 +264,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               }
             }
           }
-          kv_callback_done->store(true);
+          *kv_callback_done = true;
           try_send_reply();
         };
     internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
