@@ -104,7 +104,7 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
         if not instances_selected:
             return 0
 
-        # TODO: idenpotency token.
+        # TODO: idempotency token.
         created_cloud_instances = self._node_provider.create_nodes(
             instance_type, len(instances_selected)
         )

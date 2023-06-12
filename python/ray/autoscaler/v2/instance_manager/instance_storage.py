@@ -42,7 +42,12 @@ class InstanceStorage:
         self._storage = storage
         self._cluster_id = cluster_id
         self._table_name = f"instance_table@{cluster_id}"
-        self._status_change_subscriber = status_change_subscriber
+        self._status_change_subscribers = []
+        if status_change_subscriber:
+            self._status_change_subscribers.append(status_change_subscriber)
+
+    def add_status_change_subscriber(self, subscriber: InstanceUpdatedSuscriber):
+        self._status_change_subscribers.append(subscriber)
 
     def batch_upsert_instances(
         self,
@@ -82,17 +87,18 @@ class InstanceStorage:
             self._table_name, mutations, {}, expected_storage_version
         )
 
-        if result and self._status_change_subscriber:
-            self._status_change_subscriber.notify(
-                [
-                    InstanceUpdateEvent(
-                        instance_id=instance.instance_id,
-                        new_status=instance.status,
-                        new_ray_status=instance.ray_status,
-                    )
-                    for instance in updates
-                ],
-            )
+        if result:
+            for subscriber in self._status_change_subscribers:
+                subscriber.notify(
+                    [
+                        InstanceUpdateEvent(
+                            instance_id=instance.instance_id,
+                            new_status=instance.status,
+                            new_ray_status=instance.ray_status,
+                        )
+                        for instance in updates
+                    ],
+                )
 
         return StoreStatus(result, version)
 
@@ -134,16 +140,17 @@ class InstanceStorage:
             insert_only=False,
         )
 
-        if result and self._status_change_subscriber:
-            self._status_change_subscriber.notify(
-                [
-                    InstanceUpdateEvent(
-                        instance_id=instance.instance_id,
-                        new_status=instance.status,
-                        new_ray_status=instance.ray_status,
-                    )
-                ],
-            )
+        if result:
+            for subscriber in self._status_change_subscribers:
+                subscriber.notify(
+                    [
+                        InstanceUpdateEvent(
+                            instance_id=instance.instance_id,
+                            new_status=instance.status,
+                            new_ray_status=instance.ray_status,
+                        )
+                    ],
+                )
 
         return StoreStatus(result, version)
 
@@ -203,15 +210,16 @@ class InstanceStorage:
             self._table_name, {}, instance_ids, expected_storage_version
         )
 
-        if result[0] and self._status_change_subscriber:
-            self._status_change_subscriber.notify(
-                [
-                    InstanceUpdateEvent(
-                        instance_id=instance_id,
-                        new_status=Instance.GARBAGE_COLLECTED,
-                        new_ray_status=Instance.RAY_STATUS_UNKOWN,
-                    )
-                    for instance_id in instance_ids
-                ],
-            )
+        if result[0]:
+            for subscriber in self._status_change_subscribers:
+                subscriber.notify(
+                    [
+                        InstanceUpdateEvent(
+                            instance_id=instance_id,
+                            new_status=Instance.GARBAGE_COLLECTED,
+                            new_ray_status=Instance.RAY_STATUS_UNKOWN,
+                        )
+                        for instance_id in instance_ids
+                    ],
+                )
         return result
