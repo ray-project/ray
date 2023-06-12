@@ -63,7 +63,7 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 )
 
 # The default global scheduling strategy.
-DEFAULT_SCHEDULING_STRATEGY = "DEFAULT"
+DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False

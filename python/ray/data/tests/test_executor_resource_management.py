@@ -53,7 +53,7 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
     )
     assert op.base_resource_usage() == ExecutionResources()
     assert op.incremental_resource_usage() == ExecutionResources(cpu=1, gpu=0)
-    assert op._ray_remote_args == {"num_cpus": 1}
+    assert op._ray_remote_args == {"num_cpus": 1, "scheduling_strategy": "SPREAD"}
 
     op = MapOperator.create(
         _mul2_transform,
@@ -64,7 +64,7 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
     )
     assert op.base_resource_usage() == ExecutionResources()
     assert op.incremental_resource_usage() == ExecutionResources(cpu=0, gpu=2)
-    assert op._ray_remote_args == {"num_gpus": 2}
+    assert op._ray_remote_args == {"num_gpus": 2, "scheduling_strategy": "SPREAD"}
 
     with pytest.raises(ValueError):
         MapOperator.create(
@@ -74,6 +74,28 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
             compute_strategy=TaskPoolStrategy(),
             ray_remote_args={"num_gpus": 2, "num_cpus": 1},
         )
+
+
+def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_context):
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    op = MapOperator.create(
+        _mul2_transform,
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_gpus": 2, "scheduling_strategy": "DEFAULT"},
+    )
+    assert op._ray_remote_args == {"num_gpus": 2, "scheduling_strategy": "DEFAULT"}
+
+    ray.data.DataContext.get_current().scheduling_strategy = "DEFAULT"
+    op = MapOperator.create(
+        _mul2_transform,
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_gpus": 2},
+    )
+    assert op._ray_remote_args == {"num_gpus": 2, "scheduling_strategy": "DEFAULT"}
 
 
 def test_task_pool_resource_reporting(ray_start_10_cpus_shared):

@@ -509,7 +509,7 @@ def test_configure_output_locality():
     )
     # No locality.
     build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))
-    assert o2._ray_remote_args.get("scheduling_strategy") is None
+    assert o2._ray_remote_args.get("scheduling_strategy") == "SPREAD"
     assert o3._ray_remote_args.get("scheduling_strategy") == "SPREAD"
 
     # Current node locality.

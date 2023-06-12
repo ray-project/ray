@@ -23,6 +23,7 @@ from ray.data._internal.execution.operators.one_to_one_operator import OneToOneO
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -291,9 +292,10 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     def get_metrics(self) -> Dict[str, int]:
+        sorted_ray_args = dict(sorted(self._get_runtime_ray_remote_args().items()))
         return dict(
             self._metrics.to_metrics_dict(),
-            ray_remote_args=self._get_runtime_ray_remote_args(),
+            ray_remote_args=sorted_ray_args,
         )
 
     def get_stats(self) -> StatsDict:
@@ -578,7 +580,8 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
     if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
         ray_remote_args["num_cpus"] = 1
     if "scheduling_strategy" not in ray_remote_args:
-        ray_remote_args["scheduling_strategy"] = "SPREAD"
+        ctx = DataContext.get_current()
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
     if ray_remote_args.get("num_gpus", 0) > 0:
         if ray_remote_args.get("num_cpus", 0) != 0:
             raise ValueError(
