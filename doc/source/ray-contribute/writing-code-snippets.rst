@@ -285,7 +285,7 @@ To configure Bazel to run an example with GPUs, complete the following steps:
 
 #. Open the corresponding ``BUILD`` file. If your example is in the ``doc/`` folder,
    open ``doc/BUILD``. If your example is in the ``python/`` folder, open a file like
-   ``python/ray/serve/BUILD``.
+   ``python/ray/train/BUILD``.
 
 #. Locate the ``doctest`` rule. It looks like this: ::
 
