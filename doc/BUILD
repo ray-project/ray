@@ -158,6 +158,7 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],
+    env = {"RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S": "60"},
 )
 
 
@@ -246,7 +247,6 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/ray-air/doc_code/predictors.py",
         "source/data/doc_code/loading_data_untested.py",
-        "source/data/doc_code/torch_image_batch_trained.py"
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:data"],
@@ -317,8 +317,21 @@ doctest(
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
+            "source/data/batch_inference.rst",
+            "source/data/transforming-data.rst"
         ]
     ),
     size = "large",
     tags = ["team:none"]
+)
+
+
+
+doctest(
+    files = [
+        "source/data/batch_inference.rst",
+        "source/data/transforming-data.rst"
+    ],
+    tags = ["team:data"],
+    gpu = True
 )
