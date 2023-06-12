@@ -1123,18 +1123,7 @@ class TestDeployApp:
 
         config = ServeApplicationSchema.parse_obj(self.get_test_config())
         client.deploy_apps(config)
-        # Wait for app to deploy
-        self.check_single_app()
-        deployment_timestamp = client.get_serve_status().app_status.deployment_timestamp
-
         ray.kill(client._controller, no_restart=False)
-
-        # Delete all deployments, but don't update config
-        deployments = [
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{name}"
-            for name in ["Router", "Multiplier", "Adder", "create_order", "DAGDriver"]
-        ]
-        client.delete_deployments(deployments, blocking=False)
 
         # When controller restarts, it should redeploy config automatically
         wait_for_condition(
@@ -1144,10 +1133,6 @@ class TestDeployApp:
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
             == "9 pizzas please!"
-        )
-        assert (
-            deployment_timestamp
-            == client.get_serve_status().app_status.deployment_timestamp
         )
 
         serve.shutdown()

@@ -130,7 +130,7 @@ CLIENT_POLLING_INTERVAL_S: float = 1
 
 # The time in seconds that the Serve client waits before checking if
 # deployment has been created
-CLIENT_CHECK_CREATION_POLLING_INTERVAL_S: float = 1
+CLIENT_CHECK_CREATION_POLLING_INTERVAL_S: float = 0.1
 
 # Handle metric push interval. (This interval will affect the cold start time period)
 HANDLE_METRIC_PUSH_INTERVAL_S = 10

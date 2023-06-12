@@ -301,7 +301,7 @@ def test_replica_deletion_after_controller_recover(serve_instance):
     )
 
 
-def test_recover_deleting_deployment(serve_instance):
+def test_recover_deleting_application(serve_instance):
     """Test that replicas that are stuck on __del__ when the controller crashes,
     is properly recovered when the controller is recovered.
 

@@ -32,7 +32,8 @@ CHECKPOINT_KEY = "serve-application-state-checkpoint"
 
 @dataclass
 class ApplicationTargetState:
-    # Map of deployment names to deployment infos
+    """Maps deployment names to deployment infos."""
+
     deployment_infos: Optional[Dict[str, DeploymentInfo]]
     deleting: bool
 
@@ -177,12 +178,17 @@ class ApplicationState:
 
         Returns: Whether the deployment is being updated.
         """
+        route_prefix = deployment_info.route_prefix
+        if route_prefix is not None and not route_prefix.startswith("/"):
+            raise RayServeException(
+                f'Invalid route prefix "{route_prefix}", it must start with "/"'
+            )
+
         updating = self._deployment_state_manager.deploy(
             deployment_name, deployment_info
         )
 
         if deployment_info.route_prefix is not None:
-            assert deployment_info.route_prefix.startswith("/")
             self._endpoint_state.update_endpoint(
                 deployment_name,
                 EndpointInfo(route=deployment_info.route_prefix, app_name=self._name),
@@ -286,7 +292,7 @@ class ApplicationState:
         # have info on what the target list of deployments is, so we
         # can't check on deployment statuses
         if self._target_state.deployment_infos is None:
-            return
+            return False
 
         if self._target_state.deleting:
             return len(self._get_live_deployments()) == 0
@@ -369,7 +375,7 @@ class ApplicationState:
         """Reconcile target deployments in application target state.
 
         Ensure each deployment is running on up-to-date info, and
-        remove outdated deployments from application
+        remove outdated deployments from the application.
         """
 
         # If we're waiting on the build app task to finish, we don't
