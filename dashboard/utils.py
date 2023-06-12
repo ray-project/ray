@@ -16,14 +16,14 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 from ray._raylet import GcsClient
-from ray._private._utils import split_address
+from ray._private.utils import split_address
 
 import aiosignal  # noqa: F401
 
 from google.protobuf.json_format import MessageToDict
 from frozenlist import FrozenList  # noqa: F401
 
-from ray._private._utils import binary_to_hex, check_dashboard_dependencies_installed
+from ray._private.utils import binary_to_hex, check_dashboard_dependencies_installed
 
 try:
     create_task = asyncio.create_task
@@ -602,7 +602,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     gcs_client = GcsClient(address=address, nums_reconnect_retry=0)
 
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    api_server_url = ray._private._utils.internal_kv_get_with_retry(
+    api_server_url = ray._private.utils.internal_kv_get_with_retry(
         gcs_client,
         ray_constants.DASHBOARD_ADDRESS,
         namespace=ray_constants.KV_NAMESPACE_DASHBOARD,

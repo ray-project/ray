@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import ray
-import ray._private.__utils
+import ray._private.utils
 from ray.tune.utils.util import wait_for_gpu
 from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
 from ray.tune.trainable.util import TrainableUtil
@@ -34,7 +34,7 @@ def test_find_rel_checkpoint_dir(checkpoint_path, logdir):
 class TrainableUtilTest(unittest.TestCase):
     def setUp(self):
         self.checkpoint_dir = os.path.join(
-            ray._private.__utils.get_user_temp_dir(), "tune", "MyTrainable123"
+            ray._private.utils.get_user_temp_dir(), "tune", "MyTrainable123"
         )
         self.checkpoint_dir = TrainableUtil.make_checkpoint_dir(
             self.checkpoint_dir, "0"

@@ -403,7 +403,7 @@ print("success")
         # Wait until the process prints "success" and then return.
         start_time = time.time()
         while time.time() - start_time < timeout:
-            output_line = ray._private._utils.decode(
+            output_line = ray._private.utils.decode(
                 process_handle.stdout.readline()
             ).strip()
             print(output_line)

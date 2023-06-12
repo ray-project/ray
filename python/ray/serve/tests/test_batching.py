@@ -9,7 +9,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 import ray
 from ray import serve
 from ray.serve.exceptions import RayServeException
-from ray._private.__utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop
 
 
 def test_batching(serve_instance):

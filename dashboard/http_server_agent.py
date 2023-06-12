@@ -1,5 +1,5 @@
 import logging
-from ray._private._utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop
 
 from packaging.version import Version
 

@@ -4,7 +4,7 @@ import warnings
 import pytest
 
 import ray
-from ray._private._utils import get_ray_doc_version
+from ray._private.utils import get_ray_doc_version
 import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray.util.client.ray_client_helpers import connect_to_client_or_not

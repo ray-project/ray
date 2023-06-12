@@ -1149,7 +1149,7 @@ provider:
             print_dashboard_log()
             raise
         payload = ray.get(reporter.get_payload.remote())
-        ray_version, python_version = ray._private.__utils.compute_version_info()
+        ray_version, python_version = ray._private.utils.compute_version_info()
         assert payload["ray_version"] == ray_version
         assert payload["python_version"] == python_version
         assert payload["schema_version"] == "0.1"

@@ -13,7 +13,7 @@ from typing import Callable, List, Set
 
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-import ray._private._utils
+import ray._private.utils
 from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
@@ -538,12 +538,12 @@ if __name__ == "__main__":
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
         gcs_publisher = ray._raylet.GcsPublisher(address=args.gcs_address)
-        traceback_str = ray._private._utils.format_error_message(traceback.format_exc())
+        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
             f"The log monitor on node {platform.node()} "
             f"failed with the following error:\n{traceback_str}"
         )
-        ray._private._utils.publish_error_to_driver(
+        ray._private.utils.publish_error_to_driver(
             ray_constants.LOG_MONITOR_DIED_ERROR,
             message,
             gcs_publisher=gcs_publisher,

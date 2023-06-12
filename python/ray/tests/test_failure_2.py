@@ -9,7 +9,7 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray._private._utils
+import ray._private.utils
 from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR
 from ray._private.test_utils import (
     Semaphore,

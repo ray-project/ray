@@ -5,7 +5,7 @@ import aiohttp.web
 
 import ray
 import ray._private.services
-import ray._private._utils
+import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.utils as dashboard_utils
@@ -52,7 +52,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
             options = GLOBAL_GRPC_OPTIONS
-            channel = ray._private._utils.init_grpc_channel(
+            channel = ray._private.utils.init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
             )
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)

@@ -11,7 +11,7 @@ from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
-from ray.serve._private.__utils import (
+from ray.serve._private.utils import (
     get_deployment_import_path,
     override_runtime_envs_except_env_vars,
     serve_encoders,
@@ -151,7 +151,7 @@ class TestGetDeploymentImportPath:
 
         code = (
             "from ray import serve\n"
-            "from ray.serve._private.__utils import get_deployment_import_path\n"
+            "from ray.serve._private.utils import get_deployment_import_path\n"
             "@serve.deployment\n"
             "def main_f(*args):\n"
             "\treturn 'reached main_f'\n"

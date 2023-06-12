@@ -208,7 +208,7 @@ class Cluster:
                 # Write the Ray cluster address for convenience in unit
                 # testing. ray.init() and ray.init(address="auto") will connect
                 # to the local cluster.
-                ray._private.__utils.write_ray_address(self.head_node.gcs_address)
+                ray._private.utils.write_ray_address(self.head_node.gcs_address)
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)
                 ray_params.update_if_absent(gcs_address=self.gcs_address)
@@ -364,4 +364,4 @@ class Cluster:
         # need to reset internal kv since gcs is down
         ray.experimental.internal_kv._internal_kv_reset()
         # Delete the cluster address.
-        ray._private.__utils.reset_ray_address()
+        ray._private.utils.reset_ray_address()

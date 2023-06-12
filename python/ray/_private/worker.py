@@ -75,7 +75,7 @@ from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
 from ray._private.storage import _load_class
-from ray._private._utils import get_ray_doc_version
+from ray._private.utils import get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -425,7 +425,7 @@ class Worker:
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
-        self.original_gpu_ids = ray._private._utils.get_cuda_visible_devices()
+        self.original_gpu_ids = ray._private.utils.get_cuda_visible_devices()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -773,7 +773,7 @@ class Worker:
             shutdown(True)
             sys.exit(1)
 
-        ray._private._utils.set_sigterm_handler(sigterm_handler)
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
         sys.exit(0)
 
@@ -1578,7 +1578,7 @@ def init(
                 connect_only=True,
             )
         except ConnectionError:
-            if gcs_address == ray._private._utils.read_ray_address(_temp_dir):
+            if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
                     "Failed to connect to the default Ray cluster address at "
                     f"{gcs_address}. This is most likely due to a previous Ray "
@@ -1626,7 +1626,7 @@ def init(
         job_id=None,
         namespace=namespace,
         job_config=job_config,
-        entrypoint=ray._private._utils.get_entrypoint_name(),
+        entrypoint=ray._private.utils.get_entrypoint_name(),
     )
     if job_config and job_config.code_search_path:
         global_worker.set_load_code_from_local(True)
@@ -1720,7 +1720,7 @@ def sigterm_handler(signum, frame):
 
 
 try:
-    ray._private._utils.set_sigterm_handler(sigterm_handler)
+    ray._private.utils.set_sigterm_handler(sigterm_handler)
 except ValueError:
     logger.warning(
         "Failed to set SIGTERM handler, processes might"
@@ -2112,7 +2112,7 @@ def connect(
             raise e
         elif mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
-            ray._private._utils.publish_error_to_driver(
+            ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
                 gcs_publisher=worker.gcs_publisher,
@@ -2139,7 +2139,7 @@ def connect(
         job_config = ray.job_config.JobConfig()
 
     if namespace is not None:
-        ray._private._utils.validate_namespace(namespace)
+        ray._private.utils.validate_namespace(namespace)
 
         # The namespace field of job config may have already been set in code
         # paths such as the client.
@@ -2739,7 +2739,7 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
         raise ValueError("Please supply a non-empty value to get_actor")
 
     if namespace is not None:
-        ray._private._utils.validate_namespace(namespace)
+        ray._private.utils.validate_namespace(namespace)
 
     worker = global_worker
     worker.check_connected()

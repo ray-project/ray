@@ -1,7 +1,7 @@
 import concurrent.futures
 import asyncio
 import pytest
-from ray._private.__utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop
 import requests
 
 import ray

@@ -24,7 +24,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_STATUS,
     STATUS_UP_TO_DATE,
 )
-from ray._private._utils import get_ray_temp_dir
+from ray._private.utils import get_ray_temp_dir
 import pytest
 
 

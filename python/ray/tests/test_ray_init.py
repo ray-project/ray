@@ -120,14 +120,14 @@ def test_ray_init_existing_instance_via_blocked_ray_start():
 )
 @pytest.mark.parametrize("address", [None, "auto"])
 def test_ray_init_existing_instance_crashed(address):
-    ray._private._utils.write_ray_address("localhost:6379")
+    ray._private.utils.write_ray_address("localhost:6379")
     try:
         # If no address is specified, we will default to an existing cluster.
         ray._private.node.NUM_REDIS_GET_RETRIES = 1
         with pytest.raises(ConnectionError):
             ray.init(address=address)
     finally:
-        ray._private._utils.reset_ray_address()
+        ray._private.utils.reset_ray_address()
 
 
 class Credentials(grpc.ChannelCredentials):

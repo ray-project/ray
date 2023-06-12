@@ -7,7 +7,7 @@ import numpy as np
 import starlette.requests
 
 from ray.util.annotations import PublicAPI
-from ray.serve._private.__utils import require_packages
+from ray.serve._private.utils import require_packages
 from ray.serve._private.http_util import make_buffered_asgi_receive
 
 

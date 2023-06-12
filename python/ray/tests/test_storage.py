@@ -10,7 +10,7 @@ import pytest
 import ray
 import ray._private.storage as storage
 from ray._private.test_utils import simulate_storage
-from ray._private._utils import (
+from ray._private.utils import (
     _add_creatable_buckets_param_if_s3_uri,
     _get_pyarrow_version,
 )

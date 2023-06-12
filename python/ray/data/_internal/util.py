@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Union
 import numpy as np
 
 import ray
-from ray._private.__utils import _get_pyarrow_version
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data.context import DataContext

@@ -27,7 +27,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.dashboard.modules.job.common import uri_to_http_components
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray._private._utils import split_address
+from ray._private.utils import split_address
 from ray.autoscaler._private.cli_logger import cli_logger
 
 logger = logging.getLogger(__name__)

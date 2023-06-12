@@ -65,7 +65,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         tmp_dir = os.popen("mktemp -d").read()[:-1]
         if not os.path.exists(tmp_dir):
             # Last resort: Resolve via underlying tempdir (and cut tmp_.
-            tmp_dir = ray._private._utils.tempfile.gettempdir() + tmp_dir[4:]
+            tmp_dir = ray._private.utils.tempfile.gettempdir() + tmp_dir[4:]
             assert os.path.exists(tmp_dir), f"'{tmp_dir}' not found!"
         config["output"] = tmp_dir
         # Switch off OPE as we don't write action-probs.

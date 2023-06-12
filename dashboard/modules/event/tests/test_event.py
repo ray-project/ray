@@ -18,7 +18,7 @@ import numpy as np
 
 import ray
 from ray.util.state import list_cluster_events
-from ray._private._utils import binary_to_hex
+from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray._private.event.event_logger import get_event_logger
 from ray.dashboard.tests.conftest import *  # noqa

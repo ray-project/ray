@@ -2,7 +2,7 @@ import os
 import pytest
 import unittest
 import ray
-from ray._private._utils import update_envs
+from ray._private.utils import update_envs
 
 
 @pytest.mark.skipif("sys.platform != 'linux'")

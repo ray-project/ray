@@ -4,7 +4,7 @@ import threading
 import traceback
 from typing import Any
 
-import ray._private._utils
+import ray._private.utils
 import ray.cloudpickle as pickle
 from ray._private import ray_constants
 from ray._raylet import (

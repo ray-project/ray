@@ -235,10 +235,10 @@ def configure_log_file(out_file, err_file):
     # and stderr are heavily buffered resulting in seemingly lost logging
     # statements. We never want to close the stdout file descriptor, dup2 will
     # close it when necessary and we don't want python's GC to close it.
-    sys.stdout = ray._private._utils.open_log(
+    sys.stdout = ray._private.utils.open_log(
         stdout_fileno, unbuffered=True, closefd=False
     )
-    sys.stderr = ray._private._utils.open_log(
+    sys.stderr = ray._private.utils.open_log(
         stderr_fileno, unbuffered=True, closefd=False
     )
 

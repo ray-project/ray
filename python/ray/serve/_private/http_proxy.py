@@ -7,7 +7,7 @@ import pickle
 import socket
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from ray._private.__utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop
 
 import uvicorn
 import starlette.responses
@@ -42,7 +42,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 
-from ray.serve._private.__utils import get_random_letters
+from ray.serve._private.utils import get_random_letters
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

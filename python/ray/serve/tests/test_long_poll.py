@@ -7,7 +7,7 @@ from typing import Dict
 import pytest
 
 import ray
-from ray._private.__utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import EndpointTag, EndpointInfo, RunningReplicaInfo
 from ray.serve._private.long_poll import (
     LongPollClient,

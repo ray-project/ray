@@ -14,7 +14,7 @@ from typing import Any, Callable, Optional
 from unittest.mock import patch
 
 import ray
-from ray._private.__utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
 from ray.tests.conftest import call_ray_start_context

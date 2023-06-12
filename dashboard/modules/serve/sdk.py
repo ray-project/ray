@@ -1,5 +1,5 @@
 from typing import Any, Dict, Optional
-from ray._private._utils import split_address
+from ray._private.utils import split_address
 
 try:
     import aiohttp

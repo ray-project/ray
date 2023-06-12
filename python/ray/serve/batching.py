@@ -18,8 +18,8 @@ from typing import (
 
 from ray.util.annotations import PublicAPI
 from ray.serve.exceptions import RayServeException
-from ray._private.__utils import get_or_create_event_loop
-from ray.serve._private.__utils import extract_self_if_method_call
+from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.utils import extract_self_if_method_call
 from ray._private.signature import extract_signature, flatten_args, recover_args
 
 

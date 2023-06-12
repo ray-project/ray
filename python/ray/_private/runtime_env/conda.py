@@ -22,7 +22,7 @@ from ray._private.runtime_env.conda_utils import (
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray._private._utils import (
+from ray._private.utils import (
     get_directory_size_bytes,
     get_master_wheel_url,
     get_or_create_event_loop,

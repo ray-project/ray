@@ -5,8 +5,8 @@ def main():
     """This script runs in a container with 1 CPU limit and 1G memory limit.
     Validate that Ray reads the correct limits.
     """
-    cpu_limit = ray._private._utils.get_num_cpus()
-    mem_limit_gb = round(ray._private._utils.get_system_memory() / 10**9, 2)
+    cpu_limit = ray._private.utils.get_num_cpus()
+    mem_limit_gb = round(ray._private.utils.get_system_memory() / 10**9, 2)
     assert cpu_limit == 1, cpu_limit
     assert mem_limit_gb == 2.00, mem_limit_gb
     print(f"Confirmed cpu limit {cpu_limit}.")

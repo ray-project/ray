@@ -29,7 +29,7 @@ from ray._private.test_utils import (
     get_log_sources,
     wait_for_condition,
 )
-from ray._private._utils import (
+from ray._private.utils import (
     get_master_wheel_url,
     get_release_wheel_url,
     get_wheel_filename,

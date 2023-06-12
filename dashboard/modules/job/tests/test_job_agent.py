@@ -12,7 +12,7 @@ from functools import partial
 import pytest
 import yaml
 
-from ray._private._utils import get_or_create_event_loop
+from ray._private.utils import get_or_create_event_loop
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed

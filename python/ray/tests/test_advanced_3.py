@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 import ray
-import ray._private._utils
+import ray._private.utils
 import ray.cluster_utils
 import ray.util.accelerators
 from ray._private.test_utils import check_call_ray, wait_for_num_actors
@@ -28,7 +28,7 @@ def test_global_state_api(shutdown_only):
     assert ray.cluster_resources()["GPU"] == 3
     assert ray.cluster_resources()["CustomResource"] == 1
 
-    job_id = ray._private._utils.compute_job_id_from_driver(
+    job_id = ray._private.utils.compute_job_id_from_driver(
         ray.WorkerID(ray._private.worker.global_worker.worker_id)
     )
 
@@ -258,7 +258,7 @@ def test_ray_stack(ray_start_2_cpus):
     start_time = time.time()
     while time.time() - start_time < 30:
         # Attempt to parse the "ray stack" call.
-        output = ray._private._utils.decode(
+        output = ray._private.utils.decode(
             check_call_ray(["stack"], capture_stdout=True)
         )
         if (

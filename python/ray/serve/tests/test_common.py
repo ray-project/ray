@@ -1,7 +1,7 @@
 import time
 import pytest
 
-from ray.serve._private.__utils import get_random_letters
+from ray.serve._private.utils import get_random_letters
 from ray.serve._private.common import (
     ReplicaName,
     StatusOverview,

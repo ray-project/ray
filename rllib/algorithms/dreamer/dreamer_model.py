@@ -186,7 +186,7 @@ class ActionDecoder(nn.Module):
     """ActionDecoder is the policy module in Dreamer.
 
     It outputs a distribution parameterized by mean and std, later to be
-    transformed by a custom TanhBijector in __utils.py for Dreamer.
+    transformed by a custom TanhBijector in utils.py for Dreamer.
     """
 
     def __init__(

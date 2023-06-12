@@ -4,7 +4,7 @@ import json
 from typing import Any, Optional, Dict, List
 from zlib import crc32
 
-from ray.serve._private.__utils import get_random_letters, DeploymentOptionUpdateType
+from ray.serve._private.utils import get_random_letters, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 from ray.serve.config import DeploymentConfig
 

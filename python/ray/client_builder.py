@@ -9,12 +9,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import ray.util.client_connect
-from ray._private.__utils import split_address
 from ray._private.ray_constants import (
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
     RAY_NAMESPACE_ENVIRONMENT_VARIABLE,
     RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE,
 )
+from ray._private.utils import split_address
 from ray._private.worker import BaseContext
 from ray._private.worker import init as ray_driver_init
 from ray.job_config import JobConfig

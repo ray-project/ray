@@ -7,7 +7,7 @@ from google.protobuf.json_format import MessageToDict
 import ray
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
-from ray._private._utils import binary_to_hex, decode, hex_to_binary
+from ray._private.utils import binary_to_hex, decode, hex_to_binary
 from ray._raylet import GlobalStateAccessor
 from ray.core.generated import common_pb2
 from ray.core.generated import gcs_pb2
@@ -686,7 +686,7 @@ class GlobalState:
             for resource_id, capacity in message.resources_available.items():
                 dynamic_resources[resource_id] = capacity
             # Update available resources for this node.
-            node_id = ray._private._utils.binary_to_hex(message.node_id)
+            node_id = ray._private.utils.binary_to_hex(message.node_id)
             available_resources_by_id[node_id] = dynamic_resources
 
         # Update nodes in cluster.

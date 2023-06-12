@@ -350,7 +350,7 @@ import sys
 ray.init(local_mode=True)
 
 # In local mode this generates an ERROR level log.
-ray._private._utils.push_error_to_driver(
+ray._private.utils.push_error_to_driver(
     ray._private.worker.global_worker, "type", "Hello there")
     """
 
@@ -548,7 +548,7 @@ num_nodes = 3
 message = ("Make sure there is enough memory on this machine to run this "
            "workload. We divide the system memory by 2 to provide a buffer.")
 assert (num_nodes * object_store_memory + num_redis_shards * redis_max_memory <
-        ray._private._utils.get_system_memory() / 2), message
+        ray._private.utils.get_system_memory() / 2), message
 
 # Simulate a cluster on one machine.
 

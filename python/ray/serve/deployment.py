@@ -21,7 +21,7 @@ from ray.serve.config import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME, MIGRATION_MESSAGE
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-from ray.serve._private.__utils import DEFAULT, Default, guarded_deprecation_warning
+from ray.serve._private.utils import DEFAULT, Default, guarded_deprecation_warning
 from ray.util.annotations import Deprecated, PublicAPI
 from ray.serve.schema import (
     RayActorOptionsSchema,

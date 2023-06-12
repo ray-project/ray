@@ -180,7 +180,7 @@ def start_redis(db_dir):
         leader_id = None
         for port in redis_ports:
             print("Start Redis with port: ", port)
-            temp_dir = ray._private._utils.get_ray_temp_dir()
+            temp_dir = ray._private.utils.get_ray_temp_dir()
             node_id, proc = start_redis_instance(
                 temp_dir,
                 port,
@@ -271,7 +271,7 @@ def shutdown_only(maybe_external_redis):
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private._utils.reset_ray_address()
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -291,7 +291,7 @@ def class_ray_instance():
     yield ray.init()
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private._utils.reset_ray_address()
+    ray._private.utils.reset_ray_address()
 
 
 @contextmanager
@@ -305,7 +305,7 @@ def _ray_start(**kwargs):
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Delete the cluster address just in case.
-    ray._private._utils.reset_ray_address()
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -524,7 +524,7 @@ def call_ray_start_context(request):
     command_args = parameter.split(" ")
 
     try:
-        out = ray._private._utils.decode(
+        out = ray._private.utils.decode(
             subprocess.check_output(command_args, stderr=subprocess.STDOUT, env=env)
         )
     except Exception as e:
@@ -543,7 +543,7 @@ def call_ray_start_context(request):
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"], env=env)
     # Delete the cluster address just in case.
-    ray._private._utils.reset_ray_address()
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -551,7 +551,7 @@ def call_ray_start_with_external_redis(request):
     ports = getattr(request, "param", "6379")
     port_list = ports.split(",")
     for port in port_list:
-        temp_dir = ray._private._utils.get_ray_temp_dir()
+        temp_dir = ray._private.utils.get_ray_temp_dir()
         start_redis_instance(temp_dir, int(port), password="123")
     address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
     cmd = f"ray start --head --address={address_str} --redis-password=123"
@@ -564,7 +564,7 @@ def call_ray_start_with_external_redis(request):
     # Kill the Ray cluster.
     subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
-    ray._private._utils.reset_ray_address()
+    ray._private.utils.reset_ray_address()
 
 
 @pytest.fixture
@@ -580,7 +580,7 @@ def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
     # Delete the cluster address just in case.
-    ray._private._utils.reset_ray_address()
+    ray._private.utils.reset_ray_address()
 
 
 # Used to test both Ray Client and non-Ray Client codepaths.

@@ -8,7 +8,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray._private.__utils import _get_pyarrow_version
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
@@ -456,7 +456,7 @@ def unsupported_pyarrow_version(request):
     orig_version = pa.__version__
     pa.__version__ = request.param
     # Unset pyarrow version cache.
-    import ray._private.__utils as utils
+    import ray._private.utils as utils
 
     utils._PYARROW_VERSION = None
     yield request.param

@@ -21,7 +21,7 @@ from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
-from ray.serve._private.__utils import (
+from ray.serve._private.utils import (
     compute_iterable_delta,
     JavaActorHandleProxy,
     MetricsPusher,

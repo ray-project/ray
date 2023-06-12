@@ -7,7 +7,7 @@ import time
 import ray
 import ray._private.node
 import ray._private.ray_constants as ray_constants
-import ray._private._utils
+import ray._private.utils
 import ray.actor
 from ray._private.parameter import RayParams
 from ray._private.ray_logging import configure_log_file, get_worker_log_file_name
@@ -249,7 +249,7 @@ if __name__ == "__main__":
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")
-        ray._private._utils.try_import_each_module(module_names_to_import)
+        ray._private.utils.try_import_each_module(module_names_to_import)
 
     # If the worker setup function is configured, run it.
     worker_setup_hook_key = os.getenv(ray_constants.WORKER_SETUP_HOOK_ENV_VAR)

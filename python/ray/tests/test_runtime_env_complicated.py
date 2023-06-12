@@ -26,7 +26,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     chdir,
 )
-from ray._private._utils import (
+from ray._private.utils import (
     get_conda_env_dir,
     get_conda_bin_executable,
     try_to_create_directory,

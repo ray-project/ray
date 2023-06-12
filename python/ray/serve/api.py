@@ -39,7 +39,7 @@ from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
-from ray.serve._private.__utils import (
+from ray.serve._private.utils import (
     DEFAULT,
     Default,
     ensure_serialization_context,

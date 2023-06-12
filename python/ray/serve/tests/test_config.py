@@ -10,7 +10,7 @@ from ray.serve.config import (
     ReplicaConfig,
 )
 from ray.serve.config import AutoscalingConfig
-from ray.serve._private.__utils import DEFAULT
+from ray.serve._private.utils import DEFAULT
 
 
 def test_autoscaling_config_validation():

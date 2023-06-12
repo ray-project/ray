@@ -106,7 +106,7 @@ class ImportThread:
             )
             return (
                 collision_identifier,
-                ray._private._utils.decode(function_name.encode()),
+                ray._private.utils.decode(function_name.encode()),
                 "remote function",
             )
         elif key.startswith(b"ActorClass"):
@@ -115,7 +115,7 @@ class ImportThread:
             )
             return (
                 collision_identifier,
-                ray._private._utils.decode(class_name.encode()),
+                ray._private.utils.decode(class_name.encode()),
                 "actor",
             )
 

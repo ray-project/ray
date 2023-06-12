@@ -15,7 +15,7 @@ from collections import defaultdict
 
 import ray
 import ray._private.services
-import ray._private._utils
+import ray._private.utils
 from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     COMPONENT_METRICS_TAG_KEYS,
@@ -46,7 +46,7 @@ ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") ==
 # Try to determine if we're in a container.
 IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 # Using existence of /sys/fs/cgroup as the criterion is consistent with
-# Ray's existing resource logic, see e.g. ray._private._utils.get_num_cpus().
+# Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
 
 try:
     import gpustat.core as gpustat
@@ -279,8 +279,8 @@ class ReporterAgent(
         if IN_KUBERNETES_POD or IN_CONTAINER:
             # psutil does not give a meaningful logical cpu count when in a K8s pod, or
             # in a container in general.
-            # Use ray._private._utils for this instead.
-            logical_cpu_count = ray._private._utils.get_num_cpus(
+            # Use ray._private.utils for this instead.
+            logical_cpu_count = ray._private.utils.get_num_cpus(
                 override_docker_cpu_warning=True
             )
             # (Override the docker warning to avoid dashboard log spam.)
@@ -434,8 +434,8 @@ class ReporterAgent(
 
     @staticmethod
     def _get_mem_usage():
-        total = ray._private._utils.get_system_memory()
-        used = ray._private._utils.get_used_memory()
+        total = ray._private.utils.get_system_memory()
+        used = ray._private.utils.get_used_memory()
         available = total - used
         percent = round(used / total, 3) * 100
         return total, available, percent, used
@@ -451,7 +451,7 @@ class ReporterAgent(
             root = psutil.disk_partitions()[0].mountpoint
         else:
             root = os.sep
-        tmp = ray._private._utils.get_user_temp_dir()
+        tmp = ray._private.utils.get_user_temp_dir()
         return {
             "/": psutil.disk_usage(root),
             tmp: psutil.disk_usage(tmp),

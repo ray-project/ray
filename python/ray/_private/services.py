@@ -238,7 +238,7 @@ class ConsolePopen(subprocess.Popen):
             # https://docs.python.org/3/library/subprocess.html#subprocess.Popen.send_signal
             new_pgroup = subprocess.CREATE_NEW_PROCESS_GROUP
             flags_to_add = 0
-            if ray._private._utils.detect_fate_sharing_support():
+            if ray._private.utils.detect_fate_sharing_support():
                 # If we don't have kernel-mode fate-sharing, then don't do this
                 # because our children need to be in out process group for
                 # the process reaper to properly terminate them.
@@ -373,7 +373,7 @@ def find_gcs_addresses():
 def find_bootstrap_address(temp_dir: Optional[str]):
     """Finds the latest Ray cluster address to connect to, if any. This is the
     GCS address connected to by the last successful `ray start`."""
-    return ray._private._utils.read_ray_address(temp_dir)
+    return ray._private.utils.read_ray_address(temp_dir)
 
 
 def get_ray_address_from_environment(addr: str, temp_dir: Optional[str]):
@@ -476,7 +476,7 @@ def get_webui_url_from_internal_kv():
     webui_url = ray.experimental.internal_kv._internal_kv_get(
         "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD
     )
-    return ray._private._utils.decode(webui_url) if webui_url is not None else None
+    return ray._private.utils.decode(webui_url) if webui_url is not None else None
 
 
 def get_storage_uri_from_internal_kv():
@@ -484,7 +484,7 @@ def get_storage_uri_from_internal_kv():
     storage_uri = ray.experimental.internal_kv._internal_kv_get(
         "storage", namespace=ray_constants.KV_NAMESPACE_SESSION
     )
-    return ray._private._utils.decode(storage_uri) if storage_uri is not None else None
+    return ray._private.utils.decode(storage_uri) if storage_uri is not None else None
 
 
 def remaining_processes_alive():
@@ -817,7 +817,7 @@ def start_ray_process(
 
         # TODO(suquark): Any better temp file creation here?
         gdb_init_path = os.path.join(
-            ray._private._utils.get_ray_temp_dir(),
+            ray._private.utils.get_ray_temp_dir(),
             f"gdb_init_{process_type}_{time.time()}",
         )
         ray_process_path = command[0]
@@ -858,7 +858,7 @@ def start_ray_process(
         command = ["tmux", "new-session", "-d", f"{' '.join(command)}"]
 
     if fate_share:
-        assert ray._private._utils.detect_fate_sharing_support(), (
+        assert ray._private.utils.detect_fate_sharing_support(), (
             "kernel-level fate-sharing must only be specified if "
             "detect_fate_sharing_support() has returned True"
         )
@@ -868,7 +868,7 @@ def start_ray_process(
 
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
         if fate_share and sys.platform.startswith("linux"):
-            ray._private._utils.set_kill_on_parent_death_linux()
+            ray._private.utils.set_kill_on_parent_death_linux()
 
     win32_fate_sharing = fate_share and sys.platform == "win32"
     # With Windows fate-sharing, we need special care:
@@ -901,7 +901,7 @@ def start_ray_process(
 
     if win32_fate_sharing:
         try:
-            ray._private._utils.set_kill_child_on_death_win32(process)
+            ray._private.utils.set_kill_child_on_death_win32(process)
             psutil.Process(process.pid).resume()
         except (psutil.Error, OSError):
             process.kill()
@@ -1118,7 +1118,7 @@ def start_api_server(
                 else:
                     raise e
         # Make sure the process can start.
-        minimal = not ray._private._utils.check_dashboard_dependencies_installed()
+        minimal = not ray._private.utils.check_dashboard_dependencies_installed()
         # Start the dashboard process.
         dashboard_dir = "dashboard"
         dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
@@ -1590,7 +1590,7 @@ def start_raylet(
         )
         agent_command.append(f"--logging-format={logging_format}")
 
-    if not ray._private._utils.check_dashboard_dependencies_installed():
+    if not ray._private.utils.check_dashboard_dependencies_installed():
         # If dependencies are not installed, it is the minimally packaged
         # ray. We should restrict the features within dashboard agent
         # that requires additional dependencies to be downloaded.
@@ -1801,14 +1801,14 @@ def determine_plasma_store_config(
     if huge_pages and not (sys.platform == "linux" or sys.platform == "linux2"):
         raise ValueError("The huge_pages argument is only supported on Linux.")
 
-    system_memory = ray._private._utils.get_system_memory()
+    system_memory = ray._private.utils.get_system_memory()
 
     # Determine which directory to use. By default, use /tmp on MacOS and
     # /dev/shm on Linux, unless the shared-memory file system is too small,
     # in which case we default to /tmp on Linux.
     if plasma_directory is None:
         if sys.platform == "linux" or sys.platform == "linux2":
-            shm_avail = ray._private._utils.get_shared_memory_bytes()
+            shm_avail = ray._private.utils.get_shared_memory_bytes()
             # Compare the requested memory size to the memory available in
             # /dev/shm.
             if shm_avail > object_store_memory:
@@ -1828,7 +1828,7 @@ def determine_plasma_store_config(
                     )
                 )
             else:
-                plasma_directory = ray._private._utils.get_user_temp_dir()
+                plasma_directory = ray._private.utils.get_user_temp_dir()
                 logger.warning(
                     "WARNING: The object store is using {} instead of "
                     "/dev/shm because /dev/shm has only {} bytes available. "
@@ -1838,13 +1838,13 @@ def determine_plasma_store_config(
                     "passing '--shm-size={:.2f}gb' to 'docker run' (or add it "
                     "to the run_options list in a Ray cluster config). Make "
                     "sure to set this to more than 30% of available RAM.".format(
-                        ray._private._utils.get_user_temp_dir(),
+                        ray._private.utils.get_user_temp_dir(),
                         shm_avail,
                         object_store_memory * (1.1) / (2**30),
                     )
                 )
         else:
-            plasma_directory = ray._private._utils.get_user_temp_dir()
+            plasma_directory = ray._private.utils.get_user_temp_dir()
 
         # Do some sanity checks.
         if object_store_memory > system_memory:

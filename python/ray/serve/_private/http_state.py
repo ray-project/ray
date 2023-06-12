@@ -23,7 +23,7 @@ from ray.serve._private.constants import (
     PROXY_READY_CHECK_TIMEOUT_S,
 )
 from ray.serve._private.http_proxy import HTTPProxyActor
-from ray.serve._private.__utils import (
+from ray.serve._private.utils import (
     format_actor_name,
     get_all_node_ids,
 )

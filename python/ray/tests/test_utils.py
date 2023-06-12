@@ -1,13 +1,13 @@
 # coding: utf-8
 """
-Unit/Integration Testing for python/_private/__utils.py
+Unit/Integration Testing for python/_private/utils.py
 
 This currently expects to work for minimal installs.
 """
 
 import pytest
 import logging
-from ray._private.__utils import get_or_create_event_loop, try_import_each_module
+from ray._private.utils import get_or_create_event_loop, try_import_each_module
 from unittest.mock import patch
 import sys
 
@@ -49,7 +49,7 @@ def test_try_import_each_module():
         if lib in mock_sys_modules:
             del mock_sys_modules[lib]
 
-    with patch("ray._private.__utils.logger.exception") as mocked_log_exception:
+    with patch("ray._private.utils.logger.exception") as mocked_log_exception:
         with patch.dict(sys.modules, mock_sys_modules):
             patched_sys_modules = sys.modules
 

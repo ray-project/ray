@@ -21,7 +21,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.client import ServeControllerClient
 
-from ray.serve._private.__utils import (
+from ray.serve._private.utils import (
     format_actor_name,
     get_random_letters,
 )

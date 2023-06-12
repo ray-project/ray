@@ -12,7 +12,7 @@ import ray
 import ray.experimental.internal_kv as kv
 from ray._private.ray_constants import RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR
 from ray._private.test_utils import chdir, check_local_files_gced, wait_for_condition
-from ray._private._utils import get_directory_size_bytes
+from ray._private.utils import get_directory_size_bytes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).

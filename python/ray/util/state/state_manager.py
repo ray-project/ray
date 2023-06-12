@@ -12,7 +12,7 @@ import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.__utils import hex_to_binary
+from ray._private.utils import hex_to_binary
 from ray._raylet import ActorID, JobID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData
@@ -182,7 +182,7 @@ class StateDataSourceClient:
     def register_raylet_client(self, node_id: str, address: str, port: int):
         full_addr = f"{address}:{port}"
         options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.__utils.init_grpc_channel(
+        channel = ray._private.utils.init_grpc_channel(
             full_addr, options, asynchronous=True
         )
         self._raylet_stubs[node_id] = NodeManagerServiceStub(channel)
@@ -194,7 +194,7 @@ class StateDataSourceClient:
 
     def register_agent_client(self, node_id, address: str, port: int):
         options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.__utils.init_grpc_channel(
+        channel = ray._private.utils.init_grpc_channel(
             f"{address}:{port}", options=options, asynchronous=True
         )
         self._runtime_env_agent_stub[node_id] = RuntimeEnvServiceStub(channel)

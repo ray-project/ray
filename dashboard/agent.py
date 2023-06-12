@@ -12,7 +12,7 @@ import signal
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-import ray._private._utils
+import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
@@ -122,7 +122,7 @@ class DashboardAgent:
 
         # Setup raylet channel
         options = ray_constants.GLOBAL_GRPC_OPTIONS
-        self.aiogrpc_raylet_channel = ray._private._utils.init_grpc_channel(
+        self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True
         )
 
@@ -264,7 +264,7 @@ class DashboardAgent:
                         if error:
                             logger.error(msg)
                             # TODO: switch to async if necessary.
-                            ray._private._utils.publish_error_to_driver(
+                            ray._private.utils.publish_error_to_driver(
                                 ray_constants.RAYLET_DIED_ERROR,
                                 msg,
                                 gcs_publisher=ray._raylet.GcsPublisher(
@@ -348,8 +348,8 @@ class DashboardAgent:
 def open_capture_files(log_dir):
     filename = f"agent-{args.agent_id}"
     return (
-        ray._private._utils.open_log(pathlib.Path(log_dir) / f"{filename}.out"),
-        ray._private._utils.open_log(pathlib.Path(log_dir) / f"{filename}.err"),
+        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.out"),
+        ray._private.utils.open_log(pathlib.Path(log_dir) / f"{filename}.err"),
     )
 
 
@@ -517,7 +517,7 @@ if __name__ == "__main__":
 
         # Initialize event loop, see Dashboard init code for caveat
         # w.r.t grpc server init in the DashboardAgent initializer.
-        loop = ray._private._utils.get_or_create_event_loop()
+        loop = ray._private.utils.get_or_create_event_loop()
 
         # Setup stdout/stderr redirect files
         out_file, err_file = open_capture_files(args.log_dir)
