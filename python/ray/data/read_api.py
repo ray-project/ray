@@ -1,5 +1,6 @@
 import collections
 import logging
+import math
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -133,7 +134,7 @@ def from_items(
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
-    detected_parallelism, _ = _autodetect_parallelism(
+    detected_parallelism, _, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DataContext.get_current(),
@@ -350,7 +351,7 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
+        requested_parallelism, min_safe_parallelism, inmemory_size, read_tasks = _get_read_tasks(
             datasource, ctx, cur_pg, parallelism, local_uri, read_args
         )
     else:
@@ -365,7 +366,7 @@ def read_datasource(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
+        requested_parallelism, min_safe_parallelism, inmemory_size, read_tasks = ray.get(
             get_read_tasks.remote(
                 datasource,
                 ctx,
@@ -376,28 +377,46 @@ def read_datasource(
             )
         )
 
-    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
-        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
-        logger.warning(
-            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
-            "larger than the target block size "
-            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
-            "out-of-memory errors during processing. Consider reducing the size of "
-            "input files or using `.repartition(n)` to increase the number of "
-            "dataset blocks."
-        )
-    elif len(read_tasks) < requested_parallelism and (
-        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
-    ):
-        logger.warning(
-            f"{WARN_PREFIX} The number of blocks in this dataset "
-            f"({len(read_tasks)}) "
-            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
-            "This is much less than the number "
-            "of available CPU slots in the cluster. Use `.repartition(n)` to "
-            "increase the number of "
-            "dataset blocks."
-        )
+#    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
+#        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
+#        logger.warning(
+#            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
+#            "larger than the target block size "
+#            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
+#            "out-of-memory errors during processing. Consider reducing the size of "
+#            "input files or using `.repartition(n)` to increase the number of "
+#            "dataset blocks."
+#        )
+#    elif len(read_tasks) < requested_parallelism and (
+#        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
+#    ):
+#        logger.warning(
+#            f"{WARN_PREFIX} The number of blocks in this dataset "
+#            f"({len(read_tasks)}) "
+#            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
+#            "This is much less than the number "
+#            "of available CPU slots in the cluster. Use `.repartition(n)` to "
+#            "increase the number of "
+#            "dataset blocks."
+#        )
+
+    # TODO update the warnings above
+    if len(read_tasks) < requested_parallelism:
+        desired_splits_per_file = requested_parallelism / len(read_tasks)
+        print("Desired splits per file", desired_splits_per_file)
+        if inmemory_size:
+            expected_block_size = inmemory_size / len(read_tasks)
+            print("Expected block size", expected_block_size)
+            size_based_splits = max(1, expected_block_size / ctx.target_max_block_size)
+            print("Size based splits", size_based_splits)
+        else:
+            size_based_splits = 1
+        k = math.ceil(desired_splits_per_file / size_based_splits)
+        print("Additional split factor", k)
+        for r in read_tasks:
+            r._set_additional_split_factor(k)
+    else:
+        print("No additional splits are needed")
 
     read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
@@ -1947,7 +1966,7 @@ def _get_read_tasks(
     parallelism: int,
     local_uri: bool,
     kwargs: dict,
-) -> Tuple[int, int, List[ReadTask]]:
+) -> Tuple[int, int, Optional[int], List[ReadTask]]:
     """Generates read tasks.
 
     Args:
@@ -1959,19 +1978,20 @@ def _get_read_tasks(
 
     Returns:
         Request parallelism from the datasource, the min safe parallelism to avoid
-        OOM, and the list of read tasks generated.
+        OOM, the estimated inmemory data size, and list of read tasks generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     if local_uri:
         kwargs["local_uri"] = local_uri
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
-    requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
+    requested_parallelism, min_safe_parallelism, mem_size = _autodetect_parallelism(
         parallelism, cur_pg, DataContext.get_current(), reader
     )
     return (
         requested_parallelism,
         min_safe_parallelism,
+        mem_size,
         reader.get_read_tasks(requested_parallelism),
     )
 

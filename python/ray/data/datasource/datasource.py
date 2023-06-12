@@ -195,6 +195,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
     def __init__(self, read_fn: Callable[[], Iterable[Block]], metadata: BlockMetadata):
         self._metadata = metadata
         self._read_fn = read_fn
+        self._additional_output_splits = 1
 
     def get_metadata(self) -> BlockMetadata:
         return self._metadata
@@ -211,12 +212,28 @@ class ReadTask(Callable[[], Iterable[Block]]):
 
         if context.block_splitting_enabled:
             for block in result:
-                yield block
+                yield from self._do_additional_splits(block)
         else:
             builder = DelegatingBlockBuilder()
             for block in result:
                 builder.add_block(block)
             yield builder.build()
+
+    def _set_additional_split_factor(self, k: int) -> None:
+        self._additional_output_splits = k
+
+    def _do_additional_splits(self, block: Block) -> Iterable[Block]:
+        if self._additional_output_splits > 1:
+            block = BlockAccessor.for_block(block)
+            offset = 0
+            split_sizes = np.array_split(range(block.num_rows()), self._additional_output_splits)
+            for split in split_sizes:
+                size = len(split)
+                if size > 0:
+                    yield block.slice(offset, offset + size, copy=True)
+                offset += size
+        else:
+            yield block
 
 
 @PublicAPI
