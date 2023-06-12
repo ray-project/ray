@@ -318,7 +318,8 @@ doctest(
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
             "source/data/batch_inference.rst",
-            "source/data/transforming-data.rst"
+            "source/data/transforming-data.rst",
+            "source/train/faq.rst"
         ]
     ),
     size = "large",
