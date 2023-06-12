@@ -27,6 +27,7 @@ class RayParams:
         num_gpus: Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
+        labels: The key-value labels of the node.
         memory: Total available memory for workers requesting memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
@@ -121,7 +122,6 @@ class RayParams:
         env_vars: Override environment variables for the raylet.
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
-        labels: The key-value labels of the node.
     """
 
     def __init__(
@@ -131,6 +131,7 @@ class RayParams:
         num_cpus: Optional[int] = None,
         num_gpus: Optional[int] = None,
         resources: Optional[Dict[str, float]] = None,
+        labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
         object_store_memory: Optional[float] = None,
         redis_max_memory: Optional[float] = None,
@@ -181,7 +182,6 @@ class RayParams:
         env_vars: Optional[Dict[str, str]] = None,
         session_name: Optional[str] = None,
         webui: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
