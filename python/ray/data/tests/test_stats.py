@@ -51,9 +51,10 @@ def test_streaming_split_stats(ray_start_regular_shared):
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Stage N split(N, equal=False):
-* Extra metrics: {'num_output_N': N}
-"""
+Stage N split(N, equal=False): \n"""
+        # Workaround to preserve trailing whitespace in the above line without
+        # causing linter failures.
+        "* Extra metrics: {'num_output_N': N}\n"
     )
 
 
