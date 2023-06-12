@@ -526,6 +526,7 @@ class ExecutionPlan:
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
         preserve_order: bool = False,
+        skip_optimizer_pipeline: bool = False,
     ) -> BlockList:
         """Execute this plan.
 
@@ -574,6 +575,7 @@ class ExecutionPlan:
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
                     preserve_order=preserve_order,
+                    skip_optimizer_pipeline=skip_optimizer_pipeline,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .materialize() is used. Th
