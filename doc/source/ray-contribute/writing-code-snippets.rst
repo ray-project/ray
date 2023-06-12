@@ -282,10 +282,7 @@ ellipses and `:hide:`. ::
 How to test examples
 --------------------
 
-Testing specific examples
-=========================
-
-To test specific examples, install the Ray fork of `pytest-sphinx`.
+To test examples, install the Ray fork of `pytest-sphinx`.
 
 .. code-block:: bash
 
@@ -298,14 +295,3 @@ Then, run pytest on a module, docstring, or user guide.
     pytest --doctest-modules python/ray/data/read_api.py
     pytest --doctest-modules python/ray/data/read_api.py::ray.data.read_api.range
     pytest --doctest-modules doc/source/data/getting-started.rst
-
-Testing all examples
-====================
-
-To test all code snippets, run
-
-.. code-block:: bash
-
-    RAY_MOCK_MODULES=0 make doctest
-
-in the `ray/doc` directory.
