@@ -184,8 +184,7 @@ How to handle hard-to-test examples
 When is it okay to not test an example?
 =======================================
 
-You don't need to test examples that require GPUs, or examples that depend on external
-systems like Weights and Biases.
+You don't need to test examples that depend on external systems like Weights and Biases.
 
 Skipping *doctest-style* examples
 =================================
@@ -278,11 +277,60 @@ ellipses and `:hide:`. ::
 
         ...
 
---------------------
-How to test examples
---------------------
+------------------------------
+How to test examples with GPUs
+------------------------------
 
-To test examples, install the Ray fork of `pytest-sphinx`.
+To configure Bazel to run an example with GPUs, complete the following steps:
+
+#. Open the corresponding ``BUILD`` file. If your example is in the ``doc/`` folder,
+   open ``doc/BUILD``. If your example is in the ``python/`` folder, open a file like
+   ``python/ray/serve/BUILD``.
+
+#. Locate the ``doctest`` rule. It looks like this: ::
+
+    doctest(
+        files = glob(
+            include=["source/**/*.rst"],
+        ),
+        size = "large",
+        tags = ["team:none"]
+    )
+
+#. Add the file that contains your example to the list of excluded files. ::
+
+    doctest(
+        files = glob(
+            include=["source/**/*.rst"],
+            exclude=["source/data/requires-gpus.rst"]
+        ),
+        tags = ["team:none"]
+    )
+
+#. If it doesn't already exist, create a ``doctest`` rule with ``gpu`` set to ``True``. ::
+
+    doctest(
+        files = [],
+        tags = ["team:none"],
+        gpu = True
+    )
+
+#. Add the file that contains your example to the GPU rule. ::
+
+    doctest(
+        files = ["source/data/requires-gpus.rst"]
+        size = "large",
+        tags = ["team:none"],
+        gpu = True
+    )
+
+For a practical example, see ``doc/BUILD`` or ``python/ray/train/BUILD``.
+
+----------------------------
+How to locally test examples
+----------------------------
+
+To locally test examples, install the Ray fork of `pytest-sphinx`.
 
 .. code-block:: bash
 
