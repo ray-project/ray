@@ -113,6 +113,7 @@ def test_to_dask_tensor_column_cast_arrow(ray_start_regular_shared):
         ctx.enable_tensor_extension_casting = original
 
 
+@pytest.mark.skip("Needs modin + pandas upgrade")
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_from_modin(ray_start_regular_shared):
     import modin.pandas as mopd
@@ -126,6 +127,7 @@ def test_from_modin(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
+@pytest.mark.skip("Needs modin + pandas upgrade")
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_to_modin(ray_start_regular_shared):
     # create two modin dataframes

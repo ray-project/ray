@@ -3,7 +3,7 @@
 aim==3.16.1
 ax-platform==0.1.9; python_version < '3.7'
 ax-platform==0.2.6; python_version == '3.7'
-ax-platform==0.3.2; python_version >= '3.8'
+ax-platform==0.2.6; python_version >= '3.8'
 sqlalchemy
 
 bayesian-optimization==1.2.0

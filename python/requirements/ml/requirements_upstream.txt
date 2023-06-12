@@ -8,4 +8,4 @@ xgboost_ray==0.1.15
 lightgbm_ray==0.1.8
 # Todo: Upgrade and fix pandas errors
 modin==0.12.1; python_version < '3.8'
-modin==0.18.1; python_version >= '3.8'
+modin==0.12.1; python_version >= '3.8'
