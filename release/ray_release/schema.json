@@ -111,6 +111,9 @@
 				},
 				"pre_run_cmds": {
 					"type": "array"
+				},
+				"runtime_env": {
+					"type": "array"
 				}
 			},
 			"required": [

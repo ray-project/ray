@@ -374,7 +374,13 @@ class BuildkiteSettingsTest(unittest.TestCase):
         filtered = filter_tests(*args, **kwargs)
         return [(t[0]["name"], t[1]) for t in filtered]
 
-    def testFilterTests(self):
+    @patch("ray_release.test.Test.update_from_s3", return_value=None)
+    @patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
+    @patch(
+        "ray_release.test_automation.state_machine.TestStateMachine.get_ray_repo",
+        return_value=None,
+    )
+    def testFilterTests(self, *args):
         tests = [
             Test(
                 {

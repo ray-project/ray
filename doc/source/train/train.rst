@@ -112,6 +112,9 @@ classes that ship out of the box with Train:
     * - :class:`TransformersTrainer <ray.train.huggingface.TransformersTrainer>`
       - :class:`TransformersCheckpoint <ray.train.huggingface.TransformersCheckpoint>`
       - :class:`TransformersPredictor <ray.train.huggingface.TransformersPredictor>`
+    * - :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`
+      - :class:`LightningCheckpoint <ray.train.lightning.LightningCheckpoint>`
+      - :class:`LightningPredictor <ray.train.lightning.LightningPredictor>`
     * - :class:`RLTrainer <ray.train.rl.RLTrainer>`
       - :class:`RLCheckpoint <ray.train.rl.RLCheckpoint>`
       - :class:`RLPredictor <ray.train.rl.RLPredictor>`

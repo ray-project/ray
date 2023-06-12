@@ -257,6 +257,11 @@ if setup_spec.type == SetupType.RAY:
             "smart_open",
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
+        "client": [
+            # The Ray client needs a specific range of gRPC to work:
+            # Tracking issue: https://github.com/grpc/grpc/issues/31885
+            "grpcio >= 1.42.0, <= 1.50.0",
+        ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
         "k8s": ["kubernetes", "urllib3"],
@@ -311,16 +316,10 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "attrs",
         "click >= 7.0",
-        "dataclasses; python_version < '3.7'",
         "filelock",
-        # Tracking issue: https://github.com/ray-project/ray/issues/30984
-        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa:E501
-        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa:E501
-        # Original issue: https://github.com/ray-project/ray/issues/33833
-        "grpcio >= 1.32.0, <= 1.51.3; python_version < '3.10' and sys_platform != 'darwin'",  # noqa:E501
-        "grpcio >= 1.42.0, <= 1.51.3; python_version >= '3.10' and sys_platform != 'darwin'",  # noqa:E501
+        "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+        "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",

@@ -86,7 +86,7 @@ a dictionary.
 
 
 For more information on working with rows, see
-:ref:`Transforming rows <transforming-rows>` and
+:ref:`Transforming rows <transforming_rows>` and
 :ref:`Iterating over rows <iterating-over-rows>`.
 
 .. _inspecting-batches:
@@ -141,5 +141,5 @@ of the returned batch, set ``batch_format``.
             [2 rows x 5 columns]
 
 For more information on working with batches, see
-:ref:`Transforming batches <transforming-batches>` and
+:ref:`Transforming batches <transforming_batches>` and
 :ref:`Iterating over batches <iterating-over-batches>`.
