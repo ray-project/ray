@@ -42,7 +42,8 @@ Under the `spec` section in the `RayService` CR, find the following fields:
 **`rayClusterConfig`**: Populate this field with the contents of the `spec` field from the `RayCluster` CR YAML file. Refer to [KubeRay configuration](kuberay-config) for more details.
 
 :::{tip}
-To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider increasing the value of the `deploymentUnhealthySecondThreshold` to avoid a cluster restart.
+To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider increasing the value of the `deploymentUnhealthySecondThreshold` to avoid a cluster restart. 
+
 Alternatively, you can also download the dependencies in the Dockerfile and build a custom image so that the dependencies are already available when the cluster starts.
 :::
 
@@ -58,9 +59,9 @@ The Serve config for the example is embedded into [this example `RayService` CR]
 To follow along, save this CR locally in a file named `ray_v1alpha1_rayservice.yaml`:
 
 :::{note}
-The example `RayService` uses very small resource requests because it's only for demonstration.
-In production, you'll want to provide more resources to the cluster.
+- The example `RayService` uses very small resource requests because it's only for demonstration. In production, you'll want to provide more resources to the cluster.
 Learn more about how to configure KubeRay clusters [here](kuberay-config).
+- If have dependencies that need to be installed for the deployment, you can add them to the `runtime_env` in the Deployment code. Checkout [here](serve-handling-dependencies)
 :::
 
 ```console
