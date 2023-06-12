@@ -310,7 +310,7 @@ def _running_test_script(
     command_timeout: int,
 ) -> None:
     command = test["run"]["script"]
-    command_env = {}
+    command_env = test.get_byod_runtime_env()
 
     if smoke_test:
         command = f"{command} --smoke-test"

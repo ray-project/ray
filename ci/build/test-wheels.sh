@@ -148,14 +148,6 @@ elif [[ "$platform" == "macosx" ]]; then
     # Update pip
     "$PIP_CMD" install -U pip
 
-    # Install grpcio
-    if [ "$(uname -m)" = "arm64" ]; then
-      "$PIP_CMD" uninstall -y grpcio || true
-      conda install -y --force-reinstall grpcio || true
-    else
-      "$PIP_CMD" install -q grpcio
-    fi
-
     # Install the wheel.
     "$PIP_CMD" uninstall -y ray
     "$PIP_CMD" install -q "$PYTHON_WHEEL"

@@ -1,5 +1,5 @@
 import sys
-from typing import List
+from typing import List, Optional
 
 import pytest
 
@@ -16,10 +16,12 @@ from ray_release.test_automation.state_machine import TestStateMachine
 
 
 class MockIssue:
-    def __init__(self, number: int, state: str = "open", labels: List[str] = []):
+    def __init__(
+        self, number: int, state: str = "open", labels: Optional[List[str]] = None
+    ):
         self.number = number
         self.state = state
-        self.labels = labels
+        self.labels = labels or []
         self.comments = []
 
     def edit(self, state: str = None, labels: List[str] = None):
@@ -165,6 +167,20 @@ def test_move_from_failing_to_jailed():
     sm = TestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.JAILED
+
+    # Test moving from jailed to jailed
+    issue = MockIssueDB.issue_db[test.get(Test.KEY_GITHUB_ISSUE_NUMBER)]
+    issue.edit(state="closed")
+    test.test_results.insert(
+        0,
+        TestResult.from_result(Result(status=ResultStatus.ERROR.value)),
+    )
+    sm = TestStateMachine(test)
+    sm.move()
+    assert test.get_state() == TestState.JAILED
+    assert issue.state == "open"
+
+    # Test moving from jailed to passing
     test.test_results.insert(
         0,
         TestResult.from_result(Result(status=ResultStatus.SUCCESS.value)),
@@ -172,6 +188,8 @@ def test_move_from_failing_to_jailed():
     sm = TestStateMachine(test)
     sm.move()
     assert test.get_state() == TestState.PASSING
+    assert test.get(Test.KEY_GITHUB_ISSUE_NUMBER) is None
+    assert issue.state == "closed"
 
 
 if __name__ == "__main__":
