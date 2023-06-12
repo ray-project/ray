@@ -176,7 +176,7 @@ To get information about the current nodes in your cluster, you can use ``ray.no
     print(ray.nodes())
 
 .. testoutput::
-  :options: +MOCK
+  :options: +SKIP
 
     [{'NodeID': '2691a0c1aed6f45e262b2372baf58871734332d7',
       'Alive': True,

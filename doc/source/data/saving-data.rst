@@ -143,7 +143,7 @@ To change the number of blocks, call :meth:`~ray.data.Dataset.repartition`.
     print(os.listdir("/tmp/two_files/"))
 
 .. testoutput::
-    :options: +MOCK
+    :options: +SKIP
 
     ['26b07dba90824a03bb67f90a1360e104_000003.csv', '26b07dba90824a03bb67f90a1360e104_000002.csv']
 

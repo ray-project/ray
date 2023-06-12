@@ -596,7 +596,7 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
             ray_ds["train"].take(2)
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
             [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
 

@@ -206,7 +206,7 @@ Below, we demonstrate this behavior on a function with a non-serializable object
 The resulting output is:
 
 .. testoutput::
-  :options: +MOCK
+  :options: +SKIP
 
     =============================================================
     Checking Serializability of <function test at 0x7ff130697e50>

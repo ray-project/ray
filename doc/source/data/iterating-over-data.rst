@@ -70,7 +70,7 @@ formats by calling one of the following methods:
                 print(batch)
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
             {'image': array([[[[...]]]], dtype=uint8)}
             ...
@@ -89,7 +89,7 @@ formats by calling one of the following methods:
                 print(batch)
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
             0                5.1               3.5                1.4               0.2       0
@@ -112,7 +112,7 @@ formats by calling one of the following methods:
                 print(batch)
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
             {'image': tensor([[[[...]]]], dtype=torch.uint8)}
             ...
@@ -183,7 +183,7 @@ movement.
 
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
             {'image': array([[[[...]]]], dtype=uint8)}
             ...
@@ -206,7 +206,7 @@ movement.
                 print(batch)
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
                sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
             0                6.3               2.9                5.6               1.8       2
@@ -231,7 +231,7 @@ movement.
                 print(batch)
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
             {'image': tensor([[[[...]]]], dtype=torch.uint8)}
             ...
@@ -256,7 +256,7 @@ movement.
                 print(features, labels)
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
             tf.Tensor([5.2 6.3], shape=(2,), dtype=float64) tf.Tensor([1 2], shape=(2,), dtype=int64)
             ...

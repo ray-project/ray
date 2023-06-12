@@ -104,7 +104,7 @@ Use `ray list actors` from :ref:`State API <state-api-overview-ref>` to see acto
   Stats:
   ------------------------------
   Total: 1
-  
+
   Table:
   ------------------------------
       ACTOR_ID                          CLASS_NAME    STATE      JOB_ID  NAME    NODE_ID                                                     PID  RAY_NAMESPACE
@@ -332,7 +332,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
                 print(ray.get(counter.get_counter.remote()))
 
         .. testoutput::
-            :options: +MOCK
+            :options: +SKIP
 
             0
             3

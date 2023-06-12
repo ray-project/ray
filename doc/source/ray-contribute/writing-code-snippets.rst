@@ -253,7 +253,7 @@ with ellipses. ::
         )
 
 If your output is nondeterministic and you want to display a sample output, add
-`:options: +MOCK`. ::
+`:options: +SKIP`. ::
 
     .. testcode::
 
@@ -261,7 +261,7 @@ If your output is nondeterministic and you want to display a sample output, add
         print(random.random())
 
     .. testoutput::
-        :options: +MOCK
+        :options: +SKIP
 
         0.969461416250246
 

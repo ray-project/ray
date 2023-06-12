@@ -190,7 +190,7 @@ class RuntimeContext(object):
                 print(ray.get(get_task_id.remote()))
 
             .. testoutput::
-                :options: +MOCK
+                :options: +SKIP
 
                 16310a0f0a45af5c2746a0e6efb235c0962896a201000000
                 c2668a65bda616c1ffffffffffffffffffffffff01000000
