@@ -322,25 +322,32 @@ def test_recover_deleting_deployment(serve_instance):
         async def __del__(self):
             await signal.wait.remote()
 
-    A.deploy()
+    serve.run(A.bind())
 
     @ray.remote
     def delete_task():
-        serve.get_deployment("A").delete()
+        serve.delete("default")
 
-    # Delete deployment and make sure it is stuck on deleting
+    # Delete application and make sure it is stuck on deleting
     delete_ref = delete_task.remote()
-    print("Started task to delete deployment `A`")
+    print("Started task to delete application `default`")
 
-    def deployment_deleting():
+    def application_deleting():
+        # Confirm application is in deleting state
+        app_status = serve_instance.get_serve_status()
+        if app_status.app_status.status != "DELETING":
+            return False
+
         # Confirm deployment is in updating state
         status = serve_instance.get_all_deployment_statuses()[0]
-        if not (status.name == "A" and status.status == "UPDATING"):
+        if not (status.name == "default_A" and status.status == "UPDATING"):
             return False
 
         # Confirm replica is stopping
         replicas = ray.get(
-            serve_instance._controller._dump_replica_states_for_testing.remote("A")
+            serve_instance._controller._dump_replica_states_for_testing.remote(
+                "default_A"
+            )
         )
         if replicas.count(states=[ReplicaState.STOPPING]) != 1:
             return False
@@ -357,14 +364,14 @@ def test_recover_deleting_deployment(serve_instance):
         finished, pending = ray.wait([delete_ref], timeout=0)
         return finished and not pending
 
-    wait_for_condition(deployment_deleting)
+    wait_for_condition(application_deleting)
     for _ in range(10):
         time.sleep(0.1)
-        assert deployment_deleting()
+        assert application_deleting()
 
-    print("Confirmed that deployment is stuck on deleting.")
+    print("Confirmed that application `default` is stuck on deleting.")
 
-    # Kill controller while the deployment is stuck on deleting
+    # Kill controller while the application is stuck on deleting
     ray.kill(serve.context._global_client._controller, no_restart=False)
     print("Finished killing the controller (with restart).")
 
@@ -378,25 +385,25 @@ def test_recover_deleting_deployment(serve_instance):
     wait_for_condition(check_controller_alive)
     print("Controller is back alive.")
 
-    wait_for_condition(deployment_deleting)
-    # Before we send the signal, the deployment should still be deleting
+    wait_for_condition(application_deleting)
+    # Before we send the signal, the application should still be deleting
     for _ in range(10):
         time.sleep(0.1)
-        assert deployment_deleting()
+        assert application_deleting()
 
-    print("Confirmed that deployment is still stuck on deleting.")
+    print("Confirmed that application is still stuck on deleting.")
 
     # Since we've confirmed the replica is in a stopping state, we can grab
     # the reference to the in-progress graceful shutdown task
     replicas = ray.get(
-        serve_instance._controller._dump_replica_states_for_testing.remote("A")
+        serve_instance._controller._dump_replica_states_for_testing.remote("default_A")
     )
     graceful_shutdown_ref = replicas.get()[0]._actor._graceful_shutdown_ref
 
     signal.send.remote()
-    print("Sent signal to unblock deletion of deployment")
+    print("Sent signal to unblock deletion of application")
     wait_for_condition(check_deleted)
-    print("Confirmed that deployment finished deleting and delete task has returned.")
+    print("Confirmed that application finished deleting and delete task has returned.")
 
     # Make sure graceful shutdown ran successfully
     ray.get(graceful_shutdown_ref)

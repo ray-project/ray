@@ -1,9 +1,8 @@
-import sys
 import pytest
-from typing import List, Tuple, Dict
-from unittest.mock import patch, Mock
+import sys
+from typing import Dict, List, Tuple
+from unittest.mock import Mock, patch
 
-import ray
 from ray.exceptions import RayTaskError
 
 from ray.serve._private.application_state import (
@@ -24,11 +23,15 @@ from ray.serve.tests.test_deployment_state import MockKVStore
 
 
 class MockEndpointState:
+    def __init__(self):
+        self.endpoints = dict()
+
     def update_endpoint(self, endpoint, endpoint_info):
-        pass
+        self.endpoints[endpoint] = endpoint_info
 
     def delete_endpoint(self, endpoint):
-        pass
+        if endpoint in self.endpoints:
+            del self.endpoints[endpoint]
 
 
 class MockDeploymentStateManager:
@@ -229,13 +232,6 @@ def test_deploy_and_delete_app(mocked_application_state):
     deployment_state_manager.set_deployment_deleted("d2")
     ready_to_be_deleted = app_state.update()
     assert ready_to_be_deleted
-
-
-def test_create_app(mocked_application_state_manager):
-    """Test object ref based deploy and set DEPLOYING"""
-    app_state_manager, _, _ = mocked_application_state_manager
-    app_state_manager.create_application_state("test_app", ray.ObjectRef.nil())
-    assert app_state_manager.get_app_status("test_app") == ApplicationStatus.DEPLOYING
 
 
 def test_app_deploy_failed_and_redeploy(mocked_application_state):

@@ -102,8 +102,8 @@ class ApplicationState:
         RUNNING: All deployments are healthy.
         DEPLOY_FAILED: The deploy task failed or one or more deployments
             became unhealthy in the process of deploying
-        UNHEALTHY: One or more deployments transitioned from healthy to
-            unhealthy.
+        UNHEALTHY: While the application was running, one or more
+            deployments transition from healthy to unhealthy.
         DELETING: Application and its deployments are being deleted.
         """
         return self._status
@@ -123,9 +123,13 @@ class ApplicationState:
             return []
         return list(self._target_state.deployment_infos.keys())
 
-    def recover_target_state_from_checkpoint(self, checkpoint_data):
+    def recover_target_state_from_checkpoint(
+        self, checkpoint_data: ApplicationTargetState
+    ):
         logger.info(f"Recovering target state for app {self._name} from checkpoint.")
-        self._target_state = checkpoint_data
+        self._set_target_state(
+            checkpoint_data.deployment_infos, checkpoint_data.deleting
+        )
 
     def _set_target_state(
         self,
