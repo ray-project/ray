@@ -636,6 +636,7 @@ def start(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
+        labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
         huge_pages=False,
@@ -655,7 +656,6 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
-        labels=labels_dict,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
