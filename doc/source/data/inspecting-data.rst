@@ -146,7 +146,7 @@ For more information on working with batches, see
 :ref:`Iterating over batches <iterating-over-batches>`.
 
 
-Inspecting exeuction statistics
+Inspecting execution statistics
 ===============================
 
 Ray Data calculates statistics during execution like runtime and memory usage for the different stages. 
