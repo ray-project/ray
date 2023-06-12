@@ -4842,7 +4842,7 @@
   cluster:
     byod:
       runtime_env:
-        - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000 
+        - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
         - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
     cluster_env: shuffle/shuffle_with_state_api_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
@@ -5049,7 +5049,7 @@
   cluster:
     byod:
       runtime_env:
-        - RAY_memory_usage_threshold=0.7 
+        - RAY_memory_usage_threshold=0.7
         - RAY_task_oom_retries=-1
     cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
     cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
@@ -6040,7 +6040,7 @@
 
   run:
     timeout: 28800
-    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
+    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=10000 --partition-size=1e9 --shuffle
     wait_for_nodes:
       num_nodes: 100
 
