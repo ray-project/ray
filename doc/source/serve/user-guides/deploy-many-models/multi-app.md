@@ -14,7 +14,7 @@ With that in mind, if you have many independent models each behind different end
 ## Get Started
 
 Define a Serve application:
-```{literalinclude} doc_code/basic_calculator.py
+```{literalinclude} ../../doc_code/basic_calculator.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
@@ -23,7 +23,7 @@ Define a Serve application:
 Copy this to a file named `calculator.py`.
 
 Define a second Serve application:
-```{literalinclude} doc_code/basic_greet.py
+```{literalinclude} ../../doc_code/basic_greet.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__

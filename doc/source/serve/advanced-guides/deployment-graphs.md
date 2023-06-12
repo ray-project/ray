@@ -16,7 +16,7 @@ The basic building block for all deployment graphs is the `DeploymentNode`. One 
 
 As another example:
 
-```{literalinclude} doc_code/model_composition/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/class_nodes.py
 :start-after: __echo_class_start__
 :end-before: __echo_class_end__
 :language: python
@@ -46,7 +46,7 @@ $ serve run echo:foo_node
 
 Here's a client script that can send requests to your node:
 
-```{literalinclude} doc_code/model_composition/class_nodes.py
+```{literalinclude} ../doc_code/model_composition/class_nodes.py
 :start-after: __echo_client_start__
 :end-before: __echo_client_end__
 :language: python
@@ -72,7 +72,7 @@ output = request + 2 - 1 + 3
 Here's the graph:
 
 (deployment-graph-arithmetic-graph)=
-```{literalinclude} doc_code/model_composition/arithmetic.py
+```{literalinclude} ../doc_code/model_composition/arithmetic.py
 :start-after: __graph_start__
 :end-before: __graph_end__
 :language: python
@@ -120,7 +120,7 @@ The `DAGDriver` can also be bound to `ClassNodes`. This is useful if you constru
 
 You can test this example using this client script:
 
-```{literalinclude} doc_code/model_composition/arithmetic.py
+```{literalinclude} ../doc_code/model_composition/arithmetic.py
 :start-after: __graph_client_start__
 :end-before: __graph_client_end__
 :language: python
@@ -150,7 +150,7 @@ The `DAGDriver` also has an optional keyword argument: `http_adapter`. [HTTP ada
 For instance, you can use the Ray Serve-provided `json_request` adapter to simplify the [arithmetic call graph](deployment-graph-arithmetic-graph) by eliminating the `unpack_request` function. You can replace lines 29 through 38 with this graph:
 
 (http-adapter-arithmetic-example)=
-```{literalinclude} doc_code/model_composition/arithmetic.py
+```{literalinclude} ../doc_code/model_composition/arithmetic.py
 :start-after: __adapter_graph_start__
 :end-before: __adapter_graph_end__
 :language: python
@@ -181,7 +181,7 @@ To test your graph,
 
 As an example, you can continue rewriting the [arithmetic graph example](http-adapter-arithmetic-example) from above to use `predict.remote`. You can add testing code to the example:
 
-```{literalinclude} doc_code/model_composition/arithmetic.py
+```{literalinclude} ../doc_code/model_composition/arithmetic.py
 :start-after: __test_graph_start__
 :end-before: __test_graph_end__
 :language: python
@@ -232,7 +232,7 @@ pip install -U pydot && sudo apt-get install -y graphviz
 
 Here's an example graph:
 
-```{literalinclude} doc_code/model_composition/deployment_graph_viz.py
+```{literalinclude} ../doc_code/model_composition/deployment_graph_viz.py
 :language: python
 ```
 

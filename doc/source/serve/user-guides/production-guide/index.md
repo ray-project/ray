@@ -20,7 +20,7 @@ For more details, you can check out the other pages in the production guide:
 Throughout the production guide, we will use the following Serve application as a working example.
 The application takes in requests containing a list of two values, a fruit name and an amount, and returns the total price for the batch of fruits.
 
-```{literalinclude} ../doc_code/production_fruit_example.py
+```{literalinclude} ../../doc_code/production_fruit_example.py
 :language: python
 :start-after: __fruit_example_begin__
 :end-before: __fruit_example_end__

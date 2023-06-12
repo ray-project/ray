@@ -9,7 +9,7 @@ When a request arrives, Serve puts the request in a queue. This queue buffers th
 
 ### Enable batching for your deployment
 You can enable batching by using the {mod}`ray.serve.batch` decorator. Let's take a look at a simple example by modifying the `Model` class to accept a batch.
-```{literalinclude} doc_code/batching_guide.py
+```{literalinclude} ../doc_code/batching_guide.py
 ---
 start-after: __single_sample_begin__
 end-before: __single_sample_end__
@@ -21,7 +21,7 @@ The batching decorators expect you to make the following changes in your method 
 - The method accepts a list of its original input types as input. For example, `arg1: int, arg2: str` should be changed to `arg1: List[int], arg2: List[str]`.
 - The method returns a list. The length of the return list and the input list must be of equal lengths for the decorator to split the output evenly and return a corresponding response back to its respective request.
 
-```{literalinclude} doc_code/batching_guide.py
+```{literalinclude} ../doc_code/batching_guide.py
 ---
 start-after: __batch_begin__
 end-before: __batch_end__
@@ -42,7 +42,7 @@ Support for HTTP streaming responses is experimental. To enable this feature, se
 
 Use an async generator to stream the outputs from your batched requests. Let's convert the `StreamingResponder` class to accept a batch.
 
-```{literalinclude} doc_code/batching_guide.py
+```{literalinclude} ../doc_code/batching_guide.py
 ---
 start-after: __single_stream_begin__
 end-before: __single_stream_end__
@@ -51,7 +51,7 @@ end-before: __single_stream_end__
 
 Decorate async generator functions with the {mod}`ray.serve.batch` decorator. Similar to non-streaming methods, the function takes in a `List` of inputs and in each iteration it `yield`s an iterable of outputs with the same length as the input batch size.
 
-```{literalinclude} doc_code/batching_guide.py
+```{literalinclude} ../doc_code/batching_guide.py
 ---
 start-after: __batch_stream_begin__
 end-before: __batch_stream_end__
