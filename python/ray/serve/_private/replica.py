@@ -217,6 +217,7 @@ def create_replica_wrapper(name: str):
 
             request_metadata = pickle.loads(pickled_request_metadata)
             if request_metadata.is_http_request:
+                # The sole argument passed from `http_proxy.py` is the ASGI scope.
                 assert len(request_args) == 1
                 request: HTTPRequestWrapper = pickle.loads(request_args[0])
 
@@ -571,6 +572,7 @@ class RayServeReplica:
         )
 
         if request_metadata.is_http_request:
+            # For HTTP requests we always expect (scope, receive, send) as args.
             assert len(request_args) == 3
             scope, receive, send = request_args
 
