@@ -7,7 +7,6 @@
 # You can obtain this list from the ray.egg-info/requires.txt
 
 ## setup.py install_requires
-attrs
 click>=7.0
 filelock
 jsonschema

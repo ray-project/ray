@@ -3,6 +3,7 @@ import os
 from unittest import mock
 
 import pytest
+from unittest.mock import patch
 
 from ray_release.test import (
     Test,
@@ -84,6 +85,21 @@ def test_get_anyscale_byod_image():
             }
         ).get_anyscale_byod_image()
         == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
+    )
+
+
+@patch("github.Repository")
+@patch("github.Issue")
+def test_is_jailed_with_open_issue(mock_repo, mock_issue) -> None:
+    assert not Test(state="passing").is_jailed_with_open_issue(mock_repo)
+    mock_repo.get_issue.return_value = mock_issue
+    mock_issue.state = "open"
+    assert Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
+        mock_repo
+    )
+    mock_issue.state = "closed"
+    assert not Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
+        mock_repo
     )
 
 
