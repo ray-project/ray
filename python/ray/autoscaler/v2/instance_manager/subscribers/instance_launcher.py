@@ -98,6 +98,7 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
             )
             if not result:
                 logger.warn(f"Failed to update instance {instance}")
+                continue
             instance.version = version
             instances_selected.append(instance)
 
@@ -111,6 +112,7 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
 
         assert len(created_cloud_instances) <= len(instances_selected)
 
+        instances_launched = 0
         while created_cloud_instances and instances_selected:
             cloud_instance = created_cloud_instances.pop()
             instance = instances_selected.pop()
@@ -131,6 +133,8 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
                 # push the cloud instance back
                 created_cloud_instances.append(cloud_instance)
 
+            instances_launched += 1
+
         if created_cloud_instances:
             # instances are leaked, we probably need to terminate them
             for instance in created_cloud_instances:
@@ -144,3 +148,4 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
                     instance, expected_instance_version=instance.version
                 )
                 # TODO: this could only happen when the request is canceled.
+        return instances_launched

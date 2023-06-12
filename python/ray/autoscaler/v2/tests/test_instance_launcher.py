@@ -11,7 +11,6 @@ from ray.autoscaler._private.node_launcher import BaseNodeLauncher
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeProviderAvailabilityTracker,
 )
-from ray.autoscaler.node_launch_exception import NodeLaunchException
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
 from ray.autoscaler.v2.instance_manager.node_provider import NodeProviderAdapter
@@ -54,14 +53,54 @@ class InstanceLauncherTest(unittest.TestCase):
 
     def test_launch_new_instance_by_type(self):
         instance = create_instance("1")
-        self.instance_storage.upsert_instance(instance)
-        self.instance_launcher._launch_new_instances_by_type(
+        success, verison = self.instance_storage.upsert_instance(instance)
+        assert success
+        instance.version = verison
+        assert 1 == self.instance_launcher._launch_new_instances_by_type(
             "worker_nodes1", [instance]
         )
-        instances, verison = self.instance_storage.get_instances()
+        instances, _ = self.instance_storage.get_instances()
         assert len(instances) == 1
         assert instances["1"].status == Instance.ALLOCATED
         assert instances["1"].cloud_instance_id == "0"
+
+    def test_launch_failed(self):
+        # launch failed: instance is not in storage
+        instance = create_instance("1")
+        assert 0 == self.instance_launcher._launch_new_instances_by_type(
+            "worker_nodes1", [instance]
+        )
+        instances, _ = self.instance_storage.get_instances()
+        assert len(instances) == 0
+
+        # launch failed: instance version mismatch
+        instance = create_instance("1")
+        self.instance_storage.upsert_instance(instance)
+        instance.version = 2
+        assert 0 == self.instance_launcher._launch_new_instances_by_type(
+            "worker_nodes1", [instance]
+        )
+        instances, _ = self.instance_storage.get_instances()
+        assert len(instances) == 1
+        assert instances["1"].status == Instance.UNKNOWN
+
+    def test_launch_partial_success(self):
+        self.base_provider.partical_success_count = 1
+        instance1 = create_instance("1")
+        instance2 = create_instance("2")
+        success, version = self.instance_storage.batch_upsert_instances(
+            [instance1, instance2]
+        )
+        assert success
+        instance1.version = version
+        instance2.version = version
+        self.instance_launcher._launch_new_instances_by_type(
+            "worker_nodes1", [instance1, instance2]
+        )
+        instances, _ = self.instance_storage.get_instances()
+        assert len(instances) == 2
+        assert instances["1"].status == Instance.ALLOCATION_FAILED
+        assert instances["2"].status == Instance.ALLOCATED
 
 
 if __name__ == "__main__":

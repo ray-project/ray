@@ -159,6 +159,7 @@ class MockProvider(NodeProvider):
         self.unique_ips = unique_ips
         self.fail_to_fetch_ip = False
         self.safe_to_scale_flag = True
+        self.partical_success_count = None
         # Many of these functions are called by node_launcher or updater in
         # different threads. This can be treated as a global lock for
         # everything.
@@ -233,6 +234,8 @@ class MockProvider(NodeProvider):
             return
 
         created_nodes = {}
+        if self.partical_success_count is not None:
+            count = min(count, self.partical_success_count)
         with self.lock:
             if self.cache_stopped:
                 for node in self.mock_nodes.values():
