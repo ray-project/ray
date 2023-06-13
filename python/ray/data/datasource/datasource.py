@@ -226,7 +226,9 @@ class ReadTask(Callable[[], Iterable[Block]]):
         if self._additional_output_splits > 1:
             block = BlockAccessor.for_block(block)
             offset = 0
-            split_sizes = np.array_split(range(block.num_rows()), self._additional_output_splits)
+            split_sizes = np.array_split(
+                range(block.num_rows()), self._additional_output_splits
+            )
             for split in split_sizes:
                 size = len(split)
                 yield block.slice(offset, offset + size, copy=True)

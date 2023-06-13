@@ -19,6 +19,7 @@ class InputDataBuffer(PhysicalOperator):
         self,
         input_data: Optional[List[RefBundle]] = None,
         input_data_factory: Callable[[], List[RefBundle]] = None,
+        override_num_blocks: Optional[int] = None,
     ):
         """Create an InputDataBuffer.
 
@@ -37,6 +38,7 @@ class InputDataBuffer(PhysicalOperator):
             assert input_data_factory is not None
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
+        self._override_num_blocks = override_num_blocks
         super().__init__("Input", [])
 
     def start(self, options: ExecutionOptions) -> None:
@@ -53,7 +55,7 @@ class InputDataBuffer(PhysicalOperator):
         return self._input_data.pop(0)
 
     def num_outputs_total(self) -> Optional[int]:
-        return self._num_outputs
+        return self._override_num_blocks or self._num_outputs
 
     def get_stats(self) -> StatsDict:
         return {}

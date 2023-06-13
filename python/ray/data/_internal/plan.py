@@ -903,7 +903,6 @@ class OneToOneStage(Stage):
         self.fn_constructor_kwargs = fn_constructor_kwargs
 
     def can_fuse(self, prev: Stage):
-        # TODO disable fusion of split blocks stages
         if not isinstance(prev, OneToOneStage):
             return False
         # Allow fusing tasks->actors if the resources are compatible (read->map), but

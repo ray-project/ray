@@ -22,6 +22,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
 )
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block
 
@@ -129,6 +130,9 @@ class OperatorFusionRule(Rule):
 
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
+
+        if isinstance(up_logical_op, Read) and not up_logical_op.fusable():
+            return False
 
         # If the downstream operator takes no input, it cannot be fused with
         # the upstream operator.

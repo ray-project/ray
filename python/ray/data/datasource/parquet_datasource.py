@@ -291,7 +291,9 @@ class _ParquetDatasourceReader(Reader):
 
             if meta.num_rows is not None and meta.size_bytes is not None:
                 row_size = meta.size_bytes / meta.num_rows
-                default_read_batch_size = min(PARQUET_READER_ROW_BATCH_SIZE, 64e6 / row_size)
+                default_read_batch_size = min(
+                    PARQUET_READER_ROW_BATCH_SIZE, 64e6 / row_size
+                )
             else:
                 default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
             block_udf, reader_args, columns, schema = (
@@ -370,7 +372,12 @@ class _ParquetDatasourceReader(Reader):
 
 
 def _read_pieces(
-    block_udf, reader_args, default_read_batch_size, columns, schema, serialized_pieces: List[_SerializedPiece]
+    block_udf,
+    reader_args,
+    default_read_batch_size,
+    columns,
+    schema,
+    serialized_pieces: List[_SerializedPiece],
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa

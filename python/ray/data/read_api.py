@@ -351,9 +351,12 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        requested_parallelism, min_safe_parallelism, inmemory_size, read_tasks = _get_read_tasks(
-            datasource, ctx, cur_pg, parallelism, local_uri, read_args
-        )
+        (
+            requested_parallelism,
+            min_safe_parallelism,
+            inmemory_size,
+            read_tasks,
+        ) = _get_read_tasks(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
     else:
         # Prepare read in a remote task at same node.
         # NOTE: in Ray client mode, this is expected to be run on head node.
@@ -366,7 +369,12 @@ def read_datasource(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        requested_parallelism, min_safe_parallelism, inmemory_size, read_tasks = ray.get(
+        (
+            requested_parallelism,
+            min_safe_parallelism,
+            inmemory_size,
+            read_tasks,
+        ) = ray.get(
             get_read_tasks.remote(
                 datasource,
                 ctx,
@@ -377,28 +385,28 @@ def read_datasource(
             )
         )
 
-#    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
-#        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
-#        logger.warning(
-#            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
-#            "larger than the target block size "
-#            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
-#            "out-of-memory errors during processing. Consider reducing the size of "
-#            "input files or using `.repartition(n)` to increase the number of "
-#            "dataset blocks."
-#        )
-#    elif len(read_tasks) < requested_parallelism and (
-#        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
-#    ):
-#        logger.warning(
-#            f"{WARN_PREFIX} The number of blocks in this dataset "
-#            f"({len(read_tasks)}) "
-#            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
-#            "This is much less than the number "
-#            "of available CPU slots in the cluster. Use `.repartition(n)` to "
-#            "increase the number of "
-#            "dataset blocks."
-#        )
+    #    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
+    #        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
+    #        logger.warning(
+    #            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
+    #            "larger than the target block size "
+    #            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
+    #            "out-of-memory errors during processing. Consider reducing the size of "
+    #            "input files or using `.repartition(n)` to increase the number of "
+    #            "dataset blocks."
+    #        )
+    #    elif len(read_tasks) < requested_parallelism and (
+    #        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
+    #    ):
+    #        logger.warning(
+    #            f"{WARN_PREFIX} The number of blocks in this dataset "
+    #            f"({len(read_tasks)}) "
+    #            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
+    #            "This is much less than the number "
+    #            "of available CPU slots in the cluster. Use `.repartition(n)` to "
+    #            "increase the number of "
+    #            "dataset blocks."
+    #        )
 
     # TODO update the warnings above
     if len(read_tasks) < requested_parallelism:
@@ -407,7 +415,9 @@ def read_datasource(
         if inmemory_size:
             expected_block_size = inmemory_size / len(read_tasks)
             print("Expected block size", expected_block_size)
-            size_based_splits = math.floor(max(1, expected_block_size / ctx.target_max_block_size))
+            size_based_splits = math.floor(
+                max(1, expected_block_size / ctx.target_max_block_size)
+            )
             print("Size based splits", size_based_splits)
         else:
             size_based_splits = 1
@@ -449,7 +459,7 @@ def read_datasource(
 
     # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
     # after removing LazyBlockList code path.
-    read_op = Read(datasource, read_tasks, ray_remote_args)
+    read_op = Read(datasource, read_tasks, estimated_num_blocks, ray_remote_args)
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(
