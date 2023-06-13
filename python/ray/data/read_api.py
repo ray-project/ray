@@ -1825,8 +1825,15 @@ def from_huggingface(
         # applying transformations (e.g. train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices
         # mapping from the transformations.
-        hf_ds_arrow = ds.with_format("arrow")
-        ray_ds = from_arrow(hf_ds_arrow[:])
+        # Hacky fix: To apply huggingface dataset feature decoding, we convert
+        # the dataset to pandas first, then convert it to a Ray dataset
+        # Note: This means that image and audio datasets will blow up in size,
+        # but we need this workaround for now otherwise the ray ds output format
+        # is different from the huggingface ds output 
+        # Future: figure out a way to apply huggingface's batch decoding inside
+        # our dataset lazily
+        hf_df = ds.with_format("pandas")
+        ray_ds = from_pandas(hf_df)
         return ray_ds
 
     if isinstance(dataset, datasets.DatasetDict):
