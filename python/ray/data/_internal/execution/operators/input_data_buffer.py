@@ -1,11 +1,11 @@
 from typing import Callable, List, Optional
 
-from ray.data._internal.stats import StatsDict
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
-    RefBundle,
     PhysicalOperator,
+    RefBundle,
 )
+from ray.data._internal.stats import StatsDict
 
 
 class InputDataBuffer(PhysicalOperator):

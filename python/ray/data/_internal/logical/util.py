@@ -1,7 +1,7 @@
-from typing import Dict
 import json
 import re
 import threading
+from typing import Dict
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -29,14 +29,10 @@ _op_name_white_list = [
     "ReadBinary",
     "ReadCustom",
     # From
+    "FromArrow",
     "FromItems",
-    "FromPandasRefs",
-    "FromHuggingFace",
-    "FromDask",
-    "FromModin",
-    "FromMars",
-    "FromNumpyRefs",
-    "FromArrowRefs",
+    "FromNumpy",
+    "FromPandas",
     # Write
     "WriteParquet",
     "WriteJSON",

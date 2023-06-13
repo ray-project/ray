@@ -1,32 +1,25 @@
 import os
-from typing import List
+from typing import Iterable, List
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import torchvision
-from ray.data.datasource.file_meta_provider import _handle_read_os_error
-
-from fsspec.implementations.local import LocalFileSystem
 from fsspec.implementations.http import HTTPFileSystem
+from fsspec.implementations.local import LocalFileSystem
 
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource import (
-    Datasource,
-    DummyOutputDatasource,
-    WriteResult,
-)
-
+from ray.data.datasource import Datasource, DummyOutputDatasource, WriteResult
+from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
-from typing import Iterable
 
 
 def df_to_csv(dataframe, path, **kwargs):
@@ -41,7 +34,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
     # test from single pyarrow table
     ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
@@ -49,7 +42,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
 
 def test_from_arrow_refs(ray_start_regular_shared):
@@ -62,7 +55,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
@@ -70,7 +63,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
