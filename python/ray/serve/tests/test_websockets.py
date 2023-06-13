@@ -1,8 +1,11 @@
 import asyncio
 import pytest
 import sys
+import time
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import gradio as gr
+from gradio_client import Client
 import requests
 from starlette.responses import StreamingResponse
 from websockets.exceptions import ConnectionClosed
@@ -11,6 +14,7 @@ from websockets.sync.client import connect
 import ray
 
 from ray import serve
+from ray.serve.gradio_integrations import GradioIngress
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
 
@@ -150,6 +154,35 @@ def test_unary_streaming_websocket_same_deployment(serve_instance):
     with connect("ws://localhost:8000/ws") as ws:
         ws.send("hi")
         assert ws.recv() == "hi"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Streaming feature flag is disabled.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="Gradio doesn't work on Windows.")
+def test_gradio_queue(serve_instance):
+    def counter(num_steps: int = 3):
+        for i in range(num_steps):
+            yield str(i)
+
+    @serve.deployment
+    class GradioGenerator(GradioIngress):
+        def __init__(self):
+            g = gr.Interface(counter, inputs=gr.Slider(1, 10, 3), outputs="text")
+            super().__init__(lambda: g.queue())
+
+    serve.run(GradioGenerator.bind())
+
+    client = Client("http://localhost:8000")
+    job1 = client.submit(3, api_name="/predict")
+    job2 = client.submit(5, api_name="/predict")
+
+    while not (job1.done() and job2.done()):
+        time.sleep(0.1)
+
+    assert job1.outputs() == [str(i) for i in range(3)]
+    assert job2.outputs() == [str(i) for i in range(5)]
 
 
 if __name__ == "__main__":
