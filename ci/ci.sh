@@ -478,13 +478,8 @@ build_wheels_and_jars() {
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
       else
-        rm -rf /ray-mount/*
-        rm -rf /ray-mount/.whl || true
-        rm -rf /ray/.whl || true
+        rm -rf /ray-mount/* /ray-mount/.whl /ray/.whl
         cp -rT /ray /ray-mount
-        ls -a /ray-mount
-        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
-        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
