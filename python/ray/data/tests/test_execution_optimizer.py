@@ -379,12 +379,18 @@ def test_repartition_e2e(
     _check_repartition_usage_and_stats(ds)
 
 
-def test_union_operator(ray_start_regular_shared, enable_optimizer):
+@pytest.mark.parametrize("preserve_order", (True, False))
+def test_union_operator(ray_start_regular_shared, enable_optimizer, preserve_order):
     planner = Planner()
     read_parquet_op = Read(ParquetDatasource(), [])
     read_range_op = Read(RangeDatasource(), [])
     read_json_op = Read(JSONDatasource(), [])
-    union_op = Union(read_parquet_op, read_range_op, read_json_op)
+    union_op = Union(
+        read_parquet_op,
+        read_range_op,
+        read_json_op,
+        preserve_order=preserve_order,
+    )
     plan = LogicalPlan(union_op)
     physical_op = planner.plan(plan).dag
 
@@ -395,17 +401,18 @@ def test_union_operator(ray_start_regular_shared, enable_optimizer):
         assert isinstance(input_op, MapOperator)
 
 
-def test_union_e2e(ray_start_regular_shared):
+@pytest.mark.parametrize("preserve_order", (True, False))
+def test_union_e2e(ray_start_regular_shared, enable_optimizer, preserve_order):
     ds = ray.data.range(20, parallelism=10)
 
     # Test lazy union.
-    ds = ds.union(ds, ds, ds, ds)
+    ds = ds.union(ds, ds, ds, ds, preserve_order=preserve_order)
     assert ds.num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
     _check_usage_record(["ReadRange", "Union"])
 
-    ds = ds.union(ds)
+    ds = ds.union(ds, preserve_order=preserve_order)
     assert ds.count() == 200
     assert ds.sum() == (950 * 2)
     _check_usage_record(["ReadRange", "Union"])
@@ -416,12 +423,12 @@ def test_union_e2e(ray_start_regular_shared):
     assert ds2.sum() == 15
     _check_usage_record(["FromItems"])
 
-    ds2 = ds2.union(ds2)
+    ds2 = ds2.union(ds2, preserve_order=preserve_order)
     assert ds2.count() == 10
     assert ds2.sum() == 30
     _check_usage_record(["FromItems", "Union"])
 
-    ds2 = ds2.union(ds)
+    ds2 = ds2.union(ds, preserve_order=preserve_order)
     assert ds2.count() == 210
     assert ds2.sum() == (950 * 2 + 30)
     _check_usage_record(["FromItems", "Union"])

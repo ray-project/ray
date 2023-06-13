@@ -1557,7 +1557,7 @@ class Dataset:
             return ds.split_at_indices([ds_length - test_size])
 
     @ConsumptionAPI(pattern="Args:")
-    def union(self, *other: List["Dataset"]) -> "Dataset":
+    def union(self, *other: List["Dataset"], preserve_order: bool = False) -> "Dataset":
         """Materialize and combine this dataset with others of the same type.
 
         The order of the blocks in the datasets is preserved, as is the
@@ -1646,7 +1646,10 @@ class Dataset:
             getattr(union_ds, "_logical_plan", None) for union_ds in datasets
         ]
         if all(logical_plans):
-            op = UnionLogicalOperator(*[plan.dag for plan in logical_plans])
+            op = UnionLogicalOperator(
+                *[plan.dag for plan in logical_plans],
+                preserve_order=preserve_order,
+            )
             logical_plan = LogicalPlan(op)
 
         return Dataset(

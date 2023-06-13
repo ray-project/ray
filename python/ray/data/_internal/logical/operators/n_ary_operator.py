@@ -34,5 +34,9 @@ class Zip(NAry):
 class Union(NAry):
     """Logical operator for union."""
 
-    def __init__(self, *input_ops: LogicalOperator):
+    def __init__(
+        self,
+        *input_ops: LogicalOperator,
+        preserve_order: bool = False,
+    ):
         super().__init__(*input_ops)
