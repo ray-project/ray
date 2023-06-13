@@ -447,7 +447,7 @@ class RayServeReplica:
 
         self.num_pending_items = metrics.Gauge(
             "serve_replica_pending_queries",
-            description="The number of queries being pended.",
+            description="The current number of pending queries.",
         )
 
         self.restart_counter.inc()
