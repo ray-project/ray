@@ -2294,8 +2294,6 @@ def disconnect(exiting_interpreter=False):
             worker.gcs_error_subscriber.close()
         if hasattr(worker, "gcs_log_subscriber"):
             worker.gcs_log_subscriber.close()
-        if hasattr(worker, "import_thread"):
-            worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "logger_thread"):
