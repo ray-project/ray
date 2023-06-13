@@ -8,7 +8,7 @@ from collections import deque
 import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
 from ray.core.generated import (
     gcs_service_pb2,

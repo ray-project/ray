@@ -9,7 +9,7 @@ import aiohttp.web
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 from ray._private import ray_constants
 from ray.core.generated import (
     gcs_service_pb2,
@@ -23,7 +23,7 @@ from ray.dashboard.modules.node.node_consts import (
     FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
     FREQUENT_UPDATE_TIMEOUT_SECONDS,
 )
-from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.__utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable

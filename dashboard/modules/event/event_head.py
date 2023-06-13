@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import aiohttp.web
 
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.modules.event.event_utils import (
     parse_event_strings,
