@@ -340,16 +340,6 @@ install_cython_examples() {
   )
 }
 
-install_go() {
-  local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
-  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.18.3 bash)"
-
-  if [ -z "${GOPATH-}" ]; then
-    GOPATH="${GOPATH:-${HOME}/go_dir}"
-    export GOPATH
-  fi
-}
-
 _bazel_build_before_install() {
   local target
   if [ "${OSTYPE}" = msys ]; then
@@ -478,8 +468,13 @@ build_wheels_and_jars() {
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
       else
-        rm -rf /ray-mount/* /ray-mount/.whl /ray/.whl
+        rm -rf /ray-mount/*
+        rm -rf /ray-mount/.whl || true
+        rm -rf /ray/.whl || true
         cp -rT /ray /ray-mount
+        ls -a /ray-mount
+        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
+        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
@@ -539,17 +534,22 @@ lint_annotations() {
 }
 
 lint_bazel() {
-  # Run buildifier without affecting external environment variables
-  (
-    mkdir -p -- "${GOPATH}"
-    export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
+  if [[ ! "${OSTYPE}" =~ ^linux ]]; then
+    echo "Bazel lint not supported on non-linux systems."
+    exit 1
+  fi
+  if [[ "$(uname -m)" != "x86_64" ]]; then
+    echo "Bazel link only supported on x86_64."
+    exit 1
+  fi
 
-    # Build buildifier
-    go install github.com/bazelbuild/buildtools/buildifier@latest
+  LINT_BAZEL_TMP="$(mktemp -d)"
+  curl -sl "https://github.com/bazelbuild/buildtools/releases/download/v6.1.2/buildifier-linux-amd64" \
+    -o "${LINT_BAZEL_TMP}/buildifier"
+  chmod +x "${LINT_BAZEL_TMP}/buildifier"
+  BUILDIFIER="${LINT_BAZEL_TMP}/buildifier" "${ROOT_DIR}/lint/bazel-format.sh"
 
-    # Now run buildifier
-    "${ROOT_DIR}"/lint/bazel-format.sh
-  )
+  rm -rf "${LINT_BAZEL_TMP}"  # Clean up
 }
 
 lint_bazel_pytest() {
@@ -651,7 +651,6 @@ _lint() {
 }
 
 lint() {
-  install_go
   # Checkout a clean copy of the repo to avoid seeing changes that have been made to the current one
   (
     WORKSPACE_DIR="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
@@ -758,10 +757,6 @@ build() {
 
   if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
     install_cython_examples
-  fi
-
-  if [ "${LINT-}" = 1 ]; then
-    install_go
   fi
 
   if [[ "${NEED_WHEELS}" == "true" ]]; then
