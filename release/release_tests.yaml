@@ -4833,7 +4833,14 @@
 
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - s3fs
+        - dask[complete]
     cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
@@ -5165,7 +5172,14 @@
 
   frequency: nightly-3x
   team: core
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - s3fs
+        - dask[complete]
     cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
@@ -6567,7 +6581,9 @@
 
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
@@ -6616,7 +6632,9 @@
   env: gce
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: gcp/tests/gce_config.yaml
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
@@ -6633,7 +6651,9 @@
   env: gce
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: gcp/tests/gce_config.yaml
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
