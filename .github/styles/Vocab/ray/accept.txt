@@ -2,3 +2,9 @@ Data's
 APIs
 UDFs
 Ray Data
+:(?:class|meth):([`~\w\s]+?)<([\w\.]+?)>
+API[s]
+UDF[s]
+Data's
+CPUs
+app

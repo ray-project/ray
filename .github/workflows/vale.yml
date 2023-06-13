@@ -10,6 +10,4 @@ jobs:
         with:
           files: doc/source/data/getting-started.rst
           fail_on_error: true
-          # Error on introduced changes only.
-          filter_mode: added
           level: warning
