@@ -4,12 +4,23 @@ import warnings
 
 import ray
 from ray import air
-from ray.air import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig, session
+from ray.air import (
+    Checkpoint,
+    CheckpointConfig,
+    RunConfig,
+    ScalingConfig,
+    FailureConfig,
+    session,
+)
 from ray.air._internal.remote_storage import upload_to_uri
 from ray.train.base_trainer import BaseTrainer
+from ray.train.constants import LAZY_CHECKPOINT_MARKER_FILE
 from ray.train.trainer import TrainingFailedError
-from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.torch import TorchTrainer
+from ray.train.data_parallel_trainer import (
+    _DataParallelCheckpointManager,
+    DataParallelTrainer,
+)
+from ray.train.torch import TorchTrainer, TorchCheckpoint
 from ray.train.xgboost import XGBoostTrainer
 from ray.train.lightgbm import LightGBMTrainer
 from ray.train.huggingface import TransformersTrainer
@@ -498,6 +509,36 @@ def test_retry_with_max_failures(ray_start_4_cpus, eventual_success):
         assert not result.error
         checkpoint = result.checkpoint.to_dict()
         assert checkpoint["iter"] == final_iter
+
+
+def test_clear_lazy_ckpt_markers(ray_start_4_cpus):
+    class PatchedTuneCheckpointManager(_DataParallelCheckpointManager):
+        def __init__(self, *args, **kwargs):
+            assert not Path(
+                session.get_trial_dir(), LAZY_CHECKPOINT_MARKER_FILE
+            ).exists(), "Stale lazy ckpt markers should have been removed!"
+            super().__init__(*args, **kwargs)
+
+    class DataParallelTrainerPatched(DataParallelTrainer):
+        _checkpoint_manager_cls = PatchedTuneCheckpointManager
+
+    def train_func():
+        # We should always have this lazy checkpoint marker in single node training
+        assert Path(session.get_trial_dir(), LAZY_CHECKPOINT_MARKER_FILE).exists()
+
+        if not session.get_checkpoint():
+            session.report(
+                metrics={"a": 1}, checkpoint=TorchCheckpoint.from_dict({"a": 1})
+            )
+            raise RuntimeError
+
+    trainer = DataParallelTrainerPatched(
+        train_func,
+        scaling_config=ScalingConfig(num_workers=3, use_gpu=False),
+        run_config=RunConfig(failure_config=FailureConfig(max_failures=1)),
+    )
+
+    trainer.fit()
 
 
 if __name__ == "__main__":

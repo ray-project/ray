@@ -1,6 +1,7 @@
 .. _ref-ray-examples:
 
-.. title:: Ray Example Gallery
+Ray Examples
+============
 
 .. raw:: html
 
@@ -190,7 +191,7 @@
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch
 
-        .. button-ref:: /ray-air/examples/pytorch_resnet_batch_prediction
+        .. button-ref:: /data/examples/pytorch_resnet_batch_prediction
 
             Torch Batch Prediction Example with Ray AIR
 
@@ -646,7 +647,7 @@
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning serving
 
-        .. button-ref:: tune-serve-integration-mnist
+        .. button-ref:: /tune/examples/tune-serve-integration-mnist
 
             Model Selection & Serving With Ray Serve
 
