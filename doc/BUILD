@@ -308,7 +308,7 @@ py_test_run_all_subdirectory(
 
 doctest(
     files = glob(
-        include=["source/**/*.rst"],
+        include=["source/**/*.rst", "source/**/*.md"],
         exclude=[
             "source/ray-contribute/getting-involved.rst",
             "source/ray-core/handling-dependencies.rst",
@@ -317,6 +317,9 @@ doctest(
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
+            "source/serve/multi-app.md",
+            "source/serve/production-guide/deploy-vm.md",
+            "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             "source/train/faq.rst"

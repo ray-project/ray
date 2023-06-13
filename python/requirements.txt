@@ -44,7 +44,6 @@ matplotlib!=3.4.3; platform_system != "Windows"
 tensorboardX>=1.9
 smart_open
 requests
-kubernetes
 colorful
 lz4
 virtualenv>=20.0.24, < 20.21.1
