@@ -51,6 +51,10 @@ class ClusterManager(abc.ABC):
         self.maximum_uptime_minutes = DEFAULT_MAXIMUM_UPTIME_MINS
 
     def set_cluster_env(self, cluster_env: Dict[str, Any]):
+        if self.test.is_byod_cluster():
+            self.cluster_env_name = self.test.get_anyscale_byod_image()
+            return
+
         self.cluster_env = cluster_env
 
         # Add flags for redisless Ray
