@@ -538,7 +538,7 @@ lint_bazel() {
     exit 1
   fi
   if [[ "$(uname -m)" != "x86_64" ]]; then
-    echo "Bazel link only supported on x86_64."
+    echo "Bazel lint only supported on x86_64."
     exit 1
   fi
 
