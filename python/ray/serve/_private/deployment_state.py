@@ -1356,6 +1356,13 @@ class DeploymentState:
         if decision_num_replicas == self._target_state.num_replicas:
             return
 
+        logger.info(
+            f"Autoscaling deployment {self._name} replicas from "
+            f"{self._target_state.num_replicas} to {decision_num_replicas}. "
+            f"Current ongoing requests: {current_num_ongoing_requests}, "
+            f"current handle queued queries: {current_handle_queued_queries}."
+        )
+
         new_config = copy(curr_info)
         new_config.set_autoscaled_num_replicas(decision_num_replicas)
         if new_config.version is None:
