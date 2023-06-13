@@ -41,6 +41,45 @@ def test_batching(serve_instance):
     assert max(counter_result) < 20
 
 
+def test_batching_callable(serve_instance):
+    @serve.deployment
+    class BatchingExample:
+        def __init__(self):
+            self.count = 0
+            self.batch_sizes = set()
+
+        def get_max_batch_size(self):
+            return self.count + 1
+
+        def get_batch_wait_timeout_s(self):
+            return 1
+
+        @serve.batch(
+            max_batch_size=get_max_batch_size,
+            batch_wait_timeout_s=get_batch_wait_timeout_s,
+        )
+        async def handle_batch(self, requests):
+            self.count += 1
+            batch_size = len(requests)
+            self.batch_sizes.add(batch_size)
+            return [batch_size] * batch_size
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+    handle = serve.run(BatchingExample.bind())
+
+    future_list = []
+    for _ in range(21):
+        f = handle.remote(1)
+        future_list.append(f)
+
+    counter_result = ray.get(future_list)
+    # batch size is increased by 1 with each call
+    # 1+2+3+4+5+6 == 21
+    assert set(counter_result) == {1, 2, 3, 4, 5, 6}
+
+
 def test_batching_exception(serve_instance):
     @serve.deployment
     class NoListReturned:
