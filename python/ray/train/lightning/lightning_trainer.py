@@ -370,10 +370,17 @@ class LightningTrainer(TorchTrainer):
         run_config = run_config or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 
+        ptl_ckpt_config = lightning_config["_model_checkpoint_config"]
         self._check_checkpoint_configs(
-            ptl_ckpt_config=lightning_config["_model_checkpoint_config"],
+            ptl_ckpt_config=ptl_ckpt_config,
             air_ckpt_config=run_config.checkpoint_config,
         )
+
+        # Auto-fill AIR CheckpointConfig from lightning checkpoint config
+        if run_config.checkpoint_config == CheckpointConfig():
+            run_config.checkpoint_config = self._build_checkpoint_config(
+                ptl_ckpt_config=ptl_ckpt_config
+            )
 
         # Disable strict checking to prevent validation errors against metrics that
         # are reported at different frequencies. This works here because the Trainer
@@ -423,6 +430,14 @@ class LightningTrainer(TorchTrainer):
                 "be used in `LightningTrainer`! Please set up checkpoint frequency "
                 "through `LightningConfigBuilder.checkpointing()`."
             )
+
+    def _build_checkpoint_config(self, ptl_ckpt_config: Dict) -> CheckpointConfig:
+        save_top_k = ptl_ckpt_config.get("save_top_k", 1)
+        return CheckpointConfig(
+            num_to_keep=None if save_top_k == -1 else save_top_k,
+            checkpoint_score_attribute=ptl_ckpt_config.get("monitor", None),
+            checkpoint_score_order=ptl_ckpt_config.get("mode", "min"),
+        )
 
     @PublicAPI(stability="alpha")
     @classmethod
