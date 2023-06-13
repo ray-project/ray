@@ -31,20 +31,20 @@ Follow the [KubeRay quickstart guide](kuberay-quickstart) to:
 ## Setting up a RayService custom resource (CR)
 Once the KubeRay controller is running, manage your Ray Serve application by creating and updating a `RayService` CR ([example](https://github.com/ray-project/kuberay/blob/release-0.5/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml)).
 
-Under the `spec` section in the `RayService` CR, find the following fields:
+Under the `spec` section in the `RayService` CR, set the following fields:
 
-**`serviceUnhealthySecondThreshold`**: Represents the threshold in seconds that defines when a service is considered unhealthy (application status is not HEALTHY status). The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
+**`serviceUnhealthySecondThreshold`**: Represents the threshold in seconds that defines when a service is considered unhealthy (application status is not RUNNING status). The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
 
-**`deploymentUnhealthySecondThreshold`**: Represents the threshold in seconds that defines when application status is not able to fetched, this is caused by Dashboard is not available or serve deploy is not finished. The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
+**`deploymentUnhealthySecondThreshold`**: Represents the number of seconds that the Serve application status can be unavailable before the service is considered unhealthy. The Serve application status is unavailable whenever the Ray dashboard is unavailable. The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
 
-**`serveConfig`**: Represents the configuration that Ray Serve uses to deploy the application. Use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve configuration and copy-paste directly into your [Kubernetes config](serve-in-production-kubernetes) and `RayService` CR.
+**`serveConfig`**: Represents the configuration that Ray Serve uses to deploy the application. Use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve configuration and copy-paste it directly into your [Kubernetes config](serve-in-production-kubernetes) and `RayService` CR.
 
 **`rayClusterConfig`**: Populate this field with the contents of the `spec` field from the `RayCluster` CR YAML file. Refer to [KubeRay configuration](kuberay-config) for more details.
 
 :::{tip}
 To enhance the reliability of your application, particularly when dealing with large dependencies that may require a significant amount of time to download, consider increasing the value of the `deploymentUnhealthySecondThreshold` to avoid a cluster restart. 
 
-Alternatively, you can also download the dependencies in the Dockerfile and build a custom image so that the dependencies are already available when the cluster starts.
+Alternatively, include the dependencies in your image's Dockerfile, so the dependencies are available as soon as the pods start.
 :::
 
 (serve-deploy-app-on-kuberay)=
@@ -59,9 +59,9 @@ The Serve config for the example is embedded into [this example `RayService` CR]
 To follow along, save this CR locally in a file named `ray_v1alpha1_rayservice.yaml`:
 
 :::{note}
-- The example `RayService` uses very small resource requests because it's only for demonstration. In production, you'll want to provide more resources to the cluster.
+- The example `RayService` uses very low `numCpus` values for demonstration purposes. In production, provide more resources to the Serve application.
 Learn more about how to configure KubeRay clusters [here](kuberay-config).
-- If have dependencies that need to be installed for the deployment, you can add them to the `runtime_env` in the Deployment code. Checkout [here](serve-handling-dependencies)
+- If you have dependencies that must be installed during deployment, you can add them to the `runtime_env` in the Deployment code. Learn more [here](serve-handling-dependencies)
 :::
 
 ```console
