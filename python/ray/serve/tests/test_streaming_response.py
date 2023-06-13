@@ -1,7 +1,6 @@
 import asyncio
 import os
 import pytest
-import time
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
@@ -259,6 +258,7 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
     reason="Streaming feature flag is disabled.",
 )
 def test_http_disconnect(serve_instance):
+    """Test that response generators are cancelled when the client disconnects."""
     signal_actor = SignalActor.remote()
 
     @serve.deployment
