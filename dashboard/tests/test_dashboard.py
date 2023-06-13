@@ -18,7 +18,7 @@ import socket
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 from click.testing import CliRunner
 from requests.exceptions import ConnectionError
 from ray._private import ray_constants
