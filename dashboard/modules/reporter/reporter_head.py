@@ -8,7 +8,7 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import (

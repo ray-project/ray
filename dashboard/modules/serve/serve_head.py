@@ -6,7 +6,7 @@ from aiohttp.web import Request, Response
 
 from ray.dashboard.datacenter import DataOrganizer
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

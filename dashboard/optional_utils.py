@@ -24,7 +24,7 @@ from ray._private.ray_constants import RAY_INTERNAL_NAMESPACE_PREFIX, env_bool
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
-from ray.dashboard.utils import CustomEncoder, to_google_style
+from ray.dashboard.__utils import CustomEncoder, to_google_style
 
 try:
     create_task = asyncio.create_task

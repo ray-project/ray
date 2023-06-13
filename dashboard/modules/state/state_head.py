@@ -9,7 +9,7 @@ from aiohttp.web import Response
 from abc import ABC, abstractmethod
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ALLOWED,
@@ -19,7 +19,7 @@ from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.state_aggregator import StateAPIManager
-from ray.dashboard.utils import Change
+from ray.dashboard.__utils import Change
 from ray.util.state.common import (
     RAY_MAX_LIMIT_FROM_API_SERVER,
     ListApiOptions,
