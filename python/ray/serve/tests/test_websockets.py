@@ -162,6 +162,10 @@ def test_unary_streaming_websocket_same_deployment(serve_instance):
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Gradio doesn't work on Windows.")
 def test_gradio_queue(serve_instance):
+    """Test the Gradio integration with a Gradio Queue.
+
+    Gradio Queues use websockets under the hood.
+    """
     def counter(num_steps: int = 3):
         for i in range(num_steps):
             yield str(i)
