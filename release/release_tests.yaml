@@ -5950,12 +5950,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
-    byod:
-      type: gpu
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
     cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
@@ -5980,15 +5975,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
-    byod:
-      type: gpu
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-        - RAY_record_ref_creation_sites=1
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
     cluster_env: pipelined_ingestion_app.yaml
     cluster_compute: pipelined_ingestion_compute.yaml
 
@@ -6295,15 +6282,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
-    byod:
-      type: gpu
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-        - RAY_record_ref_creation_sites=1
     cluster_env: dataset/pipelined_ingestion_app.yaml
     cluster_compute: dataset/pipelined_ingestion_compute.yaml
 
@@ -6332,11 +6311,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -6364,11 +6339,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
-    byod:
-      runtime_env:
-        - RAY_memory_monitor_refresh_ms=0
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -6402,6 +6373,8 @@
     byod:
       runtime_env:
         - RAY_memory_monitor_refresh_ms=0
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -6435,6 +6408,8 @@
     byod:
       runtime_env:
         - RAY_memory_monitor_refresh_ms=0
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
