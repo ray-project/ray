@@ -187,6 +187,9 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
+        logger.debug(
+            f"Received autoscaling metrics: {data} at timestamp {send_timestamp}"
+        )
         self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
