@@ -1,6 +1,5 @@
 .. _air-examples-ref:
 
-========
 Examples
 ========
 

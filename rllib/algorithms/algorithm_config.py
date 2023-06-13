@@ -2151,7 +2151,7 @@ class AlgorithmConfig(_Config):
                 utility. For example, to override your learning rate and (PPO) lambda
                 setting just for a single RLModule with your MultiAgentRLModule, do:
                 config.multi_agent(algorithm_config_overrides_per_module={
-                    "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
+                "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
                 })
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
