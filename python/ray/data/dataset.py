@@ -1237,7 +1237,7 @@ class Dataset:
                 )
                 logical_plan = self._plan._logical_plan
                 if logical_plan is not None:
-                    ref_bundles = _block_list_to_bundles(block_list)
+                    ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
                     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
@@ -1252,28 +1252,6 @@ class Dataset:
                     )
                 )
             return split_datasets
-
-            # logical_plan = self._plan._logical_plan
-            # if logical_plan is not None:
-            #     # op = Split(logical_plan.dag, n=n)
-            #     # logical_plan = LogicalPlan(op)
-            #     ref_bundles = _block_list_to_bundles()
-            #     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
-            # return [
-            #     MaterializedDataset(
-            #         ExecutionPlan(
-            #             BlockList(
-            #                 b.tolist(), m.tolist(),
-            # owned_by_consumer=owned_by_consumer
-            #             ),
-            #             stats,
-            #             run_by_consumer=owned_by_consumer,
-            #         ),
-            #         self._epoch,
-            #         self._lazy,
-            #     )
-            #     for b, m in zip(blocks, meta)
-            # ]
 
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
@@ -1386,7 +1364,7 @@ class Dataset:
         for block_split in per_split_block_lists:
             logical_plan = self._plan._logical_plan
             if logical_plan is not None:
-                ref_bundles = _block_list_to_bundles(block_split)
+                ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
             split_datasets.append(
                 MaterializedDataset(
@@ -1401,20 +1379,6 @@ class Dataset:
                 )
             )
         return split_datasets
-
-        # return [
-        #     MaterializedDataset(
-        #         ExecutionPlan(
-        #             block_split,
-        #             stats,
-        #             run_by_consumer=owned_by_consumer,
-        #         ),
-        #         self._epoch,
-        #         self._lazy,
-        #         logical_plan,
-        #     )
-        #     for block_split in per_split_block_lists
-        # ]
 
     @ConsumptionAPI
     def split_at_indices(self, indices: List[int]) -> List["MaterializedDataset"]:
