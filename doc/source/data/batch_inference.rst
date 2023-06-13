@@ -31,7 +31,8 @@ Using Ray Data for offline inference involves four basic steps:
 - **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming_data>`.
 - **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see the :ref:`Iterating over data <iterating-over-data>` and :ref:`Saving data <saving-data>` user guides.
 
-For more in-depth examples for your use case, see :ref:`our batch inference examples <batch_inference_examples>`. For how to configure batch inference, see :ref:`the configuration guide <batch_inference_configuration>`.
+For more in-depth examples for your use case, see :ref:`our batch inference examples<batch_inference_examples>`.
+For how to configure batch inference, see :ref:`the configuration guide<batch_inference_configuration>`.
 
 .. tabs::
 
@@ -78,7 +79,7 @@ For more in-depth examples for your use case, see :ref:`our batch inference exam
             predictions.show(limit=1)
         
         .. testoutput::
-            :options: +MOCK
+            :skipif: True
 
             {'data': 'Complete this', 'output': 'Complete this information or purchase any item from this site.\n\nAll purchases are final and non-'}
         
@@ -128,7 +129,7 @@ For more in-depth examples for your use case, see :ref:`our batch inference exam
             predictions.show(limit=1)
 
         .. testoutput::
-            :options: +MOCK
+            :skipif: True
 
             {'output': array([0.5590901], dtype=float32)}
 
@@ -173,7 +174,7 @@ For more in-depth examples for your use case, see :ref:`our batch inference exam
             predictions.show(limit=1)
 
         .. testoutput::
-            :options: +MOCK
+            :skipif: True
 
             {'output': array([0.625576], dtype=float32)}
 
@@ -240,7 +241,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions.show(limit=1)
         
         .. testoutput::
-            :options: +MOCK
+            :skipif: True
 
             {'data': 'Complete this', 'output': 'Complete this poll. Which one do you think holds the most promise for you?\n\nThank you'}
         
@@ -287,7 +288,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions.show(limit=1)
 
         .. testoutput::
-            :options: +MOCK
+            :skipif: True
 
             {'output': array([0.5590901], dtype=float32)}
 
@@ -330,7 +331,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             predictions.show(limit=1)
 
         .. testoutput::
-            :options: +MOCK
+            :skipif: True
 
             {'output': array([0.625576], dtype=float32)}
 
