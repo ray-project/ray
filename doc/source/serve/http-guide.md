@@ -21,7 +21,7 @@ Considering your use case, you can choose the right level of abstraction:
 ## Calling Deployments via HTTP
 When you deploy a Serve application, the [ingress deployment](serve-key-concepts-ingress-deployment) (the one passed to `serve.run`) will be exposed over HTTP.
 
-```{literalinclude} ../doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide.py
 :start-after: __begin_starlette__
 :end-before: __end_starlette__
 :language: python
@@ -31,7 +31,7 @@ Requests to the Serve HTTP server at `/` are routed to the deployment's `__call_
 
 Often for ML models, you just need the API to accept a `numpy` array. You can use Serve's `DAGDriver` to simplify the request parsing.
 
-```{literalinclude} ../doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide.py
 :start-after: __begin_dagdriver__
 :end-before: __end_dagdriver__
 :language: python
@@ -46,7 +46,7 @@ Serve provides a library of HTTP adapters to help you avoid boilerplate code. Th
 
 If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.api.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out [their documentation](https://fastapi.tiangolo.com/).
 
-```{literalinclude} ../doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide.py
 :start-after: __begin_fastapi__
 :end-before: __end_fastapi__
 :language: python
@@ -54,7 +54,7 @@ If you want to define more complex HTTP handling logic, Serve integrates with [F
 
 Now if you send a request to `/hello`, this will be routed to the `root` method of our deployment. We can also easily leverage FastAPI to define multiple routes with different HTTP methods:
 
-```{literalinclude} ../doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide.py
 :start-after: __begin_fastapi_multi_routes__
 :end-before: __end_fastapi_multi_routes__
 :language: python
@@ -62,7 +62,7 @@ Now if you send a request to `/hello`, this will be routed to the `root` method 
 
 You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 
-```{literalinclude} ../doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide.py
 :start-after: __begin_byo_fastapi__
 :end-before: __end_byo_fastapi__
 :language: python
@@ -93,7 +93,7 @@ The code below defines a Serve application that incrementally streams numbers up
 The client-side code is also updated to handle the streaming outputs.
 This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced/#streaming-requests) library.
 
-```{literalinclude} ../doc_code/streaming_example.py
+```{literalinclude} doc_code/streaming_example.py
 :start-after: __begin_example__
 :end-before: __end_example__
 :language: python

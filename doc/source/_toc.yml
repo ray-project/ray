@@ -261,6 +261,7 @@ parts:
             sections:
             - file: serve/deploy-many-models/multi-app
             - file: serve/deploy-many-models/model-multiplexing
+          - file: serve/http-guide
           - file: serve/production-guide/index
             title: Production Guide
             sections:
@@ -274,7 +275,6 @@ parts:
           - file: serve/advanced-guides/index
             sections:
               - file: serve/advanced-guides/app-builder-guide
-              - file: serve/advanced-guides/http-guide
               - file: serve/advanced-guides/performance
               - file: serve/advanced-guides/dyn-req-batch
               - file: serve/advanced-guides/dev-workflow
