@@ -282,6 +282,13 @@ py_test(
     deps = [":ml_lib"]
 )
 
+py_test(
+    name = "test_result",
+    size = "medium",
+    srcs = ["tests/test_result.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":ml_lib"]
+)
 
 
 # This is a dummy test dependency that causes the above tests to be
