@@ -835,10 +835,18 @@ def deploy_serve_application(
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
 
         # Import and build the application.
-        raise Exception(
-            f"Test failing, import_path: {import_path}, pwd: {os. getcwd()}"
-        )
-        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
+
+        try:
+            app = call_app_builder_with_args_if_necessary(
+                import_attr(import_path), args
+            )
+        except Exception as e:
+            import sys
+
+            raise Exception(
+                f"Test failing, import_path: {import_path}, pwd: {os. getcwd()}, "
+                f"\nmodules: {sys.modules.keys()}"
+            )
         app = build(app, name)
 
         # Override options for each deployment listed in the config.
