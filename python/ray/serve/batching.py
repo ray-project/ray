@@ -179,8 +179,8 @@ class _BatchQueue:
                     if future is FINISHED_TOKEN:
                         # This caller has already terminated.
                         next_futures.append(FINISHED_TOKEN)
-                    elif result in {StopIteration, StopAsyncIteration}:
-                        # User's code returned SENTINEL.VALUE. No values left
+                    elif result in [StopIteration, StopAsyncIteration]:
+                        # User's code returned sentinel. No values left
                         # for caller. Terminate iteration for caller.
                         future.set_exception(StopAsyncIteration)
                         next_futures.append(FINISHED_TOKEN)
