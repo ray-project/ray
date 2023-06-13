@@ -1,4 +1,4 @@
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 from ray.dashboard.modules.healthz.utils import HealthChecker
 from aiohttp.web import Request, Response

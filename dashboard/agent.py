@@ -14,7 +14,7 @@ import ray._private.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.consts import _PARENT_DEATH_THREASHOLD
 from ray._private.gcs_pubsub import GcsAioPublisher
 from ray._raylet import GcsClient

@@ -12,7 +12,7 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from packaging.version import Version
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 

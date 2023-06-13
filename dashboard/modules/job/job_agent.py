@@ -6,7 +6,7 @@ import logging
 import traceback
 import ray
 import ray.dashboard.optional_utils as optional_utils
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
     JobSubmitRequest,

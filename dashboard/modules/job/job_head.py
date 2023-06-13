@@ -14,7 +14,7 @@ import ray
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.datacenter import DataOrganizer
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,

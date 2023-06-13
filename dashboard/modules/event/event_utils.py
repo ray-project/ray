@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ray._private.utils import run_background_task
 from ray.dashboard.modules.event import event_consts
-from ray.dashboard.__utils import async_loop_forever
+from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 
