@@ -166,6 +166,7 @@ def test_gradio_queue(serve_instance):
 
     Gradio Queues use websockets under the hood.
     """
+
     def counter(num_steps: int = 3):
         for i in range(num_steps):
             yield str(i)
