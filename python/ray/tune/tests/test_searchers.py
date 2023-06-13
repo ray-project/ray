@@ -79,6 +79,7 @@ class InvalidValuesTest(unittest.TestCase):
             for x in buffer
         ), "Searcher checkpointing failed (unable to serialize)."
 
+    @unittest.skip("ax tests currently failing (need to upgrade ax)")
     def testAxManualSetup(self):
         from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
@@ -107,6 +108,7 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLess(out.best_trial.config["mixed_list"][1], 3)
         self.assertEqual(out.best_trial.config["mixed_list"][2], 4)
 
+    @unittest.skip("ax tests currently failing (need to upgrade ax)")
     def testAx(self):
         from ray.tune.search.ax import AxSearch
 

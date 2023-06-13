@@ -470,6 +470,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(integers_1, integers_2)
         self.assertSequenceEqual(choices_1, choices_2)
 
+    @unittest.skip("ax tests currently failing (need to upgrade ax)")
     def testConvertAx(self):
         from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
@@ -535,6 +536,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    @unittest.skip("ax tests currently failing (need to upgrade ax)")
     def testSampleBoundsAx(self):
         from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
@@ -1686,6 +1688,7 @@ class SearchSpaceTest(unittest.TestCase):
             else:
                 self.assertDictEqual(trial_config_dict, points_to_evaluate[i])
 
+    @unittest.skip("ax tests currently failing (need to upgrade ax)")
     def testPointsToEvaluateAx(self):
         config = {
             "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
