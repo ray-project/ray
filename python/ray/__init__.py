@@ -192,7 +192,8 @@ serialization = _DeprecationWrapper("serialization", ray._private.serialization)
 state = _DeprecationWrapper("state", ray._private.state)
 
 
-RAY_APIS = {
+# Pulic Ray APIs
+__all__ = [
     "__version__",
     "_config",
     "get_runtime_context",
@@ -223,7 +224,7 @@ RAY_APIS = {
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
-}
+]
 
 # Public APIs that should automatically trigger ray.init().
 AUTO_INIT_APIS = {
@@ -263,14 +264,11 @@ NON_AUTO_INIT_APIS = {
     "timeline",
 }
 
-assert RAY_APIS == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
+assert set(__all__) == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
 from ray._private.auto_init_hook import wrap_auto_init_for_all_apis  # noqa: E402
 
 wrap_auto_init_for_all_apis(AUTO_INIT_APIS)
 del wrap_auto_init_for_all_apis
-
-
-__all__ = list(RAY_APIS)
 
 # Subpackages
 __all__ += [
