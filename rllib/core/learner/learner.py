@@ -817,11 +817,14 @@ class Learner:
         loss_per_module_numpy = convert_to_numpy(loss_per_module)
 
         for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
+            if isinstance(loss_per_module_numpy[module_id], dict):
+                module_learner_stats[module_id].update(loss_per_module_numpy[module_id])
+            else:
+                module_learner_stats[module_id].update({
+                    self.TOTAL_LOSS_KEY: module_learner_stats[module_id]
+                })
             module_learner_stats[module_id].update(
-                {
-                    self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
-                    **convert_to_numpy(metrics_per_module[module_id]),
-                }
+                convert_to_numpy(metrics_per_module[module_id])
             )
         return dict(module_learner_stats)
 
