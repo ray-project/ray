@@ -105,14 +105,15 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
     .. tab-item:: MacOS
 
-        ================================  ================================
-         MacOS (x86_64)                    MacOS (arm64)
-        ================================  ================================
-        `MacOS Python 3.10 (x86_64)`_      `MacOS Python 3.10 (arm64)`_
-        `MacOS Python 3.9 (x86_64)`_       `MacOS Python 3.9 (arm64)`_
-        `MacOS Python 3.8 (x86_64)`_       `MacOS Python 3.8 (arm64)`_
-        `MacOS Python 3.7 (x86_64)`_
-        ================================  ================================
+        ============================================  ==============================================
+         MacOS (x86_64)                                MacOS (arm64)
+        ============================================  ==============================================
+        `MacOS Python 3.10 (x86_64)`_                  `MacOS Python 3.10 (arm64)`_
+        `MacOS Python 3.9 (x86_64)`_                   `MacOS Python 3.9 (arm64)`_
+        `MacOS Python 3.8 (x86_64)`_                   `MacOS Python 3.8 (arm64)`_
+        `MacOS Python 3.7 (x86_64)`_                   `MacOS Python 3.11 (arm64) (EXPERIMENTAL)`_ 
+        `MacOS Python 3.11 (x86_64) (EXPERIMENTAL)`_
+        ============================================  ==============================================
 
     .. tab-item:: Windows (beta)
 
@@ -151,12 +152,14 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. _`Linux Python 3.7 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_aarch64.whl
 
 
-.. _`MacOS Python 3.10 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_10_15_universal2.whl
+.. _`MacOS Python 3.11 (x86_64) (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.10 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.9 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.8 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
-.. _`MacOS Python 3.7 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+.. _`MacOS Python 3.7 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_x86_64.whl
 
 
+.. _`MacOS Python 3.11 (arm64) (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-macosx_11_0_arm64.whl
 .. _`MacOS Python 3.10 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_11_0_arm64.whl
 .. _`MacOS Python 3.9 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_11_0_arm64.whl
 .. _`MacOS Python 3.8 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_11_0_arm64.whl
