@@ -249,7 +249,7 @@ if __name__ == "__main__":
 
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")
-        ray._private.utils.try_import_each_module(module_names_to_import)
+        ray._private.__import.try_import_each_module(module_names_to_import)
 
     # If the worker setup function is configured, run it.
     worker_setup_hook_key = os.getenv(ray_constants.WORKER_SETUP_HOOK_ENV_VAR)

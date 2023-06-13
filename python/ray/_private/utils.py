@@ -4,7 +4,6 @@ from collections import defaultdict
 import contextlib
 import errno
 import functools
-import importlib
 import inspect
 import json
 import logging
@@ -1848,18 +1847,6 @@ def run_background_task(coroutine: Coroutine) -> asyncio.Task:
     # completion:
     task.add_done_callback(background_tasks.discard)
     return task
-
-
-def try_import_each_module(module_names_to_import: List[str]) -> None:
-    """
-    Make a best-effort attempt to import each named Python module.
-    This is used by the Python default_worker.py to preload modules.
-    """
-    for module_to_preload in module_names_to_import:
-        try:
-            importlib.import_module(module_to_preload)
-        except ImportError:
-            logger.exception(f'Failed to preload the module "{module_to_preload}"')
 
 
 def update_envs(env_vars: Dict[str, str]):

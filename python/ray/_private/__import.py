@@ -1,4 +1,7 @@
 import importlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def import_attr(full_path: str):
@@ -29,3 +32,15 @@ def import_attr(full_path: str):
 
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
+
+
+def try_import_each_module(module_names_to_import: List[str]) -> None:
+    """
+    Make a best-effort attempt to import each named Python module.
+    This is used by the Python default_worker.py to preload modules.
+    """
+    for module_to_preload in module_names_to_import:
+        try:
+            importlib.import_module(module_to_preload)
+        except ImportError:
+            logger.exception(f'Failed to preload the module "{module_to_preload}"')
