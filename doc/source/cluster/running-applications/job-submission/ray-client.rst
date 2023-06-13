@@ -281,3 +281,10 @@ Uploads
 If a ``working_dir`` is specified in the runtime env, when running ``ray.init()`` the Ray client will upload the ``working_dir`` on the laptop to ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>``.
 
 Ray workers are started in the ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>`` directory on the cluster. This means that relative paths in the remote tasks and actors in the code will work on the laptop and on the cluster without any code changes. For example, if the ``working_dir`` on the laptop contains ``data.txt`` and ``run.py``, inside the remote task definitions in ``run.py`` one can just use the relative path ``"data.txt"``. Then ``python run.py`` will work on my laptop, and also on the cluster. As a side note, since relative paths can be used in the code, the absolute path is only useful for debugging purposes.
+
+Troubleshooting
+--------------
+
+Error: Attempted to reconnect a session that has already been cleaned up 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+This can happen if the Head Node or Head Pod restarts unexpectedly. If the Head Node restarts and drops all the state of the Ray application, Ray Client will emit that error when it reconnects to the recreated head node. On k8s this can happen if the Head Pod ever gets evicted or if it crashes.
