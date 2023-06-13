@@ -7,7 +7,7 @@ This currently expects to work for minimal installs.
 
 import pytest
 import logging
-from ray._private.__import import get_or_create_event_loop, try_import_each_module
+from ray._private.utils import get_or_create_event_loop, try_import_each_module
 from unittest.mock import patch
 import sys
 

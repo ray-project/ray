@@ -4,6 +4,7 @@ from collections import defaultdict
 import contextlib
 import errno
 import functools
+import importlib
 import inspect
 import json
 import logging
@@ -31,6 +32,7 @@ from typing import (
     Tuple,
     Union,
     Coroutine,
+    List,
 )
 
 # Import psutil after ray so the packaged version is used.
@@ -1159,6 +1161,36 @@ def deprecated(
     return deprecated_wrapper
 
 
+def import_attr(full_path: str):
+    """Given a full import path to a module attr, return the imported attr.
+
+    For example, the following are equivalent:
+        MyClass = import_attr("module.submodule:MyClass")
+        MyClass = import_attr("module.submodule.MyClass")
+        from module.submodule import MyClass
+
+    Returns:
+        Imported attr
+    """
+    if full_path is None:
+        raise TypeError("import path cannot be None")
+
+    if ":" in full_path:
+        if full_path.count(":") > 1:
+            raise ValueError(
+                f'Got invalid import path "{full_path}". An '
+                "import path may have at most one colon."
+            )
+        module_name, attr_name = full_path.split(":")
+    else:
+        last_period_idx = full_path.rfind(".")
+        module_name = full_path[:last_period_idx]
+        attr_name = full_path[last_period_idx + 1 :]
+
+    module = importlib.import_module(module_name)
+    return getattr(module, attr_name)
+
+
 def get_wheel_filename(
     sys_platform: str = sys.platform,
     ray_version: str = ray.__version__,
@@ -1846,6 +1878,18 @@ def run_background_task(coroutine: Coroutine) -> asyncio.Task:
     # completion:
     task.add_done_callback(background_tasks.discard)
     return task
+
+
+def try_import_each_module(module_names_to_import: List[str]) -> None:
+    """
+    Make a best-effort attempt to import each named Python module.
+    This is used by the Python default_worker.py to preload modules.
+    """
+    for module_to_preload in module_names_to_import:
+        try:
+            importlib.import_module(module_to_preload)
+        except ImportError:
+            logger.exception(f'Failed to preload the module "{module_to_preload}"')
 
 
 def update_envs(env_vars: Dict[str, str]):
