@@ -287,4 +287,4 @@ Troubleshooting
 
 Error: Attempted to reconnect a session that has already been cleaned up 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-This can happen if the Head Node or Head Pod restarts unexpectedly. If the Head Node restarts and drops all the state of the Ray application, Ray Client will emit that error when it reconnects to the recreated head node. On k8s this can happen if the Head Pod ever gets evicted or if it crashes.
+This error happens when Ray Client reconnects to a head node that does not recognize the client. This can happen if the head node restarts unexpectedly and loses state. On Kubernetes, this can happen if the head pod restarts after being evicted or crashing.
