@@ -140,6 +140,23 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         return module_gradients_dict
 
     @override(TfLearner)
+    def compute_gradients(
+        self,
+        loss_per_module,
+        gradient_tape,
+        **kwargs,
+    ):
+        grads = {}
+        for component in ["world_model", "actor", "critic"]:
+            grads.update(gradient_tape.gradient(
+                loss_per_module["default_policy"][component],
+                self.filter_param_dict_for_optimizer(
+                    self._params, self.get_optimizer(optimizer_name=component)
+                ),
+            ))
+        return grads
+
+    @override(TfLearner)
     def compute_loss_for_module(
         self,
         module_id: ModuleID,
@@ -293,7 +310,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         #    )
 
         # Return the total loss as a sum of all individual losses.
-        return L_world_model_total + CRITIC_L_total + ACTOR_L_total
+        return {
+            "world_model": L_world_model_total,
+            "critic": CRITIC_L_total,
+            "actor": ACTOR_L_total,
+        }
 
     def _compute_world_model_prediction_losses(
         self,

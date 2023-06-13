@@ -362,7 +362,7 @@ class DreamerV3Config(AlgorithmConfig):
         return DreamerV3LearnerHyperparameters(
             model_size=self.model_size,
             training_ratio=self.training_ratio,
-            batch_size_B=self.batch_size_B,#TODO // self.num_learner_workers,#TODO: make sure batch_size is compatible with num learners
+            batch_size_B=self.batch_size_B // self.num_learner_workers,#TODO: make sure batch_size is compatible with num learners
             batch_length_T=self.batch_length_T,
             horizon_H=self.horizon_H,
             gamma=self.gamma,
@@ -452,6 +452,9 @@ class DreamerV3(Algorithm):
                 f"{self.config.batch_size_B * self.config.batch_length_T} timesteps "
                 "(required for a single train batch)."
             )
+        # The current (lifetime) training ratio, computed via
+        # [ts learned from buffer] / [ts sampled from actual env].
+        training_ratio = None
 
         # Sample one round and place collected data into our replay buffer.
         # If the buffer is empty at the beginning, sample for as long as it contains
@@ -477,7 +480,7 @@ class DreamerV3(Algorithm):
                 self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
 
                 ts_in_buffer = self.replay_buffer.get_num_timesteps()
-                actual_train_ratio = (
+                training_ratio = (
                     self._counters[NUM_ENV_STEPS_TRAINED]
                     / self._counters[NUM_ENV_STEPS_SAMPLED]
                 )
@@ -487,12 +490,12 @@ class DreamerV3(Algorithm):
                     >= (self.config.batch_size_B * self.config.batch_length_T)
                     # And enough timesteps for the next train batch to not exceed
                     # the training_ratio.
-                    and actual_train_ratio < self.config.training_ratio
+                    and training_ratio < self.config.training_ratio
                 ):
                     # Summarize environment interaction and buffer data.
                     results[ALL_MODULES] = summarize_sampling_and_replay_buffer(
                         replay_buffer=self.replay_buffer,
-                        actual_train_ratio=actual_train_ratio,
+                        training_ratio=training_ratio,
                     )
                     break
 
@@ -502,7 +505,7 @@ class DreamerV3(Algorithm):
         # - This will perform a dreamer model forward pass, compute all losses and
         # gradients and apply the gradients to the models.
         replayed_steps = sub_iter = 0
-        while replayed_steps / env_steps_last_sample < self.config.training_ratio:
+        while training_ratio < self.config.training_ratio:
 
             # Time individual batch updates.
             with self._timers[LEARN_ON_BATCH_TIMER]:
@@ -534,6 +537,11 @@ class DreamerV3(Algorithm):
 
                 self._counters[NUM_AGENT_STEPS_TRAINED] += replayed_steps
                 self._counters[NUM_ENV_STEPS_TRAINED] += replayed_steps
+
+                training_ratio = (
+                    self._counters[NUM_ENV_STEPS_TRAINED]
+                    / self._counters[NUM_ENV_STEPS_SAMPLED]
+                )
 
                 # Perform additional (non-gradient updates), such as the critic EMA-copy
                 # update.

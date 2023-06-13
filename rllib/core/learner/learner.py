@@ -926,7 +926,7 @@ class Learner:
             must contain one protected key ALL_MODULES which will be used for computing
             gradients through.
         """
-        loss_total = None
+        #loss_total = None
         loss_per_module = {}
         for module_id in fwd_out:
             module_batch = batch[module_id]
@@ -940,12 +940,12 @@ class Learner:
             )
             loss_per_module[module_id] = loss
 
-            if loss_total is None:
-                loss_total = loss
-            else:
-                loss_total += loss
+            #if loss_total is None:
+            #    loss_total = loss
+            #else:
+            #    loss_total += loss
 
-        loss_per_module[ALL_MODULES] = loss_total
+        #loss_per_module[ALL_MODULES] = loss_total
 
         return loss_per_module
 
