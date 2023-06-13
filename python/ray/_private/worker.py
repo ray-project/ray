@@ -1109,6 +1109,7 @@ def init(
     num_cpus: Optional[int] = None,
     num_gpus: Optional[int] = None,
     resources: Optional[Dict[str, float]] = None,
+    labels: Optional[Dict[str, str]] = None,
     object_store_memory: Optional[int] = None,
     local_mode: bool = False,
     ignore_reinit_error: bool = False,
@@ -1188,6 +1189,7 @@ def init(
             raylet. By default, this is set based on detected GPUs.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
+        labels: [Experimental] The key-value labels of the node.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is automatically set based on
             available system memory.
@@ -1480,6 +1482,7 @@ def init(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources,
+            labels=labels,
             num_redis_shards=None,
             redis_max_clients=None,
             redis_password=_redis_password,
@@ -1521,6 +1524,11 @@ def init(
             raise ValueError(
                 "When connecting to an existing cluster, "
                 "resources must not be provided."
+            )
+        if labels is not None:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "labels must not be provided."
             )
         if object_store_memory is not None:
             raise ValueError(
