@@ -2239,7 +2239,6 @@ def connect(
             " and will be removed in the future."
         )
 
-
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
     # push messages to the driver's worker service, but we ran into bugs when
