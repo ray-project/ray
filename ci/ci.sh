@@ -264,9 +264,7 @@ test_wheels() {
   local result=0
   local flush_logs=0
 
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
-  fi
+  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
 
   if [[ 0 -ne "${flush_logs}" ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
