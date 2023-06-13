@@ -1,6 +1,6 @@
 # See https://hub.docker.com/r/anyscale/ray for full list of
 # available Ray, Python, and CUDA versions.
-base_image: anyscale/ray:2.4.0-py39-cu118
+base_image: anyscale/ray:latest-py39-cu118
 
 env_vars: {}
 
@@ -8,14 +8,14 @@ debian_packages: []
 
 python:
   pip_packages:
-    - accelerate==0.19.0
-    - diffusers==0.15.1
-    - fastapi==0.95.1
+    - accelerate==0.20.3
+    - diffusers==0.17.1
+    - fastapi==0.97.0
     - ipywidgets
     - matplotlib==3.7.1
     - numpy==1.24.3
-    - torch==2.0.0
-    - transformers==4.28.1
+    - torch==2.0.1
+    - transformers==4.30.1
 
   conda_packages: []
 
