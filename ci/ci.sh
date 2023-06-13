@@ -331,14 +331,6 @@ check_sphinx_links() {
   )
 }
 
-install_cython_examples() {
-  (
-    cd "${WORKSPACE_DIR}"/doc/examples/cython
-    pip install scipy
-    python setup.py install --user
-  )
-}
-
 _bazel_build_before_install() {
   local target
   if [ "${OSTYPE}" = msys ]; then
@@ -740,26 +732,20 @@ init() {
 }
 
 build() {
-  if [ "${LINT-}" != 1 ]; then
+  if [[ "${LINT-}" != 1 ]]; then
     _bazel_build_before_install
   else
     _bazel_build_protobuf
   fi
 
-  if [[ "${NEED_WHEELS}" != "true" ]]; then
+  if [[ "${NEED_WHEELS}" == "true" ]]; then
+    build_wheels_and_jars
+  else
     install_ray
-    if [ "${LINT-}" = 1 ]; then
+    if [[ "${LINT-}" == 1 ]]; then
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
       build_sphinx_docs
     fi
-  fi
-
-  if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
-    install_cython_examples
-  fi
-
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    build_wheels_and_jars
   fi
 }
 
