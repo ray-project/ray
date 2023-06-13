@@ -7,7 +7,7 @@ import ray
 import asyncio
 import aiohttp.web
 import ray.dashboard.optional_utils as optional_utils
-from ray.dashboard.__utils import DashboardAgentModule
+from ray.dashboard.utils import DashboardAgentModule
 from ray.dashboard.modules.version import (
     CURRENT_VERSION,
     VersionResponse,
