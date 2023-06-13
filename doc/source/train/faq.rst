@@ -81,11 +81,14 @@ To resolve these issues, you can do the following:
 3. Set this as the value for the `NCCL_SOCKET_IFNAME` environment variable. You must do this via Ray runtime environments so that it
    gets propagated to all training workers.
 
+.. FIXME: This snippet fails ~10% of runs. See
+   https://buildkite.com/ray-project/oss-ci-build-branch/builds/4447#0188b20e-7680-433f-838a-7874abc2b72d.
+
 .. testcode::
+    :skipif: True
 
     import ray
 
     # Add this at the top of your Ray application.
     runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens5"}}
     ray.init(runtime_env=runtime_env, ignore_reinit_error=True)
-
