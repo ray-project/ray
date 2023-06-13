@@ -868,7 +868,7 @@
   working_dir: workspace_templates/01_batch_inference
   python: "3.9"
   frequency: nightly-3x
-  team: ml
+  team: data
   cluster:
     cluster_env: ../testing/cluster_envs/default_cluster_env_latest_ml_py39.yaml
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
@@ -916,7 +916,7 @@
   working_dir: workspace_templates/03_serving_stable_diffusion
   python: "3.9"
   frequency: nightly-3x
-  team: ml
+  team: serve
   cluster:
     cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
