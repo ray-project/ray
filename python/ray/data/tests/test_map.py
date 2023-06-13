@@ -842,6 +842,7 @@ def test_map_batches_combine_empty_blocks(ray_start_regular_shared):
 
 
 def test_random_sample(ray_start_regular_shared):
+    # TODO(scott_optimizer): need union https://github.com/ray-project/ray/pull/36242
     import math
 
     def ensure_sample_size_close(dataset, sample_percent=0.5):
