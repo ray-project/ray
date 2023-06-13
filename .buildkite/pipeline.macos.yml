@@ -48,7 +48,6 @@ steps:
     - export RAY_INSTALL_JAVA=1
     - export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
     - . ./ci/ci.sh init && source ~/.zshenv
-    - ./ci/ci.sh build
     # Test wheels
     - ./ci/ci.sh test_wheels
     # Build jars
@@ -89,7 +88,6 @@ steps:
     - export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
     - export PYTHON=3.8
     - . ./ci/ci.sh init && source ~/.zshenv
-    - ./ci/ci.sh build
     # Test wheels
     - ./ci/ci.sh test_wheels
     # Build jars

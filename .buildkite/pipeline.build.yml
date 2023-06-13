@@ -13,7 +13,7 @@
   instance_size: medium
   commands:
     # Build the wheels and jars
-    - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
+    - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build_wheels_and_jars
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -30,7 +30,7 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 ./ci/ci.sh build_wheels_and_jars
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
@@ -53,7 +53,7 @@
   instance_size: medium
   commands:
     # Build the debug wheels
-    - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/ci.sh build
+    - RAY_DEBUG_BUILD=debug LINUX_WHEELS=1 ./ci/ci.sh build_wheels_and_jars
     # Upload the wheels.
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
     - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
@@ -590,7 +590,7 @@
     # See https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
     # Pin urllib to avoid downstream ssl incompatibility issues. This matches requirements-doc.txt.
     - pip install "mosaicml==0.12.1" "urllib3<1.27" --ignore-installed
-    - ./ci/ci.sh build
+    - ./ci/ci.sh build_lint
 
 - label: ":octopus: Tune multinode tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
