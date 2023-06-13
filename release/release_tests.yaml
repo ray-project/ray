@@ -5954,6 +5954,8 @@
   cluster:
     byod:
       type: gpu
+      pip:
+        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
     cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
@@ -5982,6 +5984,11 @@
   cluster:
     byod:
       type: gpu
+      runtime_env:
+        - RAY_lineage_pinning_enabled=1
+        - RAY_record_ref_creation_sites=1
+      pip:
+        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
     cluster_env: pipelined_ingestion_app.yaml
     cluster_compute: pipelined_ingestion_compute.yaml
 
@@ -6073,6 +6080,8 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -6102,6 +6111,8 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 

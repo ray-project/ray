@@ -9,6 +9,8 @@ gcsfs
 gsutil
 gym
 gym[atari]
+horovod[gloo]
+horovod[pytorch]
 importlib-metadata
 memray
 openskill
