@@ -50,6 +50,7 @@ class MapOperator(OneToOneOperator, ABC):
         self._transform_fn = transform_fn
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_factory = None
+        self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
@@ -189,10 +190,22 @@ class MapOperator(OneToOneOperator, ABC):
             bundle = self._block_ref_bundler.get_next_bundle()
             self._add_bundled_input(bundle)
 
-    def _get_runtime_ray_remote_args(self) -> Dict[str, Any]:
+    def _get_runtime_ray_remote_args(
+        self, input_bundle: Optional[RefBundle] = None
+    ) -> Dict[str, Any]:
+        ray_remote_args = copy.deepcopy(self._ray_remote_args)
+        if "scheduling_strategy" not in ray_remote_args:
+            ctx = DataContext.get_current()
+            if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
+                ray_remote_args[
+                    "scheduling_strategy"
+                ] = ctx.scheduling_strategy_large_args
+                self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+            else:
+                ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
         if self._ray_remote_args_factory:
-            return self._ray_remote_args_factory(self._ray_remote_args)
-        return self._ray_remote_args
+            return self._ray_remote_args_factory(ray_remote_args)
+        return ray_remote_args
 
     @abstractmethod
     def _add_bundled_input(self, refs: RefBundle):
@@ -292,7 +305,7 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     def get_metrics(self) -> Dict[str, int]:
-        sorted_ray_args = dict(sorted(self._get_runtime_ray_remote_args().items()))
+        sorted_ray_args = dict(sorted(self._remote_args_for_metrics.items()))
         return dict(
             self._metrics.to_metrics_dict(),
             ray_remote_args=sorted_ray_args,
@@ -579,9 +592,6 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
     ray_remote_args = ray_remote_args.copy()
     if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
         ray_remote_args["num_cpus"] = 1
-    if "scheduling_strategy" not in ray_remote_args:
-        ctx = DataContext.get_current()
-        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
     if ray_remote_args.get("num_gpus", 0) > 0:
         if ray_remote_args.get("num_cpus", 0) != 0:
             raise ValueError(

@@ -62,8 +62,16 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
-# The default global scheduling strategy.
+# The default global scheduling strategy. Note that for tasks with large args,
+# DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS applies.
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
+
+# Default scheduling strategy for tasks with large args. This enables locality-based
+# scheduling in Ray for tasks where arg data transfer is a bottleneck.
+DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS = "DEFAULT"
+
+# Size in bytes after which point task arguments are considered large.
+DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.
 DEFAULT_USE_POLARS = False
@@ -233,6 +241,10 @@ class DataContext:
                     # See https://github.com/ray-project/ray/issues/25412.
                     pipeline_push_based_shuffle_reduce_tasks=True,
                     scheduling_strategy=DEFAULT_SCHEDULING_STRATEGY,
+                    scheduling_strategy_large_args=(
+                        DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS
+                    ),
+                    large_args_threshold=DEFAULT_LARGE_ARGS_THRESHOLD,
                     use_polars=DEFAULT_USE_POLARS,
                     new_execution_backend=DEFAULT_NEW_EXECUTION_BACKEND,
                     use_streaming_executor=DEFAULT_USE_STREAMING_EXECUTOR,
