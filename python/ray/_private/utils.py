@@ -31,7 +31,6 @@ from typing import (
     Tuple,
     Union,
     Coroutine,
-    List,
 )
 
 # Import psutil after ray so the packaged version is used.
