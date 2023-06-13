@@ -256,21 +256,19 @@ parts:
         sections:
           - file: serve/getting_started
           - file: serve/key-concepts
-          - file: serve/user-guides/index
+          - file: serve/model_composition
+          - file: serve/deploy-many-models/index
             sections:
-              - file: serve/user-guides/model_composition
-              - file: serve/user-guides/deploy-many-models/index
-                sections:
-                - file: serve/user-guides/deploy-many-models/multi-app
-                - file: serve/user-guides/deploy-many-models/model-multiplexing
-              - file: serve/user-guides/production-guide/index
-                sections:
-                  - file: serve/user-guides/production-guide/config
-                  - file: serve/user-guides/production-guide/kubernetes
-                  - file: serve/user-guides/production-guide/handling-dependencies
-                  - file: serve/user-guides/production-guide/best-practices
-              - file: serve/user-guides/monitoring
-              - file: serve/user-guides/scaling-and-resource-allocation
+            - file: serve/deploy-many-models/multi-app
+            - file: serve/deploy-many-models/model-multiplexing
+          - file: serve/production-guide/index
+            sections:
+              - file: serve/production-guide/config
+              - file: serve/production-guide/kubernetes
+              - file: serve/production-guide/handling-dependencies
+              - file: serve/production-guide/best-practices
+          - file: serve/monitoring
+          - file: serve/scaling-and-resource-allocation
           - file: serve/advanced-guides/index
             sections:
               - file: serve/advanced-guides/app-builder-guide

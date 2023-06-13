@@ -1,12 +1,13 @@
 (serve-model-composition)=
 
-# Model Composition
+# Deploy a Composition of Models
 
 This section helps you:
 
 * compose multiple deployments containing ML logic or business logic into a single application
 * independently scale and configure each of your ML models and business logic steps
-* connect your Ray Serve deployments together with the **deployment graph** API
+
+Check out a [new experimental API](serve-deployment-graphs) under development for connecting Ray Serve deployments together with the **deployment graph** API.
 
 (serve-handle-explainer)=
 
@@ -22,7 +23,7 @@ These requests can be ordinary Python args and kwargs that are passed directly t
 
 Here's an example:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} doc_code/model_composition/class_nodes.py
 :start-after: __hello_start__
 :end-before: __hello_end__
 :language: python
@@ -59,7 +60,7 @@ $ serve run hello:language_classifier
 
 You can use this client script to interact with the example:
 
-```{literalinclude} ../doc_code/model_composition/class_nodes.py
+```{literalinclude} doc_code/model_composition/class_nodes.py
 :start-after: __hello_client_start__
 :end-before: __hello_client_end__
 :language: python
@@ -94,7 +95,7 @@ Because of this variability, Serve offers two types of handles to ensure the buf
 
 `serve.run` deploys a deployment graph and returns the entrypoint node’s handle (the node you passed as argument to `serve.run`). The return type is a `RayServeSyncHandle`. This is useful for interacting with and testing the newly created deployment graph.
 
-```{literalinclude} ../doc_code/handle_guide.py
+```{literalinclude} doc_code/handle_guide.py
 :start-after: __begin_sync_handle__
 :end-before: __end_sync_handle__
 :language: python
@@ -102,7 +103,7 @@ Because of this variability, Serve offers two types of handles to ensure the buf
 
 In all other cases, `RayServeDeploymentHandle` is the default because the API is more performant than its blocking counterpart. For example, when implementing a dynamic dispatch node in deployment graph, the handle is asynchronous.
 
-```{literalinclude} ../doc_code/handle_guide.py
+```{literalinclude} doc_code/handle_guide.py
 :start-after: __begin_async_handle__
 :end-before: __end_async_handle__
 :language: python
@@ -110,7 +111,7 @@ In all other cases, `RayServeDeploymentHandle` is the default because the API is
 
 The result of `deployment_handle.remote()` can also be passed directly as an argument to other downstream handles, without having to await on it.
 
-```{literalinclude} ../doc_code/handle_guide.py
+```{literalinclude} doc_code/handle_guide.py
 :start-after: __begin_async_handle_chain__
 :end-before: __end_async_handle_chain__
 :language: python
@@ -118,7 +119,7 @@ The result of `deployment_handle.remote()` can also be passed directly as an arg
 
 In both types of `ServeHandle`, you can call a specific method by using the `.method_name` accessor. For example:
 
-```{literalinclude} ../doc_code/handle_guide.py
+```{literalinclude} doc_code/handle_guide.py
 :start-after: __begin_handle_method__
 :end-before: __end_handle_method__
 :language: python

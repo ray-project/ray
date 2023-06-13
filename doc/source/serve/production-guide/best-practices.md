@@ -1,6 +1,6 @@
 (serve-best-practices)=
 
-## Best practices
+# Best practices
 
 This section summarizes the best practices when deploying to production using the Serve CLI:
 

@@ -5,10 +5,11 @@ If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quick St
 
 Use these advanced guides for more options and configurations:
 - [Pass Arguments to Applications](app-builder-guide)
-- [FastAPI and HTTP Setup](http-guide)
-- [Development Workflow](dev-workflow)
+- [FastAPI and HTTP Setup](serve-set-up-fastapi-http)
+- [Performance Tuning](serve-perf-tuning)
+- [Dynamic Request Batching](serve-performance-batching-requests)
+- [Development Workflow](serve-dev-workflow)
 - [Ray Serve Dashboard](dash-serve-view)
-- [Performance Tuning](performance)
-- [Experimental Java API](managing-java-deployments)
-- [1.x to 2.x API Migration Guide](migration)
-- [Experimental gRPC Support](direct-ingress)
+- [Experimental Java API](serve-java-api)
+- [Migrate from 1.x to 2.x](serve-migration)
+- [Experimental gRPC Support](serve-direct-ingress)
