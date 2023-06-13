@@ -102,7 +102,7 @@ class TestPPO(unittest.TestCase):
                 _enable_learner_api=True,
             )
             .rollouts(
-                num_rollout_workers=1,
+                num_rollout_workers=0,
                 # Test with compression.
                 # compress_observations=True,
                 enable_connectors=True,
@@ -120,7 +120,7 @@ class TestPPO(unittest.TestCase):
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
                 print("Env={}".format(env))
                 # TODO (Kourosh, Avnishn): for now just do lstm=False
-                for lstm in [False]:
+                for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config.training(model=get_model_config(fw, lstm=lstm))
 

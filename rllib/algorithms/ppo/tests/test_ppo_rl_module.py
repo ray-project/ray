@@ -14,8 +14,7 @@ from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
-from ray.rllib.core.models.base import STATE_IN
-from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -114,17 +113,17 @@ def _get_ppo_module(framework, env, lstm, observation_space):
     return module
 
 
-def _get_input_batch_from_obs(framework, obs):
+def _get_input_batch_from_obs(framework, obs, lstm):
     if framework == "torch":
         batch = {
             SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
-            STATE_IN: None,
         }
     else:
         batch = {
             SampleBatch.OBS: tf.convert_to_tensor([obs]),
-            STATE_IN: None,
         }
+    if lstm:
+        batch[SampleBatch.OBS] = batch[SampleBatch.OBS][None]
     return batch
 
 
@@ -142,8 +141,7 @@ class TestPPO(unittest.TestCase):
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         fwd_fns = ["forward_exploration", "forward_inference"]
-        # TODO(Artur): Re-enable LSTM
-        lstm = [False]
+        lstm = [True, False]
         config_combinations = [frameworks, env_names, fwd_fns, lstm]
         for config in itertools.product(*config_combinations):
             fw, env_name, fwd_fn, lstm = config
@@ -168,14 +166,16 @@ class TestPPO(unittest.TestCase):
             obs, _ = env.reset()
             obs = preprocessor.transform(obs)
 
-            batch = _get_input_batch_from_obs(fw, obs)
+            batch = _get_input_batch_from_obs(fw, obs, lstm)
 
-            state_in = module.get_initial_state()
-            state_in = tree.map_structure(
-                lambda x: x[None], convert_to_torch_tensor(state_in)
-            )
-            batch[STATE_IN] = state_in
-            # batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
+            if lstm:
+                state_in = module.get_initial_state()
+                if fw == "torch":
+                    state_in = convert_to_torch_tensor(state_in)
+                state_in = tree.map_structure(
+                    lambda x: x[None], state_in
+                )
+                batch[STATE_IN] = state_in
 
             if fwd_fn == "forward_exploration":
                 module.forward_exploration(batch)
@@ -187,7 +187,7 @@ class TestPPO(unittest.TestCase):
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         # TODO(Artur): Re-enable LSTM
-        lstm = [False]
+        lstm = [True, False]
         config_combinations = [frameworks, env_names, lstm]
         for config in itertools.product(*config_combinations):
             fw, env_name, lstm = config
@@ -216,16 +216,17 @@ class TestPPO(unittest.TestCase):
             obs, _ = env.reset()
             obs = preprocessor.transform(obs)
             tstep = 0
-            state_in = module.get_initial_state()
-            state_in = tree.map_structure(
-                lambda x: x[None], convert_to_torch_tensor(state_in)
-            )
-            initial_state = state_in
+
+            if lstm:
+                state_in = module.get_initial_state()
+                state_in = tree.map_structure(
+                    lambda x: x[None], convert_to_torch_tensor(state_in)
+                )
+                initial_state = state_in
 
             while tstep < 10:
                 input_batch = _get_input_batch_from_obs(fw, obs)
                 input_batch[STATE_IN] = state_in
-                input_batch[SampleBatch.SEQ_LENS] = np.array([1])
 
                 fwd_out = module.forward_exploration(input_batch)
                 action_dist_cls = module.get_exploration_action_dist_cls()
@@ -248,8 +249,9 @@ class TestPPO(unittest.TestCase):
                     STATE_IN: None,
                 }
 
-                assert STATE_OUT in fwd_out
-                state_in = fwd_out[STATE_OUT]
+                if lstm:
+                    assert STATE_OUT in fwd_out
+                    state_in = fwd_out[STATE_OUT]
                 batches.append(output_batch)
                 obs = new_obs
                 tstep += 1
@@ -261,8 +263,8 @@ class TestPPO(unittest.TestCase):
                 fwd_in = {
                     k: convert_to_torch_tensor(np.array(v)) for k, v in batch.items()
                 }
-                fwd_in[STATE_IN] = initial_state
-                fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
+                if lstm:
+                    fwd_in[STATE_IN] = initial_state
 
                 # forward train
                 # before training make sure module is on the right device
@@ -280,8 +282,9 @@ class TestPPO(unittest.TestCase):
                 fwd_in = tree.map_structure(
                     lambda x: tf.convert_to_tensor(x, dtype=tf.float32), batch
                 )
-                fwd_in[STATE_IN] = initial_state
-                fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
+                if lstm:
+                    fwd_in[STATE_IN] = initial_state
+
                 with tf.GradientTape() as tape:
                     fwd_out = module.forward_train(fwd_in)
                     loss = dummy_tf_ppo_loss(module, fwd_in, fwd_out)

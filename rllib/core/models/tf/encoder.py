@@ -5,6 +5,7 @@ import tree  # pip install dm_tree
 from ray.rllib.core.models.base import (
     Encoder,
     ActorCriticEncoder,
+    StatefulActorCriticEncoder,
     STATE_IN,
     STATE_OUT,
     ENCODER_OUT,
@@ -25,6 +26,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.tf_utils import get_fold_unfold_batch_and_time
 
 _, tf, _ = try_import_tf()
 
@@ -39,6 +41,18 @@ class TfActorCriticEncoder(TfModel, ActorCriticEncoder):
         # tf.keras.Model, which is required to be called before models are created.
         TfModel.__init__(self, config)
         ActorCriticEncoder.__init__(self, config)
+
+
+class TfStatefulActorCriticEncoder(TfModel, StatefulActorCriticEncoder):
+    """A stateful actor-critic encoder for torch."""
+
+    framework = "tf2"
+
+    def __init__(self, config: ActorCriticEncoderConfig) -> None:
+        # We have to call TfModel.__init__ first, because it calls the constructor of
+        # tf.keras.Model, which is required to be called before models are created.
+        TfModel.__init__(self, config)
+        StatefulActorCriticEncoder.__init__(self, config)
 
 
 class TfCNNEncoder(TfModel, Encoder):
@@ -147,10 +161,21 @@ class TfMLPEncoder(Encoder, TfModel):
 
 
 class TfGRUEncoder(TfModel, Encoder):
-    """An encoder that uses one or more GRU layers and a linear output layer."""
+    """A recurrent GRU encoder.
 
+    This encoder has...
+    - Zero or one tokenizers.
+    - One or more LSTM layers.
+    - One linear output layer.
+    """
     def __init__(self, config: RecurrentEncoderConfig) -> None:
         TfModel.__init__(self, config)
+
+        # Maybe create a tokenizer
+        if config.tokenizer_config is not None:
+            self.tokenizer = config.tokenizer_config.build(framework="tf2")
+        else:
+            self.tokenizer = None
 
         # Create the tf GRU layers.
         self.grus = []
@@ -212,8 +237,17 @@ class TfGRUEncoder(TfModel, Encoder):
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         outputs = {}
 
-        # Calculate the output and state of the GRU.
-        out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
+        if self.tokenizer is not None:
+            # Push observations through the tokenizer encoder if we built one.
+            out = self.tokenizer(inputs)
+            out = out[ENCODER_OUT]
+        else:
+            # Otherwise, just use the raw observations.
+            out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
+
+        # Push observations through the tokenizer if we built one.
+        if self.tokenizer is not None:
+            out = self.tokenizer(out)
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(
@@ -233,10 +267,21 @@ class TfGRUEncoder(TfModel, Encoder):
 
 
 class TfLSTMEncoder(TfModel, Encoder):
-    """An encoder that uses an LSTM cell and a linear layer."""
+    """A recurrent LSTM encoder.
 
+    This encoder has...
+    - Zero or one tokenizers.
+    - One or more LSTM layers.
+    - One linear output layer.
+    """
     def __init__(self, config: RecurrentEncoderConfig) -> None:
         TfModel.__init__(self, config)
+
+        # Maybe create a tokenizer
+        if config.tokenizer_config is not None:
+            self.tokenizer = config.tokenizer_config.build(framework="tf2")
+        else:
+            self.tokenizer = None
 
         # Create the tf LSTM layers.
         self.lstms = []
@@ -311,8 +356,20 @@ class TfLSTMEncoder(TfModel, Encoder):
     def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
         outputs = {}
 
-        # Calculate the output and state of the LSTM.
-        out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
+        if self.tokenizer is not None:
+            # First fold time- and batch dimensions.
+            obs = inputs[SampleBatch.OBS]
+            size = list(tf.shape(obs))
+            b_dim, t_dim = size[:2]
+            fold, unfold = get_fold_unfold_batch_and_time(b_dim, t_dim)
+            # Push through the tokenizer encoder.
+            out = self.tokenizer(fold(inputs))
+            out = out[ENCODER_OUT]
+            # Then unfold batch- and time-dimensions again.
+            out = unfold(out)
+        else:
+            # Otherwise, just use the raw observations.
+            out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(

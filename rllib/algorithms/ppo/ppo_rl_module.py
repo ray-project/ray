@@ -28,8 +28,6 @@ class PPORLModule(RLModule, abc.ABC):
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
         # __sphinx_doc_end__
 
-        assert isinstance(self.encoder, ActorCriticEncoder)
-
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         return self.action_dist_cls
 
