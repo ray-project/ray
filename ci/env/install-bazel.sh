@@ -116,7 +116,7 @@ if [ "${TRAVIS-}" = true ]; then
   echo "build --jobs=50" >> ~/.bazelrc
 fi
 
-if [ "$BUILDKITE" = "true" ]; then
+if [ "${BUILDKITE-}" = "true" ]; then
   cp "${ROOT_DIR}"/../../.bazeliskrc ~/.bazeliskrc
 fi
 

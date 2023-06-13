@@ -15,7 +15,7 @@
 syntax = "proto3";
 option cc_enable_arenas = true;
 
-package ray.autoscaler;
+package ray.rpc.autoscaler;
 
 enum RayNodeKind {
   UNKNOWN = 0;
@@ -97,7 +97,7 @@ message Instance {
   // the status of the instance.
   InstanceStatus status = 12;
   // the node type of the instance.
-  string node_type = 13;
+  string instance_type = 13;
   // The corresponding total resources on the node.
   map<string, double> total_resources = 14;
   // timestamp of the last state changed.

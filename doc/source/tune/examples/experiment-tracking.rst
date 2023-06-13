@@ -1,3 +1,5 @@
+.. _tune-experiment-tracking-ref:
+
 Tune Experiment Tracking Examples
 ---------------------------------
 

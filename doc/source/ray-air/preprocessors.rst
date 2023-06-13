@@ -25,7 +25,7 @@ For example, the following code trains a model with a preprocessor that normaliz
 
 The  ``Preprocessor`` class with four public methods that can we used separately from a trainer:
 
-#. ``fit()``: Compute state information about a :class:`Dataset <ray.data.Datastream>` (e.g., the mean or standard deviation of a column)
+#. ``fit()``: Compute state information about a :class:`Dataset <ray.data.Dataset>` (e.g., the mean or standard deviation of a column)
    and save it to the ``Preprocessor``. This information is used to perform ``transform()``, and the method is typically called on a
    training dataset.
 #. ``transform()``: Apply a transformation to a ``Dataset``.
@@ -183,7 +183,7 @@ Ray AIR provides a handful of preprocessors out of the box.
 .. autosummary::
   :nosignatures:
 
-    ray.data.Datastream.train_test_split
+    ray.data.Dataset.train_test_split
 
 Which preprocessor should you use?
 ----------------------------------

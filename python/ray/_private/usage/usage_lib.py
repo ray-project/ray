@@ -45,6 +45,7 @@ import json
 import logging
 import threading
 import os
+import platform
 import sys
 import time
 import uuid
@@ -144,6 +145,8 @@ class UsageStatsToReport:
     #: The total number of running jobs excluding internal ones
     #  when the report is generated.
     total_num_running_jobs: Optional[int]
+    #: The libc version in the OS.
+    libc_version: Optional[str]
 
 
 @dataclass(init=True)
@@ -356,6 +359,13 @@ def _generate_cluster_metadata():
                 "session_start_timestamp_ms": int(time.time() * 1000),
             }
         )
+        if sys.platform == "linux":
+            # Record llibc version
+            (lib, ver) = platform.libc_ver()
+            if not lib:
+                metadata.update({"libc_version": "NA"})
+            else:
+                metadata.update({"libc_version": f"{lib}:{ver}"})
     return metadata
 
 
@@ -759,6 +769,7 @@ def generate_report_data(
         extra_usage_tags=get_extra_usage_tags_to_report(gcs_client),
         total_num_nodes=get_total_num_nodes_to_report(gcs_client),
         total_num_running_jobs=get_total_num_running_jobs_to_report(gcs_client),
+        libc_version=cluster_metadata.get("libc_version"),
     )
     return data
 

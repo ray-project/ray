@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 import warnings
 from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
@@ -7,6 +7,7 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 from gymnasium.spaces import Discrete, MultiDiscrete
+from packaging import version
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
@@ -20,6 +21,7 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
+    from ray.rllib.core.learner.learner import ParamDict
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
@@ -30,6 +32,13 @@ torch, nn = try_import_torch()
 # since -inf / inf cause NaNs during backprop.
 FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
+
+if torch:
+    TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
+else:
+    TORCH_COMPILE_REQUIRED_VERSION = ValueError(
+        "torch is not installed. " "TORCH_COMPILE_REQUIRED_VERSION is " "not defined."
+    )
 
 
 # TODO (sven): Deprecate this function once we have moved completely to the Learner API.
@@ -92,11 +101,11 @@ def atanh(x: TensorType) -> TensorType:
 
 @PublicAPI
 def clip_gradients(
-    gradients_dict: Dict[str, "torch.Tensor"],
+    gradients_dict: "ParamDict",
     *,
     grad_clip: Optional[float] = None,
     grad_clip_by: str = "value",
-) -> None:
+) -> Optional[float]:
     """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
 
     Changes the provided gradient dict in place.
@@ -106,6 +115,10 @@ def clip_gradients(
         grad_clip: The value to clip with. The way gradients are clipped is defined
             by the `grad_clip_by` arg (see below).
         grad_clip_by: One of 'value', 'norm', or 'global_norm'.
+
+    Returns:
+        If `grad_clip_by`="global_norm" and `grad_clip` is not None, returns the global
+        norm of all tensors, otherwise returns None.
     """
     # No clipping, return.
     if grad_clip is None:
@@ -121,9 +134,12 @@ def clip_gradients(
     # Clip by L2-norm (per gradient tensor).
     elif grad_clip_by == "norm":
         for k, v in gradients_dict.copy().items():
-            gradients_dict[k] = (
-                None if v is None else nn.utils.clip_grad_norm_(v, grad_clip)
-            )
+            if v is not None:
+                # Compute the L2-norm of the gradient tensor.
+                norm = v.norm(2)
+                # Clip all the gradients.
+                if norm > grad_clip:
+                    v.mul_(grad_clip / norm)
 
     # Clip by global L2-norm (across all gradient tensors).
     else:
@@ -132,7 +148,7 @@ def clip_gradients(
         ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
 
         # Compute the global L2-norm of all the gradient tensors.
-        total_l2_norm = sum(
+        global_norm = sum(
             # `.norm()` is the square root of the sum of all squares.
             # We need to "undo" the square root b/c we want to compute the global
             # norm afterwards -> `** 2`.
@@ -141,13 +157,16 @@ def clip_gradients(
             if t is not None
         )
         # Now we do the square root.
-        total_l2_norm = torch.sqrt(total_l2_norm)
+        global_norm = torch.sqrt(global_norm)
 
         # Clip all the gradients.
-        if total_l2_norm > grad_clip:
+        if global_norm > grad_clip:
             for tensor in gradients_dict.values():
                 if tensor is not None:
-                    tensor.mul_(grad_clip / total_l2_norm)
+                    tensor.mul_(grad_clip / global_norm)
+
+        # Return the computed global norm scalar.
+        return global_norm
 
 
 @PublicAPI

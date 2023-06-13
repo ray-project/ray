@@ -89,6 +89,28 @@ that specific worker and can access and mutate the state of that worker.
           // as the argument.
           auto counter = ray::Actor(CreateCounter).Remote();
 
+
+
+Use `ray list actors` from :ref:`State API <state-api-overview-ref>` to see actors states:
+
+.. code-block:: bash
+
+  # This API is only available when you install Ray with `pip install "ray[default]"`.
+  ray list actors
+
+.. code-block:: bash
+
+  ======== List: 2023-05-25 10:10:50.095099 ========
+  Stats:
+  ------------------------------
+  Total: 1
+  
+  Table:
+  ------------------------------
+      ACTOR_ID                          CLASS_NAME    STATE      JOB_ID  NAME    NODE_ID                                                     PID  RAY_NAMESPACE
+   0  9e783840250840f87328c9f201000000  Counter       ALIVE    01000000          13a475571662b784b4522847692893a823c78f1d3fd8fd32a2624923  38906  ef9de910-64fb-4575-8eb5-50573faa3ddf
+
+
 Specifying required resources
 -----------------------------
 
@@ -310,7 +332,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
                 print(ray.get(counter.get_counter.remote()))
 
         .. testoutput::
-            :options: +SKIP
+            :options: +MOCK
 
             0
             3

@@ -13,6 +13,7 @@ from ray.serve._private.common import (
     StatusOverview,
     ApplicationStatus,
     DeploymentStatusInfo,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.config import DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
@@ -102,7 +103,6 @@ class ServeControllerClient:
 
         # Shut down handles
         for k in list(self.handle_cache):
-            self.handle_cache[k].stop_metrics_pusher()
             del self.handle_cache[k]
 
         if ray.is_initialized() and not self._shutdown:
@@ -439,7 +439,8 @@ class ServeControllerClient:
         deployment_name: str,
         missing_ok: Optional[bool] = False,
         sync: bool = True,
-        _internal_pickled_http_request: bool = False,
+        _is_for_http_requests: bool = False,
+        _stream: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
@@ -450,6 +451,10 @@ class ServeControllerClient:
             sync: If true, then Serve will return a ServeHandle that
                 works everywhere. Otherwise, Serve will return a ServeHandle
                 that's only usable in asyncio loop.
+            _is_for_http_requests: Indicates that this handle will be used
+                to send HTTP requests from the proxy to ingress deployment replicas.
+            _stream: Indicates that this handle should use
+                `num_returns="streaming"`.
 
         Returns:
             RayServeHandle
@@ -468,13 +473,15 @@ class ServeControllerClient:
             handle = RayServeSyncHandle(
                 self._controller,
                 deployment_name,
-                _internal_pickled_http_request=_internal_pickled_http_request,
+                _is_for_http_requests=_is_for_http_requests,
+                _stream=_stream,
             )
         else:
             handle = RayServeHandle(
                 self._controller,
                 deployment_name,
-                _internal_pickled_http_request=_internal_pickled_http_request,
+                _is_for_http_requests=_is_for_http_requests,
+                _stream=_stream,
             )
 
         self.handle_cache[cache_key] = handle
@@ -527,3 +534,13 @@ class ServeControllerClient:
             f"Deployment '{name}{':'+version if version else ''}' is ready"
             f"{url_part}. {tag}"
         )
+
+    @_ensure_connected
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """Record multiplexed replica information for replica.
+
+        Args:
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
+        """
+        self._controller.record_multiplexed_replica_info.remote(info)

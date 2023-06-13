@@ -21,6 +21,9 @@ make develop && open _build/html/index.html
 
 > **_NOTE:_**  The above command is for development. To reproduce build failures from the
 > CI, you should use `make html` which is the same as `make develop` but treats warnings as errors.
+> Additionally, note that `make develop` uses the `FAST` environment variable to skip some
+> expensive parts of the build process. In particular, it will aggressively prune the
+> left-hand side navigation, but leave the documents itself intact.
 
 ## Announcements and includes
 

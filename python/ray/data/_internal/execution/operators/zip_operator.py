@@ -3,13 +3,10 @@ from typing import Callable, List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _split_at_indices
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    PhysicalOperator,
-)
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -121,7 +118,7 @@ class ZipOperator(PhysicalOperator):
         total_right_rows = sum(right_block_rows)
         if total_left_rows != total_right_rows:
             raise ValueError(
-                "Cannot zip datastreams of different number of rows: "
+                "Cannot zip datasets of different number of rows: "
                 f"{total_left_rows}, {total_right_rows}"
             )
 

@@ -8,7 +8,7 @@ import ray
 import logging
 
 from collections import defaultdict
-from ray.experimental.state.api import list_nodes
+from ray.util.state import list_nodes
 from ray._private.test_utils import fetch_prometheus_metrics
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from pydantic import BaseModel
@@ -122,9 +122,7 @@ class DashboardTestAtScale:
                         memories.append(sample.value)
 
         return Result(
-            success=True,
-            result=result,
-            memory_mb=max(memories),
+            success=True, result=result, memory_mb=max(memories) if memories else None
         )
 
     def update_release_test_result(self, release_result: dict):

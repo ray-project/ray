@@ -1,30 +1,30 @@
 import collections
 from dataclasses import dataclass
-from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
-from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.datastream_logger import DatastreamLogger
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    ExecutionResources,
     ExecutionOptions,
-    PhysicalOperator,
-    TaskContext,
+    ExecutionResources,
     NodeIdStr,
+    PhysicalOperator,
+    RefBundle,
+    TaskContext,
 )
-from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
     _TaskState,
 )
+from ray.data._internal.execution.util import locality_string
+from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
+from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
 from ray.types import ObjectRef
-from ray._raylet import ObjectRefGenerator
 
-logger = DatastreamLogger(__name__)
+logger = DatasetLogger(__name__)
 
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
@@ -67,7 +67,7 @@ class ActorPoolMapOperator(MapOperator):
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
-                The actual rows passed may be less if the datastream is small.
+                The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
@@ -93,6 +93,9 @@ class ActorPoolMapOperator(MapOperator):
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
         self._next_task_idx = 0
+
+    def get_init_fn(self) -> Callable[[], None]:
+        return self._init_fn
 
     def internal_queue_size(self) -> int:
         return len(self._bundle_queue)
@@ -271,9 +274,9 @@ class ActorPoolMapOperator(MapOperator):
             # The user created a stream that has too few blocks to begin with.
             logger.get_logger().warning(
                 "To ensure full parallelization across an actor pool of size "
-                f"{min_workers}, the Datastream should consist of at least "
+                f"{min_workers}, the Dataset should consist of at least "
                 f"{min_workers} distinct blocks. Consider increasing "
-                "the parallelism when creating the Datastream."
+                "the parallelism when creating the Dataset."
             )
 
     def get_work_refs(self) -> List[ray.ObjectRef]:

@@ -1,4 +1,5 @@
 import copy
+import os
 import sys
 from typing import Dict
 
@@ -9,11 +10,16 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.serve.schema import ServeInstanceDetails
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
+from ray.serve._private.common import (
+    ApplicationStatus,
+    DeploymentStatus,
+    ReplicaState,
+    HTTPProxyStatus,
+)
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
@@ -467,6 +473,12 @@ def test_get_status(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_get_serve_instance_details_not_started(ray_start_stop):
+    """Test rest api when serve isn't started yet."""
+    ServeInstanceDetails(**requests.get(GET_OR_PUT_URL_V2).json())
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "f_deployment_options",
     [
@@ -484,7 +496,7 @@ def test_get_status(ray_start_stop):
 def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
-    config1 = {
+    config = {
         "proxy_location": "HeadOnly",
         "http_options": {
             "host": "127.0.0.1",
@@ -493,19 +505,31 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
         "applications": [
             {
                 "name": "app1",
-                "route_prefix": "/app1",
+                "route_prefix": "/apple",
                 "import_path": world_import_path,
                 "deployments": [f_deployment_options],
             },
             {
                 "name": "app2",
-                "route_prefix": "/app2",
+                "route_prefix": "/banana",
                 "import_path": fastapi_import_path,
             },
         ],
     }
+    expected_values = {
+        "app1": {
+            "route_prefix": "/apple",
+            "docs_path": None,
+            "deployments": {"app1_f", "app1_BasicDriver"},
+        },
+        "app2": {
+            "route_prefix": "/banana",
+            "docs_path": "/my_docs",
+            "deployments": {"app2_FastAPIDeployment"},
+        },
+    }
 
-    deploy_config_multi_app(config1)
+    deploy_config_multi_app(config)
 
     def applications_running():
         response = requests.get(GET_OR_PUT_URL_V2, timeout=15)
@@ -526,43 +550,36 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     assert serve_details.http_options.host == "127.0.0.1"
     assert serve_details.http_options.port == 8005
     print("Confirmed fetched proxy location, host and port metadata correct.")
+    # Check HTTP Proxy statuses
+    for proxy in serve_details.http_proxies.values():
+        assert proxy.status == HTTPProxyStatus.HEALTHY
+        assert os.path.exists("/tmp/ray/session_latest/logs" + proxy.log_file_path)
+    print("Checked HTTP Proxy details.")
+    # Check controller info
+    assert serve_details.controller_info.actor_id
+    assert serve_details.controller_info.actor_name
+    assert serve_details.controller_info.node_id
+    assert serve_details.controller_info.node_ip
+    assert os.path.exists(
+        "/tmp/ray/session_latest/logs" + serve_details.controller_info.log_file_path
+    )
 
     app_details = serve_details.applications
-
-    # CHECK: app configs are equal
-    assert (
-        app_details["app1"].deployed_app_config.dict(exclude_unset=True)
-        == config1["applications"][0]
-    )
-    assert (
-        app_details["app2"].deployed_app_config.dict(exclude_unset=True)
-        == config1["applications"][1]
-    )
-    print("Confirmed the deployed app configs from the fetched metadata is correct.")
-
-    # CHECK: deployment timestamp
-    assert app_details["app1"].last_deployed_time_s > 0
-    assert app_details["app2"].last_deployed_time_s > 0
-    print("Confirmed deployment timestamps are nonzero.")
-
-    # CHECK: docs path
-    assert app_details["app1"].docs_path is None
-    assert app_details["app2"].docs_path == "/my_docs"
-    print("Confirmed docs paths are correct.")
-
-    # CHECK: all deployments are present
-    assert app_details["app1"].deployments.keys() == {
-        "app1_f",
-        "app1_BasicDriver",
-    }
-    assert app_details["app2"].deployments.keys() == {
-        "app2_FastAPIDeployment",
-    }
-    print("Metadata for all deployed deployments are present.")
-
     # CHECK: application details
-    for app in ["app1", "app2"]:
-        assert app_details[app].route_prefix == f"/{app}"
+    for i, app in enumerate(["app1", "app2"]):
+        assert (
+            app_details[app].deployed_app_config.dict(exclude_unset=True)
+            == config["applications"][i]
+        )
+        assert app_details[app].last_deployed_time_s > 0
+        assert app_details[app].route_prefix == expected_values[app]["route_prefix"]
+        assert app_details[app].docs_path == expected_values[app]["docs_path"]
+
+        # CHECK: all deployments are present
+        assert (
+            app_details[app].deployments.keys() == expected_values[app]["deployments"]
+        )
+
         for deployment in app_details[app].deployments.values():
             assert deployment.status == DeploymentStatus.HEALTHY
             # Route prefix should be app level options eventually
@@ -583,6 +600,8 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
                 )
                 assert replica.actor_id and replica.node_id and replica.node_ip
                 assert replica.start_time_s > app_details[app].last_deployed_time_s
+                file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path
+                assert os.path.exists(file_path)
 
     print("Finished checking application details.")
 

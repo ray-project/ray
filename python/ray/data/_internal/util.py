@@ -1,24 +1,28 @@
 import importlib
 import logging
 import os
-from typing import Any, List, Union, Optional, TYPE_CHECKING
-from types import ModuleType
+import pathlib
 import sys
+import urllib.parse
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 import numpy as np
 
 import ray
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data.context import DataContext
-from ray._private.utils import _get_pyarrow_version
 
 if TYPE_CHECKING:
+    import pandas
+    import pyarrow
+
+    from ray.data._internal.compute import ComputeStrategy
+    from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
-    import pyarrow
-    import pandas
-    from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +67,7 @@ def _check_pyarrow_version():
 
             if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
-                    f"Datastream requires pyarrow >= {MIN_PYARROW_VERSION}, but "
+                    f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
                     f'`pip install -U "pyarrow"`. '
                     "If you want to disable this pyarrow version check, set the "
@@ -74,7 +78,7 @@ def _check_pyarrow_version():
                 "You are using the 'pyarrow' module, but the exact version is unknown "
                 "(possibly carried as an internal component by another module). Please "
                 f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Datastream. "
+                "compatibility with Ray Dataset. "
                 "If you want to disable this pyarrow version check, set the "
                 f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
             )
@@ -103,7 +107,7 @@ def _autodetect_parallelism(
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
         cur_pg: The current placement group, to be used for avail cpu calculation.
-        ctx: The current Datastream context to use for configs.
+        ctx: The current Dataset context to use for configs.
         reader: The datasource reader, to be used for data size estimation.
         avail_cpus: Override avail cpus detection (for testing only).
 
@@ -141,7 +145,7 @@ def _autodetect_parallelism(
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
-    """Estimates the available CPU parallelism for this Datastream in the cluster.
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
 
     If we aren't in a placement group, this is trivially the number of CPUs in the
     cluster. Otherwise, we try to calculate how large the placement group is relative
@@ -155,7 +159,7 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
     # If we're in a placement group, we shouldn't assume the entire cluster's
     # resources are available for us to use. Estimate an upper bound on what's
-    # reasonable to assume is available for datastreams to use.
+    # reasonable to assume is available for datasets to use.
     if cur_pg:
         pg_cpus = 0
         for bundle in cur_pg.bundle_specs:
@@ -175,7 +179,7 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
 
 
 def _estimate_available_parallelism() -> int:
-    """Estimates the available CPU parallelism for this Datastream in the cluster.
+    """Estimates the available CPU parallelism for this Dataset in the cluster.
     If we are currently in a placement group, take that into account."""
     cur_pg = ray.util.get_current_placement_group()
     return _estimate_avail_cpus(cur_pg)
@@ -208,9 +212,6 @@ def _resolve_custom_scheme(path: str) -> str:
 
     The supported custom schemes are: "local", "example".
     """
-    import pathlib
-    import urllib.parse
-
     parsed_uri = urllib.parse.urlparse(path)
     if parsed_uri.scheme == _LOCAL_SCHEME:
         path = parsed_uri.netloc + parsed_uri.path
@@ -226,9 +227,6 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     Note: The paths must be in same scheme, i.e. it's invalid and
     will raise error if paths are mixed with different schemes.
     """
-    import pathlib
-    import urllib.parse
-
     if isinstance(paths, str):
         paths = [paths]
     if isinstance(paths, pathlib.Path):
@@ -351,18 +349,18 @@ def _consumption_api(
     insert_after=False,
 ):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datastream execution.
+    will trigger Dataset execution.
     """
     base = (
         " will trigger execution of the lazy transformations performed on "
-        "this datastream."
+        "this dataset."
     )
     if delegate:
         message = delegate + base
     elif not if_more_than_read:
         message = "This operation" + base
     else:
-        condition = "If this datastream consists of more than a read, "
+        condition = "If this dataset consists of more than a read, "
         if datasource_metadata is not None:
             condition += (
                 f"or if the {datasource_metadata} can't be determined from the "
@@ -387,7 +385,7 @@ def _consumption_api(
 
 def ConsumptionAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datastream execution.
+    will trigger Dataset execution.
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return _consumption_api()(args[0])
@@ -409,6 +407,23 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
         arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
     ]
     return splits
+
+
+def validate_compute(
+    fn: "UserDefinedFunction", compute: Optional[Union[str, "ComputeStrategy"]]
+) -> None:
+    # Lazily import these objects to avoid circular imports.
+    from ray.data._internal.compute import TaskPoolStrategy
+    from ray.data.block import CallableClass
+
+    if isinstance(fn, CallableClass) and (
+        compute is None or compute == "tasks" or isinstance(compute, TaskPoolStrategy)
+    ):
+        raise ValueError(
+            "``compute`` must be specified when using a CallableClass, and must "
+            f"specify the actor compute strategy, but got: {compute}. "
+            "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
+        )
 
 
 def capfirst(s: str):

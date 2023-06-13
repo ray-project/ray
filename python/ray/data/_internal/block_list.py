@@ -3,8 +3,8 @@ from typing import Iterator, List, Optional, Tuple
 
 import numpy as np
 
-from ray.data.block import Block, BlockMetadata
 from ray.data._internal.memory_tracing import trace_allocation
+from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
 
@@ -58,8 +58,8 @@ class BlockList:
         """Raise an error if this BlockList has been previously cleared."""
         if self.is_cleared():
             raise ValueError(
-                "This Datastream's blocks have been moved, which means that you "
-                "can no longer use this Datastream."
+                "This Dataset's blocks have been moved, which means that you "
+                "can no longer use this Dataset."
             )
 
     def split(self, split_size: int) -> List["BlockList"]:

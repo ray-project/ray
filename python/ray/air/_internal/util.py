@@ -3,10 +3,12 @@ import socket
 from contextlib import closing
 import logging
 import queue
+import shutil
 import threading
 from typing import Optional
 
 import numpy as np
+from pathlib import Path
 
 import ray
 from ray.air.constants import _ERROR_REPORT_TIMEOUT
@@ -119,3 +121,26 @@ class RunnerThread(threading.Thread):
 def _estimate_avail_object_store_memory() -> int:
     """Estimates total object store memory available in the cluster."""
     return ray.available_resources()["object_store_memory"]
+
+
+def _copy_dir_ignore_conflicts(src_dir: Path, dst_dir: Path):
+    """This is a workaround for python < 3.8 where shutil.copytree does not
+    support dirs_exist_ok=True.
+
+    We will go through the content of the folder and manually copy ites,
+    while ignoring files that conflict.
+
+    TODO(jungong): remove this workaround when we drop support for python < 3.8.
+    """
+    for inner in src_dir.iterdir():
+        dest = dst_dir / inner.name
+        if inner.is_dir():
+            if not dest.exists():
+                dest.mkdir(parents=True)
+            _copy_dir_ignore_conflicts(inner, dest)
+        else:
+            if not dest.exists():
+                shutil.copy2(str(inner.absolute()), str(dest.absolute()))
+            else:
+                # Ignore and don't overwrite the existing file.
+                pass

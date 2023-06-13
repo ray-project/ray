@@ -60,7 +60,7 @@ setup_commands:
     - python3 -m pip install https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:
-    - python3 -m pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+    - python3 -m pip install boto3>=1.4.8  # 1.4.8 adds InstanceMarketOptions
 # Custom commands that will be run on worker nodes after common setup.
 worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.

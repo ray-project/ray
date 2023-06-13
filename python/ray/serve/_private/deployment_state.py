@@ -31,6 +31,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     RunningReplicaInfo,
     ReplicaState,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.schema import (
     DeploymentDetails,
@@ -96,7 +97,6 @@ class DeploymentTargetState:
     ) -> "DeploymentTargetState":
         if deleting:
             num_replicas = 0
-            version = None
         else:
             # If autoscaling config is not none, num replicas should be decided based on
             # the autoscaling policy and passed in as autoscaled_num_replicas
@@ -104,11 +104,12 @@ class DeploymentTargetState:
                 num_replicas = info.autoscaled_num_replicas
             else:
                 num_replicas = info.deployment_config.num_replicas
-            version = DeploymentVersion(
-                info.version,
-                deployment_config=info.deployment_config,
-                ray_actor_options=info.replica_config.ray_actor_options,
-            )
+
+        version = DeploymentVersion(
+            info.version,
+            deployment_config=info.deployment_config,
+            ray_actor_options=info.replica_config.ray_actor_options,
+        )
 
         return cls(info, num_replicas, version, deleting)
 
@@ -189,6 +190,7 @@ class ActorReplicaWrapper:
         controller_name: str,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        version: DeploymentVersion,
         # Spread replicas to avoid correlated failures on a single node.
         # This is a soft spread, so if there is only space on a single node
         # the replicas will be placed there.
@@ -206,7 +208,12 @@ class ActorReplicaWrapper:
         self._ready_obj_ref: ObjectRef = None
 
         self._actor_resources: Dict[str, float] = None
-        self._version: DeploymentVersion = None
+        # If the replica is being started, this will be the true version
+        # If the replica is being recovered, this will be the target
+        # version, which may be inconsistent with the actual replica
+        # version. If so, the actual version will be updated later after
+        # recover() and check_ready()
+        self._version: DeploymentVersion = version
         self._healthy: bool = True
         self._health_check_ref: Optional[ObjectRef] = None
         self._last_health_check_time: float = 0.0
@@ -217,12 +224,14 @@ class ActorReplicaWrapper:
 
         self._pid: int = None
         self._actor_id: str = None
+        self._worker_id: str = None
         if isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy):
             self._node_id = scheduling_strategy.node_id
         else:
             # Populated after replica is allocated.
             self._node_id: str = None
         self._node_ip: str = None
+        self._log_file_path: str = None
 
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
@@ -262,33 +271,42 @@ class ActorReplicaWrapper:
         return self._actor_handle
 
     @property
-    def version(self) -> Optional[DeploymentVersion]:
+    def version(self) -> DeploymentVersion:
+        """Replica version. This can be incorrect during state recovery.
+
+        If the controller crashes and the deployment state is being
+        recovered, this will temporarily be the deployment-wide target
+        version, which may be inconsistent with the actual version
+        running on the replica actor. If so, the actual version will be
+        updated when the replica transitions from RECOVERING -> RUNNING
+        """
         return self._version
 
     @property
-    def deployment_config(self) -> Optional[DeploymentConfig]:
-        if self._version:
-            return self._version.deployment_config
+    def deployment_config(self) -> DeploymentConfig:
+        """Deployment config. This can return an incorrect config during state recovery.
+
+        If the controller hasn't yet recovered the up-to-date version
+        from the running replica actor, this property will return the
+        current target config for the deployment.
+        """
+        return self._version.deployment_config
 
     @property
-    def max_concurrent_queries(self) -> Optional[int]:
-        if self.deployment_config:
-            return self.deployment_config.max_concurrent_queries
+    def max_concurrent_queries(self) -> int:
+        return self.deployment_config.max_concurrent_queries
 
     @property
-    def graceful_shutdown_timeout_s(self) -> Optional[float]:
-        if self.deployment_config:
-            return self.deployment_config.graceful_shutdown_timeout_s
+    def graceful_shutdown_timeout_s(self) -> float:
+        return self.deployment_config.graceful_shutdown_timeout_s
 
     @property
-    def health_check_period_s(self) -> Optional[float]:
-        if self.deployment_config:
-            return self.deployment_config.health_check_period_s
+    def health_check_period_s(self) -> float:
+        return self.deployment_config.health_check_period_s
 
     @property
-    def health_check_timeout_s(self) -> Optional[float]:
-        if self.deployment_config:
-            return self.deployment_config.health_check_timeout_s
+    def health_check_timeout_s(self) -> float:
+        return self.deployment_config.health_check_timeout_s
 
     @property
     def pid(self) -> Optional[int]:
@@ -301,6 +319,11 @@ class ActorReplicaWrapper:
         return self._actor_id
 
     @property
+    def worker_id(self) -> Optional[str]:
+        """Returns the worker id, None if not started."""
+        return self._worker_id
+
+    @property
     def node_id(self) -> Optional[str]:
         """Returns the node id of the actor, None if not placed."""
         return self._node_id
@@ -310,16 +333,19 @@ class ActorReplicaWrapper:
         """Returns the node ip of the actor, None if not placed."""
         return self._node_ip
 
+    @property
+    def log_file_path(self) -> Optional[str]:
+        """Returns the relative log file path of the actor, None if not placed."""
+        return self._log_file_path
+
     def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
         ready, _ = ray.wait([obj_ref], timeout=0)
         return len(ready) == 1
 
-    def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
+    def start(self, deployment_info: DeploymentInfo):
         """
         Start a new actor for current DeploymentReplica instance.
         """
-        self._version = version
-
         self._actor_resources = deployment_info.replica_config.resource_dict
         # it is currently not possible to create a placement group
         # with no resources (https://github.com/ray-project/ray/issues/20401)
@@ -361,7 +387,7 @@ class ActorReplicaWrapper:
                 if deployment_info.replica_config.serialized_init_kwargs
                 else cloudpickle.dumps({}),
                 deployment_info.deployment_config.to_proto_bytes(),
-                version,
+                self._version,
                 self._controller_name,
                 self._detached,
                 deployment_info.app_name,
@@ -393,7 +419,7 @@ class ActorReplicaWrapper:
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
                 # byte[] deploymentVersionBytes,
-                version.to_proto().SerializeToString(),
+                self._version.to_proto().SerializeToString(),
                 # String controllerName
                 self._controller_name,
             )
@@ -420,7 +446,8 @@ class ActorReplicaWrapper:
             )
         else:
             self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
-            self._ready_obj_ref = self._actor_handle.is_initialized.remote(
+            replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
+            self._ready_obj_ref = replica_ready_check_func.remote(
                 deployment_config,
                 # Ensure that `is_allocated` will execute before `reconfigure`,
                 # because `reconfigure` runs user code that could block the replica
@@ -462,9 +489,13 @@ class ActorReplicaWrapper:
         return updating
 
     def recover(self):
-        """
-        Recover states in DeploymentReplica instance by fetching running actor
-        status
+        """Recover replica version from a live replica actor.
+
+        When controller dies, the deployment state loses the info on the version that's
+        running on each individual replica actor, so as part of the recovery process, we
+        need to recover the version that is running on the replica actor.
+
+        Also confirm that actor is allocated and initialized before marking as running.
         """
         logger.info(
             f"Recovering replica {self.replica_tag} for deployment "
@@ -480,7 +511,9 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = self._actor_handle.get_metadata.remote()
+            self._ready_obj_ref = (
+                self._actor_handle.initialize_and_get_metadata.remote()
+            )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
@@ -491,19 +524,13 @@ class ActorReplicaWrapper:
 
         Returns:
             state (ReplicaStartupStatus):
-                PENDING_ALLOCATION:
-                    - replica is waiting for a worker to start
-                PENDING_INITIALIZATION
-                    - replica initialization hasn't finished.
-                FAILED:
-                    - replica initialization failed.
-                SUCCEEDED:
-                    - replica initialization succeeded.
+                PENDING_ALLOCATION: replica is waiting for a worker to start
+                PENDING_INITIALIZATION: replica initialization hasn't finished.
+                FAILED: replica initialization failed.
+                SUCCEEDED: replica initialization succeeded.
             error_msg:
-                None:
-                    - for PENDING_ALLOCATION, PENDING_INITIALIZATION or SUCCEEDED states
-                str:
-                    - for FAILED state
+                None: for PENDING_ALLOCATION, PENDING_INITIALIZATION or SUCCEEDED states
+                str: for FAILED state
         """
 
         # Check whether the replica has been allocated.
@@ -525,11 +552,19 @@ class ActorReplicaWrapper:
                 # todo: The replica's userconfig whitch java client created
                 #  is different from the controller's userconfig
                 if not self._deployment_is_cross_language:
+                    # This should only update version if the replica is being recovered.
+                    # If this is checking on a replica that is newly started, this
+                    # should return a version that is identical to what's already stored
                     _, self._version = ray.get(self._ready_obj_ref)
 
-                self._pid, self._actor_id, self._node_id, self._node_ip = ray.get(
-                    self._allocated_obj_ref
-                )
+                (
+                    self._pid,
+                    self._actor_id,
+                    self._worker_id,
+                    self._node_id,
+                    self._node_ip,
+                    self._log_file_path,
+                ) = ray.get(self._allocated_obj_ref)
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in replica '{self._replica_tag}', "
@@ -565,6 +600,7 @@ class ActorReplicaWrapper:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
             self._graceful_shutdown_ref = handle.prepare_for_shutdown.remote()
         except ValueError:
+            # ValueError thrown from ray.get_actor means actor has already been deleted
             pass
 
         return self.graceful_shutdown_timeout_s
@@ -576,7 +612,15 @@ class ActorReplicaWrapper:
             stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
+                try:
+                    ray.get(self._graceful_shutdown_ref)
+                except Exception:
+                    logger.exception(
+                        "Exception when trying to gracefully shutdown replica:\n"
+                        + traceback.format_exc()
+                    )
         except ValueError:
+            # ValueError thrown from ray.get_actor means actor has already been deleted
             stopped = True
 
         return stopped
@@ -735,6 +779,7 @@ class DeploymentReplica(VersionedReplica):
             controller_name,
             replica_tag,
             deployment_name,
+            version,
             scheduling_strategy,
         )
         self._controller_name = controller_name
@@ -742,6 +787,13 @@ class DeploymentReplica(VersionedReplica):
         self._replica_tag = replica_tag
         self._start_time = None
         self._prev_slow_startup_warning_time = None
+        self._actor_details = ReplicaDetails(
+            actor_name=self._actor._actor_name,
+            replica_id=self._replica_tag,
+            state=ReplicaState.STARTING,
+            start_time_s=0,
+        )
+        self._multiplexed_model_ids: List = []
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
@@ -750,25 +802,20 @@ class DeploymentReplica(VersionedReplica):
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
             is_cross_language=self._actor.is_cross_language,
+            multiplexed_model_ids=self.multiplexed_model_ids,
         )
 
-    def get_replica_details(self, state: ReplicaState) -> ReplicaDetails:
-        """Get replica details.
+    def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
+        """Record the multiplexed model ids for this replica."""
+        self._multiplexed_model_ids = multiplexed_model_ids
 
-        Args:
-            state: The state of the replica, which is not stored within a
-                DeploymentReplica object
-        """
-        return ReplicaDetails(
-            replica_id=self.replica_tag,
-            state=state,
-            pid=self._actor.pid,
-            actor_name=self._actor._actor_name,
-            actor_id=self._actor.actor_id,
-            node_id=self._actor.node_id,
-            node_ip=self._actor.node_ip,
-            start_time_s=self._start_time,
-        )
+    @property
+    def multiplexed_model_ids(self) -> List[str]:
+        return self._multiplexed_model_ids
+
+    @property
+    def actor_details(self) -> ReplicaDetails:
+        return self._actor_details
 
     @property
     def replica_tag(self) -> ReplicaTag:
@@ -791,13 +838,14 @@ class DeploymentReplica(VersionedReplica):
         """Returns the node id of the actor, None if not placed."""
         return self._actor.node_id
 
-    def start(self, deployment_info: DeploymentInfo, version: DeploymentVersion):
+    def start(self, deployment_info: DeploymentInfo):
         """
         Start a new actor for current DeploymentReplica instance.
         """
-        self._actor.start(deployment_info, version)
+        self._actor.start(deployment_info)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
+        self.update_actor_details(start_time_s=self._start_time)
 
     def reconfigure(self, version: DeploymentVersion) -> bool:
         """
@@ -815,8 +863,7 @@ class DeploymentReplica(VersionedReplica):
         """
         self._actor.recover()
         self._start_time = time.time()
-        # Replica version is fetched from recovered replica dynamically in
-        # check_started() below
+        self.update_actor_details(start_time_s=self._start_time)
 
     def check_started(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """Check if the replica has started. If so, transition to RUNNING.
@@ -827,7 +874,16 @@ class DeploymentReplica(VersionedReplica):
             status: Most recent state of replica by
                 querying actor obj ref
         """
-        return self._actor.check_ready()
+        is_ready = self._actor.check_ready()
+        self.update_actor_details(
+            pid=self._actor.pid,
+            node_id=self._actor.node_id,
+            node_ip=self._actor.node_ip,
+            actor_id=self._actor.actor_id,
+            worker_id=self._actor.worker_id,
+            log_file_path=self._actor.log_file_path,
+        )
+        return is_ready
 
     def stop(self, graceful: bool = True) -> None:
         """Stop the replica.
@@ -867,6 +923,15 @@ class DeploymentReplica(VersionedReplica):
         Returns `True` if the replica is healthy, else `False`.
         """
         return self._actor.check_health()
+
+    def update_state(self, state: ReplicaState) -> None:
+        """Updates state in actor details."""
+        self.update_actor_details(state=state)
+
+    def update_actor_details(self, **kwargs) -> None:
+        details_kwargs = self._actor_details.dict()
+        details_kwargs.update(kwargs)
+        self._actor_details = ReplicaDetails(**details_kwargs)
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -909,6 +974,7 @@ class ReplicaStateContainer:
         """
         assert isinstance(state, ReplicaState)
         assert isinstance(replica, VersionedReplica)
+        replica.update_state(state)
         self._replicas[state].append(replica)
 
     def get(
@@ -1075,6 +1141,10 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
+        # Whether the multiplexed model ids have been updated since the last
+        # time we checked.
+        self._multiplexed_model_ids_updated = False
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1105,6 +1175,8 @@ class DeploymentState:
     def recover_current_state_from_replica_actor_names(
         self, replica_actor_names: List[str]
     ):
+        """Recover deployment state from live replica actors found in the cluster."""
+
         assert self._target_state is not None, (
             "Target state should be recovered successfully first before "
             "recovering current state from replica actor names."
@@ -1122,7 +1194,7 @@ class DeploymentState:
                 self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
-                None,
+                self._target_state.version,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
@@ -1157,11 +1229,7 @@ class DeploymentState:
         ]
 
     def list_replica_details(self) -> List[ReplicaDetails]:
-        return [
-            replica.get_replica_details(state)
-            for state in ReplicaState
-            for replica in self._replicas.get([state])
-        ]
+        return [replica.actor_details for replica in self._replicas.get()]
 
     def _notify_running_replicas_changed(self):
         self._long_poll_host.notify_changed(
@@ -1469,9 +1537,7 @@ class DeploymentState:
                         replica_name.deployment_tag,
                         self._target_state.version,
                     )
-                    new_deployment_replica.start(
-                        self._target_state.info, self._target_state.version
-                    )
+                    new_deployment_replica.start(self._target_state.info)
 
                     self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
                     logger.debug(
@@ -1829,11 +1895,19 @@ class DeploymentState:
             # Check the state of existing replicas and transition if necessary.
             running_replicas_changed |= self._check_and_update_replicas()
 
+            # Check if the model_id has changed.
+            running_replicas_changed |= self._multiplexed_model_ids_updated
+
             if running_replicas_changed:
                 self._notify_running_replicas_changed()
+                self._multiplexed_model_ids_updated = False
 
             deleted, any_replicas_recovering = self._check_curr_status()
         except Exception:
+            logger.exception(
+                "Exception occurred trying to update deployment state:\n"
+                + traceback.format_exc()
+            )
             self._curr_status_info = DeploymentStatusInfo(
                 name=self._name,
                 status=DeploymentStatus.UNHEALTHY,
@@ -1841,6 +1915,23 @@ class DeploymentState:
             )
 
         return deleted, any_replicas_recovering
+
+    def record_multiplexed_model_ids(
+        self, replica_name: str, multiplexed_model_ids: List[str]
+    ) -> None:
+        """Records the multiplexed model IDs of a replica.
+
+        Args:
+            replica_name: Name of the replica.
+            multiplexed_model_ids: List of model IDs that replica is serving.
+        """
+        # Find the replica
+        for replica in self._replicas.get():
+            if replica.replica_tag == replica_name:
+                replica.record_multiplexed_model_ids(multiplexed_model_ids)
+                self._multiplexed_model_ids_updated = True
+                return
+        logger.warn(f"Replia {replica_name} not found in deployment {self._name}")
 
     def _stop_one_running_replica_for_testing(self):
         running_replicas = self._replicas.pop(states=[ReplicaState.RUNNING])
@@ -1903,9 +1994,7 @@ class DriverDeploymentState(DeploymentState):
                 self._target_state.version,
                 NodeAffinitySchedulingStrategy(node_id, soft=False),
             )
-            new_deployment_replica.start(
-                self._target_state.info, self._target_state.version
-            )
+            new_deployment_replica.start(self._target_state.info)
 
             self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
             replica_changed = True
@@ -2365,4 +2454,21 @@ class DeploymentStateManager:
                 num_gpu_deployments += 1
         record_extra_usage_tag(
             TagKey.SERVE_NUM_GPU_DEPLOYMENTS, str(num_gpu_deployments)
+        )
+
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """
+        Record multiplexed model ids for a multiplexed replica.
+
+        Args:
+            info: Multiplexed replica info including deployment name,
+                replica tag and model ids.
+        """
+        if info.deployment_name not in self._deployment_states:
+            logger.error(
+                f"Deployment {info.deployment_name} not found in state manager."
+            )
+            return
+        self._deployment_states[info.deployment_name].record_multiplexed_model_ids(
+            info.replica_tag, info.model_ids
         )

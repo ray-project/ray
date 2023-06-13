@@ -1,21 +1,21 @@
-from typing import List, Optional, Callable, Iterator, Dict, Any
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import ray
-from ray.data.block import Block
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
     ExecutionResources,
     PhysicalOperator,
+    RefBundle,
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
-    _TaskState,
     _map_task,
+    _TaskState,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data.block import Block
 from ray.types import ObjectRef
-from ray._raylet import ObjectRefGenerator
 
 
 class TaskPoolMapOperator(MapOperator):
@@ -38,7 +38,7 @@ class TaskPoolMapOperator(MapOperator):
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
-                The actual rows passed may be less if the datastream is small.
+                The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
