@@ -314,8 +314,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
-      FAST=True make develop
+      FAST=True make html
       pip install datasets==2.0.0
     fi
   )
@@ -503,11 +502,7 @@ build_wheels_and_jars() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      if [ "$(uname -m)" = "arm64" ]; then
-        "${WORKSPACE_DIR}"/python/build-wheel-macos-arm64.sh
-      else
-        "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
-      fi
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
 

@@ -1,7 +1,6 @@
 import atexit
 import faulthandler
 import functools
-import hashlib
 import inspect
 import io
 import json
@@ -56,13 +55,13 @@ import ray._private.storage as storage
 
 # Ray modules
 import ray.actor
-import ray.cloudpickle as pickle
+import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.function_manager import FunctionActorManager, make_function_table_key
+from ray._private.function_manager import FunctionActorManager
 
 from ray._private.inspect_util import is_cython
 from ray._private.ray_logging import (
@@ -76,7 +75,7 @@ from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
 from ray._private.storage import _load_class
-from ray._private.utils import check_oversized_function, get_ray_doc_version
+from ray._private.utils import get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -417,15 +416,12 @@ class Worker:
         node (ray._private.node.Node): The node this worker is attached to.
         mode: The mode of the worker. One of SCRIPT_MODE, LOCAL_MODE, and
             WORKER_MODE.
-        cached_functions_to_run: A list of functions to run on all of
-            the workers that should be exported as soon as connect is called.
     """
 
     def __init__(self):
         """Initialize a Worker object."""
         self.node = None
         self.mode = None
-        self.cached_functions_to_run: list = []
         self.actors = {}
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
@@ -770,82 +766,6 @@ class Worker:
             debugger_breakpoint,
         )
 
-    @Deprecated(
-        message="This function is deprecated and will be removed by Ray 2.4. "
-        "Please use Runtime Environments "
-        f"https://docs.ray.io/en/{get_ray_doc_version()}/ray-core"
-        "/handling-dependencies.html "
-        "to manage dependencies in workers.",
-        warning=True,
-    )
-    def run_function_on_all_workers(self, function: callable):
-        """This function has been deprecated given the following issues:
-            - no guarantee that the function run before the remote function run.
-            - pubsub signal might be lost in some failure cases.
-
-        This API will be deleted once we move the working dir init away.
-        NO NEW CODE SHOULD USE THIS API.
-
-        Run arbitrary code on all of the workers.
-
-        This function will first be run on the driver, and then it will be
-        exported to all of the workers to be run. It will also be run on any
-        new workers that register later. If ray.init has not been called yet,
-        then cache the function and export it later.
-
-        Args:
-            function: The function to run on all of the workers. It
-                takes only one argument, a worker info dict. If it returns
-                anything, its return values will not be used.
-        """
-        # If ray.init has not been called yet, then cache the function and
-        # export it when connect is called. Otherwise, run the function on all
-        # workers.
-        if self.mode is None:
-            self.cached_functions_to_run.append(function)
-        else:
-            # Attempt to pickle the function before we need it. This could
-            # fail, and it is more convenient if the failure happens before we
-            # actually run the function locally.
-            pickled_function = pickle.dumps(function)
-
-            function_to_run_id = hashlib.shake_128(pickled_function).digest(
-                ray_constants.ID_SIZE
-            )
-            key = make_function_table_key(
-                b"FunctionsToRun", self.current_job_id, function_to_run_id
-            )
-            # First run the function on the driver.
-            # We always run the task locally.
-            function({"worker": self})
-
-            check_oversized_function(
-                pickled_function, function.__name__, "function", self
-            )
-
-            # Run the function on all workers.
-            if (
-                self.gcs_client.internal_kv_put(
-                    key,
-                    pickle.dumps(
-                        {
-                            "job_id": self.current_job_id.binary(),
-                            "function_id": function_to_run_id,
-                            "function": pickled_function,
-                        }
-                    ),
-                    True,
-                    ray_constants.KV_NAMESPACE_FUNCTION_TABLE,
-                )
-                != 0
-            ):
-                self.function_actor_manager.export_key(key)
-            # TODO(rkn): If the worker fails after it calls setnx and before it
-            # successfully completes the hset and rpush, then the program will
-            # most likely hang. This could be fixed by making these three
-            # operations into a transaction (or by implementing a custom
-            # command that does all three things).
-
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
 
@@ -1189,6 +1109,7 @@ def init(
     num_cpus: Optional[int] = None,
     num_gpus: Optional[int] = None,
     resources: Optional[Dict[str, float]] = None,
+    labels: Optional[Dict[str, str]] = None,
     object_store_memory: Optional[int] = None,
     local_mode: bool = False,
     ignore_reinit_error: bool = False,
@@ -1268,6 +1189,7 @@ def init(
             raylet. By default, this is set based on detected GPUs.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
+        labels: [Experimental] The key-value labels of the node.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is automatically set based on
             available system memory.
@@ -1560,6 +1482,7 @@ def init(
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             resources=resources,
+            labels=labels,
             num_redis_shards=None,
             redis_max_clients=None,
             redis_password=_redis_password,
@@ -1601,6 +1524,11 @@ def init(
             raise ValueError(
                 "When connecting to an existing cluster, "
                 "resources must not be provided."
+            )
+        if labels is not None:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "labels must not be provided."
             )
         if object_store_memory is not None:
             raise ValueError(
@@ -2134,7 +2062,6 @@ def connect(
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
     assert not worker.connected, error_message
-    assert worker.cached_functions_to_run is not None, error_message
 
     # Enable nice stack traces on SIGSEGV etc.
     try:
@@ -2360,21 +2287,6 @@ def connect(
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
-    if mode == SCRIPT_MODE:
-        # TODO(rkn): Here we first export functions to run, then remote
-        # functions. The order matters. For example, one of the functions to
-        # run may set the Python path, which is needed to import a module used
-        # to define a remote function. We may want to change the order to
-        # simply be the order in which the exports were defined on the driver.
-        # In addition, we will need to retain the ability to decide what the
-        # first few exports are (mostly to set the Python path). Additionally,
-        # note that the first exports to be defined on the driver will be the
-        # ones defined in separate modules that are imported by the driver.
-        # Export cached functions_to_run.
-        for function in worker.cached_functions_to_run:
-            worker.run_function_on_all_workers(function)
-    worker.cached_functions_to_run = None
-
     # Setup tracing here
     tracing_hook_val = worker.gcs_client.internal_kv_get(
         b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING
@@ -2422,7 +2334,6 @@ def disconnect(exiting_interpreter=False):
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
-    worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
     try:
         ray_actor = ray.actor

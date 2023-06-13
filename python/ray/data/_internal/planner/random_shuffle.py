@@ -6,13 +6,13 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
+    PullBasedShuffleTaskScheduler,
+)
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
-from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
-    PullBasedShuffleTaskScheduler,
-)
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
@@ -60,6 +60,7 @@ def generate_random_shuffle_fn(
         return scheduler.execute(
             refs,
             num_outputs or num_input_blocks,
+            ctx=ctx,
             map_ray_remote_args=ray_remote_args,
             reduce_ray_remote_args=ray_remote_args,
         )

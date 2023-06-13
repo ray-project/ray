@@ -27,7 +27,10 @@ const rpc::JobConfig kDefaultJobConfig{};
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   explicit WorkerThreadContext(const JobID &job_id)
-      : current_task_id_(), task_index_(0), put_counter_(0) {
+      : current_task_id_(),
+        task_index_(0),
+        put_counter_(0),
+        max_num_generator_returns_(RayConfig::instance().max_num_generator_returns()) {
     SetCurrentTaskId(TaskID::FromRandom(job_id), /*attempt_number=*/0);
   }
 
@@ -49,7 +52,10 @@ struct WorkerThreadContext {
     // thread), so there's no risk of conflicting put object IDs, either.
     // See https://github.com/ray-project/ray/issues/10324 for further details.
     auto num_returns = current_task_ != nullptr ? current_task_->NumReturns() : 0;
-    return num_returns + ++put_counter_;
+
+    // We reserve max_num_generator_returns_ number of indexes for the generator
+    // return so that all generator return can have consistent ids given an index.
+    return num_returns + max_num_generator_returns_ + ++put_counter_;
   }
 
   const TaskID &GetCurrentTaskID() const { return current_task_id_; }
@@ -100,6 +106,8 @@ struct WorkerThreadContext {
     put_counter_ = 0;
   }
 
+  uint32_t GetMaxNumGeneratorReturnIndex() const { return max_num_generator_returns_; }
+
  private:
   /// The task ID for current task.
   TaskID current_task_id_;
@@ -136,6 +144,9 @@ struct WorkerThreadContext {
 
   /// Whether or not child tasks are captured in the parent's placement group implicitly.
   bool placement_group_capture_child_tasks_ = false;
+
+  /// The maximum number of generator return values.
+  uint32_t max_num_generator_returns_;
 };
 
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
@@ -380,7 +391,17 @@ const ObjectID WorkerContext::GetGeneratorReturnId(
   if (!put_index.has_value()) {
     current_put_index = GetNextPutIndex();
   } else {
+    // Streaming generator case.
     current_put_index = put_index.value();
+    // We don't allow to return more than GetMaxNumGeneratorReturnIndex()
+    // return values.
+    auto max_generator_returns = GetThreadContext().GetMaxNumGeneratorReturnIndex();
+    if (put_index > max_generator_returns) {
+      RAY_LOG(FATAL)
+          << "The generator returns " << current_put_index
+          << " items, which exceed the maximum number of return values allowed, "
+          << max_generator_returns;
+    }
   }
 
   return ObjectID::FromIndex(current_task_id, current_put_index);

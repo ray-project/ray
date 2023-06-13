@@ -38,6 +38,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -124,6 +125,7 @@ class LearnerHyperparameters:
     learning_rate: LearningRateOrSchedule = None
     grad_clip: float = None
     grad_clip_by: str = None
+    seed: int = None
 
     # Maps ModuleIDs to LearnerHyperparameters that are to be used for that particular
     # module.
@@ -284,6 +286,12 @@ class Learner:
         learner_hyperparameters: Optional[LearnerHyperparameters] = None,
         framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
     ):
+        # We first set seeds
+        if learner_hyperparameters and learner_hyperparameters.seed is not None:
+            update_global_seed_if_necessary(
+                self.framework, learner_hyperparameters.seed
+            )
+
         if (module_spec is None) is (module is None):
             raise ValueError(
                 "Exactly one of `module_spec` or `module` must be provided to Learner!"
@@ -593,11 +601,11 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
-    def apply_gradients(self, gradients: ParamDict) -> None:
+    def apply_gradients(self, gradients_dict: ParamDict) -> None:
         """Applies the gradients to the MultiAgentRLModule parameters.
 
         Args:
-            gradients: A dictionary of gradients in the same (flat) format as
+            gradients_dict: A dictionary of gradients in the same (flat) format as
                 self._params. Note that top-level structures, such as module IDs,
                 will not be present anymore in this dict. It will merely map gradient
                 tensor references to gradient tensors.
@@ -757,14 +765,14 @@ class Learner:
         """
 
     @abc.abstractmethod
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
-        """Converts a MultiAgentBatch to a NestedDict of Tensors on the correct device.
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:
+        """Converts the elements of a MultiAgentBatch to Tensors on the correct device.
 
         Args:
             batch: The MultiAgentBatch object to convert.
 
         Returns:
-            The resulting NestedDict with framework-specific tensor values placed
+            The resulting MultiAgentBatch with framework-specific tensor values placed
             on the correct device.
         """
 
@@ -1135,19 +1143,22 @@ class Learner:
             batch_iter = MiniBatchDummyIterator
 
         results = []
-        for minibatch in batch_iter(batch, minibatch_size, num_iters):
-            # Convert minibatch into a tensor batch (NestedDict).
-            tensor_minibatch = self._convert_batch_type(minibatch)
+        # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
+        # device (e.g. GPU). We move the batch already here to avoid having to move
+        # every single minibatch that is created in the `batch_iter` below.
+        batch = self._convert_batch_type(batch)
+        for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
+            nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             (
                 fwd_out,
                 loss_per_module,
                 metrics_per_module,
-            ) = self._update(tensor_minibatch)
+            ) = self._update(nested_tensor_minibatch)
 
             result = self.compile_results(
-                batch=minibatch,
+                batch=tensor_minibatch,
                 fwd_out=fwd_out,
                 loss_per_module=loss_per_module,
                 metrics_per_module=defaultdict(dict, **metrics_per_module),

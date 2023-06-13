@@ -138,6 +138,10 @@ class PPOConfig(PGConfig):
             # Add constructor kwargs here (if any).
         }
 
+        # enable the rl module api by default
+        self.rl_module(_enable_rl_module_api=True)
+        self.training(_enable_learner_api=True)
+
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
@@ -302,6 +306,10 @@ class PPOConfig(PGConfig):
 
     @override(AlgorithmConfig)
     def validate(self) -> None:
+        # Can not use Tf with learner api.
+        if self.framework_str == "tf":
+            self.rl_module(_enable_rl_module_api=False)
+            self.training(_enable_learner_api=False)
 
         # Call super's validation method.
         super().validate()

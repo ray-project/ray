@@ -183,6 +183,20 @@ language = None
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
+    "workflows/api/doc/ray.workflow.*",
+    "serve/api/doc/ray.serve.*",
+    "ray-references/api/ray-observability/state/doc/ray.*",
+    "ray-observability/reference/doc/ray.*",
+    "cluster/running-applications/doc/ray.*",
+    "data/examples/batch_inference_object_detection.ipynb",
+    "data/examples/batch_training.ipynb",
+    "data/examples/custom-datasource.rst",
+    "data/examples/huggingface_vit_batch_prediction.ipynb",
+    "data/examples/nyc_taxi_basic_processing.ipynb",
+    "data/examples/ocr_example.ipynb",
+    "data/examples/pytorch_resnet_batch_prediction.ipynb",
+    "data/examples/random-access.rst",
+    "ray-core/runtime_env_auth.md",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -353,27 +367,6 @@ nb_render_priority = {
         "text/plain",
     ),
 }
-
-tag_mapping = {
-    # Tags for Ray Train examples gallery
-    "trainTorchFashionMnist": "PyTorch,Training",
-    "trainTransformers": "PyTorch,Training,HuggingFace",
-    "trainTensorflowMnist": "TensorFlow,Training",
-    "trainHorovod": "Horovod, PyTorch,Training",
-    "trainMlflow": "MLflow,Training",
-    "trainTuneTensorflow": "TensorFlow,Training,Tuning",
-    "trainTunePyTorch": "PyTorch,Training,Tuning",
-    "trainBenchmark": "PyTorch,Training",
-    "trainLightning": "PyTorch,Lightning,Training",
-    "trackLightning": "PyTorch,Lightning,Training,MLFlow"
-    # TODO add and integrate tags for other libraries.
-    # Tune has a proper example library
-    # Serve, RLlib and AIR could use one.
-}
-
-# Create file with tag mappings for tags.js to use.
-with open("./_static/tag-mapping.json", "w") as f:
-    json.dump(tag_mapping, f)
 
 
 def setup(app):
