@@ -208,10 +208,9 @@ def test_worker_kv_calls(monkeypatch, shutdown_only):
     b'cluster' b'CLUSTER_METADATA'
     b'tracing' b'tracing_startup_hook'
     b'fun' b'IsolatedExports:01000000:\x00\x00\x00\x00\x00\x00\x00\x01'
-    b'fun' b'RemoteFunction:01000000:'
     """
     # !!!If you want to increase this number, please let ray-core knows this!!!
-    assert freqs["internal_kv_get"] == 4
+    assert freqs["internal_kv_get"] == 3
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on Windows.")
