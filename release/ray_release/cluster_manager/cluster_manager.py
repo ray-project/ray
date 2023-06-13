@@ -1,7 +1,5 @@
 import abc
 import time
-import random
-import string
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray_release.aws import (
@@ -68,7 +66,6 @@ class ClusterManager(abc.ABC):
             f"{self.project_name}_{self.project_id[4:8]}"
             f"__env__{self.test.get_name().replace('.', '_')}__"
             f"{dict_hash(self.cluster_env)}"
-            f"{''.join(random.choices(string.ascii_lowercase, k=5))}"
         )
 
     def set_cluster_compute(

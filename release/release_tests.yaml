@@ -2629,7 +2629,13 @@
 
   frequency: weekly
   team: serve
+  python: "3.8"
   cluster:
+    byod: 
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2667,7 +2673,13 @@
 
   frequency: weekly
   team: serve
+  python: "3.8"
   cluster:
+    byod: 
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1_c5.yaml
 
@@ -2705,7 +2717,13 @@
 
   frequency: weekly
   team: serve
+  python: "3.8"
   cluster:
+    byod: 
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2780,8 +2798,12 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
@@ -2809,8 +2831,12 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
@@ -2837,7 +2863,12 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
@@ -2858,9 +2889,14 @@
 - name: jobs_check_cuda_available
   group: Jobs tests
   team: serve
+  python: "3.8"
   frequency: nightly
   working_dir: jobs_tests
   cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
@@ -2881,9 +2917,14 @@
 - name: jobs_specify_num_gpus
   group: Jobs tests
   team: serve
+  python: "3.8"
   frequency: nightly
   working_dir: jobs_tests
   cluster:
+    byod:
+      type: gpu
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
@@ -2910,8 +2951,10 @@
 
   frequency: nightly
   team: serve
+  python: "3.8"
 
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: rte_small.yaml
 
@@ -2939,8 +2982,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: rte_minimal.yaml
 
@@ -2994,8 +3038,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu.yaml
 
@@ -3021,8 +3068,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu.yaml
 
@@ -3048,8 +3098,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
 
@@ -3075,8 +3128,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu_autoscaling.yaml
 
@@ -3102,8 +3158,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
@@ -3149,8 +3208,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
@@ -3177,8 +3239,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
@@ -3205,8 +3270,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
@@ -3233,8 +3301,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
@@ -3262,8 +3333,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
@@ -3289,8 +3363,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
@@ -3317,8 +3394,11 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      pre_run_cmds:
+        - rm -r wrk || true && git clone https://github.com/wg/wrk.git /tmp/wrk && cd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin
     cluster_env: gpu_app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
 
