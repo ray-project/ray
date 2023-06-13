@@ -417,7 +417,7 @@ def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
         m.delenv("OMP_NUM_THREADS", raising=False)
 
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=2)
         ray.init(address=cluster.address)
 
         @ray.remote(num_cpus=2)
