@@ -44,7 +44,7 @@ from ray.util.state.common import ListApiOptions, StateResource
 from ray.util.state.exception import ServerUnavailable
 from ray.experimental.internal_kv import _initialize_internal_kv
 from unittest.mock import MagicMock
-from ray.dashboard.__utils import DashboardHeadModule
+from ray.dashboard.utils import DashboardHeadModule
 
 import psutil
 
@@ -495,7 +495,7 @@ def test_dashboard_module_decorator(enable_test_module):
 
     test_code = """
 import os
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 
 os.environ.pop("RAY_DASHBOARD_MODULE_TEST", None)
 head_cls_list = dashboard_utils.get_all_modules(
