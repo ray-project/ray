@@ -8,7 +8,7 @@ import pytest
 import ray
 from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOURCES
 import ray._private.services
-from ray.dashboard.__utils import ray_address_to_api_server_url
+from ray.dashboard.utils import ray_address_to_api_server_url
 from ray._private.test_utils import (
     get_current_unused_port,
     run_string_as_driver,
