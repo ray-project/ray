@@ -21,7 +21,7 @@ from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template impor
     DASHBOARD_PROVISIONING_TEMPLATE,
 )
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 
 logger = logging.getLogger(__name__)

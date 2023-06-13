@@ -50,7 +50,7 @@ from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.utils import get_driver_jobs
-from ray.dashboard.utils import Dict as Dictionary
+from ray.dashboard.__utils import Dict as Dictionary
 from ray.util.state.common import (
     RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     PredicateType,

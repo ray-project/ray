@@ -24,7 +24,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.dashboard.utils import Bunch
+from ray.dashboard.__utils import Bunch
 
 try:
     import prometheus_client

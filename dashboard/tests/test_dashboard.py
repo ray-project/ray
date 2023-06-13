@@ -18,7 +18,7 @@ import socket
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 from click.testing import CliRunner
 from requests.exceptions import ConnectionError
 from ray._private import ray_constants
@@ -44,7 +44,7 @@ from ray.util.state.common import ListApiOptions, StateResource
 from ray.util.state.exception import ServerUnavailable
 from ray.experimental.internal_kv import _initialize_internal_kv
 from unittest.mock import MagicMock
-from ray.dashboard.utils import DashboardHeadModule
+from ray.dashboard.__utils import DashboardHeadModule
 
 import psutil
 
@@ -495,7 +495,7 @@ def test_dashboard_module_decorator(enable_test_module):
 
     test_code = """
 import os
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 
 os.environ.pop("RAY_DASHBOARD_MODULE_TEST", None)
 head_cls_list = dashboard_utils.get_all_modules(

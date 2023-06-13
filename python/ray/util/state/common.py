@@ -7,7 +7,7 @@ from dataclasses import asdict, field, fields
 from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 from ray._private.ray_constants import env_integer
 from ray.core.generated.common_pb2 import TaskStatus, TaskType
 from ray.core.generated.gcs_pb2 import TaskEvents
