@@ -262,9 +262,11 @@ parts:
             - file: serve/deploy-many-models/multi-app
             - file: serve/deploy-many-models/model-multiplexing
           - file: serve/production-guide/index
+            title: Production Guide
             sections:
               - file: serve/production-guide/config
               - file: serve/production-guide/kubernetes
+              - file: serve/production-guide/fault-tolerance
               - file: serve/production-guide/handling-dependencies
               - file: serve/production-guide/best-practices
           - file: serve/monitoring
@@ -281,7 +283,6 @@ parts:
               - file: serve/advanced-guides/managing-java-deployments
               - file: serve/advanced-guides/migration
               - file: serve/advanced-guides/deploy-vm
-              - file: serve/advanced-guides/fault-tolerance
               - file: serve/advanced-guides/inplace-updates
           - file: serve/architecture
           - file: serve/tutorials/index

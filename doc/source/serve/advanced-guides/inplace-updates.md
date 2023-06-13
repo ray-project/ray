@@ -1,12 +1,12 @@
 (serve-in-production-updating)=
 
-## In-place updates to Serve
+# In-Place Updates to Serve
 
 You can update your Serve applications once they're in production by updating the settings in your config file and redeploying it using the `serve deploy` command. In the redeployed config file, you can add new deployment settings or remove old deployment settings. This is because `serve deploy` is **idempotent**, meaning your Serve application's config always matches (or honors) the latest config you deployed successfully – regardless of what config files you deployed before that.
 
 (serve-in-production-lightweight-update)=
 
-### Lightweight Config Updates
+## Lightweight Config Updates
 
 Lightweight config updates modify running deployment replicas without tearing them down and restarting them, so there's less downtime as the deployments update. For each deployment, modifying `num_replicas`, `autoscaling_config`, and/or `user_config` is considered a lightweight config update, and won't tear down the replicas for that deployment.
 
@@ -14,7 +14,7 @@ Lightweight config updates modify running deployment replicas without tearing th
 Lightweight config updates are only possible for deployments that are included as entries under `deployments` in the config file. If a deployment is not included in the config file, replicas of that deployment will be torn down and brought up again each time you redeploy with `serve deploy`.
 :::
 
-#### Updating User Config
+## Updating User Config
 Let's use the `FruitStand` deployment graph [from an earlier section](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. This method allows us to issue lightweight updates to our deployments by updating the `user_config`.
 
 First let's deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
@@ -100,7 +100,7 @@ $ python
 
 The price has updated! The same request now returns `10` instead of `6`, reflecting the new price.
 
-### Code Updates
+## Code Updates
 
 Similarly, you can update any other setting in any deployment in the config file. If a deployment setting other than `num_replicas`, `autoscaling_config`, or `user_config` is changed, it is considered a code update, and the deployment replicas will be restarted. Note that the following modifications are all considered "changes", and will trigger tear down of replicas:
 * changing an existing setting

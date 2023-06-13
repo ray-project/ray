@@ -8,6 +8,7 @@ Use these advanced guides for more options and configurations:
 - [FastAPI and HTTP Setup](serve-set-up-fastapi-http)
 - [Performance Tuning](serve-perf-tuning)
 - [Dynamic Request Batching](serve-performance-batching-requests)
+- [In-Place Updates for Serve](serve-in-production-updating)
 - [Development Workflow](serve-dev-workflow)
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
