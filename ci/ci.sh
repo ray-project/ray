@@ -538,6 +538,10 @@ lint_bazel() {
     echo "Bazel lint not supported on non-linux systems."
     exit 1
   fi
+  if [[ "$(uname -m)" != "x86_64" ]]; then
+    echo "Bazel link only supported on x86_64."
+    exit 1
+  fi
 
   LINT_BAZEL_TMP="$(mktemp -d)"
   curl -sl "https://github.com/bazelbuild/buildtools/releases/download/v6.1.2/buildifier-linux-amd64" \
