@@ -69,18 +69,20 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
-        "been deprecated. Please use `request_timeout_s` in the serve config instead. "
-        "`SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in future versions. See: "
-        "https://docs.ray.io/en/master/serve/api/doc/ray.serve.schema.HTTPOptionsSchema"
-        ".html#ray.serve.schema.HTTPOptionsSchema.request_timeout_s"
+        "been deprecated. Please set `request_timeout_s` in your Serve config's "
+        "`http_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
+        "ignored in future versions. See: https://docs.ray.io/en/releases-2.5.1/serve/a"
+        "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
+        "ema.request_timeout_s"
     )
 if os.environ.get("RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
-        "been deprecated. Please use `request_timeout_s` in the serve config instead. "
-        "`RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in future versions. "
-        "See: https://docs.ray.io/en/master/serve/api/doc/ray.serve.schema.HTTPOptionsS"
-        "chema.html#ray.serve.schema.HTTPOptionsSchema.request_timeout_s"
+        "been deprecated. Please set `request_timeout_s` in your Serve config's "
+        "`http_options` field instead. `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be"
+        " ignored in future versions. See: https://docs.ray.io/en/releases-2.5.1/serve/"
+        "api/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSc"
+        "hema.request_timeout_s"
     )
 
 
@@ -486,7 +488,8 @@ class HTTPProxy:
                     logger.info(
                         f"Request didn't finish within {self.request_timeout_s} seconds"
                         ". Retrying with another replica. You can modify this timeout "
-                        'by setting the "request_timeout_s" in the serve config.'
+                        'by setting "request_timeout_s" in your Serve config\'s '
+                        "`http_options` field."
                     )
                     backoff = True
                 else:

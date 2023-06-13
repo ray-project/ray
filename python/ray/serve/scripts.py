@@ -430,7 +430,7 @@ def run(
         )
 
     http_options = {"host": host, "port": port, "location": "EveryNode"}
-    # Merge http_options with the ones on ServeDeploySchema. If host and/ or port is
+    # Merge http_options with the ones on ServeDeploySchema. If host and/or port is
     # passed by cli, those continue to take the priority
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()

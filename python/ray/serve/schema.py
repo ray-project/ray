@@ -514,7 +514,7 @@ class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
     )
     request_timeout_s: float = Field(
         default=None,
-        description="The timeout set for HTTP requests. Default to no timeout.",
+        description="The timeout for HTTP requests. Defaults to no timeout.",
     )
 
 

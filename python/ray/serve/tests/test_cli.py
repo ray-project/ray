@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
+from ray.serve.tests.conftest import check_ray_stop
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -1418,14 +1419,31 @@ class TestRayReinitialization:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_config_request_timeout(ray_start_stop):
-    """Test running serve with request timeout http_options.
+def test_run_config_request_timeout():
+    """Test running serve with request timeout in http_options.
 
-    When serve run with config file having 0.1s as the `request_timeout_s` in
-    the `http_options`. First case tests when the deployment runs longer than the 0.1s
-    timeout and returned task failed message. The second case is testing the deployment
-    runs shorter than the 0.1s timeout and it should return success message.
+    The config file has 0.1s as the `request_timeout_s` in the `http_options`. First
+    case checks that when the query runs longer than the 0.1s, the deployment returns a
+    task failed message. The second case checks that when the query takes less than
+    0.1s, the deployment returns a success message.
     """
+
+    # Set up ray instance to perform 1 retries
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )
+    subprocess.check_output(
+        ["ray", "start", "--head"],
+        env=dict(os.environ, RAY_SERVE_HTTP_REQUEST_MAX_RETRIES="1"),
+    )
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+
     config_file_name = os.path.join(
         os.path.dirname(__file__),
         "test_config_files",
@@ -1434,10 +1452,10 @@ def test_run_config_request_timeout(ray_start_stop):
     p = subprocess.Popen(["serve", "run", config_file_name])
 
     # Ensure the http request is killed and failed when the deployment runs longer than
-    # the 0.1 request_timeout_s set up in the config yaml
+    # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
         lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").text
-        == "Task failed with 10 retries.",
+        == "Task failed with 1 retries.",
     )
 
     # Ensure the http request returned the correct response when the deployment runs
@@ -1449,6 +1467,13 @@ def test_run_config_request_timeout(ray_start_stop):
 
     p.send_signal(signal.SIGINT)
     p.wait()
+
+    # Stop ray instance
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )
 
 
 if __name__ == "__main__":
