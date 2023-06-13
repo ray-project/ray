@@ -277,13 +277,13 @@ parts:
               - file: serve/advanced-guides/app-builder-guide
               - file: serve/advanced-guides/performance
               - file: serve/advanced-guides/dyn-req-batch
+              - file: serve/advanced-guides/inplace-updates
               - file: serve/advanced-guides/dev-workflow
               - file: serve/advanced-guides/deployment-graphs
               - file: serve/advanced-guides/direct-ingress
               - file: serve/advanced-guides/managing-java-deployments
               - file: serve/advanced-guides/migration
               - file: serve/advanced-guides/deploy-vm
-              - file: serve/advanced-guides/inplace-updates
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
