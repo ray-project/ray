@@ -1,6 +1,7 @@
 import asyncio
 import os
 import pytest
+import time
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
@@ -264,11 +265,12 @@ def test_http_disconnect(serve_instance):
     class SimpleGenerator:
         def __call__(self, request: Request) -> StreamingResponse:
             async def wait_for_disconnect():
-                while not await request.is_disconnected():
-                    yield b""
-
-                print("Disconnected!")
-                signal_actor.send.remote()
+                try:
+                    yield "hi"
+                    await asyncio.sleep(100)
+                except asyncio.CancelledError:
+                    print("Cancelled!")
+                    signal_actor.send.remote()
 
             return StreamingResponse(wait_for_disconnect())
 
