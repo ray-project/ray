@@ -845,7 +845,7 @@ def deploy_serve_application(
 
             raise Exception(
                 f"Test failing, import_path: {import_path}, pwd: {os. getcwd()}, "
-                f"\nmodules: {sys.modules.keys()}"
+                f"\nmodules: {sys.modules}"
             )
         app = build(app, name)
 
