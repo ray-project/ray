@@ -468,7 +468,7 @@ class DataParallelTrainer(BaseTrainer):
                 logger.debug(
                     f"Deleting the stale lazy checkpoint marker file: {marker_file}."
                 )
-                marker_file.unlink()
+                marker_file.unlink(missing_ok=True)
 
         # Start the remote actors.
         backend_executor.start(initialization_hook=clear_lazy_checkpoint_marker)
