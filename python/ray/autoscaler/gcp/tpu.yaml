@@ -27,8 +27,8 @@ available_node_types:
 provider:
     type: gcp
     region: us-central1
-    availability_zone: us-central1-f
-    project_id: null
+    availability_zone: us-central1-b
+    project_id: null # Replace this with your GCP project ID.
 
 setup_commands:
   - sudo apt install python-is-python3 -y

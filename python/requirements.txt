@@ -41,7 +41,6 @@ pyyaml
 rich
 gpustat>=1.0.0
 urllib3
-kubernetes
 opentelemetry-sdk
 fastapi
 virtualenv<20.21.1,>=20.0.24
