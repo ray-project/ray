@@ -7,7 +7,6 @@
 # You can obtain this list from the ray.egg-info/requires.txt
 
 ## setup.py install_requires
-attrs
 click>=7.0
 filelock
 # Tracking issue: https://github.com/ray-project/ray/issues/33411
@@ -22,12 +21,8 @@ packaging
 
 # Python version-specific requirements
 dataclasses; python_version < '3.7'
-# Tracking issue: https://github.com/ray-project/ray/issues/30984
-grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'
-grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'
-# Original issue: https://github.com/ray-project/ray/issues/33833
-grpcio >= 1.32.0, <= 1.51.3; python_version < '3.10' and sys_platform != 'darwin'
-grpcio >= 1.42.0, <= 1.51.3; python_version >= '3.10' and sys_platform != 'darwin'
+grpcio >= 1.32.0; python_version < '3.10'
+grpcio >= 1.42.0; python_version >= '3.10'
 numpy>=1.16; python_version < '3.9'
 numpy>=1.19.3; python_version >= '3.9'
 typing_extensions; python_version < '3.8'
@@ -49,7 +44,6 @@ matplotlib!=3.4.3; platform_system != "Windows"
 tensorboardX>=1.9
 smart_open
 requests
-kubernetes
 colorful
 lz4
 virtualenv>=20.0.24, < 20.21.1

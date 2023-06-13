@@ -1,11 +1,12 @@
-import pytest
 import os
 import uuid
 
+import pytest
+
 import ray
-from ray.tests.conftest import *  # noqa
-from ray.data._internal.simple_block import SimpleBlockBuilder
 from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.simple_block import SimpleBlockBuilder
+from ray.tests.conftest import *  # noqa
 
 SMALL_VALUE = "a" * 100
 LARGE_VALUE = "a" * 10000
@@ -197,7 +198,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_split_map(shutdown_only, use_actors):
     ray.shutdown()
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=3)
     kwargs = {}
     if use_actors:
         kwargs = {"compute": ray.data.ActorPoolStrategy()}

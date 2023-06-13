@@ -9,7 +9,8 @@ from contextlib import redirect_stdout
 
 import ray
 from ray import tune
-from ray.air import session, RunConfig
+from ray.air import session, Checkpoint, RunConfig
+from ray.tune import Tuner
 from ray.tune.progress_reporter import JupyterNotebookReporter
 from ray.util.client.ray_client_helpers import ray_start_client_server
 
@@ -48,6 +49,25 @@ def start_client_server_4_cpus():
     ray.shutdown()
 
 
+def test_tuner_client_get_results(
+    tmp_path, legacy_progress_reporter, start_client_server_2_cpus
+):
+    def train_fn(config):
+        checkpoint = session.get_checkpoint()
+        id = int(bool(checkpoint))
+        session.report({"id": id}, checkpoint=Checkpoint.from_dict({"id": id}))
+        raise RuntimeError
+
+    results = Tuner(train_fn, run_config=RunConfig(storage_path=str(tmp_path))).fit()
+    restored_results = Tuner.restore(
+        results.experiment_path, trainable=train_fn, resume_errored=True
+    ).get_results()
+
+    # Assert that the intermediate results are returned,
+    # without launching the tuning job.
+    assert restored_results[0].metrics["id"] == 0
+
+
 def test_pbt_function(legacy_progress_reporter, start_client_server_2_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.pbt_function import run_tune_pbt
@@ -65,6 +85,14 @@ def test_optuna_example(legacy_progress_reporter, start_client_server):
 def test_cifar10_pytorch(legacy_progress_reporter, start_client_server_2_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.cifar10_pytorch import main
+
+    # This is a workaround that is needed because of
+    # https://github.com/grpc/grpc/issues/32758 -- this happens only
+    # if the DataLoader is used on the Ray Client side, which we should
+    # not encourage anyways (heavy processing should be done on the cluster).
+    import torch
+
+    torch.multiprocessing.set_start_method("spawn")
 
     main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
 

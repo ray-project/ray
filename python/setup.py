@@ -6,6 +6,7 @@ import logging
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
 import zipfile
 from enum import Enum
 from itertools import chain
@@ -38,6 +40,7 @@ SUPPORTED_BAZEL = (5, 4, 0)
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
+BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
@@ -254,9 +257,14 @@ if setup_spec.type == SetupType.RAY:
             "smart_open",
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
+        "client": [
+            # The Ray client needs a specific range of gRPC to work:
+            # Tracking issue: https://github.com/grpc/grpc/issues/31885
+            "grpcio >= 1.42.0, <= 1.50.0",
+        ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
-        "k8s": ["kubernetes", "urllib3"],
+        "k8s": ["urllib3"],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
@@ -308,16 +316,10 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "attrs",
         "click >= 7.0",
-        "dataclasses; python_version < '3.7'",
         "filelock",
-        # Tracking issue: https://github.com/ray-project/ray/issues/30984
-        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa:E501
-        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa:E501
-        # Original issue: https://github.com/ray-project/ray/issues/33833
-        "grpcio >= 1.32.0, <= 1.51.3; python_version < '3.10' and sys_platform != 'darwin'",  # noqa:E501
-        "grpcio >= 1.42.0, <= 1.51.3; python_version >= '3.10' and sys_platform != 'darwin'",  # noqa:E501
+        "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+        "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
@@ -560,9 +562,17 @@ def build(build_python, build_java, build_cpp):
         )
 
     bazel_flags = ["--verbose_failures"]
+    if BAZEL_ARGS:
+        bazel_flags.extend(shlex.split(BAZEL_ARGS))
+
     if BAZEL_LIMIT_CPUS:
         n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
         bazel_flags.append(f"--local_cpu_resources={n}")
+        warnings.warn(
+            "Setting BAZEL_LIMIT_CPUS is deprecated and will be removed in a future"
+            " version. Please use BAZEL_ARGS instead.",
+            FutureWarning,
+        )
 
     if not is_automated_build:
         bazel_precmd_flags = []

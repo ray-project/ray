@@ -317,7 +317,6 @@ build_sphinx_docs() {
       # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
       FAST=True make develop
       pip install datasets==2.0.0
-      RAY_MOCK_MODULES=0 RAY_DEDUP_LOGS=0 make doctest
     fi
   )
 }
@@ -504,11 +503,7 @@ build_wheels_and_jars() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      if [ "$(uname -m)" = "arm64" ]; then
-        "${WORKSPACE_DIR}"/python/build-wheel-macos-arm64.sh
-      else
-        "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
-      fi
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
 

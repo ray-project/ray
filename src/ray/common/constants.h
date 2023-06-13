@@ -61,6 +61,13 @@ constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
 
+/// Name for cloud instance id env
+constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
+
+/// Key for the placement group's bundle placement constraint.
+/// Used by FormatPlacementGroupLabelName()
+constexpr char kPlacementGroupConstraintKeyPrefix[] = "_PG_";
+
 #if defined(__APPLE__)
 constexpr char kLibraryPathEnvName[] = "DYLD_LIBRARY_PATH";
 #elif defined(_WIN32)
