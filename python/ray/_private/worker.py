@@ -43,7 +43,6 @@ else:
     from typing_extensions import Literal, Protocol
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
