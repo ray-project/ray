@@ -154,6 +154,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                     self._params, self.get_optimizer(optimizer_name=component)
                 ),
             ))
+        del gradient_tape
         return grads
 
     @override(TfLearner)
