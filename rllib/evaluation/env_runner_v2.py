@@ -1058,11 +1058,17 @@ class EnvRunnerV2:
                     [d.data.sample_batch for d in eval_data]
                 )
 
-            eval_results[policy_id] = policy.compute_actions_from_input_dict(
+            result = policy.compute_actions_from_input_dict(
                 input_dict,
                 timestep=policy.global_timestep,
                 episodes=[self._active_episodes[t.env_id] for t in eval_data],
             )
+
+            if policy.config.get("_enable_rl_module_api", False):
+                result = list(result)
+                result[0] = result[0][0]
+
+            eval_results[policy_id] = result
 
         return eval_results
 
