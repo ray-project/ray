@@ -1695,53 +1695,6 @@ Status CoreWorker::PushError(const JobID &job_id,
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
 }
 
-void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
-                                  const std::shared_ptr<RayObject> &obj,
-                                  std::function<void()> callback) {
-  if (!obj->IsInPlasmaError()) {
-    RAY_LOG(ERROR) << "Cannot spill inlined object " << object_id;
-    callback();
-    return;
-  }
-
-  // Find the raylet that hosts the primary copy of the object.
-  bool owned_by_us = false;
-  NodeID pinned_at;
-  bool spilled = false;
-  RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(
-      object_id, &owned_by_us, &pinned_at, &spilled));
-  RAY_CHECK(owned_by_us);
-  if (spilled) {
-    // The object has already been spilled.
-    return;
-  }
-  auto node = gcs_client_->Nodes().Get(pinned_at);
-  if (pinned_at.IsNil() || !node) {
-    RAY_LOG(ERROR) << "Primary raylet for object " << object_id << " unreachable";
-    callback();
-    return;
-  }
-
-  // Ask the raylet to spill the object.
-  RAY_LOG(DEBUG) << "Sending spill request to raylet for object " << object_id;
-  auto raylet_client = std::make_shared<raylet::RayletClient>(
-      rpc::NodeManagerWorkerClient::make(node->node_manager_address(),
-                                         node->node_manager_port(),
-                                         *client_call_manager_));
-  raylet_client->RequestObjectSpillage(
-      object_id,
-      [object_id, callback](const Status &status,
-                            const rpc::RequestObjectSpillageReply &reply) {
-        if (!status.ok() || !reply.success()) {
-          RAY_LOG(ERROR) << "Failed to spill object " << object_id
-                         << ", raylet unreachable or object could not be spilled.";
-        }
-        // TODO(Clark): Provide spilled URL and spilled node ID to callback so it can
-        // added them to the reference.
-        callback();
-      });
-}
-
 json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent) {
   // By default, the child runtime env inherits non-specified options from the
   // parent. There is one exception to this:
