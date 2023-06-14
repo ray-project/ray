@@ -1,9 +1,10 @@
 -r requirements_dl.txt
 
 aim==3.16.1
-ax-platform==0.1.9; python_version < '3.7'
-ax-platform==0.2.6; python_version == '3.7'
-ax-platform==0.2.6; python_version >= '3.8'
+ax-platform[mysql]==0.2.6
+# Newer version of gpytorch are incompatible with ax 0.2.6.
+# Todo: Remove pin when upgrading ax
+gpytorch==1.8.1
 
 bayesian-optimization==1.2.0
 comet-ml==3.31.9
