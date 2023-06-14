@@ -1470,7 +1470,7 @@ class AlgorithmConfig(_Config):
                 and action connectors.
             use_worker_filter_stats: Whether to use the workers in the WorkerSet to
                 update the central filters (held by the local worker). If False, stats
-                from the workers will not be used ad discarded.
+                from the workers will not be used and discarded.
             update_worker_filter_stats: Whether to push filter updates from the central
                 filters (held by the local worker) to the remote workers' filters.
                 Setting this to True might be useful within the evaluation config in

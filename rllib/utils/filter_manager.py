@@ -35,7 +35,7 @@ class FilterManager:
             timeout_seconds: How long to wait for filter to get or set filters
             use_remote_data_for_update: Whether to use the `worker_set`'s remote workers
                 to update the local filters. If False, stats from the remote workers
-                will not be used ad discarded.
+                will not be used and discarded.
         """
         # No sync/update required in either direction -> Early out.
         if not (update_remote or use_remote_data_for_update):
@@ -63,7 +63,7 @@ class FilterManager:
                 for k in local_filters:
                     local_filters[k].apply_changes(rf[k], with_buffer=False)
 
-        # Should we update the remote workers' filters from the (now synched)
+        # Should we update the remote workers' filters from the (now possibly synched)
         # local filters?
         if update_remote:
             copies = {k: v.as_serializable() for k, v in local_filters.items()}

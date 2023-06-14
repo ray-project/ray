@@ -2408,10 +2408,7 @@ class Algorithm(Trainable):
                 syncing from `workers` should happen at all and whether broadcasting
                 back to `workers` (after possible syncing) should happen.
         """
-        if (
-            central_worker
-            and config.observation_filter != "NoFilter"
-        ):
+        if central_worker and config.observation_filter != "NoFilter":
             FilterManager.synchronize(
                 central_worker.filters,
                 workers,
