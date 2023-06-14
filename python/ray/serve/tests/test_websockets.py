@@ -4,8 +4,6 @@ import sys
 import time
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-import gradio as gr
-from gradio_client import Client
 import requests
 from starlette.responses import StreamingResponse
 from websockets.exceptions import ConnectionClosed
@@ -14,7 +12,6 @@ from websockets.sync.client import connect
 import ray
 
 from ray import serve
-from ray.serve.gradio_integrations import GradioIngress
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
 
@@ -166,6 +163,11 @@ def test_gradio_queue(serve_instance):
 
     Gradio Queues use websockets under the hood.
     """
+
+    # Delayed imports because these aren't installed on Windows.
+    import gradio as gr
+    from gradio_client import Client
+    from ray.serve.gradio_integrations import GradioIngress
 
     def counter(num_steps: int = 3):
         for i in range(num_steps):
