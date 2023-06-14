@@ -231,7 +231,7 @@ class LightningTrainer(TorchTrainer):
 
     For logging, users can continue to use Lightning's native loggers, such as
     WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
-    metrics to the trail directory whenever a new checkpoint is saved.
+    metrics to the training results directory whenever a new checkpoint is saved.
 
     Then, the training function will initialize an instance of ``pl.Trainer``
     using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
