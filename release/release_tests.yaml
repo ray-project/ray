@@ -213,7 +213,7 @@
 - name: air_benchmark_xgboost_cpu_10
   group: AIR tests
   working_dir: air_tests/air_benchmarks
-
+  python: "3.8"
   frequency: nightly
   team: ml
 
@@ -994,7 +994,7 @@
 - name: xgboost_train_gpu
   group: XGBoost
   working_dir: xgboost_tests
-
+  python: "3.8"
   frequency: nightly
   team: ml
 
