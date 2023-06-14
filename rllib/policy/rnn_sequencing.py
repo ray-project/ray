@@ -23,7 +23,6 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.typing import TensorType, ViewRequirementsDict
 from ray.util import log_once
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.policy.sample_batch import add_batch_dim
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -218,6 +217,7 @@ def add_time_dimension(
     # batch_size == len(seq_lens) * max(seq_lens)
     if framework in ["tf2", "tf"]:
         assert time_major is False, "time-major not supported yet for tf!"
+        padded_inputs = tf.convert_to_tensor(padded_inputs)
         padded_batch_size = tf.shape(padded_inputs)[0]
         # Dynamically reshape the padded batch to introduce a time dimension.
         new_batch_size = tf.shape(seq_lens)[0]
@@ -233,6 +233,7 @@ def add_time_dimension(
         return tf.reshape(padded_inputs, new_shape)
     else:
         assert framework == "torch", "`framework` must be either tf or torch!"
+        padded_inputs = torch.as_tensor(padded_inputs)
         padded_batch_size = padded_inputs.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
@@ -559,24 +560,3 @@ def timeslice_along_seq_lens_with_overlap(
             ts.right_zero_pad(max_seq_len=zero_pad_max_seq_len, exclude_states=True)
 
     return timeslices
-
-
-def add_states_and_seq_lens_if_missing(model, batch: SampleBatch):
-    """Adds "state_in" and "seq_lens" keys to the batch if they are missing.
-
-    Args:
-        model: The model to check for state-requirements.
-        batch: The batch to add state- and seq-len-columns to.
-
-    Returns:
-        SampleBatch: The batch with added state- and seq-len-columns.
-    """
-    if SampleBatch.SEQ_LENS not in batch:
-        batch[SampleBatch.SEQ_LENS] = np.ones([len(batch[SampleBatch.OBS])])
-
-    if "state_in" not in batch:
-        batch["state_in"] = add_batch_dim(
-            model.get_initial_state(), len(batch[SampleBatch.OBS])
-        )
-
-    return batch

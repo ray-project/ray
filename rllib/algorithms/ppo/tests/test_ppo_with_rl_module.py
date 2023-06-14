@@ -26,30 +26,17 @@ from ray.rllib.utils.test_utils import (
 
 
 def get_model_config(framework, lstm=False):
-    model_config = {
-        "torch": dict(
-            # Settings in case we use an LSTM.
+    return (
+        dict(
+            use_lstm=True,
+            lstm_use_prev_action=True,
+            lstm_use_prev_reward=True,
             lstm_cell_size=10,
             max_seq_len=20,
-        ),
-        "tf2": dict(
-            fcnet_activation="relu",
-            fcnet_hiddens=[32, 32],
-            vf_share_layers=False,
-        ),
-    }
-    if framework == "tf2":
-        return model_config["tf2"]
-    elif framework == "torch":
-        torch_model_config = model_config["torch"]
-        for k in [
-            "use_lstm",
-            "lstm_use_prev_action",
-            "lstm_use_prev_reward",
-            "vf_share_layers",
-        ]:
-            torch_model_config[k] = lstm
-        return model_config["torch"]
+        )
+        if lstm
+        else {}
+    )
 
 
 class MyCallbacks(DefaultCallbacks):

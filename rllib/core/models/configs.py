@@ -1,9 +1,8 @@
 import abc
 from dataclasses import dataclass, field
 import functools
-from typing import Callable, Dict, List, Optional, Tuple, TYPE_CHECKING, Union
+from typing import Callable, List, Optional, Tuple, TYPE_CHECKING, Union
 
-import gymnasium as gym
 import numpy as np
 
 from ray.rllib.models.torch.misc import (
@@ -13,7 +12,6 @@ from ray.rllib.models.torch.misc import (
 )
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import ExperimentalAPI
-from ray.rllib.utils.typing import ViewRequirementsDict
 
 if TYPE_CHECKING:
     from ray.rllib.core.models.base import Model, Encoder
@@ -917,7 +915,8 @@ class ActorCriticEncoderConfig(ModelConfig):
     def build(self, framework: str = "torch") -> "Encoder":
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import (
-                TorchActorCriticEncoder, TorchStatefulActorCriticEncoder
+                TorchActorCriticEncoder,
+                TorchStatefulActorCriticEncoder,
             )
 
             if isinstance(self.base_encoder_config, RecurrentEncoderConfig):
@@ -925,8 +924,10 @@ class ActorCriticEncoderConfig(ModelConfig):
             else:
                 return TorchActorCriticEncoder(self)
         else:
-            from ray.rllib.core.models.tf.encoder import TfActorCriticEncoder, \
-                TfStatefulActorCriticEncoder
+            from ray.rllib.core.models.tf.encoder import (
+                TfActorCriticEncoder,
+                TfStatefulActorCriticEncoder,
+            )
 
             if isinstance(self.base_encoder_config, RecurrentEncoderConfig):
                 return TfStatefulActorCriticEncoder(self)

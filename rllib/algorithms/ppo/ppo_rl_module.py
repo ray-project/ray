@@ -5,7 +5,6 @@ This file holds framework-agnostic components for PPO's RLModules.
 import abc
 from typing import Type
 
-from ray.rllib.core.models.base import ActorCriticEncoder
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.models.distributions import Distribution

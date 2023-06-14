@@ -12,7 +12,6 @@ import gymnasium as gym
 import tree  # pip install dm_tree
 
 from ray.rllib.core.models.base import STATE_IN
-from ray.rllib.core.rl_module import RLModule
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -24,7 +23,6 @@ from ray.rllib.policy.eager_tf_policy import (
     _traced_eager_policy,
 )
 from ray.rllib.policy.policy import Policy, PolicyState
-from ray.rllib.policy.rnn_sequencing import add_states_and_seq_lens_if_missing
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
@@ -478,15 +476,6 @@ class EagerTFPolicyV2(Policy):
         ]
         self._state_in = state_batches
         self._is_recurrent = len(tree.flatten(self._state_in)) > 0
-
-        if isinstance(self.model, RLModule):
-            # TODO(Artur): Require upstream calls to this to provide seq_lens and states
-            # Calculate RNN sequence lengths if not given.
-
-            # Unlike in torch policies, we can not add additional values to
-            # input_dict inside self._compute_actions_helper, because it may be
-            # eager-traced
-            add_states_and_seq_lens_if_missing(self.model, input_dict)
 
         # Call the exploration before_compute_actions hook.
         if self.exploration:

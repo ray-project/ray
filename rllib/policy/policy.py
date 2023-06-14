@@ -27,9 +27,11 @@ import ray
 import ray.cloudpickle as pickle
 from ray.actor import ActorHandle
 from ray.air.checkpoint import Checkpoint
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import (
@@ -1409,9 +1411,10 @@ class Policy(metaclass=ABCMeta):
             sample_batch_size
         )
         self._lazy_tensor_dict(self._dummy_batch)
-        # With RL modules you want the explore flag to be True for initialization of the
-        # tensors and placeholder you'd need for training.
+        # With RL Modules you want the explore flag to be True for initialization
+        # of the tensors and placeholder you'd need for training.
         explore = self.config.get("_enable_rl_module_api", False)
+
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )
@@ -1605,6 +1608,43 @@ class Policy(metaclass=ABCMeta):
                 "but is of type {}.".format(self, type(self.global_timestep))
             )
 
+    @ExperimentalAPI
+    def prepare_inputs_for_rl_module(
+        self, input_dict: Dict[str, TensorType], seq_lens: List[int]
+    ):
+        """Prepares inputs according to the view requirements of the RLModule.
+
+        Args:
+            input_dict (Dict[str, TensorType]): The input dict.
+
+        Returns:
+            Dict[str, TensorType]: The prepared input dict.
+        """
+        if self.config.get("model", {}).get("use_lstm", False):
+            # Note that this is a temporary workaround to fit the old sampling stack
+            # to RL Modules.
+            ret = {}
+
+            def _add_time_dimension(inputs):
+                inputs = add_time_dimension(
+                    inputs,
+                    seq_lens=seq_lens,
+                    framework=self.model.framework,
+                    time_major=self.config.get("model", {}).get("_time_major", False),
+                )
+                return inputs
+
+            for k, v in input_dict.items():
+                if k not in (STATE_IN, STATE_OUT):
+                    ret[k] = tree.map_structure(_add_time_dimension, v)
+                else:
+                    # state in already has time dimension.
+                    ret[k] = v
+
+            return ret
+        else:
+            return input_dict
+
     def _get_dummy_batch_from_view_requirements(
         self, batch_size: int = 1
     ) -> SampleBatch:
@@ -1646,6 +1686,12 @@ class Policy(metaclass=ABCMeta):
                     )
                 else:
                     ret[view_col] = [view_req.space for _ in range(batch_size)]
+
+        if self.config.get("_enable_rl_module_api", False):
+            # With RL Modules, we need to prepare the batch, which is done implicitly
+            # by the old stack inside the model.
+            seq_lens = np.ones(batch_size)
+            ret = self.prepare_inputs_for_rl_module(ret, seq_lens=seq_lens)
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
@@ -1713,9 +1759,9 @@ class Policy(metaclass=ABCMeta):
             for vr in view_reqs:
                 # Only override if user has not already provided
                 # custom view-requirements for state_in_n.
-                if "state_in" not in vr:
-                    vr["state_in"] = ViewRequirement(
-                        "state_out",
+                if STATE_IN not in vr:
+                    vr[STATE_IN] = ViewRequirement(
+                        STATE_OUT,
                         shift=-1,
                         used_for_compute_actions=True,
                         batch_repeat_value=self.config.get("model", {}).get(
@@ -1725,10 +1771,8 @@ class Policy(metaclass=ABCMeta):
                     )
                 # Only override if user has not already provided
                 # custom view-requirements for state_out_n.
-                if "state_out" not in vr:
-                    vr["state_out"] = ViewRequirement(
-                        space=space, used_for_training=True
-                    )
+                if STATE_OUT not in vr:
+                    vr[STATE_OUT] = ViewRequirement(space=space, used_for_training=True)
         else:
             for i, state in enumerate(init_state):
                 # Allow `state` to be either a Space (use zeros as initial values)

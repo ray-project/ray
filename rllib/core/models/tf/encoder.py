@@ -168,6 +168,7 @@ class TfGRUEncoder(TfModel, Encoder):
     - One or more LSTM layers.
     - One linear output layer.
     """
+
     def __init__(self, config: RecurrentEncoderConfig) -> None:
         TfModel.__init__(self, config)
 
@@ -274,6 +275,7 @@ class TfLSTMEncoder(TfModel, Encoder):
     - One or more LSTM layers.
     - One linear output layer.
     """
+
     def __init__(self, config: RecurrentEncoderConfig) -> None:
         TfModel.__init__(self, config)
 

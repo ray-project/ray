@@ -618,18 +618,20 @@ def get_fold_unfold_batch_and_time(b_dim: int, t_dim: int):
             them to have a first dimension of `b_dim` and a second dimension
             of `t_dim`.
     """
+
     def fold_mapping(item):
         if item is None:
             # Torch has no representation for `None`, so we return None
             return item
-
+        item = torch.as_tensor(item)
         size = list(item.size())
         current_b_dim, current_t_dim = list(size[:2])
 
         assert (b_dim, t_dim) == (current_b_dim, current_t_dim), (
             "All tensors in the struct must have the same batch and time "
-            "dimensions. Got {} and {}.".format((b_dim, t_dim), (current_b_dim,
-                                                                 current_t_dim))
+            "dimensions. Got {} and {}.".format(
+                (b_dim, t_dim), (current_b_dim, current_t_dim)
+            )
         )
 
         other_dims = size[2:]
@@ -638,17 +640,19 @@ def get_fold_unfold_batch_and_time(b_dim: int, t_dim: int):
     def unfold_mapping(item):
         if item is None:
             return item
+        item = torch.as_tensor(item)
         other_dims = list(item.size()[1:])
         assert other_dims[0] % (b_dim * t_dim) == 0, (
             "The first dimension of the tensor must be a multiple of the "
             "batch and time dimensions. Got {} and {}.".format(
-                other_dims[0], (b_dim, t_dim))
+                other_dims[0], (b_dim, t_dim)
+            )
         )
         return item.reshape([b_dim, t_dim] + other_dims)
 
-
     return functools.partial(tree.map_structure, fold_mapping), functools.partial(
-        tree.map_structure, unfold_mapping)
+        tree.map_structure, unfold_mapping
+    )
 
 
 @PublicAPI

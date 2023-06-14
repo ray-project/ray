@@ -160,6 +160,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
     - One or more GRU layers.
     - One linear output layer.
     """
+
     def __init__(self, config: RecurrentEncoderConfig) -> None:
         TorchModel.__init__(self, config)
 
@@ -261,6 +262,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
     - One or more LSTM layers.
     - One linear output layer.
     """
+
     def __init__(self, config: RecurrentEncoderConfig) -> None:
         TorchModel.__init__(self, config)
 

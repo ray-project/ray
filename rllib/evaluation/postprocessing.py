@@ -2,7 +2,6 @@ import numpy as np
 import scipy.signal
 from typing import Dict, Optional
 
-from ray.rllib.core.models.base import STATE_IN
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -11,6 +10,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import AgentID
+from ray.rllib.utils.typing import TensorType
 
 
 @DeveloperAPI
@@ -93,6 +93,8 @@ def compute_advantages(
     lambda_: float = 1.0,
     use_gae: bool = True,
     use_critic: bool = True,
+    rewards: TensorType = None,
+    vf_preds: TensorType = None,
 ):
     """Given a rollout, compute its value targets and the advantages.
 
@@ -104,38 +106,40 @@ def compute_advantages(
         use_gae: Using Generalized Advantage Estimation.
         use_critic: Whether to use critic (value estimates). Setting
             this to False will use 0 as baseline.
+        rewards: Override the reward values in rollout.
+        vf_preds: Override the value function predictions in rollout.
 
     Returns:
         SampleBatch with experience from rollout and processed rewards.
     """
-
     assert (
         SampleBatch.VF_PREDS in rollout or not use_critic
     ), "use_critic=True but values not found"
     assert use_critic or not use_gae, "Can't use gae without using a value function"
     last_r = convert_to_numpy(last_r)
 
+    if rewards is None:
+        rewards = rollout[SampleBatch.REWARDS]
+    if vf_preds is None:
+        vf_preds = rollout[SampleBatch.VF_PREDS]
+
     if use_gae:
-        vpred_t = np.concatenate([rollout[SampleBatch.VF_PREDS], np.array([last_r])])
-        delta_t = rollout[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1]
+        vpred_t = np.concatenate([vf_preds, np.array([last_r])])
+        delta_t = rewards + gamma * vpred_t[1:] - vpred_t[:-1]
         # This formula for the advantage comes from:
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
         rollout[Postprocessing.ADVANTAGES] = discount_cumsum(delta_t, gamma * lambda_)
         rollout[Postprocessing.VALUE_TARGETS] = (
-            rollout[Postprocessing.ADVANTAGES] + rollout[SampleBatch.VF_PREDS]
+            rollout[Postprocessing.ADVANTAGES] + vf_preds
         ).astype(np.float32)
     else:
-        rewards_plus_v = np.concatenate(
-            [rollout[SampleBatch.REWARDS], np.array([last_r])]
-        )
+        rewards_plus_v = np.concatenate([rewards, np.array([last_r])])
         discounted_returns = discount_cumsum(rewards_plus_v, gamma)[:-1].astype(
             np.float32
         )
 
         if use_critic:
-            rollout[Postprocessing.ADVANTAGES] = (
-                discounted_returns - rollout[SampleBatch.VF_PREDS]
-            )
+            rollout[Postprocessing.ADVANTAGES] = discounted_returns - vf_preds
             rollout[Postprocessing.VALUE_TARGETS] = discounted_returns
         else:
             rollout[Postprocessing.ADVANTAGES] = discounted_returns
@@ -189,11 +193,14 @@ def compute_gae_for_sample_batch(
         # requirements. It's a single-timestep (last one in trajectory)
         # input_dict.
         # Create an input dict according to the Model's requirements.
-        input_dict = sample_batch.get_single_step_input_dict(
-            policy.model.view_requirements, index="last"
-        )
-
         if policy.config.get("_enable_rl_module_api"):
+            input_dict = sample_batch.get_single_step_input_dict(
+                policy.model.get_view_requirements(), index="last"
+            )
+            # Note: RLModules don't need seq_lens but get_single_step_input_dict adds
+            # them.
+            # TODO(Artur): Clean up.
+            del input_dict[SampleBatch.SEQ_LENS]
             # Note: During sampling you are using the parameters at the beginning of
             # the sampling process. If I'll be using this advantages during training
             # should it not be the latest parameters during training for this to be
@@ -209,24 +216,60 @@ def compute_gae_for_sample_batch(
             #  will not be needed but takes time to compute.
             if policy.framework == "torch":
                 input_dict = convert_to_torch_tensor(input_dict, device=policy.device)
-            # TODO (sven): Fix this once we support RNNs on the new stack.
-            input_dict[STATE_IN] = input_dict[SampleBatch.SEQ_LENS] = None
             input_dict = NestedDict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)
-            last_r = fwd_out[SampleBatch.VF_PREDS][-1]
+
+            vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
+            rewards = np.array(sample_batch[SampleBatch.REWARDS])
+
+            # We need to squeeze out the time dimension if there is one
+            # Sanity check that both have the same shape
+            assert vf_preds.shape == rewards.shape
+            if len(vf_preds.shape) == 2:
+                vf_preds = np.squeeze(vf_preds, axis=1)
+                rewards = np.squeeze(rewards, axis=1)
+                squeezed = True
+                last_r = fwd_out[SampleBatch.VF_PREDS][-1][0]
+            else:
+                squeezed = False
+                last_r = fwd_out[SampleBatch.VF_PREDS][-1]
+
+            # Adds the policy logits, VF preds, and advantages to the batch,
+            # using GAE ("generalized advantage estimation") or not.
+            batch = compute_advantages(
+                sample_batch,
+                last_r,
+                policy.config["gamma"],
+                policy.config["lambda"],
+                use_gae=policy.config["use_gae"],
+                use_critic=policy.config.get("use_critic", True),
+                rewards=rewards,
+                vf_preds=vf_preds,
+            )
+
+            if squeezed:
+                # If we needed to squeeze rewards and vf_preds, we need to unsqueeze
+                # advantages again for it to have the same shape
+                batch[Postprocessing.ADVANTAGES] = np.expand_dims(
+                    batch[Postprocessing.ADVANTAGES], axis=1
+                )
+
         else:
+            input_dict = sample_batch.get_single_step_input_dict(
+                policy.model.view_requirements, index="last"
+            )
             last_r = policy._value(**input_dict)
 
-    # Adds the policy logits, VF preds, and advantages to the batch,
-    # using GAE ("generalized advantage estimation") or not.
-    batch = compute_advantages(
-        sample_batch,
-        last_r,
-        policy.config["gamma"],
-        policy.config["lambda"],
-        use_gae=policy.config["use_gae"],
-        use_critic=policy.config.get("use_critic", True),
-    )
+            # Adds the policy logits, VF preds, and advantages to the batch,
+            # using GAE ("generalized advantage estimation") or not.
+            batch = compute_advantages(
+                sample_batch,
+                last_r,
+                policy.config["gamma"],
+                policy.config["lambda"],
+                use_gae=policy.config["use_gae"],
+                use_critic=policy.config.get("use_critic", True),
+            )
 
     return batch
 

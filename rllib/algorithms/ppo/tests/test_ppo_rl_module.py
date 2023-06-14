@@ -172,9 +172,7 @@ class TestPPO(unittest.TestCase):
                 state_in = module.get_initial_state()
                 if fw == "torch":
                     state_in = convert_to_torch_tensor(state_in)
-                state_in = tree.map_structure(
-                    lambda x: x[None], state_in
-                )
+                state_in = tree.map_structure(lambda x: x[None], state_in)
                 batch[STATE_IN] = state_in
 
             if fwd_fn == "forward_exploration":

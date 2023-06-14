@@ -19,7 +19,6 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.rnn_sequencing import add_states_and_seq_lens_if_missing
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
@@ -176,7 +175,7 @@ class TorchPolicyV2(Policy):
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(tree.flatten(self._state_inputs)) > 0
         if self.config.get("_enable_rl_module_api", False):
-            self.view_requirements = self.model.view_requirements
+            self.view_requirements = self.model.get_view_requirements()
         else:
             # Auto-update model's inference view requirements, if recurrent.
             self._update_model_view_requirements_from_init_state()
@@ -515,21 +514,13 @@ class TorchPolicyV2(Policy):
             input_dict = self._lazy_tensor_dict(input_dict)
             input_dict.set_training(True)
             if self.config.get("_enable_rl_module_api", False):
-                # TODO (Kourosh): Similar to past, if state_batches are not empty,
-                # infer seq_lens from the batch size. I still am not sure if I need
-                # this here.
-                state_batches = input_dict.get("state_in", None)
-
-                if state_batches is not None:
-                    if SampleBatch.SEQ_LENS in input_dict:
-                        seq_lens = input_dict[SampleBatch.SEQ_LENS]
-                    else:
-                        seq_lens = torch.tensor(
-                            [1] * input_dict.count,
-                            dtype=torch.long,
-                            device=input_dict[SampleBatch.OBS].device,
-                        )
-                        input_dict[SampleBatch.SEQ_LENS] = seq_lens
+                return self._compute_action_helper(
+                    input_dict,
+                    state_batches=None,
+                    seq_lens=None,
+                    explore=explore,
+                    timestep=timestep,
+                )
             else:
                 # Pack internal state inputs into (separate) list.
                 state_batches = [
@@ -543,9 +534,9 @@ class TorchPolicyV2(Policy):
                         device=state_batches[0].device,
                     )
 
-            return self._compute_action_helper(
-                input_dict, state_batches, seq_lens, explore, timestep
-            )
+                return self._compute_action_helper(
+                    input_dict, state_batches, seq_lens, explore, timestep
+                )
 
     @override(Policy)
     @DeveloperAPI
@@ -1159,9 +1150,6 @@ class TorchPolicyV2(Policy):
 
         extra_fetches = None
         if isinstance(self.model, RLModule):
-            # TODO(Artur): Require upstream calls to this to provide seq_lens and states
-            add_states_and_seq_lens_if_missing(self.model, input_dict)
-
             if explore:
                 action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)

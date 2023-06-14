@@ -20,6 +20,7 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
 from ray.rllib.policy.view_requirement import ViewRequirement
 
@@ -390,8 +391,7 @@ class RLModule(abc.ABC):
         """
         return {}
 
-    @property
-    def view_requirements(self) -> Mapping[str, ViewRequirement]:
+    def get_view_requirements(self) -> Mapping[str, ViewRequirement]:
         """Returns the view requirements of the module."""
         vr = self.__get_default_view_requirements()
 
@@ -401,10 +401,10 @@ class RLModule(abc.ABC):
         if init_state:
             init_state = tree.map_structure(lambda x: x[None], init_state)
             space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
-            max_seq_len = self.config.max_seq_len
+            max_seq_len = self.config.model_config_dict["max_seq_len"]
             assert max_seq_len is not None
-            vr["state_in"] = ViewRequirement(
-                data_col="state_out",
+            vr[STATE_IN] = ViewRequirement(
+                data_col=STATE_OUT,
                 shift=-1,
                 used_for_compute_actions=True,
                 used_for_training=True,
@@ -412,7 +412,27 @@ class RLModule(abc.ABC):
                 space=space,
             )
 
-            vr["state_out"] = ViewRequirement(
+            if self.config.model_config_dict["lstm_use_prev_action"]:
+                vr["prev_action"] = ViewRequirement(
+                    data_col=SampleBatch.ACTIONS,
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    used_for_training=True,
+                    batch_repeat_value=max_seq_len,
+                    space=space,
+                )
+
+            if self.config.model_config_dict["lstm_use_prev_reward"]:
+                vr["prev_reward"] = ViewRequirement(
+                    data_col=SampleBatch.REWARDS,
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    used_for_training=True,
+                    batch_repeat_value=max_seq_len,
+                    space=space,
+                )
+
+            vr[STATE_OUT] = ViewRequirement(
                 used_for_compute_actions=True,
                 used_for_training=True,
                 space=space,
