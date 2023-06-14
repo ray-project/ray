@@ -36,6 +36,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
+    RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
@@ -178,6 +179,15 @@ class ServeController:
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
+
+        if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
+            controller_callback = import_attr(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
+            if not callable(controller_callback):
+                raise ValueError(
+                    f"Controller callback {RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH} "
+                    "is not callable."
+                )
+            controller_callback()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""

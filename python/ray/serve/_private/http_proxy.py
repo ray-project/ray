@@ -35,8 +35,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_MULTIPLEXED_MODEL_ID,
-    SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
+    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
@@ -628,21 +627,21 @@ class HTTPProxyActor:
 
         self.wrapped_app = self.app
 
-        if SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
-            proxy_callback = import_attr(SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH)
+        if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
+            proxy_callback = import_attr(RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH)
             if not callable(proxy_callback):
                 raise ValueError(
-                    f"HTTP proxy callback {SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
+                    f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
                     "is not callable."
                 )
             logger.info(
                 "Calling HTTP proxy callback func "
-                f"{SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}"
+                f"{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}"
             )
             middlewares = proxy_callback()
             if not isinstance(middlewares, list):
                 raise ValueError(
-                    f"HTTP proxy callback {SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
+                    f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
                     "must return a list of Starlette middlewares."
                 )
             http_middlewares.extend(middlewares)
