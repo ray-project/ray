@@ -1621,7 +1621,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             The prepared input dict.
         """
-        if self.config.get("model", {}).get("use_lstm", False):
+        if self.model.is_recurrent():
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}

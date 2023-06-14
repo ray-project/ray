@@ -159,10 +159,11 @@ class EagerTFPolicyV2(Policy):
     @ExperimentalAPI
     @override(Policy)
     def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
-        assert self.config.get("_enable_learner_api",
-                               False), "This is a helper method for the new learner API."
+        assert self.config.get(
+            "_enable_learner_api", False
+        ), "This is a helper method for the new learner API."
 
-        if self.config.get("model", {}).get("use_lstm", False):
+        if self.model.is_recurrent():
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}

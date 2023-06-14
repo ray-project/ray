@@ -20,6 +20,7 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
 from ray.rllib.policy.view_requirement import ViewRequirement
@@ -333,6 +334,7 @@ class RLModule(abc.ABC):
             self.output_specs_inference()
         )
 
+    @OverrideToImplementCustomLogic
     def setup(self):
         """Sets up the components of the module.
 
@@ -342,6 +344,7 @@ class RLModule(abc.ABC):
         """
         pass
 
+    @OverrideToImplementCustomLogic
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for training.
 
@@ -356,6 +359,7 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for exploration.
 
@@ -370,6 +374,7 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for inference.
 
@@ -384,12 +389,27 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_initial_state(self) -> NestedDict:
         """Returns the initial state of the module.
 
         This is used for recurrent models.
         """
         return {}
+
+    @OverrideToImplementCustomLogic
+    def is_recurrent(self) -> bool:
+        """Returns True if the initial state is empty.
+
+        By default, RLlib assumes that the module is not recurrent if the initial
+        state is an empty dict and recurrent otherwise.
+        This behavior can be overridden by implementing this method.
+        """
+        initial_state = self.get_initial_state()
+        if initial_state == {}:
+            return False
+        else:
+            return True
 
     def get_view_requirements(self) -> Mapping[str, ViewRequirement]:
         """Returns the view requirements of the module."""
