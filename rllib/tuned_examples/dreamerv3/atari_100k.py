@@ -22,7 +22,7 @@ config = (
     # Switch on eager_tracing by default.
     .framework("tf2", eager_tracing=True)
     .resources(
-        num_learner_workers=num_gpus,
+        num_learner_workers=0 if num_gpus == 1 else num_gpus,
         num_gpus_per_learner_worker=1 if num_gpus else 0,
         num_cpus_for_local_worker=1,
     )
@@ -30,9 +30,7 @@ config = (
     #  accordingly, you might also want to increase the number of envs per worker
     .rollouts(
         num_envs_per_worker=num_gpus,
-        # Since we are using gymnasium.vector.Env, we can parallelize the individual
-        # envs w/o performance hit.
-        remote_worker_envs=True,
+        remote_worker_envs=False,
     )
     .environment(
         # [2]: "We follow the evaluation protocol of Machado et al. (2018) with 200M
@@ -52,9 +50,9 @@ config = (
         }
     )
     .reporting(
-        summarize_images_and_videos=True,
-        summarize_dream_data=True,
-        summarize_individual_batch_item_stats=True,
+        report_images_and_videos=False,
+        report_dream_data=False,
+        report_individual_batch_item_stats=False,
     )
     # See Appendix A.
     .training(
