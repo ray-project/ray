@@ -1202,8 +1202,13 @@ def import_attr(full_path: str):
         attr_name = full_path[last_period_idx + 1 :]
 
     # create __init__.py files if not exist and add to sys.path
-    create_init_files(module_name)
+    # create_init_files(module_name)
+    old_paths = sys.path
+    for path in old_paths:
+        if path.endswith("ray/dashboard"):
+            sys.path.remove(path)
     module = importlib.import_module(module_name)
+    sys.path = old_paths
     return getattr(module, attr_name)
 
 
