@@ -4,11 +4,7 @@
 Random Data Access (Experimental)
 ---------------------------------
 
-Any Arrow-format dataset can be enabled for random access by calling
-``ds.to_random_access_dataset(key="col_name")``. This partitions the data across the
-cluster by the given sort key, providing efficient random access to records via binary
-search. A number of worker actors are created, each of which has zero-copy access to the
-underlying sorted data blocks of the Dataset.
+Any Arrow-format dataset can be enabled for random access by calling ``ds.to_random_access_dataset(key="col_name")``. This partitions the data across the cluster by the given sort key, providing efficient random access to records via binary search. A number of worker actors are created, each of which has zero-copy access to the underlying sorted data blocks of the Dataset.
 
 .. testcode::
 
