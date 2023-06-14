@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 
 #include <fstream>
+#include <future>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -59,11 +60,10 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1",
-                  cluster_id_promise_.get_future(),
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
-                           rpc_server_.GetClusterTokenFuture(),
+                           ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
@@ -92,6 +92,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     RAY_CHECK(status.ok()) << "Failed to put internal config";
     this->main_service_.stop();
   };
+
   ray::rpc::StoredConfig stored_config;
   stored_config.set_config(config_.raylet_config_list);
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(
@@ -155,19 +156,19 @@ void GcsServer::CacheAndSetClusterId() {
           ClusterID cluster_id = ClusterID::FromRandom();
           RAY_LOG(INFO) << "No existing server token found. Generating new token: "
                         << cluster_id.Hex();
-          kv_manager_->GetInstance().Put(
-              kTokenNamespace,
-              kClusterIdKey,
-              cluster_id.Binary(),
-              false,
-              [this, cluster_id](bool added_entry) mutable {
-                RAY_CHECK(added_entry) << "Failed to persist new token!";
-                cluster_id_promise_.set_value(std::move(cluster_id));
-              });
+          kv_manager_->GetInstance().Put(kTokenNamespace,
+                                         kClusterIdKey,
+                                         cluster_id.Binary(),
+                                         false,
+                                         [this, &cluster_id](bool added_entry) mutable {
+                                           RAY_CHECK(added_entry)
+                                               << "Failed to persist new token!";
+                                           rpc_server_.SetClusterId(cluster_id);
+                                         });
         } else {
           ClusterID cluster_id = ClusterID::FromBinary(token.value());
           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
-          cluster_id_promise_.set_value(std::move(cluster_id));
+          rpc_server_.SetClusterId(cluster_id);
         }
       });
 }
@@ -292,7 +293,7 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  auto &cluster_id = rpc_server_.GetClusterTokenFuture().get();
+  auto cluster_id = rpc_server_.GetClusterId();
   gcs_node_manager_ = std::make_shared<GcsNodeManager>(
       gcs_publisher_, gcs_table_storage_, raylet_client_pool_, cluster_id);
   // Initialize by gcs tables data.
@@ -555,7 +556,7 @@ void GcsServer::InitUsageStatsClient() {
   usage_stats_client_ =
       std::make_unique<UsageStatsClient>("127.0.0.1:" + std::to_string(GetPort()),
                                          main_service_,
-                                         rpc_server_.GetClusterTokenFuture().get());
+                                         rpc_server_.GetClusterId());
 }
 
 void GcsServer::InitKVManager() {

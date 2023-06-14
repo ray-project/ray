@@ -82,7 +82,6 @@ class GrpcServer {
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
-             T &&cluster_id_future = T(),
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
       : name_(std::move(name)),
