@@ -129,7 +129,7 @@ def from_items(
         parallelism: The amount of parallelism to use for the dataset.
             Parallelism might be limited by the number of items.
         output_arrow_format: If ``True``, return data in Arrow format, raising an
-            error if this is not possible. Defaults to False. This option is rarely
+            error if this is not possible. Defaults to ``False``. This option is rarely
             used.
 
     Returns:
