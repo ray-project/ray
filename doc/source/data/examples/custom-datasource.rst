@@ -16,7 +16,8 @@ a custom one for your use case. This guide walks through building
 a custom datasource, using `MongoDB <https://www.mongodb.com/docs/manual/introduction/>`__ as an example.
 By the end of the guide, you will have a ``MongoDatasource`` that you can use to create dataset as follows:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     # Read from custom MongoDB datasource to create a dataset.
     ds = ray.data.read_datasource(
@@ -56,7 +57,7 @@ Here are the key design choices we will make in this guide:
 For example, suppose you have a MongoDB collection with 4 documents, which have a ``partition_field`` with values 0, 1, 2, 3.
 You can compose two MongoDB pipelines (each handled by a :class:`~ray.data.ReadTask`) as follows to read the collection in parallel:
 
-.. code-block:: python
+.. testcode::
 
     # A list of pipelines. Each pipeline is a series of stages, typed as List[Dict].
     my_pipelines = [
@@ -65,7 +66,7 @@ You can compose two MongoDB pipelines (each handled by a :class:`~ray.data.ReadT
           {
             "$match": {
                 "partition_field": {
-                    "$gte": 0
+                    "$gte": 0,
                     "$lt": 2
                 }
             }
@@ -76,7 +77,7 @@ You can compose two MongoDB pipelines (each handled by a :class:`~ray.data.ReadT
           {
             "$match": {
                 "partition_field": {
-                    "$gte": 2
+                    "$gte": 2,
                     "$lt": 4
                 }
 
@@ -172,7 +173,8 @@ a ``MongoDatasource``.
 Now you can create a Dataset from and write back to MongoDB, just like
 any other datasource.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     # Read from MongoDB datasource and create a dataset.
     # The args are passed to MongoDatasource.create_reader().
