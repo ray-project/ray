@@ -331,14 +331,6 @@ check_sphinx_links() {
   )
 }
 
-install_cython_examples() {
-  (
-    cd "${WORKSPACE_DIR}"/doc/examples/cython
-    pip install scipy
-    python setup.py install --user
-  )
-}
-
 install_go() {
   local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
   suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.18.3 bash)"
@@ -758,10 +750,6 @@ build() {
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
       build_sphinx_docs
     fi
-  fi
-
-  if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
-    install_cython_examples
   fi
 
   if [ "${LINT-}" = 1 ]; then
