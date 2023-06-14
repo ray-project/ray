@@ -200,9 +200,14 @@ class MapOperator(OneToOneOperator, ABC):
                 ray_remote_args[
                     "scheduling_strategy"
                 ] = ctx.scheduling_strategy_large_args
+                # Takes precedence over small args case. This is to let users know
+                # when the large args case is being triggered.
                 self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
             else:
                 ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+                # Only save to metrics if we haven't already done so.
+                if "scheduling_strategy" not in self._remote_args_for_metrics:
+                    self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
         if self._ray_remote_args_factory:
             return self._ray_remote_args_factory(ray_remote_args)
         return ray_remote_args

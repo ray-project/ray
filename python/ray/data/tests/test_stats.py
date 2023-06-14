@@ -19,6 +19,11 @@ STANDARD_EXTRA_METRICS = (
     "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}}"
 )
 
+LARGE_ARGS_EXTRA_METRICS = (
+    "{'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, 'obj_store_mem_peak': N, "
+    "'ray_remote_args': {'num_cpus': Z.N, 'scheduling_strategy': 'DEFAULT'}}"
+)
+
 
 def canonicalize(stats: str) -> str:
     # Dataset UUID expression.
@@ -59,6 +64,33 @@ Stage N split(N, equal=False): \n"""
         # Workaround to preserve trailing whitespace in the above line without
         # causing linter failures.
         "* Extra metrics: {'num_output_N': N}\n"
+    )
+
+
+def test_large_args_scheduling_strategy(ray_start_regular_shared):
+    ds = ray.data.range_tensor(100, shape=(100000,), parallelism=1)
+    ds = ds.map_batches(dummy_map_batches, num_cpus=0.9).materialize()
+    stats = ds.stats()
+    assert (
+        canonicalize(stats)
+        == f"""Stage N ReadRange: N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {STANDARD_EXTRA_METRICS}
+
+Stage N MapBatches(dummy_map_batches): N/N blocks executed in T
+* Remote wall time: T min, T max, T mean, T total
+* Remote cpu time: T min, T max, T mean, T total
+* Peak heap memory usage (MiB): N min, N max, N mean
+* Output num rows: N min, N max, N mean, N total
+* Output size bytes: N min, N max, N mean, N total
+* Tasks per node: N min, N max, N mean; N nodes used
+* Extra metrics: {LARGE_ARGS_EXTRA_METRICS}
+"""
     )
 
 

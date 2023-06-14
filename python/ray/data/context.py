@@ -161,6 +161,8 @@ class DataContext:
         use_push_based_shuffle: bool,
         pipeline_push_based_shuffle_reduce_tasks: bool,
         scheduling_strategy: SchedulingStrategyT,
+        scheduling_strategy_large_args: SchedulingStrategyT,
+        large_args_threshold: int,
         use_polars: bool,
         new_execution_backend: bool,
         use_streaming_executor: bool,
@@ -193,6 +195,8 @@ class DataContext:
             pipeline_push_based_shuffle_reduce_tasks
         )
         self.scheduling_strategy = scheduling_strategy
+        self.scheduling_strategy_large_args = scheduling_strategy_large_args
+        self.large_args_threshold = large_args_threshold
         self.use_polars = use_polars
         self.new_execution_backend = new_execution_backend
         self.use_streaming_executor = use_streaming_executor
