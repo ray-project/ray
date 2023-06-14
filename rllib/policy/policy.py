@@ -1612,7 +1612,7 @@ class Policy(metaclass=ABCMeta):
     def maybe_add_time_dimension(
         self, input_dict: Dict[str, TensorType], seq_lens: TensorType
     ):
-        """Prepares inputs according to the view requirements of the RLModule.
+        """Adds a time dimension if use_lstm is True in the model config.
 
         Args:
             input_dict: The input dict.
@@ -1642,9 +1642,21 @@ class Policy(metaclass=ABCMeta):
                     # state in already has time dimension.
                     ret[k] = v
 
-            return ret
+            return SampleBatch(ret)
         else:
             return input_dict
+
+    @ExperimentalAPI
+    def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
+        """Removes a time dimension if use_lstm is True in the model config.
+
+        Args:
+            input_dict: The input dict.
+
+        Returns:
+            The prepared input dict.
+        """
+        raise NotImplementedError
 
     def _get_dummy_batch_from_view_requirements(
         self, batch_size: int = 1

@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple, Type, Union
 import gymnasium as gym
 import tree  # pip install dm_tree
 
-from ray.rllib.core.models.base import STATE_IN
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -31,6 +31,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
+    ExperimentalAPI,
     override,
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
@@ -154,6 +155,35 @@ class EagerTFPolicyV2(Policy):
         # have been activated yet.
         if tf1 and not tf1.executing_eagerly():
             tf1.enable_eager_execution()
+
+    @ExperimentalAPI
+    @override(Policy)
+    def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
+        assert self.config.get("_enable_learner_api",
+                               False), "This is a helper method for the new learner API."
+
+        if self.config.get("model", {}).get("use_lstm", False):
+            # Note that this is a temporary workaround to fit the old sampling stack
+            # to RL Modules.
+            ret = {}
+
+            def fold_mapping(item):
+                item = tf.convert_to_tensor(item)
+                size = tf.size(item)
+                b_dim, t_dim = list(size[:2])
+                other_dims = size[2:]
+                return item.reshape([b_dim * t_dim] + other_dims)
+
+            for k, v in input_dict.items():
+                if k not in (STATE_IN, STATE_OUT):
+                    ret[k] = tree.map_structure(fold_mapping, v)
+                else:
+                    # state in already has time dimension.
+                    ret[k] = v
+
+            return ret
+        else:
+            return input_dict
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic

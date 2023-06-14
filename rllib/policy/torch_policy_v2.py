@@ -12,7 +12,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 import ray
-from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -30,6 +30,7 @@ from ray.rllib.utils.annotations import (
     is_overridden,
     override,
 )
+from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -324,6 +325,34 @@ class TorchPolicyV2(Policy):
             ModelV2 model.
         """
         return None
+
+    @ExperimentalAPI
+    @override(Policy)
+    def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
+        assert self.config.get("_enable_learner_api", False), "This is a helper method for the new learner API."
+
+        if self.config.get("model", {}).get("use_lstm", False):
+            # Note that this is a temporary workaround to fit the old sampling stack
+            # to RL Modules.
+            ret = {}
+
+            def fold_mapping(item):
+                item = torch.as_tensor(item)
+                size = item.size()
+                b_dim, t_dim = list(size[:2])
+                other_dims = size[2:]
+                return item.reshape([b_dim * t_dim] + other_dims)
+
+            for k, v in input_dict.items():
+                if k not in (STATE_IN, STATE_OUT):
+                    ret[k] = tree.map_structure(fold_mapping, v)
+                else:
+                    # state in already has time dimension.
+                    ret[k] = v
+
+            return ret
+        else:
+            return input_dict
 
     @DeveloperAPI
     @OverrideToImplementCustomLogic
