@@ -544,6 +544,9 @@ documentation, sorted alphabetically.
         such as reporting an individual trial’s metrics, saving/loading checkpoints,
         and retrieving the corresponding dataset shards for each Train worker.
 
+        In some cases the session also means a :term:`Ray Cluster`. For example
+        logs of a Ray cluster are stored under ``session_xxx/logs/``.
+
     Spillback
         A task caller schedules a task by first sending a resource request to the
         preferred raylet for that request. If the preferred raylet chooses not to grant
