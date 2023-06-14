@@ -9,7 +9,6 @@ import pandas as pd
 import gymnasium as gym
 import torch
 import seaborn as sns 
-import torch._dynamo as dynamo
 from pathlib import Path
 import json
 
@@ -46,8 +45,23 @@ def _parse_args():
 
 
 def plot_results(*, results: dict, output: str, config: dict):
-    pass
 
+    eager_throughputs = results["eager_throughputs"]
+    compiled_throughputs = results["compiled_throughputs"]
+    batch_size = config["batch_size"]
+    
+    upper_limit = max(np.concatenate([eager_throughputs, compiled_throughputs]))
+        
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 3))
+    axes[0].plot(eager_throughputs)
+    axes[0].set_title(f'Eager num_iters / sec, batch size {batch_size}')
+    axes[0].set_ylim(0, upper_limit)
+    axes[1].plot(compiled_throughputs)
+    axes[1].set_title(f'Compile num_iters / sec, batch size {batch_size}')
+    axes[1].set_ylim(0, upper_limit)
+    fig.tight_layout()
+    plt.savefig(output / f"throughputs.png")
+    plt.clf()
 
 def main(pargs):
     
