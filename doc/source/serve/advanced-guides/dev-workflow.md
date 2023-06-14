@@ -20,7 +20,7 @@ Drawbacks:
 
 Let's see a simple example.
 
-```{literalinclude} ../serve/doc_code/local_dev.py
+```{literalinclude} ../doc_code/local_dev.py
 :start-after: __local_dev_start__
 :end-before: __local_dev_end__
 :language: python
@@ -28,7 +28,7 @@ Let's see a simple example.
 
 We can add the code below to deploy and test Serve locally.
 
-```{literalinclude} ../serve/doc_code/local_dev.py
+```{literalinclude} ../doc_code/local_dev.py
 :start-after: __local_dev_handle_start__
 :end-before: __local_dev_handle_end__
 :language: python
@@ -40,7 +40,7 @@ You can use the `serve run` CLI command to run and test your application locally
 
 Recall our example above:
 
-```{literalinclude} ../serve/doc_code/local_dev.py
+```{literalinclude} ../doc_code/local_dev.py
 :start-after: __local_dev_start__
 :end-before: __local_dev_end__
 :language: python

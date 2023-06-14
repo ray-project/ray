@@ -1,3 +1,5 @@
+(serve-model-multiplexing)=
+
 # Model Multiplexing
 
 This section helps you understand how to write multiplexed deployment by using the `serve.multiplexed` and `serve.get_multiplexed_model_id` APIs.
@@ -23,7 +25,7 @@ s3://my_bucket/4/model.pt
 ```
 
 Define a multiplexed deployment:
-```{literalinclude} doc_code/multiplexed.py
+```{literalinclude} ../doc_code/multiplexed.py
 :language: python
 :start-after: __serve_deployment_example_begin__
 :end-before: __serve_deployment_example_end__
@@ -46,7 +48,7 @@ If all replicas holding the model are over-subscribed, ray serve sends the reque
 :::
 
 To send a request to a specific model, include the field `serve_multiplexed_model_id` in the request header, and set the value to the model ID to which you want to send the request.
-```{literalinclude} doc_code/multiplexed.py
+```{literalinclude} ../doc_code/multiplexed.py
 :language: python
 :start-after: __serve_request_send_example_begin__
 :end-before: __serve_request_send_example_end__

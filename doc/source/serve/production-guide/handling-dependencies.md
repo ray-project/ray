@@ -1,4 +1,5 @@
-# Handling Dependencies
+(serve-handling-dependencies)=
+# Handle Dependencies
 
 Ray Serve supports serving deployments with different (possibly conflicting)
 Python dependencies.  For example, you can simultaneously serve one deployment
@@ -11,7 +12,7 @@ Runtime Environments feature is installed.
 
 Example:
 
-```{literalinclude} ../../../python/ray/serve/examples/doc/conda_env.py
+```{literalinclude} ../../../../python/ray/serve/examples/doc/conda_env.py
 ```
 
 :::{tip}
@@ -28,5 +29,5 @@ using runtime environments.
 
 Example:
 
-```{literalinclude} ../../../python/ray/serve/examples/doc/delayed_import.py
+```{literalinclude} ../../../../python/ray/serve/examples/doc/delayed_import.py
 ```

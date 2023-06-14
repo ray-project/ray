@@ -1,5 +1,5 @@
 (serve-multi-application)=
-# Deploying Multiple Serve Applications
+# Deploy Multiple Applications
 
 In Ray 2.4+, deploying multiple independent Serve applications is supported. This user guide walks through how to generate a multi-application config file and deploy it using the Serve CLI, and monitor your applications using the CLI and the Ray Serve dashboard.
 
@@ -14,7 +14,7 @@ With that in mind, if you have many independent models each behind different end
 ## Get Started
 
 Define a Serve application:
-```{literalinclude} doc_code/basic_calculator.py
+```{literalinclude} ../doc_code/basic_calculator.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
@@ -23,7 +23,7 @@ Define a Serve application:
 Copy this to a file named `calculator.py`.
 
 Define a second Serve application:
-```{literalinclude} doc_code/basic_greet.py
+```{literalinclude} ../doc_code/basic_greet.py
 :language: python
 :start-after: __serve_example_begin__
 :end-before: __serve_example_end__
@@ -181,7 +181,7 @@ The config submitted to the cluster describes the target state for Ray Serve. Co
 * To update an application, modify the config options in the corresponding entry under the `applications` field.
 
 :::{note}
-The update behavior for each application when a config is resubmitted is the same as the old single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-in-production-updating).
+The update behavior for each application when a config is resubmitted is the same as the old single-application behavior. For how an application reacts to different config changes, see [Updating a Serve Application](serve-inplace-updates).
 :::
 
 ## New Multi-Application Config

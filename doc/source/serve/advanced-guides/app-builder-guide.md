@@ -1,4 +1,5 @@
-# Passing Arguments to Applications
+(serve-app-builder-guide)=
+# Pass Arguments to Applications
 
 This section describes how to pass arguments to your applications using an application builder function.
 
@@ -11,7 +12,7 @@ This pattern allows you to be configure deployments using ordinary Python code b
 
 To pass arguments without changing the code, define an "application builder" function that takes an arguments dictionary (or [Pydantic object](typed-app-builders)) and returns the built application to be run.
 
-```{literalinclude} ../serve/doc_code/app_builder.py
+```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_untyped_builder__
 :end-before: __end_untyped_builder__
 :language: python
@@ -79,7 +80,7 @@ Notice that the "Hello from config" message is printed from within the deploymen
 To avoid writing logic to parse and validate the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) as the single input parameter's type to your application builder function (the parameter must be type annotated).
 Arguments are passed the same way, but the resulting dictionary is used to construct the Pydantic model using `model.parse_obj(args_dict)`.
 
-```{literalinclude} ../serve/doc_code/app_builder.py
+```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_typed_builder__
 :end-before: __end_typed_builder__
 :language: python
@@ -125,7 +126,7 @@ applications:
 You can use the arguments passed to an application builder to configure multiple deployments in a single application.
 For example a model composition application might take weights to two different models as follows:
 
-```{literalinclude} ../serve/doc_code/app_builder.py
+```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_composed_builder__
 :end-before: __end_composed_builder__
 :language: python

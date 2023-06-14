@@ -45,6 +45,8 @@ document.addEventListener("DOMContentLoaded", function() {
             "Ray Train", "Ray Train API",
             "Ray Tune", "Ray Tune Examples", "Ray Tune API",
             "Ray Serve", "Ray Serve API",
+            "Production Guide", "Advanced Guides",
+            "Deploy Many Models",
             "Ray RLlib", "Ray RLlib API",
             "More Libraries", "Ray Workflows (Alpha)",
             "Monitoring and Debugging",

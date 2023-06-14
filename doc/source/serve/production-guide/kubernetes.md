@@ -1,6 +1,6 @@
 (serve-in-production-kubernetes)=
 
-# Deploying on Kubernetes
+# Deploy on Kubernetes
 
 This section should help you:
 
