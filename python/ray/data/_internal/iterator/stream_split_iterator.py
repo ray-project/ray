@@ -96,7 +96,7 @@ class StreamSplitDataIterator(DataIterator):
 
     def stats(self) -> str:
         """Implements DataIterator."""
-        return self._base_dataset.stats()
+        return ray.get(self._coord_actor.stats.remote())
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DataIterator."""
@@ -132,6 +132,7 @@ class SplitCoordinator:
         self._equal = equal
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
+        self._executor = None
 
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
@@ -143,6 +144,7 @@ class SplitCoordinator:
                 executor = StreamingExecutor(
                     copy.deepcopy(dataset.context.execution_options)
                 )
+                self._executor = executor
 
                 def add_split_op(dag):
                     return OutputSplitter(dag, n, equal, locality_hints)
@@ -158,6 +160,12 @@ class SplitCoordinator:
 
         self._next_epoch = gen_epochs()
         self._output_iterator = None
+
+    def stats(self) -> str:
+        """Returns stats from the base dataset."""
+        if self._executor:
+            return self._executor.get_stats().to_summary().to_string()
+        return self._base_dataset.stats()
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.

@@ -308,7 +308,7 @@ py_test_run_all_subdirectory(
 
 doctest(
     files = glob(
-        include=["source/**/*.rst"],
+        include=["source/**/*.rst", "source/**/*.md"],
         exclude=[
             "source/ray-contribute/getting-involved.rst",
             "source/ray-core/handling-dependencies.rst",
@@ -317,7 +317,11 @@ doctest(
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
-            "source/data/batch_inference.rst"
+            "source/serve/multi-app.md",
+            "source/serve/production-guide/deploy-vm.md",
+            "source/serve/production-guide/fault-tolerance.md",
+            "source/data/batch_inference.rst",
+            "source/data/transforming-data.rst"
         ]
     ),
     size = "large",
@@ -325,10 +329,12 @@ doctest(
 )
 
 
+
 doctest(
-    files = glob(
-        include=["source/data/batch_inference.rst"],
-    ),
+    files = [
+        "source/data/batch_inference.rst",
+        "source/data/transforming-data.rst"
+    ],
     tags = ["team:data"],
     gpu = True
 )

@@ -812,9 +812,9 @@ class Algorithm(Trainable):
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             # Sync filters on workers.
             self._sync_filters_if_needed(
-                from_worker=self.workers.local_worker(),
+                central_worker=self.workers.local_worker(),
                 workers=self.workers,
-                timeout_seconds=self.config.sync_filters_on_rollout_workers_timeout_s,
+                config=self.config,
             )
             # TODO (avnishn): Remove the execution plan API by q1 2023
             # Collect worker metrics and add combine them with `results`.
@@ -877,9 +877,9 @@ class Algorithm(Trainable):
                 from_worker_or_learner_group=self.workers.local_worker()
             )
             self._sync_filters_if_needed(
-                from_worker=self.workers.local_worker(),
+                central_worker=self.workers.local_worker(),
                 workers=self.evaluation_workers,
-                timeout_seconds=self.config.sync_filters_on_rollout_workers_timeout_s,
+                config=self.evaluation_config,
             )
 
         self.callbacks.on_evaluate_start(algorithm=self)
@@ -1149,9 +1149,9 @@ class Algorithm(Trainable):
 
         # TODO(Jun): Implement solution via connectors.
         self._sync_filters_if_needed(
-            from_worker=self.workers.local_worker(),
+            central_worker=self.workers.local_worker(),
             workers=self.evaluation_workers,
-            timeout_seconds=eval_cfg.sync_filters_on_rollout_workers_timeout_s,
+            config=eval_cfg,
         )
 
         if self.config.custom_evaluation_function:
@@ -2390,21 +2390,35 @@ class Algorithm(Trainable):
 
     def _sync_filters_if_needed(
         self,
-        from_worker: RolloutWorker,
+        *,
+        central_worker: RolloutWorker,
         workers: WorkerSet,
-        timeout_seconds: Optional[float] = None,
-    ):
-        if (
-            from_worker
-            and self.config.get("observation_filter", "NoFilter") != "NoFilter"
-        ):
+        config: AlgorithmConfig,
+    ) -> None:
+        """Synchronizes the filter stats from `workers` to `central_worker`.
+
+        .. and broadcasts the central_worker's filter stats back to all `workers`
+        (if configured).
+
+        Args:
+            central_worker: The worker to sync/aggregate all `workers`' filter stats to
+                and from which to (possibly) broadcast the updated filter stats back to
+                `workers`.
+            workers: The WorkerSet, whose workers' filter stats should be used for
+                aggregation on `central_worker` and which (possibly) get updated
+                from `central_worker` after the sync.
+            config: The algorithm config instance. This is used to determine, whether
+                syncing from `workers` should happen at all and whether broadcasting
+                back to `workers` (after possible syncing) should happen.
+        """
+        if central_worker and config.observation_filter != "NoFilter":
             FilterManager.synchronize(
-                from_worker.filters,
+                central_worker.filters,
                 workers,
-                update_remote=self.config.synchronize_filters,
-                timeout_seconds=timeout_seconds,
+                update_remote=config.update_worker_filter_stats,
+                timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
+                use_remote_data_for_update=config.use_worker_filter_stats,
             )
-            logger.debug("synchronized filters: {}".format(from_worker.filters))
 
     @DeveloperAPI
     def _sync_weights_to_workers(

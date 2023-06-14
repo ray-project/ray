@@ -40,6 +40,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -50,7 +51,6 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
@@ -58,6 +58,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -241,7 +242,7 @@ class Dataset:
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
         """
-        assert isinstance(plan, ExecutionPlan)
+        assert isinstance(plan, ExecutionPlan), type(plan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
 
         if ray.util.log_once("strict_mode_explanation"):
@@ -399,8 +400,7 @@ class Dataset:
         This applies the ``fn`` in parallel with map tasks, with each task handling
         a batch of data (typically Dict[str, np.ndarray] or pd.DataFrame).
 
-        To learn more about writing functions for :meth:`~Dataset.map_batches`, read
-        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+        To learn more, see the :ref:`Transforming batches user guide <transforming_batches>`.
 
         .. tip::
             If ``fn`` does not mutate its input, set ``zero_copy_batch=True`` to elide a
@@ -437,7 +437,7 @@ class Dataset:
 
             Here ``fn`` returns the same batch type as the input, but your ``fn`` can
             also return a different batch type (e.g., pd.DataFrame). Read more about
-            :ref:`Transforming Data <transforming_data>`.
+            :ref:`Transforming batches <transforming_batches>`.
 
             >>> from typing import Dict
             >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -1229,20 +1229,29 @@ class Dataset:
         if locality_hints is None:
             blocks = np.array_split(block_refs, n)
             meta = np.array_split(metadata, n)
-            return [
-                MaterializedDataset(
-                    ExecutionPlan(
-                        BlockList(
-                            b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
-                        ),
-                        stats,
-                        run_by_consumer=owned_by_consumer,
-                    ),
-                    self._epoch,
-                    self._lazy,
+
+            split_datasets = []
+            for b, m in zip(blocks, meta):
+                block_list = BlockList(
+                    b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
                 )
-                for b, m in zip(blocks, meta)
-            ]
+                logical_plan = self._plan._logical_plan
+                if logical_plan is not None:
+                    ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+                    logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+                split_datasets.append(
+                    MaterializedDataset(
+                        ExecutionPlan(
+                            block_list,
+                            stats,
+                            run_by_consumer=owned_by_consumer,
+                        ),
+                        self._epoch,
+                        self._lazy,
+                        logical_plan,
+                    )
+                )
+            return split_datasets
 
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
@@ -1351,18 +1360,25 @@ class Dataset:
             # equalize the splits
             per_split_block_lists = _equalize(per_split_block_lists, owned_by_consumer)
 
-        return [
-            MaterializedDataset(
-                ExecutionPlan(
-                    block_split,
-                    stats,
-                    run_by_consumer=owned_by_consumer,
-                ),
-                self._epoch,
-                self._lazy,
+        split_datasets = []
+        for block_split in per_split_block_lists:
+            logical_plan = self._plan._logical_plan
+            if logical_plan is not None:
+                ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
+                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            split_datasets.append(
+                MaterializedDataset(
+                    ExecutionPlan(
+                        block_split,
+                        stats,
+                        run_by_consumer=owned_by_consumer,
+                    ),
+                    self._epoch,
+                    self._lazy,
+                    logical_plan,
+                )
             )
-            for block_split in per_split_block_lists
-        ]
+        return split_datasets
 
     @ConsumptionAPI
     def split_at_indices(self, indices: List[int]) -> List["MaterializedDataset"]:
@@ -1409,20 +1425,31 @@ class Dataset:
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
         splits = []
+
         for bs, ms in zip(blocks, metadata):
             stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
+
+            split_block_list = BlockList(
+                bs, ms, owned_by_consumer=block_list._owned_by_consumer
+            )
+            logical_plan = self._plan._logical_plan
+            if logical_plan is not None:
+                ref_bundles = _block_list_to_bundles(
+                    split_block_list, block_list._owned_by_consumer
+                )
+                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+
             splits.append(
                 MaterializedDataset(
                     ExecutionPlan(
-                        BlockList(
-                            bs, ms, owned_by_consumer=block_list._owned_by_consumer
-                        ),
+                        split_block_list,
                         stats,
                         run_by_consumer=block_list._owned_by_consumer,
                     ),
                     self._epoch,
                     self._lazy,
+                    logical_plan,
                 )
             )
         return splits

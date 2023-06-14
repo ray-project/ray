@@ -316,6 +316,8 @@ class AlgorithmConfig(_Config):
         self.create_env_on_local_worker = False
         self.sample_async = False
         self.enable_connectors = True
+        self.update_worker_filter_stats = True
+        self.use_worker_filter_stats = True
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -323,7 +325,6 @@ class AlgorithmConfig(_Config):
         self.validate_workers_after_construction = True
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
-        self.synchronize_filters = True
         self.compress_observations = False
         self.enable_tf1_exec_eagerly = False
         self.sampler_perf_stats_ema_coef = None
@@ -462,6 +463,7 @@ class AlgorithmConfig(_Config):
         self.input_evaluation = DEPRECATED_VALUE
         self.policy_map_cache = DEPRECATED_VALUE
         self.worker_cls = DEPRECATED_VALUE
+        self.synchronize_filters = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -477,9 +479,6 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_reporting = DEPRECATED_VALUE
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
-        self.horizon = DEPRECATED_VALUE
-        self.soft_horizon = DEPRECATED_VALUE
-        self.no_done_at_end = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -1422,6 +1421,8 @@ class AlgorithmConfig(_Config):
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         sample_async: Optional[bool] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
+        use_worker_filter_stats: Optional[bool] = NotProvided,
+        update_worker_filter_stats: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         remote_worker_envs: Optional[bool] = NotProvided,
@@ -1429,19 +1430,16 @@ class AlgorithmConfig(_Config):
         validate_workers_after_construction: Optional[bool] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
-        synchronize_filter: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
-        horizon=DEPRECATED_VALUE,
-        soft_horizon=DEPRECATED_VALUE,
-        no_done_at_end=DEPRECATED_VALUE,
         ignore_worker_failures=DEPRECATED_VALUE,
         recreate_failed_workers=DEPRECATED_VALUE,
         restart_failed_sub_environments=DEPRECATED_VALUE,
         num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
+        synchronize_filter=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1470,6 +1468,14 @@ class AlgorithmConfig(_Config):
             enable_connectors: Use connector based environment runner, so that all
                 preprocessing of obs and postprocessing of actions are done in agent
                 and action connectors.
+            use_worker_filter_stats: Whether to use the workers in the WorkerSet to
+                update the central filters (held by the local worker). If False, stats
+                from the workers will not be used and discarded.
+            update_worker_filter_stats: Whether to push filter updates from the central
+                filters (held by the local worker) to the remote workers' filters.
+                Setting this to True might be useful within the evaluation config in
+                order to disable the usage of evaluation trajectories for synching
+                the central filter (used for training).
             rollout_fragment_length: Divide episodes into fragments of this many steps
                 each during rollouts. Trajectories of this size are collected from
                 rollout workers and combined into a larger batch of `train_batch_size`
@@ -1523,7 +1529,6 @@ class AlgorithmConfig(_Config):
                 environment.
             observation_filter: Element-wise observation filter, either "NoFilter"
                 or "MeanStdFilter".
-            synchronize_filter: Whether to synchronize the statistics of remote filters.
             compress_observations: Whether to LZ4 compress individual observations
                 in the SampleBatches collected during rollouts.
             enable_tf1_exec_eagerly: Explicitly tells the rollout worker to enable
@@ -1552,6 +1557,10 @@ class AlgorithmConfig(_Config):
             self.sample_async = sample_async
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
+        if use_worker_filter_stats is not NotProvided:
+            self.use_worker_filter_stats = use_worker_filter_stats
+        if update_worker_filter_stats is not NotProvided:
+            self.update_worker_filter_stats = update_worker_filter_stats
         if rollout_fragment_length is not NotProvided:
             self.rollout_fragment_length = rollout_fragment_length
         if batch_mode is not NotProvided:
@@ -1578,26 +1587,13 @@ class AlgorithmConfig(_Config):
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
-        if horizon != DEPRECATED_VALUE:
+        if synchronize_filter != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.rollouts(horizon=..)",
-                new="You should wrap your gymnasium.Env with a "
-                "gymnasium.wrappers.TimeLimit wrapper.",
-                error=True,
+                old="AlgorithmConfig.rollouts(synchronize_filter=..)",
+                new="AlgorithmConfig.rollouts(update_worker_filter_stats=..)",
+                error=False,
             )
-        if soft_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rollouts(soft_horizon=..)",
-                new="Your gymnasium.Env.step() should handle soft resets internally.",
-                error=True,
-            )
-        if no_done_at_end != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rollouts(no_done_at_end=..)",
-                new="Your gymnasium.Env.step() should return a truncated=True flag",
-                error=True,
-            )
-
+            self.update_worker_filter_stats = synchronize_filter
         if ignore_worker_failures != DEPRECATED_VALUE:
             deprecation_warning(
                 old="ignore_worker_failures is deprecated, and will soon be a no-op",
@@ -2151,7 +2147,7 @@ class AlgorithmConfig(_Config):
                 utility. For example, to override your learning rate and (PPO) lambda
                 setting just for a single RLModule with your MultiAgentRLModule, do:
                 config.multi_agent(algorithm_config_overrides_per_module={
-                    "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
+                "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
                 })
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
