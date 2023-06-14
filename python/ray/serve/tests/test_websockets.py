@@ -181,12 +181,19 @@ def test_gradio_queue(serve_instance):
 
     serve.run(GradioGenerator.bind())
 
+    print("Client connecting")
     client = Client("http://localhost:8000")
+    print("Client connected")
+
     job1 = client.submit(3, api_name="/predict")
+    print("Job2 submitted")
     job2 = client.submit(5, api_name="/predict")
+    print("Job2 submitted")
 
     while not (job1.done() and job2.done()):
         time.sleep(0.1)
+
+    print("Job done")
 
     assert job1.outputs() == [str(i) for i in range(3)]
     assert job2.outputs() == [str(i) for i in range(5)]
