@@ -187,6 +187,10 @@ class ServeController:
                     f"Controller callback {RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH} "
                     "is not callable."
                 )
+            logger.info(
+                "Calling controller callback func "
+                f"{RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH}"
+            )
             controller_callback()
 
     def check_alive(self) -> None:

@@ -648,3 +648,13 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
+
+py_test(
+    name = "test_callback",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+    env = {"RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": "ray.serve.tests.resources.callback.add_middleware",
+           "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH": "ray.serve.tests.resources.callback.add_logger",},
+)
