@@ -464,7 +464,8 @@ class DataParallelTrainer(BaseTrainer):
             """
 
             marker_file = Path(trial_info.logdir) / LAZY_CHECKPOINT_MARKER_FILE
-            if marker_file.exists():
+            # Delete the marker on each node's rank 0 worker to avoid race conditions.
+            if session.get_local_rank() == 0 and marker_file.exists():
                 logger.debug(
                     f"Deleting the stale lazy checkpoint marker file: {marker_file}."
                 )
