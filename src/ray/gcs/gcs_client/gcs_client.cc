@@ -83,30 +83,20 @@ GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
 
 Status GcsClient::Connect(instrumented_io_context &io_service,
                           const ClusterID &cluster_id) {
-  // There isn't a difference between doing this sync and async
-  // because current sync APIs just wrap async by blocking on future.
-  // For an RPC, it is better not to wait for the response if it can
-  // be helped.
-  cluster_id_promise_ = std::promise<ClusterID>();
   // Connect to gcs service.
-  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(
-      io_service, cluster_id_promise_.get_future());
+  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
-  // Note: We need to initialize this so we can use the RPC.
-  node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   if (cluster_id.IsNil()) {
-    gcs_rpc_client_->GetClusterId(
-        rpc::GetClusterIdRequest(),
-        [this](const Status &status, const rpc::GetClusterIdReply &reply) {
-          RAY_CHECK(status.ok()) << "Failed to get Cluster ID!";
-          auto cluster_id = ClusterID::FromBinary(reply.cluster_id());
-          RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
-          this->cluster_id_promise_.set_value(cluster_id);
-        });
+    rpc::GetClusterIdReply reply;
+    RAY_CHECK(gcs_rpc_client_->SyncGetClusterId(rpc::GetClusterIdRequest(), &reply).ok())
+        << "Failed to get Cluster ID!";
+    auto cluster_id = ClusterID::FromBinary(reply.cluster_id());
+    RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
+    client_call_manager_->SetClusterId(cluster_id);
   } else {
-    cluster_id_promise_.set_value(cluster_id);
+    client_call_manager_->SetClusterId(cluster_id);
   }
 
   resubscribe_func_ = [this]() {
@@ -141,6 +131,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
   gcs_subscriber_ = std::make_unique<GcsSubscriber>(gcs_address, std::move(subscriber));
   job_accessor_ = std::make_unique<JobInfoAccessor>(this);
   actor_accessor_ = std::make_unique<ActorInfoAccessor>(this);
+  node_accessor_ = std::make_unique<NodeInfoAccessor>(this);
   node_resource_accessor_ = std::make_unique<NodeResourceInfoAccessor>(this);
   error_accessor_ = std::make_unique<ErrorInfoAccessor>(this);
   worker_accessor_ = std::make_unique<WorkerInfoAccessor>(this);

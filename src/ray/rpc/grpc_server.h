@@ -79,20 +79,15 @@ class GrpcServer {
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
   ///
-  /// Note: Ideally with C++20 we could use constraints here, or auto&& in the contructor.
-  template <typename T = std::shared_future<ClusterID>,
-            typename = typename std::enable_if_t<
-                std::is_convertible<T, std::shared_future<ClusterID>>::value>>
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
-             T &&cluster_id_future = T(),
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000 /*2 hours, grpc default*/)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
-        cluster_id_(std::forward<T>(cluster_id_future)),
+        cluster_id_(ClusterID::Nil()),
         is_closed_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
@@ -116,14 +111,25 @@ class GrpcServer {
   /// `GrpcServer`, as it holds the underlying `grpc::Service`.
   ///
   /// \param[in] service A `GrpcService` to register to this server.
-  /// NOTE: if token_auth is not set to false, it will block on
-  /// cluster_id_future_ to pass the cluster ID
+  /// NOTE: if token_auth is not set to false, cluster_id_ must not be Nil.
   void RegisterService(GrpcService &service, bool token_auth = true);
   void RegisterService(grpc::Service &service);
 
   grpc::Server &GetServer() { return *server_; }
 
-  std::shared_future<ClusterID> const &GetClusterTokenFuture() { return cluster_id_; }
+  ClusterID const GetClusterId() {
+    RAY_CHECK(!cluster_id_.load().IsNil()) << "Cannot fetch cluster ID before it is set.";
+    return cluster_id_.load();
+  }
+
+  void SetClusterId(const ClusterID &cluster_id) {
+    RAY_CHECK(!cluster_id.IsNil()) << "Cannot set cluster ID back to Nil!";
+    auto old_id = cluster_id_.exchange(cluster_id);
+    if (!old_id.IsNil() && old_id != cluster_id) {
+      RAY_LOG(FATAL) << "Resetting non-nil cluster ID! Setting to " << cluster_id
+                     << ", but old value is " << old_id;
+    }
+  }
 
  protected:
   /// Initialize this server.
@@ -142,7 +148,7 @@ class GrpcServer {
   /// interfaces (0.0.0.0)
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
-  std::shared_future<ClusterID> cluster_id_;
+  std::atomic<ClusterID> cluster_id_;
   /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.

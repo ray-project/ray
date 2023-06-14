@@ -198,14 +198,6 @@ class GcsServer {
 
   void TryGlobalGC();
 
-  /// This is ridiculous, but the reason it has to live here
-  /// instead of in the promise-setting lambda
-  /// is because lambda => std::function conversion cannot
-  /// avoid copy-constructor, so move-capturing promise won't work.
-  /// Can be fixed by using auto as parameter type instead of
-  /// std::function in C++20.
-  std::promise<ClusterID> cluster_id_promise_;
-
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.

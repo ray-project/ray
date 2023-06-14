@@ -16,9 +16,9 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <atomic>
 #include <boost/asio.hpp>
 #include <chrono>
-#include <future>
 
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -193,16 +193,11 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  ///
-  /// Note: Ideally with C++20 we could use constraints here, or auto&& in the contructor.
-  template <typename T = std::shared_future<ClusterID>,
-            typename = typename std::enable_if_t<
-                std::is_convertible<T, std::shared_future<ClusterID>>::value>>
   explicit ClientCallManager(instrumented_io_context &main_service,
-                             T &&cluster_id_future = T(),
+                             const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
-      : cluster_id_(std::forward<T>(cluster_id_future)),
+      : cluster_id_(cluster_id),
         main_service_(main_service),
         num_threads_(num_threads),
         shutdown_(false),
@@ -256,10 +251,8 @@ class ClientCallManager {
       method_timeout_ms = call_timeout_ms_;
     }
 
-    const ClusterID maybe_cluster_id = ClusterID::Nil();
-
     auto call = std::make_shared<ClientCallImpl<Reply>>(
-        callback, maybe_cluster_id, std::move(stats_handle), method_timeout_ms);
+        callback, cluster_id_.load(), std::move(stats_handle), method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -275,6 +268,14 @@ class ClientCallManager {
     auto tag = new ClientCallTag(call);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
+  }
+
+  void SetClusterId(const ClusterID &cluster_id) {
+    auto old_id = cluster_id_.exchange(ClusterID::Nil());
+    if (!old_id.IsNil() && (old_id != cluster_id)) {
+      RAY_LOG(FATAL) << "Expected cluster ID to be Nil or " << cluster_id << ", but got"
+                     << old_id;
+    }
   }
 
   /// Get the main service of this rpc.
@@ -332,7 +333,7 @@ class ClientCallManager {
   }
 
   /// UUID of the cluster.
-  std::shared_future<ClusterID> cluster_id_;
+  std::atomic<ClusterID> cluster_id_;
 
   /// The main event loop, to which the callback functions will be posted.
   instrumented_io_context &main_service_;

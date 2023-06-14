@@ -75,7 +75,7 @@ using namespace rpc::autoscaler;
                       HANDLER,                            \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-// As this is internal to GCS, there is no need to do cluster auth here.
+// TODO(vitsai): Set auth for everything except GCS.
 #define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
   RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
