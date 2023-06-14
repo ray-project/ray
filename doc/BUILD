@@ -317,7 +317,8 @@ doctest(
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
-            "source/serve/multi-app.md",
+            "source/serve/advanced-guides/inplace-updates.md"
+            "source/serve/deploy-many-models/multi-app.md",
             "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
