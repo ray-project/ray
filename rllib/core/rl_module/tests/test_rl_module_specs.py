@@ -17,7 +17,6 @@ from ray.rllib.core.testing.tf.bc_module import (
     BCTfRLModuleWithSharedGlobalEncoder,
     BCTfMultiAgentModuleWithSharedEncoder,
 )
-from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModuleConfig
 
 MODULES = [DiscreteBCTorchModule, DiscreteBCTFModule]
 CUSTOM_MODULES = {

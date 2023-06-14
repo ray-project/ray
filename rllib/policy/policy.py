@@ -1609,16 +1609,17 @@ class Policy(metaclass=ABCMeta):
             )
 
     @ExperimentalAPI
-    def prepare_inputs_for_rl_module(
-        self, input_dict: Dict[str, TensorType], seq_lens: List[int]
+    def maybe_add_time_dimension(
+        self, input_dict: Dict[str, TensorType], seq_lens: TensorType
     ):
         """Prepares inputs according to the view requirements of the RLModule.
 
         Args:
-            input_dict (Dict[str, TensorType]): The input dict.
+            input_dict: The input dict.
+            seq_lens: The sequence lengths.
 
         Returns:
-            Dict[str, TensorType]: The prepared input dict.
+            The prepared input dict.
         """
         if self.config.get("model", {}).get("use_lstm", False):
             # Note that this is a temporary workaround to fit the old sampling stack
@@ -1691,7 +1692,7 @@ class Policy(metaclass=ABCMeta):
             # With RL Modules, we need to prepare the batch, which is done implicitly
             # by the old stack inside the model.
             seq_lens = np.ones(batch_size)
-            ret = self.prepare_inputs_for_rl_module(ret, seq_lens=seq_lens)
+            ret = self.maybe_add_time_dimension(ret, seq_lens=seq_lens)
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.
