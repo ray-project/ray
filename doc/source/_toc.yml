@@ -96,7 +96,7 @@ parts:
           - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
-          - file: data/data_examples
+          - file: data/examples
           - file: data/faq
           - file: data/api/api
 
