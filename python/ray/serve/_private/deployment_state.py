@@ -1692,7 +1692,8 @@ class DeploymentState:
                 self._replicas.add(ReplicaState.RUNNING, replica)
                 transitioned_to_running = True
                 logger.info(
-                    f"Replica {replica.replica_tag} started successfully.",
+                    f"Replica {replica.replica_tag} started successfully "
+                    f"on node {replica.actor_node_id}.",
                     extra={"log_to_stderr": False},
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
