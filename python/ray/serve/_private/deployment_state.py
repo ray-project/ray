@@ -1143,6 +1143,9 @@ class DeploymentState:
         # Whether the multiplexed model ids have been updated since the last
         # time we checked.
         self._multiplexed_model_ids_updated = False
+        self._byted_max_failed_threshold = int(
+            os.environ.get("BYTED_RAY_SERVE_FAILED_THRESHOLD", "3")
+        )
 
     def should_autoscale(self) -> bool:
         """
@@ -1641,7 +1644,8 @@ class DeploymentState:
 
         failed_to_start_count = self._replica_constructor_retry_counter
         failed_to_start_threshold = min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, target_replica_count * 3
+            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+            target_replica_count * self._byted_max_failed_threshold,
         )
 
         # Got to make a call to complete current deploy() goal after

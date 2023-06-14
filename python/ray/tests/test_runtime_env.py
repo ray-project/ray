@@ -408,6 +408,18 @@ class TestURICache:
         for i in range(1000):
             assert str(i) in cache
 
+    def test_delete_URIs(self):
+        uris_to_sizes = {"a": 3, "b": 3, "big": 300}
+
+        def delete_fn(uri, logger):
+            return uris_to_sizes[uri]
+
+        cache = URICache(delete_fn, debug_mode=True)
+        cache.add("a", 8)
+        assert "a" in cache
+        cache.delete("a")
+        assert "a" not in cache
+
     def test_delete_fn_called(self):
         num_delete_fn_calls = 0
         uris_to_sizes = {"a": 8, "b": 6, "c": 4, "d": 20}

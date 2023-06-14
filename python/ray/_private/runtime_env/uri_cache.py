@@ -71,6 +71,21 @@ class URICache:
         logger.info(f"Marked URI {uri} used.")
         self._check_valid()
 
+    def delete(self, uri: str, logger: logging.Logger = default_logger):
+        """Add a URI to the cache and mark it as in use."""
+        logger.warn(f"URI {uri} need to delete because it not exist on local disk")
+
+        if uri in self._unused_uris:
+            self._unused_uris.remove(uri)
+
+        if uri in self._used_uris:
+            self._used_uris.remove(uri)
+
+        num_bytes_deleted = self._delete_fn(uri, logger)
+        self._total_size_bytes -= num_bytes_deleted
+
+        logger.info(f"delete URI {uri} with")
+
     def add(self, uri: str, size_bytes: int, logger: logging.Logger = default_logger):
         """Add a URI to the cache and mark it as in use."""
         if uri in self._unused_uris:

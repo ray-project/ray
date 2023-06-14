@@ -166,6 +166,11 @@ class ServeControllerClient:
 
         Raises TimeoutError if this doesn't happen before timeout_s.
         """
+        if min_replica != -1:
+            logger.warn(
+                f"[bytedance] need to {min_replica} to make sure deploy is ready! [bytedance]"
+            )
+
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
 
@@ -184,9 +189,13 @@ class ServeControllerClient:
             if status.status == DeploymentStatus.HEALTHY:
                 break
             elif status.status == DeploymentStatus.UNHEALTHY:
-                raise RuntimeError(
-                    f"Deployment {name} is UNHEALTHY: " f"{status.message}"
-                )
+                # exclude health check failed error because it is too strict
+                # when a replica is not heathy, deployment manager would kill this replica
+                # add set deployment status to UNHEALTHY
+                if status.message.find("A replica's health check failed") == -1:
+                    raise RuntimeError(
+                        f"Deployment {name} is UNHEALTHY: " f"{status.message}"
+                    )
             else:
                 # Guard against new unhandled statuses being added.
                 assert status.status == DeploymentStatus.UPDATING
