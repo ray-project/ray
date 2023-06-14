@@ -509,6 +509,21 @@ py_test(
 )
 
 py_test(
+    name = "test_build_pipeline",
+    size = "small",
+    srcs = ["ray_release/tests/test_build_pipeline.py"],
+    exec_compatible_with = [":hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_cluster_manager",
     size = "small",
     srcs = ["ray_release/tests/test_cluster_manager.py"],

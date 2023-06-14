@@ -602,7 +602,7 @@ Stage N Split: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Stage N Map: N/N blocks executed in T
+Stage N Map(<lambda>): N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean

@@ -314,8 +314,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
-      FAST=True make develop
+      FAST=True make html
       pip install datasets==2.0.0
     fi
   )
@@ -329,14 +328,6 @@ check_sphinx_links() {
     else
       FAST=True make linkcheck
     fi
-  )
-}
-
-install_cython_examples() {
-  (
-    cd "${WORKSPACE_DIR}"/doc/examples/cython
-    pip install scipy
-    python setup.py install --user
   )
 }
 
@@ -759,10 +750,6 @@ build() {
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
       build_sphinx_docs
     fi
-  fi
-
-  if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
-    install_cython_examples
   fi
 
   if [ "${LINT-}" = 1 ]; then
