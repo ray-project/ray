@@ -1830,7 +1830,7 @@ def from_huggingface(
         # To lazily apply HuggingFace feature transformations to the dataset,
         # we apply `decode_example` to the dataset. This function only
         # gets called when the dataset gets accessed.
-        ray_ds = ray_ds.map(hf_ds_arrow.features.decode_example)
+        ray_ds = ray_ds.map_batches(hf_ds_arrow.features.decode_batch)
         return ray_ds
 
     if isinstance(dataset, datasets.DatasetDict):
