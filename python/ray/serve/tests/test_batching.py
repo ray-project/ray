@@ -412,12 +412,18 @@ async def test_batch_generator_streaming_response_integration_test(serve_instanc
         @serve.batch(max_batch_size=4, batch_wait_timeout_s=1000)
         async def batch_handler(self, prompts: List[str]):
             for _ in range(NUM_YIELDS):
-                prompt_responses = prompts
+                # Check that the batch handler can yield unhashable types
+                prompt_responses = [{"value": prompt} for prompt in prompts]
                 yield prompt_responses
+
+        async def value_extractor(self, prompt_responses):
+            async for prompt_response in prompt_responses:
+                yield prompt_response["value"]
 
         async def __call__(self, request):
             prompt = request.query_params["prompt"]
-            return StreamingResponse(self.batch_handler(prompt))
+            response_values = self.value_extractor(self.batch_handler(prompt))
+            return StreamingResponse(response_values)
 
     serve.run(Textgen.bind())
 
