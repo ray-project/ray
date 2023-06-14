@@ -44,7 +44,6 @@ class TestDreamerV3(unittest.TestCase):
                 batch_size_B=2 * 2,  # shared w/ model AND learner AND env runner
                 batch_length_T=16,
                 horizon_H=5,
-
                 # TODO (sven): Fix having to provide this.
                 #  Should be compiled automatically as `RLModuleConfig` by
                 #  AlgorithmConfig (see comment below)?
@@ -60,7 +59,6 @@ class TestDreamerV3(unittest.TestCase):
                 num_learner_workers=2,  # Try with 2 Learners.
                 num_cpus_per_learner_worker=1,
                 num_gpus_per_learner_worker=0,
-                num_gpus=0,
             )
             .debugging(log_level="INFO")
         )
@@ -91,16 +89,20 @@ class TestDreamerV3(unittest.TestCase):
 
         # For Atari, these are the exact numbers from the repo ([3]).
         # However, for CartPole + size "S" and "M", the author's original code will not
-        # match on the world model count. This is due to the fact that the author uses
+        # match for the world model count. This is due to the fact that the author uses
         # encoder/decoder nets with 5x1024 nodes (which corresponds to XL) regardless of
         # the `model_size` settings (iff >="S").
         expected_num_params_world_model = {
             "XS_cartpole": 2435076,
             "S_cartpole": 7493380,
             "M_cartpole": 16206084,
+            "L_cartpole": 37802244,
+            "XL_cartpole": 108353796,
             "XS_atari": 7538979,
             "S_atari": 15687811,
             "M_atari": 32461635,
+            "L_atari": 68278275,
+            "XL_atari": 181558659,
         }
 
         # All values confirmed against [3] (100% match).
@@ -111,9 +113,13 @@ class TestDreamerV3(unittest.TestCase):
             "XS_cartpole": 328706,
             "S_cartpole": 1051650,
             "M_cartpole": 2135042,
+            "L_cartpole": 4136450,
+            "XL_cartpole": 9449474,
             "XS_atari": 329734,
             "S_atari": 1053702,
             "M_atari": 2137606,
+            "L_atari": 4139526,
+            "XL_atari": 9453574,
         }
 
         # All values confirmed against [3] (100% match).
@@ -124,9 +130,13 @@ class TestDreamerV3(unittest.TestCase):
             "XS_cartpole": 393727,
             "S_cartpole": 1181439,
             "M_cartpole": 2297215,
+            "L_cartpole": 4331007,
+            "XL_cartpole": 9708799,
             "XS_atari": 393727,
             "S_atari": 1181439,
             "M_atari": 2297215,
+            "L_atari": 4331007,
+            "XL_atari": 9708799,
         }
 
         config = (
@@ -142,17 +152,18 @@ class TestDreamerV3(unittest.TestCase):
             )
         )
 
-        for model_size in ["S", "XS", "M"]:
+        # Check all model_sizes described in the paper ([1]) on matching the number
+        # of parameters to RLlib's implementation.
+        for model_size in ["XS", "S", "M", "L", "XL"]:
             config.model_size = model_size
-            config.model.update({
-                "model_size": model_size,
-            })
+            config.training(model={"model_size": model_size})
 
             # Atari and CartPole spaces.
             for obs_space, num_actions, env_name in [
                 (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
                 (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
             ]:
+                print(f"Testing model_size={model_size} on env-type: {env_name} ..")
                 config.environment(
                     observation_space=obs_space,
                     action_space=gym.spaces.Discrete(num_actions),
@@ -189,6 +200,7 @@ class TestDreamerV3(unittest.TestCase):
                     num_params_critic,
                     expected_num_params_critic[f"{model_size}_{env_name}"],
                 )
+                print("\tok")
 
 
 if __name__ == "__main__":

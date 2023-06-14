@@ -61,13 +61,5 @@ class VectorDecoder(tf.keras.Model):
         # Send h-cat-z through MLP to get mean values of diag gaussian.
         loc = self.mlp(out)
 
-        # Create the Gaussian diag distribution.
-        # distribution = tfp.distributions.MultivariateNormalDiag(
-        #    loc=loc,
-        #    # Scale == 1.0.
-        #    scale_diag=tf.ones_like(loc),
-        # )
-        # pred_obs = distribution.sample()
-
-        # Always return both predicted observations (sample0 and distribution.
-        return loc  # pred_obs, distribution
+        # Return only the predicted observations (mean, no sample).
+        return loc

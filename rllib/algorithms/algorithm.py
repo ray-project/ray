@@ -705,11 +705,10 @@ class Algorithm(Trainable):
             #  to be consistent with one another. To make a consistent parity between
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
-            module_spec = self.config.get_marl_module_spec(
-                policy_dict=self.config.get_multi_agent_setup(
-                    env=self.workers.local_worker().env  # TODO(sven): remove this hack
-                )[0],
+            policy_dict, _ = self.config.get_multi_agent_setup(
+                env=self.workers.local_worker().env
             )
+            module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 

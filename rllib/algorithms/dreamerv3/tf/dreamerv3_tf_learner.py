@@ -18,7 +18,7 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
 from ray.rllib.core.rl_module.marl_module import ModuleID
 from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_utils import symlog, two_hot, clip_gradients
@@ -146,14 +146,22 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         gradient_tape,
         **kwargs,
     ):
+        # Override of the default gradient computation method.
+        # For DreamerV3, we need to compute gradients over the individual loss terms
+        # as otherwise, the world model's parameters would have their gradients also
+        # be influenced by the actor- and critic loss terms/gradient computations.
         grads = {}
-        for component in ["world_model", "actor", "critic"]:
-            grads.update(gradient_tape.gradient(
-                loss_per_module["default_policy"][component],
-                self.filter_param_dict_for_optimizer(
-                    self._params, self.get_optimizer(optimizer_name=component)
-                ),
-            ))
+        for component in ["WORLD_MODEL", "ACTOR", "CRITIC"]:
+            grads.update(
+                gradient_tape.gradient(
+                    # Take individual loss term from the registered metrics for
+                    # the main module.
+                    self._metrics[DEFAULT_POLICY_ID][component + "_L_total"],
+                    self.filter_param_dict_for_optimizer(
+                        self._params, self.get_optimizer(optimizer_name=component)
+                    ),
+                )
+            )
         del gradient_tape
         return grads
 
@@ -224,7 +232,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 "WORLD_MODEL_L_total": L_world_model_total,
             },
         )
-        if hps.summarize_individual_batch_item_stats:
+        if hps.report_individual_batch_item_stats:
             self.register_metrics(
                 module_id=module_id,
                 metrics_dict={
@@ -254,7 +262,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             timesteps_H=hps.horizon_H,
             gamma=hps.gamma,
         )
-        if hps.summarize_dream_data:
+        if hps.report_dream_data:
             # To reduce this massive mount of data a little, slice out a T=1 piece
             # from each stats that has the shape (H, BxT), meaning convert e.g.
             # `rewards_dreamed_t0_to_H_BxT` into `rewards_dreamed_t0_to_H_Bx1`.
@@ -311,11 +319,11 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         #    )
 
         # Return the total loss as a sum of all individual losses.
-        return {
-            "world_model": L_world_model_total,
-            "critic": CRITIC_L_total,
-            "actor": ACTOR_L_total,
-        }
+        return L_world_model_total + CRITIC_L_total + ACTOR_L_total
+        # "world_model": L_world_model_total,
+        # "critic": CRITIC_L_total,
+        # "actor": ACTOR_L_total,
+        # }
 
     def _compute_world_model_prediction_losses(
         self,
@@ -535,16 +543,12 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         actions_dreamed = tf.stop_gradient(dream_data["actions_dreamed_t0_to_H_BxT"])[
             :-1
         ]
-
-        #dist_actions_t0_to_Hm1_B = dream_data[
-        #    "actions_dreamed_distributions_t0_to_H_BxT"
-        #][:-1]
         actions_dreamed_dist_params_t0_to_Hm1_B = dream_data[
             "actions_dreamed_dist_params_t0_to_H_BxT"
         ][:-1]
 
-        dist_t0_to_Hm1_B = (
-            actor.get_action_dist_object(actions_dreamed_dist_params_t0_to_Hm1_B)
+        dist_t0_to_Hm1_B = actor.get_action_dist_object(
+            actions_dreamed_dist_params_t0_to_Hm1_B
         )
 
         # Compute log(p)s of all possible actions in the dream.
@@ -553,10 +557,6 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             # unimix probs, then math.log these and provide these log(p) as "logits" to
             # the Categorical. So here, we'll continue to work with log(p)s (not
             # really "logits")!
-            #logp_actions_t0_to_Hm1_B = tf.stack(
-            #    [dist.logits for dist in dist_actions_t0_to_Hm1_B],
-            #    axis=0,
-            #)
             logp_actions_t0_to_Hm1_B = actions_dreamed_dist_params_t0_to_Hm1_B
 
             # Log probs of actions actually taken in the dream.
@@ -570,15 +570,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             )
         # Box space.
         else:
-            logp_actions_dreamed_t0_to_Hm1_B = (
-                dist_t0_to_Hm1_B.log_prob(actions_dreamed)
+            logp_actions_dreamed_t0_to_Hm1_B = dist_t0_to_Hm1_B.log_prob(
+                actions_dreamed
             )
-            #tf.stack(
-            #    [
-            #        dist.log_prob(actions_dreamed[i])
-            #        for i, dist in enumerate(dist_actions_t0_to_Hm1_B)
-            #    ]
-            #)
             # First term of loss function. [1] eq. 11.
             logp_loss_H_B = scaled_value_targets_t0_to_Hm1_B
 
@@ -586,13 +580,6 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
         # Add entropy loss term (second term [1] eq. 11).
         entropy_H_B = dist_t0_to_Hm1_B.entropy()
-        #tf.stack(
-        #    [
-        #        dist.entropy()
-        #        for dist in dream_data["actions_dreamed_distributions_t0_to_H_BxT"][:-1]
-        #    ],
-        #    axis=0,
-        #)
         assert len(entropy_H_B.shape) == 2
         entropy = tf.reduce_mean(entropy_H_B)
 
@@ -622,7 +609,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 ),
             },
         )
-        if hps.summarize_individual_batch_item_stats:
+        if hps.report_individual_batch_item_stats:
             self.register_metrics(
                 module_id,
                 metrics_dict={
@@ -750,7 +737,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 ),
             },
         )
-        if hps.summarize_individual_batch_item_stats:
+        if hps.report_individual_batch_item_stats:
             self.register_metrics(
                 module_id=module_id,
                 metrics_dict={

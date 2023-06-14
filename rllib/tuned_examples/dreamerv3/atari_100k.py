@@ -7,23 +7,29 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
-
 
 # Run with:
 # python run_regression_tests.py --dir [this file] --env ALE/[gym ID e.g. Pong-v5]
 
+from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
+
+
+# Number of GPUs to run on.
+num_gpus = 1
+
 config = (
     DreamerV3Config()
+    # Switch on eager_tracing by default.
+    .framework("tf2", eager_tracing=True)
     .resources(
-        num_learner_workers=1,
-        #num_gpus_per_learner_worker=1,
+        num_learner_workers=num_gpus,
+        num_gpus_per_learner_worker=1 if num_gpus else 0,
         num_cpus_for_local_worker=1,
     )
     # TODO (sven): concretize this: If you use >1 GPU and increase the batch size
     #  accordingly, you might also want to increase the number of envs per worker
     .rollouts(
-        num_envs_per_worker=1,
+        num_envs_per_worker=num_gpus,
         # Since we are using gymnasium.vector.Env, we can parallelize the individual
         # envs w/o performance hit.
         remote_worker_envs=True,
@@ -54,6 +60,7 @@ config = (
     .training(
         model_size="S",
         training_ratio=1024,
+        batch_size_B=16 * num_gpus,
         # TODO
         model={
             "batch_length_T": 64,

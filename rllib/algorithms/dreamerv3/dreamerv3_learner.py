@@ -47,9 +47,9 @@ class DreamerV3LearnerHyperparameters(LearnerHyperparameters):
     actor_grad_clip_by_global_norm: float = None
     critic_grad_clip_by_global_norm: float = None
     # Reporting settings.
-    summarize_individual_batch_item_stats: bool = None
-    summarize_dream_data: bool = None
-    summarize_images_and_videos: bool = None
+    report_individual_batch_item_stats: bool = None
+    report_dream_data: bool = None
+    report_images_and_videos: bool = None
 
 
 class DreamerV3Learner(Learner):
@@ -76,7 +76,7 @@ class DreamerV3Learner(Learner):
         )
 
         # Add the predicted obs distributions for possible (video) summarization.
-        if self.hps.summarize_images_and_videos:
+        if self.hps.report_images_and_videos:
             for module_id, res in results.items():
                 if module_id in fwd_out:
                     res["WORLD_MODEL_fwd_out_obs_distribution_means_BxT"] = fwd_out[

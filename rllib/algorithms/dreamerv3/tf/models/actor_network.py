@@ -166,9 +166,7 @@ class ActorNetwork(tf.keras.Model):
 
             # If action_space is a box with multiple dims, make individual dims
             # independent.
-            distr = tfp.distributions.Independent(
-                distr, len(self.action_space.shape)
-            )
+            distr = tfp.distributions.Independent(distr, len(self.action_space.shape))
 
         else:
             raise ValueError(f"Action space {self.action_space} not supported!")

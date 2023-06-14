@@ -58,6 +58,12 @@ parser.add_argument(
     help="Run ray in local mode for easier debugging.",
 )
 parser.add_argument(
+    "--num-samples",
+    type=int,
+    default=1,
+    help="The number of seeds/samples to run with the given experiment config.",
+)
+parser.add_argument(
     "--override-mean-reward",
     type=float,
     default=0.0,
@@ -120,6 +126,9 @@ if __name__ == "__main__":
 
         exp = list(experiments.values())[0]
 
+        # Set the number of samples to run.
+        exp["num_samples"] = args.num_samples
+
         # Override framework setting with the command line one, if provided.
         # Otherwise, will use framework setting in file (or default: torch).
         if args.framework is not None:
@@ -146,7 +155,11 @@ if __name__ == "__main__":
         if (
             (args.framework == "tf2" or exp["config"].get("framework") == "tf2")
             and not args.local_mode
-            and not exp["config"].get("eager_tracing") is False
+            # Note: This check will always fail for python configs, b/c normally,
+            # algorithm configs have `self.eager_tracing=False` by default.
+            # Thus, you'd have to set `eager_tracing` to True explicitly in your python
+            # config to make sure we are indeed using eager tracing.
+            and exp["config"].get("eager_tracing") is not False
         ):
             exp["config"]["eager_tracing"] = True
 

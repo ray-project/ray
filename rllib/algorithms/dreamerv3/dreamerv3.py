@@ -25,8 +25,8 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
-    summarize_predicted_vs_sampled_obs,
-    summarize_sampling_and_replay_buffer,
+    report_predicted_vs_sampled_obs,
+    report_sampling_and_replay_buffer,
 )
 from ray.rllib.core.learner.learner import LearnerHyperparameters
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -67,7 +67,7 @@ class DreamerV3Config(AlgorithmConfig):
         >>> config = config.training(  # doctest: +SKIP
         ...     batch_size_B=8, model_size="M"
         ... )
-        >>> config = config.resources(num_gpus=4)  # doctest: +SKIP
+        >>> config = config.resources(num_learner_workers=4)  # doctest: +SKIP
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
@@ -117,7 +117,6 @@ class DreamerV3Config(AlgorithmConfig):
         self.critic_lr = 3e-5
         self.batch_size_B = 16
         self.batch_length_T = 64
-        self.burn_in_T = 5
         self.horizon_H = 15
         self.gae_lambda = 0.95  # [1] eq. 7.
         self.entropy_scale = 3e-4  # [1] eq. 11.
@@ -130,9 +129,9 @@ class DreamerV3Config(AlgorithmConfig):
         self.actor_grad_clip_by_global_norm = 100.0
 
         # Reporting.
-        self.summarize_individual_batch_item_stats = False
-        self.summarize_dream_data = False
-        self.summarize_images_and_videos = False
+        self.report_individual_batch_item_stats = False
+        self.report_dream_data = False
+        self.report_images_and_videos = False
         self.gc_frequency_train_steps = 100
 
         # Override some of AlgorithmConfig's default values with DreamerV3-specific
@@ -163,7 +162,6 @@ class DreamerV3Config(AlgorithmConfig):
         gc_frequency_train_steps: Optional[int] = NotProvided,
         batch_size_B: Optional[int] = NotProvided,
         batch_length_T: Optional[int] = NotProvided,
-        burn_in_T: Optional[int] = NotProvided,
         horizon_H: Optional[int] = NotProvided,
         gae_lambda: Optional[float] = NotProvided,
         entropy_scale: Optional[float] = NotProvided,
@@ -180,15 +178,27 @@ class DreamerV3Config(AlgorithmConfig):
         """Sets the training related configuration.
 
         Args:
-            model_size: The main switch (given as a string such as "S", "M", or
-                "L") for adjusting the overall model size. See [1] (table B) for more
-                information. Individual model settings, such as the sizes of individual
-                layers can still be overwritten by the user.
-            training_ratio: The ratio of replayed steps (used for learning/updating the
-                model) over env steps (from the actual environment, not the dreamed
-                one).
-            gc_frequency_train_steps: Every how many training steps do we collect
-                garbage?
+            model_size: The main switch for adjusting the overall model size. See [1]
+                (table B) for more information on the effects of this setting on the
+                model architecture.
+                Supported values are "XS", "S", "M", "L", "XL" (as per the paper), as
+                well as, "nano", "micro", "mini", and "XXS" (for RLlib's
+                implementation). See ray.rllib.algorithms.dreamerv3.utils.
+                __init__.py for the details on what exactly each size does to the layer
+                sizes, number of layers, etc..
+            training_ratio: The ratio of total steps trained (sum of the sizes of all
+                batches ever sampled from the replay buffer) over the total env steps
+                taken (in the actual environment, not the dreamed one). For example,
+                if the training_ratio is 1024 and the batch size is 1024, we would take
+                1 env step for every training update: 1024 / 1. If the training ratio
+                is 512 and the batch size is 1024, we would take 2 env steps and then
+                perform a single training update (on a 1024 batch): 1024 / 2.
+            gc_frequency_train_steps: The frequency (in training iterations) with which
+                we perform a `gc.collect()` calls at the end of a `training_step`
+                iteration. Doing this more often adds a (albeit very small) performance
+                overhead, but prevents memory leaks from becoming harmful.
+                TODO (sven): This might not be necessary anymore, but needs to be
+                 confirmed experimentally.
             batch_size_B: The batch size (B) interpreted as number of rows (each of
                 length `batch_length_T`) to sample from the replay buffer in each
                 iteration.
@@ -197,11 +207,6 @@ class DreamerV3Config(AlgorithmConfig):
                 `batch_size_B` rows will be sampled in each iteration. Rows normally
                 contain consecutive data (consecutive timesteps from the same episode),
                 but there might be episode boundaries in a row as well.
-            burn_in_T: The number of timesteps we use to "initialize" (burn-in) an
-                (evaluation-only!) dream_trajectory run. For this many timesteps,
-                the posterior (actual observation data) will be used to compute z,
-                after that, only the prior (dynamics network) will be used
-                (to compute z^). Note that this setting is NOT used for training.
             horizon_H: The horizon (in timesteps) used to create dreamed data from the
                 world model, which in turn is used to train/update both actor- and
                 critic networks.
@@ -249,8 +254,6 @@ class DreamerV3Config(AlgorithmConfig):
             self.batch_size_B = batch_size_B
         if batch_length_T is not NotProvided:
             self.batch_length_T = batch_length_T
-        if burn_in_T is not NotProvided:
-            self.burn_in_T = burn_in_T
         if horizon_H is not NotProvided:
             self.horizon_H = horizon_H
         if gae_lambda is not NotProvided:
@@ -291,24 +294,28 @@ class DreamerV3Config(AlgorithmConfig):
     def reporting(
         self,
         *,
-        summarize_individual_batch_item_stats: Optional[bool] = NotProvided,
-        summarize_dream_data: Optional[bool] = NotProvided,
-        summarize_images_and_videos: Optional[bool] = NotProvided,
+        report_individual_batch_item_stats: Optional[bool] = NotProvided,
+        report_dream_data: Optional[bool] = NotProvided,
+        report_images_and_videos: Optional[bool] = NotProvided,
         **kwargs,
     ):
         """Sets the reporting related configuration.
 
         Args:
-            summarize_individual_batch_item_stats: Whether to summarize also individual
-                batch items' loss and other stats. If True, will not only provide the
-                mean values, e.g. CRITIC_L_total, but also the individual values on
-                both batch and time axes, e.g. CRITIC_L_total_B_T.
-            summarize_dream_data:  Whether to summarize the dreamed trajectory data.
-                If True, will still slice the entire dream data down to the shape
+            report_individual_batch_item_stats: Whether to include loss and other stats
+                per individual timestep inside the training batch in the result dict
+                returned by `training_step()`. If True, besides the `CRITIC_L_total`,
+                the individual critic loss values per batch row and time axis step
+                in the train batch (CRITIC_L_total_B_T) will also be part of the
+                results.
+            report_dream_data:  Whether to include the dreamed trajectory data in the
+                result dict returned by `training_step()`. If True, however, will
+                slice each reported item in the dream data down to the shape.
                 (H, B, t=0, ...), where H is the horizon and B is the batch size. The
                 original time axis will only be represented by the first timestep
                 to not make this data too large to handle.
-            summarize_images_and_videos: Whether to summarize any image/video data.
+            report_images_and_videos: Whether to include any image/video data in the
+                result dict returned by `training_step()`.
             **kwargs:
 
         Returns:
@@ -316,14 +323,12 @@ class DreamerV3Config(AlgorithmConfig):
         """
         super().reporting(**kwargs)
 
-        if summarize_individual_batch_item_stats is not NotProvided:
-            self.summarize_individual_batch_item_stats = (
-                summarize_individual_batch_item_stats
-            )
-        if summarize_dream_data is not NotProvided:
-            self.summarize_dream_data = summarize_dream_data
-        if summarize_images_and_videos is not NotProvided:
-            self.summarize_images_and_videos = summarize_images_and_videos
+        if report_individual_batch_item_stats is not NotProvided:
+            self.report_individual_batch_item_stats = report_individual_batch_item_stats
+        if report_dream_data is not NotProvided:
+            self.report_dream_data = report_dream_data
+        if report_images_and_videos is not NotProvided:
+            self.report_images_and_videos = report_images_and_videos
 
         return self
 
@@ -332,11 +337,29 @@ class DreamerV3Config(AlgorithmConfig):
         # Call the super class' validation method first.
         super().validate()
 
-        if not (self.burn_in_T + self.horizon_H <= self.batch_length_T):
+        # Make sure, users are not using DreamerV3 yet for multi-agent:
+        if self.is_multi_agent():
+            raise ValueError("DreamerV3 does NOT support multi-agent setups yet!")
+
+        # Make sure, we are configure for the new API stack.
+        if not (self._enable_learner_api and self._enable_rl_module_api):
             raise ValueError(
-                f"`burn_in_T` ({self.burn_in_T}) + horizon_H ({self.horizon_H}) must "
-                f"be <= batch_length_T ({self.batch_length_T})!"
+                "DreamerV3 must be run with `config._enable_learner_api`=True AND "
+                "with `config._enable_rl_module_api`=True!"
             )
+
+        # If run on several Learners, the provided batch_size_B must be a multiple
+        # of `num_learner_workers`.
+        if self.num_learner_workers > 1 and (
+            self.batch_size_B % self.num_learner_workers != 0
+        ):
+            raise ValueError(
+                f"Your `batch_size_B` ({self.batch_size_B}) must be a multiple of "
+                f"`num_learner_workers` ({self.num_learner_workers}) in order for "
+                "DreamerV3 to be able to split batches evenly across your Learner "
+                "processes."
+            )
+
         # Cannot train actor w/o critic.
         if self.train_actor and not self.train_critic:
             raise ValueError(
@@ -362,7 +385,7 @@ class DreamerV3Config(AlgorithmConfig):
         return DreamerV3LearnerHyperparameters(
             model_size=self.model_size,
             training_ratio=self.training_ratio,
-            batch_size_B=self.batch_size_B // self.num_learner_workers,#TODO: make sure batch_size is compatible with num learners
+            batch_size_B=self.batch_size_B // (self.num_learner_workers or 1),
             batch_length_T=self.batch_length_T,
             horizon_H=self.horizon_H,
             gamma=self.gamma,
@@ -380,11 +403,11 @@ class DreamerV3Config(AlgorithmConfig):
             ),
             actor_grad_clip_by_global_norm=self.actor_grad_clip_by_global_norm,
             critic_grad_clip_by_global_norm=self.critic_grad_clip_by_global_norm,
-            summarize_individual_batch_item_stats=(
-                self.summarize_individual_batch_item_stats
+            report_individual_batch_item_stats=(
+                self.report_individual_batch_item_stats
             ),
-            summarize_dream_data=self.summarize_dream_data,
-            summarize_images_and_videos=self.summarize_images_and_videos,
+            report_dream_data=self.report_dream_data,
+            report_images_and_videos=self.report_images_and_videos,
             **dataclasses.asdict(base_hps),
         )
 
@@ -445,23 +468,21 @@ class DreamerV3(Algorithm):
         env_runner = self.workers.local_worker()
 
         # Push enough samples into buffer initially before we start training.
-        env_steps = 0
         if self.training_iteration == 0:
             logger.info(
                 "Filling replay buffer so it contains at least "
                 f"{self.config.batch_size_B * self.config.batch_length_T} timesteps "
                 "(required for a single train batch)."
             )
-        # The current (lifetime) training ratio, computed via
-        # [ts learned from buffer] / [ts sampled from actual env].
-        training_ratio = None
 
-        # Sample one round and place collected data into our replay buffer.
-        # If the buffer is empty at the beginning, sample for as long as it contains
-        # enough data for at least one complete train batch
-        # (batch_size_B x batch_length_T), only then proceeed to the training
-        # update step.
         with self._timers[SAMPLE_TIMER]:
+            # Continue sampling from the actual environment (and add collected samples
+            # to our replay buffer) until we:
+            # a) have at least batch_size_B x batch_length_T timesteps stored in the
+            # buffer
+            # AND
+            # b) the computed `training_ratio` is lower than the configured (desired)
+            # one, meaning, we should train some more.
             while True:
                 done_episodes, ongoing_episodes = env_runner.sample()
 
@@ -469,7 +490,6 @@ class DreamerV3(Algorithm):
                 env_steps_last_sample = sum(
                     len(eps) for eps in done_episodes + ongoing_episodes
                 )
-                env_steps += env_steps_last_sample
                 self._counters[NUM_AGENT_STEPS_SAMPLED] += env_steps_last_sample
                 self._counters[NUM_ENV_STEPS_SAMPLED] += env_steps_last_sample
 
@@ -480,6 +500,9 @@ class DreamerV3(Algorithm):
                 self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
 
                 ts_in_buffer = self.replay_buffer.get_num_timesteps()
+                # The current (lifetime) training ratio, computed via
+                # [ts sampled from buffer and learned on] over
+                # [ts sampled from actual env].
                 training_ratio = (
                     self._counters[NUM_ENV_STEPS_TRAINED]
                     / self._counters[NUM_ENV_STEPS_SAMPLED]
@@ -493,17 +516,16 @@ class DreamerV3(Algorithm):
                     and training_ratio < self.config.training_ratio
                 ):
                     # Summarize environment interaction and buffer data.
-                    results[ALL_MODULES] = summarize_sampling_and_replay_buffer(
+                    results[ALL_MODULES] = report_sampling_and_replay_buffer(
                         replay_buffer=self.replay_buffer,
                         training_ratio=training_ratio,
                     )
                     break
 
-        # Repeat the following steps until we reach the correct training ratio:
-        # - Draw a sample from the replay buffer and push it through the
-        # LearnerGroup.update() procedure.
-        # - This will perform a dreamer model forward pass, compute all losses and
-        # gradients and apply the gradients to the models.
+        # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
+        # and using these to update our models (`LearnerGroup.update()`) until the
+        # computed `training_ratio` is larger than the configured one, meaning we should
+        # go back and collect more samples again from the actual environment.
         replayed_steps = sub_iter = 0
         while training_ratio < self.config.training_ratio:
 
@@ -551,8 +573,8 @@ class DreamerV3(Algorithm):
                         reduce_fn=self._reduce_results,
                     )
 
-                if self.config.summarize_images_and_videos:
-                    summarize_predicted_vs_sampled_obs(
+                if self.config.report_images_and_videos:
+                    report_predicted_vs_sampled_obs(
                         # TODO (sven): DreamerV3 is single-agent only.
                         results=train_results[DEFAULT_POLICY_ID],
                         sample=sample,
@@ -563,22 +585,6 @@ class DreamerV3(Algorithm):
                             self.config.model.get("symlog_obs", "auto"),
                         ),
                     )
-
-                # TODO: Make this work with any renderable env.
-                # if env_runner.config.env in [
-                #    "CartPoleDebug-v0",
-                #    "CartPole-v1",
-                #    "FrozenLake-v1",
-                # ]:
-                #    summarize_dreamed_trajectory(
-                #        # TODO (sven): DreamerV3 is single-agent only.
-                #        results=train_results[DEFAULT_POLICY_ID],
-                #        env=env_runner.config.env,
-                #        dreamer_model=env_runner.rl_module.dreamer_model,
-                #        obs_dims_shape=sample[SampleBatch.OBS].shape[2:],
-                #        desc="for_actor_critic_learning",
-                #        include_images=self.config.summarize_images_and_videos,
-                #    )
 
                 res = train_results[DEFAULT_POLICY_ID]
                 logger.info(
@@ -609,9 +615,7 @@ class DreamerV3(Algorithm):
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
         # issue-in-keras-model-training-e703907a6501
         if self.config.gc_frequency_train_steps and (
-            self._counters[NUM_GRAD_UPDATES_LIFETIME]
-            % self.config.gc_frequency_train_steps
-            == 0
+            self.training_iteration % self.config.gc_frequency_train_steps == 0
         ):
             with self._timers[GARBAGE_COLLECTION_TIMER]:
                 gc.collect()

@@ -61,20 +61,20 @@ class DreamerV3Catalog(Catalog):
             raise NotImplementedError
 
         if self.is_img_space:
-            from ray.rllib.algorithms.dreamerv3.tf.models.components.conv_transpose_atari import (
-                ConvTransposeAtari,
+            from ray.rllib.algorithms.dreamerv3.tf.models.components import (
+                conv_transpose_atari,
             )
 
-            return ConvTransposeAtari(
+            return conv_transpose_atari.ConvTransposeAtari(
                 model_size=self.model_size,
                 gray_scaled=self.is_gray_scale,
             )
         else:
-            from ray.rllib.algorithms.dreamerv3.tf.models.components.vector_decoder import (
-                VectorDecoder,
+            from ray.rllib.algorithms.dreamerv3.tf.models.components import (
+                vector_decoder,
             )
 
-            return VectorDecoder(
+            return vector_decoder.VectorDecoder(
                 model_size=self.model_size,
                 observation_space=self.observation_space,
             )
