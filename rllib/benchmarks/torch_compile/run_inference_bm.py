@@ -90,6 +90,7 @@ def main(pargs):
     compiled_module = compiled_module.compile(compile_config)
 
     batch = get_ppo_batch_for_env(env, batch_size=pargs.batch_size)
+    batch = convert_to_torch_tensor(batch, device="cuda")
     
     # Burn-in
     print("Burn-in...")
@@ -127,8 +128,8 @@ def main(pargs):
         "eager_throughput_median": eager_throughput_median,
         "compiled_throughput_median": compiled_throughput_median,
         "speedup": speedup,
-        "eager_throughputs": eager_throughputs,
-        "compiled_throughputs": compiled_throughputs
+        "eager_throughputs": eager_throughputs.tolist(),
+        "compiled_throughputs": compiled_throughputs.tolist(),
     }
 
     with open(output / "results.json", "w") as f:
