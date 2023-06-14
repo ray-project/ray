@@ -12,7 +12,7 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_logging import setup_component_logger
 from typing import Optional, Set
 
