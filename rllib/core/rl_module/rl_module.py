@@ -418,7 +418,6 @@ class RLModule(abc.ABC):
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
-                    batch_repeat_value=max_seq_len,
                     space=space,
                 )
 
@@ -428,7 +427,6 @@ class RLModule(abc.ABC):
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
-                    batch_repeat_value=max_seq_len,
                     space=space,
                 )
 
