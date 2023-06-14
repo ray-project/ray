@@ -44,10 +44,12 @@ ResourceRequest ResourceMapToResourceRequest(
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
-    const absl::flat_hash_map<std::string, double> &resource_map_available) {
+    const absl::flat_hash_map<std::string, double> &resource_map_available,
+    const absl::flat_hash_map<std::string, std::string> &node_labels) {
   NodeResources node_resources;
   node_resources.total = ResourceMapToResourceRequest(resource_map_total, false);
   node_resources.available = ResourceMapToResourceRequest(resource_map_available, false);
+  node_resources.labels = node_labels;
   return node_resources;
 }
 
@@ -97,7 +99,8 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
 }
 
 bool NodeResources::operator==(const NodeResources &other) const {
-  return this->available == other.available && this->total == other.total;
+  return this->available == other.available && this->total == other.total &&
+         this->labels == other.labels;
 }
 
 bool NodeResources::operator!=(const NodeResources &other) const {
@@ -106,7 +109,7 @@ bool NodeResources::operator!=(const NodeResources &other) const {
 
 std::string NodeResources::DebugString() const {
   std::stringstream buffer;
-  buffer << "{";
+  buffer << "{\"resources\":{";
   bool first = true;
   for (auto &resource_id : total.ResourceIds()) {
     if (!first) {
@@ -115,6 +118,11 @@ std::string NodeResources::DebugString() const {
     first = false;
     buffer << resource_id.Binary() << ": " << available.Get(resource_id) << "/"
            << total.Get(resource_id);
+  }
+
+  buffer << "}, \"labels\":{";
+  for (const auto &[key, value] : labels) {
+    buffer << "\"" << key << "\":\"" << value << "\",";
   }
   buffer << "}";
   return buffer.str();

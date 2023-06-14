@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import time
@@ -255,14 +256,13 @@ def test_controller_recover_initializing_actor(serve_instance):
 def test_replica_deletion_after_controller_recover(serve_instance):
     """Test that replicas are deleted when controller is recovered"""
 
-    signal = SignalActor.remote()
     controller = serve.context._global_client._controller
 
-    @serve.deployment
+    @serve.deployment(graceful_shutdown_timeout_s=3)
     class V1:
         async def __call__(self):
-            await signal.wait.remote()
-            return f"1|{os.getpid()}"
+            while True:
+                await asyncio.sleep(0.1)
 
     handle = serve.run(V1.bind(), name="app")
     _ = handle.remote()
@@ -291,13 +291,116 @@ def test_replica_deletion_after_controller_recover(serve_instance):
     # Make sure the replica is in STOPPING state.
     wait_for_condition(lambda: len(check_replica(ReplicaState.STOPPING)) > 0)
 
-    # Unblock the request and the replica will be stopped.
-    signal.send.remote()
+    # The graceful shutdown timeout of 3 seconds should be used
+    wait_for_condition(lambda: len(check_replica()) == 0, timeout=5)
+    # Application should be removed soon after
     wait_for_condition(
         lambda: serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.NOT_STARTED
+        == ApplicationStatus.NOT_STARTED,
+        timeout=1,
     )
-    wait_for_condition(lambda: len(check_replica()) == 0, timeout=30)
+
+
+def test_recover_deleting_deployment(serve_instance):
+    """Test that replicas that are stuck on __del__ when the controller crashes,
+    is properly recovered when the controller is recovered.
+
+    This is similar to the test test_replica_deletion_after_controller_recover,
+    except what's blocking the deployment is __del__ instead of ongoing requests
+    """
+    # TODO(zcin): Update this test to use serve.run() and application after the deploy
+    # refactor adds checkpointing for applications. Right now we checkpoint the user
+    # submitted config and use that for recovery, so applications that are in the
+    # process of deleting when the controller crashes, will not be recovered when the
+    # controller recovers (although its deployment will be recovered). This should be
+    # fixed after we refactor the application state manager.
+
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class A:
+        async def __del__(self):
+            await signal.wait.remote()
+
+    A.deploy()
+
+    @ray.remote
+    def delete_task():
+        serve.get_deployment("A").delete()
+
+    # Delete deployment and make sure it is stuck on deleting
+    delete_ref = delete_task.remote()
+    print("Started task to delete deployment `A`")
+
+    def deployment_deleting():
+        # Confirm deployment is in updating state
+        status = serve_instance.get_all_deployment_statuses()[0]
+        if not (status.name == "A" and status.status == "UPDATING"):
+            return False
+
+        # Confirm replica is stopping
+        replicas = ray.get(
+            serve_instance._controller._dump_replica_states_for_testing.remote("A")
+        )
+        if replicas.count(states=[ReplicaState.STOPPING]) != 1:
+            return False
+
+        # Confirm delete task is still blocked
+        finished, pending = ray.wait([delete_ref], timeout=0)
+        return pending and not finished
+
+    def check_deleted():
+        deployment_statuses = serve_instance.get_all_deployment_statuses()
+        if len(deployment_statuses) != 0:
+            return False
+
+        finished, pending = ray.wait([delete_ref], timeout=0)
+        return finished and not pending
+
+    wait_for_condition(deployment_deleting)
+    for _ in range(10):
+        time.sleep(0.1)
+        assert deployment_deleting()
+
+    print("Confirmed that deployment is stuck on deleting.")
+
+    # Kill controller while the deployment is stuck on deleting
+    ray.kill(serve.context._global_client._controller, no_restart=False)
+    print("Finished killing the controller (with restart).")
+
+    def check_controller_alive():
+        all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
+        for actor in all_current_actors:
+            if actor["class_name"] == "ServeController":
+                return True
+        return False
+
+    wait_for_condition(check_controller_alive)
+    print("Controller is back alive.")
+
+    wait_for_condition(deployment_deleting)
+    # Before we send the signal, the deployment should still be deleting
+    for _ in range(10):
+        time.sleep(0.1)
+        assert deployment_deleting()
+
+    print("Confirmed that deployment is still stuck on deleting.")
+
+    # Since we've confirmed the replica is in a stopping state, we can grab
+    # the reference to the in-progress graceful shutdown task
+    replicas = ray.get(
+        serve_instance._controller._dump_replica_states_for_testing.remote("A")
+    )
+    graceful_shutdown_ref = replicas.get()[0]._actor._graceful_shutdown_ref
+
+    signal.send.remote()
+    print("Sent signal to unblock deletion of deployment")
+    wait_for_condition(check_deleted)
+    print("Confirmed that deployment finished deleting and delete task has returned.")
+
+    # Make sure graceful shutdown ran successfully
+    ray.get(graceful_shutdown_ref)
+    print("Confirmed that graceful shutdown ran successfully.")
 
 
 if __name__ == "__main__":

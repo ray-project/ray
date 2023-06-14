@@ -924,7 +924,7 @@ class AlgorithmConfig(_Config):
         if self.simple_optimizer is True:
             pass
         # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        elif self.num_gpus > 1:
+        elif not self._enable_learner_api and self.num_gpus > 1:
             # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the Learner API.
@@ -2147,7 +2147,7 @@ class AlgorithmConfig(_Config):
                 utility. For example, to override your learning rate and (PPO) lambda
                 setting just for a single RLModule with your MultiAgentRLModule, do:
                 config.multi_agent(algorithm_config_overrides_per_module={
-                    "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
+                "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
                 })
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
