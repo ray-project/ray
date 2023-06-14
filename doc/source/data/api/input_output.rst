@@ -133,7 +133,7 @@ SQL Databases
    :toctree: doc/
 
    read_sql
-   
+
 Dask
 ----
 
@@ -215,25 +215,6 @@ Datasource API
    Datasource
    ReadTask
    datasource.Reader
-
-
-Built-in Datasources
-####################
-
-.. autosummary::
-   :toctree: doc/
-
-   datasource.BinaryDatasource
-   datasource.CSVDatasource
-   datasource.FileBasedDatasource
-   datasource.ImageDatasource
-   datasource.JSONDatasource
-   datasource.NumpyDatasource
-   datasource.ParquetDatasource
-   datasource.RangeDatasource
-   datasource.TFRecordDatasource
-   datasource.MongoDatasource
-   datasource.WebDatasetDatasource
 
 Partitioning API
 ----------------
