@@ -22,6 +22,7 @@ RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 def build_anyscale_byod_images(tests: List[Test]) -> None:
     """
     Builds the Anyscale BYOD images for the given tests.
+    hi
     """
     _download_dataplane_build_file()
     to_be_built = {}
