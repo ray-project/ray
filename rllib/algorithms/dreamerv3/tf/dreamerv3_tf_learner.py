@@ -151,12 +151,12 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # as otherwise, the world model's parameters would have their gradients also
         # be influenced by the actor- and critic loss terms/gradient computations.
         grads = {}
-        for component in ["WORLD_MODEL", "ACTOR", "CRITIC"]:
+        for component in ["world_model", "actor", "critic"]:
             grads.update(
                 gradient_tape.gradient(
                     # Take individual loss term from the registered metrics for
                     # the main module.
-                    self._metrics[DEFAULT_POLICY_ID][component + "_L_total"],
+                    self._metrics[DEFAULT_POLICY_ID][component.upper() + "_L_total"],
                     self.filter_param_dict_for_optimizer(
                         self._params, self.get_optimizer(optimizer_name=component)
                     ),
@@ -308,22 +308,8 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         else:
             ACTOR_L_total = 0.0
 
-        # if hps.use_curiosity:
-        #    L_disagree = self._compute_disagree_loss(dream_data=dream_data)
-        #    results["DISAGREE_L_total"] = L_disagree
-        #    results["DISAGREE_intrinsic_rewards_H_B"] = (
-        #        dream_data["rewards_intrinsic_t1_to_H_B"]
-        #    )
-        #    results["DISAGREE_intrinsic_rewards"] = tf.reduce_mean(
-        #        dream_data["rewards_intrinsic_t1_to_H_B"]
-        #    )
-
         # Return the total loss as a sum of all individual losses.
         return L_world_model_total + CRITIC_L_total + ACTOR_L_total
-        # "world_model": L_world_model_total,
-        # "critic": CRITIC_L_total,
-        # "actor": ACTOR_L_total,
-        # }
 
     def _compute_world_model_prediction_losses(
         self,
