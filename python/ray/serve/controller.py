@@ -847,10 +847,13 @@ def deploy_serve_application(
             )
         except Exception as e:
             import sys
+            from pathlib import Path
 
+            pwd = Path(os.getcwd())
+            paths = list(pwd.parent.rglob("*"))
             raise Exception(
                 f"Test failing, import_path: {import_path}, pwd: {os. getcwd()}, "
-                f"\nmodules: {sys.modules}"
+                f"\nmodules: {sys.modules}, \npaths: {paths}"
             )
         app = build(app, name)
 
