@@ -1187,6 +1187,8 @@ def import_attr(full_path: str):
         module_name = full_path[:last_period_idx]
         attr_name = full_path[last_period_idx + 1 :]
 
+    module_path = Path(importlib.util.find_spec(module_name).origin)
+    sys.path.insert(0, module_path.parent.as_posix())
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
 

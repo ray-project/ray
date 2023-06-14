@@ -839,12 +839,6 @@ def deploy_serve_application(
             app = call_app_builder_with_args_if_necessary(
                 import_attr(import_path), args
             )
-            import sys
-
-            raise Exception(
-                f"import succeeded, import_path: {import_path}, pwd: {os. getcwd()}, "
-                f"\nmodules: {sys.modules}"
-            )
         except Exception as e:
             import sys
             from pathlib import Path
@@ -854,6 +848,7 @@ def deploy_serve_application(
             raise Exception(
                 f"Test failing, import_path: {import_path}, pwd: {os. getcwd()}, "
                 f"\nmodules: {sys.modules}, \npaths: {paths}"
+                f"\nerror: {e}, \nsys.path: {sys.path}"
             )
         app = build(app, name)
 
