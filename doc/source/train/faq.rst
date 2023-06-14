@@ -82,7 +82,7 @@ To resolve these issues, you can do the following:
    gets propagated to all training workers.
 
 .. FIXME: This snippet fails ~10% of runs. See
-   https://buildkite.com/ray-project/oss-ci-build-branch/builds/4447#0188b20e-7680-433f-838a-7874abc2b72d.
+   https://github.com/ray-project/ray/issues/36399.
 
 .. testcode::
     :skipif: True
