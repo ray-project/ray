@@ -70,7 +70,9 @@ DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 # scheduling in Ray for tasks where arg data transfer is a bottleneck.
 DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS = "DEFAULT"
 
-# Size in bytes after which point task arguments are considered large.
+# Size in bytes after which point task arguments are considered large. Choose a value
+# here at which point data transfer overhead becomes significant in comparison to
+# task scheduling (i.e., low tens of ms).
 DEFAULT_LARGE_ARGS_THRESHOLD = 50 * 1024 * 1024
 
 # Whether to use Polars for tabular dataset sorts, groupbys, and aggregations.

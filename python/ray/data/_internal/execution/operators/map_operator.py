@@ -194,6 +194,9 @@ class MapOperator(OneToOneOperator, ABC):
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
         ray_remote_args = copy.deepcopy(self._ray_remote_args)
+        # For tasks with small args, we will use SPREAD by default to optimize for
+        # compute load-balancing. For tasks with large args, we will use DEFAULT to
+        # allow the Ray locality scheduler a chance to optimize task placement.
         if "scheduling_strategy" not in ray_remote_args:
             ctx = DataContext.get_current()
             if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
