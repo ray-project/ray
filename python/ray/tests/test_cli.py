@@ -278,6 +278,10 @@ def test_disable_usage_stats(monkeypatch, tmp_path):
     assert '{"usage_stats": false}' == tmp_usage_stats_config_path.read_text()
 
 
+# We add`env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"}` in these tests because
+# it seems like interactive terminal detection works differently in python 3.8
+# compared to 3.7. Without this, tests would fail.
+# Todo: This should be removed again. Also, some tests are currently skipped.
 def test_ray_start(configure_lang, monkeypatch, tmp_path, cleanup_ray):
     monkeypatch.setenv("RAY_USAGE_STATS_CONFIG_PATH", str(tmp_path / "config.json"))
     runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})

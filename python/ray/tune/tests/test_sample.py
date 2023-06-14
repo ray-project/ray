@@ -470,6 +470,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertSequenceEqual(integers_1, integers_2)
         self.assertSequenceEqual(choices_1, choices_2)
 
+    # Todo: Upgrade ax. This will upgrade sub-dependencies that may break other parts.
     @unittest.skip("ax tests currently failing (need to upgrade ax)")
     def testConvertAx(self):
         from ray.tune.search.ax import AxSearch

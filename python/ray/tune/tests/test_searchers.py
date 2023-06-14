@@ -79,6 +79,7 @@ class InvalidValuesTest(unittest.TestCase):
             for x in buffer
         ), "Searcher checkpointing failed (unable to serialize)."
 
+    # Todo: Upgrade ax. This will upgrade sub-dependencies that may break other parts.
     @unittest.skip("ax tests currently failing (need to upgrade ax)")
     def testAxManualSetup(self):
         from ray.tune.search.ax import AxSearch

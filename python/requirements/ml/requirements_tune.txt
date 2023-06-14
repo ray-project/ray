@@ -4,7 +4,6 @@ aim==3.16.1
 ax-platform==0.1.9; python_version < '3.7'
 ax-platform==0.2.6; python_version == '3.7'
 ax-platform==0.2.6; python_version >= '3.8'
-sqlalchemy
 
 bayesian-optimization==1.2.0
 comet-ml==3.31.9
@@ -15,7 +14,6 @@ freezegun==1.1.0
 # Requires decord which is unavailable for arm64
 gluoncv==0.10.5.post0; platform_machine != "arm64"
 gpy==1.10.0
-gpytorch==1.8.1
 
 # Requires libtorrent which is unavailable for arm64
 autorom[accept-rom-license]; platform_machine != "arm64"
@@ -50,5 +48,8 @@ wandb==0.13.4
 xgboost==1.3.3
 zoopt==0.4.1
 
-# Dragonfly/bayesopt time out without this
+# We need to pin scipy because Dragonfly/Bayesopt tests will time out otherwise.
+# This is likely because of a subdependency or API change. We may have to
+# upgrade dragonfly/bayesopt in sync.
+# Todo (krfricke): Upgrade
 scipy==1.7.3
