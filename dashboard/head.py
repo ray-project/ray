@@ -10,15 +10,15 @@ import ray._private.services
 import ray._private.tls_utils
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.__utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
-from ray.dashboard.utils import DashboardHeadModule
+from ray.dashboard.__utils import DashboardHeadModule
 from ray._raylet import GcsClient, check_health
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.datacenter import DataOrganizer
-from ray.dashboard.utils import async_loop_forever
+from ray.dashboard.__utils import async_loop_forever
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
