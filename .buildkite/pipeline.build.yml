@@ -302,45 +302,19 @@
       python/ray/serve/test_gradio
       python/ray/serve/test_gradio_visualization
 
-- label: ":python: Minimal install 3.7"
+- label: ":python: Minimal install {{matrix}}"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_minimal 3.7
-    - ./ci/ci.sh test_latest_core_dependencies 3.7
-
-- label: ":python: Minimal install 3.8"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_minimal 3.8
-    - ./ci/ci.sh test_latest_core_dependencies 3.8
-
-- label: ":python: Minimal install 3.9"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_minimal 3.9
-    - ./ci/ci.sh test_latest_core_dependencies 3.9
-
-- label: ":python: Minimal install 3.10"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_minimal 3.10
-    - ./ci/ci.sh test_latest_core_dependencies 3.10
-
-- label: ":python: Minimal install 3.11"
-  conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - ./ci/ci.sh test_minimal 3.11
-    - ./ci/ci.sh test_latest_core_dependencies 3.11
+    - ./ci/ci.sh test_minimal {{matrix}}
+    - ./ci/ci.sh test_latest_core_dependencies {{matrix}}
+  matrix:
+    - "3.7"
+    - "3.8"
+    - "3.9"
+    - "3.10"
+    - "3.11"
 
 - label: ":python: Default install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
