@@ -468,7 +468,12 @@ class DataParallelTrainer(BaseTrainer):
                 logger.debug(
                     f"Deleting the stale lazy checkpoint marker file: {marker_file}."
                 )
-                marker_file.unlink(missing_ok=True)
+                # Multiple workers on the same node may delete this file at the
+                # same time. Return if the marker file has been deleted.
+                try:
+                    marker_file.unlink()
+                except Exception:
+                    return
 
         # Start the remote actors.
         backend_executor.start(initialization_hook=clear_lazy_checkpoint_marker)
