@@ -1,4 +1,4 @@
-(serve-in-production-updating)=
+(serve-inplace-updates)=
 
 # In-Place Updates to Serve
 

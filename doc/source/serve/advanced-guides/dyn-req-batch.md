@@ -7,7 +7,7 @@ Machine Learning (ML) frameworks such as Tensorflow, PyTorch, and Scikit-Learn s
 Ray Serve allows you to take advantage of this feature via dynamic request batching.
 When a request arrives, Serve puts the request in a queue. This queue buffers the requests to form a batch. The deployment picks up the batch and evaluates it. After the evaluation, the resulting batch will be split up, and each response is returned individually.
 
-### Enable batching for your deployment
+## Enable batching for your deployment
 You can enable batching by using the {mod}`ray.serve.batch` decorator. Let's take a look at a simple example by modifying the `Model` class to accept a batch.
 ```{literalinclude} ../doc_code/batching_guide.py
 ---
@@ -34,7 +34,7 @@ You can supply two optional parameters to the decorators.
 - `max_batch_size` controls the size of the batch.
 Once the first request arrives, the batching decorator will wait for a full batch (up to `max_batch_size`) until `batch_wait_timeout_s` is reached. If the timeout is reached, the batch will be sent to the model regardless the batch size.
 
-### Streaming batched requests
+## Streaming batched requests
 
 ```{warning}
 Support for HTTP streaming responses is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
@@ -62,7 +62,7 @@ Calling the `serve.batch`-decorated function returns an async generator that can
 
 Some inputs within a batch may generate fewer outputs than others. When a particular input has nothing left to yield, pass a `StopIteration` object into the output iterable. This terminates the generator that was returned when the `serve.batch` function was called with that input. When streaming generators returned by `serve.batch`-decorated functions over HTTP, this allows the end client's connection to terminate once its call is done, instead of waiting until the entire batch is done.
 
-### Tips for fine-tuning batching parameters
+## Tips for fine-tuning batching parameters
 
 `max_batch_size` ideally should be a power of 2 (2, 4, 8, 16, ...) because CPUs and GPUs are both optimized for data of these shapes. Large batch sizes incur a high memory cost as well as latency penalty for the first few requests.
 

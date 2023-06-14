@@ -1,6 +1,6 @@
 (serve-deployment-graphs)=
 
-## Experimental Deployment Graphs
+# Experimental Deployment Graphs
 
 :::{note}
 The call graph is in **alpha**, so its APIs are subject to change.
@@ -10,7 +10,7 @@ For more advanced composition patterns, it can be useful to surface the relation
 
 Ray Serve's **deployment graph API** lets you specify how to route requests through your deployments, so you can explicitly create a dependency graph. It also has additional features like HTTP adapters and input routing that help you build more expressive graphs.
 
-### Binding Deployments
+## Binding Deployments
 
 The basic building block for all deployment graphs is the `DeploymentNode`. One type of `DeploymentNode` is the `ClassNode`. You can create `ClassNodes` by binding class-based deployments to their constructor's arguments with the `bind` method. This may sound familiar because you've already been doing this whenever you bind and run class-based deployments, such as in the [Calling Deployments using ServeHandles](serve-model-composition-serve-handles) section.
 
@@ -61,7 +61,7 @@ foo
 ```
 
 (deployment-graph-call-graph)=
-### Building the Call Graph: MethodNodes and FunctionNodes
+## Building the Call Graph: MethodNodes and FunctionNodes
 
 After defining your `ClassNodes`, you can specify how HTTP requests should be processed using the call graph. As an example, let's look at a deployment graph that implements this chain of arithmetic operations:
 
@@ -141,7 +141,7 @@ $ python arithmetic_client.py
 ```
 
 (deployment-graph-drivers-http-adapters)=
-### Drivers and HTTP Adapters
+## Drivers and HTTP Adapters
 
 Ray Serve provides the `DAGDriver`, which routes HTTP requests through your call graph. As mentioned in [the call graph section](deployment-graph-call-graph), the `DAGDriver` takes in a `DeploymentNode` and it produces a `ClassNode` that you can run.
 
@@ -169,7 +169,7 @@ In the example above, the `InputNode` represents the number packaged inside the 
 See [the guide](serve-http-adapters) on `http_adapters` to learn more.
 
 (deployment-graph-call-graph-testing)=
-### Testing the Graph with the Python API
+## Testing the Graph with the Python API
 
 The `serve.run` function returns a handle that you can use to test your graph in Python, without using HTTP requests.
 
@@ -196,7 +196,7 @@ $ python arithmetic.py
 ```
 
 (pydot-visualize-dag)=
-### Visualizing the Graph
+## Visualizing the Graph
 
 You can render an illustration of your deployment graph to see its nodes and their connection.
 
@@ -275,9 +275,9 @@ On the other hand, when the script visualizes the final graph output, `combine_o
 
 ![pic](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/deployment-graph/visualize_full.svg)
 
-#### Visualizing the Graph with Gradio
+### Visualizing the Graph with Gradio
 Another option is to visualize your deployment graph through Gradio. Check out the [Graph Visualization with Gradio Tutorial](serve-gradio-dag-visualization) to learn how to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
 
-## Next Steps
+# Next Steps
 
 To learn more about deployment graphs, check out some [deployment graph patterns](serve-deployment-graph-patterns-overview) you can incorporate into your own graph!
