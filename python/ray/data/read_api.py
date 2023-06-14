@@ -1,5 +1,6 @@
 import collections
 import logging
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -118,12 +119,17 @@ def from_items(
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
             Parallelism may be limited by the number of items.
-        output_arrow_format: If True, always return data in Arrow format, raising an
-            error if this is not possible. Defaults to False.
 
     Returns:
         MaterializedDataset holding the items.
     """
+    if output_arrow_format:
+        warnings.warn(
+            DeprecationWarning,
+            "`output_arrow_format` is deprecated. In Ray 2.5+, `from_items` always "
+            "tries to store items in Arrow format.",
+        )
+
     ctx = ray.data.DataContext.get_current()
     if ctx.strict_mode:
         output_arrow_format = True
