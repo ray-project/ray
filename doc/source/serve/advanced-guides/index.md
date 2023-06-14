@@ -7,7 +7,7 @@ Use these advanced guides for more options and configurations:
 - [Pass Arguments to Applications](app-builder-guide)
 - [Performance Tuning](serve-perf-tuning)
 - [Dynamic Request Batching](serve-performance-batching-requests)
-- [In-Place Updates for Serve](serve-in-production-updating)
+- [In-Place Updates for Serve](serve-inplace-updates)
 - [Development Workflow](serve-dev-workflow)
 - [Ray Serve Dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
