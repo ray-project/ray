@@ -40,6 +40,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -1557,7 +1558,7 @@ class Dataset:
             return ds.split_at_indices([ds_length - test_size])
 
     @ConsumptionAPI(pattern="Args:")
-    def union(self, *other: List["Dataset"], preserve_order: bool = False) -> "Dataset":
+    def union(self, *other: List["Dataset"]) -> "Dataset":
         """Materialize and combine this dataset with others of the same type.
 
         The order of the blocks in the datasets is preserved, as is the
@@ -1590,14 +1591,25 @@ class Dataset:
         if has_nonlazy:
             blocks = []
             metadata = []
-            for bl in bls:
+            ops_to_union = []
+            for idx, bl in enumerate(bls):
                 if isinstance(bl, LazyBlockList):
                     bs, ms = bl._get_blocks_with_metadata()
+                    op = datasets[idx]._plan._logical_plan.dag
                 else:
+                    assert isinstance(bl, BlockList), type(bl)
                     bs, ms = bl._blocks, bl._metadata
+                    ref_bundles = _block_list_to_bundles(bl, bl._owned_by_consumer)
+                    op = datasets[idx]._plan._logical_plan.dag
+                    # op = InputData(ref_bundles)
                 blocks.extend(bs)
                 metadata.extend(ms)
+                ops_to_union.append(op)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
+            logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
+            # correct output, but wrong plan
+            # ref_bundles = _block_list_to_bundles(blocklist, owned_by_consumer)
+            # logical_plan = LogicalPlan(InputData(ref_bundles))
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1625,6 +1637,16 @@ class Dataset:
                 owned_by_consumer=owned_by_consumer,
             )
 
+            logical_plan = self._logical_plan
+            logical_plans = [
+                getattr(union_ds, "_logical_plan", None) for union_ds in datasets
+            ]
+            if all(logical_plans):
+                op = UnionLogicalOperator(
+                    *[plan.dag for plan in logical_plans],
+                )
+                logical_plan = LogicalPlan(op)
+
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
         if len(set(epochs)) > 1:
@@ -1640,17 +1662,6 @@ class Dataset:
             parent=[d._plan.stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
-
-        logical_plan = self._logical_plan
-        logical_plans = [
-            getattr(union_ds, "_logical_plan", None) for union_ds in datasets
-        ]
-        if all(logical_plans):
-            op = UnionLogicalOperator(
-                *[plan.dag for plan in logical_plans],
-                preserve_order=preserve_order,
-            )
-            logical_plan = LogicalPlan(op)
 
         return Dataset(
             ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),

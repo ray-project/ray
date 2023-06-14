@@ -37,6 +37,5 @@ class Union(NAry):
     def __init__(
         self,
         *input_ops: LogicalOperator,
-        preserve_order: bool = False,
     ):
         super().__init__(*input_ops)

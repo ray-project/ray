@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.legacy_compat import _blocks_to_input_buffer
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -403,19 +404,28 @@ def test_union_operator(ray_start_regular_shared, enable_optimizer, preserve_ord
 
 @pytest.mark.parametrize("preserve_order", (True, False))
 def test_union_e2e(ray_start_regular_shared, enable_optimizer, preserve_order):
+    execution_options = ExecutionOptions(preserve_order=preserve_order)
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options = execution_options
+
     ds = ray.data.range(20, parallelism=10)
 
     # Test lazy union.
-    ds = ds.union(ds, ds, ds, ds, preserve_order=preserve_order)
+    ds = ds.union(ds, ds, ds, ds)
     assert ds.num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
     _check_usage_record(["ReadRange", "Union"])
+    ds_result = [{"id": i} for i in range(20)] * 5
+    if preserve_order:
+        assert ds.take_all() == ds_result
 
-    ds = ds.union(ds, preserve_order=preserve_order)
+    ds = ds.union(ds)
     assert ds.count() == 200
     assert ds.sum() == (950 * 2)
     _check_usage_record(["ReadRange", "Union"])
+    if preserve_order:
+        assert ds.take_all() == ds_result * 2
 
     # Test materialized union.
     ds2 = ray.data.from_items([{"id": i} for i in range(1, 5 + 1)])
@@ -423,15 +433,21 @@ def test_union_e2e(ray_start_regular_shared, enable_optimizer, preserve_order):
     assert ds2.sum() == 15
     _check_usage_record(["FromItems"])
 
-    ds2 = ds2.union(ds2, preserve_order=preserve_order)
+    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    ds2 = ds2.union(ds2)
     assert ds2.count() == 10
     assert ds2.sum() == 30
     _check_usage_record(["FromItems", "Union"])
+    ds2_result = ([{"id": i} for i in range(1, 5 + 1)]) * 2
+    if preserve_order:
+        assert ds2.take_all() == ds2_result
 
-    ds2 = ds2.union(ds, preserve_order=preserve_order)
+    ds2 = ds2.union(ds)
     assert ds2.count() == 210
     assert ds2.sum() == (950 * 2 + 30)
     _check_usage_record(["FromItems", "Union"])
+    if preserve_order:
+        assert ds2.take_all() == (ds2_result + ds_result * 2)
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optimizer):
