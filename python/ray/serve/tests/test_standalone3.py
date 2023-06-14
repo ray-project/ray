@@ -17,7 +17,6 @@ from ray._private.test_utils import (
     wait_for_condition,
     SignalActor,
 )
-from ray._private.ray_constants import gcs_actor_scheduling_enabled
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
@@ -326,15 +325,6 @@ def test_handle_early_detect_failure(shutdown_ray):
     serve.shutdown()
 
 
-@pytest.mark.skipif(
-    gcs_actor_scheduling_enabled(),
-    reason="Raylet-based scheduler favors (http proxy) actors' owner "
-    + "nodes (the head one), so the `EveryNode` option is actually not "
-    + "enforced. Besides, the second http proxy does not die with the "
-    + "placeholder (happens to both schedulers), so gcs-based scheduler (which "
-    + "may collocate the second http proxy and the place holder) "
-    + "can not shutdown the worker node.",
-)
 def test_autoscaler_shutdown_node_http_everynode(
     shutdown_ray, call_ray_stop_only  # noqa: F811
 ):

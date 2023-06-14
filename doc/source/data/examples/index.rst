@@ -4,6 +4,23 @@
 Ray Data Examples
 =================
 
+..
+   Include all examples in a hidden toctree so Sphinx build does not complain.
+
+.. toctree::
+    :hidden:
+
+    huggingface_vit_batch_prediction
+    pytorch_resnet_batch_prediction
+    batch_inference_object_detection
+    nyc_taxi_basic_processing
+    batch_training
+    ocr_example
+    random-access
+    custom-datasource
+
+
+
 .. tip:: Check out the Datasets :ref:`User Guide <data_user_guide>` to learn more about
   Dataset features in-depth.
 
@@ -21,21 +38,21 @@ Computer Vision
 
     .. grid-item-card::
 
-       .. button-ref:: examples/huggingface_vit_batch_prediction
+       .. button-ref:: huggingface_vit_batch_prediction
 
             Image Classification Batch Inference with Huggingface Vision Transformer
 
 
     .. grid-item-card::
 
-       .. button-ref:: examples/pytorch_resnet_batch_prediction
+       .. button-ref:: pytorch_resnet_batch_prediction
 
             Image Classification Batch Inference with PyTorch ResNet152
 
 
     .. grid-item-card::
 
-        .. button-ref:: examples/batch_inference_object_detection
+        .. button-ref:: batch_inference_object_detection
 
             Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
 
@@ -49,19 +66,19 @@ Simple Data Processing
 
     .. grid-item-card::
 
-        .. button-ref:: examples/nyc_taxi_basic_processing
+        .. button-ref:: nyc_taxi_basic_processing
 
             Processing the NYC taxi dataset
 
     .. grid-item-card::
 
-        .. button-ref:: examples/batch_training
+        .. button-ref:: batch_training
 
             Batch Training with Ray Data
 
     .. grid-item-card::
 
-        .. button-ref:: examples/ocr_example
+        .. button-ref:: ocr_example
 
             Scaling OCR with Ray Data
 
@@ -77,12 +94,12 @@ Other Examples
 
     .. grid-item-card::
 
-        .. button-ref:: examples/random-access
+        .. button-ref:: random-access
 
             Random Data Access (Experimental)
 
     .. grid-item-card::
 
-        .. button-ref:: examples/custom-datasource
+        .. button-ref:: custom-datasource
 
             Implementing a Custom Datasource
