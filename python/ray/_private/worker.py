@@ -2239,9 +2239,6 @@ def connect(
         worker.gcs_log_subscriber = ray._raylet.GcsLogSubscriber(
             worker_id=worker_id, address=worker.gcs_client.address
         )
-        worker.gcs_function_key_subscriber = ray._raylet.GcsFunctionKeySubscriber(
-            worker_id=worker_id, address=worker.gcs_client.address
-        )
 
     if driver_object_store_memory is not None:
         logger.warning(
@@ -2297,8 +2294,6 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        if hasattr(worker, "gcs_function_key_subscriber"):
-            worker.gcs_function_key_subscriber.close()
         if hasattr(worker, "gcs_error_subscriber"):
             worker.gcs_error_subscriber.close()
         if hasattr(worker, "gcs_log_subscriber"):
