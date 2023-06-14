@@ -13,7 +13,7 @@ from ray._private.ray_constants import (
 
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules.runtime_env.runtime_env_consts as runtime_env_consts
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.container import ContainerManager

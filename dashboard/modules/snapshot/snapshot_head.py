@@ -14,7 +14,7 @@ from pydantic import BaseModel, Extra, Field, validator
 import ray
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.__utils as dashboard_utils
+import ray.dashboard.utils as dashboard_utils
 from ray._private import ray_constants
 from ray._private.storage import _load_class
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc

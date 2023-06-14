@@ -8,7 +8,10 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import run_background_task, import_attr
+from ray._private.utils import (
+    import_attr,
+    run_background_task,
+)
 from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
@@ -834,22 +837,7 @@ def deploy_serve_application(
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
 
         # Import and build the application.
-
-        try:
-            app = call_app_builder_with_args_if_necessary(
-                import_attr(import_path), args
-            )
-        except Exception as e:
-            import sys
-            from pathlib import Path
-
-            pwd = Path(os.getcwd())
-            paths = list(pwd.parent.rglob("*"))
-            raise Exception(
-                f"Test failing, import_path: {import_path}, pwd: {os. getcwd()}, "
-                f"\nmodules: {sys.modules}, \npaths: {paths}"
-                f"\nerror: {e}, \nsys.path: {sys.path}"
-            )
+        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
         app = build(app, name)
 
         # Override options for each deployment listed in the config.

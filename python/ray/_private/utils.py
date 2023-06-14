@@ -72,8 +72,6 @@ _PYARROW_VERSION = None
 _CALLED_FREQ = defaultdict(lambda: 0)
 _CALLED_FREQ_LOCK = threading.Lock()
 
-INIT_FILE_NAME = "__init__.py"
-
 
 def get_user_temp_dir():
     if "RAY_TMPDIR" in os.environ:
@@ -1163,18 +1161,6 @@ def deprecated(
     return deprecated_wrapper
 
 
-def create_init_files(module_name: str):
-    module_path = Path(importlib.util.find_spec(module_name).origin)
-    for path_object in module_path.parent.rglob("*"):
-        if path_object.is_dir():
-            init_file_path = path_object / INIT_FILE_NAME
-            if not init_file_path.exists():
-                print(f"init file not exist: {init_file_path}")
-                open(init_file_path, "a").close()
-
-    sys.path.insert(0, module_path.parent.as_posix())
-
-
 def import_attr(full_path: str):
     """Given a full import path to a module attr, return the imported attr.
 
@@ -1201,13 +1187,16 @@ def import_attr(full_path: str):
         module_name = full_path[:last_period_idx]
         attr_name = full_path[last_period_idx + 1 :]
 
-    # create __init__.py files if not exist and add to sys.path
-    # create_init_files(module_name)
+    # `ray/dashboard` took the import precedence and can collide user's modules.
+    # Dropping `ray/dashboard` from sys.path to avoid the import collision.
     old_paths = sys.path
     for path in old_paths:
         if path.endswith("ray/dashboard"):
             sys.path.remove(path)
+
     module = importlib.import_module(module_name)
+
+    # Restore sys.path with old paths.
     sys.path = old_paths
     return getattr(module, attr_name)
 
